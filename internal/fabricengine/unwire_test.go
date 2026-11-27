@@ -18,6 +18,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
@@ -220,7 +221,7 @@ func TestUnwireVerbResult_HasNoGitignoreField(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	typ := reflect.TypeOf(fabricengine.UnwireVerbResult{})
+	typ := reflect.TypeOf(fabriclayout.UnwireVerbResult{})
 	if _, ok := typ.FieldByName("Gitignore"); ok {
 		t.Errorf("UnwireVerbResult has a Gitignore field; want it removed so the CLI envelope carries no gitignore key")
 	}
@@ -288,7 +289,7 @@ func TestUnwire_PreservesRepoWideRecords(t *testing.T) {
 	l := h.Location
 
 	// The prime's weft root holds the committed anchor marker clone and the repo-wide fabric.yaml seeded on weft:main.
-	boardDir := fabricengine.BoardDir(l.HubPath)
+	boardDir := fabriclayout.BoardDir(l.HubPath)
 	anchorPath := filepath.Join(h.PrimeRecords(), lymcwd.AnchorFileName)
 	fabricConfigPath := configengine.ConfigFile(boardDir, "fabric")
 

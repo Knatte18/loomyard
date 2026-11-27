@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -39,7 +39,7 @@ func TestDobbyOrphans_ListsOnlyAPairNoBoardEntryAndNoRunDirectoryNames(t *testin
 				t.Fatalf("create the run directory: %v", err)
 			}
 			if tt.registerProcess {
-				if err := runproc.Register(fabricengine.RunProcDir(h.Path), "orphan", runproc.SelfRecord(runproc.RoleBatten)); err != nil {
+				if err := runproc.Register(fabriclayout.RunProcDir(h.Path), "orphan", runproc.SelfRecord(runproc.RoleBatten)); err != nil {
 					t.Fatalf("register a process under the orphan: %v", err)
 				}
 			}

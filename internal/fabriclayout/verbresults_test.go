@@ -1,12 +1,12 @@
-// committed_test.go table-drives CommitResult.Committed() over every WarpCommitted/WeftCommitted combination.
+// verbresults_test.go table-drives CommitResult.Committed() over every WarpCommitted/WeftCommitted combination.
 // No fixture: CommitResult is a plain value type.
 
-package fabricengine_test
+package fabriclayout_test
 
 import (
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -28,7 +28,7 @@ func TestCommitResult_Committed(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			r := fabricengine.CommitResult{WarpCommitted: tt.warpCommitted, WeftCommitted: tt.weftCommitted}
+			r := fabriclayout.CommitResult{WarpCommitted: tt.warpCommitted, WeftCommitted: tt.weftCommitted}
 			if got := r.Committed(); got != tt.want {
 				t.Errorf("CommitResult{WarpCommitted: %v, WeftCommitted: %v}.Committed() = %v; want %v",
 					tt.warpCommitted, tt.weftCommitted, got, tt.want)

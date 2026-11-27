@@ -17,6 +17,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -38,7 +39,7 @@ func runTeardownStandIn(mode, slug string) int {
 		if err != nil {
 			return 2
 		}
-		lockPath := TeardownLockPath(filepath.Dir(workDir), slug)
+		lockPath := fabriclayout.TeardownLockPath(filepath.Dir(workDir), slug)
 		if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
 			return 2
 		}
@@ -89,7 +90,7 @@ func TestSpawnTeardownHold(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			hub := t.TempDir()
-			if err := os.MkdirAll(BoltDir(hub), 0o755); err != nil {
+			if err := os.MkdirAll(fabriclayout.BoltDir(hub), 0o755); err != nil {
 				t.Fatalf("create the Bolt checkout: %v", err)
 			}
 			rec := NewMutations(hub)
@@ -120,12 +121,12 @@ func TestSpawnTeardownHold(t *testing.T) {
 			if err != nil || hold == nil {
 				t.Fatalf("spawnTeardownHold() = (%v, %v); want a hold and nil", hold, err)
 			}
-			lockPath := TeardownLockPath(hub, slug)
-			want := []Mutation{{Kind: KindFileWritten, Target: hubRelativeTarget(hub, lockPath)}}
+			lockPath := fabriclayout.TeardownLockPath(hub, slug)
+			want := []fabriclayout.Mutation{{Kind: fabriclayout.KindFileWritten, Target: hubRelativeTarget(hub, lockPath)}}
 			if got := rec.Snapshot().Entries(); len(got) != 1 || got[0] != want[0] {
 				t.Errorf("recorded mutations = %+v; want %+v", got, want)
 			}
-			records, err := runproc.List(RunProcDir(hub), slug)
+			records, err := runproc.List(fabriclayout.RunProcDir(hub), slug)
 			if err != nil || len(records) != 1 || records[0].Role != runproc.RoleTeardown {
 				t.Errorf("runproc.List(%s) = (%+v, %v); want one record with role %q", slug, records, err, runproc.RoleTeardown)
 			}

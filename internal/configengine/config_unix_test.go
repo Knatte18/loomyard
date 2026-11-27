@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/testkit/permkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -29,7 +29,7 @@ func TestLoadOrTemplate_LymDirStatFailure_DoesNotFallback(t *testing.T) {
 	tmpDir, _ := newBase(t, baseLym, "board", "")
 	permkit.Chmod(t, tmpDir, 0o000)
 
-	resolved, err := configengine.LoadOrTemplate(configengine.Dirs{Anchor: tmpDir}, boardSpec("path: "+fabricengine.BoltDirName+"\n", nil))
+	resolved, err := configengine.LoadOrTemplate(configengine.Dirs{Anchor: tmpDir}, boardSpec("path: "+fabriclayout.BoltDirName+"\n", nil))
 	if err == nil {
 		t.Fatalf("expected error for unstattable _lym/, got nil")
 	}

@@ -35,6 +35,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
@@ -160,7 +161,7 @@ func battenCommitStatusDeps(location *lymcwd.Location, runID string) commitStatu
 			return fabricengine.MergeStateActive(location)
 		},
 		Commit: func(msg string) (bool, error) {
-			trailers := []fabricengine.Trailer{{Key: fabricengine.TransitionTrailerKey, Value: shedrun.ResolveRunID(location, runID)}}
+			trailers := []fabriclayout.Trailer{{Key: fabriclayout.TransitionTrailerKey, Value: shedrun.ResolveRunID(location, runID)}}
 			_, committed, err := fabricengine.CommitAnchoredPathsWithTrailers(fabricengine.NewMutations(""), location, battenRunCommitPaths(location, runID), msg, trailers, fabricengine.EnvSyncOptions())
 			return committed, err
 		},
@@ -179,7 +180,7 @@ func battenCommitStatusDeps(location *lymcwd.Location, runID string) commitStatu
 			return started
 		},
 		Push: func() error {
-			_, err := pairteardown.PushRun(location, location, runID, pairteardown.RunPush{LockWait: fabricengine.StatusPushLockWait})
+			_, err := pairteardown.PushRun(location, location, runID, pairteardown.RunPush{LockWait: fabriclayout.StatusPushLockWait})
 			return err
 		},
 		SetBoardStatus: func(status string) error {

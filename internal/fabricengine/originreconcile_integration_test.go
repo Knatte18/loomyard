@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -133,7 +134,7 @@ func originPair(tb testing.TB, hub *originHub, slug string) (worktree, branch st
 	return worktree, branch
 }
 
-func reconcile(t *testing.T, hub *originHub, scope fabricengine.ReconcileScope, opts fabricengine.ReconcileOptions) fabricengine.OriginReport {
+func reconcile(t *testing.T, hub *originHub, scope fabriclayout.ReconcileScope, opts fabricengine.ReconcileOptions) fabriclayout.OriginReport {
 	t.Helper()
 	report, err := fabricengine.ReconcileOrigin(hub.Location, scope, fabricengine.OriginSeams{}, opts)
 	if err != nil {
@@ -174,7 +175,7 @@ func freeRemoteRefsLocks(t *testing.T, paths []string) []string {
 }
 
 // branchOf returns the outcome for the branch of repo side, failing the test when the report holds none.
-func branchOf(t *testing.T, report fabricengine.OriginReport, repo, branch string) fabricengine.BranchOutcome {
+func branchOf(t *testing.T, report fabriclayout.OriginReport, repo, branch string) fabriclayout.BranchOutcome {
 	t.Helper()
 	for _, outcome := range report.Branches {
 		if outcome.Repo == repo && outcome.Branch == branch {
@@ -182,10 +183,10 @@ func branchOf(t *testing.T, report fabricengine.OriginReport, repo, branch strin
 		}
 	}
 	t.Fatalf("report holds no %s branch %q; branches = %+v", repo, branch, report.Branches)
-	return fabricengine.BranchOutcome{}
+	return fabriclayout.BranchOutcome{}
 }
 
-func requireState(t *testing.T, report fabricengine.OriginReport, repo, branch string, want fabricengine.BranchState) fabricengine.BranchOutcome {
+func requireState(t *testing.T, report fabriclayout.OriginReport, repo, branch string, want fabriclayout.BranchState) fabriclayout.BranchOutcome {
 	t.Helper()
 	outcome := branchOf(t, report, repo, branch)
 	if outcome.State != want {
@@ -231,14 +232,14 @@ func TestReconcileOrigin_Judge(t *testing.T) {
 		gitkit.Git(t, boltOther, "push", "origin", "main")
 
 		var calls callLog
-		report := reconcile(t, hub, fabricengine.ReconcileScope{JudgeOnly: true}, fabricengine.ReconcileOptions{CallHook: calls.record})
+		report := reconcile(t, hub, fabriclayout.ReconcileScope{JudgeOnly: true}, fabricengine.ReconcileOptions{CallHook: calls.record})
 
-		code := requireState(t, report, "code", hub.primeBranch, fabricengine.BranchFastForward)
-		records := requireState(t, report, "records", hub.primeRecords, fabricengine.BranchFastForward)
-		bolt := requireState(t, report, "bolt", "main", fabricengine.BranchFastForward)
+		code := requireState(t, report, "code", hub.primeBranch, fabriclayout.BranchFastForward)
+		records := requireState(t, report, "records", hub.primeRecords, fabriclayout.BranchFastForward)
+		bolt := requireState(t, report, "bolt", "main", fabriclayout.BranchFastForward)
 		for _, row := range []struct {
 			name    string
-			outcome fabricengine.BranchOutcome
+			outcome fabriclayout.BranchOutcome
 			want    string
 		}{{"code", code, warpHead}, {"records", records, recordsHead}, {"bolt", bolt, boltHead}} {
 			if row.outcome.OriginHead != row.want {
@@ -274,10 +275,10 @@ func TestReconcileOrigin_Judge(t *testing.T) {
 		hub, _, _ := newOriginTaskHub(t)
 
 		var calls callLog
-		report := reconcile(t, hub, fabricengine.ReconcileScope{}, fabricengine.ReconcileOptions{CallHook: calls.record})
+		report := reconcile(t, hub, fabriclayout.ReconcileScope{}, fabricengine.ReconcileOptions{CallHook: calls.record})
 
 		for _, outcome := range report.Branches {
-			if outcome.State != fabricengine.BranchLevel {
+			if outcome.State != fabriclayout.BranchLevel {
 				t.Errorf("%s branch %q state = %q; want level", outcome.Repo, outcome.Branch, outcome.State)
 			}
 		}
@@ -317,7 +318,7 @@ func TestReconcileOrigin_Judge(t *testing.T) {
 				}
 			},
 		}
-		report := reconcile(t, hub, fabricengine.ReconcileScope{}, opts)
+		report := reconcile(t, hub, fabriclayout.ReconcileScope{}, opts)
 
 		if len(calls.withVerb("ls-remote")) != 2 || len(calls.withVerb("fetch")) != 1 {
 			t.Fatalf("remote calls = %v; want two ls-remote calls and one fetch", calls.calls)
@@ -345,13 +346,13 @@ func TestReconcileOrigin_Judge(t *testing.T) {
 		for _, row := range []struct {
 			name      string
 			breakURL  string
-			scope     fabricengine.ReconcileScope
+			scope     fabriclayout.ReconcileScope
 			options   fabricengine.ReconcileOptions
 			wantError bool
 		}{
-			{"a judge-only reconcile", "", fabricengine.ReconcileScope{JudgeOnly: true}, fabricengine.ReconcileOptions{}, false},
-			{"an unreachable origin", "http://127.0.0.1:1/x", fabricengine.ReconcileScope{}, unreachableOptions, false},
-			{"an origin that is no repository", filepath.Join(t.TempDir(), "no-repository"), fabricengine.ReconcileScope{}, unreachableOptions, true},
+			{"a judge-only reconcile", "", fabriclayout.ReconcileScope{JudgeOnly: true}, fabricengine.ReconcileOptions{}, false},
+			{"an unreachable origin", "http://127.0.0.1:1/x", fabriclayout.ReconcileScope{}, unreachableOptions, false},
+			{"an origin that is no repository", filepath.Join(t.TempDir(), "no-repository"), fabriclayout.ReconcileScope{}, unreachableOptions, true},
 		} {
 			hub := newOriginHub(t)
 			if row.breakURL != "" {
@@ -384,9 +385,9 @@ func TestReconcileOrigin_Judge(t *testing.T) {
 			gitkit.Git(t, other, "push", "origin", row.branch)
 			gitkit.CommitFile(t, row.worktree, "local.txt", "local", "local side")
 
-			report := reconcile(t, hub, fabricengine.ReconcileScope{}, fabricengine.ReconcileOptions{})
+			report := reconcile(t, hub, fabriclayout.ReconcileScope{}, fabricengine.ReconcileOptions{})
 
-			outcome := requireState(t, report, "code", row.branch, fabricengine.BranchDiverged)
+			outcome := requireState(t, report, "code", row.branch, fabriclayout.BranchDiverged)
 			want := fabricengine.CodeDivergedWayForwardForTest(row.worktree, row.branch, row.prime)
 			if outcome.WayForward != want {
 				t.Errorf("%s WayForward = %q; want %q", row.name, outcome.WayForward, want)
@@ -422,12 +423,12 @@ func TestReconcileOrigin_Judge(t *testing.T) {
 						t.Fatalf("Pull() error = %v; want ErrWarpRewound after fetching the tracking ref", err)
 					}
 				case "a moving reconcile":
-					reconcile(t, rewound.hub, fabricengine.ReconcileScope{}, fabricengine.ReconcileOptions{})
+					reconcile(t, rewound.hub, fabriclayout.ReconcileScope{}, fabricengine.ReconcileOptions{})
 				}
 
-				for _, scope := range []fabricengine.ReconcileScope{{JudgeOnly: true}, {}} {
+				for _, scope := range []fabriclayout.ReconcileScope{{JudgeOnly: true}, {}} {
 					report := reconcile(t, rewound.hub, scope, fabricengine.ReconcileOptions{})
-					outcome := requireState(t, report, "code", rewound.branch, fabricengine.BranchRewound)
+					outcome := requireState(t, report, "code", rewound.branch, fabriclayout.BranchRewound)
 					if !slices.Equal(outcome.Commits, []string{rewound.second, rewound.first}) {
 						t.Errorf("scope %+v dropped commits = %v; want %v", scope, outcome.Commits, []string{rewound.second, rewound.first})
 					}
@@ -443,16 +444,16 @@ func TestReconcileOrigin_Judge(t *testing.T) {
 	for _, settle := range []string{"git reset --keep to origin's head", "git push of the branch"} {
 		t.Run("A rewound task branch settled by "+settle+" reads level", func(t *testing.T) {
 			rewound := newRewoundBranch(t, true)
-			reconcile(t, rewound.hub, fabricengine.ReconcileScope{}, fabricengine.ReconcileOptions{})
+			reconcile(t, rewound.hub, fabriclayout.ReconcileScope{}, fabricengine.ReconcileOptions{})
 			if settle == "git push of the branch" {
 				gitkit.Git(t, rewound.worktree, "push", "origin", rewound.branch)
 			} else {
 				gitkit.Git(t, rewound.worktree, "reset", "--keep", rewound.base)
 			}
 
-			report := reconcile(t, rewound.hub, fabricengine.ReconcileScope{}, fabricengine.ReconcileOptions{})
+			report := reconcile(t, rewound.hub, fabriclayout.ReconcileScope{}, fabricengine.ReconcileOptions{})
 
-			requireState(t, report, "code", rewound.branch, fabricengine.BranchLevel)
+			requireState(t, report, "code", rewound.branch, fabriclayout.BranchLevel)
 		})
 	}
 
@@ -467,9 +468,9 @@ func TestReconcileOrigin_Judge(t *testing.T) {
 		other := otherMachine(t, hub.CodeBare, branch)
 		gitkit.Git(t, other, "push", "--force-with-lease=refs/heads/"+branch+":"+earlier, "origin", kept+":refs/heads/"+branch)
 
-		report := reconcile(t, hub, fabricengine.ReconcileScope{}, fabricengine.ReconcileOptions{})
+		report := reconcile(t, hub, fabriclayout.ReconcileScope{}, fabricengine.ReconcileOptions{})
 
-		requireState(t, report, "code", branch, fabricengine.BranchDiverged)
+		requireState(t, report, "code", branch, fabriclayout.BranchDiverged)
 	})
 
 	t.Run("A code branch origin replaced with a history no earlier value holds reads rewritten", func(t *testing.T) {
@@ -489,9 +490,9 @@ func TestReconcileOrigin_Judge(t *testing.T) {
 			gitkit.Git(t, other, "commit", "--allow-empty", "-m", "origin replaced the history")
 			gitkit.Git(t, other, "push", "--force-with-lease=refs/heads/"+row.branch+":"+tip, "origin", "replaced:refs/heads/"+row.branch)
 
-			report := reconcile(t, hub, fabricengine.ReconcileScope{}, fabricengine.ReconcileOptions{})
+			report := reconcile(t, hub, fabriclayout.ReconcileScope{}, fabricengine.ReconcileOptions{})
 
-			outcome := requireState(t, report, "code", row.branch, fabricengine.BranchRewritten)
+			outcome := requireState(t, report, "code", row.branch, fabriclayout.BranchRewritten)
 			if want := "`lym fabric pull` in " + row.worktree; outcome.WayForward != want {
 				t.Errorf("%s WayForward = %q; want exactly %q", row.name, outcome.WayForward, want)
 			}
@@ -502,10 +503,10 @@ func TestReconcileOrigin_Judge(t *testing.T) {
 		hub, pairCode, branch := newOriginTaskHub(t)
 		gitkit.Git(t, hub.CodeBare, "branch", "-D", branch)
 
-		report := reconcile(t, hub, fabricengine.ReconcileScope{}, fabricengine.ReconcileOptions{})
+		report := reconcile(t, hub, fabriclayout.ReconcileScope{}, fabricengine.ReconcileOptions{})
 
-		outcome := requireState(t, report, "code", branch, fabricengine.BranchGone)
-		want := fabricengine.FailedPushWayForward(fabricengine.FailedPush{Repo: "code", RepoPath: pairCode, Branch: branch, Class: fabricengine.PushFailureGone})
+		outcome := requireState(t, report, "code", branch, fabriclayout.BranchGone)
+		want := fabricengine.FailedPushWayForward(fabriclayout.FailedPush{Repo: "code", RepoPath: pairCode, Branch: branch, Class: fabriclayout.PushFailureGone})
 		if outcome.WayForward != want {
 			t.Errorf("WayForward = %q; want exactly %q, with no re-entry verb", outcome.WayForward, want)
 		}
@@ -525,10 +526,10 @@ func TestReconcileOrigin_Judge(t *testing.T) {
 		gitkit.CommitFile(t, hub.BoardDir(), "local.txt", "local", "local side")
 		refsBefore := refsOf(t, hub.PrimeRecords())
 
-		report := reconcile(t, hub, fabricengine.ReconcileScope{JudgeOnly: true}, fabricengine.ReconcileOptions{})
+		report := reconcile(t, hub, fabriclayout.ReconcileScope{JudgeOnly: true}, fabricengine.ReconcileOptions{})
 
-		requireState(t, report, "records", hub.primeRecords, fabricengine.BranchFastForward)
-		requireState(t, report, "bolt", "main", fabricengine.BranchNeedsReplay)
+		requireState(t, report, "records", hub.primeRecords, fabriclayout.BranchFastForward)
+		requireState(t, report, "bolt", "main", fabriclayout.BranchNeedsReplay)
 		if got := refsOf(t, hub.PrimeRecords()); got != refsBefore {
 			t.Errorf("refs after a judge-only reconcile:\n%s\nwant them unchanged:\n%s", got, refsBefore)
 		}
@@ -569,7 +570,7 @@ func TestReconcileOrigin_Judge(t *testing.T) {
 				},
 			}
 
-			report := reconcile(t, hub, fabricengine.ReconcileScope{}, opts)
+			report := reconcile(t, hub, fabriclayout.ReconcileScope{}, opts)
 
 			if report.Unreachable != row.wantUnreachable {
 				t.Errorf("%s: Unreachable = %v; want %v", row.name, report.Unreachable, row.wantUnreachable)
@@ -596,7 +597,7 @@ func TestReconcileOrigin_Judge(t *testing.T) {
 		var calls callLog
 		sleeps := 0
 
-		_, err := fabricengine.ReconcileOrigin(hub.Location, fabricengine.ReconcileScope{}, fabricengine.OriginSeams{}, fabricengine.ReconcileOptions{
+		_, err := fabricengine.ReconcileOrigin(hub.Location, fabriclayout.ReconcileScope{}, fabricengine.OriginSeams{}, fabricengine.ReconcileOptions{
 			RetryBound:    3 * time.Second,
 			RetryInterval: time.Second,
 			Sleep:         func(time.Duration) { sleeps++ },
@@ -625,7 +626,7 @@ func TestReconcileOrigin_Judge(t *testing.T) {
 			}
 		}}
 
-		_, err := fabricengine.ReconcileOrigin(hub.Location, fabricengine.ReconcileScope{}, fabricengine.OriginSeams{}, opts)
+		_, err := fabricengine.ReconcileOrigin(hub.Location, fabriclayout.ReconcileScope{}, fabricengine.OriginSeams{}, opts)
 
 		if err == nil || !strings.Contains(err.Error(), hub.primeRecords) {
 			t.Fatalf("ReconcileOrigin() error = %v; want a fetch error naming %s", err, hub.primeRecords)
@@ -647,7 +648,7 @@ func TestReconcileOrigin_Judge(t *testing.T) {
 		originPair(t, hub, "second")
 		firstRecords := gitkit.CurrentBranch(t, hub.PairRecordsSibling("first"))
 
-		report := reconcile(t, hub, fabricengine.ReconcileScope{Run: "first"}, fabricengine.ReconcileOptions{})
+		report := reconcile(t, hub, fabriclayout.ReconcileScope{Run: "first"}, fabricengine.ReconcileOptions{})
 
 		var got []string
 		for _, outcome := range report.Branches {
@@ -670,13 +671,13 @@ func TestReconcileOrigin_Judge(t *testing.T) {
 		writeStatus(t, hub, "stopped", "Land")
 		writeStatus(t, hub, "active", "Land")
 
-		report := reconcile(t, hub, fabricengine.ReconcileScope{}, fabricengine.ReconcileOptions{})
+		report := reconcile(t, hub, fabriclayout.ReconcileScope{}, fabricengine.ReconcileOptions{})
 
-		got := map[string]fabricengine.EntryState{}
+		got := map[string]fabriclayout.EntryState{}
 		for _, entry := range report.Entries {
 			got[entry.Slug] = entry.State
 		}
-		want := map[string]fabricengine.EntryState{"stopped": fabricengine.EntryStopped, "active": fabricengine.EntryActive}
+		want := map[string]fabriclayout.EntryState{"stopped": fabriclayout.EntryStopped, "active": fabriclayout.EntryActive}
 		if len(got) != len(want) || got["stopped"] != want["stopped"] || got["active"] != want["active"] {
 			t.Errorf("entries = %v; want %v, with none for the pair without a run record", got, want)
 		}
@@ -686,22 +687,22 @@ func TestReconcileOrigin_Judge(t *testing.T) {
 		for _, tt := range []struct {
 			name  string
 			facts fabricengine.EntryFactsForTest
-			want  fabricengine.EntryState
+			want  fabriclayout.EntryState
 		}{
-			{"ended over a stopping branch", fabricengine.EntryFactsForTest{Ended: true, Branches: []fabricengine.BranchState{fabricengine.BranchDirty}}, fabricengine.EntryEnded},
-			{"ended over a D3 stop", fabricengine.EntryFactsForTest{Ended: true, D3Stop: true}, fabricengine.EntryEnded},
-			{"ended over owned_elsewhere", fabricengine.EntryFactsForTest{Ended: true, OwnedElsewhere: true}, fabricengine.EntryEnded},
-			{"owned_elsewhere over stopping branches", fabricengine.EntryFactsForTest{OwnedElsewhere: true, Branches: []fabricengine.BranchState{fabricengine.BranchDiverged, fabricengine.BranchDirty}}, fabricengine.EntryOwnedElsewhere},
-			{"owned_elsewhere over a D3 stop", fabricengine.EntryFactsForTest{OwnedElsewhere: true, D3Stop: true}, fabricengine.EntryOwnedElsewhere},
-			{"a D3 stop over level branches", fabricengine.EntryFactsForTest{D3Stop: true, Branches: []fabricengine.BranchState{fabricengine.BranchLevel}}, fabricengine.EntryStopped},
-			{"a diverged branch", fabricengine.EntryFactsForTest{Branches: []fabricengine.BranchState{fabricengine.BranchLevel, fabricengine.BranchDiverged}}, fabricengine.EntryStopped},
-			{"a rewound branch", fabricengine.EntryFactsForTest{Branches: []fabricengine.BranchState{fabricengine.BranchRewound}}, fabricengine.EntryStopped},
-			{"a rewritten branch", fabricengine.EntryFactsForTest{Branches: []fabricengine.BranchState{fabricengine.BranchRewritten}}, fabricengine.EntryStopped},
-			{"a gone branch", fabricengine.EntryFactsForTest{Branches: []fabricengine.BranchState{fabricengine.BranchGone}}, fabricengine.EntryStopped},
-			{"a busy branch", fabricengine.EntryFactsForTest{Branches: []fabricengine.BranchState{fabricengine.BranchBusy}}, fabricengine.EntryStopped},
-			{"a live pair's branch", fabricengine.EntryFactsForTest{Branches: []fabricengine.BranchState{fabricengine.BranchLive}}, fabricengine.EntryStopped},
-			{"branches that never stop", fabricengine.EntryFactsForTest{Branches: []fabricengine.BranchState{fabricengine.BranchLevel, fabricengine.BranchFastForward, fabricengine.BranchAhead, fabricengine.BranchNeedsReplay}}, fabricengine.EntryActive},
-			{"no branch", fabricengine.EntryFactsForTest{}, fabricengine.EntryActive},
+			{"ended over a stopping branch", fabricengine.EntryFactsForTest{Ended: true, Branches: []fabriclayout.BranchState{fabriclayout.BranchDirty}}, fabriclayout.EntryEnded},
+			{"ended over a D3 stop", fabricengine.EntryFactsForTest{Ended: true, D3Stop: true}, fabriclayout.EntryEnded},
+			{"ended over owned_elsewhere", fabricengine.EntryFactsForTest{Ended: true, OwnedElsewhere: true}, fabriclayout.EntryEnded},
+			{"owned_elsewhere over stopping branches", fabricengine.EntryFactsForTest{OwnedElsewhere: true, Branches: []fabriclayout.BranchState{fabriclayout.BranchDiverged, fabriclayout.BranchDirty}}, fabriclayout.EntryOwnedElsewhere},
+			{"owned_elsewhere over a D3 stop", fabricengine.EntryFactsForTest{OwnedElsewhere: true, D3Stop: true}, fabriclayout.EntryOwnedElsewhere},
+			{"a D3 stop over level branches", fabricengine.EntryFactsForTest{D3Stop: true, Branches: []fabriclayout.BranchState{fabriclayout.BranchLevel}}, fabriclayout.EntryStopped},
+			{"a diverged branch", fabricengine.EntryFactsForTest{Branches: []fabriclayout.BranchState{fabriclayout.BranchLevel, fabriclayout.BranchDiverged}}, fabriclayout.EntryStopped},
+			{"a rewound branch", fabricengine.EntryFactsForTest{Branches: []fabriclayout.BranchState{fabriclayout.BranchRewound}}, fabriclayout.EntryStopped},
+			{"a rewritten branch", fabricengine.EntryFactsForTest{Branches: []fabriclayout.BranchState{fabriclayout.BranchRewritten}}, fabriclayout.EntryStopped},
+			{"a gone branch", fabricengine.EntryFactsForTest{Branches: []fabriclayout.BranchState{fabriclayout.BranchGone}}, fabriclayout.EntryStopped},
+			{"a busy branch", fabricengine.EntryFactsForTest{Branches: []fabriclayout.BranchState{fabriclayout.BranchBusy}}, fabriclayout.EntryStopped},
+			{"a live pair's branch", fabricengine.EntryFactsForTest{Branches: []fabriclayout.BranchState{fabriclayout.BranchLive}}, fabriclayout.EntryStopped},
+			{"branches that never stop", fabricengine.EntryFactsForTest{Branches: []fabriclayout.BranchState{fabriclayout.BranchLevel, fabriclayout.BranchFastForward, fabriclayout.BranchAhead, fabriclayout.BranchNeedsReplay}}, fabriclayout.EntryActive},
+			{"no branch", fabricengine.EntryFactsForTest{}, fabriclayout.EntryActive},
 		} {
 			if got := fabricengine.ClassifyEntryForTest(tt.facts); got != tt.want {
 				t.Errorf("%s: classifyEntry(%+v) = %q; want %q", tt.name, tt.facts, got, tt.want)
@@ -736,25 +737,25 @@ func TestReconcileOrigin_Judge(t *testing.T) {
 		for _, row := range []struct {
 			name              string
 			prepare           func(t *testing.T, hub *originHub) fabricengine.OriginSeams
-			want              fabricengine.EntryState
+			want              fabriclayout.EntryState
 			staleRegistration bool
 		}{
-			{"an active entry", func(t *testing.T, hub *originHub) fabricengine.OriginSeams { return fabricengine.OriginSeams{} }, fabricengine.EntryActive, false},
-			{"an entry origin's board gives to another machine", ownedElsewhere, fabricengine.EntryOwnedElsewhere, false},
-			{"an entry origin's board gives to another machine, its task worktree directory deleted without a prune", ownedElsewhere, fabricengine.EntryOwnedElsewhere, true},
+			{"an active entry", func(t *testing.T, hub *originHub) fabricengine.OriginSeams { return fabricengine.OriginSeams{} }, fabriclayout.EntryActive, false},
+			{"an entry origin's board gives to another machine", ownedElsewhere, fabriclayout.EntryOwnedElsewhere, false},
+			{"an entry origin's board gives to another machine, its task worktree directory deleted without a prune", ownedElsewhere, fabriclayout.EntryOwnedElsewhere, true},
 			{"an entry origin's board marks done", func(t *testing.T, hub *originHub) fabricengine.OriginSeams {
 				branch := publishBoard(t, hub, boardEntry("task"))
 				originBoard(t, hub, branch, boardEntry("task", withBoardStatus("done")))
-				return fabricengine.OriginSeams{Teardown: func(request fabricengine.EndedTeardown) (fabricengine.TeardownReport, error) {
+				return fabricengine.OriginSeams{Teardown: func(request fabriclayout.EndedTeardown) (fabriclayout.TeardownReport, error) {
 					t.Errorf("teardown called for %+v; want none for the run scope's own run", request)
-					return fabricengine.TeardownReport{}, nil
+					return fabriclayout.TeardownReport{}, nil
 				}}
-			}, fabricengine.EntryEnded, false},
+			}, fabriclayout.EntryEnded, false},
 		} {
 			hub := absentHub(t, row.staleRegistration)
 			seams := row.prepare(t, hub)
 
-			report, err := fabricengine.ReconcileOrigin(hub.Location, fabricengine.ReconcileScope{Run: "task", PairMayBeAbsent: true}, seams, fabricengine.ReconcileOptions{})
+			report, err := fabricengine.ReconcileOrigin(hub.Location, fabriclayout.ReconcileScope{Run: "task", PairMayBeAbsent: true}, seams, fabricengine.ReconcileOptions{})
 
 			if err != nil {
 				t.Errorf("%s: ReconcileOrigin() error = %v; want nil", row.name, err)
@@ -775,13 +776,13 @@ func TestReconcileOrigin_Judge(t *testing.T) {
 		}
 
 		hub := absentHub(t, false)
-		_, err := fabricengine.ReconcileOrigin(hub.Location, fabricengine.ReconcileScope{Run: "task"}, fabricengine.OriginSeams{}, fabricengine.ReconcileOptions{})
+		_, err := fabricengine.ReconcileOrigin(hub.Location, fabriclayout.ReconcileScope{Run: "task"}, fabricengine.OriginSeams{}, fabricengine.ReconcileOptions{})
 		if err == nil || !strings.Contains(err.Error(), "no pair worktree") {
 			t.Errorf("ReconcileOrigin() without the option error = %v; want one naming no pair worktree", err)
 		}
 
 		stale := absentHub(t, true)
-		if _, err := fabricengine.ReconcileOrigin(stale.Location, fabricengine.ReconcileScope{Run: "task"}, fabricengine.OriginSeams{}, fabricengine.ReconcileOptions{}); err != nil {
+		if _, err := fabricengine.ReconcileOrigin(stale.Location, fabriclayout.ReconcileScope{Run: "task"}, fabricengine.OriginSeams{}, fabricengine.ReconcileOptions{}); err != nil {
 			t.Errorf("ReconcileOrigin() of a stale registration without the option error = %v; want nil", err)
 		}
 	})

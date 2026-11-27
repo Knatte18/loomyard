@@ -11,6 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/creelcli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/languageconfig"
 	"github.com/Knatte18/loomyard/internal/lenses"
@@ -117,7 +118,7 @@ func (c *burlerCLI) wireHub(loc *lymcwd.Location, stencilsDirOverride, targetDir
 	}
 	languageSkills := language.Skills
 
-	stencilsDir := fabricengine.StencilsDir(loc.HubPath)
+	stencilsDir := fabriclayout.StencilsDir(loc.HubPath)
 	if stencilsDirOverride != "" {
 		// Check the told directory through the same descriptor method standalone's prologue uses,
 		// so the two modes refuse the same inputs.

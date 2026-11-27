@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -36,12 +37,12 @@ const staleFabricAnchorName = lymcwd.StaleAnchorFileName
 // existingHubError refuses a clone into hubPath, which already exists.
 // A clone killed partway leaves such a hub, which no other verb finishes,
 // so the way forward is the same clone with --reset, which replaces the hub.
-func existingHubError(cwd, hubPath string, opts CloneOptions) error {
+func existingHubError(cwd, hubPath string, opts fabriclayout.CloneOptions) error {
 	return fmt.Errorf("hub already exists at %s; way forward: replace it with `%s`", hubPath, cloneResetCommand(cwd, opts))
 }
 
 // cloneResetCommand spells the clone opts asks for into the directory cwd, with --reset added.
-func cloneResetCommand(cwd string, opts CloneOptions) string {
+func cloneResetCommand(cwd string, opts fabriclayout.CloneOptions) string {
 	args := []string{"lym", "fabric", "clone"}
 	if opts.SingleRepo {
 		args = append(args, "--single-repo")
@@ -72,11 +73,11 @@ func cloneResetCommand(cwd string, opts CloneOptions) string {
 // Any layout read failure is carried on the refusal.
 // A URL that cannot be read is named by a placeholder, and so is the seed's shortname.
 func RefuseHubWithoutBolt(l *lymcwd.Location) error {
-	boltDir := BoltDir(l.HubPath)
+	boltDir := fabriclayout.BoltDir(l.HubPath)
 	if _, err := os.Lstat(filepath.Join(boltDir, ".git")); err == nil {
 		return nil
 	} else if !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("fabricengine: look for the repository of the %s checkout at %s: %w", BoltDirName, boltDir, err)
+		return fmt.Errorf("fabricengine: look for the repository of the %s checkout at %s: %w", fabriclayout.BoltDirName, boltDir, err)
 	}
 
 	codeURL := "<code-url>"
@@ -98,46 +99,19 @@ func RefuseHubWithoutBolt(l *lymcwd.Location) error {
 	}
 
 	parent := filepath.Dir(l.HubPath)
-	replacement := "`" + cloneResetCommand(parent, CloneOptions{WeftURL: recordsURL, WarpURL: codeURL}) + "`"
+	replacement := "`" + cloneResetCommand(parent, fabriclayout.CloneOptions{WeftURL: recordsURL, WarpURL: codeURL}) + "`"
 	if oneRepository {
-		join := cloneResetCommand(parent, CloneOptions{WeftURL: codeURL})
-		seed := cloneResetCommand(parent, CloneOptions{SingleRepo: true, Shortname: "<shortname>", WeftURL: codeURL})
+		join := cloneResetCommand(parent, fabriclayout.CloneOptions{WeftURL: codeURL})
+		seed := cloneResetCommand(parent, fabriclayout.CloneOptions{SingleRepo: true, Shortname: "<shortname>", WeftURL: codeURL})
 		replacement = fmt.Sprintf("`%s` when origin holds the hub's board, or `%s` when it holds none", join, seed)
 	}
 	refusal := fmt.Sprintf("the hub at %s has no repository at its %s checkout %s, as a clone that stopped before making it leaves; "+
 		"way forward: replace the hub with %s",
-		l.HubPath, BoltDirName, boltDir, replacement)
+		l.HubPath, fabriclayout.BoltDirName, boltDir, replacement)
 	if layoutErr != nil {
 		return fmt.Errorf("%s; the records store's layout also cannot be read: %w", refusal, layoutErr)
 	}
 	return errors.New(refusal)
-}
-
-// CloneOptions carries the parameters of CloneHub as named fields.
-// Named fields keep two adjacent string parameters, one of them optional, from being passed in the wrong order.
-type CloneOptions struct {
-	// WeftURL is the weft repository URL. Required.
-	WeftURL string
-	// WarpURL is the warp repository URL. Optional: when empty, it is resolved from the warp
-	// binding recorded on the weft candidate.
-	WarpURL string
-	// Subpath is the lym-anchor subpath to resolve.
-	Subpath string
-	// Reset tears down an existing hub before cloning, for an idempotent re-clone.
-	Reset bool
-	// ForceBootstrap bypasses the old-order guard that refuses to bootstrap a warp-shaped
-	// repository as a weft.
-	// The guard is reached only when a fresh binding is written, so the field has no effect on other paths.
-	// Every other path ignores it.
-	ForceBootstrap bool
-	// Shortname is the repository's short name.
-	// It is required when the weft is a fresh bind;
-	// on a bound weft it must equal the recorded shortname, or record one if the weft has none.
-	Shortname string
-	// SingleRepo seeds a one-repository hub from WeftURL, which is then the code repository and the only URL.
-	// The records and the board live under origin's records namespace, and the hub is pushed there by PushCloneBoard.
-	// A plain one-URL clone of an origin that already holds that board joins it with no flag.
-	SingleRepo bool
 }
 
 // CloneResult carries the geometry that CloneHub returns once the clone, board worktree and anchor are set up.
@@ -146,7 +120,7 @@ type CloneOptions struct {
 // Those steps go through internal/configsync, which fabricengine cannot import without an import cycle.
 // It embeds MutationRecord, which records the mutations made during the call.
 type CloneResult struct {
-	MutationRecord
+	fabriclayout.MutationRecord
 	HubPath  string // HubPath is the created <name>-LYMHUB container directory.
 	Anchor   string // Anchor is the resolved lym-anchor subpath (e.g. "backend" or ".").
 	BoardDir string // BoardDir is the package-level BoltDir(HubPath) result, the weft:main checkout.
@@ -238,7 +212,7 @@ type cloneSeed struct {
 // If removal also fails, the error names both the original failure and the residual hub path.
 //
 // A cwd that is not an existing directory is refused by name before any git runs.
-func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
+func CloneHub(cwd string, opts fabriclayout.CloneOptions) (res CloneResult, err error) {
 	var rec *Mutations
 	defer func() { res.Mutations = rec.Snapshot() }()
 
@@ -296,7 +270,7 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 		if name == "" {
 			return CloneResult{}, fmt.Errorf("could not derive repo name from warp URL %s", opts.WarpURL)
 		}
-		hubPath = HubPath(cwd, name)
+		hubPath = fabriclayout.HubPath(cwd, name)
 		rec = NewMutations(hubPath)
 		if opts.Reset {
 			if _, err := checkResetTarget(hubPath); err != nil {
@@ -334,7 +308,7 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 		if name == "" {
 			return CloneResult{}, fmt.Errorf("could not derive repo name from URL %s", opts.WeftURL)
 		}
-		hubPath = HubPath(cwd, name)
+		hubPath = fabriclayout.HubPath(cwd, name)
 		rec = NewMutations(hubPath)
 		effective = opts.WeftURL
 		if opts.Reset {
@@ -366,9 +340,9 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 		derivedFromRecord = true
 		name = DeriveWarpName(effective)
 		if name == "" {
-			return CloneResult{}, fmt.Errorf("could not derive repo name from warp URL %s recorded in the %s binding on weft:main", effective, WarpBindingFileName)
+			return CloneResult{}, fmt.Errorf("could not derive repo name from warp URL %s recorded in the %s binding on weft:main", effective, fabriclayout.WarpBindingFileName)
 		}
-		hubPath = HubPath(cwd, name)
+		hubPath = fabriclayout.HubPath(cwd, name)
 		rec = NewMutations(hubPath)
 	}
 
@@ -417,13 +391,13 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 		if derivedFromRecord {
 			// The derive path names its source so a failure here is traceable back to the
 			// binding that produced it, not just the bare URL.
-			return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, fmt.Errorf("clone warp %s (from the %s binding on weft:main): %w", warpURL, WarpBindingFileName, err))
+			return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, fmt.Errorf("clone warp %s (from the %s binding on weft:main): %w", warpURL, fabriclayout.WarpBindingFileName, err))
 		}
 		return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, err)
 	}
 	// The clone brings a worktree into being.
 	// One entry at the coarsest covering root covers the whole cloned tree.
-	rec.Append(KindWorktreeCreated, warpWorktreePath, "")
+	rec.Append(fabriclayout.KindWorktreeCreated, warpWorktreePath, "")
 
 	if err := refuseUncheckedOutWarpClone(warpWorktreePath, warpURL); err != nil {
 		return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, err)
@@ -453,7 +427,7 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 	} else if err := cloneRepo(opts.WeftURL, weftPath); err != nil {
 		return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, err)
 	}
-	rec.Append(KindWorktreeCreated, weftPath, "")
+	rec.Append(fabriclayout.KindWorktreeCreated, weftPath, "")
 
 	// The weft primary is checked out on RecordsBranchName(warpBranch);
 	// this keeps weft:<branch> from being claimed directly under fabric's uniform branch scheme.
@@ -476,17 +450,17 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 	// otherwise it creates a fresh orphan, which is the case for an empty weft remote.
 	boardBranch := warpBranch
 	if oneRepository {
-		boardBranch = OneRepositoryBoardBranch
-		primeRecordsBranch := RecordsBranchName(warpBranch)
-		if _, err := gitexec.Run([]string{"config", PrimeRecordsBranchKey, primeRecordsBranch}, weftPath); err != nil {
+		boardBranch = fabriclayout.OneRepositoryBoardBranch
+		primeRecordsBranch := fabriclayout.RecordsBranchName(warpBranch)
+		if _, err := gitexec.Run([]string{"config", fabriclayout.PrimeRecordsBranchKey, primeRecordsBranch}, weftPath); err != nil {
 			return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, fmt.Errorf("record the prime's records branch %s: %w", primeRecordsBranch, err))
 		}
 	}
-	boardDir := BoltDir(hubPath)
+	boardDir := fabriclayout.BoltDir(hubPath)
 	if err := ensureBoardWorktree(weftPath, boardBranch, boardDir); err != nil {
 		return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, err)
 	}
-	rec.Append(KindWorktreeCreated, boardDir, "")
+	rec.Append(fabriclayout.KindWorktreeCreated, boardDir, "")
 
 	// The hub-wide never-tracked tree is the Bolt checkout's .lym, the ephemeral sibling of its _lym.
 	// It is created here because the Bolt checkout exists only once ensureBoardWorktree above has run.
@@ -500,11 +474,11 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 	if err := seedWeftArtifactExcludes(boardDir); err != nil {
 		return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, fmt.Errorf("seed weft artifact excludes in board worktree: %w", err))
 	}
-	scratchDir := HubScratchDir(hubPath)
+	scratchDir := fabriclayout.HubScratchDir(hubPath)
 	if err := os.MkdirAll(scratchDir, 0o755); err != nil {
 		return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, err)
 	}
-	rec.Append(KindDirCreated, scratchDir, "")
+	rec.Append(fabriclayout.KindDirCreated, scratchDir, "")
 
 	// A one-repository clone reads the board's records only now, from the board origin's tip gave it.
 	// A seeded clone reads none, so its binding is the one URL and its shortname the supplied one.
@@ -535,7 +509,7 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 	if primeReadErr == nil {
 		// Adopt path: the prime's weft worktree carries a committed marker at its root,
 		// so this is a re-clone of a hub that already recorded one, and nothing is written.
-		anchor, err = adoptRecordedAnchor(primeData, "on "+RecordsBranchName(warpBranch), requestedAnchor, subpathRequestedExplicitly)
+		anchor, err = adoptRecordedAnchor(primeData, "on "+fabriclayout.RecordsBranchName(warpBranch), requestedAnchor, subpathRequestedExplicitly)
 		if err != nil {
 			return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, err)
 		}
@@ -552,8 +526,8 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 				"found stale %s marker with no %s beside it at %s; in an existing hub, commit %s holding the old marker's content at the root of the weft remote's records branch %s "+
 					"from the prime's weft worktree and push it, remove %s from the %s worktree, commit and push that, then retry this clone",
 				staleFabricAnchorName, lymcwd.AnchorFileName, boardDir,
-				lymcwd.AnchorFileName, RecordsBranchName(warpBranch),
-				staleFabricAnchorName, BoltDirName))
+				lymcwd.AnchorFileName, fabriclayout.RecordsBranchName(warpBranch),
+				staleFabricAnchorName, fabriclayout.BoltDirName))
 		}
 
 		// Create path: first-ever clone of this weft, no marker committed yet.
@@ -574,7 +548,7 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 		if err := writeWarpBinding(boardDir, effective); err != nil {
 			return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, err)
 		}
-		rec.Append(KindFileWritten, filepath.Join(boardDir, WarpBindingFileName), "")
+		rec.Append(fabriclayout.KindFileWritten, filepath.Join(boardDir, fabriclayout.WarpBindingFileName), "")
 		warpBindingRecorded = true
 	}
 
@@ -584,7 +558,7 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 		if err := WriteShortname(boardDir, effectiveShortname); err != nil {
 			return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, err)
 		}
-		rec.Append(KindFileWritten, filepath.Join(boardDir, ShortnameFileName), "")
+		rec.Append(fabriclayout.KindFileWritten, filepath.Join(boardDir, fabriclayout.ShortnameFileName), "")
 		shortnameRecorded = true
 	}
 
@@ -602,7 +576,7 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 
 	var seed *cloneSeed
 	if opts.SingleRepo {
-		primeRecordsBranch := RecordsBranchName(warpBranch)
+		primeRecordsBranch := fabriclayout.RecordsBranchName(warpBranch)
 		seed = &cloneSeed{
 			container:     cwd,
 			hubPath:       hubPath,
@@ -670,7 +644,7 @@ func checkedOutBranch(dir, role string) (string, error) {
 // Only when origin has no such branch yet is it created fresh at the current HEAD.
 // It returns an error if any git call fails.
 func suffixWeftPrimaryBranch(weftPath, warpBranch string) error {
-	suffixedBranch := RecordsBranchName(warpBranch)
+	suffixedBranch := fabriclayout.RecordsBranchName(warpBranch)
 
 	// Adopt path: origin already carries the suffixed branch, as on a re-clone of a hub with existing weft history.
 	// Starting the local branch from origin/<suffixed> checks out that history.
@@ -845,7 +819,7 @@ func checkResetTarget(hubPath string) (present bool, err error) {
 	if !looksLikeHub(hubPath) {
 		return false, fmt.Errorf(
 			"reset: refusing to remove %s: it has no %s and no %q sibling, so it is not a fabric hub — remove it yourself if that is really what you meant",
-			hubPath, BoltDirName, "*"+weftname.Suffix)
+			hubPath, fabriclayout.BoltDirName, "*"+weftname.Suffix)
 	}
 	return true, nil
 }
@@ -855,7 +829,7 @@ func checkResetTarget(hubPath string) (present bool, err error) {
 // An unreadable directory is not reported as a hub.
 // That is the conservative direction: recursive removal is least defensible where contents cannot be enumerated.
 func looksLikeHub(hubPath string) bool {
-	if _, err := os.Stat(filepath.Join(hubPath, BoltDirName)); err == nil {
+	if _, err := os.Stat(filepath.Join(hubPath, fabriclayout.BoltDirName)); err == nil {
 		return true
 	}
 
@@ -867,7 +841,7 @@ func looksLikeHub(hubPath string) bool {
 		if !entry.IsDir() {
 			continue
 		}
-		if _, ok := WeftWarpSlug(entry.Name()); ok {
+		if _, ok := fabriclayout.WeftWarpSlug(entry.Name()); ok {
 			return true
 		}
 	}
@@ -943,7 +917,7 @@ func initRecordsStore(url, dir string, fetch bool) error {
 // It reports each as found only when the record is present and usable.
 // url names the origin in a warning about an unusable shortname.
 func readJoinedBoardRecords(recordsPath, url string) (warp string, warpFound bool, shortname string, shortnameFound bool, err error) {
-	boardRef := "refs/remotes/" + originRemoteName + "/" + OneRepositoryBoardBranch
+	boardRef := "refs/remotes/" + originRemoteName + "/" + fabriclayout.OneRepositoryBoardBranch
 	read := func(file string) (string, bool, error) {
 		listed, err := gitexec.Run([]string{"ls-tree", boardRef, "--name-only", "--", file}, recordsPath)
 		if err != nil {
@@ -959,14 +933,14 @@ func readJoinedBoardRecords(recordsPath, url string) (warp string, warpFound boo
 		return content, true, nil
 	}
 
-	rawWarp, warpPresent, err := read(WarpBindingFileName)
+	rawWarp, warpPresent, err := read(fabriclayout.WarpBindingFileName)
 	if err != nil {
 		return "", false, "", false, err
 	}
 	if trimmed := strings.TrimSpace(rawWarp); warpPresent && trimmed != "" {
 		warp, warpFound = trimmed, true
 	}
-	rawShortname, shortnamePresent, err := read(ShortnameFileName)
+	rawShortname, shortnamePresent, err := read(fabriclayout.ShortnameFileName)
 	if err != nil {
 		return "", false, "", false, err
 	}

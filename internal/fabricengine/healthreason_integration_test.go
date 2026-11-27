@@ -13,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -43,8 +44,8 @@ func TestHealthy_ReasonCauses(t *testing.T) {
 			t.Fatalf("Healthy = true; want false (branch mismatch)")
 		}
 		wantDetail := "fabric out of sync: on off-branch (want off-branch-weft)"
-		if reason.Cause != fabricengine.CauseBranchMismatch || reason.Detail != wantDetail {
-			t.Errorf("Healthy reason = %+v; want {Cause: %q, Detail: %q}", reason, fabricengine.CauseBranchMismatch, wantDetail)
+		if reason.Cause != fabriclayout.CauseBranchMismatch || reason.Detail != wantDetail {
+			t.Errorf("Healthy reason = %+v; want {Cause: %q, Detail: %q}", reason, fabriclayout.CauseBranchMismatch, wantDetail)
 		}
 	})
 
@@ -58,7 +59,7 @@ func TestHealthy_ReasonCauses(t *testing.T) {
 		if err := fabricengine.WireJunctions(l, slug, []string{"_lym"}); err != nil {
 			t.Fatalf("WireJunctions: %v", err)
 		}
-		configPath := configengine.ConfigFile(fabricengine.BoardDir(l.HubPath), "fabric")
+		configPath := configengine.ConfigFile(fabriclayout.BoardDir(l.HubPath), "fabric")
 		if err := os.WriteFile(configPath, []byte("not: [valid: yaml"), 0o644); err != nil {
 			t.Fatalf("corrupt repo-wide fabric config: %v", err)
 		}
@@ -70,8 +71,8 @@ func TestHealthy_ReasonCauses(t *testing.T) {
 		if ok {
 			t.Fatalf("Healthy = true; want false (config load failed)")
 		}
-		if reason.Cause != fabricengine.CauseConfigLoadFailed {
-			t.Errorf("Healthy reason.Cause = %q; want %q", reason.Cause, fabricengine.CauseConfigLoadFailed)
+		if reason.Cause != fabriclayout.CauseConfigLoadFailed {
+			t.Errorf("Healthy reason.Cause = %q; want %q", reason.Cause, fabriclayout.CauseConfigLoadFailed)
 		}
 		wantPrefix := "junction check unavailable: cannot load fabric.yaml: "
 		if len(reason.Detail) < len(wantPrefix) || reason.Detail[:len(wantPrefix)] != wantPrefix {
@@ -102,8 +103,8 @@ func TestHealthy_ReasonCauses(t *testing.T) {
 			t.Fatalf("Healthy = true; want false (junction missing)")
 		}
 		wantDetail := "_lym junction missing"
-		if reason.Cause != fabricengine.CauseJunctionMissing || reason.Detail != wantDetail {
-			t.Errorf("Healthy reason = %+v; want {Cause: %q, Detail: %q}", reason, fabricengine.CauseJunctionMissing, wantDetail)
+		if reason.Cause != fabriclayout.CauseJunctionMissing || reason.Detail != wantDetail {
+			t.Errorf("Healthy reason = %+v; want {Cause: %q, Detail: %q}", reason, fabriclayout.CauseJunctionMissing, wantDetail)
 		}
 	})
 
@@ -133,8 +134,8 @@ func TestHealthy_ReasonCauses(t *testing.T) {
 			t.Fatalf("Healthy = true; want false (not a junction)")
 		}
 		wantDetail := "_lym is not a junction"
-		if reason.Cause != fabricengine.CauseNotAJunction || reason.Detail != wantDetail {
-			t.Errorf("Healthy reason = %+v; want {Cause: %q, Detail: %q}", reason, fabricengine.CauseNotAJunction, wantDetail)
+		if reason.Cause != fabriclayout.CauseNotAJunction || reason.Detail != wantDetail {
+			t.Errorf("Healthy reason = %+v; want {Cause: %q, Detail: %q}", reason, fabriclayout.CauseNotAJunction, wantDetail)
 		}
 	})
 
@@ -168,8 +169,8 @@ func TestHealthy_ReasonCauses(t *testing.T) {
 			t.Fatalf("Healthy = true; want false (junction points elsewhere)")
 		}
 		wantDetail := "_lym junction points elsewhere"
-		if reason.Cause != fabricengine.CauseJunctionPointsElsewhere || reason.Detail != wantDetail {
-			t.Errorf("Healthy reason = %+v; want {Cause: %q, Detail: %q}", reason, fabricengine.CauseJunctionPointsElsewhere, wantDetail)
+		if reason.Cause != fabriclayout.CauseJunctionPointsElsewhere || reason.Detail != wantDetail {
+			t.Errorf("Healthy reason = %+v; want {Cause: %q, Detail: %q}", reason, fabriclayout.CauseJunctionPointsElsewhere, wantDetail)
 		}
 	})
 }
@@ -189,7 +190,7 @@ func TestHealthy_UnbornWeftBranchIsAVerdictNotAnAbort(t *testing.T) {
 
 	weftWorktree := fabricengine.RecordsWorktree(l)
 	warpBranch := gitkit.CurrentBranch(t, l.WorktreePath())
-	weftBranch := fabricengine.RecordsBranchName(warpBranch)
+	weftBranch := fabriclayout.RecordsBranchName(warpBranch)
 
 	// Re-create the pair's weft branch as an orphan so it carries no commits.
 	// A clone against an empty remote leaves the weft branch in this shape.

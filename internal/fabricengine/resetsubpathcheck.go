@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -75,7 +76,7 @@ func checkSubpathBeforeReset(cwd, weftURL, warpURL, requestedAnchor string, ns g
 // Under a non-identity ns the staged clone is the code repository, whose HEAD is the code default branch.
 // The records branch is then read from the namespace alone, and an absent branch records no marker.
 func recordedAnchorOnWeft(weftURL, weftStage, warpBranch string, ns gitrepo.RefNamespace) (data []byte, source string, found bool, err error) {
-	primeBranch := RecordsBranchName(warpBranch)
+	primeBranch := fabriclayout.RecordsBranchName(warpBranch)
 	primeRef := "HEAD"
 	onRemote, err := fetchWeftBranchTip(weftURL, weftStage, primeBranch, ns)
 	if err != nil {

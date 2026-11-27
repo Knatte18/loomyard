@@ -19,6 +19,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -506,12 +507,12 @@ func TestParentLockDeps_PauseAfterTheWaitingRowEndsTheWait(t *testing.T) {
 func TestReportOfRunKeepsOnlyTheRunsOwnEntry(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
-	report := fabricengine.OriginReport{
+	report := fabriclayout.OriginReport{
 		Unreachable: true,
-		Branches:    []fabricengine.BranchOutcome{{Branch: "parent"}},
-		Entries: []fabricengine.EntryOutcome{
-			{Slug: "parent", State: fabricengine.EntryStopped},
-			{Slug: "child", State: fabricengine.EntryActive},
+		Branches:    []fabriclayout.BranchOutcome{{Branch: "parent"}},
+		Entries: []fabriclayout.EntryOutcome{
+			{Slug: "parent", State: fabriclayout.EntryStopped},
+			{Slug: "child", State: fabriclayout.EntryActive},
 		},
 	}
 
@@ -597,7 +598,7 @@ func TestCodeBudgetZero_ReadsTheCodePerchFromLoomYaml(t *testing.T) {
 			loc := hubLocation(t, "pair", ".")
 			seedLoomConfigWithKeys(t, loc.AnchorPath(), map[string]string{"code.max_bounces": tt.codeBudget})
 			if tt.codeReview != "" {
-				hubConfig := configengine.ConfigFile(fabricengine.BoardDir(loc.HubPath), "sampler")
+				hubConfig := configengine.ConfigFile(fabriclayout.BoardDir(loc.HubPath), "sampler")
 				contents := strings.Replace(samplerengine.ConfigTemplate(), "code_review: false", "code_review: "+tt.codeReview, 1)
 				if err := os.WriteFile(hubConfig, []byte(contents), 0o644); err != nil {
 					t.Fatalf("WriteFile(%q) = %v; want nil", hubConfig, err)

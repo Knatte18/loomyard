@@ -32,6 +32,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -280,7 +281,7 @@ func hubPeersDeps(location *lymcwd.Location) peersDeps {
 			return names
 		},
 		board: func() ([]boardengine.Task, bool, error) {
-			info, err := os.Stat(fabricengine.BoltDir(location.HubPath))
+			info, err := os.Stat(fabriclayout.BoltDir(location.HubPath))
 			if errors.Is(err, fs.ErrNotExist) || (err == nil && !info.IsDir()) {
 				return nil, false, nil
 			}

@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -268,7 +269,7 @@ func TestMerge_ForeignStateAppearingWhileWaitingForLock_Refuses(t *testing.T) {
 	h, f := newCleanMergeablePair(t)
 
 	held, done := launchBlockedOnLock(t, f, func() error {
-		_, mergeErr := f.Merge("feature", fabricengine.MergeOptions{})
+		_, mergeErr := f.Merge("feature", fabriclayout.MergeOptions{})
 		return mergeErr
 	})
 
@@ -360,9 +361,9 @@ func TestMerge_PairTurningDirtyWhileWaitingForLock_RefusesPreservingDirt(t *test
 	commitOnWarpBranch("feature", "overlap.txt", "feature content\n", "feature: modify overlap.txt")
 	commitOnWeftBranch("feature-weft", "_lym/clean-weft.txt", "clean\n", "weft: clean branch")
 
-	var mergeRes fabricengine.MergeResult
+	var mergeRes fabriclayout.MergeResult
 	held, done := launchBlockedOnLock(t, f, func() error {
-		res, mergeErr := f.Merge("feature", fabricengine.MergeOptions{})
+		res, mergeErr := f.Merge("feature", fabriclayout.MergeOptions{})
 		mergeRes = res
 		return mergeErr
 	})

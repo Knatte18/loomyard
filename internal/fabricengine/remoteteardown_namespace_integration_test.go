@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/weftname"
@@ -20,7 +21,7 @@ func TestFailedRemoteSteps_DiscardTagPushNamesTheHubsArchiveNamespace(t *testing
 
 	const slug = "pair"
 	taskTip := strings.Repeat("b", 40)
-	tag := ArchiveTagName(slug, taskTip)
+	tag := fabriclayout.ArchiveTagName(slug, taskTip)
 	out := remoteOutcome{err: errors.New("tag push refused")}
 
 	for _, tt := range []struct {
@@ -62,7 +63,7 @@ func TestFailedRemoteSteps_RecordsTagPushNamesTheStoresDestination(t *testing.T)
 
 	const slug = "pair"
 	weftTip := strings.Repeat("a", 40)
-	tag := ArchiveTagName(slug, weftTip)
+	tag := fabriclayout.ArchiveTagName(slug, weftTip)
 	job := remoteTeardownJob{Kind: remoteTeardownRemove, Slug: slug, WeftTip: weftTip}
 	out := remoteOutcome{err: errors.New("tag push refused")}
 

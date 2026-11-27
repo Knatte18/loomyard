@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -148,8 +149,8 @@ func pusherRequest(t Target) spawnRequest {
 	}
 	return spawnRequest{
 		Args:       args,
-		Dir:        fabricengine.BoltDir(t.Location.HubPath),
-		RunProcDir: fabricengine.RunProcDir(t.Location.HubPath),
+		Dir:        fabriclayout.BoltDir(t.Location.HubPath),
+		RunProcDir: fabriclayout.RunProcDir(t.Location.HubPath),
 		Owner:      runproc.HubOwner,
 		Role:       runproc.RolePush,
 	}

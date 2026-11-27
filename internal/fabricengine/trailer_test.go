@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -121,7 +122,7 @@ func TestParseWarpSHATrailer(t *testing.T) {
 // Tests use it to check that appended snapshot trailers parse back.
 func parseSnapshotTags(message string) []string {
 	var tags []string
-	prefix := SnapshotTrailerKey + ":"
+	prefix := fabriclayout.SnapshotTrailerKey + ":"
 	for _, line := range strings.Split(message, "\n") {
 		trimmed := strings.TrimSpace(line)
 		if !strings.HasPrefix(trimmed, prefix) {
@@ -251,16 +252,16 @@ func TestCommitWithTrailers_RefusesAnInvalidTrailerBeforeTouchingAnything(t *tes
 	t.Parallel()
 	tests := []struct {
 		name    string
-		trailer Trailer
+		trailer fabriclayout.Trailer
 	}{
-		{"KeyWithASpace", Trailer{Key: "Bad Key", Value: "run-1"}},
-		{"BlankValue", Trailer{Key: TransitionTrailerKey, Value: " "}},
-		{"ValueSpanningLines", Trailer{Key: TransitionTrailerKey, Value: "run-1\nInjected: x"}},
+		{"KeyWithASpace", fabriclayout.Trailer{Key: "Bad Key", Value: "run-1"}},
+		{"BlankValue", fabriclayout.Trailer{Key: fabriclayout.TransitionTrailerKey, Value: " "}},
+		{"ValueSpanningLines", fabriclayout.Trailer{Key: fabriclayout.TransitionTrailerKey, Value: "run-1\nInjected: x"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			result, err := (&Fabric{}).CommitWithTrailers([]string{"README"}, "msg", []Trailer{tt.trailer}, SyncOptions{})
+			result, err := (&Fabric{}).CommitWithTrailers([]string{"README"}, "msg", []fabriclayout.Trailer{tt.trailer}, SyncOptions{})
 			if err == nil || result.Committed() {
 				t.Errorf("CommitWithTrailers(%+v) = %+v, %v; want a refusal that commits nothing", tt.trailer, result, err)
 			}

@@ -18,7 +18,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/discussionparser"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/state"
 )
@@ -122,7 +122,7 @@ func hashDirectory(dir string) (map[string]string, error) {
 
 // snapshotCheckout records the checkout's HEAD and the content of its changed and untracked paths.
 // It copies each untracked file under copyDir.
-func snapshotCheckout(checkout fabricengine.CheckoutState, copyDir string) (CheckoutSnapshot, error) {
+func snapshotCheckout(checkout fabriclayout.CheckoutState, copyDir string) (CheckoutSnapshot, error) {
 	snapshot := CheckoutSnapshot{Root: checkout.Root, Head: checkout.Head, Changed: map[string]string{}, Untracked: map[string]string{}}
 	for _, rel := range checkout.Changed {
 		hash, err := contentHash(filepath.Join(checkout.Root, filepath.FromSlash(rel)))
@@ -348,7 +348,7 @@ func recordsCheckoutPath(d Deps, recordsRoot, path string) (string, error) {
 // It also returns empty when the checkout lists the record as changed or untracked, which names an uncommitted write.
 // It also returns empty when the record differs in any other way.
 // Carry-over blocks the record gained are left out of the comparison, since lym settles them.
-func appendedDecisionRecord(d Deps, records fabricengine.CheckoutState, snapshotHead string) (string, error) {
+func appendedDecisionRecord(d Deps, records fabriclayout.CheckoutState, snapshotHead string) (string, error) {
 	if d.DecisionRecord == "" {
 		return "", nil
 	}
@@ -454,7 +454,7 @@ func isLoomRecordsPath(loomRecordsDirs []string, rel string) bool {
 
 // checkoutChanges names each path of one checkout the judge changed, judged by content against the snapshot.
 // committed holds paths a later commit changed, which the checkout's own lists no longer show.
-func checkoutChanges(label string, snapshot CheckoutSnapshot, now fabricengine.CheckoutState, committed []string, exempt func(rel string) bool) ([]GuardChange, error) {
+func checkoutChanges(label string, snapshot CheckoutSnapshot, now fabriclayout.CheckoutState, committed []string, exempt func(rel string) bool) ([]GuardChange, error) {
 	candidates := map[string]bool{}
 	for _, group := range [][]string{now.Changed, now.Untracked, committed} {
 		for _, rel := range group {

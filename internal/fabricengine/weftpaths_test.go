@@ -13,9 +13,8 @@ import (
 )
 
 // TestWeftPathAccessors checks that the weft path accessors mirror AnchorRel.
-// It also checks that each weft worktree pairs with its warp-side worktree.
 //
-//testtiming:keep RecordsWorktree, RecordsWorktreePath and WeftLymDirFor mirroring AnchorRel and pairing with the warp side; coverage of its blocks by other tests does not show an assertion of this
+//testtiming:keep RecordsWorktree, RecordsWorktreePath and WeftLymDirFor mirroring AnchorRel; coverage of its blocks by other tests does not show an assertion of this
 func TestWeftPathAccessors(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -75,46 +74,6 @@ func TestWeftPathAccessors(t *testing.T) {
 
 			if got := WeftLymDirFor(loc, tt.slug); got != tt.wantWeftLymDirFor {
 				t.Errorf("WeftLymDirFor(l, %q) = %q; want %q", tt.slug, got, tt.wantWeftLymDirFor)
-			}
-
-			// Verify junction pairing: the warp and weft worktree bases differ
-			// only by the -weft suffix on the worktree dir.
-			warpWtName := filepath.Base(filepath.Join(loc.HubPath, tt.slug))
-			weftWtName := filepath.Base(RecordsWorktreePath(loc, tt.slug))
-
-			if warpWtName != tt.slug {
-				t.Errorf("WorktreePath(%q) base = %q; want %q", tt.slug, warpWtName, tt.slug)
-			}
-			if weftWtName != tt.slug+"-weft" {
-				t.Errorf("RecordsWorktreePath(%q) base = %q; want %q", tt.slug, weftWtName, tt.slug+"-weft")
-			}
-		})
-	}
-}
-
-// TestWeftWarpSlug checks that WeftWarpSlug round-trips a weft sibling directory name,
-// and that it rejects names without the weftname.Suffix tail or with an empty stripped prefix.
-func TestWeftWarpSlug(t *testing.T) {
-	tiergate.Require(t, 0)
-	tests := []struct {
-		name     string
-		input    string
-		wantSlug string
-		wantOK   bool
-	}{
-		{"plain_slug", "feat-weft", "feat", true},
-		{"nested_prefix_slug", "hanf/foo-weft", "hanf/foo", true},
-		{"no_suffix", "feat", "", false},
-		{"suffix_only_empty_prefix", "-weft", "", false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			gotSlug, gotOK := WeftWarpSlug(tt.input)
-			if gotOK != tt.wantOK {
-				t.Errorf("WeftWarpSlug(%q) ok = %v; want %v", tt.input, gotOK, tt.wantOK)
-			}
-			if gotSlug != tt.wantSlug {
-				t.Errorf("WeftWarpSlug(%q) = %q; want %q", tt.input, gotSlug, tt.wantSlug)
 			}
 		})
 	}

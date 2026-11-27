@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -169,7 +170,7 @@ func seedLymJunction(rec *Mutations, l *lymcwd.Location, slug string, names []st
 				if createErr := fslink.CreateDirLink(link, target); createErr != nil {
 					return createErr
 				}
-				rec.Append(KindLinkCreated, link, "")
+				rec.Append(fabriclayout.KindLinkCreated, link, "")
 				continue
 			}
 
@@ -202,7 +203,7 @@ func seedLymJunction(rec *Mutations, l *lymcwd.Location, slug string, names []st
 		if err := fslink.CreateDirLink(link, target); err != nil {
 			return err
 		}
-		rec.Append(KindLinkCreated, link, "")
+		rec.Append(fabriclayout.KindLinkCreated, link, "")
 	}
 
 	return nil
@@ -252,7 +253,7 @@ func adoptDotLymContent(rec *Mutations, link, target string) error {
 		return err
 	}
 
-	rec.Append(KindFileWritten, target, "adopted")
+	rec.Append(fabriclayout.KindFileWritten, target, "adopted")
 
 	if err := os.Remove(link); err != nil {
 		return fmt.Errorf("remove now-empty %s after adoption: %w", link, err)
@@ -261,7 +262,7 @@ func adoptDotLymContent(rec *Mutations, link, target string) error {
 	if err := fslink.CreateDirLink(link, target); err != nil {
 		return err
 	}
-	rec.Append(KindLinkCreated, link, "")
+	rec.Append(fabriclayout.KindLinkCreated, link, "")
 	return nil
 }
 
@@ -357,7 +358,7 @@ func mergeAdoptionTree(src, dst, rootLink, rootTarget string) error {
 // It tells a real reversal apart from a no-op on an already-clean or never-wired worktree.
 // It embeds MutationRecord, which carries the mutations recorded over the call.
 type UnwireResult struct {
-	MutationRecord
+	fabriclayout.MutationRecord
 	// JunctionsRemoved lists the Name of each junction that was actually removed, in visiting order.
 	// It is a name list, not a count or a bool: which junctions were removed is CLI-observable.
 	// A count such as "1 of 2 removed" does not say which junction is still wired.
@@ -555,7 +556,7 @@ func unseedGitExclude(rec *Mutations, l *lymcwd.Location, slug string, names []s
 		return wouldChange, nil
 	}
 	if changed {
-		rec.Append(KindFileWritten, excludePath, "")
+		rec.Append(fabriclayout.KindFileWritten, excludePath, "")
 	}
 	return changed, nil
 }
@@ -690,7 +691,7 @@ func seedGitExclude(rec *Mutations, l *lymcwd.Location, slug string, names []str
 		return err
 	}
 	if changed {
-		rec.Append(KindFileWritten, excludePath, "")
+		rec.Append(fabriclayout.KindFileWritten, excludePath, "")
 	}
 	return nil
 }

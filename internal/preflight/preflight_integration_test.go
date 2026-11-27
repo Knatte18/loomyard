@@ -20,6 +20,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -333,7 +334,7 @@ func TestCheckResolved_Failures(t *testing.T) {
 		{
 			name: "ConfigLoadFailed",
 			corrupt: func(t *testing.T, h *hubforge.Hub, slug string) {
-				configPath := configengine.ConfigFile(fabricengine.BoardDir(h.Location.HubPath), "fabric")
+				configPath := configengine.ConfigFile(fabriclayout.BoardDir(h.Location.HubPath), "fabric")
 				if err := os.WriteFile(configPath, []byte("not: [valid: yaml"), 0o644); err != nil {
 					t.Fatalf("corrupt repo-wide fabric config: %v", err)
 				}
@@ -543,8 +544,8 @@ func TestCheckResolved_MissingOptionalJunctionIsAJunctionFault(t *testing.T) {
 			continue
 		}
 		found = true
-		if pair.Action != fabricengine.ReconcileActionJunctionRepointed {
-			t.Errorf("Reconcile Action = %q; want %q", pair.Action, fabricengine.ReconcileActionJunctionRepointed)
+		if pair.Action != fabriclayout.ReconcileActionJunctionRepointed {
+			t.Errorf("Reconcile Action = %q; want %q", pair.Action, fabriclayout.ReconcileActionJunctionRepointed)
 		}
 		if pair.Error != "" {
 			t.Errorf("Reconcile Error = %q; want empty", pair.Error)

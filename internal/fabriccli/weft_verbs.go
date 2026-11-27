@@ -10,6 +10,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -50,12 +51,12 @@ func addWeftVerbs(cmd *cobra.Command) {
 	cmd.PersistentFlags().MarkHidden("weft-path") //nolint:errcheck
 	cmd.PersistentFlags().String("warp-path", "", "internal: injected absolute warp worktree path for the detached push child")
 	cmd.PersistentFlags().MarkHidden("warp-path") //nolint:errcheck
-	cmd.PersistentFlags().String(fabricengine.PauseSlugFlag, "", "internal: the slug the detached push child's network calls are held under, empty for the prime")
-	cmd.PersistentFlags().MarkHidden(fabricengine.PauseSlugFlag) //nolint:errcheck
-	cmd.PersistentFlags().String(fabricengine.TeardownSlugFlag, "", "internal: the pair whose teardown the detached push child yields to")
-	cmd.PersistentFlags().MarkHidden(fabricengine.TeardownSlugFlag) //nolint:errcheck
-	cmd.PersistentFlags().Bool(fabricengine.ParentLockedFlag, false, "internal: the detached push child's pair held its parent lock when the child was spawned")
-	cmd.PersistentFlags().MarkHidden(fabricengine.ParentLockedFlag) //nolint:errcheck
+	cmd.PersistentFlags().String(fabriclayout.PauseSlugFlag, "", "internal: the slug the detached push child's network calls are held under, empty for the prime")
+	cmd.PersistentFlags().MarkHidden(fabriclayout.PauseSlugFlag) //nolint:errcheck
+	cmd.PersistentFlags().String(fabriclayout.TeardownSlugFlag, "", "internal: the pair whose teardown the detached push child yields to")
+	cmd.PersistentFlags().MarkHidden(fabriclayout.TeardownSlugFlag) //nolint:errcheck
+	cmd.PersistentFlags().Bool(fabriclayout.ParentLockedFlag, false, "internal: the detached push child's pair held its parent lock when the child was spawned")
+	cmd.PersistentFlags().MarkHidden(fabriclayout.ParentLockedFlag) //nolint:errcheck
 
 	fabricCmd := cmd
 	cmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
@@ -102,14 +103,14 @@ func addWeftVerbs(cmd *cobra.Command) {
 
 		// Build the pathspec from the routing set (`PathspecNames`), not from a raw `Config.Dirs()` list.
 		// A raw list would silently stop syncing `_lym`, which is code-injected and never listed in the fabric config.
-		// The routing set never names `.lym` either: it excludes `structuralNeverCommittedDirs` by construction.
+		// The routing set never names `.lym` either: it excludes `fabriclayout.StructuralNeverCommittedDirs` by construction.
 		routingNames, err := fabricengine.PathspecNames(fabricengine.ConfigDirs(l))
 		if err != nil {
 			output.Err(out, err.Error())
 			clihelp.Abort(ctx, 1)
 			return nil
 		}
-		pathspec = fabricengine.ScopedPathspec(l.AnchorRel, routingNames)
+		pathspec = fabriclayout.ScopedPathspec(l.AnchorRel, routingNames)
 
 		resolvedFabric, err := fabricengine.Open(l)
 		if err != nil {
@@ -212,7 +213,7 @@ Related commands:
 				return nil
 			}
 			out := cmd.OutOrStdout()
-			res, err := fab.Commit(pathspec, fabricengine.DefaultCommitMessage, nil, fabricengine.EnvSyncOptions())
+			res, err := fab.Commit(pathspec, fabriclayout.DefaultCommitMessage, nil, fabricengine.EnvSyncOptions())
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), errWithRecord(out, res.Mutated(), err))
 				return nil
@@ -255,9 +256,9 @@ Related commands:
 				// It appends no path-targeted entries of its own; it only extends the record the detached push returns.
 				// Extending converts nothing, so the hub root is never consulted on this path.
 				rec := fabricengine.NewMutations("")
-				pauseSlug, _ := cmd.Flags().GetString(fabricengine.PauseSlugFlag)
-				teardownSlug, _ := cmd.Flags().GetString(fabricengine.TeardownSlugFlag)
-				parentLocked, _ := cmd.Flags().GetBool(fabricengine.ParentLockedFlag)
+				pauseSlug, _ := cmd.Flags().GetString(fabriclayout.PauseSlugFlag)
+				teardownSlug, _ := cmd.Flags().GetString(fabriclayout.TeardownSlugFlag)
+				parentLocked, _ := cmd.Flags().GetBool(fabriclayout.ParentLockedFlag)
 				// The child starts in the hub's board worktree, so the hub is the parent of the worktree root found from cwd.
 				// That lookup applies no cwd gate, because cwd is a worktree root here, not an acting directory.
 				cwd, err := lymcwd.CwdFrom(cmd.Context())
@@ -270,13 +271,13 @@ Related commands:
 					clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 					return nil
 				}
-				logger.SetDurableSinkDir(fabricengine.HubLogsDir(hubLocation.HubPath))
+				logger.SetDurableSinkDir(fabriclayout.HubLogsDir(hubLocation.HubPath))
 				here, err := pairteardown.ThisMachine(hubLocation.HubPath)
 				if err != nil {
 					clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 					return nil
 				}
-				res, err := fabricengine.DetachedPush(hubLocation.HubPath, fabricengine.PushSpawn{
+				res, err := fabricengine.DetachedPush(hubLocation.HubPath, fabriclayout.PushSpawn{
 					WarpPath:     warpPath,
 					WeftPath:     weftPath,
 					PauseSlug:    pauseSlug,
@@ -304,13 +305,13 @@ Related commands:
 			}
 			rec := fabricengine.NewMutations(l.HubPath)
 			opts := fabricengine.EnvSyncOptions()
-			commitRes, err := fab.Commit(pathspec, fabricengine.DefaultCommitMessage, nil, opts)
+			commitRes, err := fab.Commit(pathspec, fabriclayout.DefaultCommitMessage, nil, opts)
 			rec.Extend(commitRes.Mutated())
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), errWithRecord(out, rec.Snapshot(), err))
 				return nil
 			}
-			pushRes, err := fabricengine.PushPairAnchored(l, opts, fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded, Here: here})
+			pushRes, err := fabricengine.PushPairAnchored(l, opts, fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded, Here: here})
 			rec.Extend(pushRes.Mutated())
 			if errors.Is(err, fabricengine.ErrPairPushRunning) {
 				logger.Warn("fabriccli: the push was skipped; the commits stay local for the pair's next push", "error", err)
@@ -404,7 +405,7 @@ Related commands:
 			}
 			out := cmd.OutOrStdout()
 			rec := fabricengine.NewMutations(l.HubPath)
-			commitRes, err := fab.Commit(pathspec, fabricengine.DefaultCommitMessage, nil, fabricengine.EnvSyncOptions())
+			commitRes, err := fab.Commit(pathspec, fabriclayout.DefaultCommitMessage, nil, fabricengine.EnvSyncOptions())
 			rec.Extend(commitRes.Mutated())
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), errWithRecord(out, rec.Snapshot(), err))
@@ -419,10 +420,10 @@ Related commands:
 			// Record one `KindPushSpawned` entry per side handed to the child, and no `branch_pushed` entry.
 			// A `branch_pushed` entry would assert an outcome this process did not observe.
 			if spawn.Request.WarpPath != "" {
-				rec.Append(fabricengine.KindPushSpawned, spawn.Request.WarpPath, "detached")
+				rec.Append(fabriclayout.KindPushSpawned, spawn.Request.WarpPath, "detached")
 			}
 			if spawn.Request.WeftPath != "" {
-				rec.Append(fabricengine.KindPushSpawned, spawn.Request.WeftPath, "detached")
+				rec.Append(fabriclayout.KindPushSpawned, spawn.Request.WeftPath, "detached")
 			}
 			clihelp.SetExit(cmd.Context(), okWithRecord(out, rec.Snapshot(), map[string]any{}))
 			return nil
@@ -470,7 +471,7 @@ Example:
 }
 
 // changeEntriesMap flattens each change entry into a map of its path and side, the shape the JSON output envelope takes.
-func changeEntriesMap(entries []fabricengine.ChangeEntry) []map[string]any {
+func changeEntriesMap(entries []fabriclayout.ChangeEntry) []map[string]any {
 	out := make([]map[string]any, 0, len(entries))
 	for _, e := range entries {
 		out = append(out, map[string]any{"path": e.Path, "side": string(e.Side)})
@@ -478,14 +479,14 @@ func changeEntriesMap(entries []fabricengine.ChangeEntry) []map[string]any {
 	return out
 }
 
-// pullResultMap converts a fabricengine.PullResult into the map shape the JSON output envelope expects.
+// pullResultMap converts a fabriclayout.PullResult into the map shape the JSON output envelope expects.
 // weft_pulled is false inside a SUCCESS envelope only when the weft's origin could not be reached,
 // so the warp side pulled while the weft did not.
 // Re-running the pull once origin is reachable settles it.
 // A weft that a conflict or an uncommitted change keeps from being brought level fails the verb.
 // The error envelope names the way forward, not a success envelope with weft_pulled false.
 // seam_warning is present only when a worktree event failed for the commits warp took in.
-func pullResultMap(result fabricengine.PullResult) map[string]any {
+func pullResultMap(result fabriclayout.PullResult) map[string]any {
 	out := map[string]any{
 		"weft_pulled":       result.WeftPulled,
 		"warp_fetched":      result.WarpFetched,

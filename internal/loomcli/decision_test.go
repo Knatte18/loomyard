@@ -17,7 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gatefixer"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/loomshed"
@@ -441,7 +441,7 @@ func (f *decisionFake) deps() decisionDeps {
 			}
 			return os.WriteFile(f.path, data, 0o644)
 		},
-		commitReplace: func(_ string, trailers []fabricengine.Trailer) (bool, error) {
+		commitReplace: func(_ string, trailers []fabriclayout.Trailer) (bool, error) {
 			f.replaceCommits++
 			if f.commitEntered != nil {
 				close(f.commitEntered)
@@ -469,7 +469,7 @@ func (f *decisionFake) deps() decisionDeps {
 			f.committedCopy, f.committedFound, f.headTrailer = data, true, trailers[0].Value
 			return true, nil
 		},
-		commitEmpty: func(_ string, trailers []fabricengine.Trailer) error {
+		commitEmpty: func(_ string, trailers []fabriclayout.Trailer) error {
 			f.emptyCommits++
 			if f.emptyErr != nil {
 				return f.emptyErr

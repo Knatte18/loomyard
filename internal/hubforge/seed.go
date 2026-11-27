@@ -8,6 +8,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 )
 
@@ -60,7 +61,7 @@ func SeedConfig(tb testing.TB, h *Hub, configByModule map[string]string) {
 func SeedFabricConfig(tb testing.TB, h *Hub, yaml string) {
 	tb.Helper()
 
-	boltDir := fabricengine.BoltDir(h.Path)
+	boltDir := fabriclayout.BoltDir(h.Path)
 	if err := os.MkdirAll(configengine.ConfigDir(boltDir), 0o755); err != nil {
 		tb.Fatalf("hubforge.SeedFabricConfig: mkdir config dir: %v", err)
 	}

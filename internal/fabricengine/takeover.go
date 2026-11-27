@@ -10,11 +10,10 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"time"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
-	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
 )
@@ -69,39 +68,13 @@ func isTakeoverStop(err error) bool {
 		errors.Is(err, ErrHandedOver) || errors.Is(err, ErrTakeoverPassOwed)
 }
 
-// Holds reports whether name is one of the names that read as this machine, its current name or a former one.
-func (n MachineNames) Holds(name string) bool {
-	return name != "" && (name == n.Current || slices.Contains(n.Former, name))
-}
-
-// isZero reports whether n carries no name, which turns the takeover read off.
-func (n MachineNames) isZero() bool {
-	return n.Current == "" && len(n.Former) == 0
-}
-
-// HandOverMark records that this machine handed a run over to the machine of a takeover entry.
-type HandOverMark struct {
-	// Machine is the machine the takeover entry names.
-	Machine string `json:"machine"`
-	// At is the time the takeover entry was recorded.
-	At string `json:"at"`
-	// Written is the time this machine wrote the mark.
-	Written time.Time `json:"written"`
-}
-
-// HandOverMarkPath returns the file that holds this machine's hand-over mark of slug:
-// <HubScratchDir(hubPath)>/<lymdirs.HandOverDirName>/<slug>.json.
-func HandOverMarkPath(hubPath, slug string) string {
-	return filepath.Join(HubScratchDir(hubPath), lymdirs.HandOverDirName, slug+".json")
-}
-
 // ReadHandOverMark reads this machine's hand-over mark of slug, accepting keys the mark does not declare.
 // An absent mark reads not found.
-func ReadHandOverMark(hubPath, slug string) (mark HandOverMark, found bool, err error) {
-	path := HandOverMarkPath(hubPath, slug)
-	mark, found, err = state.ReadJSON[HandOverMark](path, path+".lock")
+func ReadHandOverMark(hubPath, slug string) (mark fabriclayout.HandOverMark, found bool, err error) {
+	path := fabriclayout.HandOverMarkPath(hubPath, slug)
+	mark, found, err = state.ReadJSON[fabriclayout.HandOverMark](path, path+".lock")
 	if err != nil {
-		return HandOverMark{}, false, fmt.Errorf("fabricengine: read the hand-over mark of %q: %w", slug, err)
+		return fabriclayout.HandOverMark{}, false, fmt.Errorf("fabricengine: read the hand-over mark of %q: %w", slug, err)
 	}
 	return mark, found, nil
 }
@@ -132,8 +105,8 @@ func ReadUpstreamTakeover(l *lymcwd.Location, weftPath, slug string) (entry shed
 // An entry naming another machine returns an error.
 // When this machine's hand-over mark of the slug names that machine, the error wraps ErrHandedOver.
 // Otherwise it is a *TakeoverError.
-func takeoverStop(l *lymcwd.Location, weftPath, slug string, here MachineNames) error {
-	if here.isZero() || slug == "" {
+func takeoverStop(l *lymcwd.Location, weftPath, slug string, here fabriclayout.MachineNames) error {
+	if here.IsZero() || slug == "" {
 		return nil
 	}
 	entry, found, err := ReadUpstreamTakeover(l, weftPath, slug)
@@ -159,7 +132,7 @@ func takeoverStop(l *lymcwd.Location, weftPath, slug string, here MachineNames) 
 // A run with no entry, or whose entry names a machine here holds, is left alone.
 // A taken-over run whose hand-over mark names the entry's machine is listed in handedOver.
 // Any other taken-over run is returned in pending as its *TakeoverError.
-func primeTakeovers(l *lymcwd.Location, weftPath string, ahead []string, here MachineNames) (pending []*TakeoverError, handedOver []string, err error) {
+func primeTakeovers(l *lymcwd.Location, weftPath string, ahead []string, here fabriclayout.MachineNames) (pending []*TakeoverError, handedOver []string, err error) {
 	for _, slug := range ahead {
 		entry, found, err := ReadUpstreamTakeover(l, weftPath, slug)
 		if err != nil {
@@ -187,7 +160,7 @@ func primeTakeovers(l *lymcwd.Location, weftPath string, ahead []string, here Ma
 // It returns the runs already handed over, whose commits the replay sets aside.
 // A pending takeover returns a *TakeoversError holding every pending one.
 // A failed read returns an error wrapping ErrTakeoverPassOwed.
-func primePushTakeovers(l *lymcwd.Location, weftPath, runSlug string, here MachineNames) (handedOver []string, err error) {
+func primePushTakeovers(l *lymcwd.Location, weftPath, runSlug string, here fabriclayout.MachineNames) (handedOver []string, err error) {
 	slugs, err := unpushedTransitionSlugs(weftPath)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrTakeoverPassOwed, err)
@@ -229,7 +202,7 @@ func unpushedTransitionSlugs(weftPath string) ([]string, error) {
 		if err != nil {
 			return nil, err
 		}
-		if slug := trailerValue(detail.Message, TransitionTrailerKey); slug != "" && !slices.Contains(slugs, slug) {
+		if slug := trailerValue(detail.Message, fabriclayout.TransitionTrailerKey); slug != "" && !slices.Contains(slugs, slug) {
 			slugs = append(slugs, slug)
 		}
 	}
@@ -238,7 +211,7 @@ func unpushedTransitionSlugs(weftPath string) ([]string, error) {
 
 // warpLocationOfRecords returns the location of the code worktree that the records worktree at weftPath pairs with.
 func warpLocationOfRecords(weftPath string) (*lymcwd.Location, error) {
-	warpSlug, ok := WeftWarpSlug(filepath.Base(weftPath))
+	warpSlug, ok := fabriclayout.WeftWarpSlug(filepath.Base(weftPath))
 	if !ok {
 		return nil, fmt.Errorf("fabricengine: %s is no weft sibling worktree", weftPath)
 	}

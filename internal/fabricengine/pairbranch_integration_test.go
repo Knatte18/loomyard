@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -45,7 +46,7 @@ func pairOnOriginOnly(t *testing.T, slug string) (*hubforge.Hub, *fabricengine.T
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	hubforge.AddPair(t, h, slug)
-	recordsBranch := fabricengine.RecordsBranchName(slug)
+	recordsBranch := fabriclayout.RecordsBranchName(slug)
 	gitkit.MustRun(t, h.PairCodeWorktree(slug), "git", "push", "origin", slug)
 	gitkit.MustRun(t, h.PrimeRecords(), "git", "push", "origin", recordsBranch)
 	if _, err := h.Topology.Remove(h.Location, slug, false, false, ""); err != nil {
@@ -80,7 +81,7 @@ func TestBranchPrefixChange_PairWithNothingLeftLocally(t *testing.T) {
 				t.Parallel()
 
 				h, top := pairOnOriginOnly(t, tt.slug)
-				recordsBranch := fabricengine.RecordsBranchName(tt.slug)
+				recordsBranch := fabriclayout.RecordsBranchName(tt.slug)
 
 				res, err := top.Remove(h.Location, tt.slug, false, true, "")
 				if err != nil {
@@ -140,7 +141,7 @@ func TestBranchPrefixChange_PairWithNothingLeftLocally(t *testing.T) {
 					gitkit.Git(t, h.CodeBare, "branch", "-D", slug)
 				}
 				if tt.dropRecords {
-					gitkit.Git(t, h.RecordsBare, "branch", "-D", fabricengine.RecordsBranchName(slug))
+					gitkit.Git(t, h.RecordsBare, "branch", "-D", fabriclayout.RecordsBranchName(slug))
 				}
 
 				err := top.RemoveRefusal(l, slug, false)
@@ -165,7 +166,7 @@ func TestPairTaskBranch_ReadsThePairItself(t *testing.T) {
 	t.Parallel()
 
 	const slug = "pt-pair"
-	recordsBranch := fabricengine.RecordsBranchName(slug)
+	recordsBranch := fabriclayout.RecordsBranchName(slug)
 	tests := []struct {
 		name string
 		// arrange changes the pair before PairTaskBranch reads it.
@@ -260,13 +261,13 @@ func pairOnOriginUnderPrefixes(t *testing.T, slug string, prefixes ...string) (*
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	hubforge.AddPair(t, h, slug)
-	recordsBranch := fabricengine.RecordsBranchName(slug)
+	recordsBranch := fabriclayout.RecordsBranchName(slug)
 	gitkit.MustRun(t, h.PairCodeWorktree(slug), "git", "push", "origin", slug)
 	gitkit.MustRun(t, h.PrimeRecords(), "git", "push", "origin", recordsBranch)
 	for _, prefix := range prefixes {
 		gitkit.MustRun(t, h.PairCodeWorktree(slug), "git", "push", "origin", slug+":refs/heads/"+prefix+slug)
 		gitkit.MustRun(t, h.PrimeRecords(), "git", "push", "origin",
-			recordsBranch+":refs/heads/"+fabricengine.RecordsBranchName(prefix+slug))
+			recordsBranch+":refs/heads/"+fabriclayout.RecordsBranchName(prefix+slug))
 	}
 	// The pair goes by hand, not through Remove, which would archive its records and so end the pair's life.
 	removePairWorktreesByHand(t, h, slug)
@@ -325,5 +326,5 @@ func renamePairBranches(t *testing.T, h *hubforge.Hub, slug, branch string) {
 	t.Helper()
 
 	gitkit.MustRun(t, h.PairCodeWorktree(slug), "git", "branch", "-m", branch)
-	gitkit.MustRun(t, h.PairRecordsSibling(slug), "git", "branch", "-m", fabricengine.RecordsBranchName(branch))
+	gitkit.MustRun(t, h.PairRecordsSibling(slug), "git", "branch", "-m", fabriclayout.RecordsBranchName(branch))
 }

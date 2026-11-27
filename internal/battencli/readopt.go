@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -23,7 +24,7 @@ type readoptSeams struct {
 	// Gone reports whether slug's task worktree is gone from this machine.
 	Gone func(slug string) (bool, error)
 	// Reconcile runs the run-scope origin reconcile of slug, which may judge a run whose pair is absent.
-	Reconcile func(slug string) (fabricengine.OriginReport, error)
+	Reconcile func(slug string) (fabriclayout.OriginReport, error)
 	// Prune drops the worktree registrations whose directories are gone, so a stale registration holds no branch.
 	Prune func() error
 	// Add re-makes slug's pair over its live branches, adopting them and forking nothing.
@@ -39,7 +40,7 @@ type readoptSeams struct {
 	// RecordsRoot returns the root of the records repository, which a way forward names.
 	RecordsRoot func() (string, error)
 	// Tags lists the archive and set-aside tags that keep slug's records, each with the record files it keeps.
-	Tags func(slug string) ([]fabricengine.RecordsTag, error)
+	Tags func(slug string) ([]fabriclayout.RecordsTag, error)
 	// BranchFile reads one anchored file of a records branch.
 	BranchFile func(branch, anchoredRel string) ([]byte, bool, error)
 	// Upstream reports whether the records branch has an upstream setting.
@@ -69,7 +70,7 @@ func hubReadoptSeams(location *lymcwd.Location, opts fabricengine.ReconcileOptio
 			present, err := taskWorktreePresent(location, slug)
 			return !present, err
 		},
-		Reconcile: func(slug string) (fabricengine.OriginReport, error) {
+		Reconcile: func(slug string) (fabriclayout.OriginReport, error) {
 			return reconcileGoneRun(location, slug, opts)
 		},
 		Prune: func() error { return fabricengine.PruneRegistrations(location) },
@@ -100,7 +101,7 @@ func hubReadoptSeams(location *lymcwd.Location, opts fabricengine.ReconcileOptio
 			return pushRecordsOrOwe(deps, slug)
 		},
 		RecordsRoot: func() (string, error) { return fabricengine.RecordsRepoRoot(location) },
-		Tags: func(slug string) ([]fabricengine.RecordsTag, error) {
+		Tags: func(slug string) ([]fabriclayout.RecordsTag, error) {
 			rels, err := readoptRecordRels(slug)
 			if err != nil {
 				return nil, err
@@ -136,12 +137,12 @@ func hubReadoptSeams(location *lymcwd.Location, opts fabricengine.ReconcileOptio
 // opts bounds the reconcile's remote calls and its retries of an unreachable origin.
 // Each entry of the report's mutation record is logged at Info, since a resume has no envelope to carry it.
 // The report is returned with the error, so a partial record is still logged.
-func reconcileGoneRun(location *lymcwd.Location, slug string, opts fabricengine.ReconcileOptions) (fabricengine.OriginReport, error) {
+func reconcileGoneRun(location *lymcwd.Location, slug string, opts fabricengine.ReconcileOptions) (fabriclayout.OriginReport, error) {
 	teardown, err := pairteardown.New(location)
 	if err != nil {
-		return fabricengine.OriginReport{}, err
+		return fabriclayout.OriginReport{}, err
 	}
-	report, err := fabricengine.ReconcileOrigin(location, fabricengine.ReconcileScope{Run: slug, PairMayBeAbsent: true}, teardown.OriginSeams(pairteardown.HubSeamOptions(location)), opts)
+	report, err := fabricengine.ReconcileOrigin(location, fabriclayout.ReconcileScope{Run: slug, PairMayBeAbsent: true}, teardown.OriginSeams(pairteardown.HubSeamOptions(location)), opts)
 	for _, mutation := range report.Mutations.Entries() {
 		logger.Info("battencli: origin reconcile mutation", "slug", slug, "kind", string(mutation.Kind), "target", mutation.Target, "detail", mutation.Detail)
 	}

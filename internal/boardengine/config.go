@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"gopkg.in/yaml.v3"
 )
 
@@ -258,8 +258,8 @@ func decodeLabels(key string, node *yaml.Node) ([]Label, error) {
 // No worktree link is followed, and `ApplySkipEnv` is applied so render and sync behave as they do for `lym board`.
 // It is told only a hub path, so it loads with no anchor and therefore no local layer.
 func OpenHub(hubPath string) (*Board, error) {
-	boltDir := fabricengine.BoltDir(hubPath)
-	boardDir := fabricengine.BoardDir(hubPath)
+	boltDir := fabriclayout.BoltDir(hubPath)
+	boardDir := fabriclayout.BoardDir(hubPath)
 	cfg, err := LoadConfig(configengine.Dirs{Board: boltDir}, "board")
 	if err != nil {
 		return nil, err

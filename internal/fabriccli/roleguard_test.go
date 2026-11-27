@@ -18,7 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabriccli"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
@@ -118,11 +118,11 @@ func sandboxHubDir(t *testing.T, worktree string) string {
 // recordShortname writes the repo shortname record of the hub directory hub.
 func recordShortname(t *testing.T, hub, shortname string) {
 	t.Helper()
-	boltDir := fabricengine.BoltDir(hub)
+	boltDir := fabriclayout.BoltDir(hub)
 	if err := os.MkdirAll(boltDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(boltDir, fabricengine.ShortnameFileName), []byte(shortname+"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(boltDir, fabriclayout.ShortnameFileName), []byte(shortname+"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -200,7 +200,7 @@ func TestSandboxedRoleGuard(t *testing.T) {
 	})
 
 	t.Run("every fabric reader verb is a guard reader", func(t *testing.T) {
-		for _, name := range fabricengine.FabricReaderVerbs() {
+		for _, name := range fabriclayout.FabricReaderVerbs() {
 			if verb, ok := guardVerbs[name]; !ok || !verb.reader {
 				t.Errorf("fabricengine reader verb %q is not a guard reader", name)
 			}

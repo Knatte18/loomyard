@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 )
 
@@ -74,7 +74,7 @@ func Open(g Geometry) (Sources, error) {
 	if err != nil {
 		return Sources{}, err
 	}
-	tags, err := records.TagRefs(fabricengine.ArchiveTagPrefix)
+	tags, err := records.TagRefs(fabriclayout.ArchiveTagPrefix)
 	if err != nil {
 		return Sources{}, fmt.Errorf("reportengine: list archive tags: %w", err)
 	}

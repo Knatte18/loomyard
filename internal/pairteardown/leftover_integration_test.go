@@ -15,7 +15,7 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -51,7 +51,7 @@ func requirePairGone(t *testing.T, h *hubforge.Hub, slug string) {
 func ownerArchiveTags(t *testing.T, bare, slug string) []string {
 	t.Helper()
 
-	return strings.Fields(gitkit.Git(t, bare, "tag", "--list", fabricengine.OwnerArchiveTagPrefix+slug+"/*"))
+	return strings.Fields(gitkit.Git(t, bare, "tag", "--list", fabriclayout.OwnerArchiveTagPrefix+slug+"/*"))
 }
 
 // registerLiveProcess starts a sleeping process and registers it under slug in the hub's process registry.
@@ -71,7 +71,7 @@ func registerLiveProcess(t *testing.T, h *hubforge.Hub, slug string, inherited .
 		_ = sleeper.Wait()
 	})
 	record := runproc.ChildRecord(sleeper.Process.Pid, runproc.RoleBatten, []string{"sleep", "300"})
-	if err := runproc.Register(fabricengine.RunProcDir(h.Path), slug, record); err != nil {
+	if err := runproc.Register(fabriclayout.RunProcDir(h.Path), slug, record); err != nil {
 		t.Fatalf("register the sleeping process: %v", err)
 	}
 }

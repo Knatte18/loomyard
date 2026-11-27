@@ -15,90 +15,16 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// PushFailureClass names why a push did not land.
-type PushFailureClass string
-
-const (
-	// PushFailureNotFastForward means origin holds commits the pushed branch lacks.
-	PushFailureNotFastForward PushFailureClass = "not_fast_forward"
-	// PushFailureTransport means origin could not be reached.
-	PushFailureTransport PushFailureClass = "transport"
-	// PushFailureAuth means origin refused this machine's credentials or permissions.
-	PushFailureAuth PushFailureClass = "auth"
-	// PushFailureGone means origin no longer has the branch.
-	PushFailureGone PushFailureClass = "gone"
-	// PushFailureOther means the push failed for a reason no other class names, so the record carries git's own error.
-	PushFailureOther PushFailureClass = "other"
-	// PushFailureDeferred means the push was held back, not refused, and is retried by the next push of the branch.
-	PushFailureDeferred PushFailureClass = "deferred"
-	// PushFailureTeardownLock means a removal or another push of the pair held its teardown lock past the push's wait.
-	// The push is owed and retried once the lock is free.
-	PushFailureTeardownLock PushFailureClass = "teardown_lock"
-)
-
-// The repository sides a failed push is recorded against.
-const (
-	failedPushSideCode    = "code"
-	failedPushSideRecords = "records"
-	failedPushSideBolt    = "bolt"
-)
-
-// The repository sides a branch outcome or failed-push record names in its Repo field.
-const (
-	// RepoCode is the Repo of a branch of a pair's code repository.
-	RepoCode = failedPushSideCode
-	// RepoRecords is the Repo of a branch of a pair's records repository.
-	RepoRecords = failedPushSideRecords
-	// RepoBolt is the Repo of a branch of the records repository's board branch.
-	RepoBolt = failedPushSideBolt
-)
-
-// FailedPush is the record of a push origin refused, one per repository side and branch.
-// Repo is "code", "records" or "bolt", the last being the records repository's board branch.
-// CodeWorktree is set for a records record only: the pair's code worktree, where every fabric verb runs.
-// Prime marks a code record of the hub prime's own branch.
-// Paths, Commits and OriginHead are set where the failure has them, such as a replay stop or a rewind.
-// WayForward is set for the anchor-change class only, which carries its own commands.
-// Runs names the runs whose pushes failed the record, unioned across failures of one branch.
-type FailedPush struct {
-	Repo         string           `json:"repo"`
-	RepoPath     string           `json:"repo_path"`
-	CodeWorktree string           `json:"code_worktree,omitempty"`
-	Branch       string           `json:"branch"`
-	Prime        bool             `json:"prime,omitempty"`
-	Class        PushFailureClass `json:"class"`
-	Error        string           `json:"error,omitempty"`
-	Paths        []string         `json:"paths,omitempty"`
-	Commits      []string         `json:"commits,omitempty"`
-	OriginHead   string           `json:"origin_head,omitempty"`
-	WayForward   string           `json:"way_forward,omitempty"`
-	Runs         []string         `json:"runs,omitempty"`
-	FirstSeen    time.Time        `json:"first_seen"`
-	LastSeen     time.Time        `json:"last_seen"`
-	Count        int              `json:"count"`
-	Notified     bool             `json:"notified"`
-}
-
-// PushNotice is the mail a failed push sends the orch.
-type PushNotice struct {
-	// Line names the branch, the class, the error and the way forward.
-	Line string
-	// Topic names the repository side and branch, so a newer notice of the branch replaces one still unread.
-	Topic string
-	// Run is the slug of the pair whose branch failed, empty for the prime's code branch and the board branch.
-	// The pair's teardown drops the notice while it is unread.
-	Run string
-}
-
 // PushNotifier posts notice to the orch of the hub at hubPath and reports whether the mail was posted.
 // A notifier reporting false, because no orch is recorded, leaves the failure to be mailed by a later one.
-type PushNotifier func(hubPath string, notice PushNotice) (posted bool, err error)
+type PushNotifier func(hubPath string, notice fabriclayout.PushNotice) (posted bool, err error)
 
 var installedPushNotifier atomic.Pointer[PushNotifier]
 
@@ -126,7 +52,7 @@ func (o SyncOptions) notifier() PushNotifier {
 }
 
 func failedPushDir(hubPath string) string {
-	return filepath.Join(HubScratchDir(hubPath), lymdirs.FailedPushDirName)
+	return filepath.Join(fabriclayout.HubScratchDir(hubPath), lymdirs.FailedPushDirName)
 }
 
 // failedPushPath returns the record file for a repository side and branch.
@@ -149,15 +75,15 @@ func failedPushLockPath(path string) string {
 // It carries the side and branch as its topic and the pair's slug as its run.
 // The record is marked notified only when the notifier reports the mail posted.
 // A notifier error is logged and leaves the record unnotified, so the next failure mails again.
-func RecordPushFailure(hubPath string, f FailedPush, now time.Time) error {
+func RecordPushFailure(hubPath string, f fabriclayout.FailedPush, now time.Time) error {
 	return recordPushFailure(hubPath, f, now, installedNotifier())
 }
 
 // recordPushFailure writes f as the failed-push record of its repository side and branch under the record's lock.
 // It mails a record that is neither notified nor deferred through notify, once per episode; a nil notify mails nothing.
-func recordPushFailure(hubPath string, f FailedPush, now time.Time, notify PushNotifier) error {
+func recordPushFailure(hubPath string, f fabriclayout.FailedPush, now time.Time, notify PushNotifier) error {
 	path := failedPushPath(hubPath, f.Repo, f.Branch)
-	return state.UpdateJSON(path, failedPushLockPath(path), func(cur FailedPush, found bool) (FailedPush, error) {
+	return state.UpdateJSON(path, failedPushLockPath(path), func(cur fabriclayout.FailedPush, found bool) (fabriclayout.FailedPush, error) {
 		f.FirstSeen = now
 		f.Count = 1
 		if found {
@@ -167,16 +93,16 @@ func recordPushFailure(hubPath string, f FailedPush, now time.Time, notify PushN
 			f.Runs = unionRuns(cur.Runs, f.Runs)
 		}
 		f.LastSeen = now
-		if f.Notified || f.Class == PushFailureDeferred {
+		if f.Notified || f.Class == fabriclayout.PushFailureDeferred {
 			return f, nil
 		}
 		if notify == nil {
 			return f, nil
 		}
-		notice := PushNotice{
+		notice := fabriclayout.PushNotice{
 			Line:  fmt.Sprintf("a push of %s branch %s failed (%s): %s; way forward: %s", f.Repo, f.Branch, f.Class, f.Error, FailedPushWayForward(f)),
 			Topic: "push/" + f.Repo + "/" + f.Branch,
-			Run:   f.pairSlug(),
+			Run:   f.PairSlug(),
 		}
 		posted, err := notify(hubPath, notice)
 		if err != nil {
@@ -200,30 +126,13 @@ func unionRuns(existing, added []string) []string {
 }
 
 // readFailedPush returns the failed-push record of a repository side and branch, and whether one exists.
-func readFailedPush(hubPath, repo, branch string) (FailedPush, bool, error) {
+func readFailedPush(hubPath, repo, branch string) (fabriclayout.FailedPush, bool, error) {
 	path := failedPushPath(hubPath, repo, branch)
-	record, found, err := state.ReadJSON[FailedPush](path, failedPushLockPath(path))
+	record, found, err := state.ReadJSON[fabriclayout.FailedPush](path, failedPushLockPath(path))
 	if err != nil {
-		return FailedPush{}, false, fmt.Errorf("read failed-push record %s: %w", filepath.Base(path), err)
+		return fabriclayout.FailedPush{}, false, fmt.Errorf("read failed-push record %s: %w", filepath.Base(path), err)
 	}
 	return record, found, nil
-}
-
-// pairSlug names the pair whose branch f records.
-// It is the base name of the pair's code worktree, which the hub names by its slug.
-// The prime's code branch, the board branch and a records branch with no paired code worktree answer empty.
-// A records branch with a paired code worktree answers that worktree's name.
-// That includes the prime's, since a records record never marks the prime.
-// No pair's teardown shares the prime's name, so none drops that mail.
-func (f FailedPush) pairSlug() string {
-	switch {
-	case f.Repo == failedPushSideRecords && f.CodeWorktree != "":
-		return filepath.Base(f.CodeWorktree)
-	case f.Repo == failedPushSideCode && !f.Prime:
-		return filepath.Base(f.RepoPath)
-	default:
-		return ""
-	}
 }
 
 // ClearPushFailure removes the failed-push record of a repository side and branch, and does nothing when none exists.
@@ -237,7 +146,7 @@ func ClearPushFailure(hubPath, repo, branch string) error {
 
 // ListFailedPushes returns every failed-push record of the hub sorted by repository side and branch.
 // A hub with no records returns none.
-func ListFailedPushes(hubPath string) ([]FailedPush, error) {
+func ListFailedPushes(hubPath string) ([]fabriclayout.FailedPush, error) {
 	dir := failedPushDir(hubPath)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -246,13 +155,13 @@ func ListFailedPushes(hubPath string) ([]FailedPush, error) {
 		}
 		return nil, fmt.Errorf("list failed-push records: %w", err)
 	}
-	var records []FailedPush
+	var records []fabriclayout.FailedPush
 	for _, entry := range entries {
 		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
 			continue
 		}
 		path := filepath.Join(dir, entry.Name())
-		record, found, err := state.ReadJSON[FailedPush](path, failedPushLockPath(path))
+		record, found, err := state.ReadJSON[fabriclayout.FailedPush](path, failedPushLockPath(path))
 		if err != nil {
 			return nil, fmt.Errorf("read failed-push record %s: %w", entry.Name(), err)
 		}
@@ -273,15 +182,15 @@ func ListFailedPushes(hubPath string) ([]FailedPush, error) {
 // A record holds a push owed when its class is transport, deferred or teardown_lock and its Runs name the slug.
 // A record of another class is no owed push, since such a push is no transient failure.
 // A record whose Runs lack the slug is not the run's, even when it records the prime's records branch.
-func FailedPushesOwedBy(hubPath, slug string) ([]FailedPush, error) {
+func FailedPushesOwedBy(hubPath, slug string) ([]fabriclayout.FailedPush, error) {
 	records, err := ListFailedPushes(hubPath)
 	if err != nil {
 		return nil, err
 	}
-	var owed []FailedPush
+	var owed []fabriclayout.FailedPush
 	for _, record := range records {
 		switch record.Class {
-		case PushFailureTransport, PushFailureDeferred, PushFailureTeardownLock:
+		case fabriclayout.PushFailureTransport, fabriclayout.PushFailureDeferred, fabriclayout.PushFailureTeardownLock:
 			if slices.Contains(record.Runs, slug) {
 				owed = append(owed, record)
 			}
@@ -339,13 +248,13 @@ func lymVerbDir(worktreeRoot string) string {
 // pushStep names the push that retries f, with the directory it runs in.
 // A bolt record is pushed by the board sync, since the pair push never reaches Bolt.
 // A prime's code branch is pushed by a plain git push, since the prime's pair push is records-only.
-func pushStep(f FailedPush) string {
+func pushStep(f fabriclayout.FailedPush) string {
 	switch {
-	case f.Repo == failedPushSideBolt:
+	case f.Repo == fabriclayout.RepoBolt:
 		return "`lym board sync` from the prime worktree"
-	case f.Repo == failedPushSideCode && f.Prime:
+	case f.Repo == fabriclayout.RepoCode && f.Prime:
 		return fmt.Sprintf("`git push` in %s", f.RepoPath)
-	case f.Repo == failedPushSideRecords:
+	case f.Repo == fabriclayout.RepoRecords:
 		return fmt.Sprintf("`lym fabric push` in %s", lymVerbDir(f.CodeWorktree))
 	default:
 		return fmt.Sprintf("`lym fabric push` in %s", lymVerbDir(f.RepoPath))
@@ -353,25 +262,25 @@ func pushStep(f FailedPush) string {
 }
 
 // FailedPushWayForward returns the runnable way forward for a failed push, by repository side and class.
-func FailedPushWayForward(f FailedPush) string {
+func FailedPushWayForward(f fabriclayout.FailedPush) string {
 	switch f.Class {
-	case PushFailureAuth:
+	case fabriclayout.PushFailureAuth:
 		return fmt.Sprintf("fix this machine's permission to push %s on origin, then run %s", f.Branch, pushStep(f))
-	case PushFailureNotFastForward:
-		if f.Repo == failedPushSideCode {
+	case fabriclayout.PushFailureNotFastForward:
+		if f.Repo == fabriclayout.RepoCode {
 			return codeDivergedWayForward(f.RepoPath, f.Branch, f.Prime)
 		}
 		return recordsConflictWayForward(f.RepoPath, f.Branch, f.Paths, f.Commits, pushStep(f))
-	case PushFailureRewound:
+	case fabriclayout.PushFailureRewound:
 		return rewoundWayForward(f.RepoPath, f.Branch, f.OriginHead, f.Commits)
-	case PushFailureAnchorChange:
+	case fabriclayout.PushFailureAnchorChange:
 		return f.WayForward
-	case PushFailureTeardownLock:
+	case fabriclayout.PushFailureTeardownLock:
 		return fmt.Sprintf("the push retries once the removal or push holding the pair's teardown lock lets go, so run %s again then, "+
 			"or end the stuck child whose pid `lym tender status` lists", pushStep(f))
-	case PushFailureGone:
+	case fabriclayout.PushFailureGone:
 		pairWorktree := f.RepoPath
-		if f.Repo == failedPushSideRecords {
+		if f.Repo == fabriclayout.RepoRecords {
 			pairWorktree = f.CodeWorktree
 		}
 		return fmt.Sprintf("origin no longer has branch %s, and its board entry is neither done nor removed on origin, since an ended entry writes no record; "+

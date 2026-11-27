@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -25,20 +26,20 @@ func TestCommand_HubWithoutItsBoltNamesTheResetClone(t *testing.T) {
 	tests := []struct {
 		name string
 		// build returns the hub, the options of the clone into its container, and the reset clones the two refusals name.
-		build func(t *testing.T) (h *hubforge.Hub, opts fabricengine.CloneOptions, wantReconcileReplacement, wantCloneReplacement string)
+		build func(t *testing.T) (h *hubforge.Hub, opts fabriclayout.CloneOptions, wantReconcileReplacement, wantCloneReplacement string)
 	}{
-		{"OneRepository", func(t *testing.T) (*hubforge.Hub, fabricengine.CloneOptions, string, string) {
+		{"OneRepository", func(t *testing.T) (*hubforge.Hub, fabriclayout.CloneOptions, string, string) {
 			h := hubforge.NewOneRepoHub(t, hubforge.OneRepoOptions{})
 			url := filepath.ToSlash(h.CodeBare)
 			join := "`lym fabric clone " + url + " --into " + h.Container + " --reset`"
 			seed := "`lym fabric clone --single-repo --shortname <shortname> " + url + " --into " + h.Container + " --reset`"
-			return h, fabricengine.CloneOptions{WeftURL: url}, join + " when origin holds the hub's board, or " + seed + " when it holds none", join
+			return h, fabriclayout.CloneOptions{WeftURL: url}, join + " when origin holds the hub's board, or " + seed + " when it holds none", join
 		}},
-		{"TwoRepository", func(t *testing.T) (*hubforge.Hub, fabricengine.CloneOptions, string, string) {
+		{"TwoRepository", func(t *testing.T) (*hubforge.Hub, fabriclayout.CloneOptions, string, string) {
 			h := hubforge.NewHub(t, ".")
 			recordsURL, codeURL := filepath.ToSlash(h.RecordsBare), filepath.ToSlash(h.CodeBare)
 			clone := "`lym fabric clone " + recordsURL + " " + codeURL + " --into " + h.Container + " --reset`"
-			return h, fabricengine.CloneOptions{WeftURL: recordsURL, WarpURL: codeURL}, clone, clone
+			return h, fabriclayout.CloneOptions{WeftURL: recordsURL, WarpURL: codeURL}, clone, clone
 		}},
 	}
 	for _, tt := range tests {
@@ -46,7 +47,7 @@ func TestCommand_HubWithoutItsBoltNamesTheResetClone(t *testing.T) {
 			t.Parallel()
 
 			h, opts, wantReconcileReplacement, wantCloneReplacement := tt.build(t)
-			boltDir := fabricengine.BoltDir(h.Path)
+			boltDir := fabriclayout.BoltDir(h.Path)
 			if err := os.RemoveAll(boltDir); err != nil {
 				t.Fatalf("remove the Bolt checkout: %v", err)
 			}
@@ -55,7 +56,7 @@ func TestCommand_HubWithoutItsBoltNamesTheResetClone(t *testing.T) {
 			if code == 0 {
 				t.Fatalf("Execute(reconcile) = 0; want a refusal\noutput: %s", output)
 			}
-			wantReconcile := "the hub at " + h.Path + " has no repository at its " + fabricengine.BoltDirName + " checkout " + boltDir +
+			wantReconcile := "the hub at " + h.Path + " has no repository at its " + fabriclayout.BoltDirName + " checkout " + boltDir +
 				", as a clone that stopped before making it leaves; way forward: replace the hub with " + wantReconcileReplacement
 			if result := envelope.RequireErr(t, output, ""); result.Error != wantReconcile {
 				t.Errorf("Execute(reconcile) error = %q; want %q", result.Error, wantReconcile)

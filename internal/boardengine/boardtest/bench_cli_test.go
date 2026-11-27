@@ -20,7 +20,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardcli"
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -31,7 +31,7 @@ func seedWikiRepo(tb testing.TB, n int) string {
 	tb.Helper()
 	dir := seedWiki(tb, n)
 	// The CLI reads the board from the hub's Bolt checkout, and the hub is the repo root's parent.
-	if err := os.Rename(filepath.Join(dir, "board"), filepath.Join(filepath.Dir(dir), fabricengine.BoltDirName)); err != nil {
+	if err := os.Rename(filepath.Join(dir, "board"), filepath.Join(filepath.Dir(dir), fabriclayout.BoltDirName)); err != nil {
 		tb.Fatalf("move board to hub: %v", err)
 	}
 	for _, args := range [][]string{

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -48,7 +49,7 @@ func TestPairPushDeferred(t *testing.T) {
 			t.Parallel()
 
 			_, pair := newHubPair(t, "deferred-run")
-			lockDir := fabricengine.RecordsLockDirPath(fabricengine.RecordsWorktree(pair))
+			lockDir := fabriclayout.RecordsLockDirPath(fabricengine.RecordsWorktree(pair))
 			if err := os.MkdirAll(lockDir, 0o755); err != nil {
 				t.Fatalf("create the lock directory: %v", err)
 			}

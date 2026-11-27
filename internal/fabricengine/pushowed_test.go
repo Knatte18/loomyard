@@ -8,13 +8,14 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // failedWithClass returns a push failure recorded with class.
-func failedWithClass(class fabricengine.PushFailureClass, cause error) error {
-	return &fabricengine.PushFailedError{Record: fabricengine.FailedPush{Class: class}, Err: cause}
+func failedWithClass(class fabriclayout.PushFailureClass, cause error) error {
+	return &fabricengine.PushFailedError{Record: fabriclayout.FailedPush{Class: class}, Err: cause}
 }
 
 func TestIsPushOwed(t *testing.T) {
@@ -26,18 +27,18 @@ func TestIsPushOwed(t *testing.T) {
 		err  error
 		want bool
 	}{
-		{"Transport", failedWithClass(fabricengine.PushFailureTransport, errors.New("unreachable")), true},
-		{"Deferred", failedWithClass(fabricengine.PushFailureDeferred, errors.New("deferred")), true},
-		{"TeardownLock", failedWithClass(fabricengine.PushFailureTeardownLock, fabricengine.ErrPairPushRunning), true},
+		{"Transport", failedWithClass(fabriclayout.PushFailureTransport, errors.New("unreachable")), true},
+		{"Deferred", failedWithClass(fabriclayout.PushFailureDeferred, errors.New("deferred")), true},
+		{"TeardownLock", failedWithClass(fabriclayout.PushFailureTeardownLock, fabricengine.ErrPairPushRunning), true},
 		{"PushLockBusy", fmt.Errorf("lock held: %w", fabricengine.ErrPushLockBusy), true},
 		{"OwedFailuresJoined", errors.Join(
-			failedWithClass(fabricengine.PushFailureTransport, errors.New("code")),
-			failedWithClass(fabricengine.PushFailureDeferred, errors.New("records")),
+			failedWithClass(fabriclayout.PushFailureTransport, errors.New("code")),
+			failedWithClass(fabriclayout.PushFailureDeferred, errors.New("records")),
 		), true},
-		{"NotFastForward", failedWithClass(fabricengine.PushFailureNotFastForward, gitrepo.ErrPushRejected), false},
+		{"NotFastForward", failedWithClass(fabriclayout.PushFailureNotFastForward, gitrepo.ErrPushRejected), false},
 		{"OwedJoinedWithRejection", errors.Join(
-			failedWithClass(fabricengine.PushFailureTransport, errors.New("code")),
-			failedWithClass(fabricengine.PushFailureNotFastForward, gitrepo.ErrPushRejected),
+			failedWithClass(fabriclayout.PushFailureTransport, errors.New("code")),
+			failedWithClass(fabriclayout.PushFailureNotFastForward, gitrepo.ErrPushRejected),
 		), false},
 		{"BareTeardownRefusal", fmt.Errorf("pair is being removed: %w", fabricengine.ErrPairPushRunning), false},
 		{"HandedOver", fmt.Errorf("pushing: %w", fabricengine.ErrHandedOver), false},

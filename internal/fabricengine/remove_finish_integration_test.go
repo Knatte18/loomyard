@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
@@ -68,8 +69,8 @@ func TestRemove_FinishesPairWhoseTaskWorktreeWasRemovedByHand(t *testing.T) {
 	if !res.Finished {
 		t.Errorf("Finished = false; want true for a pair whose task worktree was already gone")
 	}
-	requireSteps(t, res.Steps, fabricengine.RemoveStepRecordCommit, fabricengine.RemoveStepArchive, fabricengine.RemoveStepSiblingWorktree, fabricengine.RemoveStepSiblingBranch, fabricengine.RemoveStepTaskBranch)
-	if slices.Contains(res.Steps, fabricengine.RemoveStepTaskWorktree) {
+	requireSteps(t, res.Steps, fabriclayout.RemoveStepRecordCommit, fabriclayout.RemoveStepArchive, fabriclayout.RemoveStepSiblingWorktree, fabriclayout.RemoveStepSiblingBranch, fabriclayout.RemoveStepTaskBranch)
+	if slices.Contains(res.Steps, fabriclayout.RemoveStepTaskWorktree) {
 		t.Errorf("Steps = %v; want no task_worktree step for a worktree that was already gone", res.Steps)
 	}
 
@@ -83,14 +84,14 @@ func TestRemove_FinishesPairWhoseTaskWorktreeWasRemovedByHand(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read the archived tip's message: %v", err)
 	}
-	if !strings.Contains(msg, fabricengine.WarpSHATrailerKey+": "+warpTip) {
+	if !strings.Contains(msg, fabriclayout.WarpSHATrailerKey+": "+warpTip) {
 		t.Errorf("archived tip message = %q; want the Warp-SHA trailer to name the task branch tip %s", msg, warpTip)
 	}
 
 	if _, statErr := os.Lstat(fabricengine.RecordsWorktreePath(l, slug)); !os.IsNotExist(statErr) {
 		t.Errorf("sibling worktree still present after Remove: %v", statErr)
 	}
-	if gitkit.BranchExists(t, weftRoot, fabricengine.RecordsBranchName(slug)) {
+	if gitkit.BranchExists(t, weftRoot, fabriclayout.RecordsBranchName(slug)) {
 		t.Errorf("sibling branch still exists after Remove")
 	}
 	if gitkit.BranchExists(t, l.WorktreePath(), slug) {
@@ -112,7 +113,7 @@ func TestRemove_FinishesPairWithBothWorktreesGone(t *testing.T) {
 	weftRoot := mustRecordsRepoRoot(t, l)
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 
-	siblingTip := gitkit.RevParse(t, weftRoot, fabricengine.RecordsBranchName(slug))
+	siblingTip := gitkit.RevParse(t, weftRoot, fabriclayout.RecordsBranchName(slug))
 	removeByHand(t, fabricengine.WorktreePath(l, slug))
 	removeByHand(t, fabricengine.RecordsWorktreePath(l, slug))
 
@@ -120,7 +121,7 @@ func TestRemove_FinishesPairWithBothWorktreesGone(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Remove error = %v", err)
 	}
-	if gitkit.BranchExists(t, weftRoot, fabricengine.RecordsBranchName(slug)) {
+	if gitkit.BranchExists(t, weftRoot, fabriclayout.RecordsBranchName(slug)) {
 		t.Errorf("sibling branch still exists after Remove")
 	}
 	if gitkit.BranchExists(t, l.WorktreePath(), slug) {
@@ -132,8 +133,8 @@ func TestRemove_FinishesPairWithBothWorktreesGone(t *testing.T) {
 	if got := tagTargetAt(t, h.RecordsBare, res.ArchiveTag); got != siblingTip {
 		t.Errorf("origin archive tag points at %q; want the sibling tip %s", got, siblingTip)
 	}
-	requireSteps(t, res.Steps, fabricengine.RemoveStepArchive, fabricengine.RemoveStepSiblingBranch, fabricengine.RemoveStepTaskBranch)
-	if slices.Contains(res.Steps, fabricengine.RemoveStepSiblingWorktree) {
+	requireSteps(t, res.Steps, fabriclayout.RemoveStepArchive, fabriclayout.RemoveStepSiblingBranch, fabriclayout.RemoveStepTaskBranch)
+	if slices.Contains(res.Steps, fabriclayout.RemoveStepSiblingWorktree) {
 		t.Errorf("Steps = %v; want no sibling_worktree step for a worktree that was already gone", res.Steps)
 	}
 }
@@ -150,7 +151,7 @@ func leaveSiblingBranchOnlyOnOrigin(t *testing.T, h *hubforge.Hub, slug string) 
 	gitkit.MustRun(t, l.WorktreePath(), "git", "worktree", "prune")
 	gitkit.MustRun(t, weftRoot, "git", "worktree", "prune")
 	gitkit.MustRun(t, l.WorktreePath(), "git", "branch", "-D", slug)
-	gitkit.MustRun(t, weftRoot, "git", "branch", "-D", fabricengine.RecordsBranchName(slug))
+	gitkit.MustRun(t, weftRoot, "git", "branch", "-D", fabriclayout.RecordsBranchName(slug))
 }
 
 // TestRemove_ArchivesAndDeletesSiblingBranchOnlyOnOrigin asserts Remove archives the origin-only sibling branch.
@@ -165,7 +166,7 @@ func TestRemove_ArchivesAndDeletesSiblingBranchOnlyOnOrigin(t *testing.T) {
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
-	siblingTip := gitkit.RevParse(t, h.RecordsBare, fabricengine.RecordsBranchName(slug))
+	siblingTip := gitkit.RevParse(t, h.RecordsBare, fabriclayout.RecordsBranchName(slug))
 	leaveSiblingBranchOnlyOnOrigin(t, h, slug)
 
 	res, err := h.Topology.Remove(l, slug, false, true, "")
@@ -181,10 +182,10 @@ func TestRemove_ArchivesAndDeletesSiblingBranchOnlyOnOrigin(t *testing.T) {
 	if !res.RemoteBranchDeleted || res.RemoteBranchError != "" {
 		t.Errorf("RemoteBranchDeleted = %v, RemoteBranchError = %q; want the origin copy deleted", res.RemoteBranchDeleted, res.RemoteBranchError)
 	}
-	if gitkit.BranchExists(t, h.RecordsBare, fabricengine.RecordsBranchName(slug)) {
+	if gitkit.BranchExists(t, h.RecordsBare, fabriclayout.RecordsBranchName(slug)) {
 		t.Errorf("sibling branch still on origin after Remove(remote=true)")
 	}
-	requireSteps(t, res.Steps, fabricengine.RemoveStepArchive, fabricengine.RemoveStepSiblingBranchOnOrigin)
+	requireSteps(t, res.Steps, fabriclayout.RemoveStepArchive, fabriclayout.RemoveStepSiblingBranchOnOrigin)
 }
 
 // TestRemove_KeepsOriginOnlySiblingBranchWithoutRemote asserts Remove without remote keeps the origin copy.
@@ -203,7 +204,7 @@ func TestRemove_KeepsOriginOnlySiblingBranchWithoutRemote(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Remove(remote=false) error = %v", err)
 	}
-	if !gitkit.BranchExists(t, h.RecordsBare, fabricengine.RecordsBranchName(slug)) {
+	if !gitkit.BranchExists(t, h.RecordsBare, fabriclayout.RecordsBranchName(slug)) {
 		t.Errorf("sibling branch gone from origin after Remove(remote=false); want it kept")
 	}
 	if res.RemoteSkippedReason == "" {
@@ -212,7 +213,7 @@ func TestRemove_KeepsOriginOnlySiblingBranchWithoutRemote(t *testing.T) {
 	if res.ArchiveTag == "" {
 		t.Errorf("ArchiveTag is empty; want the origin copy archived even though it is kept")
 	}
-	if slices.Contains(res.Steps, fabricengine.RemoveStepSiblingBranchOnOrigin) {
+	if slices.Contains(res.Steps, fabriclayout.RemoveStepSiblingBranchOnOrigin) {
 		t.Errorf("Steps = %v; want no sibling_branch_on_origin step without remote", res.Steps)
 	}
 }
@@ -245,7 +246,7 @@ func TestRemove_ReportsStrayPathAndFinishesBranchTeardown(t *testing.T) {
 	if _, statErr := os.Stat(marker); statErr != nil {
 		t.Errorf("stray directory content was deleted: %v", statErr)
 	}
-	if gitkit.BranchExists(t, weftRoot, fabricengine.RecordsBranchName(slug)) {
+	if gitkit.BranchExists(t, weftRoot, fabriclayout.RecordsBranchName(slug)) {
 		t.Errorf("sibling branch still exists after Remove")
 	}
 	if gitkit.BranchExists(t, l.WorktreePath(), slug) {

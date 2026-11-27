@@ -25,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/reportcli"
@@ -124,7 +125,7 @@ func fileRetro(ctx context.Context, out io.Writer, window retroengine.Window) in
 		return output.Err(out, fmt.Sprintf("retro: this repository holds no %s, the retro's scripts: run lym retro on the hub of a repository that has them", retroengine.ToolsDirRel))
 	}
 
-	tasks, err := boardengine.ReadTasks(fabricengine.BoardDir(location.HubPath))
+	tasks, err := boardengine.ReadTasks(fabriclayout.BoardDir(location.HubPath))
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -151,7 +152,7 @@ func fileRetro(ctx context.Context, out io.Writer, window retroengine.Window) in
 			plan.Slug))
 	}
 
-	body, err := plan.Body(fabricengine.StencilsDir(location.HubPath))
+	body, err := plan.Body(fabriclayout.StencilsDir(location.HubPath))
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -246,7 +247,7 @@ func openBoard(location *lymcwd.Location) (*boardengine.Board, error) {
 	if err != nil {
 		return nil, err
 	}
-	cfg.Path = fabricengine.BoardDir(location.HubPath)
+	cfg.Path = fabriclayout.BoardDir(location.HubPath)
 	cfg = boardengine.ApplySkipEnv(cfg)
 	cfg.StrandName = os.Getenv(agentname.StrandNameEnv)
 	return boardengine.New(cfg), nil

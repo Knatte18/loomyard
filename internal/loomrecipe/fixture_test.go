@@ -21,7 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -536,9 +536,9 @@ func buildSequenceFixture(t *testing.T) (anchorPath string, env shedrecipe.Env, 
 	landing := envkit.LandingDeps(dir)
 	landing.Config.DeployBranches = []string{landing.ParentBranch}
 	// The origin reconcile reports the run's entry stopped, so Merge-In halts before it merges anything.
-	landing.Reconcile = func() (fabricengine.OriginReport, error) {
-		return fabricengine.OriginReport{
-			Entries: []fabricengine.EntryOutcome{{State: fabricengine.EntryStopped, WayForward: "resolve the fixture's stop"}},
+	landing.Reconcile = func() (fabriclayout.OriginReport, error) {
+		return fabriclayout.OriginReport{
+			Entries: []fabriclayout.EntryOutcome{{State: fabriclayout.EntryStopped, WayForward: "resolve the fixture's stop"}},
 		}, nil
 	}
 

@@ -150,7 +150,7 @@ A tier named in the last column is where the replacement pushes the test.
 | `reapFake` process and stat lists, `EndProcess` | `hardenshed/reap_test.go` | The OS process table | external | One home for the process boundary, with a recorded table |
 | `reapFake` `Owners`, `End`, `StopServer` | `hardenshed/reap_test.go` | `runproc`, `reedengine` | real | Real owner records (tier1) and server stop (tier2) |
 | `LiveRun` literals with hand-written `go test` lines | `hardenshed/live_test.go`, `shedrecipe/entries_harden_test.go` | `lym gate test` output | real | The real gate run over a small module; tier1 |
-| `fakeMergeSurface`, `fabricengine.MergeResult` literals | `mergeresolve/mergeresolve_test.go` | `fabricengine` | real | A real pair with a conflicting parent; tier1 |
+| `fakeMergeSurface`, `fabriclayout.MergeResult` literals | `mergeresolve/mergeresolve_test.go` | `fabricengine` | real | A real pair with a conflicting parent; tier1 |
 | `unrecognizedMergeError` | `mergeresolve/mergeresolve_test.go` | A merge error no module produces | goes | The catch-all row leaves |
 | `Pending` and inner gate scripts (`turnStep`) | `verifytree/reach_test.go` | The reach report reader and a gate another module builds | real | The real reader over a written report; the scripted inner gate stays |
 | Stub `lym` shell script on `PATH` | `cardverify/runner_test.go` | The `lym` binary | real | `lymbin.PutFirstOnPath`; tier1 |

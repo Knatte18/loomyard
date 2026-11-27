@@ -20,7 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/contracts/specs"
 	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -207,7 +207,7 @@ func stepListAfterFirstSync(t *testing.T, h *hubforge.Hub, worktree string) {
 // It asserts validate reports the first as an error, the second as a warning, and exits non-zero overall.
 func stepValidateReportsErrorAndWarning(t *testing.T, h *hubforge.Hub, worktree string) {
 	registryNames := stencils.Registry().Names()
-	stencilsDir := fabricengine.StencilsDir(h.Path)
+	stencilsDir := fabriclayout.StencilsDir(h.Path)
 	errName := registryNames[0]
 	warnName := registryNames[1]
 
@@ -303,7 +303,7 @@ func stepSecondSyncIsIdempotent(t *testing.T, h *hubforge.Hub, worktree string) 
 // stepUnstampedSyncRecordsNoWriter asserts that a copy the first sync wrote carries no `build=` key.
 // The copy comes from this unstamped test binary, so the next production pre-run refreshes it.
 func stepUnstampedSyncRecordsNoWriter(t *testing.T, h *hubforge.Hub, worktree string) {
-	path := stencilstore.Path(fabricengine.StencilsDir(h.Path), stencils.Registry().Names()[0])
+	path := stencilstore.Path(fabriclayout.StencilsDir(h.Path), stencils.Registry().Names()[0])
 	synced, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read %s: %v", path, err)
@@ -321,7 +321,7 @@ func stepUnstampedSyncRecordsNoWriter(t *testing.T, h *hubforge.Hub, worktree st
 // The diff must not come back silently empty.
 func stepDiffOne(t *testing.T, h *hubforge.Hub, worktree string) {
 	boardDir := h.BoardDir()
-	stencilsDir := fabricengine.StencilsDir(h.Path)
+	stencilsDir := fabriclayout.StencilsDir(h.Path)
 
 	names := stencils.Registry().Names()
 
@@ -380,7 +380,7 @@ func stepDiffOne(t *testing.T, h *hubforge.Hub, worktree string) {
 // It then simulates the next deploy landing the promoted content as the new shipped default.
 // It also confirms the reconciliation row restamps the board copy back to the untouched state.
 func stepPromoteRoundTripAndDiffAll(t *testing.T, h *hubforge.Hub, worktree string) {
-	stencilsDir := fabricengine.StencilsDir(h.Path)
+	stencilsDir := fabriclayout.StencilsDir(h.Path)
 	sourceRoot := filepath.Join(worktree, "contracts", "stencils")
 	if err := os.MkdirAll(sourceRoot, 0o755); err != nil {
 		t.Fatalf("mkdir %s: %v", sourceRoot, err)

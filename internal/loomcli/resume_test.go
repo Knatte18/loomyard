@@ -17,7 +17,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
@@ -180,7 +180,7 @@ func TestResumeVerb(t *testing.T) {
 	deadDriver := fakeDriverDirectory{found: true, row: reedengine.DirectoryRow{Name: driverStrandDisplayName, GUID: "g-drv"}}
 	retiringDriver := fakeDriverDirectory{found: true, row: reedengine.DirectoryRow{Name: driverStrandDisplayName, GUID: "g-drv", Live: true, Retiring: true}}
 	noDriver := fakeDriverDirectory{}
-	mergeParked := fabricengine.MidMergeState{Kind: fabricengine.MidMergeParked, Conflicts: []string{"a.go"}}
+	mergeParked := fabriclayout.MidMergeState{Kind: fabriclayout.MidMergeParked, Conflicts: []string{"a.go"}}
 
 	tests := []struct {
 		name string
@@ -211,7 +211,7 @@ func TestResumeVerb(t *testing.T) {
 		covered bool
 		// noScratch points the lock paths at a directory that does not exist, as on a pair re-created from its branch.
 		noScratch bool
-		merge     fabricengine.MidMergeState
+		merge     fabriclayout.MidMergeState
 		wantOK    bool
 		// wantKind is the refusal's envelope kind;
 		// empty means none.
@@ -263,7 +263,7 @@ func TestResumeVerb(t *testing.T) {
 		{name: "a parked driver under a pause is refused and not woken", runState: shedengine.StateBlocked, directory: liveDriver, marker: true, covered: true, wantIn: []string{"lym tender resume", `"lym loom resume" again`}, ordered: true},
 		{name: "no live driver at Parent-Align over the own leftover reports the dead driver", runState: shedengine.StateBlocked, producer: loomshed.NameParentAlign, directory: deadDriver, merge: ownLeftoverState, wantIn: []string{"dead", "lym batten run <slug>"}},
 		{name: "own leftover at another row keeps the merge refusal", runState: shedengine.StateBlocked, producer: loomshed.NameCodeBouncer, directory: liveDriver, marker: true, merge: ownLeftoverState, wantKind: shedrun.StartMergeInProgressKind, wantIn: []string{"lym fabric merge"}},
-		{name: "parked merge of another source at Finalize keeps the merge refusal", runState: shedengine.StateBlocked, producer: loomshed.NameFinalize, directory: liveDriver, marker: true, merge: fabricengine.MidMergeState{Kind: fabricengine.MidMergeParked, Verb: "merge-in", Source: "other", Conflicts: []string{"a.go"}}, wantKind: shedrun.StartMergeInProgressKind, wantIn: []string{"lym fabric merge"}},
+		{name: "parked merge of another source at Finalize keeps the merge refusal", runState: shedengine.StateBlocked, producer: loomshed.NameFinalize, directory: liveDriver, marker: true, merge: fabriclayout.MidMergeState{Kind: fabriclayout.MidMergeParked, Verb: "merge-in", Source: "other", Conflicts: []string{"a.go"}}, wantKind: shedrun.StartMergeInProgressKind, wantIn: []string{"lym fabric merge"}},
 		{name: "dead driver strand names batten then resume, or start", runState: shedengine.StateBlocked, directory: deadDriver, wantIn: []string{"dead", "lym batten run <slug>", `"lym loom resume" again`, `"lym loom start"`}},
 		{name: "retiring driver strand names start", runState: shedengine.StateBlocked, directory: retiringDriver, marker: true, wantIn: []string{"retiring", `"lym loom start"`}},
 		{name: "no driver strand names start", runState: shedengine.StateBlocked, directory: noDriver, wantIn: []string{"no driver strand", `"lym loom start"`}},
@@ -294,7 +294,7 @@ func TestResumeVerb(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			sender := &fakeDriverSender{repeatErr: tt.sendErr}
 			c, starter, probe := newResumeVerbReceiver(t, sender, tt.directory)
-			c.midMerge = func(*lymcwd.Location) (fabricengine.MidMergeState, error) { return tt.merge, nil }
+			c.midMerge = func(*lymcwd.Location) (fabriclayout.MidMergeState, error) { return tt.merge, nil }
 			c.recordedParentBranch = parentBranchSeam(nil)
 			var events []string
 			c.startPusher = func() { events = append(events, "pusher") }
@@ -443,8 +443,8 @@ func TestResumeVerb_FailedDeliveryNamesResume(t *testing.T) {
 	sender := &fakeDriverSender{repeatErr: notReady()}
 	directory := fakeDriverDirectory{found: true, row: reedengine.DirectoryRow{Name: driverStrandDisplayName, GUID: "g-drv", Live: true}}
 	c, _, _ := newResumeVerbReceiver(t, sender, directory)
-	c.midMerge = func(*lymcwd.Location) (fabricengine.MidMergeState, error) {
-		return fabricengine.MidMergeState{Kind: fabricengine.MidMergeNone}, nil
+	c.midMerge = func(*lymcwd.Location) (fabriclayout.MidMergeState, error) {
+		return fabriclayout.MidMergeState{Kind: fabriclayout.MidMergeNone}, nil
 	}
 	writeTestRunState(t, c, shedengine.StateBlocked)
 	marker := putParkMarker(t, c)

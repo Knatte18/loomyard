@@ -10,44 +10,44 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const goneWayForward = "`lym fabric remove` of the pair removes the pair and clears this record"
 
-func branch(repo, slug string, prime bool, state fabricengine.BranchState, wayForward string) fabricengine.BranchOutcome {
-	return fabricengine.BranchOutcome{Branch: repo + "/" + string(state), Repo: repo, Slug: slug, Prime: prime, State: state, WayForward: wayForward}
+func branch(repo, slug string, prime bool, state fabriclayout.BranchState, wayForward string) fabriclayout.BranchOutcome {
+	return fabriclayout.BranchOutcome{Branch: repo + "/" + string(state), Repo: repo, Slug: slug, Prime: prime, State: state, WayForward: wayForward}
 }
 
-func reportOf(entry fabricengine.EntryOutcome, branches ...fabricengine.BranchOutcome) fabricengine.OriginReport {
-	return fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{entry}, Branches: branches}
+func reportOf(entry fabriclayout.EntryOutcome, branches ...fabriclayout.BranchOutcome) fabriclayout.OriginReport {
+	return fabriclayout.OriginReport{Entries: []fabriclayout.EntryOutcome{entry}, Branches: branches}
 }
 
 func TestRemoveVerdict(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	stopped := fabricengine.EntryOutcome{Slug: "s", State: fabricengine.EntryStopped, WayForward: goneWayForward}
-	goneCode := branch("code", "s", false, fabricengine.BranchGone, goneWayForward)
-	divergedRecords := branch("records", "s", false, fabricengine.BranchDiverged, "WF-RECORDS")
-	divergedBolt := branch("bolt", "", false, fabricengine.BranchDiverged, "WF-BOLT")
-	busyBolt := branch("bolt", "", false, fabricengine.BranchBusy, "WF-BUSY-BOLT")
-	busyOwnRecords := branch("records", "s", false, fabricengine.BranchBusy, "WF-BUSY-RECORDS")
+	stopped := fabriclayout.EntryOutcome{Slug: "s", State: fabriclayout.EntryStopped, WayForward: goneWayForward}
+	goneCode := branch("code", "s", false, fabriclayout.BranchGone, goneWayForward)
+	divergedRecords := branch("records", "s", false, fabriclayout.BranchDiverged, "WF-RECORDS")
+	divergedBolt := branch("bolt", "", false, fabriclayout.BranchDiverged, "WF-BOLT")
+	busyBolt := branch("bolt", "", false, fabriclayout.BranchBusy, "WF-BUSY-BOLT")
+	busyOwnRecords := branch("records", "s", false, fabriclayout.BranchBusy, "WF-BUSY-RECORDS")
 
 	tests := []struct {
 		name    string
-		report  fabricengine.OriginReport
+		report  fabriclayout.OriginReport
 		local   localReading
-		want    fabricengine.EntryState
+		want    fabriclayout.EntryState
 		refusal []string
 		// notInRefusal are texts the refusal must not carry.
 		notInRefusal []string
 	}{
 		{
 			name:    "StoppedRefusesNamingTheWayForwardAndTheRerun",
-			report:  reportOf(stopped, branch("code", "s", false, fabricengine.BranchDiverged, "WF-CODE")),
+			report:  reportOf(stopped, branch("code", "s", false, fabriclayout.BranchDiverged, "WF-CODE")),
 			refusal: []string{"WF-CODE", "lym fabric remove s again"},
 		},
 		{
@@ -78,41 +78,41 @@ func TestRemoveVerdict(t *testing.T) {
 		},
 		{
 			name:   "EndedPassesThrough",
-			report: reportOf(fabricengine.EntryOutcome{Slug: "s", State: fabricengine.EntryEnded}),
-			want:   fabricengine.EntryEnded,
+			report: reportOf(fabriclayout.EntryOutcome{Slug: "s", State: fabriclayout.EntryEnded}),
+			want:   fabriclayout.EntryEnded,
 		},
 		{
 			name:   "OwnedElsewherePassesThrough",
-			report: reportOf(fabricengine.EntryOutcome{Slug: "s", State: fabricengine.EntryOwnedElsewhere, Owner: "other"}),
-			want:   fabricengine.EntryOwnedElsewhere,
+			report: reportOf(fabriclayout.EntryOutcome{Slug: "s", State: fabriclayout.EntryOwnedElsewhere, Owner: "other"}),
+			want:   fabriclayout.EntryOwnedElsewhere,
 		},
 		{
 			name:   "ActiveIsTheOrdinaryRemoval",
-			report: reportOf(fabricengine.EntryOutcome{Slug: "s", State: fabricengine.EntryActive}),
+			report: reportOf(fabriclayout.EntryOutcome{Slug: "s", State: fabriclayout.EntryActive}),
 		},
 		{
 			name:   "NoEntryIsTheOrdinaryRemoval",
-			report: fabricengine.OriginReport{},
+			report: fabriclayout.OriginReport{},
 		},
 		{
 			name:   "ParentPairsEntryIsNotTheSlugs",
-			report: reportOf(fabricengine.EntryOutcome{Slug: "parent", State: fabricengine.EntryStopped, WayForward: "WF-PARENT"}, divergedRecords),
+			report: reportOf(fabriclayout.EntryOutcome{Slug: "parent", State: fabriclayout.EntryStopped, WayForward: "WF-PARENT"}, divergedRecords),
 		},
 		{
 			name:   "UnreachableWithAForeignLocalOwnerIsOwnedElsewhere",
-			report: fabricengine.OriginReport{Unreachable: true},
+			report: fabriclayout.OriginReport{Unreachable: true},
 			local:  localReading{ownedElsewhere: true, done: true},
-			want:   fabricengine.EntryOwnedElsewhere,
+			want:   fabriclayout.EntryOwnedElsewhere,
 		},
 		{
 			name:   "UnreachableWithALocalDoneEntryIsEnded",
-			report: fabricengine.OriginReport{Unreachable: true},
+			report: fabriclayout.OriginReport{Unreachable: true},
 			local:  localReading{done: true},
-			want:   fabricengine.EntryEnded,
+			want:   fabriclayout.EntryEnded,
 		},
 		{
 			name:   "UnreachableWithNeitherReadingIsTheOrdinaryRemoval",
-			report: fabricengine.OriginReport{Unreachable: true},
+			report: fabriclayout.OriginReport{Unreachable: true},
 		},
 	}
 	for _, tt := range tests {
@@ -151,20 +151,20 @@ func TestRemover(t *testing.T) {
 	t.Parallel()
 
 	ordinary := pairteardown.Request{Slug: "s", Force: true, Remote: true, QuietWait: pairteardown.RemoveQuietWait, RefuseWhenBusy: true}
-	endedReport := reportOf(fabricengine.EntryOutcome{Slug: "s", State: fabricengine.EntryEnded})
+	endedReport := reportOf(fabriclayout.EntryOutcome{Slug: "s", State: fabriclayout.EntryEnded})
 	stopped := reportOf(
-		fabricengine.EntryOutcome{Slug: "s", State: fabricengine.EntryStopped},
-		branch("code", "s", false, fabricengine.BranchDiverged, "WF-CODE"),
+		fabriclayout.EntryOutcome{Slug: "s", State: fabriclayout.EntryStopped},
+		branch("code", "s", false, fabriclayout.BranchDiverged, "WF-CODE"),
 	)
 	goneOnly := reportOf(
-		fabricengine.EntryOutcome{Slug: "s", State: fabricengine.EntryStopped},
-		branch("code", "s", false, fabricengine.BranchGone, goneWayForward),
+		fabriclayout.EntryOutcome{Slug: "s", State: fabriclayout.EntryStopped},
+		branch("code", "s", false, fabriclayout.BranchGone, goneWayForward),
 	)
 
 	tests := []struct {
 		name         string
 		gone         bool
-		report       fabricengine.OriginReport
+		report       fabriclayout.OriginReport
 		reconcileErr error
 		local        localReading
 		// wantCalls are the seam calls between the exemption and its restore, in order.
@@ -178,19 +178,19 @@ func TestRemover(t *testing.T) {
 			name:         "EndedVerdictRunsTheLocalRequestAndNamesTheDroppedRemote",
 			report:       endedReport,
 			wantCalls:    []string{"gone", "reconcile", "teardown"},
-			wantRequest:  &pairteardown.Request{Slug: "s", Force: true, Local: true, Verdict: fabricengine.EntryEnded, RefuseWhenBusy: true},
+			wantRequest:  &pairteardown.Request{Slug: "s", Force: true, Local: true, Verdict: fabriclayout.EntryEnded, RefuseWhenBusy: true},
 			wantRemoteBy: "the origin reconcile read the entry ended, so the removal was local and --remote was dropped",
 		},
 		{
 			name:         "OwnedElsewhereVerdictRunsTheLocalRequest",
-			report:       reportOf(fabricengine.EntryOutcome{Slug: "s", State: fabricengine.EntryOwnedElsewhere}),
+			report:       reportOf(fabriclayout.EntryOutcome{Slug: "s", State: fabriclayout.EntryOwnedElsewhere}),
 			wantCalls:    []string{"gone", "reconcile", "teardown"},
-			wantRequest:  &pairteardown.Request{Slug: "s", Force: true, Local: true, Verdict: fabricengine.EntryOwnedElsewhere, RefuseWhenBusy: true},
+			wantRequest:  &pairteardown.Request{Slug: "s", Force: true, Local: true, Verdict: fabriclayout.EntryOwnedElsewhere, RefuseWhenBusy: true},
 			wantRemoteBy: "the origin reconcile read the entry owned_elsewhere, so the removal was local and --remote was dropped",
 		},
 		{
 			name:        "ActiveVerdictRunsTheOrdinaryRequest",
-			report:      reportOf(fabricengine.EntryOutcome{Slug: "s", State: fabricengine.EntryActive}),
+			report:      reportOf(fabriclayout.EntryOutcome{Slug: "s", State: fabriclayout.EntryActive}),
 			wantCalls:   []string{"gone", "reconcile", "teardown"},
 			wantRequest: &ordinary,
 		},
@@ -217,7 +217,7 @@ func TestRemover(t *testing.T) {
 			gone:         true,
 			local:        localReading{ownedElsewhere: true},
 			wantCalls:    []string{"gone", "local", "teardown"},
-			wantRequest:  &pairteardown.Request{Slug: "s", Force: true, Local: true, Verdict: fabricengine.EntryOwnedElsewhere, RefuseWhenBusy: true},
+			wantRequest:  &pairteardown.Request{Slug: "s", Force: true, Local: true, Verdict: fabriclayout.EntryOwnedElsewhere, RefuseWhenBusy: true},
 			wantRemoteBy: "the origin reconcile read the entry owned_elsewhere, so the removal was local and --remote was dropped",
 		},
 		{
@@ -242,7 +242,7 @@ func TestRemover(t *testing.T) {
 					calls = append(calls, "gone")
 					return tt.gone, nil
 				},
-				reconcile: func(string) (fabricengine.OriginReport, error) {
+				reconcile: func(string) (fabriclayout.OriginReport, error) {
 					calls = append(calls, "reconcile")
 					return tt.report, tt.reconcileErr
 				},

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
@@ -300,8 +301,8 @@ func TestHoldRecordsWriteLocks(t *testing.T) {
 		if !errors.Is(err, ErrDriverBusy) {
 			t.Fatalf("holdRecordsWriteLocks error = %v, want one wrapping ErrDriverBusy", err)
 		}
-		if !strings.Contains(err.Error(), fabricengine.RecordsLockDirPath(pairRecords)) {
-			t.Errorf("holdRecordsWriteLocks error %q lacks the busy lock's path %q", err.Error(), fabricengine.RecordsLockDirPath(pairRecords))
+		if !strings.Contains(err.Error(), fabriclayout.RecordsLockDirPath(pairRecords)) {
+			t.Errorf("holdRecordsWriteLocks error %q lacks the busy lock's path %q", err.Error(), fabriclayout.RecordsLockDirPath(pairRecords))
 		}
 		if held(t, primeRecords) {
 			t.Error("the prime's records write lock is still held after the refusal")

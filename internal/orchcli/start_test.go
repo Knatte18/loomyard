@@ -19,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -154,7 +155,7 @@ type startHarness struct {
 	// report and reconcileErr are what the fake reconcile answers.
 	reconciles       int
 	callsAtReconcile int
-	report           fabricengine.OriginReport
+	report           fabriclayout.OriginReport
 	reconcileErr     error
 	// claims, when set, wires the prime claim to answer each call with the next entry, the last one repeating; claimCalls counts the calls.
 	claims     []claimAnswer
@@ -192,11 +193,11 @@ func newStartHarness(t *testing.T, strands ...reedengine.StrandStatus) *startHar
 	c.stencilsDir = stencilkit.Seed(t)
 	c.location = locationkit.Location(t.TempDir(), "main", "")
 	c.runsWindowTitle = func() string { return harnessRunsWindowTitle }
-	boardDir := fabricengine.BoardDir(c.location.HubPath)
+	boardDir := fabriclayout.BoardDir(c.location.HubPath)
 	if err := os.MkdirAll(boardDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(boardDir, fabricengine.ShortnameFileName), []byte("tst"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(boardDir, fabriclayout.ShortnameFileName), []byte("tst"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	h := &startHarness{
@@ -211,7 +212,7 @@ func newStartHarness(t *testing.T, strands ...reedengine.StrandStatus) *startHar
 	c.currentBuild = func() (statuspane.BuildIdentity, error) { return h.build, nil }
 	c.starter = h.starter
 	c.reedUp = func() error { return nil }
-	c.reconcile = func() (fabricengine.OriginReport, error) {
+	c.reconcile = func() (fabriclayout.OriginReport, error) {
 		h.reconciles++
 		h.callsAtReconcile = len(h.calls)
 		return h.report, h.reconcileErr
@@ -1018,7 +1019,7 @@ func TestStart_Refusals(t *testing.T) {
 		{
 			name: "a hub with no shortname record fails before any round",
 			seed: func(t *testing.T, h *startHarness) {
-				if err := os.Remove(filepath.Join(fabricengine.BoardDir(h.cli.location.HubPath), fabricengine.ShortnameFileName)); err != nil {
+				if err := os.Remove(filepath.Join(fabriclayout.BoardDir(h.cli.location.HubPath), fabriclayout.ShortnameFileName)); err != nil {
 					t.Fatal(err)
 				}
 			},
@@ -1183,7 +1184,9 @@ func TestStart_ReconcilesTheHubFirst(t *testing.T) {
 
 	const stopSentinel = "SENTINEL-way-forward-of-the-stopped-branch"
 	addRemovedPair := func(h *startHarness) {
-		h.report.Mutations.Append(fabricengine.KindWorktreeRemoved, "/hub/ended-slug", "ended pair removed")
+		h.report.Mutations = fabriclayout.MutationsOf([]fabriclayout.Mutation{
+			{Kind: fabriclayout.KindWorktreeRemoved, Target: "/hub/ended-slug", Detail: "ended pair removed"},
+		})
 	}
 	liveOrch := reedengine.StrandStatus{GUID: "g1", Name: "orch", Live: true}
 	tests := []struct {
@@ -1196,8 +1199,8 @@ func TestStart_ReconcilesTheHubFirst(t *testing.T) {
 		{
 			name: "the reconcile runs before the launch and its report and the failed pushes are on the envelope",
 			prepare: func(t *testing.T, h *startHarness) {
-				h.report.Branches = []fabricengine.BranchOutcome{{Branch: "main", Repo: "code", State: fabricengine.BranchFastForward, Moved: true}}
-				failed := fabricengine.FailedPush{Repo: "code", Branch: "feature", Class: fabricengine.PushFailureAuth, Error: "403"}
+				h.report.Branches = []fabriclayout.BranchOutcome{{Branch: "main", Repo: "code", State: fabriclayout.BranchFastForward, Moved: true}}
+				failed := fabriclayout.FailedPush{Repo: "code", Branch: "feature", Class: fabriclayout.PushFailureAuth, Error: "403"}
 				if err := fabricengine.RecordPushFailure(h.cli.location.HubPath, failed, time.Now()); err != nil {
 					t.Fatal(err)
 				}
@@ -1232,7 +1235,7 @@ func TestStart_ReconcilesTheHubFirst(t *testing.T) {
 		{
 			name: "a stop launches and its summary is a line of the start prompt",
 			prepare: func(t *testing.T, h *startHarness) {
-				h.report.Branches = []fabricengine.BranchOutcome{{Branch: "main", Repo: "code", State: fabricengine.BranchDirty, WayForward: stopSentinel}}
+				h.report.Branches = []fabriclayout.BranchOutcome{{Branch: "main", Repo: "code", State: fabriclayout.BranchDirty, WayForward: stopSentinel}}
 			},
 			wantOK: true,
 			check: func(t *testing.T, h *startHarness, env map[string]any) {
@@ -1340,9 +1343,9 @@ func TestStart_ReconcilesTheHubFirst(t *testing.T) {
 		{
 			name: "an owned_elsewhere beam and task are ended once before the launch, the dobby with the beam only, and named in owner_pauses",
 			prepare: func(t *testing.T, h *startHarness) {
-				h.report.Entries = []fabricengine.EntryOutcome{
-					{Slug: "p1", State: fabricengine.EntryOwnedElsewhere, Local: true, Owner: "laptop"},
-					{Slug: "p2", State: fabricengine.EntryOwnedElsewhere, Local: true, Owner: "laptop"},
+				h.report.Entries = []fabriclayout.EntryOutcome{
+					{Slug: "p1", State: fabriclayout.EntryOwnedElsewhere, Local: true, Owner: "laptop"},
+					{Slug: "p2", State: fabriclayout.EntryOwnedElsewhere, Local: true, Owner: "laptop"},
 				}
 				h.pauseOwned = true
 				h.beams = map[string]bool{"p1": true}
@@ -1365,7 +1368,7 @@ func TestStart_ReconcilesTheHubFirst(t *testing.T) {
 		{
 			name: "a failing end warns naming the re-run of beam start and the launch goes on",
 			prepare: func(t *testing.T, h *startHarness) {
-				h.report.Entries = []fabricengine.EntryOutcome{{Slug: "p1", State: fabricengine.EntryOwnedElsewhere, Local: true, Owner: "laptop"}}
+				h.report.Entries = []fabriclayout.EntryOutcome{{Slug: "p1", State: fabriclayout.EntryOwnedElsewhere, Local: true, Owner: "laptop"}}
 				h.pauseOwned, h.pauseOwnedErr = true, errors.New("end refused")
 			},
 			wantOK: true,
@@ -1379,7 +1382,7 @@ func TestStart_ReconcilesTheHubFirst(t *testing.T) {
 		{
 			name: "a failed beam read ends nothing for that entry and warns, and the launch goes on",
 			prepare: func(t *testing.T, h *startHarness) {
-				h.report.Entries = []fabricengine.EntryOutcome{{Slug: "p1", State: fabricengine.EntryOwnedElsewhere, Local: true, Owner: "laptop"}}
+				h.report.Entries = []fabriclayout.EntryOutcome{{Slug: "p1", State: fabriclayout.EntryOwnedElsewhere, Local: true, Owner: "laptop"}}
 				h.pauseOwned, h.beamErr = true, errors.New("board unreadable")
 			},
 			wantOK: true,
@@ -1393,7 +1396,7 @@ func TestStart_ReconcilesTheHubFirst(t *testing.T) {
 		{
 			name: "with no end wired an owned_elsewhere entry is named under the warnings and the launch goes on",
 			prepare: func(t *testing.T, h *startHarness) {
-				h.report.Entries = []fabricengine.EntryOutcome{{Slug: "p1", State: fabricengine.EntryOwnedElsewhere, Local: true, Owner: "laptop"}}
+				h.report.Entries = []fabriclayout.EntryOutcome{{Slug: "p1", State: fabriclayout.EntryOwnedElsewhere, Local: true, Owner: "laptop"}}
 			},
 			wantOK: true,
 			check: func(t *testing.T, h *startHarness, env map[string]any) {
@@ -1417,7 +1420,7 @@ func TestStart_ReconcilesTheHubFirst(t *testing.T) {
 			name: "without Prepare nothing is reconciled, claimed or paused and the launch goes on",
 			prepare: func(t *testing.T, h *startHarness) {
 				addRemovedPair(h)
-				h.report.Entries = []fabricengine.EntryOutcome{{Slug: "p1", State: fabricengine.EntryOwnedElsewhere, Local: true, Owner: "laptop"}}
+				h.report.Entries = []fabriclayout.EntryOutcome{{Slug: "p1", State: fabriclayout.EntryOwnedElsewhere, Local: true, Owner: "laptop"}}
 				h.claims = []claimAnswer{{claimed: "desktop"}}
 				h.pauseOwned = true
 				h.prepareOff = true

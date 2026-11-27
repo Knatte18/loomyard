@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -126,7 +127,7 @@ func TestOriginNamespaceAt(t *testing.T) {
 				name: "OnlyABranchMergeSettingLeft",
 				spoil: func(t *testing.T, dir string) {
 					gitkit.Git(t, dir, "config", "--replace-all", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*")
-					gitkit.Git(t, dir, "config", "--unset", PrimeRecordsBranchKey)
+					gitkit.Git(t, dir, "config", "--unset", fabriclayout.PrimeRecordsBranchKey)
 					gitkit.Git(t, dir, "config", "branch.main.merge", "refs/lym/heads/main")
 				},
 				wantErrorHas: "holds the upstream setting branch.main.merge refs/lym/heads/main, so it is a one-repository records store, " +
@@ -137,7 +138,7 @@ func TestOriginNamespaceAt(t *testing.T) {
 			t.Run(tt.name, func(t *testing.T) {
 				dir := filepath.Join(t.TempDir(), "records")
 				newLayoutStore(t, dir, bare, true)
-				gitkit.Git(t, dir, "config", PrimeRecordsBranchKey, "main-weft")
+				gitkit.Git(t, dir, "config", fabriclayout.PrimeRecordsBranchKey, "main-weft")
 				tt.spoil(t, dir)
 
 				got, err := originNamespaceAt(dir)

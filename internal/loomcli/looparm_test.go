@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
@@ -40,7 +40,7 @@ func TestRegisterRunProcess(t *testing.T) {
 
 			tt.register(loc)
 
-			records, err := runproc.List(fabricengine.RunProcDir(loc.HubPath), "slug-1")
+			records, err := runproc.List(fabriclayout.RunProcDir(loc.HubPath), "slug-1")
 			if err != nil {
 				t.Fatalf("List() = %v; want nil", err)
 			}
@@ -51,7 +51,7 @@ func TestRegisterRunProcess(t *testing.T) {
 	}
 
 	blocked := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "slug-2", AnchorRel: "."}
-	blockedDir := fabricengine.RunProcDir(blocked.HubPath)
+	blockedDir := fabriclayout.RunProcDir(blocked.HubPath)
 	if err := os.MkdirAll(filepath.Dir(blockedDir), 0o755); err != nil {
 		t.Fatalf("MkdirAll() = %v; want nil", err)
 	}

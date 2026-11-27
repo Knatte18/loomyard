@@ -15,6 +15,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
@@ -32,7 +33,7 @@ func newPairFixture(t *testing.T) (*lymcwd.Location, string) {
 func seedRepoWideFabricConfig(t *testing.T, hub string) {
 	t.Helper()
 
-	boardDir := fabricengine.BoardDir(hub)
+	boardDir := fabriclayout.BoardDir(hub)
 	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
 		t.Fatalf("mkdir repo-wide config dir: %v", err)
 	}

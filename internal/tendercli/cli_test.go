@@ -20,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -83,11 +84,11 @@ func TestStatus_PrintsOutstandingFailedPushes(t *testing.T) {
 		t.Errorf("failed_pushes with no record = %v; want an empty array", none.Raw["failed_pushes"])
 	}
 
-	record := fabricengine.FailedPush{
+	record := fabriclayout.FailedPush{
 		Repo:     "code",
 		RepoPath: pair,
 		Branch:   "feature/x",
-		Class:    fabricengine.PushFailureTransport,
+		Class:    fabriclayout.PushFailureTransport,
 		Error:    "connection refused",
 	}
 	if err := fabricengine.RecordPushFailure(h.Location.HubPath, record, time.Now()); err != nil {
@@ -450,7 +451,7 @@ func TestInstallNetworkGate_TellsThePairsSlugAndInstallsNothingOutsideAHub(t *te
 	if ops, err := pauserecord.ListNetOps(sentinel.RecordPath, allAlive); err != nil || len(ops) != 1 || ops[0].Op != "left-in-flight" {
 		t.Fatalf("operations under the sentinel gate = %+v, %v; want the one left in flight, since nothing was installed outside a hub", ops, err)
 	}
-	if _, err := os.Stat(filepath.Join(agentWorktrees, fabricengine.BoltDirName)); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(agentWorktrees, fabriclayout.BoltDirName)); !os.IsNotExist(err) {
 		t.Errorf("Stat(agent worktree's sibling Bolt checkout) error = %v; want it absent", err)
 	}
 
@@ -479,7 +480,7 @@ func TestInstallNetworkGate_TellsThePairsSlugAndInstallsNothingOutsideAHub(t *te
 		t.Run(tt.name, func(t *testing.T) {
 			hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: tt.anchor})
 			slug := tt.pauseSlug
-			boardWorktree := fabricengine.BoardDir(hub.Location.HubPath)
+			boardWorktree := fabriclayout.BoardDir(hub.Location.HubPath)
 			InstallNetworkGate(lymcwd.WithCwd(t.Context(), boardWorktree), &slug, DetachedChild{}, false)
 			pauserecord.Network("board-probe")
 			geometry, err := hubgeom.PauseGeometry(hub.Location)
@@ -506,7 +507,7 @@ func TestInstallNetworkGate_TellsThePairsSlugAndInstallsNothingOutsideAHub(t *te
 	}
 	hubEntry := pauserecord.Entry{Scope: pauserecord.ScopeHub, Caller: "EXTERNAL", PausedAt: time.Now()}
 	pairEntry := pauserecord.Entry{Scope: pairSlug, Caller: "EXTERNAL", PausedAt: time.Now()}
-	boardDir := func(hub *hubforge.Hub) string { return fabricengine.BoardDir(hub.Location.HubPath) }
+	boardDir := func(hub *hubforge.Hub) string { return fabriclayout.BoardDir(hub.Location.HubPath) }
 	pairDir := func(hub *hubforge.Hub) string { return hub.PairCodeWorktree(pairSlug) }
 	childTests := []struct {
 		name        string

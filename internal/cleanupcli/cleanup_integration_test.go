@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hibernateengine"
@@ -77,7 +78,7 @@ func TestCleanupVerb_RefusesOutsideThePrimeThenListsAndThenRemovesEverySeededLef
 	if _, committed, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), h.Location, rels, "test: finished run", fabricengine.EnvSyncOptions()); err != nil || !committed {
 		t.Fatalf("commit the finished run: committed=%v err=%v", committed, err)
 	}
-	if _, err := fabricengine.PushPairAnchored(h.Location, fabricengine.EnvSyncOptions(), fabricengine.PairPush{LockWait: fabricengine.StatusPushLockWait}); err != nil {
+	if _, err := fabricengine.PushPairAnchored(h.Location, fabricengine.EnvSyncOptions(), fabriclayout.PairPush{LockWait: fabriclayout.StatusPushLockWait}); err != nil {
 		t.Fatalf("push the finished run: %v", err)
 	}
 	runDir := shedrun.RunDir(h.Location, runSlug)
@@ -213,7 +214,7 @@ func TestCleanupVerb_RefusesOutsideThePrimeThenListsAndThenRemovesEverySeededLef
 	if !diverged.OK || code != 0 {
 		t.Fatalf("dry run over a diverged Bolt: ok=%v code=%d error=%q", diverged.OK, code, diverged.Error)
 	}
-	if state := reconcileBranch(t, diverged, "bolt", "main")["State"]; state != string(fabricengine.BranchNeedsReplay) {
+	if state := reconcileBranch(t, diverged, "bolt", "main")["State"]; state != string(fabriclayout.BranchNeedsReplay) {
 		t.Errorf("dry run Bolt state = %v; want needs_replay", state)
 	}
 	requireEmptyRecord(t, "dry run over a diverged Bolt", diverged, false)
@@ -232,7 +233,7 @@ func TestCleanupVerb_RefusesOutsideThePrimeThenListsAndThenRemovesEverySeededLef
 	dirty, code := run(h.PrimeWorktree(), "--apply")
 	boltStop := reconcileBranch(t, dirty, "bolt", "main")
 	boltWayForward, _ := boltStop["WayForward"].(string)
-	if dirty.OK || code == 0 || boltStop["State"] != string(fabricengine.BranchDirty) || boltWayForward == "" ||
+	if dirty.OK || code == 0 || boltStop["State"] != string(fabriclayout.BranchDirty) || boltWayForward == "" ||
 		!strings.Contains(dirty.Error, boltWayForward+"; then re-run lym cleanup --apply from the prime") {
 		t.Errorf("--apply over a dirty Bolt: ok=%v code=%d error=%q stop=%v; want a refusal naming the stop's way forward and the re-entry", dirty.OK, code, dirty.Error, boltStop)
 	}
@@ -251,7 +252,7 @@ func TestCleanupVerb_RefusesOutsideThePrimeThenListsAndThenRemovesEverySeededLef
 	conflict, code := run(h.PrimeWorktree(), "--apply")
 	recordsStop := reconcileBranch(t, conflict, "records", recordsBranch)
 	recordsWayForward, _ := recordsStop["WayForward"].(string)
-	if conflict.OK || code == 0 || recordsStop["State"] != string(fabricengine.BranchDiverged) || recordsWayForward == "" ||
+	if conflict.OK || code == 0 || recordsStop["State"] != string(fabriclayout.BranchDiverged) || recordsWayForward == "" ||
 		!strings.Contains(conflict.Error, recordsWayForward) || !strings.Contains(recordsWayForward, "lym fabric push") {
 		t.Errorf("--apply over a both-sides records change: ok=%v code=%d error=%q stop=%v; want a refusal naming the conflict's way forward", conflict.OK, code, conflict.Error, recordsStop)
 	}
@@ -310,7 +311,7 @@ func TestCleanupVerb_RefusesOutsideThePrimeThenListsAndThenRemovesEverySeededLef
 	gitkit.CommitFile(t, h.PairCodeWorktree(hubforge.TemplatePairSlug), "local.txt", "local\n", "local pair change")
 	originCommit(t, h.CodeBare, pairBranch, "origin.txt", "origin\n")
 	stoppedPair, code := run(h.PrimeWorktree(), "--apply")
-	if !stoppedPair.OK || code != 0 || reconcileBranch(t, stoppedPair, "code", pairBranch)["State"] != string(fabricengine.BranchDiverged) || len(requireList(t, stoppedPair, "segments")) == 0 {
+	if !stoppedPair.OK || code != 0 || reconcileBranch(t, stoppedPair, "code", pairBranch)["State"] != string(fabriclayout.BranchDiverged) || len(requireList(t, stoppedPair, "segments")) == 0 {
 		t.Errorf("--apply over a diverged pair: ok=%v code=%d envelope=%v; want the stop reported and the segments run", stoppedPair.OK, code, stoppedPair.Raw)
 	}
 
@@ -324,7 +325,7 @@ func TestCleanupVerb_RefusesOutsideThePrimeThenListsAndThenRemovesEverySeededLef
 	if exists(fabricengine.WorktreePath(h.Location, endedSlug)) || exists(fabricengine.RecordsWorktreePath(h.Location, endedSlug)) {
 		t.Errorf("--apply left the ended run's worktrees")
 	}
-	if !slices.Contains(mutationKinds(t, endedRun), string(fabricengine.KindWorktreeRemoved)) {
+	if !slices.Contains(mutationKinds(t, endedRun), string(fabriclayout.KindWorktreeRemoved)) {
 		t.Errorf("--apply over an ended run: mutations = %v; want the removed pair recorded", mutationKinds(t, endedRun))
 	}
 
@@ -345,7 +346,7 @@ func TestCleanupVerb_RefusesOutsideThePrimeThenListsAndThenRemovesEverySeededLef
 	}); err != nil {
 		t.Fatalf("write the wake pause entry: %v", err)
 	}
-	teardownLock := fabricengine.TeardownLockPath(h.Path, wakeSlug)
+	teardownLock := fabriclayout.TeardownLockPath(h.Path, wakeSlug)
 	if err := os.MkdirAll(filepath.Dir(teardownLock), 0o755); err != nil {
 		t.Fatalf("create the teardown lock dir: %v", err)
 	}
@@ -365,7 +366,7 @@ func TestCleanupVerb_RefusesOutsideThePrimeThenListsAndThenRemovesEverySeededLef
 	snapshotTag := false
 	for _, mutation := range mutationsOf(t, busy) {
 		detail, _ := mutation["detail"].(string)
-		snapshotTag = snapshotTag || (mutation["kind"] == string(fabricengine.KindTagCreated) && strings.Contains(detail, "set-aside/"+wakeSlug+"/"))
+		snapshotTag = snapshotTag || (mutation["kind"] == string(fabriclayout.KindTagCreated) && strings.Contains(detail, "set-aside/"+wakeSlug+"/"))
 	}
 	if !snapshotTag {
 		t.Errorf("first --apply mutations = %v; want the snapshot's set-aside tag", mutationsOf(t, busy))
@@ -381,7 +382,7 @@ func TestCleanupVerb_RefusesOutsideThePrimeThenListsAndThenRemovesEverySeededLef
 	if !removed.OK || code != 0 || !entryRemoved(t, removed, wakeSlug) || exists(wakeWorktree) {
 		t.Fatalf("second --apply over the wake pair: ok=%v code=%d error=%q envelope=%v; want the pair removed", removed.OK, code, removed.Error, removed.Raw)
 	}
-	if !slices.Contains(mutationKinds(t, removed), string(fabricengine.KindWorktreeRemoved)) {
+	if !slices.Contains(mutationKinds(t, removed), string(fabriclayout.KindWorktreeRemoved)) {
 		t.Errorf("second --apply mutations = %v; want the removed pair recorded", mutationKinds(t, removed))
 	}
 
@@ -506,14 +507,14 @@ func reconcileEntry(env envelope.Envelope, slug string) map[string]any {
 func entryRemoved(t *testing.T, env envelope.Envelope, slug string) bool {
 	t.Helper()
 	entry := reconcileEntry(env, slug)
-	return entry != nil && entry["State"] == string(fabricengine.EntryEnded) && entry["Removed"] == true
+	return entry != nil && entry["State"] == string(fabriclayout.EntryEnded) && entry["Removed"] == true
 }
 
 // entryBusy reports whether the reconcile left slug's ended pair in place because it was busy.
 func entryBusy(t *testing.T, env envelope.Envelope, slug string) bool {
 	t.Helper()
 	entry := reconcileEntry(env, slug)
-	return entry != nil && entry["State"] == string(fabricengine.EntryEnded) && entry["Busy"] == true
+	return entry != nil && entry["State"] == string(fabriclayout.EntryEnded) && entry["Busy"] == true
 }
 
 // originCommit commits rel from a second clone of bare at branch, as the other machine, and pushes it.

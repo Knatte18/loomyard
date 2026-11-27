@@ -13,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -80,17 +81,17 @@ func addChildWorktree(t *testing.T, container, mainWorktreePath, name string, wi
 func writeBoard(t *testing.T, container, entriesJSON string) {
 	t.Helper()
 
-	configDir := configengine.ConfigDir(fabricengine.BoardDir(container))
+	configDir := configengine.ConfigDir(fabriclayout.BoardDir(container))
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
-	boardConfigPath := configengine.ConfigFile(fabricengine.BoardDir(container), "board")
-	boardConfig := "path: ../" + fabricengine.BoltDirName + "\nreadme: Home.md\ndesign_prefix: proposal-\n"
+	boardConfigPath := configengine.ConfigFile(fabriclayout.BoardDir(container), "board")
+	boardConfig := "path: ../" + fabriclayout.BoltDirName + "\nreadme: Home.md\ndesign_prefix: proposal-\n"
 	if err := os.WriteFile(boardConfigPath, []byte(boardConfig), 0o644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
 
-	boardDir := fabricengine.BoltDir(container)
+	boardDir := fabriclayout.BoltDir(container)
 	if err := os.MkdirAll(boardDir, 0o755); err != nil {
 		t.Fatalf("failed to create board dir: %v", err)
 	}

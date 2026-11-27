@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -41,7 +42,7 @@ func TestRemove_RerunAfterItsTeardownChildEndedArchivesTheLocalRecordsTip(t *tes
 	const slug = "ended-remove"
 	h := hubforge.NewOneRepoHub(t, hubforge.OneRepoOptions{})
 	bare := h.CodeBare
-	recordsBranch := fabricengine.RecordsBranchName(hubforge.AddPair(t, h, slug).Branch)
+	recordsBranch := fabriclayout.RecordsBranchName(hubforge.AddPair(t, h, slug).Branch)
 	gitkit.CommitFile(t, h.PairRecordsSibling(slug), "unpushed.txt", "unpushed\n", "unpushed records")
 
 	fabricengine.SetTeardownChildEndsForTest(h.Topology, true)
@@ -102,7 +103,7 @@ func TestRemove_PendingRecordNamesTheRerunItsCallerGave(t *testing.T) {
 	}
 	requireOnePendingTeardown(t, h, slug, wayForward)
 
-	for _, ref := range []string{namespaceHeadsPrefix + fabricengine.RecordsBranchName(branch), "refs/heads/" + branch} {
+	for _, ref := range []string{namespaceHeadsPrefix + fabriclayout.RecordsBranchName(branch), "refs/heads/" + branch} {
 		gitkit.MustRun(t, bare, "git", "update-ref", "-d", ref)
 	}
 	if err := h.Topology.SettleGonePairTeardown(h.Location, slug, rerun); err != nil {
@@ -137,7 +138,7 @@ func TestDiscardTaskBranch_RerunAfterItsTeardownChildEndedArchivesTheTaskTip(t *
 		t.Fatalf("PushBranch: %v", err)
 	}
 	localTip := gitkit.CommitFile(t, h.PairCodeWorktree(slug), "unpushed.txt", "unpushed\n", "unlanded work origin lacks")
-	localTag := fabricengine.ArchiveTagName(slug, localTip)
+	localTag := fabriclayout.ArchiveTagName(slug, localTip)
 	// The removal keeps the unlanded task branch, locally and on origin, for the discard that follows it.
 	if _, err := h.Topology.Remove(h.Location, slug, false, true, ""); err != nil {
 		t.Fatalf("Remove(%s): %v", slug, err)

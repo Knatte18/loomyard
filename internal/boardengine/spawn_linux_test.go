@@ -12,7 +12,7 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -42,17 +42,17 @@ func TestSpawnSync_RegistersUnderTheHubOwner(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			hub := t.TempDir()
-			board := fabricengine.BoardDir(hub)
+			board := fabriclayout.BoardDir(hub)
 			if err := os.MkdirAll(board, 0o755); err != nil {
 				t.Fatal(err)
 			}
 			buf := logcapture.Capture(t)
 
 			if tt.blocked {
-				if err := os.MkdirAll(fabricengine.HubScratchDir(hub), 0o755); err != nil {
+				if err := os.MkdirAll(fabriclayout.HubScratchDir(hub), 0o755); err != nil {
 					t.Fatal(err)
 				}
-				if err := os.WriteFile(fabricengine.RunProcDir(hub), nil, 0o644); err != nil {
+				if err := os.WriteFile(fabriclayout.RunProcDir(hub), nil, 0o644); err != nil {
 					t.Fatal(err)
 				}
 				t.Cleanup(func() {
@@ -71,7 +71,7 @@ func TestSpawnSync_RegistersUnderTheHubOwner(t *testing.T) {
 			if err := spawnSync(board); err != nil {
 				t.Fatalf("spawnSync() = %v; want nil", err)
 			}
-			ownerDir := filepath.Join(fabricengine.RunProcDir(hub), runproc.HubOwner)
+			ownerDir := filepath.Join(fabriclayout.RunProcDir(hub), runproc.HubOwner)
 			records, err := filepath.Glob(filepath.Join(ownerDir, "*.json"))
 			if err != nil {
 				t.Fatal(err)

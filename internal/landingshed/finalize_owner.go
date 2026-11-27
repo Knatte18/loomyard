@@ -10,6 +10,7 @@ import (
 	"fmt"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
@@ -43,7 +44,7 @@ func (fz *Finalize) ownerChecks(ctx context.Context, held bool) *ending {
 		return reconcileVerdict(ctx, finalizeName, fz.deps.Reconcile, nil)
 	}
 
-	var report fabricengine.OriginReport
+	var report fabriclayout.OriginReport
 	if fz.deps.Reconcile != nil {
 		var err error
 		if report, err = reconcileReport(ctx, finalizeName, fz.deps.Reconcile); err != nil {
@@ -59,7 +60,7 @@ func (fz *Finalize) ownerChecks(ctx context.Context, held bool) *ending {
 
 	var runOwner string
 	for _, entry := range report.Entries {
-		if entry.State == fabricengine.EntryOwnedElsewhere {
+		if entry.State == fabriclayout.EntryOwnedElsewhere {
 			runOwner = entry.Owner
 			break
 		}

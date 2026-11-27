@@ -15,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/claudeimports"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
@@ -187,7 +188,7 @@ func (r Renderer) read(boltDir string) (Layers, error) {
 	if wait == 0 {
 		wait = DefaultBoltLockWait
 	}
-	lockPath, err := fabricengine.BoltLockPath(boltDir, fabricengine.BoardWriteLockFile)
+	lockPath, err := fabricengine.BoltLockPath(boltDir, fabriclayout.BoardWriteLockFile)
 	if err != nil {
 		return Layers{}, err
 	}

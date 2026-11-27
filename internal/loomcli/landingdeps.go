@@ -20,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/failuretrace"
 	"github.com/Knatte18/loomyard/internal/fswatch"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
@@ -171,7 +172,7 @@ func landingDeps(
 		ParentOwner: parentOwner(l, seedSlug(l.WorktreeName)),
 		// OwnedElsewhere pulls the board first, so a takeover another machine recorded is seen before the landing acts.
 		OwnedElsewhere: func() (string, string, bool, error) {
-			if err := boardengine.PullBolt(fabricengine.BoardDir(l.HubPath)); err != nil {
+			if err := boardengine.PullBolt(fabriclayout.BoardDir(l.HubPath)); err != nil {
 				return "", "", false, err
 			}
 			owner, subject, err := ownerOfSubject(l, seedSlug(l.WorktreeName))
@@ -212,7 +213,7 @@ func landingDeps(
 		},
 		// The pre-merge step probes the pair's merge state.
 		// It aborts the row's own parked merge-in and stops the run's conflict sessions first.
-		MergeState: func() (fabricengine.MidMergeState, error) {
+		MergeState: func() (fabriclayout.MidMergeState, error) {
 			return fabricengine.MidMerge(l)
 		},
 		AbortMerge: func() error {
@@ -266,7 +267,7 @@ func landingDeps(
 		},
 		// ConfigChanges reads the task's changes to its per-worktree config files since its fork point.
 		// A hub-wide module's file is never read: its worktree copy is not the one in force.
-		ConfigChanges: func() (fabricengine.ConfigChanges, error) {
+		ConfigChanges: func() (fabriclayout.ConfigChanges, error) {
 			return fabricengine.ReadConfigChanges(l, taskBranch, parentBranch, perWorktreeConfigRels())
 		},
 		// Notify posts one orch notice as creel mail for the nearest live orch up the pair's beam chain, resolved at call time.
@@ -316,10 +317,10 @@ func landingDeps(
 		MergeRecordPath:    landingshed.MergeRecordPath(loomengine.LoomScratchDir(l)),
 		DecisionRecordPath: runRecordOf(l, recipe).path,
 		PlanDir:            fixerPlanDir(l, recipe),
-		LineChange: func(from, to string) (fabricengine.LineChange, error) {
+		LineChange: func(from, to string) (fabriclayout.LineChange, error) {
 			f, err := fabricengine.Open(l)
 			if err != nil {
-				return fabricengine.LineChange{}, err
+				return fabriclayout.LineChange{}, err
 			}
 			return f.LineChange(from, to)
 		},
@@ -419,7 +420,7 @@ func pullRequestDepsGuardedBy(check prePushCheck, l *lymcwd.Location, parentBran
 				if err != nil {
 					return err
 				}
-				_, err = pairteardown.PushRun(prime, l, slug, pairteardown.RunPush{LockWait: fabricengine.StatusPushLockWait, InsidePair: true})
+				_, err = pairteardown.PushRun(prime, l, slug, pairteardown.RunPush{LockWait: fabriclayout.StatusPushLockWait, InsidePair: true})
 				return err
 			}, landingPushRetryPauses, time.Sleep)
 		}),
@@ -470,8 +471,8 @@ func pullRequestRecordCommitter(check prePushCheck, l *lymcwd.Location) func() e
 			return err
 		}
 		_, err = pairteardown.PushRun(prime, l, slug, pairteardown.RunPush{
-			LockWait:     fabricengine.StatusPushLockWait,
-			TeardownWait: fabricengine.StatusPushLockWait,
+			LockWait:     fabriclayout.StatusPushLockWait,
+			TeardownWait: fabriclayout.StatusPushLockWait,
 			InsidePair:   true,
 		})
 		return err
@@ -639,11 +640,11 @@ func rowEntry(history []shedengine.HistoryEntry, row string) int {
 // parentTipsReader returns the parent-tip reader the landing and the darn rows share:
 // it opens the task pair's fabric at call time and reads parentBranch's tips.
 // When fetch is true, it fetches the remotes first.
-func parentTipsReader(l *lymcwd.Location, parentBranch string) func(fetch bool) (fabricengine.ParentTips, error) {
-	return func(fetch bool) (fabricengine.ParentTips, error) {
+func parentTipsReader(l *lymcwd.Location, parentBranch string) func(fetch bool) (fabriclayout.ParentTips, error) {
+	return func(fetch bool) (fabriclayout.ParentTips, error) {
 		f, err := fabricengine.Open(l)
 		if err != nil {
-			return fabricengine.ParentTips{}, err
+			return fabriclayout.ParentTips{}, err
 		}
 		return f.ReadParentTips(parentBranch, fetch)
 	}
@@ -677,7 +678,7 @@ func pauseCovered(l *lymcwd.Location) func(slug string) bool {
 func parentLockDeps(l *lymcwd.Location, runID, statusPath, statusLockPath string) landingshed.ParentLockDeps {
 	return landingshed.ParentLockDeps{
 		Store: &parentlock.Store{
-			Dir:     parentlock.Dir(fabricengine.BoltDir(l.HubPath)),
+			Dir:     parentlock.Dir(fabriclayout.BoltDir(l.HubPath)),
 			Covered: pauseCovered(l),
 		},
 		Owner:    loopLockOwner(l, runID),
@@ -796,17 +797,17 @@ func parentRecordsCommitter(l *lymcwd.Location, slug string) func() error {
 
 // runReconciler returns the seam that judges the run slug against origin, by a run-scope origin reconcile of it.
 // The prime is resolved at call time, and the seams come from pairteardown over it with the hub's options.
-func runReconciler(l *lymcwd.Location, slug string) func() (fabricengine.OriginReport, error) {
-	return func() (fabricengine.OriginReport, error) {
+func runReconciler(l *lymcwd.Location, slug string) func() (fabriclayout.OriginReport, error) {
+	return func() (fabriclayout.OriginReport, error) {
 		prime, err := primeOfHub(l)
 		if err != nil {
-			return fabricengine.OriginReport{}, err
+			return fabriclayout.OriginReport{}, err
 		}
 		teardown, err := pairteardown.New(prime)
 		if err != nil {
-			return fabricengine.OriginReport{}, err
+			return fabriclayout.OriginReport{}, err
 		}
-		report, err := fabricengine.ReconcileOrigin(prime, fabricengine.ReconcileScope{Run: slug}, teardown.OriginSeams(pairteardown.HubSeamOptions(prime)), fabricengine.ReconcileOptions{})
+		report, err := fabricengine.ReconcileOrigin(prime, fabriclayout.ReconcileScope{Run: slug}, teardown.OriginSeams(pairteardown.HubSeamOptions(prime)), fabricengine.ReconcileOptions{})
 		return reportOfRun(report, slug), err
 	}
 }
@@ -833,7 +834,7 @@ func parentOwner(l *lymcwd.Location, slug string) func() (landingshed.ParentOwne
 		if err != nil {
 			return landingshed.ParentOwnership{}, err
 		}
-		owners, err := boardengine.ReadOwners(fabricengine.BoardDir(l.HubPath))
+		owners, err := boardengine.ReadOwners(fabriclayout.BoardDir(l.HubPath))
 		if err != nil {
 			return landingshed.ParentOwnership{}, err
 		}
@@ -902,8 +903,8 @@ func runRecordsPusher(l *lymcwd.Location, slug string) func() error {
 			return err
 		}
 		_, err = pairteardown.PushRun(prime, l, slug, pairteardown.RunPush{
-			LockWait:     fabricengine.StatusPushLockWait,
-			TeardownWait: fabricengine.StatusPushLockWait,
+			LockWait:     fabriclayout.StatusPushLockWait,
+			TeardownWait: fabriclayout.StatusPushLockWait,
 			InsidePair:   true,
 			Parent:       parent,
 		})
@@ -931,7 +932,7 @@ func parentMergeArchiver(l *lymcwd.Location, slug string) func() error {
 
 // reportOfRun returns report with its entries narrowed to the entry of slug.
 // A run-scope report also classifies the parent pair, whose stop or end is not the run's own.
-func reportOfRun(report fabricengine.OriginReport, slug string) fabricengine.OriginReport {
+func reportOfRun(report fabriclayout.OriginReport, slug string) fabriclayout.OriginReport {
 	own := report.Entries[:0:0]
 	for _, entry := range report.Entries {
 		if entry.Slug == slug {

@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -234,7 +234,7 @@ func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
 
 	if !t.Run("a darn.yaml that does not unmarshal is refused with the hub config way forward", func(t *testing.T) {
 		seed(t, trees)
-		path := filepath.Join(fabricengine.BoardDir(hub.Path), "_lym", "config", "darn.yaml")
+		path := filepath.Join(fabriclayout.BoardDir(hub.Path), "_lym", "config", "darn.yaml")
 		if err := os.WriteFile(path, []byte("writer: [\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}

@@ -12,7 +12,7 @@ Rule: Naming the wired composite: "fabric". (test)
 **`host` is retired** in the fabric sense, everywhere.
 
 - Owner set (bare weft and warp carve-out):
-  `fabricengine`, `fabriccli`, `weftname`, `gitkit`, `hubforge`, `boardengine`, `configsync`, `fabricvocab`.
+  `fabricengine`, `fabriccli`, `fabriclayout`, `fabriccore`, `weftname`, `gitkit`, `hubforge`, `boardengine`, `configsync`, `fabricvocab`.
 - `internal/fabricvocab` is the home of the predicates the scan and the plan check share; neither declares its own.
 - Scope of the bare weft and warp rule outside the owner set:
   - every `*_test.go` file anywhere in the module;
@@ -55,8 +55,8 @@ The entry binds lym's own code only.
 ### Weft commits
 
 - **Board carve-out:** `boardengine` may write to `weft:main` from any worktree or session, always through `Bolt`.
-- Every weft-commit caller passes a positive-only file list via `fabricengine.ScopedPathspec`.
-- `structuralNeverCommittedDirs` paths route to a third bucket in `classifyPaths`,
+- Every weft-commit caller passes a positive-only file list via `fabriclayout.ScopedPathspec`.
+- `fabriclayout.StructuralNeverCommittedDirs` paths route to a third bucket in `fabriclayout.ClassifyPaths`,
   and `Commit` hard-errors on a non-empty third bucket.
 - `Commit` refuses, before any lock, a commit that would add a new path `internal/secretpath` matches,
   over lym's shipped patterns and the ones `fabric.secret_paths` adds.

@@ -17,6 +17,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -49,7 +50,7 @@ func PullBolt(boardDir string) error {
 	switch result.Skipped {
 	case "":
 		return nil
-	case fabricengine.BoltSkipFetchFailed:
+	case fabriclayout.BoltSkipFetchFailed:
 		return fmt.Errorf("%w: %s", ErrOwnerOriginUnreachable, result.SkipDetail)
 	default:
 		return fmt.Errorf("the board could not be brought up to date: %s", result.SkipDetail)
@@ -169,7 +170,7 @@ func SetOwners(boardDir string, req OwnerRequest) (OwnerWrite, error) {
 		}
 		switch result.Skipped {
 		case "":
-		case fabricengine.BoltSkipFetchFailed:
+		case fabriclayout.BoltSkipFetchFailed:
 			return OwnerWrite{}, fmt.Errorf("%w: %s", ErrOwnerOriginUnreachable, result.SkipDetail)
 		default:
 			return OwnerWrite{}, fmt.Errorf("board: the owner write was refused, since the board could not be brought up to date: %s", result.SkipDetail)
@@ -357,7 +358,7 @@ func pushOwnerCommit(bolt *fabricengine.Bolt, opts fabricengine.SyncOptions, rec
 	for attempt := 1; ; attempt++ {
 		if err := bolt.PushRecorded(opts, rec); err != nil {
 			var failed *fabricengine.PushFailedError
-			if errors.As(err, &failed) && failed.Record.Class == fabricengine.PushFailureTransport {
+			if errors.As(err, &failed) && failed.Record.Class == fabriclayout.PushFailureTransport {
 				return fmt.Errorf("%w: %w", ErrOwnerOriginUnreachable, err)
 			}
 			return fmt.Errorf("board: the commit was kept locally and not pushed: %w", err)

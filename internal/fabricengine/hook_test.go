@@ -17,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -183,8 +184,8 @@ func TestInstallPostCheckoutHook_WeftResolution_Prime(t *testing.T) {
 
 	// A real hub's weft prime is wired onto RecordsBranchName("main") by CloneAndWire, so it starts in sync.
 	// Confirm that invariant instead of reconstructing it by hand.
-	if branch := gitkit.CurrentBranch(t, weftPrime); branch != fabricengine.RecordsBranchName("main") {
-		t.Fatalf("weft prime branch = %q; want %q (already wired by CloneAndWire)", branch, fabricengine.RecordsBranchName("main"))
+	if branch := gitkit.CurrentBranch(t, weftPrime); branch != fabriclayout.RecordsBranchName("main") {
+		t.Fatalf("weft prime branch = %q; want %q (already wired by CloneAndWire)", branch, fabriclayout.RecordsBranchName("main"))
 	}
 
 	// Create a scratch branch in the warp prime to switch away from and back to "main".
@@ -238,7 +239,7 @@ func TestInstallPostCheckoutHook_WeftResolution_Child(t *testing.T) {
 	childWarp := h.PairCodeWorktree(slug)
 	gitkit.MustRun(t, hub, "git", "worktree", "add", childWarp, "-b", slug)
 
-	weftBranch := fabricengine.RecordsBranchName(slug)
+	weftBranch := fabriclayout.RecordsBranchName(slug)
 	childWeft := h.PairRecordsSibling(slug)
 	gitkit.MustRun(t, weftPrime, "git", "worktree", "add", childWeft, "-b", weftBranch)
 

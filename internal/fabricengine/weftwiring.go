@@ -22,8 +22,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -42,25 +42,12 @@ func WeftLymDirFor(l *lymcwd.Location, slug string) string {
 	return filepath.Join(RecordsWorktreePath(l, slug), l.AnchorRel, lymdirs.LymDirName)
 }
 
-// WeftWarpSlug parses a weft sibling directory name and returns the warp slug it corresponds to.
-// It reports whether name ends with weftname.Suffix and the stripped prefix is non-empty.
-func WeftWarpSlug(name string) (slug string, ok bool) {
-	if !strings.HasSuffix(name, weftname.Suffix) {
-		return "", false
-	}
-	s := strings.TrimSuffix(name, weftname.Suffix)
-	if s == "" {
-		return "", false
-	}
-	return s, true
-}
-
 // CodeLocation returns the Location of the code worktree that l, a weft sibling, pairs with.
 // A cwd reached through a worktree's .scratch link resolves to its weft sibling,
 // so a verb that acts on code takes the code worktree from here.
 // An l that is no weft sibling, or whose code worktree directory is absent, comes back unchanged.
 func CodeLocation(l *lymcwd.Location) (*lymcwd.Location, error) {
-	slug, ok := WeftWarpSlug(l.WorktreeName)
+	slug, ok := fabriclayout.WeftWarpSlug(l.WorktreeName)
 	if !ok {
 		return l, nil
 	}
@@ -117,8 +104,8 @@ func createWeftWorktree(rec *Mutations, l *lymcwd.Location, slug, branch, startP
 	}); err != nil {
 		return fmt.Errorf("create weft worktree %q for branch %q failed: %w", weftPath, branch, err)
 	}
-	rec.Append(KindWorktreeCreated, weftPath, "")
-	rec.AppendRef(KindBranchCreated, branch, refDetail("records", weftRepoRoot, ""))
+	rec.Append(fabriclayout.KindWorktreeCreated, weftPath, "")
+	rec.AppendRef(fabriclayout.KindBranchCreated, branch, refDetail("records", weftRepoRoot, ""))
 	if _, err := ensureWeftLockDirAt(weftPath); err != nil {
 		return fmt.Errorf("create weft lock dir in %q: %w", weftPath, err)
 	}
@@ -231,7 +218,7 @@ func removeWeftWorktree(rec *Mutations, l *lymcwd.Location, slug, branch string,
 					"no remote deletion attempted: the weft repo has no %q remote configured: %v",
 					originRemoteName, urlErr)
 			} else {
-				entry := CleanupBranchEntry{Branch: branch}
+				entry := fabriclayout.CleanupBranchEntry{Branch: branch}
 				deleteWeftBranchOnRemote(rec, l, branch, weftRoot, leaseSHA, &entry)
 				result.remoteBranchDeleted = entry.RemoteDeleted
 				result.remoteBranchError = entry.RemoteError

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -44,7 +44,7 @@ func TestLandingDeps_VerifyCommandReadsPlanAtCallTime(t *testing.T) {
 	loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 	// The hub's board directory exists from the start, as in a real hub,
 	// so the config dirs the sources read name it before the gate.yaml does.
-	if err := os.MkdirAll(fabricengine.BoardDir(loc.HubPath), 0o755); err != nil {
+	if err := os.MkdirAll(fabriclayout.BoardDir(loc.HubPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	deps := landingDeps(loc, shedrun.RecipeTapestry, websterengine.Geometry{StencilsDir: "/stencils"}, "task/foo",

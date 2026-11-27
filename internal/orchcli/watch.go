@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -38,7 +39,7 @@ func (realClock) Now() time.Time { return time.Now() }
 // `<shortname>:orch` in the prime and `<shortname>:<slug>:orch` in a beam.
 // A hub with no recorded shortname yields the empty name, which the watcher reads as the prime's orch.
 func (c *orchCLI) orchAgentName() (string, error) {
-	shortname, found := fabricengine.ReadShortname(fabricengine.BoltDir(c.location.HubPath))
+	shortname, found := fabricengine.ReadShortname(fabriclayout.BoltDir(c.location.HubPath))
 	if !found {
 		return "", nil
 	}
@@ -62,7 +63,7 @@ func beamOwnerElsewhere(location *lymcwd.Location) (owner string, elsewhere bool
 	if err != nil {
 		return "", false, fmt.Errorf("orch: read this machine's name: %w", err)
 	}
-	owners, err := boardengine.ReadOwners(fabricengine.BoardDir(location.HubPath))
+	owners, err := boardengine.ReadOwners(fabriclayout.BoardDir(location.HubPath))
 	if err != nil {
 		return "", false, fmt.Errorf("orch: read the board's owners: %w", err)
 	}
@@ -114,7 +115,7 @@ func ownHoldCovers(prime *lymcwd.Location, slug string) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("read this machine's name: %w", err)
 	}
-	owners, err := boardengine.ReadOwners(fabricengine.BoardDir(prime.HubPath))
+	owners, err := boardengine.ReadOwners(fabriclayout.BoardDir(prime.HubPath))
 	if err != nil {
 		return false, fmt.Errorf("read the board's owners: %w", err)
 	}

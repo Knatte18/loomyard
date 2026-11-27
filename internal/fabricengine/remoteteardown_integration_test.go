@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -55,7 +56,7 @@ func TestRunTeardownChild_RunsTheRemoteStepsInOrderUnderTheLock(t *testing.T) {
 			if err != nil {
 				t.Fatalf("LoadConfig() error = %v", err)
 			}
-			weftBranch := fabricengine.RecordsBranchName(cfg.BranchPrefix + slug)
+			weftBranch := fabriclayout.RecordsBranchName(cfg.BranchPrefix + slug)
 			tip := gitkit.CommitFile(t, h.PairRecordsSibling(slug), "_lym/record.txt", "run record\n", "record")
 			wantTag := wantArchiveTag(slug, tip)
 			// A removal hands the remote steps over after its local teardown.
@@ -63,7 +64,7 @@ func TestRunTeardownChild_RunsTheRemoteStepsInOrderUnderTheLock(t *testing.T) {
 			weftRoot := mustRecordsRepoRoot(t, l)
 			gitkit.MustRun(t, weftRoot, "git", "worktree", "remove", "--force", h.PairRecordsSibling(slug))
 			gitkit.MustRun(t, weftRoot, "git", "branch", "-D", weftBranch)
-			lockPath := fabricengine.TeardownLockPath(l.HubPath, slug)
+			lockPath := fabriclayout.TeardownLockPath(l.HubPath, slug)
 
 			lockHeld := func() bool {
 				held, acquired, err := lock.TryAcquireReadLock(lockPath)
@@ -76,7 +77,7 @@ func TestRunTeardownChild_RunsTheRemoteStepsInOrderUnderTheLock(t *testing.T) {
 				return !acquired
 			}
 			var notices []string
-			t.Cleanup(fabricengine.InstallPushNotifier(func(hubPath string, notice fabricengine.PushNotice) (bool, error) {
+			t.Cleanup(fabricengine.InstallPushNotifier(func(hubPath string, notice fabriclayout.PushNotice) (bool, error) {
 				notices = append(notices, notice.Line)
 				return true, nil
 			}))

@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -195,9 +196,9 @@ func TestReadOwnerArchives(t *testing.T) {
 			recordsDir := fabricengine.RecordsWorktree(l)
 			// The fixture leaves the records prime's tip unpushed, so push it to archive one side alone.
 			gitkit.MustRun(t, recordsDir, "git", "push", "origin", "HEAD")
-			dir, side := l.WorktreePath(), fabricengine.OwnerArchiveSideCode
+			dir, side := l.WorktreePath(), fabriclayout.OwnerArchiveSideCode
 			if tt.archiveRecords {
-				dir, side = recordsDir, fabricengine.OwnerArchiveSideRecords
+				dir, side = recordsDir, fabriclayout.OwnerArchiveSideRecords
 			}
 			if tt.unpublishedBranch {
 				gitkit.Git(t, dir, "checkout", "-b", "unpublished")
@@ -212,7 +213,7 @@ func TestReadOwnerArchives(t *testing.T) {
 			}
 			if tt.decoyBranch {
 				codeBranch := gitkit.CurrentBranch(t, l.WorktreePath())
-				decoy := fabricengine.RecordsBranchName(codeBranch)
+				decoy := fabriclayout.RecordsBranchName(codeBranch)
 				if tt.archiveRecords {
 					decoy = codeBranch
 				}
@@ -221,7 +222,7 @@ func TestReadOwnerArchives(t *testing.T) {
 			// The new owner holds no local tag, so the read must fetch it.
 			gitkit.Git(t, dir, "tag", "-d", tags[0])
 			if tt.teardownTag {
-				teardown := fabricengine.ArchiveTagPrefix + "root/" + tip[:fabricengine.ArchiveTagSHALen]
+				teardown := fabriclayout.ArchiveTagPrefix + "root/" + tip[:fabriclayout.ArchiveTagSHALen]
 				gitkit.Git(t, dir, "tag", teardown, tip)
 				gitkit.Git(t, dir, "push", "origin", "refs/tags/"+teardown)
 				gitkit.Git(t, dir, "tag", "-d", teardown)
@@ -233,10 +234,10 @@ func TestReadOwnerArchives(t *testing.T) {
 			if err != nil {
 				t.Fatalf("ReadOwnerArchives() error = %v", err)
 			}
-			var want []fabricengine.OwnerArchive
+			var want []fabriclayout.OwnerArchive
 			if tt.wantListed {
 				branch := gitkit.Git(t, dir, "rev-parse", "--abbrev-ref", "HEAD")
-				want = []fabricengine.OwnerArchive{{Slug: "root", Side: side, Tag: tags[0], Commit: tip, Branch: branch, Dir: dir}}
+				want = []fabriclayout.OwnerArchive{{Slug: "root", Side: side, Tag: tags[0], Commit: tip, Branch: branch, Dir: dir}}
 			}
 			if !reflect.DeepEqual(got, want) {
 				t.Errorf("ReadOwnerArchives() = %+v; want %+v", got, want)
@@ -244,7 +245,7 @@ func TestReadOwnerArchives(t *testing.T) {
 			if local := gitkit.Git(t, dir, "tag", "--list", tags[0]); (local != "") != tt.wantListed {
 				t.Errorf("local tag %s after the read = %q; want it present only when listed", tags[0], local)
 			}
-			if local := gitkit.Git(t, dir, "tag", "--list", fabricengine.ArchiveTagPrefix+"*"); local != "" {
+			if local := gitkit.Git(t, dir, "tag", "--list", fabriclayout.ArchiveTagPrefix+"*"); local != "" {
 				t.Errorf("local teardown archive tags after the read = %q; want none fetched", local)
 			}
 		})
@@ -271,8 +272,8 @@ func TestReadOwnerArchives_OneRepositoryHubKeepsEachStoresTagsApart(t *testing.T
 	if tags, err := fabricengine.ArchiveOwnerTips(l.HubPath, pairs); err != nil || len(tags) != 2 {
 		t.Fatalf("ArchiveOwnerTips() = %v, %v; want two tags", tags, err)
 	}
-	codeTag := fabricengine.OwnerArchiveTagName("root", codeTip)
-	recordsTag := fabricengine.OwnerArchiveTagName("root", recordsTip)
+	codeTag := fabriclayout.OwnerArchiveTagName("root", codeTip)
+	recordsTag := fabriclayout.OwnerArchiveTagName("root", recordsTip)
 	// The new owner holds no local tag, so the read must fetch each.
 	gitkit.Git(t, codeDir, "tag", "-d", codeTag)
 	gitkit.Git(t, recordsDir, "tag", "-d", recordsTag)
@@ -282,9 +283,9 @@ func TestReadOwnerArchives_OneRepositoryHubKeepsEachStoresTagsApart(t *testing.T
 	if err != nil {
 		t.Fatalf("ReadOwnerArchives() error = %v", err)
 	}
-	want := []fabricengine.OwnerArchive{
-		{Slug: "root", Side: fabricengine.OwnerArchiveSideCode, Tag: codeTag, Commit: codeTip, Branch: gitkit.CurrentBranch(t, codeDir), Dir: codeDir},
-		{Slug: "root", Side: fabricengine.OwnerArchiveSideRecords, Tag: recordsTag, Commit: recordsTip, Branch: gitkit.CurrentBranch(t, recordsDir), Dir: recordsDir},
+	want := []fabriclayout.OwnerArchive{
+		{Slug: "root", Side: fabriclayout.OwnerArchiveSideCode, Tag: codeTag, Commit: codeTip, Branch: gitkit.CurrentBranch(t, codeDir), Dir: codeDir},
+		{Slug: "root", Side: fabriclayout.OwnerArchiveSideRecords, Tag: recordsTag, Commit: recordsTip, Branch: gitkit.CurrentBranch(t, recordsDir), Dir: recordsDir},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("ReadOwnerArchives() = %+v; want %+v", got, want)
@@ -294,7 +295,7 @@ func TestReadOwnerArchives_OneRepositoryHubKeepsEachStoresTagsApart(t *testing.T
 		{"code", codeDir, codeTag, recordsTip},
 		{"records", recordsDir, recordsTag, codeTip},
 	} {
-		if local := gitkit.Git(t, store.dir, "tag", "--list", fabricengine.OwnerArchiveTagPrefix+"*"); local != store.ownTag {
+		if local := gitkit.Git(t, store.dir, "tag", "--list", fabriclayout.OwnerArchiveTagPrefix+"*"); local != store.ownTag {
 			t.Errorf("owner archive tags of the %s store = %q; want its own %s alone", store.name, local, store.ownTag)
 		}
 		if gitrepo.New(store.dir).SHAExists(store.otherCommit) {
@@ -324,9 +325,9 @@ func TestReadOwnerArchives_ListsEveryPairSortedBySlugSideAndTag(t *testing.T) {
 	if tags, err := fabricengine.ArchiveOwnerTips(l.HubPath, pairs); err != nil || len(tags) != 3 {
 		t.Fatalf("ArchiveOwnerTips() = %v, %v; want three tags", tags, err)
 	}
-	pairTag := fabricengine.OwnerArchiveTagName("b", pairTip)
-	codeTag := fabricengine.OwnerArchiveTagName("root", codeTip)
-	recordsTag := fabricengine.OwnerArchiveTagName("root", recordsTip)
+	pairTag := fabriclayout.OwnerArchiveTagName("b", pairTip)
+	codeTag := fabriclayout.OwnerArchiveTagName("root", codeTip)
+	recordsTag := fabriclayout.OwnerArchiveTagName("root", recordsTip)
 	// The new owner holds no local tag, so the read must fetch each.
 	gitkit.Git(t, codeDir, "tag", "-d", pairTag, codeTag)
 	gitkit.Git(t, recordsDir, "tag", "-d", recordsTag)
@@ -336,10 +337,10 @@ func TestReadOwnerArchives_ListsEveryPairSortedBySlugSideAndTag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadOwnerArchives() error = %v", err)
 	}
-	want := []fabricengine.OwnerArchive{
-		{Slug: "b", Side: fabricengine.OwnerArchiveSideCode, Tag: pairTag, Commit: pairTip, Branch: gitkit.CurrentBranch(t, pairDir), Dir: codeDir},
-		{Slug: "root", Side: fabricengine.OwnerArchiveSideCode, Tag: codeTag, Commit: codeTip, Branch: gitkit.CurrentBranch(t, codeDir), Dir: codeDir},
-		{Slug: "root", Side: fabricengine.OwnerArchiveSideRecords, Tag: recordsTag, Commit: recordsTip, Branch: gitkit.CurrentBranch(t, recordsDir), Dir: recordsDir},
+	want := []fabriclayout.OwnerArchive{
+		{Slug: "b", Side: fabriclayout.OwnerArchiveSideCode, Tag: pairTag, Commit: pairTip, Branch: gitkit.CurrentBranch(t, pairDir), Dir: codeDir},
+		{Slug: "root", Side: fabriclayout.OwnerArchiveSideCode, Tag: codeTag, Commit: codeTip, Branch: gitkit.CurrentBranch(t, codeDir), Dir: codeDir},
+		{Slug: "root", Side: fabriclayout.OwnerArchiveSideRecords, Tag: recordsTag, Commit: recordsTip, Branch: gitkit.CurrentBranch(t, recordsDir), Dir: recordsDir},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("ReadOwnerArchives() = %+v; want %+v", got, want)

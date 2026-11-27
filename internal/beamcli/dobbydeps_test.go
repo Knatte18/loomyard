@@ -13,7 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/creelengine"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
@@ -158,25 +158,25 @@ func TestEndedTeardownResults(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	ended := func(mutate func(entry *fabricengine.EntryOutcome)) fabricengine.OriginReport {
-		entry := fabricengine.EntryOutcome{Slug: "x", State: fabricengine.EntryEnded, How: "done", Local: true}
+	ended := func(mutate func(entry *fabriclayout.EntryOutcome)) fabriclayout.OriginReport {
+		entry := fabriclayout.EntryOutcome{Slug: "x", State: fabriclayout.EntryEnded, How: "done", Local: true}
 		mutate(&entry)
-		return fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{entry}}
+		return fabriclayout.OriginReport{Entries: []fabriclayout.EntryOutcome{entry}}
 	}
 	notEnded := "origin's board does not show x ended, so the reconcile left its pair; way forward: read lym batten status x"
 	tests := []struct {
 		name         string
-		report       fabricengine.OriginReport
+		report       fabriclayout.OriginReport
 		reconcileErr error
 		want         string
 	}{
-		{"RemovedPairIsNoFailure", ended(func(e *fabricengine.EntryOutcome) { e.Removed = true }), nil, ""},
-		{"BusyPairNamesItsWayForward", ended(func(e *fabricengine.EntryOutcome) { e.Busy, e.WayForward = true, "wait for the driver" }), nil, "its pair is busy; wait for the driver"},
-		{"FailedTeardownNamesItsError", ended(func(e *fabricengine.EntryOutcome) { e.Error = "boom" }), nil, "its pair's teardown failed: boom"},
-		{"AnotherRunsRemovalLeavesThisOne", ended(func(e *fabricengine.EntryOutcome) { e.Slug, e.Removed = "y", true }), nil, notEnded},
-		{"ActiveEntryIsLeft", fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: "x", State: fabricengine.EntryActive}}}, nil, notEnded},
-		{"UnreachableOriginJudgesNothing", fabricengine.OriginReport{Unreachable: true}, nil, "origin was unreachable, so the reconcile judged no run ended"},
-		{"ReconcileErrorFailsEveryRun", fabricengine.OriginReport{}, errors.New("ls-remote failed"), "the hub's origin reconcile failed: ls-remote failed"},
+		{"RemovedPairIsNoFailure", ended(func(e *fabriclayout.EntryOutcome) { e.Removed = true }), nil, ""},
+		{"BusyPairNamesItsWayForward", ended(func(e *fabriclayout.EntryOutcome) { e.Busy, e.WayForward = true, "wait for the driver" }), nil, "its pair is busy; wait for the driver"},
+		{"FailedTeardownNamesItsError", ended(func(e *fabriclayout.EntryOutcome) { e.Error = "boom" }), nil, "its pair's teardown failed: boom"},
+		{"AnotherRunsRemovalLeavesThisOne", ended(func(e *fabriclayout.EntryOutcome) { e.Slug, e.Removed = "y", true }), nil, notEnded},
+		{"ActiveEntryIsLeft", fabriclayout.OriginReport{Entries: []fabriclayout.EntryOutcome{{Slug: "x", State: fabriclayout.EntryActive}}}, nil, notEnded},
+		{"UnreachableOriginJudgesNothing", fabriclayout.OriginReport{Unreachable: true}, nil, "origin was unreachable, so the reconcile judged no run ended"},
+		{"ReconcileErrorFailsEveryRun", fabriclayout.OriginReport{}, errors.New("ls-remote failed"), "the hub's origin reconcile failed: ls-remote failed"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

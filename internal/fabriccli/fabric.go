@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/configsync"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -59,7 +60,7 @@ Example:
 		Short:       "bootstrap a new hub, wiring the entire topology in one shot",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `clone creates a new hub directory, <warp-name>-LYMHUB, holding the warp
-prime (<warp-name>), the weft prime (<warp-name>` + weftname.Suffix + `) and the ` + fabricengine.BoltDirName + ` worktree,
+prime (<warp-name>), the weft prime (<warp-name>` + weftname.Suffix + `) and the ` + fabriclayout.BoltDirName + ` worktree,
 and wires the junctions and configs; no follow-up step is needed.
 
 Reach for it to start working on a repository pair on this machine, or with
@@ -77,7 +78,7 @@ the hub is created in. --force-bootstrap admits a brand-new weft remote that
 is neither empty nor lym-anchored, such as one created with a README.
 
 With one URL, that URL is the code repository. --single-repo seeds a
-one-repository hub whose records and board live under origin's ` + fabricengine.RecordsNamespaceRoot + `, and a
+one-repository hub whose records and board live under origin's ` + fabriclayout.RecordsNamespaceRoot + `, and a
 plain one-URL clone of an origin holding that board joins it. The flag is
 refused for an origin that already holds one, a records repository, a second
 URL, and an origin left by an earlier one-repository layout.
@@ -96,7 +97,7 @@ Example:
 			return runCloneWithReset(ctx, out, args, reset, subpath, forceBootstrap, into, shortname, singleRepo)
 		}),
 	}
-	cloneCmd.Flags().String("shortname", "", "the repo's shortname, 2-6 characters matching [a-z][a-z0-9]{1,5}; required when the weft is bound for the first time, recorded as "+fabricengine.ShortnameFileName)
+	cloneCmd.Flags().String("shortname", "", "the repo's shortname, 2-6 characters matching [a-z][a-z0-9]{1,5}; required when the weft is bound for the first time, recorded as "+fabriclayout.ShortnameFileName)
 	cloneCmd.Flags().Bool("reset", false, "remove an existing hub before cloning (idempotent re-clone)")
 	// The default is empty, not ".": only an empty default lets CloneHub tell an omitted --subpath from an explicit one.
 	// CloneHub normalises empty to the "." root anchor.
@@ -104,7 +105,7 @@ Example:
 	cloneCmd.Flags().String("subpath", "", `anchor lym at this subdirectory of the warp repo (default ".", the repo root)`)
 	cloneCmd.Flags().String("into", "", "directory the new hub is created in; a relative value resolves against the current working directory (default: the current working directory)")
 	cloneCmd.Flags().Bool("force-bootstrap", false, "bypass the weft-candidate guard when bootstrapping a brand-new weft remote")
-	cloneCmd.Flags().Bool("single-repo", false, "seed a one-repository hub from one URL, the code repository, with its records and board under origin's "+fabricengine.RecordsNamespaceRoot)
+	cloneCmd.Flags().Bool("single-repo", false, "seed a one-repository hub from one URL, the code repository, with its records and board under origin's "+fabriclayout.RecordsNamespaceRoot)
 	cmd.AddCommand(cloneCmd)
 
 	var addCmd *cobra.Command
@@ -281,7 +282,7 @@ not reported already-healthy.
 
 It also heals every hub-wide config file, such as fabric.yaml or gate.yaml, at
 the hub's board dir: an absent board.yaml is seeded from the prime worktree's copy
-when it has one, and the written files are committed in ` + fabricengine.BoltDirName + ` and pushed. The
+when it has one, and the written files are committed in ` + fabriclayout.BoltDirName + ` and pushed. The
 board is pulled first; when it cannot be brought up to date nothing is written
 and the reason is reported under hub_config_detail without failing the verb.
 The envelope reports each module under hub_config, a commit or push failure of
@@ -374,7 +375,7 @@ a takeover kept when it dropped the pair's local commits.
 
 On a one-repository hub, --remote also lists in plain_archive_tags each
 archive tag an earlier binary left under origin's plain refs/tags/, with the
-commands that move it under ` + fabricengine.RecordsNamespaceRoot + ` and delete the plain ref.
+commands that move it under ` + fabriclayout.RecordsNamespaceRoot + ` and delete the plain ref.
 A listing that fails is named in plain_archive_tags_error, which replaces
 plain_archive_tags, and leaves the exit code alone.
 
@@ -432,7 +433,7 @@ Example:
 		Long: `Print the hub's shortname, or record one.
 
 With no argument it prints the recorded shortname. With one argument it records the
-shortname in ` + fabricengine.ShortnameFileName + ` on weft:main when the hub has none, committing and
+shortname in ` + fabriclayout.ShortnameFileName + ` on weft:main when the hub has none, committing and
 pushing it; the shortname is 2-6 characters matching [a-z][a-z0-9]{1,5}.
 
 Recording the shortname a hub already has is a no-op. A different shortname is refused:
@@ -536,8 +537,8 @@ func runAdd(ctx context.Context, out io.Writer, args []string, opts fabricengine
 	if err != nil {
 		fields["push_error"] = err.Error()
 	} else {
-		rec.Append(fabricengine.KindPushSpawned, codeWorktree, "detached")
-		rec.Append(fabricengine.KindPushSpawned, recordsWorktree, "detached")
+		rec.Append(fabriclayout.KindPushSpawned, codeWorktree, "detached")
+		rec.Append(fabriclayout.KindPushSpawned, recordsWorktree, "detached")
 	}
 	return okWithRecord(out, rec.Snapshot(), fields)
 }
@@ -670,7 +671,7 @@ func runReconcile(ctx context.Context, out io.Writer, _ []string) int {
 	// ReconcileHubWideAt seeds absent hub files sparse, keeping any key the template lacks.
 	// It never rewrites a recorded pathspec and strips no present base file.
 	// A PrimeName failure means no prime is resolvable, not an error: the seed falls back to the template.
-	boltDir := fabricengine.BoltDir(l.HubPath)
+	boltDir := fabriclayout.BoltDir(l.HubPath)
 	primeBaseDir := ""
 	if primeName, primeErr := fabricengine.PrimeName(l); primeErr == nil {
 		primeLoc, err := lymcwd.NamedWorktree(l.HubPath, primeName)
@@ -817,8 +818,8 @@ func hubConfigFailure(detail string, cause error, boardDir string) error {
 // The summary names the count and the first failing pair's worktree and reason, not every pair.
 // The per-pair detail already travels in the envelope's "pairs" array.
 // Repeating it in the error string would duplicate the report an operator is about to read.
-func failedReconcilePairs(pairs []fabricengine.ReconcilePairResult) error {
-	var failed []fabricengine.ReconcilePairResult
+func failedReconcilePairs(pairs []fabriclayout.ReconcilePairResult) error {
+	var failed []fabriclayout.ReconcilePairResult
 	for _, pair := range pairs {
 		if pair.Error != "" {
 			failed = append(failed, pair)
@@ -896,7 +897,7 @@ func runCleanupWithFlags(ctx context.Context, out io.Writer, apply, force, remot
 	var warpAttempted int
 	if remote {
 		warp, warpErr := sweepRemoteTaskBranches(ctx, top, l, apply)
-		rec.Extend(warp.Mutations)
+		rec = fabriclayout.MutationsOf(append(rec.Entries(), warp.Mutations.Entries()...))
 		if warpErr != nil {
 			return errWithRecordFields(out, rec, warpErr, fields)
 		}
@@ -979,10 +980,10 @@ func runCleanupWithFlags(ctx context.Context, out io.Writer, apply, force, remot
 // sweepRemoteTaskBranches runs the origin task-branch sweep with the open pull request set fetched from GitHub.
 // When the set cannot be established, it skips the sweep and names the cause in SkippedReason.
 // Such a skip fails toward keeping every task branch, and the returned entries are an empty array, never nil.
-func sweepRemoteTaskBranches(ctx context.Context, top *fabricengine.Topology, l *lymcwd.Location, apply bool) (fabricengine.RemoteWarpCleanupResult, error) {
-	skipped := func(reason string) fabricengine.RemoteWarpCleanupResult {
-		return fabricengine.RemoteWarpCleanupResult{
-			Entries:       []fabricengine.RemoteWarpBranchEntry{},
+func sweepRemoteTaskBranches(ctx context.Context, top *fabricengine.Topology, l *lymcwd.Location, apply bool) (fabriclayout.RemoteWarpCleanupResult, error) {
+	skipped := func(reason string) fabriclayout.RemoteWarpCleanupResult {
+		return fabriclayout.RemoteWarpCleanupResult{
+			Entries:       []fabriclayout.RemoteWarpBranchEntry{},
 			SkippedReason: reason,
 		}
 	}
@@ -1023,7 +1024,7 @@ func runRemoveWithFlag(ctx context.Context, out io.Writer, args []string, force,
 	res, err := remover{
 		exemptAll: pauserecord.SetGateExemptAll,
 		gone:      td.TaskWorktreeGone,
-		reconcile: func(slug string) (fabricengine.OriginReport, error) { return reconcileForRemove(l, td, slug) },
+		reconcile: func(slug string) (fabriclayout.OriginReport, error) { return reconcileForRemove(l, td, slug) },
 		local:     func(slug string) (localReading, error) { return readLocalReading(l, slug) },
 		teardown:  td.Run,
 	}.run(ctx, slug, force, remote)
@@ -1054,7 +1055,7 @@ func runRemoveWithFlag(ctx context.Context, out io.Writer, args []string, force,
 // A key set inside an if block appears only when that condition holds.
 // ended_processes lists the {pid, role} of each registered process that the session end ended;
 // it is always present, empty when none.
-func removeFields(r fabricengine.RemoveResult, session pairteardown.SessionResult, warning string) map[string]any {
+func removeFields(r fabriclayout.RemoveResult, session pairteardown.SessionResult, warning string) map[string]any {
 	steps := r.Steps
 	if steps == nil {
 		steps = []string{}

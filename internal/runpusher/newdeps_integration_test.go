@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -26,7 +27,7 @@ func TestNewDeps_ConditionsStopOnAHandOverMarkOrARefusedPush(t *testing.T) {
 	}{
 		{"NothingStandingHolds", func(*testing.T, *hubforge.Hub, *lymcwd.Location) {}, true},
 		{"HandOverMarkOfTheRunStops", func(t *testing.T, h *hubforge.Hub, _ *lymcwd.Location) {
-			mark := fabricengine.HandOverMark{Machine: "oslo", At: "2026-11-15T09:00:00Z", Written: time.Now()}
+			mark := fabriclayout.HandOverMark{Machine: "oslo", At: "2026-11-15T09:00:00Z", Written: time.Now()}
 			if err := fabricengine.WriteHandOverMark(h.Path, "task1", mark); err != nil {
 				t.Fatalf("write the hand-over mark: %v", err)
 			}
@@ -41,7 +42,7 @@ func TestNewDeps_ConditionsStopOnAHandOverMarkOrARefusedPush(t *testing.T) {
 			}
 			gitkit.CommitFile(t, h.PairRecordsSibling("task1"), "local.txt", "local\n", "local")
 			options := fabricengine.SyncOptions{BackoffSleep: func(time.Duration) {}}
-			if _, err := fabricengine.PushPairAnchored(pair, options, fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded}); err == nil {
+			if _, err := fabricengine.PushPairAnchored(pair, options, fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded}); err == nil {
 				t.Fatal("PushPairAnchored() against a refusing remote = nil; want the refusal")
 			}
 		}, false},

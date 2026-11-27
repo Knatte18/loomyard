@@ -11,6 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -23,7 +24,7 @@ import (
 // fakeMergeSurface implements MergeSurface, recording call order and returning caller-configured
 // results/errors.
 type fakeMergeSurface struct {
-	mergeInResult      fabricengine.MergeResult
+	mergeInResult      fabriclayout.MergeResult
 	mergeInErr         error
 	mergeInProgress    bool
 	mergeInProgressErr error
@@ -39,9 +40,9 @@ type fakeMergeSurface struct {
 	mergedAt    string
 }
 
-func (f *fakeMergeSurface) MergeStageTracked() (fabricengine.StageResult, error) {
+func (f *fakeMergeSurface) MergeStageTracked() (fabriclayout.StageResult, error) {
 	f.calls = append(f.calls, "MergeStageTracked")
-	return fabricengine.StageResult{}, f.stageTrackedErr
+	return fabriclayout.StageResult{}, f.stageTrackedErr
 }
 
 func (f *fakeMergeSurface) MergeUntrackedFiles() ([]string, error) {
@@ -49,31 +50,31 @@ func (f *fakeMergeSurface) MergeUntrackedFiles() ([]string, error) {
 	return f.untrackedFiles, f.untrackedErr
 }
 
-func (f *fakeMergeSurface) MergeIn(source string) (fabricengine.MergeResult, error) {
+func (f *fakeMergeSurface) MergeIn(source string) (fabriclayout.MergeResult, error) {
 	f.calls = append(f.calls, "MergeIn")
 	return f.mergeInResult, f.mergeInErr
 }
 
-func (f *fakeMergeSurface) MergeInAt(source, tip string) (fabricengine.MergeResult, error) {
+func (f *fakeMergeSurface) MergeInAt(source, tip string) (fabriclayout.MergeResult, error) {
 	f.calls = append(f.calls, "MergeInAt")
 	f.mergedAt = source + "@" + tip
 	return f.mergeInResult, f.mergeInErr
 }
 
-func (f *fakeMergeSurface) MergeStageResolved(paths []string) (fabricengine.StageResult, error) {
+func (f *fakeMergeSurface) MergeStageResolved(paths []string) (fabriclayout.StageResult, error) {
 	f.calls = append(f.calls, "MergeStageResolved")
 	f.stagedPaths = paths
-	return fabricengine.StageResult{}, f.stageResolvedErr
+	return fabriclayout.StageResult{}, f.stageResolvedErr
 }
 
-func (f *fakeMergeSurface) MergeContinue(msg string) (fabricengine.MergeResult, error) {
+func (f *fakeMergeSurface) MergeContinue(msg string) (fabriclayout.MergeResult, error) {
 	f.calls = append(f.calls, "MergeContinue")
-	return fabricengine.MergeResult{}, f.continueErr
+	return fabriclayout.MergeResult{}, f.continueErr
 }
 
-func (f *fakeMergeSurface) MergeAbort() (fabricengine.MergeResult, error) {
+func (f *fakeMergeSurface) MergeAbort() (fabriclayout.MergeResult, error) {
 	f.calls = append(f.calls, "MergeAbort")
-	return fabricengine.MergeResult{}, f.abortErr
+	return fabriclayout.MergeResult{}, f.abortErr
 }
 
 func (f *fakeMergeSurface) MergeInProgress() (bool, error) {
@@ -154,7 +155,7 @@ func TestResolve_MergesTheToldTip(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	fake := &fakeMergeSurface{mergeInResult: fabricengine.MergeResult{Conflicts: nil}}
+	fake := &fakeMergeSurface{mergeInResult: fabriclayout.MergeResult{Conflicts: nil}}
 	r, err := New(newTestDeps(t, fake, &shedfake.MergeShuttle{}))
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
@@ -179,7 +180,7 @@ func TestResolve_CleanMergeNoSession(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	fake := &fakeMergeSurface{mergeInResult: fabricengine.MergeResult{Conflicts: nil}}
+	fake := &fakeMergeSurface{mergeInResult: fabriclayout.MergeResult{Conflicts: nil}}
 	shuttle := &shedfake.MergeShuttle{}
 	r, err := New(newTestDeps(t, fake, shuttle))
 	if err != nil {
@@ -206,7 +207,7 @@ func TestResolve_ConflictThenCleanScan_StagesThenConcludes(t *testing.T) {
 	t.Parallel()
 
 	paths := []string{"a.txt"}
-	fake := &fakeMergeSurface{mergeInResult: fabricengine.MergeResult{Conflicts: paths}}
+	fake := &fakeMergeSurface{mergeInResult: fabriclayout.MergeResult{Conflicts: paths}}
 	deps := newTestDeps(t, fake, nil)
 	writeConflictedFixture(t, deps, "a.txt", conflictedContent)
 
@@ -249,7 +250,7 @@ func TestResolve_ConflictStillUnresolvedAfterSession_RetriesThenAborts(t *testin
 	t.Parallel()
 
 	paths := []string{"a.txt"}
-	fake := &fakeMergeSurface{mergeInResult: fabricengine.MergeResult{Conflicts: paths}}
+	fake := &fakeMergeSurface{mergeInResult: fabriclayout.MergeResult{Conflicts: paths}}
 	deps := newTestDeps(t, fake, nil)
 	writeConflictedFixture(t, deps, "a.txt", conflictedContent)
 
@@ -290,7 +291,7 @@ func TestResolve_MergeInProgressAtEntry_AbortsBeforeNewAttempt(t *testing.T) {
 
 	fake := &fakeMergeSurface{
 		mergeInProgress: true,
-		mergeInResult:   fabricengine.MergeResult{Conflicts: nil},
+		mergeInResult:   fabriclayout.MergeResult{Conflicts: nil},
 	}
 	shuttle := &shedfake.MergeShuttle{}
 	r, err := New(newTestDeps(t, fake, shuttle))
@@ -367,7 +368,7 @@ func TestResolve_ShuttleOutcomes_MapToStuckNoConclude(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			paths := []string{"a.txt"}
-			fake := &fakeMergeSurface{mergeInResult: fabricengine.MergeResult{Conflicts: paths}}
+			fake := &fakeMergeSurface{mergeInResult: fabriclayout.MergeResult{Conflicts: paths}}
 			deps := newTestDeps(t, fake, nil)
 			writeConflictedFixture(t, deps, "a.txt", conflictedContent)
 
@@ -408,7 +409,7 @@ func TestResolve_ShuttleOutcomes_WarnSurvivesAbortFailure(t *testing.T) {
 	tiergate.Require(t, 0)
 	paths := []string{"a.txt"}
 	abortErr := errors.New("abort failed")
-	fake := &fakeMergeSurface{mergeInResult: fabricengine.MergeResult{Conflicts: paths}, abortErr: abortErr}
+	fake := &fakeMergeSurface{mergeInResult: fabriclayout.MergeResult{Conflicts: paths}, abortErr: abortErr}
 	deps := newTestDeps(t, fake, nil)
 	writeConflictedFixture(t, deps, "a.txt", conflictedContent)
 
@@ -463,7 +464,7 @@ func TestResolve_AlreadyUpToDate_ResolvedNoSessionNoConclude(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	fake := &fakeMergeSurface{mergeInResult: fabricengine.MergeResult{AlreadyUpToDate: true}}
+	fake := &fakeMergeSurface{mergeInResult: fabriclayout.MergeResult{AlreadyUpToDate: true}}
 	shuttle := &shedfake.MergeShuttle{}
 	r, err := New(newTestDeps(t, fake, shuttle))
 	if err != nil {
@@ -490,7 +491,7 @@ func TestResolve_RetryUsesDistinctReportPath(t *testing.T) {
 	t.Parallel()
 
 	paths := []string{"a.txt"}
-	fake := &fakeMergeSurface{mergeInResult: fabricengine.MergeResult{Conflicts: paths}}
+	fake := &fakeMergeSurface{mergeInResult: fabriclayout.MergeResult{Conflicts: paths}}
 	deps := newTestDeps(t, fake, nil)
 	writeConflictedFixture(t, deps, "a.txt", conflictedContent)
 
@@ -525,7 +526,7 @@ func TestResolve_ScratchDirAbsent_FirstSpecBuildCreatesIt(t *testing.T) {
 	t.Parallel()
 
 	paths := []string{"a.txt"}
-	fake := &fakeMergeSurface{mergeInResult: fabricengine.MergeResult{Conflicts: paths}}
+	fake := &fakeMergeSurface{mergeInResult: fabriclayout.MergeResult{Conflicts: paths}}
 	deps := newTestDeps(t, fake, nil)
 	writeConflictedFixture(t, deps, "a.txt", conflictedContent)
 
@@ -558,7 +559,7 @@ func TestResolve_SessionEditsTrackedFile_StagesTrackedBeforeConclude(t *testing.
 	t.Parallel()
 
 	paths := []string{"a.txt"}
-	fake := &fakeMergeSurface{mergeInResult: fabricengine.MergeResult{Conflicts: paths}}
+	fake := &fakeMergeSurface{mergeInResult: fabriclayout.MergeResult{Conflicts: paths}}
 	deps := newTestDeps(t, fake, nil)
 	writeConflictedFixture(t, deps, "a.txt", conflictedContent)
 	writeConflictedFixture(t, deps, "other.txt", "before\n")
@@ -598,7 +599,7 @@ func TestResolve_SessionLeavesUntrackedFile_AbortsStuckNamingItWithoutStaging(t 
 
 	paths := []string{"a.txt"}
 	fake := &fakeMergeSurface{
-		mergeInResult:  fabricengine.MergeResult{Conflicts: paths},
+		mergeInResult:  fabriclayout.MergeResult{Conflicts: paths},
 		untrackedFiles: []string{"new/one.go", "two.go"},
 	}
 	deps := newTestDeps(t, fake, nil)
@@ -643,7 +644,7 @@ func TestResolve_StaleReportFromEarlierCall_IsClearedAtEntry(t *testing.T) {
 	t.Parallel()
 
 	paths := []string{"a.txt"}
-	fake := &fakeMergeSurface{mergeInResult: fabricengine.MergeResult{Conflicts: paths}}
+	fake := &fakeMergeSurface{mergeInResult: fabriclayout.MergeResult{Conflicts: paths}}
 	deps := newTestDeps(t, fake, nil)
 	writeConflictedFixture(t, deps, "a.txt", conflictedContent)
 

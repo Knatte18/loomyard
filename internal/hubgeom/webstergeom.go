@@ -4,6 +4,7 @@ package hubgeom
 
 import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -32,8 +33,8 @@ func WebsterGeometry(l *lymcwd.Location) websterengine.Geometry {
 		ReportsDir:         websterengine.ReportsDir(anchorPath),
 		ScratchDir:         websterengine.ScratchDir(anchorPath),
 		PromptsDir:         websterengine.PromptsDir(anchorPath),
-		StencilsDir:        fabricengine.StencilsDir(l.HubPath),
-		SpecsDir:           fabricengine.SpecsDir(l.HubPath),
+		StencilsDir:        fabriclayout.StencilsDir(l.HubPath),
+		SpecsDir:           fabriclayout.SpecsDir(l.HubPath),
 		PlanDir:            planparser.PlanDir(anchorPath),
 		VerifyDir:          verifytree.Dir(anchorPath),
 		GateSlots:          GateSlots(l),

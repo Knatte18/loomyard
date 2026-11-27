@@ -26,6 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/driftcli"
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gatecli"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/hardencli"
@@ -95,7 +96,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 // It returns nil when the command has no such flag or the flag was not set,
 // so the gate takes its slug from the working directory.
 func pauseSlugOverride(cmd *cobra.Command) *string {
-	flag := cmd.Flags().Lookup(fabricengine.PauseSlugFlag)
+	flag := cmd.Flags().Lookup(fabriclayout.PauseSlugFlag)
 	if flag == nil || !flag.Changed {
 		return nil
 	}
@@ -111,8 +112,8 @@ func detachedChild(cmd *cobra.Command) tendercli.DetachedChild {
 		return flag != nil && flag.Changed
 	}
 	return tendercli.DetachedChild{
-		Deferrable:   changed(fabricengine.PauseSlugFlag) || changed(boardengine.DeferrableSyncFlag),
-		ParentLocked: changed(fabricengine.ParentLockedFlag),
+		Deferrable:   changed(fabriclayout.PauseSlugFlag) || changed(boardengine.DeferrableSyncFlag),
+		ParentLocked: changed(fabriclayout.ParentLockedFlag),
 		HubScope:     changed(boardengine.DeferrableSyncFlag),
 	}
 }

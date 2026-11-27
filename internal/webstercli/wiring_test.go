@@ -32,7 +32,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/cliwire"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -103,7 +103,7 @@ func TestWire_ModeHubSelectsHubMode(t *testing.T) {
 		name         string
 		worktreeName string
 	}{
-		{"BoardLevelWorktree", fabricengine.BoltDirName},
+		{"BoardLevelWorktree", fabriclayout.BoltDirName},
 		{"UnpairedSibling", "orphan-code"},
 		{"WorktreeWhosePairWasRemoved", "was-paired-code"},
 	}
@@ -767,7 +767,7 @@ func TestWireHub_LanguageSkills(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			hub := t.TempDir()
 			loc := hubLocation(t, hub, "pair", ".")
-			configDir := filepath.Join(fabricengine.BoardDir(hub), "_lym", "config")
+			configDir := filepath.Join(fabriclayout.BoardDir(hub), "_lym", "config")
 			if err := os.MkdirAll(configDir, 0o755); err != nil {
 				t.Fatalf("MkdirAll(%q) = %v; want nil", configDir, err)
 			}
@@ -866,7 +866,7 @@ func TestWireHub_LanguageSkills(t *testing.T) {
 }
 
 // TestProductionFiles_NeverReferenceHubWatchdogMechanism proves no production file uses the per-hub watchdog daemon.
-// It belongs to hub mode alone: standalone computes no hub lock path (fabricengine.HubScratchDir),
+// It belongs to hub mode alone: standalone computes no hub lock path (fabriclayout.HubScratchDir),
 // and it spawns no daemon (the "reed watchdog" verb).
 //
 //testtiming:keep internal/loomcli/cli_test.go names this test
@@ -887,8 +887,8 @@ func TestProductionFiles_NeverReferenceHubWatchdogMechanism(t *testing.T) {
 			t.Fatalf("read %s: %v", path, err)
 		}
 		content := string(data)
-		if strings.Contains(content, "fabricengine.HubScratchDir") {
-			t.Errorf("%s references fabricengine.HubScratchDir; standalone must compute no hub lock path", path)
+		if strings.Contains(content, "fabriclayout.HubScratchDir") {
+			t.Errorf("%s references fabriclayout.HubScratchDir; standalone must compute no hub lock path", path)
 		}
 		if strings.Contains(content, "reed watchdog") {
 			t.Errorf("%s references \"reed watchdog\"; standalone must spawn no daemon", path)

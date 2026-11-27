@@ -11,6 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
@@ -90,7 +91,7 @@ func TestApproveDiscussion_Real(t *testing.T) {
 			if found != tt.wantStored || (found && string(got) != record) {
 				t.Errorf("DecisionRecord() = %q, %v; want stored = %v with the working copy's bytes", got, found, tt.wantStored)
 			}
-			_, statErr := os.Stat(filepath.Join(fabricengine.BoardDir(location.HubPath), "decision-"+tt.slug+".md"))
+			_, statErr := os.Stat(filepath.Join(fabriclayout.BoardDir(location.HubPath), "decision-"+tt.slug+".md"))
 			if (statErr == nil) != tt.wantFileKept {
 				t.Errorf("record file present = %v; want %v", statErr == nil, tt.wantFileKept)
 			}
@@ -164,12 +165,12 @@ func TestSeedDiscussedRecord_Real(t *testing.T) {
 				}
 			}
 			if tt.dropStoredFile || tt.blockStoredFile {
-				if err := os.Remove(filepath.Join(fabricengine.BoardDir(location.HubPath), "decision-"+tt.slug+".md")); err != nil {
+				if err := os.Remove(filepath.Join(fabriclayout.BoardDir(location.HubPath), "decision-"+tt.slug+".md")); err != nil {
 					t.Fatalf("Remove(stored record file) error = %v; want nil", err)
 				}
 			}
 			if tt.blockStoredFile {
-				if err := os.Mkdir(filepath.Join(fabricengine.BoardDir(location.HubPath), "decision-"+tt.slug+".md"), 0o755); err != nil {
+				if err := os.Mkdir(filepath.Join(fabriclayout.BoardDir(location.HubPath), "decision-"+tt.slug+".md"), 0o755); err != nil {
 					t.Fatalf("Mkdir(stored record path) error = %v; want nil", err)
 				}
 			}

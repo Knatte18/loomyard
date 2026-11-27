@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -79,7 +80,7 @@ func (t *Topology) SnapshotUncommitted(rec *Mutations, l *lymcwd.Location, slug 
 		if err != nil {
 			return "", nil, fmt.Errorf("load the record pathspec: %w", err)
 		}
-		listed, err := uncommittedEntries(weftWorktree, snapshotRecordsDir, ScopedPathspec(l.AnchorRel, names))
+		listed, err := uncommittedEntries(weftWorktree, snapshotRecordsDir, fabriclayout.ScopedPathspec(l.AnchorRel, names))
 		if err != nil {
 			return "", nil, err
 		}
@@ -215,7 +216,7 @@ func commitSnapshot(rec *Mutations, repoRoot, slug string, entries []snapshotEnt
 		return "", fmt.Errorf("commit the snapshot of %q: %w", slug, err)
 	}
 	sha := strings.TrimSpace(out)
-	rec.Append(KindCommitCreated, repoRoot, sha)
+	rec.Append(fabriclayout.KindCommitCreated, repoRoot, sha)
 	return sha, nil
 }
 
@@ -277,7 +278,7 @@ func writeSnapshotTree(repoRoot string, node *snapshotTreeNode) (string, error) 
 // The tag is marked as a snapshot by its message, and a tag already on sha is kept.
 // It appends KindTagCreated once the tag exists: the target is the repository root, the detail the tag name.
 func snapshotTag(rec *Mutations, repo *gitrepo.Repo, slug, sha string) (string, error) {
-	tag := setAsideTagPrefix + slug + "/" + sha[:ArchiveTagSHALen]
+	tag := setAsideTagPrefix + slug + "/" + sha[:fabriclayout.ArchiveTagSHALen]
 	commonDir, err := repo.CommonDir()
 	if err != nil {
 		return "", fmt.Errorf("tag snapshot commit %s: %w", sha, err)
@@ -291,6 +292,6 @@ func snapshotTag(rec *Mutations, repo *gitrepo.Repo, slug, sha string) (string, 
 			return "", fmt.Errorf("create snapshot tag %q at %s: %w", tag, sha, err)
 		}
 	}
-	rec.Append(KindTagCreated, filepath.Dir(commonDir), tag)
+	rec.Append(fabriclayout.KindTagCreated, filepath.Dir(commonDir), tag)
 	return tag, nil
 }

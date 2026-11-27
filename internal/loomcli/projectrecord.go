@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/battencli"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/seatengine"
@@ -105,7 +106,7 @@ func recordHistory(location *lymcwd.Location, record runRecord) func() ([][]byte
 			return nil, err
 		}
 		return recordHistoryFrom(filepath.ToSlash(record.rel), trailers,
-			func() ([]fabricengine.AnchoredFileVersion, error) {
+			func() ([]fabriclayout.AnchoredFileVersion, error) {
 				return fabricengine.AnchoredFileFirstParentHistory(location, record.rel)
 			},
 			func() ([][]byte, error) { return fabricengine.CommittedAnchoredFileHistory(location, record.rel) })
@@ -119,8 +120,8 @@ func recordHistory(location *lymcwd.Location, record runRecord) func() ([][]byte
 // Otherwise they are the whole history readWhole returns; readVersions is read only when a trailer names rel.
 func recordHistoryFrom(
 	rel string,
-	trailers []fabricengine.TrailerCommit,
-	readVersions func() ([]fabricengine.AnchoredFileVersion, error),
+	trailers []fabriclayout.TrailerCommit,
+	readVersions func() ([]fabriclayout.AnchoredFileVersion, error),
 	readWhole func() ([][]byte, error),
 ) ([][]byte, error) {
 	if trailer, found := newestReplaceOf(rel, trailers); found {
@@ -138,13 +139,13 @@ func recordHistoryFrom(
 // newestReplaceOf returns the newest of trailers whose Lym-Record-Replaced value names the record at rel.
 // trailers come newest first.
 // A pair's fabric history inherits its parent's commits, so a trailer may name another record and is skipped.
-func newestReplaceOf(rel string, trailers []fabricengine.TrailerCommit) (fabricengine.TrailerCommit, bool) {
+func newestReplaceOf(rel string, trailers []fabriclayout.TrailerCommit) (fabriclayout.TrailerCommit, bool) {
 	for _, trailer := range trailers {
 		if path, _, ok := parseRecordReplaced(trailer.Value); ok && path == rel {
 			return trailer, true
 		}
 	}
-	return fabricengine.TrailerCommit{}, false
+	return fabriclayout.TrailerCommit{}, false
 }
 
 // cutAtReplace returns the record versions from the replace trailer's cut onward, newest first.
@@ -154,7 +155,7 @@ func newestReplaceOf(rel string, trailers []fabricengine.TrailerCommit) (fabrice
 // So whichever commit landed the replaced bytes first is the cut,
 // and a later commit of the same bytes never is, which keeps a call recorded after the replace held to the record.
 // found is false when no version qualifies.
-func cutAtReplace(trailer fabricengine.TrailerCommit, versions []fabricengine.AnchoredFileVersion) ([][]byte, bool) {
+func cutAtReplace(trailer fabriclayout.TrailerCommit, versions []fabriclayout.AnchoredFileVersion) ([][]byte, bool) {
 	_, sum, _ := parseRecordReplaced(trailer.Value)
 	for i, version := range versions {
 		if version.Position > trailer.Position || sha256Hex(version.Data) != sum {
@@ -176,7 +177,7 @@ func cutAtReplace(trailer fabricengine.TrailerCommit, versions []fabricengine.An
 // The paths name each beam's live record, never the copy a pair inherited when it forked,
 // so a decision recorded on the beam after the fork is read too.
 func projectRecordPaths(location *lymcwd.Location) ([]string, error) {
-	tasks, err := boardengine.ReadTasks(fabricengine.BoardDir(location.HubPath))
+	tasks, err := boardengine.ReadTasks(fabriclayout.BoardDir(location.HubPath))
 	if err != nil {
 		return nil, err
 	}

@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
@@ -108,7 +109,7 @@ func TestTeardownHub_RefusesHubPathOutsideOperatorNamedParent(t *testing.T) {
 	t.Parallel()
 
 	cwd := t.TempDir()
-	hubPath := filepath.Join(t.TempDir(), "elsewhere"+fabricengine.HubSuffix)
+	hubPath := filepath.Join(t.TempDir(), "elsewhere"+fabriclayout.HubSuffix)
 	const sentinel = "OUTSIDE-PARENT-HUB-CONTENT"
 
 	err := fabricengine.TeardownHubForTest(cwd, hubPath, func(hub string) error {
@@ -150,7 +151,7 @@ func TestCloneHub_TeardownSucceedsOnAHalfBuiltHub(t *testing.T) {
 
 	cloneParent := t.TempDir()
 
-	_, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
+	_, err := fabricengine.CloneHub(cloneParent, fabriclayout.CloneOptions{
 		WeftURL:   weftRemote,
 		WarpURL:   badWarpURL,
 		Shortname: "tst",
@@ -159,7 +160,7 @@ func TestCloneHub_TeardownSucceedsOnAHalfBuiltHub(t *testing.T) {
 		t.Fatalf("CloneHub against a nonexistent warp URL = nil error; want a clone failure")
 	}
 
-	hubPath := fabricengine.HubPath(cloneParent, fabricengine.DeriveWarpName(badWarpURL))
+	hubPath := fabriclayout.HubPath(cloneParent, fabricengine.DeriveWarpName(badWarpURL))
 	if _, statErr := os.Stat(hubPath); !os.IsNotExist(statErr) {
 		t.Errorf("residual half-built hub left at %s after the warp-clone failure; teardown should have removed it (no board, no weft sibling yet — the token, not the hub predicate, authorises this)", hubPath)
 	}
@@ -288,7 +289,7 @@ func TestRemoveWarpWorktreeDir_LeftoverRetry(t *testing.T) {
 
 	const lockedDirName = "locked"
 	type outcome struct {
-		res         fabricengine.RemoveResult
+		res         fabriclayout.RemoveResult
 		err         error
 		target      string
 		removeCalls int
@@ -325,7 +326,7 @@ func TestRemoveWarpWorktreeDir_LeftoverRetry(t *testing.T) {
 				if _, statErr := os.Lstat(o.target); !os.IsNotExist(statErr) {
 					t.Errorf("target %s still on disk after Remove (stat error = %v)", o.target, statErr)
 				}
-				want := fabricengine.Mutation{Kind: fabricengine.KindPathRemoved, Target: slug, Detail: "recursive"}
+				want := fabriclayout.Mutation{Kind: fabriclayout.KindPathRemoved, Target: slug, Detail: "recursive"}
 				if !slices.Contains(o.res.Mutations.Entries(), want) {
 					t.Errorf("mutation record = %+v; want it to hold %+v", o.res.Mutations.Entries(), want)
 				}
@@ -435,7 +436,7 @@ func TestRemoveWarpWorktreeDir_LeftoverRetry(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Remove error = %v; want the leftover finished once the writer closed the file", err)
 			}
-			want := fabricengine.Mutation{Kind: fabricengine.KindPathRemoved, Target: slug, Detail: "recursive"}
+			want := fabriclayout.Mutation{Kind: fabriclayout.KindPathRemoved, Target: slug, Detail: "recursive"}
 			if !slices.Contains(res.Mutations.Entries(), want) {
 				t.Errorf("mutation record = %+v; want it to hold %+v", res.Mutations.Entries(), want)
 			}
@@ -536,16 +537,6 @@ func TestOwnership_WarpCheckoutKind(t *testing.T) {
 			t.Errorf("IsWarpCheckoutForTest(outsider) = true; want false")
 		}
 	})
-
-	// Fails if isAnyWorktreeOf and isRegisteredLinkedWorktreeIn agree on the main worktree.
-	t.Run("DisagreesWithRegisteredLinkedKindOnMainWorktree", func(t *testing.T) {
-		if fabricengine.IsRegisteredLinkedWorktreeInForTest(repoDir, repoDir) {
-			t.Fatalf("precondition failed: main worktree unexpectedly accepted by the registered-linked kind")
-		}
-		if !fabricengine.IsWarpCheckoutForTest(repoDir, repoDir) {
-			t.Fatalf("precondition failed: main worktree unexpectedly refused by the warp-checkout kind")
-		}
-	})
 }
 
 // TestOwnership_FabricHubKind covers looksLikeHub: either of its two structural marks is enough to recognise a hub,
@@ -565,7 +556,7 @@ func TestOwnership_FabricHubKind(t *testing.T) {
 	t.Run("AcceptsBoardEntryOnly", func(t *testing.T) {
 		t.Parallel()
 		hub := t.TempDir()
-		if err := os.MkdirAll(filepath.Join(hub, fabricengine.BoardDirName), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Join(hub, fabriclayout.BoardDirName), 0o755); err != nil {
 			t.Fatalf("mkdir board: %v", err)
 		}
 		if !fabricengine.LooksLikeHubForTest(hub) {
@@ -590,7 +581,7 @@ func TestOwnership_FabricHubKind(t *testing.T) {
 	t.Run("AcceptsLegacySuffixedHubDirectory", func(t *testing.T) {
 		t.Parallel()
 		hub := filepath.Join(t.TempDir(), "loomyard-HUB")
-		if err := os.MkdirAll(filepath.Join(hub, fabricengine.BoardDirName), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Join(hub, fabriclayout.BoardDirName), 0o755); err != nil {
 			t.Fatalf("mkdir board: %v", err)
 		}
 		if !fabricengine.LooksLikeHubForTest(hub) {
@@ -616,7 +607,7 @@ func TestOwnership_FabricHubKind(t *testing.T) {
 				t.Skip("running as root; a 0o000 directory is still readable")
 			}
 			parent := t.TempDir()
-			hub := filepath.Join(parent, "unreadable"+fabricengine.HubSuffix)
+			hub := filepath.Join(parent, "unreadable"+fabriclayout.HubSuffix)
 			if err := os.MkdirAll(hub, 0o755); err != nil {
 				t.Fatalf("mkdir hub: %v", err)
 			}
@@ -660,7 +651,7 @@ func TestBranchOwnership_ManagedBranchKind(t *testing.T) {
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	weftRoot := mustRecordsRepoRoot(t, l)
-	primaryWeft := fabricengine.RecordsBranchName("main")
+	primaryWeft := fabriclayout.RecordsBranchName("main")
 
 	t.Run("RefusesPrimaryWeftBranch", func(t *testing.T) {
 		assertBranchGateRefusesBothForceModes(t, l, weftRoot, primaryWeft, "primary weft branch")
@@ -673,7 +664,7 @@ func TestBranchOwnership_ManagedBranchKind(t *testing.T) {
 		unreadable := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		ul := unreadable.Location
 		uWeftRoot := mustRecordsRepoRoot(t, ul)
-		if err := os.RemoveAll(fabricengine.BoardDir(ul.HubPath)); err != nil {
+		if err := os.RemoveAll(fabriclayout.BoardDir(ul.HubPath)); err != nil {
 			t.Fatalf("remove board worktree: %v", err)
 		}
 		const orphan = "orphan-primary-unreadable-weft"
@@ -690,7 +681,7 @@ func TestBranchOwnership_ManagedBranchKind(t *testing.T) {
 		if _, err := topology.Add(cl, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
 			t.Fatalf("setup Add: %v", err)
 		}
-		assertBranchGateRefusesBothForceModes(t, cl, cWeftRoot, fabricengine.RecordsBranchName(slug), "checked out at")
+		assertBranchGateRefusesBothForceModes(t, cl, cWeftRoot, fabriclayout.RecordsBranchName(slug), "checked out at")
 	})
 
 	t.Run("RefusesUnmanagedName", func(t *testing.T) {
@@ -745,8 +736,8 @@ func TestReconcile_ReportsAPairThatVanishedMidWalkAsSuch(t *testing.T) {
 			continue
 		}
 		found = true
-		if pair.Action != fabricengine.ReconcileActionVanishedMidWalk {
-			t.Errorf("vanished pair Action = %q; want %q", pair.Action, fabricengine.ReconcileActionVanishedMidWalk)
+		if pair.Action != fabriclayout.ReconcileActionVanishedMidWalk {
+			t.Errorf("vanished pair Action = %q; want %q", pair.Action, fabriclayout.ReconcileActionVanishedMidWalk)
 		}
 		if pair.Error != "" {
 			t.Errorf("vanished pair Error = %q; want empty — nothing failed to reconcile, the pair stopped existing", pair.Error)

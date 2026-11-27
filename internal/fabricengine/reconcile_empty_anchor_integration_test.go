@@ -17,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
@@ -25,7 +26,7 @@ import (
 
 // pairResultFor returns the reconcile outcome of the warp worktree called slug.
 // It fails the test when the pass reported no pair for it.
-func pairResultFor(t *testing.T, h *hubforge.Hub, res fabricengine.ReconcileResult, slug string) fabricengine.ReconcilePairResult {
+func pairResultFor(t *testing.T, h *hubforge.Hub, res fabriclayout.ReconcileResult, slug string) fabriclayout.ReconcilePairResult {
 	t.Helper()
 
 	want := filepath.ToSlash(fabricengine.WorktreePath(h.Location, slug))
@@ -35,7 +36,7 @@ func pairResultFor(t *testing.T, h *hubforge.Hub, res fabricengine.ReconcileResu
 		}
 	}
 	t.Fatalf("Reconcile reported no pair for %s; pairs = %+v", want, res.Pairs)
-	return fabricengine.ReconcilePairResult{}
+	return fabriclayout.ReconcilePairResult{}
 }
 
 // TestReconcile_RefusesEmptyAnchorMarkerInsteadOfWiringAtTheRoot truncates one worktree's own marker.
@@ -65,7 +66,7 @@ func TestReconcile_RefusesEmptyAnchorMarkerInsteadOfWiringAtTheRoot(t *testing.T
 
 			wantInError := []string{lymcwd.AnchorFileName, "git -C"}
 			if tt.moveRecord {
-				writeMoveRecord(t, fabricengine.RecordsWorktreePath(h.Location, failing), fabricengine.MoveRecord{A: "backend", B: "x", Kind: fabricengine.MoveKindMove, PID: 4242})
+				writeMoveRecord(t, fabricengine.RecordsWorktreePath(h.Location, failing), fabriclayout.MoveRecord{A: "backend", B: "x", Kind: fabriclayout.MoveKindMove, PID: 4242})
 				wantInError = []string{"interrupted", "lym fabric anchor " + failing + " --set x"}
 			} else {
 				markerPath := filepath.Join(fabricengine.RecordsWorktreePath(h.Location, failing), lymcwd.AnchorFileName)
@@ -97,7 +98,7 @@ func TestReconcile_RefusesEmptyAnchorMarkerInsteadOfWiringAtTheRoot(t *testing.T
 			}
 
 			warpRoot := fabricengine.WorktreePath(h.Location, failing)
-			for _, name := range []string{lymdirs.LymDirName, lymdirs.DotLymDirName, fabricengine.BoardDirName} {
+			for _, name := range []string{lymdirs.LymDirName, lymdirs.DotLymDirName, fabriclayout.BoardDirName} {
 				rootLink := filepath.Join(warpRoot, name)
 				if _, statErr := os.Lstat(rootLink); statErr == nil {
 					t.Errorf("a second junction %s was wired at the warp worktree root; want none", rootLink)

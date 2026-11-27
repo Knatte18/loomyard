@@ -25,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/creelcli"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -449,7 +450,7 @@ func (c *battenCLI) tacklerDepsFor(settings sheddriver.TacklerSettings, shuttle 
 			TraceDir:  logger.TraceDir(),
 			DriverLog: logger.TraceFile(),
 		},
-		StencilsDir: fabricengine.StencilsDir(location.HubPath),
+		StencilsDir: fabriclayout.StencilsDir(location.HubPath),
 		Shuttle:     shuttle,
 		Now:         time.Now,
 	}
@@ -565,7 +566,7 @@ func (c *battenCLI) loadedArbiterDeps() (shedarbiter.Deps, error) {
 			Slug:     slug,
 			Worktree: location.WorktreePath(),
 		},
-		StencilsDir:        fabricengine.StencilsDir(location.HubPath),
+		StencilsDir:        fabriclayout.StencilsDir(location.HubPath),
 		AmendmentTarget:    func() string { return "" },
 		Shuttle:            shuttle,
 		Now:                time.Now,

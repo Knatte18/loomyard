@@ -29,6 +29,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -47,13 +48,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// seedHubStencils populates hub's fabricengine.StencilsDir(hub) with every shipped stencil.
+// seedHubStencils populates hub's fabriclayout.StencilsDir(hub) with every shipped stencil.
 // webster's prompts are read from disk at call time.
 // A fixture hub that is never seeded therefore fails every verb that renders one.
 // It also gives the fake engine its edit directive copy, since the fixture launches on that engine.
 func seedHubStencils(t *testing.T, hub string) {
 	t.Helper()
-	stencilsDir := fabricengine.StencilsDir(hub)
+	stencilsDir := fabriclayout.StencilsDir(hub)
 	stencilkit.SeedInto(t, stencilsDir)
 	stencilkit.SeedEngineBlockCopies(t, stencilsDir, shuttlefake.EngineName)
 }
@@ -173,7 +174,7 @@ func TestPersistentPreRun_OpenFabricWiredButUninvoked(t *testing.T) {
 	gitkit.CommitFile(t, worktree, "base.txt", "base", "base commit")
 	// A hub-level board directory with no records sibling near it selects hub mode here.
 	// It does so without wiring a real, paired fabric hub: preflight.HubPresent only stats the Bolt checkout's _lym.
-	if err := os.MkdirAll(filepath.Join(fabricengine.BoardDir(container), "_lym"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(fabriclayout.BoardDir(container), "_lym"), 0o755); err != nil {
 		t.Fatalf("mkdir hub board dir: %v", err)
 	}
 

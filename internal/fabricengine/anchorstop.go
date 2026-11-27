@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
@@ -15,11 +16,6 @@ import (
 // ErrAnchorChange is wrapped by every stop that keeps a weft from crossing an anchor change.
 // It also covers a weft whose marker it cannot read.
 var ErrAnchorChange = errors.New("fabricengine: weft anchor marker change")
-
-// PushFailureAnchorChange means the push was held back because the upstream carries another anchor marker than the weft.
-// It also covers a weft whose own marker is empty.
-// The record carries the way forward the stop named.
-const PushFailureAnchorChange PushFailureClass = "anchor_change"
 
 // AnchorStopError is the stop of a weft operation that would have crossed an anchor change.
 // Reason says what differs, and WayForward names the commands that settle it.
@@ -150,7 +146,7 @@ func refuseDropLocalAnchorChange(l *lymcwd.Location, slug, weftPath, tracking st
 // codeWorktree is the pair's code worktree root, whose anchored directory the way forward runs in.
 // It returns nil when the weft may take upstream in.
 func upstreamAnchorStop(weftPath, codeWorktree, upstream string) (*AnchorStopError, error) {
-	slug, ok := WeftWarpSlug(filepath.Base(weftPath))
+	slug, ok := fabriclayout.WeftWarpSlug(filepath.Base(weftPath))
 	if !ok {
 		return nil, fmt.Errorf("fabricengine: %s is no weft sibling worktree", weftPath)
 	}

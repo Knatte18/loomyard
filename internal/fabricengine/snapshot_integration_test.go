@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -32,7 +33,7 @@ func commitWeftTagged(t *testing.T, f *fabricengine.Fabric, warpPath, weftPath, 
 
 	warpSHA = fabricengine.CommitWarpForTest(t, warpPath, content)
 	fabricengine.WriteWeftConfigContentForTest(t, weftPath, content)
-	weftSHA, committed, err := fabricengine.CommitWeftForTest(f, []string{"_lym"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{}, tags...)
+	weftSHA, committed, err := fabricengine.CommitWeftForTest(f, []string{"_lym"}, fabriclayout.DefaultCommitMessage, fabricengine.SyncOptions{}, tags...)
 	if err != nil {
 		t.Fatalf("commitWeft(tags=%v) error = %v", tags, err)
 	}
@@ -66,7 +67,7 @@ func commitWeftTaggedWithDate(t *testing.T, f *fabricengine.Fabric, warpPath, we
 	}
 	gitkit.Git(t, weftPath, "add", ".")
 
-	msg := fabricengine.AppendWarpSHATrailerForTest(fabricengine.DefaultCommitMessage, warpSHA)
+	msg := fabricengine.AppendWarpSHATrailerForTest(fabriclayout.DefaultCommitMessage, warpSHA)
 	msg, err := fabricengine.AppendSnapshotTrailersForTest(msg, tags)
 	if err != nil {
 		t.Fatalf("appendSnapshotTrailers() error = %v", err)
@@ -120,10 +121,10 @@ func TestSnapshotWarpSHA_TopologicalOrderBeatsCommitDate(t *testing.T) {
 	weftFixture := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
 
-	// A real hub's weft primary checks out the suffixed branch (fabricengine.RecordsBranchName("main")), never bare "main".
+	// A real hub's weft primary checks out the suffixed branch (fabriclayout.RecordsBranchName("main")), never bare "main".
 	// Bare "main" is already checked out by the hub's Bolt checkout worktree.
 	// Switching this worktree onto it would collide with that worktree instead of reaching the primary's own mainline.
-	mainlineBranch := fabricengine.RecordsBranchName("main")
+	mainlineBranch := fabriclayout.RecordsBranchName("main")
 	warpSHAMainline, _ := commitWeftTagged(t, f, warpPath, weftFixture.PrimeRecords(), "mainline tagged", "raddle")
 
 	gitkit.MustRun(t, weftFixture.PrimeRecords(), "git", "checkout", "-b", "side")
@@ -210,7 +211,7 @@ func TestWeftSHAForWarpSHA_CorrespondenceOverwrite_EmptyCommitWins(t *testing.T)
 	// Make a tags-only call (nil pathspec) at the same warp HEAD, without advancing warp.
 	// The empty-commit rule takes its `!positive` fall-through.
 	// RecordCorrespondence then upserts over the entry the content commit wrote for warpSHA.
-	emptyWeftSHA, committed, err := fabricengine.CommitWeftForTest(f, nil, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{}, "raddle")
+	emptyWeftSHA, committed, err := fabricengine.CommitWeftForTest(f, nil, fabriclayout.DefaultCommitMessage, fabricengine.SyncOptions{}, "raddle")
 	if err != nil {
 		t.Fatalf("commitWeft() (tags-only, same warp HEAD) error = %v", err)
 	}

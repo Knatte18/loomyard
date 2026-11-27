@@ -16,6 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -26,8 +27,8 @@ import (
 
 // The origin refs of a one-repository hub's records namespace.
 const (
-	namespaceHeadsPrefix = fabricengine.RecordsNamespaceRoot + fabricengine.RecordsNamespaceHeads
-	namespaceBoardRef    = namespaceHeadsPrefix + fabricengine.OneRepositoryBoardBranch
+	namespaceHeadsPrefix = fabriclayout.RecordsNamespaceRoot + fabriclayout.RecordsNamespaceHeads
+	namespaceBoardRef    = namespaceHeadsPrefix + fabriclayout.OneRepositoryBoardBranch
 )
 
 // refLines returns the lines of `git for-each-ref --format=<format> <patterns>` in the repository at dir.
@@ -60,7 +61,7 @@ func requireEmptyDirectory(t *testing.T, dir string) {
 func cloneSingleRepo(t *testing.T, container, bare, subpath string) (fabricengine.CloneResult, error) {
 	t.Helper()
 
-	res, err := fabriccli.CloneAndWire(container, fabricengine.CloneOptions{
+	res, err := fabriccli.CloneAndWire(container, fabriclayout.CloneOptions{
 		WeftURL:    filepath.ToSlash(bare),
 		Subpath:    subpath,
 		SingleRepo: true,
@@ -86,24 +87,24 @@ func requireOneRepositoryLayout(t *testing.T, boardDir, recordsDir, primeCwd, or
 	if linked, err := fslink.IsLink(filepath.Join(primeCwd, lymdirs.LymDirName)); err != nil || !linked {
 		t.Errorf("%s under %s is not a wired junction (link = %v, err = %v)", lymdirs.LymDirName, primeCwd, linked, err)
 	}
-	if got := gitkit.CurrentBranch(t, boardDir); got != fabricengine.OneRepositoryBoardBranch {
-		t.Errorf("the board is on %q; want %q", got, fabricengine.OneRepositoryBoardBranch)
+	if got := gitkit.CurrentBranch(t, boardDir); got != fabriclayout.OneRepositoryBoardBranch {
+		t.Errorf("the board is on %q; want %q", got, fabriclayout.OneRepositoryBoardBranch)
 	}
-	binding, err := os.ReadFile(filepath.Join(boardDir, fabricengine.WarpBindingFileName))
+	binding, err := os.ReadFile(filepath.Join(boardDir, fabriclayout.WarpBindingFileName))
 	if err != nil {
 		t.Fatalf("read the board's binding: %v", err)
 	}
 	if got := strings.TrimSpace(string(binding)); got != filepath.ToSlash(origin) {
-		t.Errorf("the board's %s = %q; want the origin %q", fabricengine.WarpBindingFileName, got, filepath.ToSlash(origin))
+		t.Errorf("the board's %s = %q; want the origin %q", fabriclayout.WarpBindingFileName, got, filepath.ToSlash(origin))
 	}
-	if got := gitkit.Git(t, recordsDir, "config", "--get", fabricengine.PrimeRecordsBranchKey); got != recordsBranch {
-		t.Errorf("%s = %q; want %q", fabricengine.PrimeRecordsBranchKey, got, recordsBranch)
+	if got := gitkit.Git(t, recordsDir, "config", "--get", fabriclayout.PrimeRecordsBranchKey); got != recordsBranch {
+		t.Errorf("%s = %q; want %q", fabriclayout.PrimeRecordsBranchKey, got, recordsBranch)
 	}
-	wantTracking := []string{"refs/remotes/origin/" + fabricengine.OneRepositoryBoardBranch, "refs/remotes/origin/" + recordsBranch}
+	wantTracking := []string{"refs/remotes/origin/" + fabriclayout.OneRepositoryBoardBranch, "refs/remotes/origin/" + recordsBranch}
 	if got := refLines(t, recordsDir, "%(refname)", "refs/remotes/origin/"); !slices.Equal(got, wantTracking) {
 		t.Errorf("the records store's remote-tracking refs = %v; want %v, with no code branch among them", got, wantTracking)
 	}
-	if got := gitkit.Git(t, boardDir, "config", "--get", "branch."+fabricengine.OneRepositoryBoardBranch+".merge"); got != namespaceBoardRef {
+	if got := gitkit.Git(t, boardDir, "config", "--get", "branch."+fabriclayout.OneRepositoryBoardBranch+".merge"); got != namespaceBoardRef {
 		t.Errorf("the board's upstream merge = %q; want %q", got, namespaceBoardRef)
 	}
 }
@@ -144,7 +145,7 @@ func TestCloneSingleRepo_SeedsTheNamespace(t *testing.T) {
 				t.Errorf("origin's code branches = %v; want %v, as before the clone", got, codeRefsBefore)
 			}
 			wantNamespace := []string{namespaceBoardRef, namespaceHeadsPrefix + tt.recordsBranch}
-			if got := refLines(t, bare, "%(refname)", fabricengine.RecordsNamespaceRoot); !slices.Equal(got, wantNamespace) {
+			if got := refLines(t, bare, "%(refname)", fabriclayout.RecordsNamespaceRoot); !slices.Equal(got, wantNamespace) {
 				t.Errorf("origin's records namespace = %v; want %v", got, wantNamespace)
 			}
 
@@ -166,7 +167,7 @@ func TestCloneSingleRepo_SeedsTheNamespace(t *testing.T) {
 			gitkit.Git(t, filepath.Dir(plain), "clone", filepath.ToSlash(bare), filepath.Base(plain))
 			for _, ref := range refLines(t, plain, "%(refname)") {
 				if strings.Contains(ref, "lym") {
-					t.Errorf("a default clone of the origin fetched %s; want nothing under %s", ref, fabricengine.RecordsNamespaceRoot)
+					t.Errorf("a default clone of the origin fetched %s; want nothing under %s", ref, fabriclayout.RecordsNamespaceRoot)
 				}
 			}
 		})
@@ -191,7 +192,7 @@ func TestCloneOneURL_JoinsTheNamespacedHub(t *testing.T) {
 		if !gitkit.IsAncestor(t, second.BoardDir(), firstBoardTip, "HEAD") {
 			t.Errorf("the second board does not hold the first hub's board commit %s", firstBoardTip)
 		}
-		for _, file := range []string{fabricengine.WarpBindingFileName, fabricengine.ShortnameFileName} {
+		for _, file := range []string{fabriclayout.WarpBindingFileName, fabriclayout.ShortnameFileName} {
 			want, err := os.ReadFile(filepath.Join(first.BoardDir(), file))
 			if err != nil {
 				t.Fatalf("read the first board's %s: %v", file, err)
@@ -213,11 +214,11 @@ func TestCloneOneURL_JoinsTheNamespacedHub(t *testing.T) {
 		second := hubforge.CloneSecond(t, first)
 
 		requireOneRepositoryLayout(t, second.BoardDir(), second.PrimeRecords(), second.PrimeWorktree(), second.CodeBare, "master-weft")
-		firstBinding, err := os.ReadFile(filepath.Join(first.BoardDir(), fabricengine.WarpBindingFileName))
+		firstBinding, err := os.ReadFile(filepath.Join(first.BoardDir(), fabriclayout.WarpBindingFileName))
 		if err != nil {
 			t.Fatalf("read the first board's binding: %v", err)
 		}
-		secondBinding, err := os.ReadFile(filepath.Join(second.BoardDir(), fabricengine.WarpBindingFileName))
+		secondBinding, err := os.ReadFile(filepath.Join(second.BoardDir(), fabriclayout.WarpBindingFileName))
 		if err != nil {
 			t.Fatalf("read the second board's binding: %v", err)
 		}
@@ -232,7 +233,7 @@ func TestCloneOneURL_JoinsTheNamespacedHub(t *testing.T) {
 		first := hubforge.NewOneRepoHub(t, hubforge.OneRepoOptions{})
 		container := t.TempDir()
 
-		_, err := fabricengine.CloneHub(container, fabricengine.CloneOptions{WeftURL: filepath.ToSlash(first.CodeBare), Shortname: "other"})
+		_, err := fabricengine.CloneHub(container, fabriclayout.CloneOptions{WeftURL: filepath.ToSlash(first.CodeBare), Shortname: "other"})
 		if err == nil || !strings.Contains(err.Error(), fmt.Sprintf("recorded shortname is %q", hubforge.TestShortname)) {
 			t.Errorf("CloneHub with another shortname error = %v; want a refusal naming the recorded shortname %q", err, hubforge.TestShortname)
 		}
@@ -243,7 +244,7 @@ func TestCloneOneURL_JoinsTheNamespacedHub(t *testing.T) {
 		t.Parallel()
 
 		first := hubforge.NewOneRepoHub(t, hubforge.OneRepoOptions{})
-		binding := filepath.Join(first.BoardDir(), fabricengine.WarpBindingFileName)
+		binding := filepath.Join(first.BoardDir(), fabriclayout.WarpBindingFileName)
 		if err := os.WriteFile(binding, []byte("https://example.com/another-code\n"), 0o644); err != nil {
 			t.Fatalf("rewrite the board's binding: %v", err)
 		}
@@ -256,7 +257,7 @@ func TestCloneOneURL_JoinsTheNamespacedHub(t *testing.T) {
 		}
 		container := t.TempDir()
 
-		_, err := fabricengine.CloneHub(container, fabricengine.CloneOptions{WeftURL: filepath.ToSlash(first.CodeBare), Shortname: hubforge.TestShortname})
+		_, err := fabricengine.CloneHub(container, fabriclayout.CloneOptions{WeftURL: filepath.ToSlash(first.CodeBare), Shortname: hubforge.TestShortname})
 		if !errors.Is(err, fabricengine.ErrWarpBindingMismatch) {
 			t.Errorf("CloneHub over a rewritten binding error = %v; want %v", err, fabricengine.ErrWarpBindingMismatch)
 		}
@@ -269,7 +270,7 @@ func TestCloneOneURL_JoinsTheNamespacedHub(t *testing.T) {
 		first := hubforge.NewOneRepoHub(t, hubforge.OneRepoOptions{})
 		second := hubforge.CloneSecond(t, first)
 
-		_, err := fabricengine.CloneHub(second.Container, fabricengine.CloneOptions{
+		_, err := fabricengine.CloneHub(second.Container, fabriclayout.CloneOptions{
 			WeftURL:   filepath.ToSlash(first.CodeBare),
 			Subpath:   "backend",
 			Reset:     true,
@@ -289,7 +290,7 @@ func TestCloneOneURL_JoinsTheNamespacedHub(t *testing.T) {
 		first := hubforge.NewOneRepoHub(t, hubforge.OneRepoOptions{})
 		gitkit.Git(t, first.CodeBare, "update-ref", "-d", namespaceHeadsPrefix+"main-weft")
 
-		_, err := fabricengine.CloneHub(first.Container, fabricengine.CloneOptions{
+		_, err := fabricengine.CloneHub(first.Container, fabriclayout.CloneOptions{
 			WeftURL:   filepath.ToSlash(first.CodeBare),
 			Subpath:   "no-such-directory",
 			Reset:     true,
@@ -351,7 +352,7 @@ func TestCloneSingleRepo_FailedSeedPushLeavesNothing(t *testing.T) {
 			t.Errorf("clone error = %q; a host that took the records branch must not be named as refusing refs outside refs/heads/", err.Error())
 		}
 		requireEmptyDirectory(t, container)
-		if got := refLines(t, bare, "%(refname)", fabricengine.RecordsNamespaceRoot); len(got) != 0 {
+		if got := refLines(t, bare, "%(refname)", fabriclayout.RecordsNamespaceRoot); len(got) != 0 {
 			t.Errorf("origin's records namespace = %v; want it empty, the records push restored", got)
 		}
 
@@ -362,7 +363,7 @@ func TestCloneSingleRepo_FailedSeedPushLeavesNothing(t *testing.T) {
 			t.Fatalf("rerun of the clone with the hook removed: %v", err)
 		}
 		wantNamespace := []string{namespaceBoardRef, recordsRef}
-		if got := refLines(t, bare, "%(refname)", fabricengine.RecordsNamespaceRoot); !slices.Equal(got, wantNamespace) {
+		if got := refLines(t, bare, "%(refname)", fabriclayout.RecordsNamespaceRoot); !slices.Equal(got, wantNamespace) {
 			t.Errorf("origin's records namespace after the rerun = %v; want %v", got, wantNamespace)
 		}
 	})
@@ -499,7 +500,7 @@ func TestCloneSingleRepo_FailedSeedPushLeavesNothing(t *testing.T) {
 					t.Errorf("%s = %s; want the observed leftover %s", recordsRef, got, leftover)
 				}
 			}
-			if got := refLines(t, bare, "%(refname)", fabricengine.RecordsNamespaceRoot); !slices.Equal(got, wantRefs) {
+			if got := refLines(t, bare, "%(refname)", fabriclayout.RecordsNamespaceRoot); !slices.Equal(got, wantRefs) {
 				t.Errorf("origin's records namespace = %v; want %v", got, wantRefs)
 			}
 		})
@@ -511,7 +512,7 @@ func TestCloneSingleRepo_FailedSeedPushLeavesNothing(t *testing.T) {
 		if err := os.MkdirAll(lockDir, 0o755); err != nil {
 			t.Fatalf("create the namespace directory: %v", err)
 		}
-		lock := filepath.Join(lockDir, fabricengine.OneRepositoryBoardBranch+".lock")
+		lock := filepath.Join(lockDir, fabriclayout.OneRepositoryBoardBranch+".lock")
 		if err := os.WriteFile(lock, nil, 0o644); err != nil {
 			t.Fatalf("create the board ref's lock file: %v", err)
 		}
@@ -525,7 +526,7 @@ func TestCloneSingleRepo_FailedSeedPushLeavesNothing(t *testing.T) {
 			t.Errorf("clone error = %q; a transient refusal must not name the refused-host way forward", err.Error())
 		}
 		requireEmptyDirectory(t, container)
-		if got := refLines(t, bare, "%(refname)", fabricengine.RecordsNamespaceRoot); len(got) != 0 {
+		if got := refLines(t, bare, "%(refname)", fabriclayout.RecordsNamespaceRoot); len(got) != 0 {
 			t.Errorf("origin's records namespace = %v; want it empty, the records push restored", got)
 		}
 	})
@@ -533,7 +534,7 @@ func TestCloneSingleRepo_FailedSeedPushLeavesNothing(t *testing.T) {
 	t.Run("AbandonedSeedRemovesTheHubAndNamesTheRerun", func(t *testing.T) {
 		bare := hubforge.CopyCodeBare(t, "")
 		container := t.TempDir()
-		res, err := fabricengine.CloneHub(container, fabricengine.CloneOptions{
+		res, err := fabricengine.CloneHub(container, fabriclayout.CloneOptions{
 			WeftURL:    filepath.ToSlash(bare),
 			SingleRepo: true,
 			Shortname:  hubforge.TestShortname,
@@ -548,7 +549,7 @@ func TestCloneSingleRepo_FailedSeedPushLeavesNothing(t *testing.T) {
 			t.Errorf("AbandonSeededClone error = %v; want the cause and the rerun way forward", got)
 		}
 		requireEmptyDirectory(t, container)
-		if refs := refLines(t, bare, "%(refname)", fabricengine.RecordsNamespaceRoot); len(refs) != 0 {
+		if refs := refLines(t, bare, "%(refname)", fabriclayout.RecordsNamespaceRoot); len(refs) != 0 {
 			t.Errorf("origin's records namespace = %v; want it empty, since nothing was pushed", refs)
 		}
 	})
@@ -558,7 +559,7 @@ func TestCloneSingleRepo_FailedSeedPushLeavesNothing(t *testing.T) {
 		recordsRemote := makeEmptyBareRemote(t, fixtures, "records")
 		codeRemote := makeBareRemote(t, fixtures, "code")
 		container := t.TempDir()
-		res, err := fabricengine.CloneHub(container, fabricengine.CloneOptions{
+		res, err := fabricengine.CloneHub(container, fabriclayout.CloneOptions{
 			WeftURL:   filepath.ToSlash(recordsRemote),
 			WarpURL:   filepath.ToSlash(codeRemote),
 			Shortname: hubforge.TestShortname,
@@ -601,7 +602,7 @@ func TestCloneSingleRepo_FailedSeedPushLeavesNothing(t *testing.T) {
 		}{
 			{
 				name:         "OriginHoldsNoBoard",
-				wantErrorHas: []string{"origin holds no board under " + fabricengine.RecordsNamespaceRoot + ", so it was never seeded onto origin"},
+				wantErrorHas: []string{"origin holds no board under " + fabriclayout.RecordsNamespaceRoot + ", so it was never seeded onto origin"},
 				wantReset:    true,
 			},
 			{
@@ -609,8 +610,8 @@ func TestCloneSingleRepo_FailedSeedPushLeavesNothing(t *testing.T) {
 				originHoldsSeed: true,
 				wantErrorHas: []string{
 					"so the seed landed and its clone stopped before it set the upstreams",
-					"`git -C {board} config branch." + fabricengine.OneRepositoryBoardBranch + ".remote origin`",
-					"`git -C {board} config branch." + fabricengine.OneRepositoryBoardBranch + ".merge " + namespaceBoardRef + "`",
+					"`git -C {board} config branch." + fabriclayout.OneRepositoryBoardBranch + ".remote origin`",
+					"`git -C {board} config branch." + fabriclayout.OneRepositoryBoardBranch + ".merge " + namespaceBoardRef + "`",
 					"`git -C {board} config branch.{records}.remote origin`",
 					"`git -C {board} config branch.{records}.merge " + namespaceHeadsPrefix + "{records}`",
 				},
@@ -664,7 +665,7 @@ func TestCloneSingleRepo_FailedSeedPushLeavesNothing(t *testing.T) {
 				if tt.originHoldsSeed {
 					res, err = cloneSingleRepo(t, t.TempDir(), bare, "")
 				} else {
-					res, err = fabricengine.CloneHub(t.TempDir(), fabricengine.CloneOptions{
+					res, err = fabricengine.CloneHub(t.TempDir(), fabriclayout.CloneOptions{
 						WeftURL:    filepath.ToSlash(bare),
 						SingleRepo: true,
 						Shortname:  hubforge.TestShortname,
@@ -673,9 +674,9 @@ func TestCloneSingleRepo_FailedSeedPushLeavesNothing(t *testing.T) {
 				if err != nil {
 					t.Fatalf("clone --single-repo: %v", err)
 				}
-				recordsBranch := gitkit.Git(t, res.BoardDir, "config", "--get", fabricengine.PrimeRecordsBranchKey)
+				recordsBranch := gitkit.Git(t, res.BoardDir, "config", "--get", fabriclayout.PrimeRecordsBranchKey)
 				if tt.originHoldsSeed {
-					for _, branch := range []string{fabricengine.OneRepositoryBoardBranch, recordsBranch} {
+					for _, branch := range []string{fabriclayout.OneRepositoryBoardBranch, recordsBranch} {
 						gitkit.Git(t, res.BoardDir, "config", "--unset", "branch."+branch+".remote")
 						gitkit.Git(t, res.BoardDir, "config", "--unset", "branch."+branch+".merge")
 					}
@@ -694,7 +695,7 @@ func TestCloneSingleRepo_FailedSeedPushLeavesNothing(t *testing.T) {
 				if tt.originUnreadable {
 					gitkit.Git(t, res.BoardDir, "config", "remote.origin.url", filepath.Join(t.TempDir(), "no-such-repository"))
 				}
-				originBefore := refLines(t, bare, "%(refname) %(objectname)", fabricengine.RecordsNamespaceRoot)
+				originBefore := refLines(t, bare, "%(refname) %(objectname)", fabriclayout.RecordsNamespaceRoot)
 
 				err = fabricengine.NewBolt(res.BoardDir).Push(fabricengine.SyncOptions{})
 				if err == nil {
@@ -709,7 +710,7 @@ func TestCloneSingleRepo_FailedSeedPushLeavesNothing(t *testing.T) {
 				if got := strings.Contains(err.Error(), resetWayForward); got != tt.wantReset {
 					t.Errorf("Push error = %q; naming the --reset clone = %v, want %v", err.Error(), got, tt.wantReset)
 				}
-				if got := refLines(t, bare, "%(refname) %(objectname)", fabricengine.RecordsNamespaceRoot); !slices.Equal(got, originBefore) {
+				if got := refLines(t, bare, "%(refname) %(objectname)", fabriclayout.RecordsNamespaceRoot); !slices.Equal(got, originBefore) {
 					t.Errorf("origin's records namespace = %v; want it unchanged at %v", got, originBefore)
 				}
 				if records, err := fabricengine.ListFailedPushes(res.HubPath); err != nil || len(records) != 0 {
@@ -717,7 +718,7 @@ func TestCloneSingleRepo_FailedSeedPushLeavesNothing(t *testing.T) {
 				}
 
 				if tt.wantPushLands {
-					for _, branch := range []string{fabricengine.OneRepositoryBoardBranch, recordsBranch} {
+					for _, branch := range []string{fabriclayout.OneRepositoryBoardBranch, recordsBranch} {
 						gitkit.Git(t, res.BoardDir, "config", "branch."+branch+".remote", "origin")
 						gitkit.Git(t, res.BoardDir, "config", "branch."+branch+".merge", namespaceHeadsPrefix+branch)
 					}

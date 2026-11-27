@@ -15,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -39,7 +40,7 @@ func BeamModes(boardDir string, beams []string) (boardengine.BeamModes, error) {
 	if err != nil {
 		return boardengine.BeamModes{}, err
 	}
-	hubWide, err := readBeamSettings(dobbyengine.TaskSettingChain{Board: fabricengine.BoltDir(prime.HubPath)})
+	hubWide, err := readBeamSettings(dobbyengine.TaskSettingChain{Board: fabriclayout.BoltDir(prime.HubPath)})
 	if err != nil {
 		return boardengine.BeamModes{}, fmt.Errorf("hubgeom: read the hub-wide beam settings: %w", err)
 	}

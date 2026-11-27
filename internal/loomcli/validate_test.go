@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
@@ -607,7 +608,7 @@ func TestValidatePlanCmd(t *testing.T) {
 	t.Run("UnparsableGateConfigIsRefusedNamingTheWayForward", func(t *testing.T) {
 		anchorPath := t.TempDir()
 		c := planFixture(t, anchorPath, t.TempDir(), true)
-		gatePath := configengine.ConfigFile(fabricengine.BoardDir(c.location.HubPath), "gate")
+		gatePath := configengine.ConfigFile(fabriclayout.BoardDir(c.location.HubPath), "gate")
 		if err := os.MkdirAll(filepath.Dir(gatePath), 0o755); err != nil {
 			t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(gatePath), err)
 		}

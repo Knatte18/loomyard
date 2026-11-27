@@ -4,7 +4,7 @@
 package battencli
 
 import (
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -26,7 +26,7 @@ func ReleaseRunParentLock(prime *lymcwd.Location, slug string) error {
 	if err != nil || keeps {
 		return err
 	}
-	store := &parentlock.Store{Dir: parentlock.Dir(fabricengine.BoltDir(prime.HubPath))}
+	store := &parentlock.Store{Dir: parentlock.Dir(fabriclayout.BoltDir(prime.HubPath))}
 	record, found, err := runLockRecord(store, slug, taskLocation.WorktreePath())
 	if err != nil || !found {
 		return err

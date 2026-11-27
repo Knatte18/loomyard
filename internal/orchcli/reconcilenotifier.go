@@ -7,7 +7,7 @@ import (
 	"context"
 	"path/filepath"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
@@ -30,7 +30,7 @@ func InstallReconcileNotifier(ctx context.Context) {
 // reconcileNotifierFor returns the notifier that posts a notice for the hub at location to its prime orch;
 // the mail is signed RECONCILE, and the notifier reports a notice for another Bolt checkout as not posted.
 func reconcileNotifierFor(location *lymcwd.Location) hubreconcile.Notifier {
-	boardDir := filepath.Clean(fabricengine.BoltDir(location.HubPath))
+	boardDir := filepath.Clean(fabriclayout.BoltDir(location.HubPath))
 	return func(noticeBoardDir, line string) (bool, error) {
 		if filepath.Clean(noticeBoardDir) != boardDir {
 			return false, nil

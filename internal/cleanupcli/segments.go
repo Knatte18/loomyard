@@ -13,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loggerconfig"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -129,7 +130,7 @@ func segmentsOver(location *lymcwd.Location, hubOrchs func(*lymcwd.Location) ([]
 		}},
 		{name: "logs", run: func(apply bool) (any, error) {
 			removed := []string{}
-			for _, dirs := range []configengine.Dirs{fabricengine.ConfigDirs(location), {Anchor: fabricengine.BoltDir(location.HubPath)}} {
+			for _, dirs := range []configengine.Dirs{fabricengine.ConfigDirs(location), {Anchor: fabriclayout.BoltDir(location.HubPath)}} {
 				paths, err := logger.SweepDir(logger.LogsDirAt(dirs.Anchor), loggerconfig.LoadOrDefault(dirs), apply)
 				if err != nil {
 					return nil, err

@@ -16,6 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/parentlock"
@@ -69,7 +70,7 @@ func TestCommand_PullHubFromATaskPair(t *testing.T) {
 			if tt.dirtyPrime && !strings.Contains(env.Error, "prime "+h.Location.WorktreeName) {
 				t.Errorf("error = %q; want it to name the stopped prime", env.Error)
 			}
-			entries, err := (&parentlock.Store{Dir: parentlock.Dir(fabricengine.BoardDir(h.Path))}).List()
+			entries, err := (&parentlock.Store{Dir: parentlock.Dir(fabriclayout.BoardDir(h.Path))}).List()
 			if err != nil || len(entries) != 0 {
 				t.Errorf("parent locks after the pull = (%v, %v); want none held", entries, err)
 			}
@@ -80,7 +81,7 @@ func TestCommand_PullHubFromATaskPair(t *testing.T) {
 // holdParentLock takes the parent lock of branch as an owner that is not the pull, and returns the store and a release.
 func holdParentLock(t *testing.T, h *hubforge.Hub, branch string) (*parentlock.Store, func()) {
 	t.Helper()
-	store := &parentlock.Store{Dir: parentlock.Dir(fabricengine.BoardDir(h.Path))}
+	store := &parentlock.Store{Dir: parentlock.Dir(fabriclayout.BoardDir(h.Path))}
 	startTime, _ := proc.StartTime(os.Getpid())
 	holder := parentlock.Owner{Slug: "holder", Pair: filepath.Join(h.Path, "holder"), RunID: "holder-run", PID: os.Getpid(), StartTime: startTime}
 	if attempt, err := store.TryAcquire(branch, holder); err != nil || !attempt.Granted {

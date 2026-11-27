@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/driftengine"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -28,15 +28,15 @@ func driftTestEnv(t *testing.T) Env {
 		BranchPoint: func() (string, error) { return "branch-point", nil },
 		DirtyPaths:  func() ([]string, error) { return nil, nil },
 		Commit:      func([]string) error { return nil },
-		CommitWithTrailers: func([]string, []fabricengine.Trailer) error {
+		CommitWithTrailers: func([]string, []fabriclayout.Trailer) error {
 			return nil
 		},
-		TrailerCommit: func(string, bool) (fabricengine.TrailerCommit, bool, error) {
-			return fabricengine.TrailerCommit{}, false, nil
+		TrailerCommit: func(string, bool) (fabriclayout.TrailerCommit, bool, error) {
+			return fabriclayout.TrailerCommit{}, false, nil
 		},
 		FileAt:       func(string, string) ([]byte, bool, error) { return nil, false, nil },
 		CommitsSince: func(string) ([]string, error) { return nil, nil },
-		ChangedFiles: func(string) ([]fabricengine.FileDiff, error) { return nil, nil },
+		ChangedFiles: func(string) ([]fabriclayout.FileDiff, error) { return nil, nil },
 		RangeDiff:    func(string) (string, error) { return "", nil },
 		CommitMessages: func(string) ([]string, error) {
 			return nil, nil
@@ -44,8 +44,8 @@ func driftTestEnv(t *testing.T) Env {
 		ExpectTable:  func(string) (seatengine.Table, error) { return seatengine.Table{}, nil },
 		StartCapture: func() error { return nil },
 		JudgeTable:   func(string) (seatengine.Table, error) { return seatengine.Table{}, nil },
-		Checkouts: func() (fabricengine.CheckoutState, fabricengine.CheckoutState, error) {
-			return fabricengine.CheckoutState{}, fabricengine.CheckoutState{}, nil
+		Checkouts: func() (fabriclayout.CheckoutState, fabriclayout.CheckoutState, error) {
+			return fabriclayout.CheckoutState{}, fabriclayout.CheckoutState{}, nil
 		},
 		RecordsChangedSince: func(string) ([]string, error) { return nil, nil },
 		EndRoles:            func([]string) error { return nil },

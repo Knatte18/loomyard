@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -91,7 +91,7 @@ func TestRaddleRunFiling(t *testing.T) {
 				if err != nil {
 					t.Fatalf("marshal the store record: %v", err)
 				}
-				dir := boardengine.RaddleStoreDir(fabricengine.BoardDir(location.HubPath), tt.storeSketch)
+				dir := boardengine.RaddleStoreDir(fabriclayout.BoardDir(location.HubPath), tt.storeSketch)
 				if err := os.MkdirAll(dir, 0o755); err != nil {
 					t.Fatalf("create the store directory: %v", err)
 				}

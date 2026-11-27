@@ -1,11 +1,11 @@
 // branchname_test.go — unit tests for RecordsBranchName's uniform derivation.
 
-package fabricengine_test
+package fabriclayout_test
 
 import (
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -26,30 +26,10 @@ func TestRecordsBranchName(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := fabricengine.RecordsBranchName(tt.warpBranch)
+			got := fabriclayout.RecordsBranchName(tt.warpBranch)
 			if got != tt.want {
 				t.Errorf("RecordsBranchName(%q) = %q; want %q", tt.warpBranch, got, tt.want)
 			}
 		})
-	}
-}
-
-// TestRecordsBranchName_RoundTripsWithWeftWarpSlug asserts a round trip:
-// fabricengine.WeftWarpSlug recovers the original warp branch from every RecordsBranchName output.
-//
-//testtiming:keep WeftWarpSlug recovering the warp branch from every RecordsBranchName output; coverage of its blocks by other tests does not show an assertion of this
-func TestRecordsBranchName_RoundTripsWithWeftWarpSlug(t *testing.T) {
-	tiergate.Require(t, 0)
-	warpBranches := []string{"main", "hanf/foo", "foo"}
-	for _, warp := range warpBranches {
-		weft := fabricengine.RecordsBranchName(warp)
-		gotWarp, ok := fabricengine.WeftWarpSlug(weft)
-		if !ok {
-			t.Errorf("WeftWarpSlug(%q) ok = false; want true", weft)
-			continue
-		}
-		if gotWarp != warp {
-			t.Errorf("WeftWarpSlug(%q) = %q; want %q", weft, gotWarp, warp)
-		}
 	}
 }

@@ -7,7 +7,7 @@ import (
 	"fmt"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -83,9 +83,9 @@ It retries a push that is owed without end, and stops on a refused push, a hand-
 // Notify posts one line to the nearest live orch.
 func pusherDeps(prime *lymcwd.Location, t runpusher.Target, check prePushCheck, pushRun func(prime, l *lymcwd.Location, slug string, push pairteardown.RunPush) error) runpusher.Deps {
 	deps := runpusher.NewDeps(t)
-	push := pairteardown.RunPush{LockWait: fabricengine.StatusPushLockWait, OwedUnrecorded: true}
+	push := pairteardown.RunPush{LockWait: fabriclayout.StatusPushLockWait, OwedUnrecorded: true}
 	if t.Pair {
-		push.TeardownWait = fabricengine.StatusPushLockWait
+		push.TeardownWait = fabriclayout.StatusPushLockWait
 		push.InsidePair = true
 		deps.Guard = check.guard
 	}

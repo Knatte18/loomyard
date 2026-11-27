@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -67,7 +68,7 @@ type mergeInFixture struct {
 	gate   *gateFixture
 	events []string
 
-	tips      fabricengine.ParentTips
+	tips      fabriclayout.ParentTips
 	tipsErr   error
 	tipsReads []tipsRead
 	// head is the task head, which the merge moves to mergeHead and each fixer turn that commits moves on.
@@ -86,7 +87,7 @@ type mergeInFixture struct {
 	// reviewOff is what CodeReviewOff answers.
 	reviewOff bool
 	// lineChange is what LineChange answers, and lineChangeCalls records each "from..to".
-	lineChange      fabricengine.LineChange
+	lineChange      fabriclayout.LineChange
 	lineChangeErr   error
 	lineChangeCalls []string
 }
@@ -103,7 +104,7 @@ func newMergeInFixture(t *testing.T) *mergeInFixture {
 	fx := &mergeInFixture{
 		store:        &parentlock.Store{Dir: filepath.Join(dir, "locks"), Alive: func(int, string) bool { return true }},
 		gate:         newGateFixture(t, "parent-align", "go test ./...", nil),
-		tips:         fabricengine.ParentTips{Local: "p1", Upstream: "p1", Relation: fabricengine.ParentEqual},
+		tips:         fabriclayout.ParentTips{Local: "p1", Upstream: "p1", Relation: fabriclayout.ParentEqual},
 		head:         "t1",
 		mergeHead:    "t2",
 		mergeBase:    "b0",
@@ -154,7 +155,7 @@ func newMergeInFixture(t *testing.T) *mergeInFixture {
 			holds, set := fx.holds[key]
 			return holds || !set, nil
 		},
-		LineChange: func(from, to string) (fabricengine.LineChange, error) {
+		LineChange: func(from, to string) (fabriclayout.LineChange, error) {
 			fx.lineChangeCalls = append(fx.lineChangeCalls, from+".."+to)
 			return fx.lineChange, fx.lineChangeErr
 		},
@@ -164,7 +165,7 @@ func newMergeInFixture(t *testing.T) *mergeInFixture {
 			Owner:    func() (parentlock.Owner, error) { return owner, nil },
 			WaitPath: filepath.Join(dir, "wait.json"),
 		},
-		ReadParentTips: func(fetch bool) (fabricengine.ParentTips, error) {
+		ReadParentTips: func(fetch bool) (fabriclayout.ParentTips, error) {
 			fx.events = append(fx.events, "tips")
 			fx.tipsReads = append(fx.tipsReads, tipsRead{fetch: fetch, lockHeld: lockHeld()})
 			return fx.tips, fx.tipsErr
@@ -217,7 +218,7 @@ func TestMergeIn_RunsStatusCommitThenLockThenSyncThenMergeAndVerify(t *testing.T
 	proceeds := "commit-status,reconcile,tips,merge main,verify"
 	tests := []struct {
 		name         string
-		report       fabricengine.OriginReport
+		report       fabriclayout.OriginReport
 		reconcileErr error
 		wantErr      bool
 		wantOutcome  shedengine.Outcome
@@ -228,36 +229,36 @@ func TestMergeIn_RunsStatusCommitThenLockThenSyncThenMergeAndVerify(t *testing.T
 	}{
 		{
 			name:        "an active run proceeds to the merge",
-			report:      fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: "me", State: fabricengine.EntryActive}}},
+			report:      fabriclayout.OriginReport{Entries: []fabriclayout.EntryOutcome{{Slug: "me", State: fabriclayout.EntryActive}}},
 			wantOutcome: shedengine.Done, wantEvents: proceeds,
 		},
 		{
 			name:        "an unreachable origin proceeds to the merge",
-			report:      fabricengine.OriginReport{Unreachable: true},
+			report:      fabriclayout.OriginReport{Unreachable: true},
 			wantOutcome: shedengine.Done, wantEvents: proceeds,
 		},
 		{
 			name:        "a run owned elsewhere proceeds to the merge",
-			report:      fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: "me", State: fabricengine.EntryOwnedElsewhere, Owner: "desk"}}},
+			report:      fabriclayout.OriginReport{Entries: []fabriclayout.EntryOutcome{{Slug: "me", State: fabriclayout.EntryOwnedElsewhere, Owner: "desk"}}},
 			wantOutcome: shedengine.Done, wantEvents: proceeds,
 		},
 		{
 			name:        "an ended run that landed halts naming the landing",
-			report:      fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: "me", State: fabricengine.EntryEnded, How: "done"}}},
+			report:      fabriclayout.OriginReport{Entries: []fabriclayout.EntryOutcome{{Slug: "me", State: fabriclayout.EntryEnded, How: "done"}}},
 			wantOutcome: shedengine.Stuck, wantEvents: "commit-status,reconcile", wantHalt: true,
 			wantInReason: []string{"its landing is done", `"lym cleanup --apply" from the prime`},
 		},
 		{
 			name:        "an ended run removed from the board halts naming the removal",
-			report:      fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: "me", State: fabricengine.EntryEnded, How: "removed"}}},
+			report:      fabriclayout.OriginReport{Entries: []fabriclayout.EntryOutcome{{Slug: "me", State: fabriclayout.EntryEnded, How: "removed"}}},
 			wantOutcome: shedengine.Stuck, wantEvents: "commit-status,reconcile", wantHalt: true,
 			wantInReason: []string{"removed from the board", `"lym cleanup --apply" from the prime`},
 		},
 		{
 			name: "a stopped run names the branch and its way forward, then the resume",
-			report: fabricengine.OriginReport{
-				Branches: []fabricengine.BranchOutcome{{Branch: "main", State: fabricengine.BranchDiverged, WayForward: stoppedWayForward}},
-				Entries:  []fabricengine.EntryOutcome{{Slug: "me", State: fabricengine.EntryStopped, WayForward: stoppedWayForward}},
+			report: fabriclayout.OriginReport{
+				Branches: []fabriclayout.BranchOutcome{{Branch: "main", State: fabriclayout.BranchDiverged, WayForward: stoppedWayForward}},
+				Entries:  []fabriclayout.EntryOutcome{{Slug: "me", State: fabriclayout.EntryStopped, WayForward: stoppedWayForward}},
 			},
 			wantOutcome: shedengine.Stuck, wantEvents: "commit-status,reconcile",
 			wantInReason: []string{"branch main is diverged against origin", stoppedWayForward + `; then run "lym loom resume"`},
@@ -273,7 +274,7 @@ func TestMergeIn_RunsStatusCommitThenLockThenSyncThenMergeAndVerify(t *testing.T
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			fx := newMergeInFixture(t)
-			fx.m.deps.Reconcile = func() (fabricengine.OriginReport, error) {
+			fx.m.deps.Reconcile = func() (fabriclayout.OriginReport, error) {
 				fx.events = append(fx.events, "reconcile")
 				return tt.report, tt.reconcileErr
 			}
@@ -316,7 +317,7 @@ func TestMergeIn_MergeTip(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		tips        fabricengine.ParentTips
+		tips        fabriclayout.ParentTips
 		pushSkipped bool
 		otherHolds  bool
 		wantTip     string
@@ -325,29 +326,29 @@ func TestMergeIn_MergeTip(t *testing.T) {
 	}{
 		{
 			name:       "an upstream tip is merged while another run holds the lock, and no lock is taken",
-			tips:       fabricengine.ParentTips{Local: "p1", Upstream: "u2", Relation: fabricengine.ParentBehind},
+			tips:       fabriclayout.ParentTips{Local: "p1", Upstream: "u2", Relation: fabriclayout.ParentBehind},
 			otherHolds: true,
 			wantTip:    "u2", wantReads: []tipsRead{{fetch: true}}, wantHeld: true,
 		},
 		{
 			name:    "a local parent ahead of its upstream merges the upstream tip, never the local-only commit",
-			tips:    fabricengine.ParentTips{Local: "p2", Upstream: "p1", Relation: fabricengine.ParentAhead},
+			tips:    fabriclayout.ParentTips{Local: "p2", Upstream: "p1", Relation: fabriclayout.ParentAhead},
 			wantTip: "p1", wantReads: []tipsRead{{fetch: true}},
 		},
 		{
 			name:    "a diverged local parent merges the upstream tip",
-			tips:    fabricengine.ParentTips{Local: "p2", Upstream: "u2", Relation: fabricengine.ParentDiverged},
+			tips:    fabriclayout.ParentTips{Local: "p2", Upstream: "u2", Relation: fabriclayout.ParentDiverged},
 			wantTip: "u2", wantReads: []tipsRead{{fetch: true}},
 		},
 		{
 			name:        "the push skip holds the lock for the local-tip read only",
-			tips:        fabricengine.ParentTips{Local: "p1", Upstream: "u2", Relation: fabricengine.ParentBehind},
+			tips:        fabriclayout.ParentTips{Local: "p1", Upstream: "u2", Relation: fabriclayout.ParentBehind},
 			pushSkipped: true,
 			wantTip:     "p1", wantReads: []tipsRead{{fetch: false, lockHeld: true}},
 		},
 		{
 			name:    "no upstream holds the lock for the local-tip read only",
-			tips:    fabricengine.ParentTips{Local: "p1", Relation: fabricengine.ParentNoUpstream},
+			tips:    fabriclayout.ParentTips{Local: "p1", Relation: fabriclayout.ParentNoUpstream},
 			wantTip: "p1", wantReads: []tipsRead{{fetch: true}, {fetch: false, lockHeld: true}},
 		},
 	}
@@ -462,7 +463,7 @@ func TestMergeIn_MergeRecord(t *testing.T) {
 
 		fx.mergeBase = "p1"
 		fx.mergeHead = "m2"
-		fx.tips = fabricengine.ParentTips{Local: "p2", Upstream: "p2", Relation: fabricengine.ParentEqual}
+		fx.tips = fabriclayout.ParentTips{Local: "p2", Upstream: "p2", Relation: fabriclayout.ParentEqual}
 		fx.changedPaths["p1..p2"] = []string{"new.txt"}
 		fx.changedPaths["p1..m1"] = []string{"later.txt"}
 		fx.changedCalls = nil
@@ -830,7 +831,7 @@ func TestNewParentAlign_RefusesAMissingSeam(t *testing.T) {
 		return Deps{
 			OpenFabric:       func() (*fabricengine.Fabric, error) { return nil, nil },
 			OpenParentFabric: func() (*fabricengine.Fabric, error) { return nil, nil },
-			ReadParentTips:   func(bool) (fabricengine.ParentTips, error) { return fabricengine.ParentTips{}, nil },
+			ReadParentTips:   func(bool) (fabriclayout.ParentTips, error) { return fabriclayout.ParentTips{}, nil },
 			ChangedPaths:     func(string, string) ([]string, error) { return nil, nil },
 			MergeBase:        func(string) (string, error) { return "", nil },
 			TaskHead:         func() (string, error) { return "", nil },

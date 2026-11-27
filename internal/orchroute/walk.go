@@ -10,6 +10,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
@@ -51,7 +52,7 @@ func StrandOf(worktree *lymcwd.Location) (name string, recorded bool, err error)
 // FixedStrandName answers the name the orch strand of worktree takes when reed holds none for it:
 // `<shortname>:orch` for the prime and `<shortname>:<slug>:orch` for a beam.
 func FixedStrandName(worktree *lymcwd.Location) (string, error) {
-	shortname, found := fabricengine.ReadShortname(fabricengine.BoltDir(worktree.HubPath))
+	shortname, found := fabricengine.ReadShortname(fabriclayout.BoltDir(worktree.HubPath))
 	if !found {
 		return "", fmt.Errorf("orch: the hub of %s has no usable shortname record to name the orch strand; way forward: run `lym fabric shortname <shortname>`", worktree.WorktreePath())
 	}

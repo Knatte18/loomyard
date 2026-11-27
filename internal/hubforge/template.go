@@ -24,6 +24,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -458,7 +459,7 @@ func copyTemplate(tb testing.TB, template *hubTemplate) *Hub {
 		tb.Fatalf("hubforge: copy of %q: %v", template.name, err)
 	}
 	hub := hubAt(tb, template, root)
-	commitRelocatedBinding(tb, fabricengine.BoltDir(hub.Path))
+	commitRelocatedBinding(tb, fabriclayout.BoltDir(hub.Path))
 	return hub
 }
 
@@ -473,7 +474,7 @@ func copyTemplate(tb testing.TB, template *hubTemplate) *Hub {
 func commitRelocatedBinding(tb testing.TB, boardDir string) {
 	tb.Helper()
 
-	gitkit.Git(tb, boardDir, "commit", "--amend", "--no-edit", "--quiet", "--", fabricengine.WarpBindingFileName)
+	gitkit.Git(tb, boardDir, "commit", "--amend", "--no-edit", "--quiet", "--", fabriclayout.WarpBindingFileName)
 	gitkit.Git(tb, boardDir, "push", "--force", "--quiet", "origin", "HEAD")
 }
 

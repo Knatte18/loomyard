@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -25,7 +26,7 @@ func TestMidMerge_CleanPair_None(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MidMerge() error = %v", err)
 	}
-	if got.Kind != fabricengine.MidMergeNone || len(got.Conflicts) != 0 || got.Conflicts == nil {
+	if got.Kind != fabriclayout.MidMergeNone || len(got.Conflicts) != 0 || got.Conflicts == nil {
 		t.Errorf("MidMerge() = %+v; want MidMergeNone with empty non-nil Conflicts", got)
 	}
 	if got.Verb != "" || got.Source != "" || got.SourceSHA != "" || got.StartSHA != "" {
@@ -54,7 +55,7 @@ func TestMidMerge_FabricParkedWithConflicts_Parked(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MidMerge() error = %v", err)
 	}
-	if got.Kind != fabricengine.MidMergeParked {
+	if got.Kind != fabriclayout.MidMergeParked {
 		t.Errorf("MidMerge().Kind = %v; want MidMergeParked", got.Kind)
 	}
 	if !reflect.DeepEqual(got.Conflicts, res.Conflicts) {
@@ -121,7 +122,7 @@ func TestMidMerge_ForeignState_EverySideAndShape(t *testing.T) {
 			if err != nil {
 				t.Fatalf("MidMerge() error = %v", err)
 			}
-			if got.Kind != fabricengine.MidMergeForeign {
+			if got.Kind != fabriclayout.MidMergeForeign {
 				t.Errorf("MidMerge().Kind = %v; want MidMergeForeign", got.Kind)
 			}
 			if !reflect.DeepEqual(got.Conflicts, want) {

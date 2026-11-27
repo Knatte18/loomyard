@@ -19,6 +19,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -70,8 +71,8 @@ func requireNothingCreated(t *testing.T, h *hubforge.Hub, slug string) {
 	if gitkit.BranchExists(t, h.PrimeWorktree(), slug) {
 		t.Errorf("local warp branch %q exists after a refused Add", slug)
 	}
-	if gitkit.BranchExists(t, h.PrimeRecords(), fabricengine.RecordsBranchName(slug)) {
-		t.Errorf("local weft branch %q exists after a refused Add", fabricengine.RecordsBranchName(slug))
+	if gitkit.BranchExists(t, h.PrimeRecords(), fabriclayout.RecordsBranchName(slug)) {
+		t.Errorf("local weft branch %q exists after a refused Add", fabriclayout.RecordsBranchName(slug))
 	}
 }
 
@@ -108,7 +109,7 @@ func TestAdd_LiveLocalWeftAgainstOrigin(t *testing.T) {
 			t.Parallel()
 
 			const slug = "leftover-adopt"
-			weftBranch := fabricengine.RecordsBranchName(slug)
+			weftBranch := fabriclayout.RecordsBranchName(slug)
 			h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 			topology := h.Topology
 			hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
@@ -154,7 +155,7 @@ func TestAdd_LiveLocalWeftAgainstOrigin(t *testing.T) {
 			}
 			advanced := 0
 			for _, m := range res.Mutations.Entries() {
-				if m.Kind == fabricengine.KindRepoAdvanced && strings.Contains(m.Detail, originTip) {
+				if m.Kind == fabriclayout.KindRepoAdvanced && strings.Contains(m.Detail, originTip) {
 					advanced++
 				}
 			}
@@ -174,7 +175,7 @@ func TestAdd_LiveLocalWeftAdoptsDivergedWarpFromOrigin(t *testing.T) {
 	t.Parallel()
 
 	const slug = "leftover-live-warp"
-	weftBranch := fabricengine.RecordsBranchName(slug)
+	weftBranch := fabriclayout.RecordsBranchName(slug)
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
@@ -246,7 +247,7 @@ func TestAdd_SkipPushSkipsLeftoverProbes(t *testing.T) {
 	t.Parallel()
 
 	const slug = "leftover-skippush"
-	weftBranch := fabricengine.RecordsBranchName(slug)
+	weftBranch := fabriclayout.RecordsBranchName(slug)
 	h := removedPair(t, slug)
 	pushCommitToOrigin(t, h.RecordsBare, weftBranch)
 	weftBefore := gitkit.RevParse(t, h.RecordsBare, weftBranch)
@@ -293,7 +294,7 @@ func TestAdd_DivergedArchivedWeftLeftoverReplaced(t *testing.T) {
 	t.Parallel()
 
 	const slug = "leftover-diverged"
-	weftBranch := fabricengine.RecordsBranchName(slug)
+	weftBranch := fabriclayout.RecordsBranchName(slug)
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
@@ -314,7 +315,7 @@ func TestAdd_DivergedArchivedWeftLeftoverReplaced(t *testing.T) {
 	}
 	var deleted bool
 	for _, m := range res.Mutations.Entries() {
-		deleted = deleted || (m.Kind == fabricengine.KindRemoteBranchDeleted && m.Target == weftBranch)
+		deleted = deleted || (m.Kind == fabriclayout.KindRemoteBranchDeleted && m.Target == weftBranch)
 	}
 	if !deleted {
 		t.Errorf("record %+v carries no remote_branch_deleted entry for %q", res.Mutations.Entries(), weftBranch)
@@ -343,7 +344,7 @@ func TestAdd_WeftReplaceLeaseRaceRefused(t *testing.T) {
 	tiergate.Require(t, 1)
 	// Serial: SetAddBeforeWeftReplaceHookForTest sets the package-level addBeforeWeftReplaceHook.
 	const slug = "leftover-race"
-	weftBranch := fabricengine.RecordsBranchName(slug)
+	weftBranch := fabriclayout.RecordsBranchName(slug)
 	h := removedPair(t, slug)
 
 	var moved string
@@ -411,7 +412,7 @@ func staleTrackingHub(t *testing.T, slug string, records bool) *hubforge.Hub {
 		mustGit(h.PrimeWorktree(), "branch", "-D", slug)
 	}
 	if records {
-		weftBranch := fabricengine.RecordsBranchName(slug)
+		weftBranch := fabriclayout.RecordsBranchName(slug)
 		tip := gitkit.RevParse(t, h.RecordsBare, weftBranch)
 		mustGit(h.RecordsBare, "branch", "-D", weftBranch)
 		plantStaleTracking(h.PrimeRecords(), weftBranch, tip)
@@ -433,7 +434,7 @@ func TestAdd_DropsStaleTrackingRef(t *testing.T) {
 		t.Parallel()
 
 		const slug = "stale-records"
-		weftBranch := fabricengine.RecordsBranchName(slug)
+		weftBranch := fabriclayout.RecordsBranchName(slug)
 		h := staleTrackingHub(t, slug, true)
 		requireTrackingStanding(t, h.PrimeRecords(), weftBranch, true)
 
@@ -442,12 +443,12 @@ func TestAdd_DropsStaleTrackingRef(t *testing.T) {
 		}
 
 		requireTrackingStanding(t, h.PrimeRecords(), weftBranch, false)
-		report, err := fabricengine.ReconcileOrigin(h.Location, fabricengine.ReconcileScope{Run: slug, JudgeOnly: true}, fabricengine.OriginSeams{}, fabricengine.ReconcileOptions{})
+		report, err := fabricengine.ReconcileOrigin(h.Location, fabriclayout.ReconcileScope{Run: slug, JudgeOnly: true}, fabricengine.OriginSeams{}, fabricengine.ReconcileOptions{})
 		if err != nil {
 			t.Fatalf("ReconcileOrigin: %v", err)
 		}
 		for _, outcome := range report.Branches {
-			if outcome.State == fabricengine.BranchGone && (outcome.Branch == slug || outcome.Branch == weftBranch) {
+			if outcome.State == fabriclayout.BranchGone && (outcome.Branch == slug || outcome.Branch == weftBranch) {
 				t.Errorf("reconcile read the new pair's branch %q as gone from origin", outcome.Branch)
 			}
 		}
@@ -471,7 +472,7 @@ func TestAdd_DropsStaleTrackingRef(t *testing.T) {
 		t.Parallel()
 
 		const slug = "stale-locked"
-		weftBranch := fabricengine.RecordsBranchName(slug)
+		weftBranch := fabriclayout.RecordsBranchName(slug)
 		h := staleTrackingHub(t, slug, true)
 		commonDir := gitkit.Git(t, h.PrimeRecords(), "rev-parse", "--git-common-dir")
 		if !filepath.IsAbs(commonDir) {
@@ -501,7 +502,7 @@ func TestRecordsBranchLive(t *testing.T) {
 	t.Parallel()
 
 	const slug = "weft-live"
-	weftBranch := fabricengine.RecordsBranchName(slug)
+	weftBranch := fabriclayout.RecordsBranchName(slug)
 
 	for _, tc := range []struct {
 		name    string

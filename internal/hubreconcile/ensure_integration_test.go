@@ -20,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/heddleengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -1310,11 +1311,11 @@ func TestEnsure_UnpushedHubWideCommitOverMovedUpstreamLeavesStampAbsent(t *testi
 // refusingSeam is a worktree seam whose render of a made worktree always fails.
 type refusingSeam struct{}
 
-func (refusingSeam) Made(fabricengine.WorktreeEvent) error {
+func (refusingSeam) Made(fabriclayout.WorktreeEvent) error {
 	return errors.New("the seam refuses")
 }
 
-func (refusingSeam) TookIn(fabricengine.WorktreeEvent) error { return nil }
+func (refusingSeam) TookIn(fabriclayout.WorktreeEvent) error { return nil }
 
 // TestEnsure_RendersTheHeddleFileTargetsOfEveryWalkedWorktree does not call t.Parallel:
 // it installs the process-wide worktree seam and swaps the package-global detached board sync.

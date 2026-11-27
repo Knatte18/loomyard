@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/desktophook"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/ideconfig"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -347,7 +348,7 @@ func parentOf(hubPath, primeName, slug string) (string, error) {
 // its recorded colour, or for a beam with none the colour a new beam would record, without recording it.
 // An absent board holds no beam.
 func beamColors(hubPath string) (map[string]string, error) {
-	tasks, err := boardengine.ReadTasks(fabricengine.BoardDir(hubPath))
+	tasks, err := boardengine.ReadTasks(fabriclayout.BoardDir(hubPath))
 	if err != nil {
 		return nil, err
 	}

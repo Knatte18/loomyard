@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/battenshed"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/sheddriver"
@@ -56,7 +56,7 @@ func (f *holdFixture) writeConfig(content string) {
 // writeModuleConfig writes content to the named file under _lym/config/ in both the board directory and the anchor.
 func (f *holdFixture) writeModuleConfig(name, content string) {
 	f.t.Helper()
-	for _, base := range []string{fabricengine.BoardDir(f.location.HubPath), f.location.AnchorPath()} {
+	for _, base := range []string{fabriclayout.BoardDir(f.location.HubPath), f.location.AnchorPath()} {
 		dir := filepath.Join(base, "_lym", "config")
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			f.t.Fatal(err)

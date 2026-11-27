@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/vscode"
@@ -37,7 +38,7 @@ func lookHub(t *testing.T, shortname string) *lymcwd.Location {
 			t.Fatal(err)
 		}
 	}
-	board := fabricengine.BoardDir(hub)
+	board := fabriclayout.BoardDir(hub)
 	if err := os.MkdirAll(board, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +118,7 @@ func TestLookForDegradesToATaskUnderThePrime(t *testing.T) {
 			name: "UnreadableBoard",
 			slug: "t1",
 			damage: func(t *testing.T, l *lymcwd.Location) {
-				if err := os.WriteFile(filepath.Join(fabricengine.BoardDir(l.HubPath), "board.json"), []byte("not json"), 0o644); err != nil {
+				if err := os.WriteFile(filepath.Join(fabriclayout.BoardDir(l.HubPath), "board.json"), []byte("not json"), 0o644); err != nil {
 					t.Fatal(err)
 				}
 			},

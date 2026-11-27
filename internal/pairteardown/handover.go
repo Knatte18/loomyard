@@ -12,6 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -19,7 +20,7 @@ import (
 
 // RunPush carries what a run's synchronous push takes beyond the run it names.
 type RunPush struct {
-	// LockWait bounds the wait for the push lock, and fabricengine.LockWaitUnbounded blocks.
+	// LockWait bounds the wait for the push lock, and fabriclayout.LockWaitUnbounded blocks.
 	LockWait time.Duration
 	// TeardownWait bounds the wait for the pair's teardown lock; a wait that runs out owes the push.
 	TeardownWait time.Duration
@@ -39,14 +40,14 @@ type RunPush struct {
 // It serves the takeover read of a rejected records push.
 // It reads this machine's identity and the registry of the hub's local Bolt,
 // so a name recorded under any of the names of the machine's registry entry reads as this machine.
-func ThisMachine(hubPath string) (fabricengine.MachineNames, error) {
+func ThisMachine(hubPath string) (fabriclayout.MachineNames, error) {
 	here, err := machinename.ReadIdentity()
 	if err != nil {
-		return fabricengine.MachineNames{}, err
+		return fabriclayout.MachineNames{}, err
 	}
-	owners, err := boardengine.ReadOwners(fabricengine.BoardDir(hubPath))
+	owners, err := boardengine.ReadOwners(fabriclayout.BoardDir(hubPath))
 	if err != nil {
-		return fabricengine.MachineNames{}, err
+		return fabriclayout.MachineNames{}, err
 	}
 	return machineNamesOf(here, owners.Registry), nil
 }
@@ -56,7 +57,7 @@ func ThisMachine(hubPath string) (fabricengine.MachineNames, error) {
 // Former holds the former names of here, and the current and former names of the registry entry under the id of here.
 // It omits the current name and duplicates.
 // A former name another registered machine holds reads as that machine, so it is left out.
-func machineNamesOf(here machinename.Identity, registry boardengine.Registry) fabricengine.MachineNames {
+func machineNamesOf(here machinename.Identity, registry boardengine.Registry) fabriclayout.MachineNames {
 	candidates := slices.Clone(here.Former)
 	if entry, registered := registry[here.ID]; registered {
 		candidates = append(candidates, entry.Name)
@@ -68,7 +69,7 @@ func machineNamesOf(here machinename.Identity, registry boardengine.Registry) fa
 			former = append(former, name)
 		}
 	}
-	return fabricengine.MachineNames{Current: here.Name, Former: former}
+	return fabriclayout.MachineNames{Current: here.Name, Former: former}
 }
 
 // PushRun pushes the pair at l synchronously for the run slug, in the hub of prime.
@@ -85,13 +86,13 @@ func machineNamesOf(here machinename.Identity, registry boardengine.Registry) fa
 // It returns an error wrapping fabricengine.ErrTakeoverPassOwed that names the run and the step.
 // An error wrapping fabricengine.ErrHandedOver from the push itself passes through unchanged:
 // this machine's hand-over mark already names the entry's machine, so nothing more is pushed.
-func PushRun(prime, l *lymcwd.Location, slug string, push RunPush) (fabricengine.PushResult, error) {
+func PushRun(prime, l *lymcwd.Location, slug string, push RunPush) (fabriclayout.PushResult, error) {
 	here, err := ThisMachine(prime.HubPath)
 	if err != nil {
-		return fabricengine.PushResult{}, err
+		return fabriclayout.PushResult{}, err
 	}
-	pushPair := func() (fabricengine.PushResult, error) {
-		return fabricengine.PushPairAnchored(l, fabricengine.EnvSyncOptions(), fabricengine.PairPush{
+	pushPair := func() (fabriclayout.PushResult, error) {
+		return fabricengine.PushPairAnchored(l, fabricengine.EnvSyncOptions(), fabriclayout.PairPush{
 			LockWait:       push.LockWait,
 			TeardownWait:   push.TeardownWait,
 			RunSlug:        slug,
@@ -187,7 +188,7 @@ func HandOver(prime *lymcwd.Location, slug string, entry shedengine.Takeover, pu
 	if push.InsidePair {
 		return fmt.Errorf("%w: machine %q holds the run %q now; its pair is left standing for its parent's dobby to remove", fabricengine.ErrHandedOver, entry.Machine, slug)
 	}
-	if _, err := td.RemovePair(Request{Slug: slug, Local: true, Force: true, Verdict: fabricengine.EntryOwnedElsewhere}); err != nil {
+	if _, err := td.RemovePair(Request{Slug: slug, Local: true, Force: true, Verdict: fabriclayout.EntryOwnedElsewhere}); err != nil {
 		return fmt.Errorf("pairteardown: hand over the run %q: remove its local pair: %w", slug, err)
 	}
 	return fmt.Errorf("%w: machine %q holds the run %q now", fabricengine.ErrHandedOver, entry.Machine, slug)
@@ -224,7 +225,7 @@ func HandOverOwnedElsewhere(prime *lymcwd.Location, slug, owner string) error {
 
 // pushOwedRunCommits pushes the prime's records and then the pair of slug when it stands here, records side first.
 func pushOwedRunCommits(prime *lymcwd.Location, slug string) error {
-	push := RunPush{LockWait: fabricengine.StatusPushLockWait}
+	push := RunPush{LockWait: fabriclayout.StatusPushLockWait}
 	if _, err := PushRun(prime, prime, slug, push); err != nil {
 		return err
 	}

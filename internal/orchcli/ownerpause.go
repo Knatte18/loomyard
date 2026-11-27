@@ -12,7 +12,7 @@ import (
 	"slices"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
@@ -32,7 +32,7 @@ func readBeamFacts(location *lymcwd.Location, beam bool) (beamFacts, error) {
 	if err != nil {
 		return beamFacts{}, err
 	}
-	boardDir := fabricengine.BoardDir(location.HubPath)
+	boardDir := fabriclayout.BoardDir(location.HubPath)
 	owners, err := boardengine.ReadOwners(boardDir)
 	if err != nil {
 		return beamFacts{}, err
@@ -102,7 +102,7 @@ func readOwnRunStatus(location *lymcwd.Location) (shedengine.Status, bool, error
 // lostTo is the other machine's name when a competing claim won.
 // Both are empty when the board already records a prime owner.
 func claimPrimeFor(location *lymcwd.Location) (claimed, lostTo string, err error) {
-	boardDir := fabricengine.BoardDir(location.HubPath)
+	boardDir := fabriclayout.BoardDir(location.HubPath)
 	owners, err := boardengine.ReadOwners(boardDir)
 	if err != nil {
 		return "", "", err

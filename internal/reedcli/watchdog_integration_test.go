@@ -32,7 +32,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fswatch"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -163,7 +163,7 @@ func TestWatchdogDaemon(t *testing.T) {
 	prime := h.PrimeWorktree()
 	pair := h.PairCodeWorktree(pairSlug)
 	socket := reedengine.ServerName(h.Path)
-	lockPath := filepath.Join(fabricengine.HubScratchDir(h.Path), watchdogLockFileName)
+	lockPath := filepath.Join(fabriclayout.HubScratchDir(h.Path), watchdogLockFileName)
 
 	cfg, err := reedengine.LoadConfig(configengine.Dirs{Anchor: h.Location.AnchorPath()}, "reed")
 	if err != nil {
@@ -173,7 +173,7 @@ func TestWatchdogDaemon(t *testing.T) {
 	tmuxkit.KillOnCleanup(t, tmuxPath, socket)
 
 	// DaemonLockAndLogs drives the daemon command against a hub that has never run one.
-	// It points the durable log sink at fabricengine.HubLogsDir(hub) before it takes the lock;
+	// It points the durable log sink at fabriclayout.HubLogsDir(hub) before it takes the lock;
 	// it keeps the logger's stderr half.
 	// The sink shows as a trace-*.log file there; the stderr half shows the daemon's "watchdog daemon starting" line.
 	// The daemon holds the single-instance lock,
@@ -181,7 +181,7 @@ func TestWatchdogDaemon(t *testing.T) {
 	// An unusable lock path exits non-zero:
 	// a hub path whose HubScratchDir cannot be created, because a file sits where an intermediate directory must go.
 	if !t.Run("DaemonLockAndLogs", func(t *testing.T) {
-		logsDir := fabricengine.HubLogsDir(h.Path)
+		logsDir := fabriclayout.HubLogsDir(h.Path)
 		if _, err := os.Stat(logsDir); err == nil {
 			t.Fatalf("hub logs dir %s already exists before the daemon ever ran", logsDir)
 		}
@@ -525,7 +525,7 @@ func TestWatchdogDaemon(t *testing.T) {
 	})
 }
 
-// unusableHubPath returns a hub path for which fabricengine.HubScratchDir(hub)'s MkdirAll fails.
+// unusableHubPath returns a hub path for which fabriclayout.HubScratchDir(hub)'s MkdirAll fails.
 // A regular file sits where an intermediate directory of the hub path must go, so nothing can be created beneath it.
 func unusableHubPath(t *testing.T) string {
 	t.Helper()

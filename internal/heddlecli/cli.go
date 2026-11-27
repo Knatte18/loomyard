@@ -12,6 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/heddleengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -100,7 +101,7 @@ func (c *heddleCLI) wire(cwd string) error {
 	if err := fabricengine.RequireDrivableWorktree(location); err != nil {
 		return err
 	}
-	boltDir := fabricengine.BoltDir(location.HubPath)
+	boltDir := fabriclayout.BoltDir(location.HubPath)
 	if info, err := os.Stat(boltDir); err != nil || !info.IsDir() {
 		return fmt.Errorf("heddle: the hub's Bolt checkout %s is missing; way forward: lym heddle runs only in a hub `lym fabric clone` made, which creates one", boltDir)
 	}

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -19,7 +20,7 @@ import (
 // commitRecordsNaming commits on the pair's records branch a transition whose Warp-SHA trailer names codeTip.
 func commitRecordsNaming(t *testing.T, p *pairFixture, codeTip string) {
 	t.Helper()
-	gitkit.CommitFile(t, p.weftPath, "transition.txt", codeTip+"\n", "transition\n\n"+fabricengine.WarpSHATrailerKey+": "+codeTip)
+	gitkit.CommitFile(t, p.weftPath, "transition.txt", codeTip+"\n", "transition\n\n"+fabriclayout.WarpSHATrailerKey+": "+codeTip)
 }
 
 // unsetUpstream removes the upstream setting of branch in the checkout at path.
@@ -137,8 +138,8 @@ func TestRefusedPushStands(t *testing.T) {
 			p := newPairFixture(t, "conflictrecords")
 			p.originCommit(p.weftBranch, "conflict.txt", "origin\n", "origin side")
 			gitkit.CommitFile(t, p.weftPath, "conflict.txt", "local\n", "local side")
-			_, _ = fabricengine.PushPairAnchored(p.location, p.fake.options(noSleep), fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded})
-			requireOneFailedPush(t, p.hub.Location.HubPath, "records", fabricengine.PushFailureNotFastForward)
+			_, _ = fabricengine.PushPairAnchored(p.location, p.fake.options(noSleep), fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded})
+			requireOneFailedPush(t, p.hub.Location.HubPath, "records", fabriclayout.PushFailureNotFastForward)
 			return p.location
 		}, true},
 		{"NotFastForwardRecordOfThePairsCodeBranch", func(t *testing.T) *lymcwd.Location {
@@ -147,24 +148,24 @@ func TestRefusedPushStands(t *testing.T) {
 			gitkit.CommitFile(t, clone, "other.txt", "other\n", "other machine")
 			gitkit.MustRun(t, clone, "git", "push")
 			gitkit.CommitFile(t, p.warpPath, "warp.txt", "warp\n", "warp change")
-			_, _ = fabricengine.PushPairAnchored(p.location, p.fake.options(noSleep), fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded})
-			requireOneFailedPush(t, p.hub.Location.HubPath, "code", fabricengine.PushFailureNotFastForward)
+			_, _ = fabricengine.PushPairAnchored(p.location, p.fake.options(noSleep), fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded})
+			requireOneFailedPush(t, p.hub.Location.HubPath, "code", fabriclayout.PushFailureNotFastForward)
 			return p.location
 		}, true},
 		{"OwedClassRecordOfTheRecordsBranchReadsFalse", func(t *testing.T) *lymcwd.Location {
 			p := newPairFixture(t, "owedrecord")
 			gitkit.CommitFile(t, p.weftPath, "local.txt", "local\n", "local")
 			gitkit.Git(t, p.weftPath, "remote", "set-url", "origin", refusedOriginURL)
-			_, _ = fabricengine.PushPairAnchored(p.location, p.fake.options(noSleep), fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded})
-			requireOneFailedPush(t, p.hub.Location.HubPath, "records", fabricengine.PushFailureTransport)
+			_, _ = fabricengine.PushPairAnchored(p.location, p.fake.options(noSleep), fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded})
+			requireOneFailedPush(t, p.hub.Location.HubPath, "records", fabriclayout.PushFailureTransport)
 			return p.location
 		}, false},
 		{"RecordOfAnotherBranchReadsFalse", func(t *testing.T) *lymcwd.Location {
 			p := newPairFixture(t, "anotherbranch")
 			p.originCommit(p.weftBranch, "conflict.txt", "origin\n", "origin side")
 			gitkit.CommitFile(t, p.weftPath, "conflict.txt", "local\n", "local side")
-			_, _ = fabricengine.PushPairAnchored(p.location, p.fake.options(noSleep), fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded})
-			requireOneFailedPush(t, p.hub.Location.HubPath, "records", fabricengine.PushFailureNotFastForward)
+			_, _ = fabricengine.PushPairAnchored(p.location, p.fake.options(noSleep), fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded})
+			requireOneFailedPush(t, p.hub.Location.HubPath, "records", fabriclayout.PushFailureNotFastForward)
 			return p.hub.Location
 		}, false},
 	}

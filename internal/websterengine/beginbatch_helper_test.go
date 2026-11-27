@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
@@ -121,8 +121,8 @@ func newBeginFixture(t *testing.T) *beginFixture {
 			ScratchDir:   t.TempDir(),
 			ReportsDir:   t.TempDir(),
 			PromptsDir:   promptsDir,
-			StencilsDir:  fabricengine.StencilsDir(hubPath),
-			SpecsDir:     fabricengine.SpecsDir(hubPath),
+			StencilsDir:  fabriclayout.StencilsDir(hubPath),
+			SpecsDir:     fabriclayout.SpecsDir(hubPath),
 			PlanDir:      planDir,
 			Git:          git,
 			Index:        index,

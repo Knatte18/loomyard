@@ -21,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -191,10 +192,10 @@ func hubCancelDeps(location *lymcwd.Location, slug string) (cancelDeps, error) {
 	if err != nil {
 		return cancelDeps{}, err
 	}
-	boardDir := fabricengine.BoardDir(location.HubPath)
-	boltDir := fabricengine.BoltDir(location.HubPath)
+	boardDir := fabriclayout.BoardDir(location.HubPath)
+	boltDir := fabriclayout.BoltDir(location.HubPath)
 	driverLock, runLock := shedrun.DriverLock(location, slug), shedrun.RunLock(location, slug)
-	runProcDir := fabricengine.RunProcDir(location.HubPath)
+	runProcDir := fabriclayout.RunProcDir(location.HubPath)
 	board := func() (*boardengine.Board, error) { return boardengine.OpenHub(location.HubPath) }
 
 	return cancelDeps{
@@ -204,7 +205,7 @@ func hubCancelDeps(location *lymcwd.Location, slug string) (cancelDeps, error) {
 		},
 		ExemptGate:          func() (func(), error) { return pauserecord.SetGateExemptAll(), nil },
 		TaskWorktreePresent: func() (bool, error) { return taskWorktreePresent(location, slug) },
-		Reconcile: func() (fabricengine.OriginReport, error) {
+		Reconcile: func() (fabriclayout.OriginReport, error) {
 			return reconcileRun(location, slug, true, fabricengine.ReconcileOptions{})
 		},
 		PullBolt: func() error { return boardengine.PullBolt(boltDir) },
@@ -263,7 +264,7 @@ func hubCancelDeps(location *lymcwd.Location, slug string) (cancelDeps, error) {
 		GOOS:         runtime.GOOS,
 		LiveRecords:  func() ([]runproc.Record, error) { return runproc.List(runProcDir, slug) },
 		CreatedAt:    proc.CreationTime,
-		PairParts:    func() (fabricengine.PairParts, error) { return topology.PairParts(location, slug) },
+		PairParts:    func() (fabriclayout.PairParts, error) { return topology.PairParts(location, slug) },
 		SessionLive:  func() (bool, error) { return pairSessionLive(location, slug) },
 		EndForCancel: teardown.EndForCancel,
 		TakeBattenLocks: func() (func(), string, error) {
@@ -289,12 +290,12 @@ func hubCancelDeps(location *lymcwd.Location, slug string) (cancelDeps, error) {
 		},
 		RemovePair:         teardown.RemovePair,
 		TaskBranchOnOrigin: func() (bool, error) { return topology.TaskBranchOnOrigin(location, slug) },
-		DiscardTaskBranch: func() (fabricengine.DiscardResult, error) {
+		DiscardTaskBranch: func() (fabriclayout.DiscardResult, error) {
 			return topology.DiscardTaskBranch(location, slug, cancelCommand(slug, true))
 		},
 		TeardownPending: func() (bool, error) {
 			pending, err := fabricengine.PendingTeardowns(location.HubPath)
-			return slices.ContainsFunc(pending, func(record fabricengine.PendingTeardown) bool {
+			return slices.ContainsFunc(pending, func(record fabriclayout.PendingTeardown) bool {
 				return record.Slug == slug && record.Rerun == cancelCommand(slug, true)
 			}), err
 		},
@@ -361,7 +362,7 @@ func hubCancelDeps(location *lymcwd.Location, slug string) (cancelDeps, error) {
 		},
 		LiftPauses: func() ([]string, error) { return liftSlugPauses(location, slug, pauseGeometry.RecordPath) },
 		PushRecords: func() (bool, error) {
-			_, err := pairteardown.PushRun(location, location, slug, pairteardown.RunPush{LockWait: fabricengine.StatusPushLockWait})
+			_, err := pairteardown.PushRun(location, location, slug, pairteardown.RunPush{LockWait: fabriclayout.StatusPushLockWait})
 			if fabricengine.IsPushOwed(err) {
 				return true, nil
 			}
@@ -379,8 +380,8 @@ func hubCancelDeps(location *lymcwd.Location, slug string) (cancelDeps, error) {
 			entry := owners.Entries[slug]
 			return entry.IsProject && entry.Beam, nil
 		},
-		ReconcileHub: func() (fabricengine.OriginReport, error) {
-			return fabricengine.ReconcileOrigin(location, fabricengine.ReconcileScope{}, teardown.OriginSeams(pairteardown.HubSeamOptions(location)), fabricengine.ReconcileOptions{})
+		ReconcileHub: func() (fabriclayout.OriginReport, error) {
+			return fabricengine.ReconcileOrigin(location, fabriclayout.ReconcileScope{}, teardown.OriginSeams(pairteardown.HubSeamOptions(location)), fabricengine.ReconcileOptions{})
 		},
 		LandRefusal:  func() error { return BeamLandRefusal(location, slug) },
 		LandingHeld:  func() (bool, error) { return hubgeom.LandingHeld(location, slug) },

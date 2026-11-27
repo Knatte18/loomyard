@@ -20,7 +20,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -690,7 +690,7 @@ func TestGateTest_DetachedRun(t *testing.T) {
 		if record := observed.tierRecords(t)[0]; record.Slot != "" {
 			t.Errorf("stand-in slot = %q; want an unslotted run", record.Slot)
 		}
-		if _, err := os.Stat(fabricengine.RunProcDir(location.HubPath)); !os.IsNotExist(err) {
+		if _, err := os.Stat(fabriclayout.RunProcDir(location.HubPath)); !os.IsNotExist(err) {
 			t.Errorf("run-process directory stat error = %v; want nothing registered", err)
 		}
 	})
@@ -869,7 +869,7 @@ func TestGateTest_DetachedRun(t *testing.T) {
 	t.Run("a pair's runner is registered under its slug with the gate role, ended by the sparing teardown, and the prime registers nothing", func(t *testing.T) {
 		t.Parallel()
 		rig := newDetachRig(t)
-		runProcDir := fabricengine.RunProcDir(rig.h.Location.HubPath)
+		runProcDir := fabriclayout.RunProcDir(rig.h.Location.HubPath)
 
 		requireGoing(t, rig.call("2s", holdEnv, "./prime"), "")
 		rig.waitInvocations(1)

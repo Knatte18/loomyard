@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -129,7 +130,7 @@ func TestStatus_PrintsThePrimesDobbyAndEachLocalBeams(t *testing.T) {
 	}
 
 	// A hub with no check record shows no section and the call creates no adopt directory.
-	scratch := fabricengine.AdoptScratchDir(h.Path)
+	scratch := fabriclayout.AdoptScratchDir(h.Path)
 	if _, held := env.Raw["result"].(map[string]any)["adopt_checks"]; held {
 		t.Errorf("lym beam status = %s; want no adopt_checks with no record", out.String())
 	}

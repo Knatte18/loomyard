@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -145,26 +146,26 @@ func (w *world) deps() adoptDeps {
 			return status, found, nil
 		},
 		LocalPair: func(slug string) bool { return w.pairs[slug] },
-		AddPair: func(slug string) (fabricengine.AddResult, error) {
+		AddPair: func(slug string) (fabriclayout.AddResult, error) {
 			w.order = append(w.order, "addpair:"+slug)
 			if err := w.addErr[slug]; err != nil {
-				return fabricengine.AddResult{}, err
+				return fabriclayout.AddResult{}, err
 			}
 			w.pairs[slug] = true
-			return fabricengine.AddResult{Slug: slug}, nil
+			return fabriclayout.AddResult{Slug: slug}, nil
 		},
 		PickAccount: func(slug string) { w.picked = append(w.picked, slug) },
 		WriteAdopt:  w.writeAdopt,
-		TakeOver: func(slug, subject string) (fabricengine.TakeOverResult, error) {
+		TakeOver: func(slug, subject string) (fabriclayout.TakeOverResult, error) {
 			w.order = append(w.order, "takeover:"+slug)
 			if err := w.takeErr[slug]; err != nil {
-				return fabricengine.TakeOverResult{}, err
+				return fabriclayout.TakeOverResult{}, err
 			}
 			w.takenFor[slug] = subject
 			status := w.origin[slug]
 			status.Takeover = &shedengine.Takeover{Machine: here, Subject: subject}
 			w.origin[slug] = status
-			return fabricengine.TakeOverResult{}, nil
+			return fabriclayout.TakeOverResult{}, nil
 		},
 		CatchUp: func() error {
 			w.order = append(w.order, "catchup")

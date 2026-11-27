@@ -15,17 +15,10 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
-
-// PollutionEntry describes a path tracked in the warp index that belongs in the weft, such as one under _lym.
-type PollutionEntry struct {
-	// Path is the relative path reported by git ls-files.
-	Path string `json:"path"`
-	// Remedy is the command that untracks the path and keeps it on disk. Empty when no remedy applies.
-	Remedy string `json:"remedy,omitempty"`
-}
 
 // PairStatus describes the relationship between one warp worktree and its paired weft sibling.
 type PairStatus struct {
@@ -46,7 +39,7 @@ type PairStatus struct {
 	// JunctionReason describes the junction problem. Empty when JunctionHealthy is true.
 	JunctionReason string `json:"junction_reason,omitempty"`
 	// Pollution lists warp-index paths that should not be tracked there.
-	Pollution []PollutionEntry `json:"pollution,omitempty"`
+	Pollution []fabriclayout.PollutionEntry `json:"pollution,omitempty"`
 }
 
 // StatusResult is the paired warp and weft status of the worktrees in one fabric layout.
@@ -116,7 +109,7 @@ func (t *Topology) Status(l *lymcwd.Location) (StatusResult, error) {
 		pair.JunctionReason = junctionReason
 
 		// The verdict combines branch correspondence with junction health, and the first failing check sets DriftReason.
-		expectedWeftBranch := RecordsBranchName(warpBranch)
+		expectedWeftBranch := fabriclayout.RecordsBranchName(warpBranch)
 		switch {
 		case weftBranch != expectedWeftBranch:
 			pair.InSync = false
@@ -133,7 +126,7 @@ func (t *Topology) Status(l *lymcwd.Location) (StatusResult, error) {
 		pollution, pollErr := detectWarpPollution(warpPath, warpLayout.AnchorRel)
 		if pollErr != nil {
 			// A scan failure does not abort Status. It is recorded inline, and its Remedy stays empty.
-			pair.Pollution = append(pair.Pollution, PollutionEntry{
+			pair.Pollution = append(pair.Pollution, fabriclayout.PollutionEntry{
 				Path: fmt.Sprintf("<scan error: %v>", pollErr),
 			})
 		} else {
@@ -154,11 +147,11 @@ func (t *Topology) Status(l *lymcwd.Location) (StatusResult, error) {
 // Every match has a junction wired to restore, so its remedy is the git rm --cached command.
 // That command untracks the file and leaves it on disk.
 // The remedy also says to restore the junction and git-exclude entry.
-func detectWarpPollution(warpPath, anchorRel string) ([]PollutionEntry, error) {
+func detectWarpPollution(warpPath, anchorRel string) ([]fabriclayout.PollutionEntry, error) {
 	// git ls-files lists only tracked (index) files matching the given pathspecs.
 	// Using -- prevents ambiguity when the pathspec looks like a branch name.
 	args := []string{"ls-files", "--"}
-	for _, spec := range ScopedPathspec(anchorRel, structuralCommittedDirs) {
+	for _, spec := range fabriclayout.ScopedPathspec(anchorRel, fabriclayout.StructuralCommittedDirs()) {
 		args = append(args, filepath.ToSlash(spec))
 	}
 
@@ -172,7 +165,7 @@ func detectWarpPollution(warpPath, anchorRel string) ([]PollutionEntry, error) {
 		return nil, nil
 	}
 
-	var entries []PollutionEntry
+	var entries []fabriclayout.PollutionEntry
 	for _, line := range strings.Split(output, "\n") {
 		tracked := strings.TrimSpace(line)
 		if tracked == "" {
@@ -183,7 +176,7 @@ func detectWarpPollution(warpPath, anchorRel string) ([]PollutionEntry, error) {
 			"git -C %s rm --cached -- %s  # then restore junction and git-exclude entry",
 			warpPath, tracked,
 		)
-		entries = append(entries, PollutionEntry{
+		entries = append(entries, fabriclayout.PollutionEntry{
 			Path:   tracked,
 			Remedy: remedy,
 		})

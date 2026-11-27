@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -229,7 +229,7 @@ func ComputeTiming(src Sources, opts TimingOptions) (TimingReport, error) {
 
 // selectInFlight returns the runs of live pairs, read from the records branches in src.Branches.
 // Only a pair records branch counts:
-// a branch other than src.RecordsBranch whose name is the one fabricengine.RecordsBranchName forms from a slug.
+// a branch other than src.RecordsBranch whose name is the one fabriclayout.RecordsBranchName forms from a slug.
 // A branch whose tip is the commit of one of its slug's archive tags is landed and skipped;
 // a branch whose slug opts.Live names is in flight;
 // any other is abandoned, left out with a finding.
@@ -244,7 +244,7 @@ func selectInFlight(src Sources, opts TimingOptions, batten *battenIndex, findin
 	taggedTips := map[string]map[string]bool{}
 	newestTag := map[string]time.Time{}
 	for _, tag := range src.Tags {
-		slug, named := fabricengine.ArchiveTagSlug(tag.Name)
+		slug, named := fabriclayout.ArchiveTagSlug(tag.Name)
 		if !named {
 			continue
 		}
@@ -359,7 +359,7 @@ func selectInFlight(src Sources, opts TimingOptions, batten *battenIndex, findin
 // pairSlug returns the slug whose pair records branch is named branch, and false when branch is no such name or names an empty slug.
 // The suffix is taken from the fabric engine's records branch name, so the two cannot drift apart.
 func pairSlug(branch string) (string, bool) {
-	slug, ok := strings.CutSuffix(branch, fabricengine.RecordsBranchName(""))
+	slug, ok := strings.CutSuffix(branch, fabriclayout.RecordsBranchName(""))
 	return slug, ok && slug != ""
 }
 

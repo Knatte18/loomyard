@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -35,12 +36,12 @@ func TestAdd_RecordsParentBranch_SubpathAnchoredHub(t *testing.T) {
 
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
-	wantPath := filepath.Join(fabricengine.RecordsWorktreePath(l, slug), l.AnchorRel, fabricengine.OriginRecordRel())
+	wantPath := filepath.Join(fabricengine.RecordsWorktreePath(l, slug), l.AnchorRel, fabriclayout.OriginRecordRel())
 	if _, err := os.Stat(wantPath); err != nil {
 		t.Fatalf("origin record missing at the anchor-relative path %s: %v", wantPath, err)
 	}
 
-	rootPath := filepath.Join(fabricengine.RecordsWorktreePath(l, slug), fabricengine.OriginRecordRel())
+	rootPath := filepath.Join(fabricengine.RecordsWorktreePath(l, slug), fabriclayout.OriginRecordRel())
 	if _, err := os.Stat(rootPath); err == nil {
 		t.Errorf("origin record also landed at the weft worktree root %s; want it only at the anchor-relative path", rootPath)
 	}
@@ -73,7 +74,7 @@ func TestAdd_AdoptedWeftKeepsItsOriginRecord(t *testing.T) {
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	const slug = "moved-pair"
-	weftBranch := fabricengine.RecordsBranchName(slug)
+	weftBranch := fabriclayout.RecordsBranchName(slug)
 
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 	recordedTip := gitkit.RevParse(t, mustRecordsRepoRoot(t, l), "refs/remotes/origin/"+weftBranch)
@@ -107,7 +108,7 @@ func TestAdd_AdoptedWeftKeepsItsOriginRecord(t *testing.T) {
 	}
 	recordPath := fabricengine.OriginRecordPathFor(l, slug)
 	for _, m := range res.Mutations.Entries() {
-		if (m.Kind == fabricengine.KindFileWritten && strings.Contains(recordPath, m.Target)) || m.Kind == fabricengine.KindCommitCreated {
+		if (m.Kind == fabriclayout.KindFileWritten && strings.Contains(recordPath, m.Target)) || m.Kind == fabriclayout.KindCommitCreated {
 			t.Errorf("record carries %s at %s; want the origin record neither rewritten nor committed", m.Kind, m.Target)
 		}
 	}
@@ -135,17 +136,17 @@ func TestAdd_OriginRecordMutationEntries(t *testing.T) {
 
 	recordPath := fabricengine.OriginRecordPathFor(l, slug)
 	weftPath := fabricengine.RecordsWorktreePath(l, slug)
-	weftBranch := fabricengine.RecordsBranchName(slug)
+	weftBranch := fabriclayout.RecordsBranchName(slug)
 	wantSHA := gitkit.RevParse(t, weftPath, "refs/heads/"+weftBranch)
 
 	var fileWrittenCount, commitCreatedCount int
 	for _, m := range res.Mutated().Entries() {
 		switch m.Kind {
-		case fabricengine.KindFileWritten:
+		case fabriclayout.KindFileWritten:
 			if strings.HasSuffix(recordPath, m.Target) || strings.Contains(recordPath, m.Target) {
 				fileWrittenCount++
 			}
-		case fabricengine.KindCommitCreated:
+		case fabriclayout.KindCommitCreated:
 			if strings.Contains(weftPath, m.Target) || strings.Contains(m.Target, filepath.Base(weftPath)) {
 				commitCreatedCount++
 				if m.Detail != wantSHA {
@@ -188,11 +189,11 @@ func TestAdd_SkipGitWritesRecordWithoutCommit(t *testing.T) {
 	var fileWrittenCount, commitCreatedCount int
 	for _, m := range res.Mutated().Entries() {
 		switch m.Kind {
-		case fabricengine.KindFileWritten:
+		case fabriclayout.KindFileWritten:
 			if strings.Contains(recordPath, m.Target) {
 				fileWrittenCount++
 			}
-		case fabricengine.KindCommitCreated:
+		case fabriclayout.KindCommitCreated:
 			commitCreatedCount++
 		}
 	}

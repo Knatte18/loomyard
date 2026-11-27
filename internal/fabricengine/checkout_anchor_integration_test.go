@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -46,7 +47,7 @@ func parkedPairAt(t *testing.T, h *hubforge.Hub, slug, anchor string) {
 
 // requireCheckoutLeftAlone fails the test unless the prime still sits on its branches and its _lym junction exists,
 // and the checkout recorded no mutation.
-func requireCheckoutLeftAlone(t *testing.T, h *hubforge.Hub, res fabricengine.CheckoutResult, warpBranch, weftBranch string) {
+func requireCheckoutLeftAlone(t *testing.T, h *hubforge.Hub, res fabriclayout.CheckoutResult, warpBranch, weftBranch string) {
 	t.Helper()
 
 	if got := gitkit.CurrentBranch(t, h.PrimeWorktree()); got != warpBranch {
@@ -127,7 +128,7 @@ func TestCheckout_RefusesAnotherAnchor(t *testing.T) {
 		if !errors.Is(err, fabricengine.ErrAnchorChange) || !strings.Contains(err.Error(), "lym fabric anchor --set sub") {
 			t.Fatalf("Checkout() error = %v; want an ErrAnchorChange refusal naming `lym fabric anchor --set sub`", err)
 		}
-		if gitkit.BranchExists(t, mustRecordsRepoRoot(t, h.Location), fabricengine.RecordsBranchName("remote-mover")) {
+		if gitkit.BranchExists(t, mustRecordsRepoRoot(t, h.Location), fabriclayout.RecordsBranchName("remote-mover")) {
 			t.Errorf("a local weft branch for the refused target exists; want none")
 		}
 		requireCheckoutLeftAlone(t, h, res, warpBranch, weftBranch)
@@ -143,8 +144,8 @@ func TestCheckout_RefusesAnotherAnchor(t *testing.T) {
 			t.Fatalf("Checkout() error = %v; want nil, a forked branch inherits the marker", err)
 		}
 
-		if got := gitkit.CurrentBranch(t, h.PrimeRecords()); got != fabricengine.RecordsBranchName("fresh") {
-			t.Errorf("weft branch = %q; want the forked %q", got, fabricengine.RecordsBranchName("fresh"))
+		if got := gitkit.CurrentBranch(t, h.PrimeRecords()); got != fabriclayout.RecordsBranchName("fresh") {
+			t.Errorf("weft branch = %q; want the forked %q", got, fabriclayout.RecordsBranchName("fresh"))
 		}
 	})
 
@@ -170,7 +171,7 @@ func TestCheckout_RefusesAnotherAnchor(t *testing.T) {
 		h := newCheckoutHub(t)
 		gitkit.Git(t, h.PrimeWorktree(), "branch", "fresh")
 		warpBranch, weftBranch := gitkit.CurrentBranch(t, h.PrimeWorktree()), gitkit.CurrentBranch(t, h.PrimeRecords())
-		writeMoveRecord(t, h.PrimeRecords(), fabricengine.MoveRecord{A: ".", B: "sub", Kind: fabricengine.MoveKindMove, PID: 4242})
+		writeMoveRecord(t, h.PrimeRecords(), fabriclayout.MoveRecord{A: ".", B: "sub", Kind: fabriclayout.MoveKindMove, PID: 4242})
 
 		res, err := h.Topology.Checkout(h.Location, "fresh")
 

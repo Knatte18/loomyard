@@ -16,7 +16,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -114,7 +114,7 @@ func TestResolve_AnchorScenario(t *testing.T) {
 			t.Errorf("layout.HubPath = %q; want %q", layout.HubPath, want)
 		}
 		// RepoName is derived by trimming HubSuffix off the container directory's base name; this fixture's container has no "-LYMHUB" suffix, so RepoName is simply its base name unchanged.
-		if want := strings.TrimSuffix(filepath.Base(layout.HubPath), fabricengine.HubSuffix); layout.RepoName != want {
+		if want := strings.TrimSuffix(filepath.Base(layout.HubPath), fabriclayout.HubSuffix); layout.RepoName != want {
 			t.Errorf("layout.RepoName = %q; want %q", layout.RepoName, want)
 		}
 

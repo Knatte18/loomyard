@@ -2,7 +2,11 @@
 
 package fabricengine
 
-import "time"
+import (
+	"time"
+
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
+)
 
 // Topology is the high-level facade over hub-scoped worktree-topology operations.
 // It holds the configuration needed by all topology methods.
@@ -39,7 +43,7 @@ func (t *Topology) SetInFlightProbe(probe InFlightProbe) {
 func NewTopology(cfg Config) *Topology {
 	return &Topology{
 		cfg:             cfg,
-		teardownWait:    StatusPushLockWait,
+		teardownWait:    fabriclayout.StatusPushLockWait,
 		gcAutoThreshold: defaultGCAutoThreshold,
 	}
 }

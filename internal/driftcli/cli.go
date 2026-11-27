@@ -13,7 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/driftengine"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -204,7 +204,7 @@ func startMainCapture(w *worktree) (any, error) {
 		Executable:     executable,
 		AnchorDir:      w.anchor(),
 		Paths:          w.paths,
-		RunProcDir:     fabricengine.RunProcDir(w.location.HubPath),
+		RunProcDir:     fabriclayout.RunProcDir(w.location.HubPath),
 		Owner:          w.location.WorktreeName,
 		FallbackDetach: true,
 		RecordWait:     captureRecordWait,

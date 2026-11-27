@@ -15,6 +15,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -69,7 +70,7 @@ type Request struct {
 	AfterSnapshot func() error
 	// Verdict is the caller's origin reconcile verdict for the slug, empty when it ran none.
 	// An ended or owned_elsewhere verdict skips the driver checks.
-	Verdict fabricengine.EntryState
+	Verdict fabriclayout.EntryState
 	// Rerun is the caller's command that retries the removal.
 	// A held teardown lock's refusal and the pending-teardown record name it; empty names `lym fabric remove <slug>`.
 	Rerun string
@@ -92,7 +93,7 @@ type SessionResult struct {
 // Result is Run's outcome: both phases, with the removal passed through whole.
 type Result struct {
 	Session SessionResult
-	Removal fabricengine.RemoveResult
+	Removal fabriclayout.RemoveResult
 	// Warning names the step owed to settle the batten run record the removal left, unless the caller settles it.
 	Warning string
 }
@@ -142,7 +143,7 @@ type Teardown struct {
 	// ownedProcesses lists the slug's live registered processes.
 	ownedProcesses func(slug string) ([]runproc.Record, error)
 	endSession     func(slug string, gone bool) (ended bool, abandoned string, err error)
-	remove         func(req Request) (fabricengine.RemoveResult, error)
+	remove         func(req Request) (fabriclayout.RemoveResult, error)
 	// removeStray deletes a path at the slug's task worktree location that is no worktree and reports whether it deleted anything.
 	removeStray func(slug string) (bool, error)
 	// snapshot keeps the uncommitted paths under a local snapshot tag, recorded into rec; the tag is empty if none.
@@ -213,7 +214,7 @@ func New(prime *lymcwd.Location) (*Teardown, error) {
 	t.paused = t.pausedIn
 	t.awaitOrPass = t.awaitRunLockOrPass
 	t.ownedProcesses = func(slug string) ([]runproc.Record, error) {
-		return runproc.List(fabricengine.RunProcDir(prime.HubPath), slug)
+		return runproc.List(fabriclayout.RunProcDir(prime.HubPath), slug)
 	}
 	t.refusal = func(slug string, force bool) error {
 		top, err := t.topology()
@@ -236,10 +237,10 @@ func New(prime *lymcwd.Location) (*Teardown, error) {
 	t.readClaim = t.readBoardClaim
 	t.writeClaim = t.writeBoardClaim
 	t.battenRecord = func(slug string) (shedengine.Status, bool, error) { return ReadBattenRecord(prime, slug) }
-	t.remove = func(req Request) (fabricengine.RemoveResult, error) {
+	t.remove = func(req Request) (fabriclayout.RemoveResult, error) {
 		top, err := t.topology()
 		if err != nil {
-			return fabricengine.RemoveResult{}, err
+			return fabriclayout.RemoveResult{}, err
 		}
 		return removeThrough(top, prime, req)
 	}
@@ -262,12 +263,12 @@ func New(prime *lymcwd.Location) (*Teardown, error) {
 
 // pairRemover removes a pair, with its origin steps or locally.
 type pairRemover interface {
-	Remove(l *lymcwd.Location, slug string, force, remote bool, rerun string) (fabricengine.RemoveResult, error)
-	RemoveLocal(l *lymcwd.Location, slug string, force bool) (fabricengine.RemoveResult, error)
+	Remove(l *lymcwd.Location, slug string, force, remote bool, rerun string) (fabriclayout.RemoveResult, error)
+	RemoveLocal(l *lymcwd.Location, slug string, force bool) (fabriclayout.RemoveResult, error)
 }
 
 // removeThrough asks remover for the removal req names.
-func removeThrough(remover pairRemover, prime *lymcwd.Location, req Request) (fabricengine.RemoveResult, error) {
+func removeThrough(remover pairRemover, prime *lymcwd.Location, req Request) (fabriclayout.RemoveResult, error) {
 	if req.Local {
 		return remover.RemoveLocal(prime, req.Slug, req.Force)
 	}
@@ -464,13 +465,13 @@ func (t *Teardown) driverLockBusyError(slug, retry string) error {
 //
 // A successful removal drops the hub's unread creel mail tagged with the pair's run,
 // so no notice about the gone run reaches an orch as live; a failed drop never fails the teardown.
-func (t *Teardown) RemovePair(req Request) (fabricengine.RemoveResult, error) {
+func (t *Teardown) RemovePair(req Request) (fabriclayout.RemoveResult, error) {
 	var snap snapshotOutcome
 	if req.Snapshot {
 		var err error
 		snap, err = t.takeSnapshot(req)
 		if err != nil {
-			return snap.applyTo(fabricengine.RemoveResult{}), err
+			return snap.applyTo(fabriclayout.RemoveResult{}), err
 		}
 	}
 
@@ -496,7 +497,7 @@ func (t *Teardown) RemovePair(req Request) (fabricengine.RemoveResult, error) {
 	t.archive(req.Slug)
 	if _, err := t.clearSandbox(req.Slug); err != nil {
 		worktree := fabricengine.WorktreePath(t.prime, req.Slug)
-		return snap.applyTo(fabricengine.RemoveResult{}), fmt.Errorf(
+		return snap.applyTo(fabriclayout.RemoveResult{}), fmt.Errorf(
 			"clear the sandbox root of pair %q: %w; way forward: run `lym harden sandbox clear` in %s, then run the removal again: `lym fabric remove %s`, or `lym loom resume` for a batten run's Worktree-Teardown",
 			req.Slug, err, worktree, req.Slug)
 	}
@@ -547,7 +548,7 @@ func (t *Teardown) clearWorktreeSandbox(slug string) (bool, error) {
 // clearStray deletes a directory at the task worktree's path that is no worktree, after a removal left the pair gone.
 // Any other removal error is returned as it is, since the pair may still stand.
 // When the removal kept the stray path, the call reports success instead of the kept-path error.
-func (t *Teardown) clearStray(slug string, res fabricengine.RemoveResult, err error) (fabricengine.RemoveResult, error) {
+func (t *Teardown) clearStray(slug string, res fabriclayout.RemoveResult, err error) (fabriclayout.RemoveResult, error) {
 	if err != nil && !errors.Is(err, fabricengine.ErrPairNotFound) && !errors.Is(err, fabricengine.ErrStrayPathKept) {
 		return res, err
 	}
@@ -570,19 +571,17 @@ func (t *Teardown) clearStray(slug string, res fabricengine.RemoveResult, err er
 type snapshotOutcome struct {
 	tag   string
 	paths []string
-	rec   fabricengine.Mutations
+	rec   fabriclayout.Mutations
 }
 
 // applyTo puts the snapshot's tag, paths and mutation record on res, the record ahead of the removal's own.
-func (s snapshotOutcome) applyTo(res fabricengine.RemoveResult) fabricengine.RemoveResult {
+func (s snapshotOutcome) applyTo(res fabriclayout.RemoveResult) fabriclayout.RemoveResult {
 	if s.tag == "" && s.rec.Len() == 0 {
 		return res
 	}
 	res.SnapshotTag = s.tag
 	res.SnapshotPaths = s.paths
-	merged := s.rec.Snapshot()
-	merged.Extend(res.Mutations)
-	res.Mutations = merged
+	res.Mutations = fabriclayout.MutationsOf(append(s.rec.Entries(), res.Mutations.Entries()...))
 	return res
 }
 
@@ -772,7 +771,7 @@ func sessionsOfOtherPairs(live, pairSessions []string) []string {
 // The orch's provider process registers under the beam's slug and is always spared too:
 // only a beam another machine now owns ends its orch.
 func (t *Teardown) endOwnedProcesses(slug string, spare ...string) ([]runproc.Ended, error) {
-	return runproc.EndSparing(fabricengine.RunProcDir(t.prime.HubPath), slug, os.Getpid(), append(spare, runproc.RoleTeardown, runproc.RoleOrch)...)
+	return runproc.EndSparing(fabriclayout.RunProcDir(t.prime.HubPath), slug, os.Getpid(), append(spare, runproc.RoleTeardown, runproc.RoleOrch)...)
 }
 
 // driverLockHeldIn reports whether the Go-driver lock of the slug's task worktree is held.
@@ -854,7 +853,7 @@ func hasRole(records []runproc.Record, role string) bool {
 
 // driverRecordPID returns the pid of a live record of the slug with the driver role.
 func (t *Teardown) driverRecordPID(slug string) (int, bool) {
-	records, err := runproc.List(fabricengine.RunProcDir(t.prime.HubPath), slug)
+	records, err := runproc.List(fabriclayout.RunProcDir(t.prime.HubPath), slug)
 	if err != nil {
 		return 0, false
 	}

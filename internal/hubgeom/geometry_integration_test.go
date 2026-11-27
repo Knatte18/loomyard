@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -232,7 +233,7 @@ func TestGeometryOverRealHub(t *testing.T) {
 	if !t.Run("reconcile heals a pair whose lock directory was deleted", func(t *testing.T) {
 		const slug = "lockless-task"
 		hubforge.AddPair(t, h, slug)
-		lockDir := fabricengine.RecordsLockDirPath(h.PairRecordsSibling(slug))
+		lockDir := fabriclayout.RecordsLockDirPath(h.PairRecordsSibling(slug))
 		if info, err := os.Stat(lockDir); err != nil || !info.IsDir() {
 			t.Fatalf("freshly added pair has no lock directory: %v", err)
 		}
@@ -250,8 +251,8 @@ func TestGeometryOverRealHub(t *testing.T) {
 		}
 
 		pair := reconcilePairFor(t, h, slug)
-		if pair.Action != fabricengine.ReconcileActionAlreadyHealthy || pair.Error != "" {
-			t.Errorf("reconcile pair action/error = %q/%q; want %q and no error", pair.Action, pair.Error, fabricengine.ReconcileActionAlreadyHealthy)
+		if pair.Action != fabriclayout.ReconcileActionAlreadyHealthy || pair.Error != "" {
+			t.Errorf("reconcile pair action/error = %q/%q; want %q and no error", pair.Action, pair.Error, fabriclayout.ReconcileActionAlreadyHealthy)
 		}
 		if !strings.Contains(pair.Detail, lockDir) {
 			t.Errorf("reconcile pair detail = %q; want it to name the restored lock directory %s", pair.Detail, lockDir)
@@ -292,7 +293,7 @@ func TestGeometryOverRealHub(t *testing.T) {
 
 	// This step removes the shortname record every earlier step read, so it runs last.
 	t.Run("hub with no shortname yields an empty shortname", func(t *testing.T) {
-		if err := os.Remove(filepath.Join(h.BoardDir(), fabricengine.ShortnameFileName)); err != nil {
+		if err := os.Remove(filepath.Join(h.BoardDir(), fabriclayout.ShortnameFileName)); err != nil {
 			t.Fatalf("remove shortname record: %v", err)
 		}
 
@@ -307,7 +308,7 @@ func TestGeometryOverRealHub(t *testing.T) {
 }
 
 // reconcilePairFor runs `fabric reconcile` from the hub's prime through the CLI and returns slug's pair report.
-func reconcilePairFor(t *testing.T, h *hubforge.Hub, slug string) fabricengine.ReconcilePairResult {
+func reconcilePairFor(t *testing.T, h *hubforge.Hub, slug string) fabriclayout.ReconcilePairResult {
 	t.Helper()
 
 	var out bytes.Buffer
@@ -315,7 +316,7 @@ func reconcilePairFor(t *testing.T, h *hubforge.Hub, slug string) fabricengine.R
 		t.Fatalf("reconcile = %d; want 0\noutput: %s", code, out.String())
 	}
 	var envelope struct {
-		Pairs []fabricengine.ReconcilePairResult `json:"pairs"`
+		Pairs []fabriclayout.ReconcilePairResult `json:"pairs"`
 	}
 	if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
 		t.Fatalf("decode reconcile envelope: %v\noutput: %s", err, out.String())
@@ -326,7 +327,7 @@ func reconcilePairFor(t *testing.T, h *hubforge.Hub, slug string) fabricengine.R
 		}
 	}
 	t.Fatalf("reconcile envelope has no pair for %q\noutput: %s", slug, out.String())
-	return fabricengine.ReconcilePairResult{}
+	return fabriclayout.ReconcilePairResult{}
 }
 
 // requireLockDirAndOrchParent asserts slug's sibling worktree has its lock directory.
@@ -334,7 +335,7 @@ func reconcilePairFor(t *testing.T, h *hubforge.Hub, slug string) fabricengine.R
 func requireLockDirAndOrchParent(t *testing.T, h *hubforge.Hub, slug string) {
 	t.Helper()
 
-	if info, err := os.Stat(fabricengine.RecordsLockDirPath(h.PairRecordsSibling(slug))); err != nil || !info.IsDir() {
+	if info, err := os.Stat(fabriclayout.RecordsLockDirPath(h.PairRecordsSibling(slug))); err != nil || !info.IsDir() {
 		t.Errorf("lock directory missing in %s: %v", h.PairRecordsSibling(slug), err)
 	}
 	l, err := lymcwd.ResolveWorktree(h.PairCodeWorktree(slug))

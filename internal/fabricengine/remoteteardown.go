@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -29,18 +30,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/selfexec"
-)
-
-// The hidden fabric verb and flags that start the teardown child.
-const (
-	// TeardownChildVerb is the hidden fabric subcommand that runs the remote half of a teardown.
-	TeardownChildVerb = "remote-teardown"
-	// TeardownChildSlugFlag names the slug whose teardown lock the child holds.
-	TeardownChildSlugFlag = "slug"
-	// TeardownChildTryFlag makes the child take the lock by one attempt instead of waiting for it.
-	TeardownChildTryFlag = "try"
-	// TeardownChildWaitFlag bounds the child's wait for the lock.
-	TeardownChildWaitFlag = "wait"
 )
 
 // The one line the teardown child answers on its signal stream once it has tried the lock.
@@ -97,7 +86,7 @@ type remoteOutcome struct {
 	archive        weftArchive
 	archiveSkipped string
 	// weft carries the outcome of the weft branch's delete on origin.
-	weft CleanupBranchEntry
+	weft fabriclayout.CleanupBranchEntry
 	// weftKeptOnOrigin is set when the weft branch lives only on origin and the job did not ask for its delete.
 	weftKeptOnOrigin string
 	taskDeleted      bool
@@ -106,7 +95,7 @@ type remoteOutcome struct {
 	taskKept   string
 	taskFailed bool
 	// discard carries the archive tags and the origin delete of a discard.
-	discard DiscardResult
+	discard fabriclayout.DiscardResult
 	// err is the failure that stopped the steps.
 	err error
 	// weftRootErr is the failure to find the records repository after the archive succeeded;
@@ -122,7 +111,7 @@ type remoteOutcome struct {
 // A removal pushes the weft tip first and then deletes the landed task branch on origin when asked.
 // A discard archives the task branch's tips and deletes it on origin.
 func runRemoteTeardown(rec *Mutations, l *lymcwd.Location, job remoteTeardownJob, sleep func(time.Duration)) remoteOutcome {
-	out := remoteOutcome{ran: true, weft: CleanupBranchEntry{Branch: job.WeftBranch}}
+	out := remoteOutcome{ran: true, weft: fabriclayout.CleanupBranchEntry{Branch: job.WeftBranch}}
 	if out.err = pushOwedArchiveTags(rec, l, job, sleep); out.err != nil {
 		return out
 	}
@@ -222,7 +211,7 @@ func withArchiveTagPush(dir, slug, tip, wayForward string) string {
 	if err != nil {
 		return wayForward
 	}
-	tag := ArchiveTagName(slug, tip)
+	tag := fabriclayout.ArchiveTagName(slug, tip)
 	return fmt.Sprintf("push the archive tag with `git -C %s push %s refs/tags/%s:%s`, then %s", dir, originRemoteName, tag, ns.Tag(tag), wayForward)
 }
 
@@ -318,7 +307,7 @@ func postRemoteTeardownNotice(hubPath, slug, line string) {
 	if notifier == nil {
 		return
 	}
-	if _, err := (*notifier)(hubPath, PushNotice{Line: line, Topic: "remote-teardown/" + slug}); err != nil {
+	if _, err := (*notifier)(hubPath, fabriclayout.PushNotice{Line: line, Topic: "remote-teardown/" + slug}); err != nil {
 		logger.Warn("fabricengine: remote teardown notice not posted", "slug", slug, "error", err)
 	}
 }
@@ -412,9 +401,9 @@ func (h *childHold) finish(job *remoteTeardownJob) remoteOutcome {
 
 // teardownChildArgs returns the arguments of the teardown child for slug.
 func teardownChildArgs(slug string, try bool, wait time.Duration) []string {
-	args := []string{"fabric", TeardownChildVerb, "--" + TeardownChildSlugFlag, slug, "--" + TeardownChildWaitFlag, wait.String()}
+	args := []string{"fabric", fabriclayout.TeardownChildVerb, "--" + fabriclayout.TeardownChildSlugFlag, slug, "--" + fabriclayout.TeardownChildWaitFlag, wait.String()}
 	if try {
-		args = append(args, "--"+TeardownChildTryFlag)
+		args = append(args, "--"+fabriclayout.TeardownChildTryFlag)
 	}
 	return args
 }
@@ -427,10 +416,10 @@ func teardownChildArgs(slug string, try bool, wait time.Duration) []string {
 // The child is registered under the slug in the hub's owner record with the teardown role.
 // A teardown of the slug's pair spares that role.
 func spawnTeardownHold(rec *Mutations, l *lymcwd.Location, slug string, try bool, exe string, args []string, rerun string) (teardownHold, error) {
-	lockPath := TeardownLockPath(l.HubPath, slug)
+	lockPath := fabriclayout.TeardownLockPath(l.HubPath, slug)
 	existed := pathPresent(lockPath)
 	cmd := exec.Command(exe, args...)
-	cmd.Dir = BoltDir(l.HubPath)
+	cmd.Dir = fabriclayout.BoltDir(l.HubPath)
 	proc.Detach(cmd)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -446,13 +435,13 @@ func spawnTeardownHold(rec *Mutations, l *lymcwd.Location, slug string, try bool
 	}
 	pid := cmd.Process.Pid
 	logger.Info("fabricengine: spawned teardown child", "exe", exe, "args", args, "dir", cmd.Dir, "pid", pid)
-	if err := runproc.Register(RunProcDir(filepath.Dir(cmd.Dir)), slug, runproc.ChildRecord(pid, runproc.RoleTeardown, args)); err != nil {
+	if err := runproc.Register(fabriclayout.RunProcDir(filepath.Dir(cmd.Dir)), slug, runproc.ChildRecord(pid, runproc.RoleTeardown, args)); err != nil {
 		logger.Warn("fabricengine: teardown child not registered", "slug", slug, "pid", pid, "error", err)
 	}
 
 	line, readErr := bufio.NewReader(stdout).ReadString('\n')
 	if !existed && pathPresent(lockPath) {
-		rec.Append(KindFileWritten, lockPath, "")
+		rec.Append(fabriclayout.KindFileWritten, lockPath, "")
 	}
 	answer := strings.TrimSpace(line)
 	if answer == teardownHeldSignal {
@@ -480,7 +469,7 @@ func spawnTeardownHold(rec *Mutations, l *lymcwd.Location, slug string, try bool
 // Once the job has run with no failed step, or on an empty input, it removes the slug's pending-teardown record.
 // A failed step keeps the record and writes that step's way forward into it.
 func RunTeardownChild(hubPath, slug string, try bool, wait time.Duration, jobIn io.Reader, signal io.Writer) error {
-	lockPath := TeardownLockPath(hubPath, slug)
+	lockPath := fabriclayout.TeardownLockPath(hubPath, slug)
 	held, acquired, err := takeTeardownChildLock(hubPath, slug, lockPath, try, wait)
 	if err != nil {
 		fmt.Fprintf(signal, "error %v\n", err)
@@ -554,27 +543,27 @@ func takeTeardownChildLock(hubPath, slug, lockPath string, try bool, wait time.D
 // It reads the task branch's origin tip and archives the tips the discard must keep;
 // it deletes the branch on origin, leased on that tip.
 // job.TaskTip, the local tip the discard tagged and deleted, is archived only when origin's tip does not contain it.
-func discardTaskBranchOnOrigin(rec *Mutations, l *lymcwd.Location, job remoteTeardownJob, sleep func(time.Duration)) (res DiscardResult, err error) {
+func discardTaskBranchOnOrigin(rec *Mutations, l *lymcwd.Location, job remoteTeardownJob, sleep func(time.Duration)) (res fabriclayout.DiscardResult, err error) {
 	repoDir := l.WorktreePath()
 	originTip := ""
 	if _, urlErr := gitrepo.New(repoDir).RemoteURL(originRemoteName); urlErr == nil {
 		originTip, err = remoteHeadTip(repoDir, job.WarpBranch)
 		if err != nil {
-			return DiscardResult{}, err
+			return fabriclayout.DiscardResult{}, err
 		}
 	}
 	if originTip == "" && job.TaskTip == "" {
-		return DiscardResult{}, nil
+		return fabriclayout.DiscardResult{}, nil
 	}
 	if originTip != "" {
 		if _, err := gitrepo.New(repoDir).FetchWithArgs(originRemoteName, "refs/heads/"+job.WarpBranch); err != nil {
-			return DiscardResult{}, fmt.Errorf("fetch task branch %q from %q: %w", job.WarpBranch, originRemoteName, err)
+			return fabriclayout.DiscardResult{}, fmt.Errorf("fetch task branch %q from %q: %w", job.WarpBranch, originRemoteName, err)
 		}
 	}
 
 	localTag, originTag, err := archiveDiscardedTips(rec, repoDir, job.Slug, job.TaskTip, originTip, sleep)
 	if err != nil {
-		return DiscardResult{}, err
+		return fabriclayout.DiscardResult{}, err
 	}
 	for _, tag := range []string{localTag, originTag} {
 		if tag != "" && (len(res.ArchiveTags) == 0 || res.ArchiveTags[0] != tag) {

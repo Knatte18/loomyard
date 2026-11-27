@@ -1,12 +1,14 @@
 // reservedhubname_test.go pins that two names the hub once reserved are no longer reserved.
-// BoardDir, HubPath and IsReservedHubName live in internal/fabricengine; their full coverage is in fabricengine/junctionnames_test.go, and this file keeps only the inverse-of-the-old-truth rows.
+// BoardDir, HubPath and IsReservedHubName live in internal/fabriclayout.
+// Their full coverage is in fabriclayout/hubpaths_test.go;
+// this file keeps only the inverse-of-the-old-truth rows.
 
 package lymcwd_test
 
 import (
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -20,7 +22,7 @@ func TestIsReservedHubName_RetiredNamesAreNotReserved(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			if got := fabricengine.IsReservedHubName(name, nil); got {
+			if got := fabriclayout.IsReservedHubName(name, nil); got {
 				t.Errorf("IsReservedHubName(%q, nil) = %v; want false", name, got)
 			}
 		})

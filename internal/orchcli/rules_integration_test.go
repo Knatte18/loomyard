@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/heddleengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -22,7 +22,7 @@ func TestOrchIntegration_RulesStoreInHeddle(t *testing.T) {
 	t.Parallel()
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	anchor := h.Location.AnchorPath()
-	boltDir := fabricengine.BoltDir(h.Path)
+	boltDir := fabriclayout.BoltDir(h.Path)
 	draft := filepath.Join(t.TempDir(), "draft.md")
 	run := func(content string) map[string]any {
 		t.Helper()

@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -61,12 +62,12 @@ func TestDropLocal(t *testing.T) {
 		if got := gitkit.RevParse(t, pair.records, wantTags[1]); got != recordsTip {
 			t.Errorf("tag %s = %q; want the local records tip %q", wantTags[1], got, recordsTip)
 		}
-		for _, mutations := range []fabricengine.Mutations{res.Mutated(), rec.Snapshot()} {
-			var kinds []fabricengine.Kind
+		for _, mutations := range []fabriclayout.Mutations{res.Mutated(), rec.Snapshot()} {
+			var kinds []fabriclayout.Kind
 			for _, entry := range mutations.Entries() {
 				kinds = append(kinds, entry.Kind)
 			}
-			wantKinds := []fabricengine.Kind{fabricengine.KindTagCreated, fabricengine.KindCommitsDropped, fabricengine.KindTagCreated, fabricengine.KindCommitsDropped}
+			wantKinds := []fabriclayout.Kind{fabriclayout.KindTagCreated, fabriclayout.KindCommitsDropped, fabriclayout.KindTagCreated, fabriclayout.KindCommitsDropped}
 			if !slices.Equal(kinds, wantKinds) {
 				t.Errorf("recorded kinds = %v; want %v", kinds, wantKinds)
 			}
@@ -94,11 +95,11 @@ func TestDropLocal(t *testing.T) {
 		if got, err := os.ReadFile(recordPath); err != nil || string(got) != "origin\n" {
 			t.Errorf("reviews/record.json = %q, %v; want origin's content", got, err)
 		}
-		var kinds []fabricengine.Kind
+		var kinds []fabriclayout.Kind
 		for _, entry := range res.Mutated().Entries() {
 			kinds = append(kinds, entry.Kind)
 		}
-		if want := []fabricengine.Kind{fabricengine.KindTagCreated, fabricengine.KindPathRemoved, fabricengine.KindCommitsDropped}; !slices.Equal(kinds, want) {
+		if want := []fabriclayout.Kind{fabriclayout.KindTagCreated, fabriclayout.KindPathRemoved, fabriclayout.KindCommitsDropped}; !slices.Equal(kinds, want) {
 			t.Errorf("recorded kinds = %v; want %v", kinds, want)
 		}
 	})
@@ -148,7 +149,7 @@ func TestDropLocal(t *testing.T) {
 					t.Errorf("%s = %q, %v; want %q", path, got, err, want)
 				}
 				for _, entry := range res.Mutated().Entries() {
-					if entry.Kind == fabricengine.KindPathRemoved {
+					if entry.Kind == fabriclayout.KindPathRemoved {
 						t.Errorf("recorded %+v; want no path removal", entry)
 					}
 				}

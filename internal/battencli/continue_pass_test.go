@@ -15,7 +15,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
@@ -114,9 +114,9 @@ func TestBattenPreRun_ContinuePass(t *testing.T) {
 				return dobbyengine.CatchUpReport{}, nil
 			}
 			reconciles := 0
-			c.reconcile = func(string) (fabricengine.OriginReport, error) {
+			c.reconcile = func(string) (fabriclayout.OriginReport, error) {
 				reconciles++
-				return fabricengine.OriginReport{}, nil
+				return fabriclayout.OriginReport{}, nil
 			}
 			var commands []string
 			c.env.Setting = func(module, key string) (any, error) { return true, nil }

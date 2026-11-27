@@ -1,4 +1,4 @@
-// export_test.go exposes newPaired and the warp and weft fields.
+// export_test.go exposes the warp and weft fields.
 // It also exposes the destructive gate's unexported executors and ownership predicates.
 // Files in package fabricengine_test drive them directly, not through an application-level verb;
 // that verb's own higher-level checks would short-circuit before the gate is reached.
@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/fabriccore"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -76,11 +78,21 @@ func SetScratchPathTrackedForTest(t *testing.T, fn func(worktreeDir, relPath str
 	t.Cleanup(func() { scratchPathTracked = PathTracked })
 }
 
-// NewPairedFromPathsForTest exposes newPaired to the unit tests of the constructor itself.
-// Such a test passes two empty directories and checks that the warp and weft fields come back non-nil.
-// It is a constructor seam only and must never assemble a test fixture's warp/weft pair.
-// A test that needs a real pair takes one from internal/hubforge instead.
-var NewPairedFromPathsForTest = newPaired
+// ReadSnapshotForTest reads one phase of a fresh snapshot with a reader over hub and stores.
+func ReadSnapshotForTest(hub string, stores map[fabriccore.Store]string, phase fabriccore.Phase, fields []fabriccore.Field) (fabriccore.Snapshot, error) {
+	var snapshot fabriccore.Snapshot
+	err := snapshotReader{hub: hub, stores: stores}.read(phase, fields, &snapshot)
+	return snapshot, err
+}
+
+// WritePendingTeardownForTest writes record as a pending teardown of hub; its way forward is not written.
+func WritePendingTeardownForTest(hub string, record fabriclayout.PendingTeardown) error {
+	job := remoteTeardownJob{
+		Kind: record.Kind, Slug: record.Slug, Worktree: record.Worktree,
+		WeftTip: record.WeftTip, TaskTip: record.TaskTip, Rerun: record.Rerun,
+	}
+	return writePendingTeardown(hub, job, record.HandedAt)
+}
 
 // WarpForTest returns the warp-side gitrepo.Repo of f.
 // It gives tests in package fabricengine_test direct access to that repository.
@@ -202,7 +214,7 @@ func CheckRemoteBranchRequestForTest(l *lymcwd.Location, repoDir, remote, branch
 // DeleteArchivedWeftBranchForTest runs the remote-branch deletion for an archived weft branch.
 // It uses pair-weft ownership and archived-on-remote dirtiness, and returns the recorded mutations.
 // Package fabricengine_test integration tests use it, since they cannot build a remoteBranchRequest themselves.
-func DeleteArchivedWeftBranchForTest(l *lymcwd.Location, repoDir, warpBranch, branch, archiveTag, leaseSHA string) (Mutations, error) {
+func DeleteArchivedWeftBranchForTest(l *lymcwd.Location, repoDir, warpBranch, branch, archiveTag, leaseSHA string) (fabriclayout.Mutations, error) {
 	req := remoteBranchRequest{
 		what:      "test delete archived weft branch",
 		repoDir:   repoDir,
@@ -242,10 +254,10 @@ func DeleteRemoteWithArchivedTipForTest(repoDir, warpBranch, archiveTag, leaseSH
 // It takes a caller-chosen lease SHA and returns the recorded mutations.
 // Package fabricengine_test tests use it to present a lease that is stale against origin.
 // `ResetPairCode` fetches and updates with no window between them, so a stale lease cannot arise there.
-func UpdateRemoteBranchWithLeaseForTest(f *Fabric, sha, parentBranch, leaseSHA string) (Mutations, error) {
+func UpdateRemoteBranchWithLeaseForTest(f *Fabric, sha, parentBranch, leaseSHA string) (fabriclayout.Mutations, error) {
 	branch, err := f.code.CurrentBranch()
 	if err != nil {
-		return Mutations{}, err
+		return fabriclayout.Mutations{}, err
 	}
 	rec := NewMutations("")
 	err = updateRemoteBranch(rec, remoteBranchUpdateRequest{
@@ -295,7 +307,7 @@ var SeedFabricConfigForTest = seedFabricConfig
 func seedFabricConfig(t *testing.T, warpPath string) {
 	t.Helper()
 
-	boardDir := BoardDir(filepath.Dir(warpPath))
+	boardDir := fabriclayout.BoardDir(filepath.Dir(warpPath))
 	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
 		t.Fatalf("mkdir repo-wide config dir: %v", err)
 	}
@@ -341,7 +353,7 @@ type pushRecorder struct {
 	Err error
 }
 
-func (r *pushRecorder) record(req PushSpawn) {
+func (r *pushRecorder) record(req fabriclayout.PushSpawn) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.calls = append(r.calls, pushCall{
@@ -379,7 +391,7 @@ func swapPushRecorder(t *testing.T) *pushRecorder {
 
 	recorder := &pushRecorder{}
 	original := spawnDetachedPushFn
-	spawnDetachedPushFn = func(req PushSpawn) error {
+	spawnDetachedPushFn = func(req fabriclayout.PushSpawn) error {
 		recorder.record(req)
 		recorder.mu.Lock()
 		defer recorder.mu.Unlock()
@@ -448,7 +460,7 @@ func CommitWeftForTest(f *Fabric, pathspec []string, message string, opts SyncOp
 // CommitWeftWithTrailersForTest stages the pathspec in f's weft and commits it with trailers.
 // It holds the weft write lock.
 // Tests call it to reach the weft commit's trailer handling without the warp-side classification in front of it.
-func CommitWeftWithTrailersForTest(f *Fabric, pathspec []string, message string, trailers []Trailer, opts SyncOptions) (sha string, committed bool, err error) {
+func CommitWeftWithTrailersForTest(f *Fabric, pathspec []string, message string, trailers []fabriclayout.Trailer, opts SyncOptions) (sha string, committed bool, err error) {
 	if opts.SkipGit {
 		return "", false, nil
 	}
@@ -507,9 +519,9 @@ var AppendSnapshotTrailersForTest = appendSnapshotTrailers
 // Tests use it to assert on the trailer of a landed commit.
 var ParseWarpSHATrailerForTest = parseWarpSHATrailer
 
-// WeftLockDirNameForTest exposes weftLockDirName, the name of the lock directory that git excludes.
+// WeftLockDirNameForTest is the name of the lock directory that git excludes.
 // Tests use it to assert that Status never reports that directory.
-const WeftLockDirNameForTest = weftLockDirName
+const WeftLockDirNameForTest = fabriclayout.RecordsLockDirName
 
 // CorrIndexForTest is an alias of corrIndex, for tests that load and inspect the correspondence index directly.
 type CorrIndexForTest = corrIndex
@@ -740,7 +752,7 @@ func CommitPendingRecordsForTest(l *lymcwd.Location, slug, warpBranch string) (c
 
 // CleanupRemoteWarpWithHookForTest runs the cleanup and calls afterEnumerate between enumeration and the first deletion,
 // so an integration test can move a branch tip after it was observed and prove the lease holds.
-func CleanupRemoteWarpWithHookForTest(t *Topology, l *lymcwd.Location, apply bool, openPRHeads map[string]bool, afterEnumerate func()) (RemoteWarpCleanupResult, error) {
+func CleanupRemoteWarpWithHookForTest(t *Topology, l *lymcwd.Location, apply bool, openPRHeads map[string]bool, afterEnumerate func()) (fabriclayout.RemoteWarpCleanupResult, error) {
 	return t.cleanupRemoteWarp(l, apply, openPRHeads, afterEnumerate)
 }
 
@@ -928,9 +940,9 @@ var RewoundWayForwardForTest = rewoundWayForward
 // That function produces the way-forward line a diverged code branch names, so a test can assert its exact text.
 var CodeDivergedWayForwardForTest = codeDivergedWayForward
 
-// StopWayForwardForTest is BranchOutcome.stopWayForward, the repair step a stopped branch names.
-func StopWayForwardForTest(b BranchOutcome) string {
-	return b.stopWayForward()
+// StopWayForwardForTest is branchStopWayForward, the repair step a stopped branch names.
+func StopWayForwardForTest(b fabriclayout.BranchOutcome) string {
+	return branchStopWayForward(b)
 }
 
 // WeftDirtyStopForTest is weftDirtyStop for a Fabric holding only warpPath and weftPath.

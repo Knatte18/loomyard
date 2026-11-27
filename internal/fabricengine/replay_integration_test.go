@@ -19,6 +19,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/heddleengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -128,14 +129,14 @@ type scribbleThenFailReplay struct {
 	boardDir string
 }
 
-func (r scribbleThenFailReplay) Apply(req fabricengine.ReplayRequest) (fabricengine.ReplayResult, error) {
+func (r scribbleThenFailReplay) Apply(req fabriclayout.ReplayRequest) (fabriclayout.ReplayResult, error) {
 	if req.Dir != r.boardDir {
 		return r.FabricReplay.Apply(req)
 	}
 	if err := os.WriteFile(filepath.Join(req.Dir, "board.json"), []byte("{}\n"), 0o644); err != nil {
-		return fabricengine.ReplayResult{}, err
+		return fabriclayout.ReplayResult{}, err
 	}
-	return fabricengine.ReplayResult{}, errors.New("apply died after writing board.json")
+	return fabriclayout.ReplayResult{}, errors.New("apply died after writing board.json")
 }
 
 // writeBoltFile writes content to rel in the Bolt checkout dir without committing it.
@@ -390,7 +391,7 @@ func TestRecordsReplay(t *testing.T) {
 			if got := gitkit.RevParse(t, weft, wantTag+"^{commit}"); got != status {
 				t.Errorf("tag %s names %s, want %s", wantTag, got, status)
 			}
-			if got := tagsOf(t, weft, fabricengine.ArchiveTagPrefix+"*"); len(got) != 0 {
+			if got := tagsOf(t, weft, fabriclayout.ArchiveTagPrefix+"*"); len(got) != 0 {
 				t.Errorf("archive tags = %v, want none, so no run listing reads the set-aside commit", got)
 			}
 			if got := gitkit.LsFiles(t, weft, "_lym/shed/neve"); len(got) != 0 {
@@ -815,7 +816,7 @@ func TestRecordsReplay(t *testing.T) {
 			f := newRecordsFixture(t)
 			board := f.hub.BoardDir()
 			branch := gitkit.CurrentBranch(t, board)
-			stencilRel := fabricengine.StencilsSubtreeRel() + "/loom/s.md"
+			stencilRel := fabriclayout.StencilsSubtreeRel() + "/loom/s.md"
 			local := gitkit.CommitFile(t, board, stencilRel, "local\n", "edit a stencil")
 			f.originCommit(branch, "notes/up.md", "up\n", "upstream work")
 			gitkit.Git(t, board, "fetch")
@@ -837,8 +838,8 @@ func TestRecordsReplay(t *testing.T) {
 			f := newRecordsFixture(t)
 			board := f.hub.BoardDir()
 			branch := gitkit.CurrentBranch(t, board)
-			stencilRel := fabricengine.StencilsSubtreeRel() + "/loom/s.md"
-			seed := gitkit.CommitFile(t, board, stencilRel, "seeded\n", fabricengine.SeedCommitMessage("stencils", "(0123456789ab production /bin/lym)"))
+			stencilRel := fabriclayout.StencilsSubtreeRel() + "/loom/s.md"
+			seed := gitkit.CommitFile(t, board, stencilRel, "seeded\n", fabriclayout.SeedCommitMessage("stencils", "(0123456789ab production /bin/lym)"))
 			upstream := f.originCommit(branch, stencilRel, "remote\n", "operator edit")
 			gitkit.Git(t, board, "fetch")
 
@@ -971,7 +972,7 @@ func TestRecordsReplay(t *testing.T) {
 				t.Errorf("replayed prime-weft tip still tracks the run directory: %v", got)
 			}
 			for _, dir := range []string{board, weft} {
-				if got := tagsOf(t, dir, fabricengine.ArchiveTagPrefix+"*"); len(got) != 0 {
+				if got := tagsOf(t, dir, fabriclayout.ArchiveTagPrefix+"*"); len(got) != 0 {
 					t.Errorf("archive tags in %s = %v, want none", dir, got)
 				}
 			}

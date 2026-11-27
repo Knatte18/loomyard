@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
@@ -67,7 +68,7 @@ func validateWorktreeSlug(slug string, junctionNames []string) error {
 		return invalidSlug("invalid slug %q: a slug must not end in %q (that suffix is reserved for weft worktrees)", slug, weftname.Suffix)
 	}
 
-	if IsReservedHubName(slug, junctionNames) {
+	if fabriclayout.IsReservedHubName(slug, junctionNames) {
 		return invalidSlug("invalid slug %q: that name is reserved for lym hub geometry", slug)
 	}
 

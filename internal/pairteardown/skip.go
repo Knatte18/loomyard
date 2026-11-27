@@ -12,7 +12,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
@@ -31,7 +31,7 @@ import (
 // batten still runs Land and deploy after Finalize Done.
 // A read error is returned.
 func (t *Teardown) driverChecksSkipped(req Request) (bool, error) {
-	if req.Verdict == fabricengine.EntryEnded || req.Verdict == fabricengine.EntryOwnedElsewhere {
+	if req.Verdict == fabriclayout.EntryEnded || req.Verdict == fabriclayout.EntryOwnedElsewhere {
 		return true, nil
 	}
 	covered, _, err := t.paused(req.Slug)
@@ -183,7 +183,7 @@ func (t *Teardown) awaitRunLockOrPass(ctx context.Context, slug string, paused, 
 	if err != nil {
 		return err
 	}
-	store := &parentlock.Store{Dir: parentlock.Dir(fabricengine.BoltDir(t.prime.HubPath))}
+	store := &parentlock.Store{Dir: parentlock.Dir(fabriclayout.BoltDir(t.prime.HubPath))}
 	parentLocked, err := store.HeldBy(slug)
 	if err != nil {
 		return err

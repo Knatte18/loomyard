@@ -11,6 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/desktophook"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -64,7 +65,7 @@ func pairIsBeam(l *lymcwd.Location) (bool, error) {
 	if found && origin.Beam {
 		return true, nil
 	}
-	tasks, err := boardengine.ReadTasks(fabricengine.BoardDir(l.HubPath))
+	tasks, err := boardengine.ReadTasks(fabriclayout.BoardDir(l.HubPath))
 	if err != nil {
 		return false, fmt.Errorf("hubgeom: read the board for the beam flag of %q: %w", l.WorktreeName, err)
 	}

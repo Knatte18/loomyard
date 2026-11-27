@@ -20,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/reedcli"
@@ -65,7 +66,7 @@ func TestSmokeSeatsChairAsksAdvisor(t *testing.T) {
 	llmkit.Claude(t, "LYM_REED_CLAUDE")
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	stencilsDir := fabricengine.StencilsDir(h.Location.HubPath)
+	stencilsDir := fabriclayout.StencilsDir(h.Location.HubPath)
 	stencilkit.SeedInto(t, stencilsDir)
 	copyTestdataStencil(t, stencilsDir, smokeChairStencil, "smoke-chair.md")
 	copyTestdataStencil(t, stencilsDir, smokeAdvisorStencil, "smoke-advisor.md")

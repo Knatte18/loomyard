@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/consoletitle"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -51,7 +52,7 @@ func BeamWorkspacePath(l *lymcwd.Location, beam string) string {
 // HubWorkspaceLockPath returns the lock file that serializes regenerations of the hub workspace file:
 // <HubScratchDir(hubPath)>/hub-workspace.lock.
 func HubWorkspaceLockPath(hubPath string) string {
-	return filepath.Join(HubScratchDir(hubPath), hubWorkspaceLockFileName)
+	return filepath.Join(fabriclayout.HubScratchDir(hubPath), hubWorkspaceLockFileName)
 }
 
 // RegenerateHubWorkspace rewrites the hub workspace file and a workspace file per beam.
@@ -153,7 +154,7 @@ func beamWorkspaceSettings(l *lymcwd.Location, beam string, primeSettings []byte
 // workspaceWindowTitle returns the window title of the workspace file named after name, a repository or a beam:
 // "[<shortname>] <name> workspace", or "<name> workspace" when the board at the hub records no shortname.
 func workspaceWindowTitle(hubPath, name string) string {
-	shortname, _ := ReadShortname(BoltDir(hubPath))
+	shortname, _ := ReadShortname(fabriclayout.BoltDir(hubPath))
 	return consoletitle.Workspace(shortname, name)
 }
 
@@ -189,7 +190,7 @@ func regenerateHubWorkspace(rec *Mutations, l *lymcwd.Location, lockWait time.Du
 	// The names are read before the lock is taken: the namer may take locks of its own,
 	// and the hub workspace lock is a leaf lock.
 	names := pairFolderNames(l.HubPath)
-	if pathPresent(BoltDir(l.HubPath)) {
+	if pathPresent(fabriclayout.BoltDir(l.HubPath)) {
 		release, err := lockHubWorkspace(rec, l.HubPath, lockWait)
 		if err != nil {
 			return "", err
@@ -245,7 +246,7 @@ func regenerateHubWorkspace(rec *Mutations, l *lymcwd.Location, lockWait time.Du
 		return "", fmt.Errorf("write workspace: %w", err)
 	}
 	if wrote {
-		rec.Append(KindFileWritten, path, "")
+		rec.Append(fabriclayout.KindFileWritten, path, "")
 	}
 
 	kept := map[string]bool{}
@@ -257,7 +258,7 @@ func regenerateHubWorkspace(rec *Mutations, l *lymcwd.Location, lockWait time.Du
 			return "", fmt.Errorf("write workspace of beam %s: %w", beam.slug, err)
 		}
 		if wrote {
-			rec.Append(KindFileWritten, beamPath, "")
+			rec.Append(fabriclayout.KindFileWritten, beamPath, "")
 		}
 	}
 	for _, slug := range layout.unrecorded {
@@ -293,7 +294,7 @@ func lockHubWorkspace(rec *Mutations, hubPath string, wait time.Duration) (func(
 		return nil, fmt.Errorf("open hub root %s: %w", hubPath, err)
 	}
 	defer root.Close()
-	scratchRel, err := hubRel(hubPath, HubScratchDir(hubPath))
+	scratchRel, err := hubRel(hubPath, fabriclayout.HubScratchDir(hubPath))
 	if err != nil {
 		return nil, err
 	}
@@ -312,7 +313,7 @@ func lockHubWorkspace(rec *Mutations, hubPath string, wait time.Duration) (func(
 		held, acquired, err = lock.AcquireWriteLockWithin(lockPath, wait)
 	}
 	if !existed && pathPresent(lockPath) {
-		rec.Append(KindFileWritten, lockPath, "")
+		rec.Append(fabriclayout.KindFileWritten, lockPath, "")
 	}
 	if err != nil {
 		return nil, fmt.Errorf("take the hub workspace lock %s: %w", lockPath, err)
@@ -391,12 +392,12 @@ func hubWorkspaceFolders(l *lymcwd.Location, primeName string, names map[string]
 		primeFolder = &folder
 	}
 
-	boardPresent, err := dirPresent(BoltDir(l.HubPath))
+	boardPresent, err := dirPresent(fabriclayout.BoltDir(l.HubPath))
 	if err != nil {
 		return workspaceLayout{}, err
 	}
 	if boardPresent {
-		folder, err := hubWorkspaceFolder(l.HubPath, "Bolt", BoltDir(l.HubPath))
+		folder, err := hubWorkspaceFolder(l.HubPath, "Bolt", fabriclayout.BoltDir(l.HubPath))
 		if err != nil {
 			return workspaceLayout{}, err
 		}

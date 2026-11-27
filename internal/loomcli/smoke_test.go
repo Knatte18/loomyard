@@ -41,6 +41,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -669,7 +670,7 @@ func TestSmokeBootstrapLifecycle(t *testing.T) {
 		killDriversAndClearLog(t)
 
 		recordsDir := fabricengine.RecordsWorktree(loc)
-		originRel := filepath.Join(loc.AnchorRel, fabricengine.OriginRecordRel())
+		originRel := filepath.Join(loc.AnchorRel, fabriclayout.OriginRecordRel())
 
 		// Roll the pair back to a legacy shape: no origin record tracked at all, as if the pair had been
 		// created before the record existed.
@@ -679,7 +680,7 @@ func TestSmokeBootstrapLifecycle(t *testing.T) {
 		// Simulate the crash: write the record to disk through the production primitive step 1 uses, without committing it.
 		// That is the state a process death between steps 1 and 3 leaves behind.
 		rec := fabricengine.NewMutations("")
-		if err := fabricengine.WriteOrigin(rec, loc, slug, fabricengine.Origin{ParentBranch: "main"}); err != nil {
+		if err := fabricengine.WriteOrigin(rec, loc, slug, fabriclayout.Origin{ParentBranch: "main"}); err != nil {
 			t.Fatalf("WriteOrigin (simulated crash write): %v", err)
 		}
 

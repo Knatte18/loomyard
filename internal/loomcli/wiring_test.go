@@ -21,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -106,7 +107,7 @@ func TestWire_MissingHubLandingConfigNamesWayForward(t *testing.T) {
 	t.Parallel()
 
 	loc := hubLocation(t, "pair", ".")
-	landingPath := filepath.Join(fabricengine.BoardDir(loc.HubPath), "_lym", "config", "landing.yaml")
+	landingPath := filepath.Join(fabriclayout.BoardDir(loc.HubPath), "_lym", "config", "landing.yaml")
 	if err := os.Remove(landingPath); err != nil {
 		t.Fatalf("Remove(%q) = %v; want nil", landingPath, err)
 	}
@@ -203,7 +204,7 @@ func TestWire_DefaultConfig(t *testing.T) {
 			t.Fatal("c.env.PreflightDrift = nil; want the drift config check for a recipe with a Drift-Baseline row")
 		}
 		// drift.yaml is hub-wide and has no embedded fallback on load, so the default config is seeded from the template.
-		configDir := filepath.Join(fabricengine.BoardDir(loc.HubPath), "_lym", "config")
+		configDir := filepath.Join(fabriclayout.BoardDir(loc.HubPath), "_lym", "config")
 		if err := os.MkdirAll(configDir, 0o755); err != nil {
 			t.Fatalf("MkdirAll(%q) = %v; want nil", configDir, err)
 		}
@@ -337,7 +338,7 @@ func TestWire_DefaultConfig(t *testing.T) {
 	// StencilsDir and RunRoot are checked against their own accessor, not a re-derived literal.
 	// Now is checked non-nil, because envkit.NilSeams skips it as a documented default.
 	t.Run("review segment paths and clock", func(t *testing.T) {
-		if want := fabricengine.StencilsDir(loc.HubPath); c.env.StencilsDir != want {
+		if want := fabriclayout.StencilsDir(loc.HubPath); c.env.StencilsDir != want {
 			t.Errorf("c.env.StencilsDir = %q; want %q", c.env.StencilsDir, want)
 		}
 		if want := loomengine.LoomReviewsDir(loc); c.env.RunRoot != want {
@@ -427,7 +428,7 @@ func TestWire_DefaultConfig(t *testing.T) {
 		prompts, err := seatengine.Prompts(seatengine.Geometry{
 			WorktreeRoot: loc.WorktreePath(),
 			AnchorPath:   loc.AnchorPath(),
-			StencilsDir:  fabricengine.StencilsDir(loc.HubPath),
+			StencilsDir:  fabriclayout.StencilsDir(loc.HubPath),
 			// Every seat's edit directive is its engine's copy, so a seat naming no engine needs a default.
 			DefaultEngine: "claude",
 			ParentName:    "hub:orch",
@@ -618,7 +619,7 @@ func TestWire_DiscussionTableEvaluatesToExpectedShape(t *testing.T) {
 			prompts, err := seatengine.Prompts(seatengine.Geometry{
 				WorktreeRoot: loc.WorktreePath(),
 				AnchorPath:   loc.AnchorPath(),
-				StencilsDir:  fabricengine.StencilsDir(loc.HubPath),
+				StencilsDir:  fabriclayout.StencilsDir(loc.HubPath),
 				// Every seat's edit directive is its engine's copy, so a seat naming no engine needs a default.
 				DefaultEngine: "claude",
 				ParentName:    parentName,
@@ -806,7 +807,7 @@ func TestWireLightweight_FillsThePathsWithoutLoadingAnyConfig(t *testing.T) {
 		t.Errorf("darn env.PatternRecordPath = %q; want %q", darn.env.PatternRecordPath, loomengine.DiscussionDecisionRecord(location))
 	}
 	// The forbidden terms are read from the hub's landing.yaml at call time, once one is there.
-	seedLandingConfig(t, fabricengine.BoardDir(location.HubPath), "")
+	seedLandingConfig(t, fabriclayout.BoardDir(location.HubPath), "")
 	if terms, err := c.env.DescriptionTerms(); err != nil || len(terms) == 0 {
 		t.Errorf("env.DescriptionTerms() = %d patterns, %v; want the patterns of landing.yaml", len(terms), err)
 	}
@@ -1117,7 +1118,7 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	// The bound is review.timeout_min less shuttle's start allowance less that cap.
 	// The cap is looked up under the chair's strand name, which needs the hub's shortname record.
 	cappedLoc := hubLocation(t, "pair", ".")
-	if err := fabricengine.WriteShortname(fabricengine.BoardDir(cappedLoc.HubPath), "tst"); err != nil {
+	if err := fabricengine.WriteShortname(fabriclayout.BoardDir(cappedLoc.HubPath), "tst"); err != nil {
 		t.Fatalf("WriteShortname() = %v; want nil", err)
 	}
 	seedLoomConfigWithKeys(t, cappedLoc.AnchorPath(), map[string]string{"review.timeout_min": "10", "review.assist_reviewer_timeout_min": "60"})
@@ -1126,7 +1127,7 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	if !strings.Contains(claudeConfig, "keep_warm_cap: "+keepWarmCap.String()) {
 		t.Fatalf("claude config template no longer holds the keep_warm_cap: 250s line the fixture rewrites")
 	}
-	claudePath := configengine.ConfigFile(fabricengine.BoardDir(cappedLoc.HubPath), "claude")
+	claudePath := configengine.ConfigFile(fabriclayout.BoardDir(cappedLoc.HubPath), "claude")
 	if err := os.WriteFile(claudePath, []byte(claudeConfig), 0o644); err != nil {
 		t.Fatalf("WriteFile(%q) = %v; want nil", claudePath, err)
 	}
@@ -1147,7 +1148,7 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	// So a keep_warm_cap_roles entry for code-burler-review caps Code-Review's assistant alone,
 	// and the bare burler-review entry caps none.
 	roleLoc := hubLocation(t, "pair", ".")
-	if err := fabricengine.WriteShortname(fabricengine.BoardDir(roleLoc.HubPath), "tst"); err != nil {
+	if err := fabricengine.WriteShortname(fabriclayout.BoardDir(roleLoc.HubPath), "tst"); err != nil {
 		t.Fatalf("WriteShortname() = %v; want nil", err)
 	}
 	seedLoomConfigWithKeys(t, roleLoc.AnchorPath(), map[string]string{"review.timeout_min": "10", "review.assist_reviewer_timeout_min": "60"})
@@ -1156,7 +1157,7 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	if !strings.Contains(roleClaudeConfig, "code-burler-review") {
 		t.Fatalf("claude config template no longer holds the keep_warm_cap_roles: {} text the fixture rewrites")
 	}
-	roleClaudePath := configengine.ConfigFile(fabricengine.BoardDir(roleLoc.HubPath), "claude")
+	roleClaudePath := configengine.ConfigFile(fabriclayout.BoardDir(roleLoc.HubPath), "claude")
 	if err := os.WriteFile(roleClaudePath, []byte(roleClaudeConfig), 0o644); err != nil {
 		t.Fatalf("WriteFile(%q) = %v; want nil", roleClaudePath, err)
 	}
@@ -1262,7 +1263,7 @@ func TestWire_LanguageSkills(t *testing.T) {
 			t.Parallel()
 			loc := hubLocation(t, "pair", ".")
 			seedDarnHubConfig(t, loc.HubPath, "5")
-			languagePath := configengine.ConfigFile(fabricengine.BoardDir(loc.HubPath), "language")
+			languagePath := configengine.ConfigFile(fabriclayout.BoardDir(loc.HubPath), "language")
 			if err := os.WriteFile(languagePath, []byte(tt.content), 0o644); err != nil {
 				t.Fatalf("WriteFile(%q) = %v; want nil", languagePath, err)
 			}

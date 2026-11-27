@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -110,7 +110,7 @@ func (f *checkFixture) seed(scope ScopeRecord, baseline map[string]string) {
 		f.t.Fatalf("WriteCapture() = %v; want nil", err)
 	}
 	change := func(s *ScopeRecord, _ *JudgedRecord) error { *s = scope; return nil }
-	if err := WriteRecords(f.deps, change, fabricengine.Trailer{Key: BaselineTrailerKey, Value: digest}); err != nil {
+	if err := WriteRecords(f.deps, change, fabriclayout.Trailer{Key: BaselineTrailerKey, Value: digest}); err != nil {
 		f.t.Fatalf("WriteRecords() = %v; want nil", err)
 	}
 }

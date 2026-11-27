@@ -21,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/loomshed"
@@ -103,7 +104,7 @@ func seedLandedRun(t *testing.T, h *hubforge.Hub, slug string) time.Time {
 
 	pairRecords := h.PairRecordsSibling(slug)
 	tipSHA := gitkit.Git(t, pairRecords, "rev-parse", "HEAD")
-	gitkit.Git(t, pairRecords, "tag", fabricengine.ArchiveTagPrefix+slug+"/"+tipSHA[:12], tipSHA)
+	gitkit.Git(t, pairRecords, "tag", fabriclayout.ArchiveTagPrefix+slug+"/"+tipSHA[:12], tipSHA)
 	gitkit.Git(t, h.PrimeWorktree(), "merge", "--ff-only", taskCommit)
 
 	seconds, err := strconv.ParseInt(gitkit.Git(t, h.PrimeWorktree(), "log", "-1", "--format=%ct"), 10, 64)
@@ -130,7 +131,7 @@ func TestRetro_FilesAndReleasesTheTaskOfALandedRun(t *testing.T) {
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: ".", Pairs: []string{slug}})
 	prime := h.PrimeWorktree()
 	// The hub's own board vocabulary lists the retro task's type label.
-	boltDir := fabricengine.BoltDir(h.Path)
+	boltDir := fabriclayout.BoltDir(h.Path)
 	writeFile(t, configengine.ConfigFile(boltDir, "board"), "types: [bug, "+retroengine.TaskLabel+"]\n")
 	if _, _, err := fabricengine.NewBolt(boltDir).Commit("test: the board vocabulary", fabricengine.SyncOptions{SkipPush: true}); err != nil {
 		t.Fatalf("commit the board vocabulary: %v", err)
@@ -161,7 +162,7 @@ func TestRetro_FilesAndReleasesTheTaskOfALandedRun(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(prime, filepath.FromSlash(retroengine.ToolsDirRel)), 0o755); err != nil {
 		t.Fatalf("create the scripts directory: %v", err)
 	}
-	stencilkit.SeedInto(t, fabricengine.StencilsDir(h.Path))
+	stencilkit.SeedInto(t, fabriclayout.StencilsDir(h.Path))
 	commitBoardIfDirty(t, h, "board: seed the stencils")
 	landed := seedLandedRun(t, h, slug)
 	retroSlug := retroengine.SlugPrefix + landed.Format("20060102-150405")

@@ -14,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hibernateengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -43,7 +44,7 @@ const (
 // hibernateDir returns the hub's board-level hibernate directory.
 // It holds the request, its lock and the whole text of a notice too long for one creel line.
 func hibernateDir(location *lymcwd.Location) string {
-	return filepath.Join(fabricengine.HubScratchDir(location.HubPath), lymdirs.HibernateDirName)
+	return filepath.Join(fabriclayout.HubScratchDir(location.HubPath), lymdirs.HibernateDirName)
 }
 
 // RequestPath is the hibernate request file of the hub location belongs to.

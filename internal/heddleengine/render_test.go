@@ -13,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -718,7 +719,7 @@ func TestRender(t *testing.T) {
 	t.Run("HeldBoltLockFailsTheRender", func(t *testing.T) {
 		t.Parallel()
 		f := newRenderFixture(t, claudeStore)
-		boltLockPath, err := fabricengine.BoltLockPath(f.bolt, fabricengine.BoardWriteLockFile)
+		boltLockPath, err := fabricengine.BoltLockPath(f.bolt, fabriclayout.BoardWriteLockFile)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -742,7 +743,7 @@ func TestRender(t *testing.T) {
 		if err := os.Remove(filepath.Join(f.bolt, FileName)); err != nil {
 			t.Fatal(err)
 		}
-		boltLockPath, err := fabricengine.BoltLockPath(f.bolt, fabricengine.BoardWriteLockFile)
+		boltLockPath, err := fabricengine.BoltLockPath(f.bolt, fabriclayout.BoardWriteLockFile)
 		if err != nil {
 			t.Fatal(err)
 		}

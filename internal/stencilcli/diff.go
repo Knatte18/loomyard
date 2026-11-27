@@ -25,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/stencil"
@@ -81,7 +82,7 @@ func runDiffOne(cmd *cobra.Command, out io.Writer, l *lymcwd.Location, name stri
 		return
 	}
 
-	stencilsDir := fabricengine.StencilsDir(l.HubPath)
+	stencilsDir := fabriclayout.StencilsDir(l.HubPath)
 	boardPath := stencilstore.Path(stencilsDir, name)
 	onDisk, err := os.ReadFile(boardPath)
 	if err != nil {
@@ -144,7 +145,7 @@ func runDiffAll(cmd *cobra.Command, out io.Writer, l *lymcwd.Location, exitCode 
 		return
 	}
 
-	stencilsDir := fabricengine.StencilsDir(l.HubPath)
+	stencilsDir := fabriclayout.StencilsDir(l.HubPath)
 	registry := stencils.Registry()
 
 	var results []map[string]any

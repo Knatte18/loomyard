@@ -26,6 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gatefixer"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -206,7 +207,7 @@ func loomCommitStatusDeps(location *lymcwd.Location, runID string) commitStatusD
 		// A Commit over an already-clean tracked path is a no-op that reports committed false, not a failure.
 		// The status seam starts no pusher for it.
 		Commit: func(msg string) (bool, error) {
-			trailers := []fabricengine.Trailer{{Key: fabricengine.TransitionTrailerKey, Value: shedrun.ResolveRunID(location, runID)}}
+			trailers := []fabriclayout.Trailer{{Key: fabriclayout.TransitionTrailerKey, Value: shedrun.ResolveRunID(location, runID)}}
 			_, committed, err := fabricengine.CommitAnchoredPathsWithTrailers(fabricengine.NewMutations(""), location, statusCommitPathspec(location, runID), msg, trailers, fabricengine.EnvSyncOptions())
 			return committed, err
 		},
@@ -845,7 +846,7 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 			ShuttleCfg: shuttleCfg,
 			AnchorRoot: reedGeom.AnchorPath,
 			Clock:      wallClock{},
-			Register:   gatefixer.Registrar(reedEngine, fabricengine.RunProcDir(location.HubPath), pairSlug, gatefixer.RoleVerifyFixer),
+			Register:   gatefixer.Registrar(reedEngine, fabriclayout.RunProcDir(location.HubPath), pairSlug, gatefixer.RoleVerifyFixer),
 		}),
 		Reed: reedEngine,
 		// CommitRecords commits Weaver's run directory and the plan directory, which Weaver rewrites for handle binding.
@@ -933,7 +934,7 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		// It reads every value here at wire time and opens nothing.
 		GateFixer: gateFixerSeam(gateFixerInputs{
 			pairSlug:           pairSlug,
-			runProcDir:         fabricengine.RunProcDir(location.HubPath),
+			runProcDir:         fabriclayout.RunProcDir(location.HubPath),
 			starter:            runner,
 			stopper:            runner,
 			reed:               reedEngine,

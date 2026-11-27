@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -25,7 +26,7 @@ import (
 func markManaged(t *testing.T, h *hubforge.Hub, branch string) {
 	t.Helper()
 
-	gitkit.MustRun(t, mustRecordsRepoRoot(t, h.Location), "git", "push", "origin", "HEAD:refs/heads/"+fabricengine.RecordsBranchName(branch))
+	gitkit.MustRun(t, mustRecordsRepoRoot(t, h.Location), "git", "push", "origin", "HEAD:refs/heads/"+fabriclayout.RecordsBranchName(branch))
 }
 
 // pushLandedLeftover pushes the prime's HEAD to origin as branch,
@@ -52,8 +53,8 @@ func pushUnlandedLeftover(t *testing.T, h *hubforge.Hub, branch, file string) {
 }
 
 // remoteWarpEntries indexes res.Entries by branch.
-func remoteWarpEntries(res fabricengine.RemoteWarpCleanupResult) map[string]fabricengine.RemoteWarpBranchEntry {
-	byBranch := map[string]fabricengine.RemoteWarpBranchEntry{}
+func remoteWarpEntries(res fabriclayout.RemoteWarpCleanupResult) map[string]fabriclayout.RemoteWarpBranchEntry {
+	byBranch := map[string]fabriclayout.RemoteWarpBranchEntry{}
 	for _, e := range res.Entries {
 		byBranch[e.Branch] = e
 	}
@@ -153,7 +154,7 @@ func TestCleanupRemoteWarp_ApplyDeletesOnlyTheCandidate(t *testing.T) {
 		}
 		deletions := 0
 		for _, m := range res.Mutations.Entries() {
-			if m.Kind == fabricengine.KindRemoteBranchDeleted {
+			if m.Kind == fabriclayout.KindRemoteBranchDeleted {
 				deletions++
 				if m.Target != "gone-landed" {
 					t.Errorf("recorded deletion of %q; want only gone-landed", m.Target)
@@ -161,7 +162,7 @@ func TestCleanupRemoteWarp_ApplyDeletesOnlyTheCandidate(t *testing.T) {
 			}
 		}
 		if deletions != 1 {
-			t.Errorf("recorded %d %s mutations; want exactly 1", deletions, fabricengine.KindRemoteBranchDeleted)
+			t.Errorf("recorded %d %s mutations; want exactly 1", deletions, fabriclayout.KindRemoteBranchDeleted)
 		}
 	})
 
@@ -189,7 +190,7 @@ func TestCleanupRemoteWarp_ApplyDeletesOnlyTheCandidate(t *testing.T) {
 		t.Parallel()
 
 		h := sweepFixture(t)
-		scratch := fabricengine.HubScratchDir(h.Path)
+		scratch := fabriclayout.HubScratchDir(h.Path)
 		teardown := filepath.Join(scratch, "teardown")
 		if err := os.RemoveAll(teardown); err != nil {
 			t.Fatalf("remove %s: %v", teardown, err)

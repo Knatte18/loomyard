@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gatefixer"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -65,5 +65,5 @@ func (c *loomCLI) endRunFixers() error {
 	if c.location == nil {
 		return nil
 	}
-	return endGateFixers(fabricengine.RunProcDir(c.location.HubPath), func() (string, error) { return pairSlugOf(c.location) }, runproc.EndRole)
+	return endGateFixers(fabriclayout.RunProcDir(c.location.HubPath), func() (string, error) { return pairSlugOf(c.location) }, runproc.EndRole)
 }

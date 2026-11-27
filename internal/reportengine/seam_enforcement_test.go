@@ -19,6 +19,7 @@ var allowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/loomshed",
 	"github.com/Knatte18/loomyard/internal/battenrecipe",
 	"github.com/Knatte18/loomyard/internal/fabricengine",
+	"github.com/Knatte18/loomyard/internal/fabriclayout",
 	"github.com/Knatte18/loomyard/internal/battenshed",
 	"github.com/Knatte18/loomyard/internal/haltnote",
 	"github.com/Knatte18/loomyard/internal/loomengine",

@@ -100,7 +100,7 @@ and its removal leaves the board claim to the cancel, which clears it.
   and removes it only while origin's tracking refs hold both tips.
   With git or pushes off it pushes nothing and removes the pair without that read.
 - `internal/pairteardown` stays inside the fabric-boundary entry:
-  it names no side and passes `fabricengine.RemoveResult` through whole.
+  it names no side and passes `fabriclayout.RemoveResult` through whole.
 - Enforced by `internal/pairteardown/teardown_enforcement_test.go`, a tripwire and not a completeness proof.
   It flags a five-argument `Remove` call in a file importing `internal/fabricengine`.
   It also flags any reference to `RemovePairBranch`, a name that stays retired.

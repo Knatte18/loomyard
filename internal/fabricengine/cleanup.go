@@ -45,6 +45,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -55,50 +56,13 @@ import (
 // a test can use it to move origin's branch between the archive's read and that delete.
 var removeBeforeWeftDeleteHook func()
 
-// CleanupBranchEntry records what a cleanup sweep did with one orphaned weft branch.
-type CleanupBranchEntry struct {
-	// Branch is the weft branch name.
-	Branch string `json:"branch"`
-	// Deleted reports whether the branch was actually deleted from the weft repo.
-	// It is false on a dry run.
-	// It is also false for a protected or skipped entry, and when deletion itself failed.
-	Deleted bool `json:"deleted"`
-	// Protected reports whether the branch was kept rather than deleted.
-	// A branch without the "-weft" suffix is protected, because it is not fabric-managed.
-	// A branch checked out at a worktree is protected too, since git branch -D cannot delete it.
-	// Such an entry sets no Error.
-	Protected bool `json:"protected,omitempty"`
-	// Error is non-empty when apply is true and branch deletion failed.
-	// It makes `lym fabric cleanup --apply` exit non-zero; a designed refusal sets no Error.
-	Error string `json:"error,omitempty"`
-	// RemoteDeleted reports whether this branch's copy on the remote was observably removed.
-	// It is true only when the remote deletion was attempted and actually removed a ref.
-	RemoteDeleted bool `json:"remote_deleted,omitempty"`
-	// RemoteError is non-empty when the remote deletion was attempted and did not succeed.
-	// Its text names the layer that refused: the gate's own refusal, or the remote deletion itself.
-	RemoteError string `json:"remote_error,omitempty"`
-	// RemoteKeptReason is non-empty when the remote copy was left because it moved after the archive read its tip.
-	// Such a branch is another process's live branch, not a failure, so it sets no RemoteError.
-	RemoteKeptReason string `json:"remote_kept_reason,omitempty"`
-	// ArchiveTag names the archive/<slug>/<tip> tag made on the local tip before the branch was deleted.
-	// It is empty on a dry run or with no origin; a failed archive sets Error and keeps the branch, local and remote.
-	ArchiveTag string `json:"archive_tag,omitempty"`
-	// OriginArchiveTag names the archive tag at origin's tip, made when that tip is neither the local tip nor its ancestor.
-	OriginArchiveTag string `json:"origin_archive_tag,omitempty"`
-	// Skipped is true when the sweep left the branch whole because its slug's teardown lock was held.
-	// A skipped entry sets no Error, and a later sweep takes the slug.
-	Skipped bool `json:"skipped,omitempty"`
-	// SkippedReason names the held teardown lock and the re-run that takes the slug.
-	SkippedReason string `json:"skipped_reason,omitempty"`
-}
-
 // CleanupResult reports the outcome of one cleanup sweep.
 // It lists every orphaned weft branch: deleted, protected, or only reported.
 // It embeds MutationRecord, which carries the mutations accumulated over the call.
 type CleanupResult struct {
-	MutationRecord
+	fabriclayout.MutationRecord
 	// Entries lists the orphaned weft branches and their dispositions.
-	Entries []CleanupBranchEntry `json:"entries"`
+	Entries []fabriclayout.CleanupBranchEntry `json:"entries"`
 	// RemoteSkippedReason gives the reason no remote deletion was attempted at all.
 	// It is set only when the weft repo has no origin remote configured.
 	// It is kept out of RemoteError, which decides the exit code, so a missing origin exits 0.
@@ -176,9 +140,9 @@ func (t *Topology) Cleanup(l *lymcwd.Location, apply, force, remote bool) (res C
 
 		// Recover the warp branch by inverting RecordsBranchName's suffix.
 		// Non-fabric-managed branches are reported but never deleted.
-		warpBranch, ok := WeftWarpSlug(branch)
+		warpBranch, ok := fabriclayout.WeftWarpSlug(branch)
 		if !ok {
-			result.Entries = append(result.Entries, CleanupBranchEntry{
+			result.Entries = append(result.Entries, fabriclayout.CleanupBranchEntry{
 				Branch:    branch,
 				Protected: true,
 			})
@@ -190,7 +154,7 @@ func (t *Topology) Cleanup(l *lymcwd.Location, apply, force, remote bool) (res C
 			continue
 		}
 
-		entry := CleanupBranchEntry{
+		entry := fabriclayout.CleanupBranchEntry{
 			Branch: branch,
 		}
 
@@ -263,7 +227,7 @@ func liveWarpBranchSet(l *lymcwd.Location) (map[string]bool, error) {
 // The caller then records no entry, because the sweep listed the branches before an Add of the slug may have finished.
 // A failed local tag fills entry.Error and keeps the branch;
 // a remote half that ran in process fills the entry's tags and remote outcome, and a failed one fills entry.Error.
-func (t *Topology) cleanupOrphan(rec *Mutations, l *lymcwd.Location, warpBranch string, entry *CleanupBranchEntry, remoteWeftRoot string, result *CleanupResult) (record bool) {
+func (t *Topology) cleanupOrphan(rec *Mutations, l *lymcwd.Location, warpBranch string, entry *fabriclayout.CleanupBranchEntry, remoteWeftRoot string, result *CleanupResult) (record bool) {
 	slug := slugOfBranch(t.cfg, warpBranch)
 	if t.cleanupAfterEnumerate != nil {
 		t.cleanupAfterEnumerate()
@@ -356,16 +320,16 @@ func primaryWeftBranch(l *lymcwd.Location) (string, error) {
 		wayForward := fmt.Sprintf("way forward: set it with `git -C %s config %s %s`, naming the prime pair's own records branch: "+
 			"the one of the code branch this hub was cloned on, never of the branch the prime pair is on now; "+
 			"fabric cannot tell a wrong records branch from the right one, and a wrong one leaves the right one open to the sweep",
-			recordsDir, PrimeRecordsBranchKey, RecordsBranchName("<clone-time-code-branch>"))
+			recordsDir, fabriclayout.PrimeRecordsBranchKey, fabriclayout.RecordsBranchName("<clone-time-code-branch>"))
 
-		out, err := gitexec.Run([]string{"config", "--default", "", "--get", PrimeRecordsBranchKey}, recordsDir)
+		out, err := gitexec.Run([]string{"config", "--default", "", "--get", fabriclayout.PrimeRecordsBranchKey}, recordsDir)
 		if err != nil {
 			return "", fmt.Errorf("cannot read the records store at %s (%w); refusing to enumerate orphan weft branches", recordsDir, err)
 		}
 		primeRecordsBranch := strings.TrimSpace(out)
 		if primeRecordsBranch == "" {
 			return "", fmt.Errorf("the records store at %s has no %s; refusing to enumerate orphan weft branches; %s",
-				recordsDir, PrimeRecordsBranchKey, wayForward)
+				recordsDir, fabriclayout.PrimeRecordsBranchKey, wayForward)
 		}
 		exists, err := gitrepo.New(recordsDir).BranchExists(primeRecordsBranch)
 		if err != nil {
@@ -373,29 +337,29 @@ func primaryWeftBranch(l *lymcwd.Location) (string, error) {
 		}
 		if !exists {
 			return "", fmt.Errorf("the records store at %s names %q in %s, but holds no branch of that name; refusing to enumerate orphan weft branches; %s",
-				recordsDir, primeRecordsBranch, PrimeRecordsBranchKey, wayForward)
+				recordsDir, primeRecordsBranch, fabriclayout.PrimeRecordsBranchKey, wayForward)
 		}
-		if _, isRecordsBranch := WeftWarpSlug(primeRecordsBranch); !isRecordsBranch {
+		if _, isRecordsBranch := fabriclayout.WeftWarpSlug(primeRecordsBranch); !isRecordsBranch {
 			return "", fmt.Errorf("the records store at %s names %q in %s, which is not a records branch name; refusing to enumerate orphan weft branches; %s",
-				recordsDir, primeRecordsBranch, PrimeRecordsBranchKey, wayForward)
+				recordsDir, primeRecordsBranch, fabriclayout.PrimeRecordsBranchKey, wayForward)
 		}
 		return primeRecordsBranch, nil
 	}
 
-	boardDir := BoltDir(l.HubPath)
+	boardDir := fabriclayout.BoltDir(l.HubPath)
 	boardBranch, err := readBranch(boardDir)
 	if err != nil {
 		return "", fmt.Errorf(
 			"cannot determine the repo's primary weft branch from the %s worktree at %s (%w); refusing to enumerate orphan weft branches",
-			BoltDirName, boardDir, err)
+			fabriclayout.BoltDirName, boardDir, err)
 	}
 	boardBranch = strings.TrimSpace(boardBranch)
 	if boardBranch == "" || boardBranch == "HEAD" {
 		return "", fmt.Errorf(
 			"the %s worktree at %s is not on a named branch; refusing to enumerate orphan weft branches",
-			BoltDirName, boardDir)
+			fabriclayout.BoltDirName, boardDir)
 	}
-	return RecordsBranchName(boardBranch), nil
+	return fabriclayout.RecordsBranchName(boardBranch), nil
 }
 
 // weftBranchCheckout pairs a weft branch name with its checked-out worktree path if any.
@@ -440,7 +404,7 @@ func listWeftBranches(l *lymcwd.Location) ([]weftBranchCheckout, error) {
 // deleteWeftBranch deletes a weft branch through the gate's deleteBranch executor and records errors in entry.
 // force is always false here: it cannot answer the gate's primary-weft carve-out or checked-out check either way.
 // rec is the mutation recorder of the calling verb.
-func deleteWeftBranch(rec *Mutations, l *lymcwd.Location, branch string, entry *CleanupBranchEntry) bool {
+func deleteWeftBranch(rec *Mutations, l *lymcwd.Location, branch string, entry *fabriclayout.CleanupBranchEntry) bool {
 	weftRepoRoot, err := RecordsRepoRoot(l)
 	if err != nil {
 		entry.Error = fmt.Sprintf("resolve weft repo root: %v", err)
@@ -471,7 +435,7 @@ func deleteWeftBranch(rec *Mutations, l *lymcwd.Location, branch string, entry *
 // A branch that origin moved since leaseSHA is kept and reported in entry.RemoteKeptReason, never in entry.RemoteError.
 // A remote failure never aborts the sweep.
 // It distinguishes a gate refusal from an operational failure, so entry.RemoteError names the layer that said no.
-func deleteWeftBranchOnRemote(rec *Mutations, l *lymcwd.Location, branch, weftRepoRoot, leaseSHA string, entry *CleanupBranchEntry) {
+func deleteWeftBranchOnRemote(rec *Mutations, l *lymcwd.Location, branch, weftRepoRoot, leaseSHA string, entry *fabriclayout.CleanupBranchEntry) {
 	if leaseSHA == "" {
 		return
 	}

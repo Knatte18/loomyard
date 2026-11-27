@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -310,11 +311,11 @@ func worktreeStepError(path, step string, cause error) error {
 
 // primeWorktree is the hub's prime worktree directory, named for the repository the hub holds.
 func (d *hubDelivery) primeWorktree() string {
-	return filepath.Join(d.hubPath, strings.TrimSuffix(filepath.Base(d.hubPath), fabricengine.HubSuffix))
+	return filepath.Join(d.hubPath, strings.TrimSuffix(filepath.Base(d.hubPath), fabriclayout.HubSuffix))
 }
 
 // worktreeStrands reads the strands persisted in one worktree and their liveness from its reed status.
-func (d *hubDelivery) worktreeStrands(entry fabricengine.WorktreeEntry) ([]creelengine.Strand, error) {
+func (d *hubDelivery) worktreeStrands(entry fabriclayout.WorktreeEntry) ([]creelengine.Strand, error) {
 	location, err := lymcwd.ResolveWorktree(entry.Path)
 	if errors.Is(err, lymcwd.ErrNotAGitRepo) {
 		return nil, fmt.Errorf("%w: resolve worktree %s: %w", errWorktreeGone, entry.Path, err)

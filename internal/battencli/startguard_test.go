@@ -15,7 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -39,7 +39,7 @@ func TestStartGuard_Refuse(t *testing.T) {
 		// marker is what the Marker seam reads; nil reads absent.
 		marker *cancelMarkerReading
 		dirty  []string
-		parts  fabricengine.PairParts
+		parts  fabriclayout.PairParts
 		// found, producer and taskPresent describe the run's status file and task worktree.
 		found       bool
 		producer    string
@@ -95,7 +95,7 @@ func TestStartGuard_Refuse(t *testing.T) {
 			verbs:    []string{"status", "pause"},
 			marker:   markerAlive,
 			dirty:    []string{"a.txt"},
-			parts:    fabricengine.PairParts{TaskWorktree: true},
+			parts:    fabriclayout.PairParts{TaskWorktree: true},
 			found:    false,
 			producer: "",
 		},
@@ -131,7 +131,7 @@ func TestStartGuard_Refuse(t *testing.T) {
 		{
 			name:       "LeftPartsStillRefuseABeamMembersStart",
 			verbs:      []string{"run", "step"},
-			parts:      fabricengine.PairParts{TaskWorktree: true},
+			parts:      fabriclayout.PairParts{TaskWorktree: true},
 			parentBeam: "b",
 			wantErrors: []string{"some-slug left a pair from an earlier run (task worktree)"},
 		},
@@ -166,7 +166,7 @@ func TestStartGuard_Refuse(t *testing.T) {
 		{
 			name:       "LeftTaskWorktreeRefusesAStart",
 			verbs:      []string{"run", "step"},
-			parts:      fabricengine.PairParts{TaskWorktree: true},
+			parts:      fabriclayout.PairParts{TaskWorktree: true},
 			wantErrors: []string{"some-slug left a pair from an earlier run (task worktree)", `run "lym batten cancel some-slug --remove" from the prime`, `then "lym board set-status '{"slug":"some-slug","status":null}'" and "lym batten {verb} some-slug"`},
 		},
 		{
@@ -191,24 +191,24 @@ func TestStartGuard_Refuse(t *testing.T) {
 		{
 			name:       "LeftRecordsWorktreeRefusesAStart",
 			verbs:      []string{"run", "step"},
-			parts:      fabricengine.PairParts{RecordsWorktree: true},
+			parts:      fabriclayout.PairParts{RecordsWorktree: true},
 			wantErrors: []string{"(records worktree)", "lym batten cancel some-slug --remove"},
 		},
 		{
 			name:       "LeftRecordsBranchRefusesAStart",
 			verbs:      []string{"run", "step"},
-			parts:      fabricengine.PairParts{RecordsBranch: true},
+			parts:      fabriclayout.PairParts{RecordsBranch: true},
 			wantErrors: []string{"(records branch)", "lym batten cancel some-slug --remove"},
 		},
 		{
 			name:  "LeftTaskBranchAlonePasses",
 			verbs: []string{"run", "step"},
-			parts: fabricengine.PairParts{TaskBranch: true},
+			parts: fabriclayout.PairParts{TaskBranch: true},
 		},
 		{
 			name:     "LeftPartsDoNotRefuseAResume",
 			verbs:    []string{"run", "step"},
-			parts:    fabricengine.PairParts{TaskWorktree: true, RecordsWorktree: true, RecordsBranch: true},
+			parts:    fabriclayout.PairParts{TaskWorktree: true, RecordsWorktree: true, RecordsBranch: true},
 			found:    true,
 			producer: battenrecipe.NameRunShed,
 		},
@@ -293,7 +293,7 @@ func TestStartGuard_Refuse(t *testing.T) {
 			found:    true,
 			producer: battenrecipe.NameRunShed,
 			dirty:    []string{"a.txt"},
-			parts:    fabricengine.PairParts{TaskWorktree: true, RecordsWorktree: true, RecordsBranch: true},
+			parts:    fabriclayout.PairParts{TaskWorktree: true, RecordsWorktree: true, RecordsBranch: true},
 		},
 		{
 			name:       "UnfiledRunOfAGroupingProjectIsRefused",
@@ -339,7 +339,7 @@ func TestStartGuard_Refuse(t *testing.T) {
 			verbs:      []string{"run", "step"},
 			project:    true,
 			beam:       true,
-			parts:      fabricengine.PairParts{RecordsWorktree: true},
+			parts:      fabriclayout.PairParts{RecordsWorktree: true},
 			wantErrors: []string{"some-slug left a pair from an earlier run (records worktree)"},
 		},
 		{
@@ -354,7 +354,7 @@ func TestStartGuard_Refuse(t *testing.T) {
 			verbs:      []string{"run", "step"},
 			project:    true,
 			beam:       true,
-			parts:      fabricengine.PairParts{TaskWorktree: true},
+			parts:      fabriclayout.PairParts{TaskWorktree: true},
 			wantErrors: []string{"some-slug left a pair from an earlier run (task worktree)"},
 		},
 		{
@@ -363,7 +363,7 @@ func TestStartGuard_Refuse(t *testing.T) {
 			project:    true,
 			beam:       true,
 			unreadable: true,
-			parts:      fabricengine.PairParts{TaskWorktree: true},
+			parts:      fabriclayout.PairParts{TaskWorktree: true},
 			wantErrors: []string{"no readable origin record", `"lym fabric reconcile"`},
 		},
 		{
@@ -372,7 +372,7 @@ func TestStartGuard_Refuse(t *testing.T) {
 			project: true,
 			beam:    true,
 			marked:  true,
-			parts:   fabricengine.PairParts{TaskWorktree: true, RecordsWorktree: true, RecordsBranch: true},
+			parts:   fabriclayout.PairParts{TaskWorktree: true, RecordsWorktree: true, RecordsBranch: true},
 			dirty:   []string{"a.txt"},
 		},
 		{
@@ -430,7 +430,7 @@ func TestStartGuard_Refuse(t *testing.T) {
 							return *tt.marker, tt.markerErr
 						},
 						SourceDirty: func() ([]string, error) { return tt.dirty, tt.dirtyErr },
-						PairParts:   func() (fabricengine.PairParts, error) { return tt.parts, tt.partsErr },
+						PairParts:   func() (fabriclayout.PairParts, error) { return tt.parts, tt.partsErr },
 						ParentBeam:  func() (string, error) { return tt.parentBeam, tt.beamErr },
 						Promoted:    func() (bool, error) { return tt.promoted, tt.promotedErr },
 						ReachedParent: func(shedengine.Status, bool) (bool, error) {
@@ -477,7 +477,7 @@ func TestStartGuard_Refuse(t *testing.T) {
 // It also writes the Bolt checkout's board config, which names defaultRecipe when that is not empty.
 func writeBoardHub(t *testing.T, location *lymcwd.Location, defaultRecipe, boardJSON string) {
 	t.Helper()
-	boltDir := fabricengine.BoltDir(location.HubPath)
+	boltDir := fabriclayout.BoltDir(location.HubPath)
 	if err := os.MkdirAll(configengine.ConfigDir(boltDir), 0o755); err != nil {
 		t.Fatalf("create the config directory: %v", err)
 	}
@@ -488,7 +488,7 @@ func writeBoardHub(t *testing.T, location *lymcwd.Location, defaultRecipe, board
 	if err := os.WriteFile(configengine.ConfigFile(boltDir, "board"), []byte(config), 0o644); err != nil {
 		t.Fatalf("write the board config: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(fabricengine.BoardDir(location.HubPath), "board.json"), []byte(boardJSON), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(fabriclayout.BoardDir(location.HubPath), "board.json"), []byte(boardJSON), 0o644); err != nil {
 		t.Fatalf("write board.json: %v", err)
 	}
 }

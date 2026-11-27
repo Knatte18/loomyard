@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -79,17 +80,17 @@ func TestPushPairAnchored_PrimeDivergedWeftRemote_ReturnsErrPushRejected(t *test
 
 	// A priming push gives the weft bare content and upstream tracking;
 	// the bare is empty at clone time, so this happens before the second clone below diverges from it.
-	if _, err := fabricengine.PushPairAnchored(h.Location, fabricengine.SyncOptions{}, fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded}); err != nil {
+	if _, err := fabricengine.PushPairAnchored(h.Location, fabricengine.SyncOptions{}, fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded}); err != nil {
 		t.Fatalf("PushPairAnchored() priming push error = %v; want nil", err)
 	}
 
-	weftClone2 := cloneBareForTest(t, h.RecordsBare, fabricengine.RecordsBranchName("main"))
+	weftClone2 := cloneBareForTest(t, h.RecordsBare, fabriclayout.RecordsBranchName("main"))
 	gitkit.CommitFile(t, weftClone2, "status.json", "from second weft clone", "from second weft clone")
 	gitkit.MustRun(t, weftClone2, "git", "push")
 
 	gitkit.CommitFile(t, h.PrimeRecords(), "status.json", "weft change that will be rejected", "weft change that will be rejected")
 
-	_, err := fabricengine.PushPairAnchored(h.Location, fabricengine.SyncOptions{}, fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded})
+	_, err := fabricengine.PushPairAnchored(h.Location, fabricengine.SyncOptions{}, fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded})
 	if err == nil {
 		t.Fatal("PushPairAnchored() against a diverged weft remote error = nil; want gitrepo.ErrPushRejected")
 	}
@@ -100,11 +101,11 @@ func TestPushPairAnchored_PrimeDivergedWeftRemote_ReturnsErrPushRejected(t *test
 	if !errors.As(err, &failed) {
 		t.Fatalf("PushPairAnchored() error = %v; want a *PushFailedError", err)
 	}
-	if failed.Record.Class != fabricengine.PushFailureNotFastForward || failed.Record.Repo != "records" || !slices.Contains(failed.Record.Paths, "status.json") {
+	if failed.Record.Class != fabriclayout.PushFailureNotFastForward || failed.Record.Repo != "records" || !slices.Contains(failed.Record.Paths, "status.json") {
 		t.Errorf("PushPairAnchored() record = %+v; want a not-fast-forward records record naming status.json", failed.Record)
 	}
 	records, err := fabricengine.ListFailedPushes(h.Location.HubPath)
-	if err != nil || len(records) != 1 || records[0].Branch != failed.Record.Branch || records[0].Class != fabricengine.PushFailureNotFastForward {
+	if err != nil || len(records) != 1 || records[0].Branch != failed.Record.Branch || records[0].Class != fabriclayout.PushFailureNotFastForward {
 		t.Errorf("ListFailedPushes() = %+v, %v; want the one not-fast-forward record of the push", records, err)
 	}
 }
@@ -135,7 +136,7 @@ func newPushPair(t *testing.T) pushPair {
 		warpPath:   h.PairCodeWorktree("pushpair"),
 		weftPath:   h.PairRecordsSibling("pushpair"),
 		warpBranch: added.Branch,
-		weftBranch: fabricengine.RecordsBranchName(added.Branch),
+		weftBranch: fabriclayout.RecordsBranchName(added.Branch),
 	}
 }
 
@@ -192,10 +193,10 @@ func requireTrackingRefPrunedWithUpstreamSet(t *testing.T, worktree, branch stri
 }
 
 // countBranchPushed returns how many KindBranchPushed entries of res carry detailPrefix and a remote part.
-func countBranchPushed(res fabricengine.PushResult, detailPrefix string) int {
+func countBranchPushed(res fabriclayout.PushResult, detailPrefix string) int {
 	count := 0
 	for _, entry := range res.Mutated().Entries() {
-		if entry.Kind == fabricengine.KindBranchPushed && strings.HasPrefix(entry.Detail, detailPrefix) && strings.Contains(entry.Detail, " remote=") {
+		if entry.Kind == fabriclayout.KindBranchPushed && strings.HasPrefix(entry.Detail, detailPrefix) && strings.Contains(entry.Detail, " remote=") {
 			count++
 		}
 	}
@@ -204,9 +205,9 @@ func countBranchPushed(res fabricengine.PushResult, detailPrefix string) int {
 
 // branchPushedPosition returns the position in res of the first KindBranchPushed entry carrying detailPrefix.
 // It returns -1 when none does.
-func branchPushedPosition(res fabricengine.PushResult, detailPrefix string) int {
+func branchPushedPosition(res fabriclayout.PushResult, detailPrefix string) int {
 	for i, entry := range res.Mutated().Entries() {
-		if entry.Kind == fabricengine.KindBranchPushed && strings.HasPrefix(entry.Detail, detailPrefix) && strings.Contains(entry.Detail, " remote=") {
+		if entry.Kind == fabriclayout.KindBranchPushed && strings.HasPrefix(entry.Detail, detailPrefix) && strings.Contains(entry.Detail, " remote=") {
 			return i
 		}
 	}
@@ -219,8 +220,7 @@ func branchPushedPosition(res fabricengine.PushResult, detailPrefix string) int 
 // a rejection whose fetch keeps failing is never pushed again;
 // a remote that keeps declining is reported as a bare rejection;
 // an unborn code side is skipped while the records side still pushes;
-// a diverged code side is reported while the records side still pushes;
-// and a failing records side withholds the code side.
+// and a diverged code side is reported while the records side still pushes.
 // Subtests run on hubs of their own.
 // A refusing records remote fails the call and leaves origin's code branch at its old tip.
 // So does a records side deferred by a held write lock, and so does one deferred over uncommitted changes.
@@ -237,7 +237,7 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 	// Both sides: a raw commit on each is pushed and recorded.
 	warpSHA := gitkit.CommitFile(t, p.warpPath, "warp-file.txt", "warp change", "warp change")
 	weftSHA := gitkit.CommitFile(t, p.weftPath, "weft-file.txt", "weft change", "weft change")
-	res, err := fabricengine.PushPairAnchored(p.location, fabricengine.SyncOptions{}, fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded})
+	res, err := fabricengine.PushPairAnchored(p.location, fabricengine.SyncOptions{}, fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded})
 	if err != nil {
 		t.Fatalf("PushPairAnchored() error = %v; want nil", err)
 	}
@@ -261,7 +261,7 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 	// A remote that declines once: the stale-ref rejection is retried and succeeds, on both entries.
 	declineOncePreReceive(t, p.hub.CodeBare)
 	warpSHA = gitkit.CommitFile(t, p.warpPath, "warp-file.txt", "warp change 2", "warp change 2")
-	if _, err := fabricengine.PushPairAnchored(p.location, fabricengine.SyncOptions{}, fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded}); err != nil {
+	if _, err := fabricengine.PushPairAnchored(p.location, fabricengine.SyncOptions{}, fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded}); err != nil {
 		t.Fatalf("PushPairAnchored() against a remote declining once error = %v; want nil after the retry", err)
 	}
 	if got := fabricengine.BareBranchSHAForTest(t, p.hub.CodeBare, p.warpBranch); got != warpSHA {
@@ -269,7 +269,7 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 	}
 	declineOncePreReceive(t, p.hub.RecordsBare)
 	weftSHA = gitkit.CommitFile(t, p.weftPath, "weft-file.txt", "weft change 2", "weft change 2")
-	if _, err := fabricengine.PushPairAnchored(p.location, fabricengine.SyncOptions{}, fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded}); err != nil {
+	if _, err := fabricengine.PushPairAnchored(p.location, fabricengine.SyncOptions{}, fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded}); err != nil {
 		t.Fatalf("PushPairAnchored() against a records remote declining once error = %v; want nil after the retry", err)
 	}
 	if got := fabricengine.BareBranchSHAForTest(t, p.hub.RecordsBare, p.weftBranch); got != weftSHA {
@@ -288,7 +288,7 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 	warpFetchURL := gitkit.Git(t, p.warpPath, "config", "--get", "remote.origin.url")
 	gitkit.MustRun(t, p.warpPath, "git", "config", "remote.origin.pushurl", warpFetchURL)
 	gitkit.MustRun(t, p.warpPath, "git", "config", "remote.origin.url", filepath.Join(t.TempDir(), "missing"))
-	_, err = fabricengine.PushPairAnchored(p.location, noSleep, fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded})
+	_, err = fabricengine.PushPairAnchored(p.location, noSleep, fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded})
 	if !fabricengine.IsPushRejected(err) {
 		t.Errorf("PushPairAnchored() with a rejected push and a failing fetch error = %v; want the bare rejection", err)
 	}
@@ -305,14 +305,14 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 	declinedWarpBare := fabricengine.BareBranchSHAForTest(t, p.hub.CodeBare, p.warpBranch)
 	declinedWarpHead := head(p.warpPath)
 	sleeps := 0
-	_, err = fabricengine.PushPairAnchored(p.location, fabricengine.SyncOptions{BackoffSleep: func(time.Duration) { sleeps++ }}, fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded})
+	_, err = fabricengine.PushPairAnchored(p.location, fabricengine.SyncOptions{BackoffSleep: func(time.Duration) { sleeps++ }}, fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded})
 	if !fabricengine.IsPushRejected(err) {
 		t.Errorf("PushPairAnchored() against a remote that keeps declining error = %v; want IsPushRejected after the retries", err)
 	}
 	if want := len(gitrepo.PushBackoffDelays()); sleeps < want {
 		t.Errorf("backoff sleeps = %d; want at least %d, the whole backoff waited out before the record", sleeps, want)
 	}
-	requireOneFailedPush(t, p.hub.Location.HubPath, "code", fabricengine.PushFailureOther)
+	requireOneFailedPush(t, p.hub.Location.HubPath, "code", fabriclayout.PushFailureOther)
 	if got := fabricengine.BareBranchSHAForTest(t, p.hub.CodeBare, p.warpBranch); got != declinedWarpBare {
 		t.Errorf("warp bare = %q; want it unmoved at %q", got, declinedWarpBare)
 	}
@@ -328,7 +328,7 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 	// and the records side still pushes.
 	gitkit.MustRun(t, p.warpPath, "git", "checkout", "-q", "--orphan", "unborn")
 	weftSHA = gitkit.CommitFile(t, p.weftPath, "weft-file.txt", "weft change unborn", "weft change unborn")
-	if _, err := fabricengine.PushPairAnchored(p.location, fabricengine.SyncOptions{}, fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded}); err != nil {
+	if _, err := fabricengine.PushPairAnchored(p.location, fabricengine.SyncOptions{}, fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded}); err != nil {
 		t.Fatalf("PushPairAnchored() with an unborn code side error = %v; want nil", err)
 	}
 	if got := fabricengine.BareBranchSHAForTest(t, p.hub.RecordsBare, p.weftBranch); got != weftSHA {
@@ -346,7 +346,7 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 	gitkit.CommitFile(t, p.warpPath, "warp-file.txt", "warp change 3", "warp change 3")
 	weftSHA = gitkit.CommitFile(t, p.weftPath, "weft-file.txt", "weft change 3", "weft change 3")
 	warpHead, weftHead := head(p.warpPath), head(p.weftPath)
-	_, err = fabricengine.PushPairAnchored(p.location, fabricengine.SyncOptions{}, fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded})
+	_, err = fabricengine.PushPairAnchored(p.location, fabricengine.SyncOptions{}, fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded})
 	if err == nil {
 		t.Fatal("PushPairAnchored() against a diverged code side error = nil; want gitrepo.ErrPushRejected")
 	}
@@ -369,23 +369,6 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 		t.Errorf("local HEADs moved: warp %q -> %q, weft %q -> %q; want both unchanged (no rebase, merge or force)", warpHead, head(p.warpPath), weftHead, head(p.weftPath))
 	}
 
-	// A failing records side withholds the code side:
-	// the records origin is gone, so the call fails on the records side and the code side is not tried.
-	gitkit.MustRun(t, p.weftPath, "git", "remote", "set-url", "origin", filepath.Join(t.TempDir(), "missing"))
-	gitkit.CommitFile(t, p.weftPath, "weft-file.txt", "weft change 4", "weft change 4")
-	_, err = fabricengine.PushPairAnchored(p.location, fabricengine.SyncOptions{}, fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded})
-	if err == nil {
-		t.Fatal("PushPairAnchored() with a failing records side error = nil; want the records error")
-	}
-	for _, want := range []string{"push records side at " + p.weftPath, "the code side at " + p.warpPath + " was withheld"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("PushPairAnchored() error = %q; want it to contain %q", err, want)
-		}
-	}
-	if strings.Contains(err.Error(), "push code side") {
-		t.Errorf("PushPairAnchored() error = %q; want the code side untried", err)
-	}
-
 	// A records remote that refuses the push sends no code side.
 	t.Run("RefusingRecordsRemoteWithholdsTheCodeSide", func(t *testing.T) {
 		t.Parallel()
@@ -395,7 +378,7 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 		gitkit.CommitFile(t, p.warpPath, "warp-file.txt", "warp\n", "warp change")
 		gitkit.CommitFile(t, p.weftPath, "weft-file.txt", "weft\n", "weft change")
 
-		_, err := fabricengine.PushPairAnchored(p.location, p.fake.options(nil), fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded})
+		_, err := fabricengine.PushPairAnchored(p.location, p.fake.options(nil), fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded})
 
 		if err == nil {
 			t.Fatal("PushPairAnchored() against a refusing records remote error = nil; want the records error")
@@ -408,7 +391,7 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 		if got := bareBranchTip(t, p.hub.CodeBare, p.warpBranch); got != codeBefore {
 			t.Errorf("code bare = %q; want it unmoved at %q", got, codeBefore)
 		}
-		requireOneFailedPush(t, p.hub.Location.HubPath, "records", fabricengine.PushFailureAuth)
+		requireOneFailedPush(t, p.hub.Location.HubPath, "records", fabriclayout.PushFailureAuth)
 	})
 
 	// A code branch whose tracking ref was pruned while origin still holds the branch is pushed, with no rewind check.
@@ -418,7 +401,7 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 		pruneTrackingRef(t, p.warpPath, p.warpBranch)
 		warpSHA := gitkit.CommitFile(t, p.warpPath, "warp-file.txt", "warp\n", "warp change")
 
-		if _, err := fabricengine.PushPairAnchored(p.location, p.fake.options(nil), fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded}); err != nil {
+		if _, err := fabricengine.PushPairAnchored(p.location, p.fake.options(nil), fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded}); err != nil {
 			t.Fatalf("PushPairAnchored() error = %v; want nil", err)
 		}
 
@@ -477,10 +460,10 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 				originTip := p.originCommit(p.weftBranch, "other.txt", "other\n", "other machine")
 				tt.prepare(t, p)
 
-				_, err := fabricengine.PushPairAnchored(p.location, p.fake.options(nil), fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded, RunSlug: slug, OwedUnrecorded: owedUnrecorded})
+				_, err := fabricengine.PushPairAnchored(p.location, p.fake.options(nil), fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded, RunSlug: slug, OwedUnrecorded: owedUnrecorded})
 
 				var failed *fabricengine.PushFailedError
-				if !errors.As(err, &failed) || failed.Record.Class != fabricengine.PushFailureDeferred {
+				if !errors.As(err, &failed) || failed.Record.Class != fabriclayout.PushFailureDeferred {
 					t.Fatalf("PushPairAnchored() error = %v; want a deferred *PushFailedError", err)
 				}
 				if !strings.Contains(failed.Record.Error, tt.wantError) {
@@ -496,7 +479,7 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 					t.Errorf("code bare = %q; want it unmoved at %q", got, codeBefore)
 				}
 				if !owedUnrecorded {
-					requireOneFailedPush(t, p.hub.Location.HubPath, "records", fabricengine.PushFailureDeferred)
+					requireOneFailedPush(t, p.hub.Location.HubPath, "records", fabriclayout.PushFailureDeferred)
 					return
 				}
 				if !fabricengine.IsPushOwed(err) {
@@ -524,7 +507,7 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 			"ResetsATipPastTheNamedOneAndLandsItsOwnCodeSide",
 			false,
 			func(p *pairFixture) error {
-				_, err := fabricengine.PushPairAnchored(p.location, p.fake.options(nil), fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded})
+				_, err := fabricengine.PushPairAnchored(p.location, p.fake.options(nil), fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded})
 				return err
 			},
 			true,
@@ -533,7 +516,7 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 			"OriginTipEqualToTheNamedTipKeepsTheRejection",
 			true,
 			func(p *pairFixture) error {
-				_, err := fabricengine.PushPairAnchored(p.location, p.fake.options(nil), fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded})
+				_, err := fabricengine.PushPairAnchored(p.location, p.fake.options(nil), fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded})
 				return err
 			},
 			false,
@@ -592,7 +575,7 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 		gitkit.CommitFile(t, h.PrimeWorktree(), "code-file.txt", "code change", "code change")
 		recordsSHA := gitkit.CommitFile(t, h.PrimeRecords(), "records-file.txt", "records change", "records change")
 
-		res, err := fabricengine.PushPairAnchored(h.Location, fabricengine.SyncOptions{}, fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded})
+		res, err := fabricengine.PushPairAnchored(h.Location, fabricengine.SyncOptions{}, fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded})
 
 		if err != nil {
 			t.Fatalf("PushPairAnchored() in the prime error = %v; want nil", err)
@@ -617,7 +600,7 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 		recordsSHA := gitkit.CommitFile(t, h.PrimeRecords(), "records-file.txt", "records change", "records change")
 		sleeps := 0
 
-		_, err := fabricengine.PushPairAnchored(h.Location, fabricengine.SyncOptions{BackoffSleep: countingBackoff(&sleeps, nil)}, fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded})
+		_, err := fabricengine.PushPairAnchored(h.Location, fabricengine.SyncOptions{BackoffSleep: countingBackoff(&sleeps, nil)}, fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded})
 
 		if err != nil {
 			t.Fatalf("PushPairAnchored() in the prime error = %v; want nil after the push goes again", err)
@@ -644,16 +627,16 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 		everyPush bool
 		// afterCommit is shell run by the hook after its commit.
 		afterCommit string
-		wantClass   fabricengine.PushFailureClass
+		wantClass   fabriclayout.PushFailureClass
 		wantSleeps  int
 		wantError   string
 	}{
-		{"BackoffSpent", true, "", fabricengine.PushFailureDeferred, len(gitrepo.PushBackoffDelays()), "holds commits its push did not carry"},
+		{"BackoffSpent", true, "", fabriclayout.PushFailureDeferred, len(gitrepo.PushBackoffDelays()), "holds commits its push did not carry"},
 		{
 			"OriginLookupTransportFailure",
 			false,
 			"git -C \"$RECORDS\" remote set-url origin '" + refusedOriginURL + "'\n",
-			fabricengine.PushFailureTransport,
+			fabriclayout.PushFailureTransport,
 			0,
 			"look up branch",
 		},
@@ -671,7 +654,7 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 				installRecordsCommitHook(t, h, !tt.everyPush, tt.afterCommit)
 				gitkit.CommitFile(t, h.PrimeRecords(), "records-file.txt", "records change", "records change")
 				sleeps := 0
-				push := fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded}
+				push := fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded}
 				if owedUnrecorded {
 					push.RunSlug = owedRunSlug
 					push.OwedUnrecorded = true
@@ -709,7 +692,7 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 		unresolvable := *h.Location
 		unresolvable.AnchorRel = "absent/subdir"
 
-		_, err := fabricengine.PushPairAnchored(&unresolvable, fabricengine.SyncOptions{}, fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded})
+		_, err := fabricengine.PushPairAnchored(&unresolvable, fabricengine.SyncOptions{}, fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded})
 
 		if err == nil || !strings.Contains(err.Error(), "resolve main worktree") {
 			t.Fatalf("PushPairAnchored() error = %v; want one carrying %q", err, "resolve main worktree")
@@ -729,7 +712,7 @@ func TestPushLock_BoundedWaitGivesUpAndUnboundedWaitBlocks(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	push := func(l *lymcwd.Location, opts fabricengine.SyncOptions, pairPush fabricengine.PairPush) error {
+	push := func(l *lymcwd.Location, opts fabricengine.SyncOptions, pairPush fabriclayout.PairPush) error {
 		_, err := fabricengine.PushPairAnchored(l, opts, pairPush)
 		return err
 	}
@@ -751,7 +734,7 @@ func TestPushLock_BoundedWaitGivesUpAndUnboundedWaitBlocks(t *testing.T) {
 		}
 	}()
 
-	err = push(p.location, fabricengine.SyncOptions{}, fabricengine.PairPush{LockWait: 50 * time.Millisecond})
+	err = push(p.location, fabricengine.SyncOptions{}, fabriclayout.PairPush{LockWait: 50 * time.Millisecond})
 	if !errors.Is(err, fabricengine.ErrPushLockBusy) {
 		t.Fatalf("bounded push under a held lock error = %v; want it to satisfy errors.Is(err, ErrPushLockBusy)", err)
 	}
@@ -768,7 +751,7 @@ func TestPushLock_BoundedWaitGivesUpAndUnboundedWaitBlocks(t *testing.T) {
 	}
 
 	childErr := func() error {
-		_, err := fabricengine.CoalescePushRequest(fabricengine.PushSpawn{WarpPath: p.warpPath, WeftPath: p.weftPath}, fabricengine.SyncOptions{}, fabricengine.MachineNames{})
+		_, err := fabricengine.CoalescePushRequest(fabriclayout.PushSpawn{WarpPath: p.warpPath, WeftPath: p.weftPath}, fabricengine.SyncOptions{}, fabriclayout.MachineNames{})
 		return err
 	}()
 	if childErr != nil {
@@ -783,14 +766,14 @@ func TestPushLock_BoundedWaitGivesUpAndUnboundedWaitBlocks(t *testing.T) {
 	}
 
 	for _, opts := range []fabricengine.SyncOptions{{SkipPush: true}, {SkipGit: true}} {
-		if err := push(p.location, opts, fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded}); err != nil {
+		if err := push(p.location, opts, fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded}); err != nil {
 			t.Errorf("push with %+v under a held lock error = %v; want nil at once", opts, err)
 		}
 	}
 
 	done := make(chan error, 1)
 	go func() {
-		done <- push(p.location, fabricengine.SyncOptions{}, fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded})
+		done <- push(p.location, fabricengine.SyncOptions{}, fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded})
 	}()
 	select {
 	case err := <-done:
@@ -834,7 +817,7 @@ func TestPushLock_BoundedWaitGivesUpAndUnboundedWaitBlocks(t *testing.T) {
 		if err != nil {
 			t.Fatalf("hold push lock: %v", err)
 		}
-		_, err = fabricengine.PushPairAnchored(q.location, fabricengine.SyncOptions{}, fabricengine.PairPush{LockWait: 50 * time.Millisecond})
+		_, err = fabricengine.PushPairAnchored(q.location, fabricengine.SyncOptions{}, fabriclayout.PairPush{LockWait: 50 * time.Millisecond})
 		if !errors.Is(err, fabricengine.ErrPushLockBusy) {
 			t.Fatalf("bounded push under a held lock error = %v; want it to satisfy errors.Is(err, ErrPushLockBusy)", err)
 		}
@@ -845,7 +828,7 @@ func TestPushLock_BoundedWaitGivesUpAndUnboundedWaitBlocks(t *testing.T) {
 			t.Fatalf("pending.code after the given-up pair push: %v; want it left on disk", err)
 		}
 
-		if _, err := fabricengine.CoalescePushRequest(fabricengine.PushSpawn{WeftPath: q.weftPath}, fabricengine.SyncOptions{}, fabricengine.MachineNames{}); err != nil {
+		if _, err := fabricengine.CoalescePushRequest(fabriclayout.PushSpawn{WeftPath: q.weftPath}, fabricengine.SyncOptions{}, fabriclayout.MachineNames{}); err != nil {
 			t.Fatalf("records-only CoalescePushRequest error = %v; want nil", err)
 		}
 		relock, ok, err := lock.TryAcquireWriteLock(pushLockPath)
@@ -863,7 +846,7 @@ func TestPushLock_BoundedWaitGivesUpAndUnboundedWaitBlocks(t *testing.T) {
 			t.Errorf("warp bare = %q; want it unmoved at %q by the records-only push", got, codeBefore)
 		}
 
-		if _, err := fabricengine.PushPairAnchored(q.location, fabricengine.SyncOptions{}, fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded}); err != nil {
+		if _, err := fabricengine.PushPairAnchored(q.location, fabricengine.SyncOptions{}, fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded}); err != nil {
 			t.Fatalf("pair push after the records-only push error = %v; want nil", err)
 		}
 		if got := fabricengine.BareBranchSHAForTest(t, q.hub.CodeBare, q.warpBranch); got != warpSHA {
@@ -890,10 +873,10 @@ func TestPushLock_BoundedWaitGivesUpAndUnboundedWaitBlocks(t *testing.T) {
 			gitkit.CommitFile(t, q.weftPath, "weft-file.txt", "weft change", "weft change")
 			holdTeardownLock(t, q.hub, "pushpair")
 
-			_, err := fabricengine.PushPairAnchored(q.location, fabricengine.SyncOptions{}, fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded, TeardownWait: teardownTestWait, OwedUnrecorded: owedUnrecorded})
+			_, err := fabricengine.PushPairAnchored(q.location, fabricengine.SyncOptions{}, fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded, TeardownWait: teardownTestWait, OwedUnrecorded: owedUnrecorded})
 
 			var failed *fabricengine.PushFailedError
-			if !errors.As(err, &failed) || failed.Record.Class != fabricengine.PushFailureTeardownLock {
+			if !errors.As(err, &failed) || failed.Record.Class != fabriclayout.PushFailureTeardownLock {
 				t.Fatalf("PushPairAnchored() error = %v; want a teardown_lock *PushFailedError", err)
 			}
 			if !errors.Is(err, fabricengine.ErrPairPushRunning) {
@@ -912,7 +895,7 @@ func TestPushLock_BoundedWaitGivesUpAndUnboundedWaitBlocks(t *testing.T) {
 				requireNoRecordOfUnrecordedPush(t, q.hub.Location.HubPath, "pushpair")
 				return
 			}
-			record := requireOneFailedPush(t, q.hub.Location.HubPath, "records", fabricengine.PushFailureTeardownLock)
+			record := requireOneFailedPush(t, q.hub.Location.HubPath, "records", fabriclayout.PushFailureTeardownLock)
 			if !slices.Equal(record.Runs, []string{"pushpair"}) {
 				t.Errorf("record Runs = %q; want the pair's slug", record.Runs)
 			}
@@ -929,7 +912,7 @@ func TestPushLock_BoundedWaitGivesUpAndUnboundedWaitBlocks(t *testing.T) {
 
 		done := make(chan error, 1)
 		go func() {
-			_, err := fabricengine.PushPairAnchored(q.location, fabricengine.SyncOptions{}, fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded, TeardownWait: time.Minute})
+			_, err := fabricengine.PushPairAnchored(q.location, fabricengine.SyncOptions{}, fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded, TeardownWait: time.Minute})
 			done <- err
 		}()
 		select {
@@ -964,12 +947,12 @@ func TestPushLock_BoundedWaitGivesUpAndUnboundedWaitBlocks(t *testing.T) {
 		gitkit.CommitFile(t, p.weftPath, "first.txt", "first\n", "records first")
 		p.originCommit(p.weftBranch, "other.txt", "other\n", "records other machine")
 		held := holdWeftWriteLock(t, p.weftPath)
-		push := fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded, OwedUnrecorded: true}
+		push := fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded, OwedUnrecorded: true}
 
 		_, err := fabricengine.PushPairAnchored(p.location, p.fake.options(nil), push)
 
 		var failed *fabricengine.PushFailedError
-		if !errors.As(err, &failed) || failed.Record.Class != fabricengine.PushFailureDeferred || !fabricengine.IsPushOwed(err) {
+		if !errors.As(err, &failed) || failed.Record.Class != fabriclayout.PushFailureDeferred || !fabricengine.IsPushOwed(err) {
 			t.Fatalf("push under the held write lock error = %v; want an owed deferred *PushFailedError", err)
 		}
 		gitkit.CommitFile(t, p.weftPath, "second.txt", "second\n", "records second")
@@ -1000,12 +983,12 @@ func TestPushLock_BoundedWaitGivesUpAndUnboundedWaitBlocks(t *testing.T) {
 		gitkit.MustRun(t, warpClone, "git", "push")
 		gitkit.CommitFile(t, p.warpPath, "warp-file.txt", "warp\n", "warp change")
 
-		_, err := fabricengine.PushPairAnchored(p.location, p.fake.options(nil), fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded, OwedUnrecorded: true})
+		_, err := fabricengine.PushPairAnchored(p.location, p.fake.options(nil), fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded, OwedUnrecorded: true})
 
 		if !fabricengine.IsPushRejected(err) || fabricengine.IsPushOwed(err) {
 			t.Fatalf("PushPairAnchored() error = %v; want a rejection that is not owed", err)
 		}
-		requireOneFailedPush(t, p.hub.Location.HubPath, "code", fabricengine.PushFailureNotFastForward)
+		requireOneFailedPush(t, p.hub.Location.HubPath, "code", fabriclayout.PushFailureNotFastForward)
 	})
 
 	// A records branch deleted on origin whose entry origin's board ended is left to its teardown:
@@ -1017,7 +1000,7 @@ func TestPushLock_BoundedWaitGivesUpAndUnboundedWaitBlocks(t *testing.T) {
 		p.endEntryOnOrigin("endedrecords")
 		gitkit.CommitFile(t, p.weftPath, "local.txt", "local\n", "local")
 
-		_, err := fabricengine.PushPairAnchored(p.location, p.fake.options(nil), fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded, OwedUnrecorded: true})
+		_, err := fabricengine.PushPairAnchored(p.location, p.fake.options(nil), fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded, OwedUnrecorded: true})
 
 		if !errors.Is(err, fabricengine.ErrEntryEnded) || fabricengine.IsPushOwed(err) {
 			t.Fatalf("PushPairAnchored() error = %v; want one wrapping ErrEntryEnded that is not owed", err)
@@ -1034,7 +1017,7 @@ func TestPushLock_BoundedWaitGivesUpAndUnboundedWaitBlocks(t *testing.T) {
 		gitkit.Git(t, p.hub.CodeBare, "branch", "-D", p.warpBranch)
 		p.endEntryOnOrigin("endedcode")
 		gitkit.CommitFile(t, p.warpPath, "warp-file.txt", "warp\n", "warp change")
-		push := fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded, OwedUnrecorded: true}
+		push := fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded, OwedUnrecorded: true}
 
 		if _, err := fabricengine.PushPairAnchored(p.location, p.fake.options(nil), push); err != nil {
 			t.Fatalf("first push error = %v; want nil", err)

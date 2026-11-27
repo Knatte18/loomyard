@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/permkit"
@@ -49,9 +50,9 @@ func TestRemove_FinishesWorktreeDirGitLeftOnDisk(t *testing.T) {
 		// wantStep is the step Remove reports for the worktree under test.
 		wantStep string
 	}{
-		{name: "a task worktree refilled after git's clean exit is removed", slug: "refilled-task", wantStep: fabricengine.RemoveStepTaskWorktree},
-		{name: "a sibling worktree refilled after git's clean exit is removed", slug: "refilled-sibling", sibling: true, wantStep: fabricengine.RemoveStepSiblingWorktree},
-		{name: "a sibling worktree git deregistered and failed to delete is removed", slug: "undeleted-sibling", sibling: true, readOnly: true, wantStep: fabricengine.RemoveStepSiblingWorktree},
+		{name: "a task worktree refilled after git's clean exit is removed", slug: "refilled-task", wantStep: fabriclayout.RemoveStepTaskWorktree},
+		{name: "a sibling worktree refilled after git's clean exit is removed", slug: "refilled-sibling", sibling: true, wantStep: fabriclayout.RemoveStepSiblingWorktree},
+		{name: "a sibling worktree git deregistered and failed to delete is removed", slug: "undeleted-sibling", sibling: true, readOnly: true, wantStep: fabriclayout.RemoveStepSiblingWorktree},
 		{name: "a refilled task worktree whose removal fails is returned and kept", slug: "refilled-kept", removeErr: fs.ErrPermission, wantErrContains: "delete it by hand; a pair that remains is then removed by running remove again"},
 		{name: "a sibling worktree git deregistered whose removal fails is returned and kept", slug: "undeleted-kept", sibling: true, readOnly: true, removeErr: fs.ErrPermission, wantErrContains: "deregistered it and failed"},
 		{name: "a locked sibling worktree git refused to remove is returned and kept", slug: "locked-sibling", sibling: true, locked: true, wantErrContains: "weft worktree remains"},
@@ -121,7 +122,7 @@ func TestRemove_FinishesWorktreeDirGitLeftOnDisk(t *testing.T) {
 			if relErr != nil {
 				t.Fatalf("relate %s to the hub: %v", dir, relErr)
 			}
-			want := fabricengine.Mutation{Kind: fabricengine.KindPathRemoved, Target: filepath.ToSlash(rel), Detail: "recursive"}
+			want := fabriclayout.Mutation{Kind: fabriclayout.KindPathRemoved, Target: filepath.ToSlash(rel), Detail: "recursive"}
 
 			if tt.wantErrContains != "" {
 				if err == nil {
@@ -205,7 +206,7 @@ func TestRemove_FailsOnTaskWorktreeDirRefilledAfterItsRemovalThatCannotBeDeleted
 	if relErr != nil {
 		t.Fatalf("relate %s to the hub: %v", dir, relErr)
 	}
-	removed := fabricengine.Mutation{Kind: fabricengine.KindPathRemoved, Target: filepath.ToSlash(rel), Detail: "recursive"}
+	removed := fabriclayout.Mutation{Kind: fabriclayout.KindPathRemoved, Target: filepath.ToSlash(rel), Detail: "recursive"}
 	if slices.Contains(res.Mutations.Entries(), removed) {
 		t.Errorf("mutation record = %+v; want no removal of %s", res.Mutations.Entries(), dir)
 	}

@@ -7,7 +7,7 @@
 // list and find take --text to print the compact listing from text.go instead of JSON.
 // Configuration resolution happens once in a PersistentPreRunE.
 // The config file (readme, design_prefix) is loaded from the Bolt checkout's _lym/config/board.yaml, whatever worktree the verb runs in,
-// and the board data dir is resolved as fabricengine.BoardDir(layout.HubPath) via lymcwd.Resolve.
+// and the board data dir is resolved as fabriclayout.BoardDir(layout.HubPath) via lymcwd.Resolve.
 // The hidden --board-path persistent flag overrides the data dir for the detached sync child
 // process launched by internal/boardengine/spawn.go, bypassing both config and path resolution.
 
@@ -29,6 +29,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/hubissues"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -103,11 +104,11 @@ one type label, a note exactly one, and every label must be configured in board.
 carries a handle the board assigns, T and a number for a task, P and a number for a project, a
 note's type letter and a number for a note, such as T4 or B2. The README renders tasks split into dependency layers and notes grouped by
 type, each table sorted by handle. Agents read and write the
-board through "lym board", never through the JSON files under ` + fabricengine.BoltDirName + `.
+board through "lym board", never through the JSON files under ` + fabriclayout.BoltDirName + `.
 
-The config file is the hub's <hub>/` + fabricengine.BoltDirName + `/_lym/config/board.yaml, read whatever worktree the verb runs in.
+The config file is the hub's <hub>/` + fabriclayout.BoltDirName + `/_lym/config/board.yaml, read whatever worktree the verb runs in.
 It controls non-geometry settings: the ` + boardKeyName("readme") + `
-and ` + boardKeyName("design_prefix") + ` filenames and the ` + boardKeyName("types") + ` and ` + boardKeyName("labels") + ` lists. The board data dir (<hub>/` + fabricengine.BoltDirName + `) is
+and ` + boardKeyName("design_prefix") + ` filenames and the ` + boardKeyName("types") + ` and ` + boardKeyName("labels") + ` lists. The board data dir (<hub>/` + fabriclayout.BoltDirName + `) is
 derived from the worktree layout via lymcwd and is not config- or
 env-overridable. The hidden --board-path flag overrides the data dir for the
 detached sync child process. Running "lym board" with no subcommand lists
@@ -151,7 +152,7 @@ available subcommands without requiring a git repo.
 				return nil
 			}
 			location = layout
-			boardDir := fabricengine.BoardDir(layout.HubPath)
+			boardDir := fabriclayout.BoardDir(layout.HubPath)
 
 			cfg, err = boardengine.LoadConfig(fabricengine.ConfigDirs(layout), "board")
 			if err != nil {

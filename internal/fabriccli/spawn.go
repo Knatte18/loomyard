@@ -6,11 +6,12 @@ package fabriccli
 
 import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // spawnPush launches the detached status push of the worktree at l.
-func spawnPush(l *lymcwd.Location) (fabricengine.SpawnResult, error) {
+func spawnPush(l *lymcwd.Location) (fabriclayout.SpawnResult, error) {
 	return fabricengine.SpawnStatusPush(l, "")
 }
 

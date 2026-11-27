@@ -26,6 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/creelcli"
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/hubregistry"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -205,7 +206,7 @@ func orchProject(hubPath, slug string) (string, string, error) {
 	if slug == "" {
 		return rootProjectHandle, boardengine.RootSubject, nil
 	}
-	tasks, err := boardengine.ReadTasks(fabricengine.BoardDir(hubPath))
+	tasks, err := boardengine.ReadTasks(fabriclayout.BoardDir(hubPath))
 	if err != nil {
 		return "", "", fmt.Errorf("slack: read the board for the project of the beam %s: %w", slug, err)
 	}

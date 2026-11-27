@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -19,7 +20,7 @@ import (
 )
 
 // changeEntryPaths returns the Path of every entry in entries whose Side equals side, for test assertions.
-func changeEntryPaths(entries []fabricengine.ChangeEntry, side fabricengine.ChangeSide) []string {
+func changeEntryPaths(entries []fabriclayout.ChangeEntry, side fabriclayout.ChangeSide) []string {
 	var paths []string
 	for _, e := range entries {
 		if e.Side == side {
@@ -43,14 +44,14 @@ func TestDiff_MergesWarpAndWeftSides(t *testing.T) {
 
 	warpSHA1 := fabricengine.CommitWarpForTest(t, warpPath, "warp change 1")
 	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeRecords(), "weft change 1")
-	res1, err := f.Commit([]string{"_lym"}, fabricengine.DefaultCommitMessage, nil, fabricengine.SyncOptions{})
+	res1, err := f.Commit([]string{"_lym"}, fabriclayout.DefaultCommitMessage, nil, fabricengine.SyncOptions{})
 	if err != nil || !res1.WeftCommitted {
 		t.Fatalf("first Commit: %+v, err=%v", res1, err)
 	}
 
 	fabricengine.CommitWarpForTest(t, warpPath, "warp change 2")
 	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeRecords(), "weft change 2")
-	res2, err := f.Commit([]string{"_lym"}, fabricengine.DefaultCommitMessage, nil, fabricengine.SyncOptions{})
+	res2, err := f.Commit([]string{"_lym"}, fabriclayout.DefaultCommitMessage, nil, fabricengine.SyncOptions{})
 	if err != nil || !res2.WeftCommitted {
 		t.Fatalf("second Commit: %+v, err=%v", res2, err)
 	}
@@ -63,11 +64,11 @@ func TestDiff_MergesWarpAndWeftSides(t *testing.T) {
 		t.Errorf("Diff(%q) NoWeftCorrespondence = true; want false (exact correspondence exists)", warpSHA1)
 	}
 
-	warpPaths := changeEntryPaths(got.Entries, fabricengine.SideWarp)
+	warpPaths := changeEntryPaths(got.Entries, fabriclayout.SideWarp)
 	if !slices.Contains(warpPaths, "README") {
 		t.Errorf("Diff(%q) warp-side paths = %v; want it to contain README", warpSHA1, warpPaths)
 	}
-	weftPaths := changeEntryPaths(got.Entries, fabricengine.SideWeft)
+	weftPaths := changeEntryPaths(got.Entries, fabriclayout.SideWeft)
 	if !slices.Contains(weftPaths, filepath.Join("_lym", "config.yaml")) {
 		t.Errorf("Diff(%q) weft-side paths = %v; want it to contain _lym/config.yaml", warpSHA1, weftPaths)
 	}
@@ -88,7 +89,7 @@ func TestDiff_NearestOlderAnchor_ResolvesToNearestOlderSyncedWeftBaseline(t *tes
 	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
 
 	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeRecords(), "weft change 1")
-	res1, err := f.Commit([]string{"_lym"}, fabricengine.DefaultCommitMessage, nil, fabricengine.SyncOptions{})
+	res1, err := f.Commit([]string{"_lym"}, fabriclayout.DefaultCommitMessage, nil, fabricengine.SyncOptions{})
 	if err != nil || !res1.WeftCommitted {
 		t.Fatalf("Commit: %+v, err=%v", res1, err)
 	}
@@ -113,7 +114,7 @@ func TestDiff_NearestOlderAnchor_ResolvesToNearestOlderSyncedWeftBaseline(t *tes
 		t.Errorf("Diff(%q) NoWeftCorrespondence = true; want false (nearest-older correspondence exists)", warpSHA2)
 	}
 
-	weftPaths := changeEntryPaths(got.Entries, fabricengine.SideWeft)
+	weftPaths := changeEntryPaths(got.Entries, fabriclayout.SideWeft)
 	if !slices.Contains(weftPaths, "manual-ahead.txt") {
 		t.Errorf("Diff(%q) weft-side paths = %v; want it to contain manual-ahead.txt (the nearest-older baseline resolved, not empty)", warpSHA2, weftPaths)
 	}
@@ -140,7 +141,7 @@ func TestStatus_MergesUncommittedChangesBothSides_ExcludesWeftArtifacts(t *testi
 	// they sit in the weft repo's `.git/info/exclude` before `Status` filters them out.
 	fabricengine.CommitWarpForTest(t, warpPath, "warp change")
 	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeRecords(), "weft change")
-	if _, committed, err := fabricengine.CommitWeftForTest(f, []string{"_lym"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{}); err != nil || !committed {
+	if _, committed, err := fabricengine.CommitWeftForTest(f, []string{"_lym"}, fabriclayout.DefaultCommitMessage, fabricengine.SyncOptions{}); err != nil || !committed {
 		t.Fatalf("commitWeft() committed=%v err=%v; want committed=true, err=nil", committed, err)
 	}
 
@@ -200,8 +201,8 @@ func TestStatus_MergesUncommittedChangesBothSides_ExcludesWeftArtifacts(t *testi
 		t.Fatalf("Status() error = %v", err)
 	}
 
-	warpPaths := changeEntryPaths(entries, fabricengine.SideWarp)
-	weftPaths := changeEntryPaths(entries, fabricengine.SideWeft)
+	warpPaths := changeEntryPaths(entries, fabriclayout.SideWarp)
+	weftPaths := changeEntryPaths(entries, fabriclayout.SideWeft)
 
 	if !slices.Contains(warpPaths, "uncommitted.txt") {
 		t.Errorf("Status() warp-side paths = %v; want it to contain uncommitted.txt", warpPaths)

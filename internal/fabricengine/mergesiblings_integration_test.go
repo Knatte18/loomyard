@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -70,7 +71,7 @@ func TestMergeSiblings_Dispositions(t *testing.T) {
 
 	forkSHA := fabricengine.CurrentSHAForTest(t, warpDir)
 	setupConflictingDivergence(t, warpDir, "feature", "conflict.txt")
-	branchAtCurrentHEAD(t, weftDir, fabricengine.RecordsBranchName("feature"))
+	branchAtCurrentHEAD(t, weftDir, fabriclayout.RecordsBranchName("feature"))
 
 	preWarpSHA := fabricengine.CurrentSHAForTest(t, warpDir)
 	preWeftSHA := fabricengine.CurrentSHAForTest(t, weftDir)

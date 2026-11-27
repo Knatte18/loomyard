@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -387,7 +388,7 @@ func commitAuthorEnv(weftPath, sha string) ([]string, error) {
 // A tag on the local tip keeps every dropped commit reachable until the saved changes are written back at target.
 func integrateConflict(weftPath, sha, head, target string, conflicts []string) error {
 	slug := filepath.Base(weftPath)
-	if warpSlug, ok := WeftWarpSlug(slug); ok {
+	if warpSlug, ok := fabriclayout.WeftWarpSlug(slug); ok {
 		slug = warpSlug
 	}
 	return fmt.Errorf("%w: local commit %s changed %s, which the upstream changed too; "+

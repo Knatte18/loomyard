@@ -8,70 +8,42 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-const (
-	moveRecordFile = "anchor-move.json"
-	moveLockFile   = "anchor-move.lock"
-)
-
-// The kinds of anchor change a MoveRecord stands for.
-const (
-	// MoveKindMove re-roots the weft's content at the new anchor.
-	MoveKindMove = "move"
-	// MoveKindIntegrate re-roots the weft's content and carries its local commits across an upstream anchor change.
-	MoveKindIntegrate = "integrate"
-)
-
-// MoveRecord is the record of an anchor change under way, written before the weft is touched and removed once the change is finished or undone.
-// A is the anchor the weft is moving from and B the one it is moving to.
-// Kind is MoveKindMove or MoveKindIntegrate, and U is the upstream tip an integration rebuilds on, empty until that step is reached.
-// PID and StartTime identify the process that holds the move lock, so a reader can tell a live change from an interrupted one.
-type MoveRecord struct {
-	A         string `json:"a"`
-	B         string `json:"b"`
-	Kind      string `json:"kind"`
-	U         string `json:"u,omitempty"`
-	PID       int    `json:"pid"`
-	StartTime string `json:"start_time,omitempty"`
-}
-
-// MoveRecordPath returns where the move record of the weft worktree at weftPath lives.
-// It sits in the weft's lock directory, which git excludes and no move touches.
-func MoveRecordPath(weftPath string) string {
-	return filepath.Join(RecordsLockDirPath(weftPath), moveRecordFile)
-}
+// moveLockFile is the name of the lock file a mover holds in a records worktree's lock directory.
+const moveLockFile = "anchor-move.lock"
 
 // moveLockPath returns the lock the process carrying out an anchor change of the weft at weftPath holds for the whole change.
 func moveLockPath(weftPath string) string {
-	return filepath.Join(RecordsLockDirPath(weftPath), moveLockFile)
+	return filepath.Join(fabriclayout.RecordsLockDirPath(weftPath), moveLockFile)
 }
 
 // moveRecordStateLockPath returns the lock that guards reads and writes of the record file itself, apart from the move lock a mover holds across its change.
 func moveRecordStateLockPath(weftPath string) string {
-	return MoveRecordPath(weftPath) + ".lock"
+	return fabriclayout.MoveRecordPath(weftPath) + ".lock"
 }
 
 // ReadMoveRecord reads the move record of the weft worktree at weftPath.
 // An absent record reports found false and creates nothing on disk.
-func ReadMoveRecord(weftPath string) (record MoveRecord, found bool, err error) {
-	path := MoveRecordPath(weftPath)
+func ReadMoveRecord(weftPath string) (record fabriclayout.MoveRecord, found bool, err error) {
+	path := fabriclayout.MoveRecordPath(weftPath)
 	if _, statErr := os.Stat(path); os.IsNotExist(statErr) {
-		return MoveRecord{}, false, nil
+		return fabriclayout.MoveRecord{}, false, nil
 	}
-	record, found, err = state.ReadJSON[MoveRecord](path, moveRecordStateLockPath(weftPath))
+	record, found, err = state.ReadJSON[fabriclayout.MoveRecord](path, moveRecordStateLockPath(weftPath))
 	if err != nil {
-		return MoveRecord{}, false, fmt.Errorf("fabricengine: read the move record in %s: %w", weftPath, err)
+		return fabriclayout.MoveRecord{}, false, fmt.Errorf("fabricengine: read the move record in %s: %w", weftPath, err)
 	}
 	return record, found, nil
 }
 
 // RemoveMoveRecord removes the move record of the weft worktree at weftPath, and does nothing when none exists.
 func RemoveMoveRecord(weftPath string) error {
-	if err := os.Remove(MoveRecordPath(weftPath)); err != nil && !os.IsNotExist(err) {
+	if err := os.Remove(fabriclayout.MoveRecordPath(weftPath)); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("fabricengine: remove the move record in %s: %w", weftPath, err)
 	}
 	return nil
@@ -109,7 +81,7 @@ func MoveInProgress(slug, weftPath string) (wayForward string, standing bool, er
 
 // recordNamesLiveHolder reports whether the process and start time in record are a live process, the one that holds the move lock.
 // A record left by a killed run, or not yet rewritten by the run that now holds the lock, names none.
-func recordNamesLiveHolder(record MoveRecord) bool {
+func recordNamesLiveHolder(record fabriclayout.MoveRecord) bool {
 	return parentlock.ProcessAlive(record.PID, record.StartTime)
 }
 
@@ -123,7 +95,7 @@ func startingMoveStop(slug string) string {
 // The slug is read from the weft's directory name.
 // The way forward comes from probing the move lock beside the record.
 func moveRecordStop(weftPath string) (*AnchorStopError, error) {
-	slug, ok := WeftWarpSlug(filepath.Base(weftPath))
+	slug, ok := fabriclayout.WeftWarpSlug(filepath.Base(weftPath))
 	if !ok {
 		return nil, fmt.Errorf("fabricengine: %s is no weft sibling worktree", weftPath)
 	}

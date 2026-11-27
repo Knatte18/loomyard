@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -173,13 +174,13 @@ func TestCommand_Anchor(t *testing.T) {
 			t.Errorf("second clone's code HEAD = %s; want %s unchanged", got, codeHead)
 		}
 
-		report, err := fabricengine.ReconcileOrigin(second.Location, fabricengine.ReconcileScope{}, fabricengine.OriginSeams{}, fabricengine.ReconcileOptions{})
+		report, err := fabricengine.ReconcileOrigin(second.Location, fabriclayout.ReconcileScope{}, fabricengine.OriginSeams{}, fabricengine.ReconcileOptions{})
 		if err != nil {
 			t.Fatalf("ReconcileOrigin() error = %v; want nil", err)
 		}
 		stopped := false
 		for _, branch := range report.Branches {
-			if branch.Prime && branch.Repo == "records" && branch.State == fabricengine.BranchAnchorStopped {
+			if branch.Prime && branch.Repo == "records" && branch.State == fabriclayout.BranchAnchorStopped {
 				stopped = true
 			}
 		}

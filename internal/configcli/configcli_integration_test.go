@@ -24,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/runprofile"
@@ -53,7 +54,7 @@ func TestConfigOverRealHub(t *testing.T) {
 	}
 	codeWorktreePath := fabricengine.WorktreePath(h.Location, slug)
 	fabricWorktreePath := fabricengine.RecordsWorktreePath(h.Location, slug)
-	boardDir := fabricengine.BoardDir(h.Location.HubPath)
+	boardDir := fabriclayout.BoardDir(h.Location.HubPath)
 
 	// Clear FABRIC_SKIP_GIT and FABRIC_SKIP_PUSH so the commits are real rather than silent no-ops.
 	t.Setenv("FABRIC_SKIP_GIT", "")

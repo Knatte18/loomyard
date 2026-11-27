@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -21,7 +22,7 @@ func EngineWorktree(l *lymcwd.Location) shuttleengine.Worktree {
 	return shuttleengine.Worktree{
 		Name:       l.WorktreeName,
 		Kind:       engineWorktreeKind(l),
-		AccountDir: fabricengine.ClaudeAccountsDir(l.HubPath),
+		AccountDir: fabriclayout.ClaudeAccountsDir(l.HubPath),
 		Names: func() ([]string, error) {
 			return liveWorktreeNames(l.WorktreePath())
 		},

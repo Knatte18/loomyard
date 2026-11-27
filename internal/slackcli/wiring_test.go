@@ -10,6 +10,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -110,10 +111,10 @@ func TestOrchProject(t *testing.T) {
 		t.Fatalf("UpsertTask() = %v", err)
 	}
 	unreadableHub := t.TempDir()
-	if err := os.MkdirAll(fabricengine.BoardDir(unreadableHub), 0o700); err != nil {
+	if err := os.MkdirAll(fabriclayout.BoardDir(unreadableHub), 0o700); err != nil {
 		t.Fatalf("MkdirAll = %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(fabricengine.BoardDir(unreadableHub), "board.json"), []byte("{"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(fabriclayout.BoardDir(unreadableHub), "board.json"), []byte("{"), 0o600); err != nil {
 		t.Fatalf("WriteFile = %v", err)
 	}
 

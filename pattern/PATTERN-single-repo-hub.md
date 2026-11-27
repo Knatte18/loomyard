@@ -8,8 +8,8 @@ Rule: A one-repository hub keeps a two-repository hub's local geometry, with bot
 
 - The hub holds a code store and a records store.
   Both fetch from one origin, so origin's branch and tag lists show the code alone.
-- The namespace is spelled once, by fabric's `RecordsNamespaceRoot`, `RecordsNamespaceHeads` and `RecordsNamespaceTags`.
-  The board's branch is fabric's `OneRepositoryBoardBranch`, never read from git, so a renamed code default cannot hide the board.
+- The namespace is spelled once, by `fabriclayout`'s `RecordsNamespaceRoot`, `RecordsNamespaceHeads` and `RecordsNamespaceTags`.
+  The board's branch is `fabriclayout`'s `OneRepositoryBoardBranch`, never read from git, so a renamed code default cannot hide the board.
 - The prime's records branch is not the code store's default branch.
   It is the value of the records store's `lym.primeRecordsBranch` key, which the clone writes and no checkout moves.
   `TestCleanup_ProtectsPrimaryWeftBranchAfterCheckout` and `TestCleanup_RefusesWhenPrimaryWeftBranchIsUndeterminable` hold it over both layouts.

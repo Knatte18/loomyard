@@ -12,6 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -35,7 +36,7 @@ func TestWireLanding_TellsLanguageSkills(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolveWorktree error = %v; want nil", err)
 	}
-	boardDir := fabricengine.BoardDir(location.HubPath)
+	boardDir := fabriclayout.BoardDir(location.HubPath)
 	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
 		t.Fatalf("MkdirAll error = %v; want nil", err)
 	}
@@ -77,12 +78,12 @@ func TestWireLanding_FillsSamplerSessionSeams(t *testing.T) {
 			if err != nil {
 				t.Fatalf("ResolveWorktree error = %v; want nil", err)
 			}
-			configDir := configengine.ConfigDir(fabricengine.BoardDir(location.HubPath))
+			configDir := configengine.ConfigDir(fabriclayout.BoardDir(location.HubPath))
 			if err := os.MkdirAll(configDir, 0o755); err != nil {
 				t.Fatalf("MkdirAll error = %v; want nil", err)
 			}
 			for module, template := range map[string]string{"darn": darnengine.ConfigTemplate(), "sampler": samplerengine.ConfigTemplate()} {
-				if err := os.WriteFile(configengine.ConfigFile(fabricengine.BoardDir(location.HubPath), module), []byte(template), 0o644); err != nil {
+				if err := os.WriteFile(configengine.ConfigFile(fabriclayout.BoardDir(location.HubPath), module), []byte(template), 0o644); err != nil {
 					t.Fatalf("WriteFile(%s.yaml) error = %v; want nil", module, err)
 				}
 			}
@@ -116,7 +117,7 @@ func TestWire_DescribeTableCarriesTheDriftVerdict(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolveWorktree error = %v; want nil", err)
 	}
-	stencilkit.SeedInto(t, fabricengine.StencilsDir(location.HubPath))
+	stencilkit.SeedInto(t, fabriclayout.StencilsDir(location.HubPath))
 	err = driftengine.UpdateScope(driftengine.NewPaths(location.AnchorPath()), func(driftengine.ScopeRecord, bool) (driftengine.ScopeRecord, error) {
 		return driftengine.ScopeRecord{Scope: driftengine.ScopeFull}, nil
 	})
@@ -158,7 +159,7 @@ func TestLandingDeps_DriftVerdict_RendersTheScopeRecord(t *testing.T) {
 	}
 
 	records := driftRecordsDeps(location)
-	records.CommitWithTrailers = func(relPaths []string, trailers []fabricengine.Trailer) error {
+	records.CommitWithTrailers = func(relPaths []string, trailers []fabriclayout.Trailer) error {
 		_, _, err := fabricengine.CommitAnchoredPathsWithTrailers(fabricengine.NewMutations(location.HubPath), location, relPaths, "seed the drift records", trailers, fabricengine.SyncOptions{})
 		return err
 	}

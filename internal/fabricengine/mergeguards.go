@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"sort"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/logger"
 )
@@ -47,7 +48,7 @@ func resolveMergeSources(f *Fabric, source string) (mergeSources, []string, erro
 		return mergeSources{}, nil, err
 	}
 	var reasons []string
-	weftBranch := RecordsBranchName(source)
+	weftBranch := fabriclayout.RecordsBranchName(source)
 
 	if err := f.code.Fetch(); err != nil {
 		logger.Warn("fabricengine: best-effort fetch before merge source resolution failed", "side", "warp", "error", err)

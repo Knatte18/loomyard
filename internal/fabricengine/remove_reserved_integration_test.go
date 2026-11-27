@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -29,7 +30,7 @@ func TestRemove_RefusesReservedSlugsAndLeavesThemOnDisk(t *testing.T) {
 	weftPrimeSlug := filepath.Base(l.WorktreePath()) + weftname.Suffix
 
 	reserved := []string{
-		fabricengine.BoardDirName,
+		fabriclayout.BoardDirName,
 		lymdirs.LymDirName,
 		lymdirs.DotLymDirName,
 		weftPrimeSlug,

@@ -19,7 +19,7 @@ import (
 // TestLoadConfig_ScalarKeysAndTemplateDefaults checks two things: that LoadConfig reads the scalar keys,
 // and that it resolves absent types and labels keys to the template defaults.
 // A path: key of any shape is ignored, because Config.Path is tagged yaml:"-".
-// The board data dir is owned by fabricengine.BoltDir, with no relative-path resolution and no env override.
+// The board data dir is owned by fabriclayout.BoltDir, with no relative-path resolution and no env override.
 // It sets an environment variable, so it runs serially.
 func TestLoadConfig_ScalarKeysAndTemplateDefaults(t *testing.T) {
 	tiergate.Require(t, 0)

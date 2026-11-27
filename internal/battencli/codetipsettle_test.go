@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/runfsm"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -24,19 +24,19 @@ func TestSettleCodeTip(t *testing.T) {
 	tiergate.Require(t, 0)
 
 	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
-	missing := func(age time.Duration) fabricengine.CodeTipReading {
-		return fabricengine.CodeTipReading{Tip: "abc123", Missing: true, Machine: "oslo", At: now.Add(-age)}
+	missing := func(age time.Duration) fabriclayout.CodeTipReading {
+		return fabriclayout.CodeTipReading{Tip: "abc123", Missing: true, Machine: "oslo", At: now.Add(-age)}
 	}
-	landed := fabricengine.CodeTipReading{Tip: "abc123", Machine: "oslo", At: now.Add(-time.Hour)}
+	landed := fabriclayout.CodeTipReading{Tip: "abc123", Machine: "oslo", At: now.Add(-time.Hour)}
 	pushRefused := errors.New("origin refused the push")
 
 	tests := []struct {
 		name string
 		// reason is the verdict's reason; the empty reason is an act verdict.
 		reason runfsm.Reason
-		read   fabricengine.CodeTipReading
+		read   fabriclayout.CodeTipReading
 		// readAfterFetch is what the read after the fetch answers; nil answers read again.
-		readAfterFetch *fabricengine.CodeTipReading
+		readAfterFetch *fabriclayout.CodeTipReading
 		readErr        error
 		held           bool
 		pushErr        error
@@ -100,7 +100,7 @@ func TestSettleCodeTip(t *testing.T) {
 		},
 		{
 			name: "ARunWithNoTransitionOnOriginDoesNothing", reason: runfsm.ReasonCodeTip,
-			read: fabricengine.CodeTipReading{}, wantCalls: codeTipCalls{fetch: 1},
+			read: fabriclayout.CodeTipReading{}, wantCalls: codeTipCalls{fetch: 1},
 		},
 	}
 	for _, tt := range tests {
@@ -109,10 +109,10 @@ func TestSettleCodeTip(t *testing.T) {
 			var calls codeTipCalls
 			reads := 0
 			deps := codeTipDeps{
-				Read: func(string) (fabricengine.CodeTipReading, error) {
+				Read: func(string) (fabriclayout.CodeTipReading, error) {
 					reads++
 					if tt.readErr != nil {
-						return fabricengine.CodeTipReading{}, tt.readErr
+						return fabriclayout.CodeTipReading{}, tt.readErr
 					}
 					if reads > 1 && tt.readAfterFetch != nil {
 						return *tt.readAfterFetch, nil

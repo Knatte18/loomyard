@@ -18,7 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 )
 
 // runJSON runs the CLI and decodes its stdout as one JSON object.
@@ -135,7 +135,7 @@ func stepPromote_Refusals(t *testing.T, f *cliFixture) {
 // stepRaddle pins that raddle prints the stored proposal of a decision record or a filed slug verbatim.
 // It also pins that raddle errors for a slug the raddle store does not hold, naming lym report raddle.
 func stepRaddle(t *testing.T, f *cliFixture) {
-	storeDir := boardengine.RaddleStoreDir(fabricengine.BoardDir(filepath.Dir(f.cwd)), "plan")
+	storeDir := boardengine.RaddleStoreDir(fabriclayout.BoardDir(filepath.Dir(f.cwd)), "plan")
 	if err := os.MkdirAll(storeDir, 0o755); err != nil {
 		t.Fatalf("create store directory: %v", err)
 	}
@@ -573,14 +573,14 @@ func stepProjects(t *testing.T, f *cliFixture) {
 		t.Errorf("get the beam itself: parent_beam = %v, want %s", got, boardengine.RootSubject)
 	}
 
-	if err := os.WriteFile(configengine.ConfigFile(fabricengine.BoardDir(filepath.Dir(f.cwd)), "fabric"), []byte("branch_prefix: \"\"\npathspec: docs\n"), 0o644); err != nil {
+	if err := os.WriteFile(configengine.ConfigFile(fabriclayout.BoardDir(filepath.Dir(f.cwd)), "fabric"), []byte("branch_prefix: \"\"\npathspec: docs\n"), 0o644); err != nil {
 		t.Fatalf("write fabric.yaml: %v", err)
 	}
 	refusals := []struct {
 		slug string
 		want string
 	}{
-		{fabricengine.RecordsBranchName("made"), "must not end in"},
+		{fabriclayout.RecordsBranchName("made"), "must not end in"},
 		{"docs", "reserved for lym hub geometry"},
 	}
 	for _, tt := range refusals {
@@ -766,7 +766,7 @@ func stepGetRecord(t *testing.T, f *cliFixture) {
 		t.Fatalf("get --record: exit %d, stdout %q; want 0 and %q", exitCode, stdout, record)
 	}
 
-	if err := os.Remove(filepath.Join(fabricengine.BoardDir(hub), "decision-talked.md")); err != nil {
+	if err := os.Remove(filepath.Join(fabriclayout.BoardDir(hub), "decision-talked.md")); err != nil {
 		t.Fatalf("remove decision-talked.md: %v", err)
 	}
 	refusals := []struct {
@@ -917,7 +917,7 @@ func stepUpsertRecordFile(t *testing.T, f *cliFixture) {
 			}
 			args := []string{"upsert", tt.payload, "--record-file", path}
 			if tt.boardPath {
-				args = append([]string{"--board-path", fabricengine.BoardDir(filepath.Dir(f.cwd))}, args...)
+				args = append([]string{"--board-path", fabriclayout.BoardDir(filepath.Dir(f.cwd))}, args...)
 			}
 			result := runJSON(t, 1, args...)
 			message, _ := result["error"].(string)
@@ -1078,7 +1078,7 @@ func stepProfiles(t *testing.T, f *cliFixture) {
 		t.Errorf("defaults = %v, want %v", result["defaults"], want)
 	}
 
-	boardDir := fabricengine.BoardDir(filepath.Dir(f.cwd))
+	boardDir := fabriclayout.BoardDir(filepath.Dir(f.cwd))
 	if err := os.WriteFile(configengine.ConfigFile(boardDir, "profiles"), []byte("# none\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}

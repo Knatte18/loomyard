@@ -7,6 +7,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
@@ -16,7 +17,7 @@ import (
 // Its limits are read strictly from the Bolt checkout's gate.yaml and this machine's override at every acquire.
 // A gate config that cannot be loaded surfaces at acquire as an error naming each file in the stack.
 func GateSlots(l *lymcwd.Location) *gateslot.Pool {
-	boltDir := fabricengine.BoltDir(l.HubPath)
+	boltDir := fabriclayout.BoltDir(l.HubPath)
 	return &gateslot.Pool{
 		Dir: gateslot.Dir(boltDir),
 		Limits: func() (gateslot.Limits, error) {

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -121,8 +122,8 @@ func TestRemoveLocal(t *testing.T) {
 		if err != nil {
 			t.Fatalf("RemoveLocal: %v", err)
 		}
-		unlinked := mutationIndexes(res.Mutations, fabricengine.KindLinkRemoved, scratchHubRelative(t, h.Location, scratchRoot))
-		warpRemoved := mutationIndexes(res.Mutations, fabricengine.KindWorktreeRemoved, scratchHubRelative(t, h.Location, fabricengine.WorktreePath(h.Location, slug)))
+		unlinked := mutationIndexes(res.Mutations, fabriclayout.KindLinkRemoved, scratchHubRelative(t, h.Location, scratchRoot))
+		warpRemoved := mutationIndexes(res.Mutations, fabriclayout.KindWorktreeRemoved, scratchHubRelative(t, h.Location, fabricengine.WorktreePath(h.Location, slug)))
 		if len(unlinked) != 1 || len(warpRemoved) != 1 || unlinked[0] > warpRemoved[0] {
 			t.Errorf("record %+v; want one link_removed at the root .scratch ahead of the warp worktree_removed", res.Mutations.Entries())
 		}
@@ -150,7 +151,7 @@ func TestRemoveLocal(t *testing.T) {
 			lockPath func(t *testing.T, h *hubforge.Hub) string
 		}{
 			{"TeardownLock", func(t *testing.T, h *hubforge.Hub) string {
-				return fabricengine.TeardownLockPath(h.Path, slug)
+				return fabriclayout.TeardownLockPath(h.Path, slug)
 			}},
 			{"WeftWriteLock", func(t *testing.T, h *hubforge.Hub) string {
 				return fabricengine.WeftWriteLockPathForTest(t, openPairFabric(t, h, slug))
@@ -239,8 +240,8 @@ func TestRemoveLocal(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				h := newLocalModePair(t, slug)
-				for repo, branch := range map[string]string{"code": slug, "records": fabricengine.RecordsBranchName(slug)} {
-					failure := fabricengine.FailedPush{Repo: repo, RepoPath: h.Path, Branch: branch, Class: fabricengine.PushFailureTransport, Error: "refused"}
+				for repo, branch := range map[string]string{"code": slug, "records": fabriclayout.RecordsBranchName(slug)} {
+					failure := fabriclayout.FailedPush{Repo: repo, RepoPath: h.Path, Branch: branch, Class: fabriclayout.PushFailureTransport, Error: "refused"}
 					if err := fabricengine.RecordPushFailure(h.Path, failure, time.Now()); err != nil {
 						t.Fatalf("record the failed push of %s: %v", repo, err)
 					}
@@ -260,7 +261,7 @@ func TestRemoveLocal(t *testing.T) {
 	t.Run("APairWithNoSiblingAsksNoOriginEvenWithADeadOne", func(t *testing.T) {
 		h := newLocalModePair(t, slug)
 		gitkit.MustRun(t, h.PrimeRecords(), "git", "worktree", "remove", "--force", h.PairRecordsSibling(slug))
-		gitkit.MustRun(t, h.PrimeRecords(), "git", "branch", "-D", fabricengine.RecordsBranchName(slug))
+		gitkit.MustRun(t, h.PrimeRecords(), "git", "branch", "-D", fabriclayout.RecordsBranchName(slug))
 		gitkit.MustRun(t, h.PrimeRecords(), "git", "remote", "set-url", "origin", "http://127.0.0.1:1/x")
 
 		res, err := h.Topology.RemoveLocal(h.Location, slug, false)
@@ -326,10 +327,10 @@ func TestSnapshotUncommitted(t *testing.T) {
 		if got := gitkit.RevParse(t, weft, "HEAD"); got != weftTip {
 			t.Errorf("weft branch tip = %s; want %s", got, weftTip)
 		}
-		if got := countKind(rec, fabricengine.KindTagCreated); got != 1 {
+		if got := countKind(rec, fabriclayout.KindTagCreated); got != 1 {
 			t.Errorf("tag_created mutations = %d; want 1", got)
 		}
-		if got := countKind(rec, fabricengine.KindCommitCreated); got != 1 {
+		if got := countKind(rec, fabriclayout.KindCommitCreated); got != 1 {
 			t.Errorf("commit_created mutations = %d; want 1", got)
 		}
 		if tagged, err := fabricengine.SnapshotTagged(h.Location, slug); err != nil || !tagged {

@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -88,14 +89,14 @@ func probeWeftBinding(cwd, weftURL string) (warpProbeResult, error) {
 		return warpProbeResult{}, wrapProbeError(weftURL, "rev-parse HEAD", err)
 	}
 
-	shortnamePresent, err := probeTreeHasPath(weftURL, probeDir, ShortnameFileName)
+	shortnamePresent, err := probeTreeHasPath(weftURL, probeDir, fabriclayout.ShortnameFileName)
 	if err != nil {
 		return warpProbeResult{}, err
 	}
 	var recordedShortname string
 	var shortnameFound bool
 	if shortnamePresent {
-		stdout, err := gitexec.Run([]string{"show", "HEAD:" + ShortnameFileName}, probeDir)
+		stdout, err := gitexec.Run([]string{"show", "HEAD:" + fabriclayout.ShortnameFileName}, probeDir)
 		if err != nil {
 			return warpProbeResult{}, wrapProbeError(weftURL, "show", err)
 		}
@@ -113,13 +114,13 @@ func probeWeftBinding(cwd, weftURL string) (warpProbeResult, error) {
 		}
 	}
 
-	bindingPresent, err := probeTreeHasPath(weftURL, probeDir, WarpBindingFileName)
+	bindingPresent, err := probeTreeHasPath(weftURL, probeDir, fabriclayout.WarpBindingFileName)
 	if err != nil {
 		return warpProbeResult{}, err
 	}
 
 	if bindingPresent {
-		stdout, err := gitexec.Run([]string{"show", "HEAD:" + WarpBindingFileName}, probeDir)
+		stdout, err := gitexec.Run([]string{"show", "HEAD:" + fabriclayout.WarpBindingFileName}, probeDir)
 		if err != nil {
 			return warpProbeResult{}, wrapProbeError(weftURL, "show", err)
 		}
@@ -165,7 +166,7 @@ func probeTreeHasPath(weftURL, probeDir, path string) (bool, error) {
 // It fetches the branch into the probe clone.
 // A candidate without the branch answers false, and any other git failure is an error.
 func probeMainWeftHasPath(weftURL, probeDir, path string) (bool, error) {
-	present, err := fetchWeftBranchTip(weftURL, probeDir, RecordsBranchName("main"), gitrepo.RefNamespace{})
+	present, err := fetchWeftBranchTip(weftURL, probeDir, fabriclayout.RecordsBranchName("main"), gitrepo.RefNamespace{})
 	if err != nil || !present {
 		return false, err
 	}
@@ -204,7 +205,7 @@ func probeCodeOriginRoot(cwd, url string) (bindingFound, recordsFound bool, err 
 		return false, false, wrapProbeError(url, "rev-parse HEAD", err)
 	}
 
-	bindingFound, err = probeTreeHasPath(url, probeDir, WarpBindingFileName)
+	bindingFound, err = probeTreeHasPath(url, probeDir, fabriclayout.WarpBindingFileName)
 	if err != nil {
 		return false, false, err
 	}

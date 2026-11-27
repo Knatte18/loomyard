@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/haltnote"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -839,7 +839,7 @@ func TestComputeTiming(t *testing.T) {
 			},
 			check: func(t *testing.T, got TimingReport) {
 				flight := runOf(t, got, "flight")
-				if flight.State != RunStateInFlight || flight.Tag != fabricengine.RecordsBranchName("flight") || !flight.End.Equal(snapshotAt) {
+				if flight.State != RunStateInFlight || flight.Tag != fabriclayout.RecordsBranchName("flight") || !flight.End.Equal(snapshotAt) {
 					t.Errorf("run = %s %s ending %v; want in-flight under its branch name and ending at the snapshot", flight.State, flight.Tag, flight.End)
 				}
 				wantPhases(t, flight, map[string]int64{PhaseSetup: 600, PhaseDiscussion: 1200, PhasePlan: 1800})
@@ -862,7 +862,7 @@ func TestComputeTiming(t *testing.T) {
 			live: []string{"landed"},
 			setup: func(w *world) {
 				landedRun(w, "landed", "t1", 14, seedStartedAt(at(10)), []shedengine.HistoryEntry{entryAt(loomshed.NameFinalize, secondsAfter(at(10), 300))})
-				w.branches = append(w.branches, gitrepo.BranchRef{Name: fabricengine.RecordsBranchName("landed"), Commit: "t1", Committed: at(14)})
+				w.branches = append(w.branches, gitrepo.BranchRef{Name: fabriclayout.RecordsBranchName("landed"), Commit: "t1", Committed: at(14)})
 			},
 			check: func(t *testing.T, got TimingReport) {
 				if len(got.Runs) != 1 || got.Runs[0].State != RunStateLanded || len(got.Findings) != 0 {
@@ -907,7 +907,7 @@ func TestComputeTiming(t *testing.T) {
 				if len(got.Runs) != 0 {
 					t.Errorf("runs = %+v; want none", got.Runs)
 				}
-				wantFindings(t, got, [2]string{fabricengine.RecordsBranchName("broken"), ""})
+				wantFindings(t, got, [2]string{fabriclayout.RecordsBranchName("broken"), ""})
 			},
 		},
 		{
@@ -920,7 +920,7 @@ func TestComputeTiming(t *testing.T) {
 				if len(got.Runs) != 0 {
 					t.Errorf("runs = %+v; want none", got.Runs)
 				}
-				wantFindings(t, got, [2]string{fabricengine.RecordsBranchName("abandoned"), "no archive tag at its tip and no live pair"})
+				wantFindings(t, got, [2]string{fabriclayout.RecordsBranchName("abandoned"), "no archive tag at its tip and no live pair"})
 			},
 		},
 		{

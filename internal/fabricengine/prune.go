@@ -33,45 +33,19 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
-
-// PruneEntry describes one stale or orphaned pair that Prune has identified.
-type PruneEntry struct {
-	// CodeWorktree is the absolute path to the (missing or absent) warp worktree.
-	CodeWorktree string `json:"code_worktree"`
-	// RecordsWorktree is the absolute path to the weft worktree sibling.
-	RecordsWorktree string `json:"records_worktree"`
-	// Reason describes why this pair was flagged for pruning.
-	Reason string `json:"reason"`
-	// Removed reports whether the weft worktree was actually deleted.
-	// It is false on a dry run and true only when apply is true and removal succeeded.
-	Removed bool `json:"removed"`
-	// Protected reports whether this entry's weft worktree has uncommitted tracked changes
-	// that force was not given to discard.
-	// It is computed in both modes, so a dry run reports what --apply would act on.
-	Protected bool `json:"protected,omitempty"`
-	// Unowned reports that the enumerated path is not a linked worktree of this hub's weft repo.
-	// Fabric never removes it, force included.
-	// The orphan pass matches on directory name alone.
-	// So an ordinary user directory or an unrelated git clone with a weft-suffixed name is reported here, not deleted.
-	// A directory at a pair's task worktree path that no registration covers is reported the same way.
-	// Like Protected, it is computed in both modes.
-	Unowned bool `json:"unowned,omitempty"`
-	// Error is non-empty when an entry was not removed and the operator needs to know why.
-	// It covers a failed removal, a protected entry, and an unowned path fabric refuses to touch.
-	Error string `json:"error,omitempty"`
-}
 
 // PruneResult is the result of Prune.
 // It lists every stale or orphaned pair, whether or not it was removed.
 // The embedded MutationRecord holds the mutations recorded over the call.
 type PruneResult struct {
-	MutationRecord
+	fabriclayout.MutationRecord
 	// Entries lists the pairs that were identified, with Removed set on those actually deleted.
 	// It is never nil, so the CLI envelope renders `"entries":[]` rather than `"entries":null` when nothing was stale.
-	Entries []PruneEntry `json:"entries"`
+	Entries []fabriclayout.PruneEntry `json:"entries"`
 }
 
 // Prune identifies stale or orphaned warp↔weft pairs.
@@ -101,7 +75,7 @@ func (t *Topology) Prune(l *lymcwd.Location, apply, force bool) (res PruneResult
 	pass1Slugs := make(map[string]bool)
 
 	// Seeded non-nil, because a nil Entries marshals to `"entries":null` rather than an empty array.
-	result := PruneResult{Entries: []PruneEntry{}}
+	result := PruneResult{Entries: []fabriclayout.PruneEntry{}}
 	for _, entry := range entries {
 		warpPath := filepath.FromSlash(entry.Path)
 		warpPath = filepath.Clean(warpPath)
@@ -113,7 +87,7 @@ func (t *Topology) Prune(l *lymcwd.Location, apply, force bool) (res PruneResult
 		warpMissing := warpStatErr != nil
 
 		if warpMissing {
-			pe := PruneEntry{
+			pe := fabriclayout.PruneEntry{
 				CodeWorktree:    filepath.ToSlash(warpPath),
 				RecordsWorktree: filepath.ToSlash(weftPath),
 				Reason:          "warp worktree directory missing",
@@ -144,7 +118,7 @@ func (t *Topology) Prune(l *lymcwd.Location, apply, force bool) (res PruneResult
 
 		name := dirEntry.Name()
 
-		warpSlug, ok := WeftWarpSlug(name)
+		warpSlug, ok := fabriclayout.WeftWarpSlug(name)
 		if !ok {
 			continue
 		}
@@ -156,7 +130,7 @@ func (t *Topology) Prune(l *lymcwd.Location, apply, force bool) (res PruneResult
 		weftPath := filepath.Join(l.HubPath, name)
 		warpPath := filepath.Join(l.HubPath, warpSlug)
 
-		pe := PruneEntry{
+		pe := fabriclayout.PruneEntry{
 			CodeWorktree:    filepath.ToSlash(warpPath),
 			RecordsWorktree: filepath.ToSlash(weftPath),
 			Reason:          "weft worktree has no warp sibling",
@@ -181,7 +155,7 @@ func (t *Topology) Prune(l *lymcwd.Location, apply, force bool) (res PruneResult
 			continue
 		}
 		strayPath := filepath.Join(l.HubPath, name)
-		result.Entries = append(result.Entries, PruneEntry{
+		result.Entries = append(result.Entries, fabriclayout.PruneEntry{
 			CodeWorktree:    filepath.ToSlash(strayPath),
 			RecordsWorktree: filepath.ToSlash(RecordsWorktreePath(l, name)),
 			Reason:          "directory at a pair's task worktree path is not a worktree",
@@ -206,7 +180,7 @@ func (t *Topology) Prune(l *lymcwd.Location, apply, force bool) (res PruneResult
 //
 // An absent path is not unowned: there is nothing to delete.
 // removeStalePair still clears worktree-registration debris for a pair whose weft worktree is gone.
-func applyStalePairOwnership(l *lymcwd.Location, weftPath string, pe *PruneEntry) {
+func applyStalePairOwnership(l *lymcwd.Location, weftPath string, pe *fabriclayout.PruneEntry) {
 	if _, statErr := os.Stat(weftPath); os.IsNotExist(statErr) {
 		return
 	}
@@ -236,7 +210,7 @@ func applyStalePairOwnership(l *lymcwd.Location, weftPath string, pe *PruneEntry
 // Refusing on them would protect nothing and make prune useless on the debris it exists to clear.
 // A probe that cannot run leaves the entry unprotected.
 // Git cannot read such a worktree, so it has no tracked work to lose.
-func applyStalePairProtection(weftPath string, force bool, pe *PruneEntry) {
+func applyStalePairProtection(weftPath string, force bool, pe *fabriclayout.PruneEntry) {
 	if force {
 		return
 	}
@@ -268,7 +242,7 @@ func applyStalePairProtection(weftPath string, force bool, pe *PruneEntry) {
 // That is recoverable bookkeeping, not data loss.
 // The same rule and justification apply to removeWarpWorktreeDir's fallback.
 // rec is the calling verb's own recorder, threaded through every gate call this helper makes.
-func removeStalePair(rec *Mutations, l *lymcwd.Location, slug, weftPath string, pe *PruneEntry) bool {
+func removeStalePair(rec *Mutations, l *lymcwd.Location, slug, weftPath string, pe *fabriclayout.PruneEntry) bool {
 	weftRepoRoot, weftRepoRootErr := RecordsRepoRoot(l)
 	if weftRepoRootErr != nil {
 		pe.Error = fmt.Sprintf("resolve weft repo root: %v", weftRepoRootErr)
@@ -342,7 +316,7 @@ func removeStalePair(rec *Mutations, l *lymcwd.Location, slug, weftPath string, 
 
 	if warpAdminWasRegistered {
 		if _, statErr := os.Lstat(warpAdminPath); os.IsNotExist(statErr) {
-			rec.Append(KindWorktreeRemoved, filepath.Join(l.HubPath, slug), "git worktree prune")
+			rec.Append(fabriclayout.KindWorktreeRemoved, filepath.Join(l.HubPath, slug), "git worktree prune")
 		}
 	}
 

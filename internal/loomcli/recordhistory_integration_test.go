@@ -12,13 +12,14 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // commitRecordVersion writes data as the discussion record of location and commits it with trailers.
 // It returns the commit's SHA.
-func commitRecordVersion(t *testing.T, location *lymcwd.Location, record runRecord, data string, trailers ...fabricengine.Trailer) string {
+func commitRecordVersion(t *testing.T, location *lymcwd.Location, record runRecord, data string, trailers ...fabriclayout.Trailer) string {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(record.path), 0o755); err != nil {
 		t.Fatal(err)
@@ -63,11 +64,11 @@ func TestReplacedDecisionRecord_ReadsTheNewestReplaceOfTheRecordMadeAfterTheSnap
 			_, location := beamHub(t)
 			beam := location(testBeam)
 			record := runRecordOf(beam, "")
-			replace := func(rel, data string) []fabricengine.Trailer {
+			replace := func(rel, data string) []fabriclayout.Trailer {
 				if tt.withoutReplaces && rel == record.rel {
 					return nil
 				}
-				return []fabricengine.Trailer{{Key: recordReplacedTrailerKey, Value: recordReplacedValue(decisionByParent, rel, []byte(data))}}
+				return []fabriclayout.Trailer{{Key: recordReplacedTrailerKey, Value: recordReplacedValue(decisionByParent, rel, []byte(data))}}
 			}
 
 			plain := commitRecordVersion(t, beam, record, historyWithE)
@@ -97,7 +98,7 @@ func TestRecordHistory_CutsAtTheNewestReplace(t *testing.T) {
 	beam := location(testBeam)
 	record := runRecordOf(beam, "")
 	history := recordHistory(beam, record)
-	replaced := fabricengine.Trailer{Key: recordReplacedTrailerKey, Value: recordReplacedValue(decisionByParent, record.rel, []byte(historyX))}
+	replaced := fabriclayout.Trailer{Key: recordReplacedTrailerKey, Value: recordReplacedValue(decisionByParent, record.rel, []byte(historyX))}
 
 	commitRecordVersion(t, beam, record, historyWithE)
 	commitRecordVersion(t, beam, record, historyX, replaced)

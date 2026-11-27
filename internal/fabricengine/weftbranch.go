@@ -7,6 +7,7 @@ package fabricengine
 import (
 	"fmt"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -56,6 +57,6 @@ func resolveWeftBranch(rec *Mutations, l *lymcwd.Location, weftBranch string, co
 	if _, err := gitexec.Run([]string{"branch", "--track", weftBranch, trackingRef}, weftRepoRoot); err != nil {
 		return false, false, fmt.Errorf("create weft branch %q tracking %q: %w", weftBranch, trackingRef, err)
 	}
-	rec.AppendRef(KindBranchCreated, weftBranch, refDetail("records", weftRepoRoot, originRemoteName))
+	rec.AppendRef(fabriclayout.KindBranchCreated, weftBranch, refDetail("records", weftRepoRoot, originRemoteName))
 	return true, true, nil
 }

@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -72,10 +73,10 @@ func TestRemove_RemoteDeletesSquashLandedTaskBranchOnOrigin(t *testing.T) {
 	}
 	found := false
 	for _, step := range res.Steps {
-		found = found || step == fabricengine.RemoveStepTaskBranchOnOrigin
+		found = found || step == fabriclayout.RemoveStepTaskBranchOnOrigin
 	}
 	if !found {
-		t.Errorf("Steps = %v; want %q among them", res.Steps, fabricengine.RemoveStepTaskBranchOnOrigin)
+		t.Errorf("Steps = %v; want %q among them", res.Steps, fabriclayout.RemoveStepTaskBranchOnOrigin)
 	}
 }
 

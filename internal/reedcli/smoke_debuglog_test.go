@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -38,7 +38,7 @@ func TestSmokeDebugLog(t *testing.T) {
 		var buf bytes.Buffer
 		clihelp.ExecuteIn(Command(), prime, &buf, []string{"down"})
 	})
-	logsDir := fabricengine.HubLogsDir(h.Location.HubPath)
+	logsDir := fabriclayout.HubLogsDir(h.Location.HubPath)
 
 	// With LYM_REED_DEBUG=1 the boot prunes pre-existing logs down to the newest 2,
 	// and it writes a fresh verbose log of its own.

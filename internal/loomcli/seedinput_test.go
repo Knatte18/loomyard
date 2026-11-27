@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -12,7 +12,7 @@ func TestResolveParentBranch(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
 		name        string
-		recorded    fabricengine.Origin
+		recorded    fabriclayout.Origin
 		found       bool
 		parentFlag  string
 		wantParent  string
@@ -22,7 +22,7 @@ func TestResolveParentBranch(t *testing.T) {
 	}{
 		{
 			name:       "RecordPresent_NonEmpty_NoFlag",
-			recorded:   fabricengine.Origin{ParentBranch: "main"},
+			recorded:   fabriclayout.Origin{ParentBranch: "main"},
 			found:      true,
 			parentFlag: "",
 			wantParent: "main",
@@ -30,7 +30,7 @@ func TestResolveParentBranch(t *testing.T) {
 		},
 		{
 			name:       "RecordPresent_MatchesFlag",
-			recorded:   fabricengine.Origin{ParentBranch: "main"},
+			recorded:   fabriclayout.Origin{ParentBranch: "main"},
 			found:      true,
 			parentFlag: "main",
 			wantParent: "main",
@@ -38,7 +38,7 @@ func TestResolveParentBranch(t *testing.T) {
 		},
 		{
 			name:        "RecordPresent_DisagreesWithFlag",
-			recorded:    fabricengine.Origin{ParentBranch: "main"},
+			recorded:    fabriclayout.Origin{ParentBranch: "main"},
 			found:       true,
 			parentFlag:  "develop",
 			wantErr:     true,
@@ -46,7 +46,7 @@ func TestResolveParentBranch(t *testing.T) {
 		},
 		{
 			name:       "NoRecord_WithFlag",
-			recorded:   fabricengine.Origin{},
+			recorded:   fabriclayout.Origin{},
 			found:      false,
 			parentFlag: "main",
 			wantParent: "main",
@@ -54,7 +54,7 @@ func TestResolveParentBranch(t *testing.T) {
 		},
 		{
 			name:        "NoRecord_NoFlag",
-			recorded:    fabricengine.Origin{},
+			recorded:    fabriclayout.Origin{},
 			found:       false,
 			parentFlag:  "",
 			wantErr:     true,
@@ -62,7 +62,7 @@ func TestResolveParentBranch(t *testing.T) {
 		},
 		{
 			name:       "RecordPresentButEmpty_WithFlag",
-			recorded:   fabricengine.Origin{ParentBranch: ""},
+			recorded:   fabriclayout.Origin{ParentBranch: ""},
 			found:      true,
 			parentFlag: "main",
 			wantParent: "main",
@@ -70,7 +70,7 @@ func TestResolveParentBranch(t *testing.T) {
 		},
 		{
 			name:        "RecordPresentButEmpty_NoFlag",
-			recorded:    fabricengine.Origin{ParentBranch: ""},
+			recorded:    fabriclayout.Origin{ParentBranch: ""},
 			found:       true,
 			parentFlag:  "",
 			wantErr:     true,
@@ -111,7 +111,7 @@ func TestResolveLandingParent(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
 		name        string
-		recorded    fabricengine.Origin
+		recorded    fabriclayout.Origin
 		found       bool
 		taskBranch  string
 		wantParent  string
@@ -120,7 +120,7 @@ func TestResolveLandingParent(t *testing.T) {
 	}{
 		{
 			name:        "Unrecorded",
-			recorded:    fabricengine.Origin{},
+			recorded:    fabriclayout.Origin{},
 			found:       false,
 			taskBranch:  "task/foo",
 			wantErr:     true,
@@ -128,7 +128,7 @@ func TestResolveLandingParent(t *testing.T) {
 		},
 		{
 			name:        "RecordedParentEqualsTaskBranch",
-			recorded:    fabricengine.Origin{ParentBranch: "task/foo"},
+			recorded:    fabriclayout.Origin{ParentBranch: "task/foo"},
 			found:       true,
 			taskBranch:  "task/foo",
 			wantErr:     true,
@@ -136,7 +136,7 @@ func TestResolveLandingParent(t *testing.T) {
 		},
 		{
 			name:       "OrdinaryRecordedParent",
-			recorded:   fabricengine.Origin{ParentBranch: "main"},
+			recorded:   fabriclayout.Origin{ParentBranch: "main"},
 			found:      true,
 			taskBranch: "task/foo",
 			wantParent: "main",

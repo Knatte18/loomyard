@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -39,7 +40,7 @@ func dropTaskWorktree(h *hubforge.Hub, slug string) {
 // dropRecordsWorktree removes slug's records worktree and its local weft branch.
 func dropRecordsWorktree(h *hubforge.Hub, slug string) {
 	mustGit(h.PrimeRecords(), "worktree", "remove", "--force", fabricengine.RecordsWorktreePath(h.Location, slug))
-	mustGit(h.PrimeRecords(), "branch", "-D", fabricengine.RecordsBranchName(slug))
+	mustGit(h.PrimeRecords(), "branch", "-D", fabriclayout.RecordsBranchName(slug))
 }
 
 // goneLocally returns a hub whose pushed slug pair has lost both worktrees and local branches, which remain on origin.
@@ -54,7 +55,7 @@ func goneLocally(t *testing.T, slug string) *hubforge.Hub {
 }
 
 // addAdoptOnly runs the adopt-only Add of slug.
-func addAdoptOnly(h *hubforge.Hub, slug string) (fabricengine.AddResult, error) {
+func addAdoptOnly(h *hubforge.Hub, slug string) (fabriclayout.AddResult, error) {
 	return h.Topology.Add(h.Location, slug, adoptOnlyOptions)
 }
 
@@ -65,7 +66,7 @@ func requireRemade(t *testing.T, h *hubforge.Hub, slug string) {
 	if got := gitkit.CurrentBranch(t, fabricengine.WorktreePath(h.Location, slug)); got != slug {
 		t.Errorf("task worktree branch = %q; want %q", got, slug)
 	}
-	if got, want := gitkit.CurrentBranch(t, fabricengine.RecordsWorktreePath(h.Location, slug)), fabricengine.RecordsBranchName(slug); got != want {
+	if got, want := gitkit.CurrentBranch(t, fabricengine.RecordsWorktreePath(h.Location, slug)), fabriclayout.RecordsBranchName(slug); got != want {
 		t.Errorf("records worktree branch = %q; want %q", got, want)
 	}
 }
@@ -180,7 +181,7 @@ func TestAdd_AdoptOnly(t *testing.T) {
 			}},
 			{"a standing anchor move record", func(t *testing.T, h *hubforge.Hub) {
 				t.Helper()
-				writeMoveRecord(t, h.PrimeRecords(), fabricengine.MoveRecord{A: ".", B: "sub", Kind: fabricengine.MoveKindMove, PID: 4242})
+				writeMoveRecord(t, h.PrimeRecords(), fabriclayout.MoveRecord{A: ".", B: "sub", Kind: fabriclayout.MoveKindMove, PID: 4242})
 			}},
 		}
 		for _, tt := range tests {
@@ -221,7 +222,7 @@ func TestAdd_AdoptOnly(t *testing.T) {
 
 		_, err := addAdoptOnly(h, slug)
 
-		requireNotLive(t, err, fabricengine.RecordsBranchName(slug), true)
+		requireNotLive(t, err, fabriclayout.RecordsBranchName(slug), true)
 		requireNothingCreated(t, h, slug)
 	})
 
@@ -230,11 +231,11 @@ func TestAdd_AdoptOnly(t *testing.T) {
 
 		const slug = "no-records"
 		h := goneLocally(t, slug)
-		mustGit(h.RecordsBare, "branch", "-D", fabricengine.RecordsBranchName(slug))
+		mustGit(h.RecordsBare, "branch", "-D", fabriclayout.RecordsBranchName(slug))
 
 		_, err := addAdoptOnly(h, slug)
 
-		requireNotLive(t, err, fabricengine.RecordsBranchName(slug), true)
+		requireNotLive(t, err, fabriclayout.RecordsBranchName(slug), true)
 		requireNothingCreated(t, h, slug)
 	})
 
@@ -264,12 +265,12 @@ func TestAdd_AdoptOnly(t *testing.T) {
 		t.Parallel()
 
 		const slug = "no-record"
-		weftBranch := fabricengine.RecordsBranchName(slug)
+		weftBranch := fabriclayout.RecordsBranchName(slug)
 		h := goneLocally(t, slug)
 		clone := t.TempDir()
 		mustGit(clone, "clone", "--quiet", h.RecordsBare, ".")
 		mustGit(clone, "checkout", "--quiet", weftBranch)
-		mustGit(clone, "rm", "-q", "--", fabricengine.OriginRecordRel())
+		mustGit(clone, "rm", "-q", "--", fabriclayout.OriginRecordRel())
 		gitkit.Git(t, clone, "commit", "-q", "-m", "drop the origin record")
 		mustGit(clone, "push", "--quiet", "origin", weftBranch)
 		tip := gitkit.RevParse(t, h.RecordsBare, weftBranch)
@@ -290,7 +291,7 @@ func TestAdd_AdoptOnly(t *testing.T) {
 		t.Parallel()
 
 		const slug = "diverged"
-		weftBranch := fabricengine.RecordsBranchName(slug)
+		weftBranch := fabriclayout.RecordsBranchName(slug)
 		h := goneLocally(t, slug)
 		mustGit(h.PrimeRecords(), "branch", weftBranch, gitkit.RevParse(t, h.RecordsBare, weftBranch))
 		seed := filepath.Join(t.TempDir(), "seed")
@@ -329,7 +330,7 @@ func TestAdd_AdoptOnly(t *testing.T) {
 		t.Parallel()
 
 		const slug = "reuse-behind"
-		weftBranch := fabricengine.RecordsBranchName(slug)
+		weftBranch := fabriclayout.RecordsBranchName(slug)
 		h := pushedAdoptPair(t, slug)
 		dropTaskWorktree(h, slug)
 		pushCommitToOrigin(t, h.RecordsBare, weftBranch)
@@ -398,7 +399,7 @@ func TestAdd_AdoptOnly(t *testing.T) {
 		t.Parallel()
 
 		const slug = "records-held"
-		weftBranch := fabricengine.RecordsBranchName(slug)
+		weftBranch := fabriclayout.RecordsBranchName(slug)
 		h := goneLocally(t, slug)
 		mustGit(h.PrimeRecords(), "branch", weftBranch, gitkit.RevParse(t, h.RecordsBare, weftBranch))
 		mustGit(h.PrimeRecords(), "worktree", "add", filepath.Join(t.TempDir(), "elsewhere"), weftBranch)

@@ -16,6 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -88,7 +89,7 @@ func (c *loomCLI) seedAndCommitBootstrap(slug, parentFlag string) (string, strin
 		// The Mutation Record Invariant covers fabric verb outcomes, not loom's own result.
 		// The recorder is therefore discarded rather than surfaced in the envelope.
 		originRec := fabricengine.NewMutations("")
-		if err := fabricengine.WriteOrigin(originRec, c.location, slug, fabricengine.Origin{ParentBranch: parent}); err != nil {
+		if err := fabricengine.WriteOrigin(originRec, c.location, slug, fabriclayout.Origin{ParentBranch: parent}); err != nil {
 			return "", "", bootstrapStageOrigin, err
 		}
 	}
@@ -99,7 +100,7 @@ func (c *loomCLI) seedAndCommitBootstrap(slug, parentFlag string) (string, strin
 	// WriteSeed is already idempotent against a byte-identical seed, so a re-run needs no sentinel handling of its own.
 	// A disagreeing seed's refusal propagates as a returned error here, at bootstrapStageSeed.
 	// The parent in this seed is the run's recorded startup choice, not the durable record.
-	// fabricengine.Origin.ParentBranch, written above, stays the durable record.
+	// fabriclayout.Origin.ParentBranch, written above, stays the durable record.
 	// resolveParentBranch refuses a disagreeing value.
 	existingSeed, seedFound, err := shedrun.ReadSeed(c.location, shedrun.SelfRunID)
 	if err != nil {
@@ -302,7 +303,7 @@ func loomSeedFor(recipe, parent, driver string) shedrun.Seed {
 // and the pins record is added only when its file exists.
 // It only stats that one file, so a Tier 1 test can pin the pathspec's exact shape without a real fabric behind it.
 func bootstrapCommitPaths(location *lymcwd.Location, withFriction bool) []string {
-	paths := []string{shedrun.StatusRel(location, shedrun.SelfRunID), shedrun.SeedRel(location, shedrun.SelfRunID), fabricengine.OriginRecordRel()}
+	paths := []string{shedrun.StatusRel(location, shedrun.SelfRunID), shedrun.SeedRel(location, shedrun.SelfRunID), fabriclayout.OriginRecordRel()}
 	if withFriction {
 		paths = append(paths, loomengine.LoomFrictionDirRel())
 	}
@@ -436,7 +437,7 @@ func (c *loomCLI) wireLanding() error {
 	if recipeHasEngine(c.recipe, samplerSessionEngine) {
 		slug := seedSlug(c.location.WorktreeName)
 		registerPane := func(pid int) error {
-			return runproc.Register(fabricengine.RunProcDir(c.location.HubPath), slug, runproc.ChildRecord(pid, runproc.RoleSession, nil))
+			return runproc.Register(fabriclayout.RunProcDir(c.location.HubPath), slug, runproc.ChildRecord(pid, runproc.RoleSession, nil))
 		}
 		c.env.Sampler.Sessions = c.runner
 		c.env.Sampler.SessionLive = sessionLiveness(c.reed.Status)

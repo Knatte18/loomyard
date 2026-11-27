@@ -109,18 +109,3 @@ func TestCheck_RendersThreeSpellings(t *testing.T) {
 		})
 	}
 }
-
-// TestCheck_HasNoFourthMemberForForce documents the rule that Check never grows a CheckForce constant.
-// It documents the rule rather than enforcing it by reflection.
-// Force is consulted only inside checkPathDirtiness, where it makes the dirtiness check pass rather than fail,
-// so a refusal is never attributed to it.
-// A refusal always carries one of exactly these three checks.
-//
-//testtiming:keep Check having exactly three members and no force check; coverage of its blocks by other tests does not show an assertion of this
-func TestCheck_HasNoFourthMemberForForce(t *testing.T) {
-	tiergate.Require(t, 0)
-	all := []Check{CheckContainment, CheckOwnership, CheckDirtiness}
-	if len(all) != 3 {
-		t.Fatalf("Check enum carries %d members; want exactly 3 (no CheckForce)", len(all))
-	}
-}

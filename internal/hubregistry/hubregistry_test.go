@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubregistry"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -22,11 +23,11 @@ import (
 func newHub(t *testing.T, root, name, shortname string) string {
 	t.Helper()
 	hub := filepath.Join(root, name)
-	if err := os.MkdirAll(fabricengine.BoltDir(hub), 0o755); err != nil {
+	if err := os.MkdirAll(fabriclayout.BoltDir(hub), 0o755); err != nil {
 		t.Fatalf("MkdirAll(bolt) = %v; want nil", err)
 	}
 	if shortname != "" {
-		if err := fabricengine.WriteShortname(fabricengine.BoltDir(hub), shortname); err != nil {
+		if err := fabricengine.WriteShortname(fabriclayout.BoltDir(hub), shortname); err != nil {
 			t.Fatalf("WriteShortname = %v; want nil", err)
 		}
 	}
@@ -137,7 +138,7 @@ func TestRecord(t *testing.T) {
 		if err := hubregistry.Record(dir, changed, "aa", now); err != nil {
 			t.Fatal(err)
 		}
-		if err := fabricengine.WriteShortname(fabricengine.BoltDir(changed), "bb"); err != nil {
+		if err := fabricengine.WriteShortname(fabriclayout.BoltDir(changed), "bb"); err != nil {
 			t.Fatal(err)
 		}
 		if err := hubregistry.Record(dir, other, "oo", now); err != nil {
@@ -264,7 +265,7 @@ func TestLookup(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		if err := fabricengine.WriteShortname(fabricengine.BoltDir(changed), "bb"); err != nil {
+		if err := fabricengine.WriteShortname(fabriclayout.BoltDir(changed), "bb"); err != nil {
 			t.Fatal(err)
 		}
 		if err := os.RemoveAll(removed); err != nil {

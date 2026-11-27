@@ -10,7 +10,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -61,7 +61,7 @@ func TestRecords(t *testing.T) {
 			t.Fatalf("WriteRecords() made %d commits; want 1", len(store.commits))
 		}
 		wantDigest := RecordsDigest([]byte(readFileString(t, d.Paths.Scope)), []byte(readFileString(t, d.Paths.Judged)), true, true)
-		wantTrailers := []fabricengine.Trailer{{Key: RecordsTrailerKey, Value: wantDigest}}
+		wantTrailers := []fabriclayout.Trailer{{Key: RecordsTrailerKey, Value: wantDigest}}
 		if diff := cmp.Diff(wantTrailers, store.commits[0].trailers); diff != "" {
 			t.Errorf("commit trailers mismatch (-want +got):\n%s", diff)
 		}
@@ -151,7 +151,7 @@ func TestRecords(t *testing.T) {
 		scope := `{"scope":"full"}`
 		writeFileString(t, d.Paths.Scope, scope)
 		digest := RecordsDigest([]byte(scope), nil, true, false)
-		if err := d.CommitWithTrailers([]string{durableRel(scopeFileName)}, []fabricengine.Trailer{{Key: RecordsTrailerKey, Value: digest}}); err != nil {
+		if err := d.CommitWithTrailers([]string{durableRel(scopeFileName)}, []fabriclayout.Trailer{{Key: RecordsTrailerKey, Value: digest}}); err != nil {
 			t.Fatalf("commit the scope alone: %v", err)
 		}
 		writeFileString(t, d.Paths.Judged, `{}`)
@@ -190,7 +190,7 @@ func TestRecords(t *testing.T) {
 		t.Parallel()
 		store := newCommitStore(t)
 		d := store.deps(NewPaths(store.root))
-		extra := fabricengine.Trailer{Key: "Drift-Baseline", Value: "abc"}
+		extra := fabriclayout.Trailer{Key: "Drift-Baseline", Value: "abc"}
 		if err := WriteRecords(d, setFull, extra); err != nil {
 			t.Fatalf("WriteRecords() = %v; want nil", err)
 		}

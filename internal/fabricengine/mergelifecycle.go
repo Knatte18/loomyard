@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -57,7 +58,7 @@ func concludeMergeSides(f *Fabric, rec *Mutations, st *mergeState, msg string) e
 		if err := f.saveMergeState(st); err != nil {
 			return err
 		}
-		rec.Append(KindMergeCommitted, f.warpPath, sha)
+		rec.Append(fabriclayout.KindMergeCommitted, f.warpPath, sha)
 	}
 
 	return nil
@@ -212,7 +213,7 @@ func mergeAttemptIncompleteReason(st *mergeState) []string {
 // A call that loses that race records up_to_date on both sides.
 // A crash before its conclude leaves exactly that record for this call to resume.
 // So the field comes from the record, not a constant.
-func (f *Fabric) MergeContinue(msg string) (res MergeResult, err error) {
+func (f *Fabric) MergeContinue(msg string) (res fabriclayout.MergeResult, err error) {
 	rec := NewMutations(filepath.Dir(f.warpPath))
 	defer func() { finalizeMergeResult(&res, rec) }()
 
@@ -224,29 +225,29 @@ func (f *Fabric) MergeContinue(msg string) (res MergeResult, err error) {
 	// Everything below the acquisition sees a state no other fabric writer can be mutating.
 	lockDir, err := f.ensureWeftLockDir()
 	if err != nil {
-		return MergeResult{}, err
+		return fabriclayout.MergeResult{}, err
 	}
 	fl, err := acquireWeftWriteLock(lockDir)
 	if err != nil {
-		return MergeResult{}, fmt.Errorf("fabricengine: acquire weft write lock: %w", err)
+		return fabriclayout.MergeResult{}, fmt.Errorf("fabricengine: acquire weft write lock: %w", err)
 	}
 	defer func() { _ = fl.Release() }()
 
 	st, err := f.loadMergeState()
 	if err != nil {
-		return MergeResult{}, err
+		return fabriclayout.MergeResult{}, err
 	}
 	if st == nil {
-		return MergeResult{}, f.mergeStateOrForeignErr()
+		return fabriclayout.MergeResult{}, f.mergeStateOrForeignErr()
 	}
 
 	warpConflicts, err := f.code.ConflictedFiles()
 	if err != nil {
-		return MergeResult{}, err
+		return fabriclayout.MergeResult{}, err
 	}
 	weftConflicts, err := f.records.ConflictedFiles()
 	if err != nil {
-		return MergeResult{}, err
+		return fabriclayout.MergeResult{}, err
 	}
 	var reasons []string
 	var stillConflicted []string
@@ -257,33 +258,33 @@ func (f *Fabric) MergeContinue(msg string) (res MergeResult, err error) {
 	reasons = append(reasons, mergeAttemptIncompleteReason(st)...)
 	recordedMergeGone, err := recordedMergeGoneReason(f, st)
 	if err != nil {
-		return MergeResult{}, err
+		return fabriclayout.MergeResult{}, err
 	}
 	reasons = append(reasons, recordedMergeGone...)
 	if len(reasons) > 0 {
-		return MergeResult{Conflicts: stillConflicted}, newMergeGuardError(reasons)
+		return fabriclayout.MergeResult{Conflicts: stillConflicted}, newMergeGuardError(reasons)
 	}
 
 	if err := concludeMergeSides(f, rec, st, msg); err != nil {
-		return MergeResult{}, err
+		return fabriclayout.MergeResult{}, err
 	}
 
 	newWarpHEAD, err := f.code.CurrentSHA()
 	if err != nil {
-		return MergeResult{}, fmt.Errorf("fabricengine: resolve checkout HEAD after merge: %w", err)
+		return fabriclayout.MergeResult{}, fmt.Errorf("fabricengine: resolve checkout HEAD after merge: %w", err)
 	}
 	newWeftHEAD, err := f.records.CurrentSHA()
 	if err != nil {
-		return MergeResult{}, fmt.Errorf("fabricengine: resolve checkout HEAD after merge: %w", err)
+		return fabriclayout.MergeResult{}, fmt.Errorf("fabricengine: resolve checkout HEAD after merge: %w", err)
 	}
 	if err := f.RecordCorrespondence(newWarpHEAD, newWeftHEAD); err != nil {
-		return MergeResult{}, err
+		return fabriclayout.MergeResult{}, err
 	}
 	if err := f.deleteMergeState(); err != nil {
-		return MergeResult{}, err
+		return fabriclayout.MergeResult{}, err
 	}
 
-	return MergeResult{
+	return fabriclayout.MergeResult{
 		AlreadyUpToDate: st.bothSidesAlreadyUpToDate(),
 		Conflicts:       mergeNoConflicts,
 		Committed:       st.landedConcludeCommit(),
@@ -304,7 +305,7 @@ func (f *Fabric) MergeContinue(msg string) (res MergeResult, err error) {
 // It then resets the warp side via resetMergeSides.
 // That reset covers a side that fast-forwarded or never moved.
 // It deletes the merge-state record and returns MergeResult{} with Committed false.
-func (f *Fabric) MergeAbort() (res MergeResult, err error) {
+func (f *Fabric) MergeAbort() (res fabriclayout.MergeResult, err error) {
 	rec := NewMutations(filepath.Dir(f.warpPath))
 	defer func() { finalizeMergeResult(&res, rec) }()
 
@@ -316,38 +317,38 @@ func (f *Fabric) MergeAbort() (res MergeResult, err error) {
 	// Everything below the acquisition sees a state no other fabric writer can be mutating.
 	lockDir, err := f.ensureWeftLockDir()
 	if err != nil {
-		return MergeResult{}, err
+		return fabriclayout.MergeResult{}, err
 	}
 	fl, err := acquireWeftWriteLock(lockDir)
 	if err != nil {
-		return MergeResult{}, fmt.Errorf("fabricengine: acquire weft write lock: %w", err)
+		return fabriclayout.MergeResult{}, fmt.Errorf("fabricengine: acquire weft write lock: %w", err)
 	}
 	defer func() { _ = fl.Release() }()
 
 	st, err := f.loadMergeState()
 	if err != nil {
-		return MergeResult{}, err
+		return fabriclayout.MergeResult{}, err
 	}
 	if st == nil {
-		return MergeResult{}, f.mergeStateOrForeignErr()
+		return fabriclayout.MergeResult{}, f.mergeStateOrForeignErr()
 	}
 
 	reasons, err := concludeLandedReason(f, st)
 	if err != nil {
-		return MergeResult{}, err
+		return fabriclayout.MergeResult{}, err
 	}
 	if len(reasons) > 0 {
-		return MergeResult{}, newMergeGuardError(reasons)
+		return fabriclayout.MergeResult{}, newMergeGuardError(reasons)
 	}
 
 	if err := f.resetMergeSides(rec, st.WarpStart); err != nil {
-		return MergeResult{}, err
+		return fabriclayout.MergeResult{}, err
 	}
 	if err := f.deleteMergeState(); err != nil {
-		return MergeResult{}, err
+		return fabriclayout.MergeResult{}, err
 	}
 
-	return MergeResult{Conflicts: mergeNoConflicts}, nil
+	return fabriclayout.MergeResult{Conflicts: mergeNoConflicts}, nil
 }
 
 // MergeInProgress reports whether fabric has a merge in progress on this pair.

@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -19,7 +20,7 @@ import (
 type seamFixture struct {
 	renderFixture
 	root  string
-	event fabricengine.WorktreeEvent
+	event fabriclayout.WorktreeEvent
 }
 
 func newSeamFixture(t *testing.T, anchorRel string) seamFixture {
@@ -36,7 +37,7 @@ func newSeamFixture(t *testing.T, anchorRel string) seamFixture {
 	return seamFixture{
 		renderFixture: f,
 		root:          root,
-		event:         fabricengine.WorktreeEvent{Root: root, Anchor: f.anchor, ScratchDir: f.scratch, BoltDir: f.bolt, Excluded: f.excluded},
+		event:         fabriclayout.WorktreeEvent{Root: root, Anchor: f.anchor, ScratchDir: f.scratch, BoltDir: f.bolt, Excluded: f.excluded},
 	}
 }
 

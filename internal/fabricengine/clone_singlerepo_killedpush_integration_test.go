@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -159,7 +159,7 @@ func TestCloneSingleRepo_SeedPushKilledBeforeOriginsAnswer(t *testing.T) {
 			} else if kept := "the hub at " + filepath.Join(container, entries[0].Name()) + " is kept"; !strings.Contains(err.Error(), kept) {
 				t.Errorf("clone error = %q; want it to contain %q", err.Error(), kept)
 			}
-			if got := refLines(t, bare, "%(refname)", fabricengine.RecordsNamespaceRoot); !slices.Equal(got, tt.wantNamespace) {
+			if got := refLines(t, bare, "%(refname)", fabriclayout.RecordsNamespaceRoot); !slices.Equal(got, tt.wantNamespace) {
 				t.Errorf("origin's records namespace = %v; want %v", got, tt.wantNamespace)
 			}
 		})

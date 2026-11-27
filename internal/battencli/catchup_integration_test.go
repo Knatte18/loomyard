@@ -14,6 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -39,7 +40,7 @@ func TestHubCatchUp(t *testing.T) {
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		alpha := hubforge.AddPair(t, h, "alpha")
 		beta := hubforge.AddPair(t, h, "beta")
-		alphaBranch, betaBranch := fabricengine.RecordsBranchName(alpha.Branch), fabricengine.RecordsBranchName(beta.Branch)
+		alphaBranch, betaBranch := fabriclayout.RecordsBranchName(alpha.Branch), fabriclayout.RecordsBranchName(beta.Branch)
 		gitkit.CommitFile(t, h.PairRecordsSibling("alpha"), "alpha.txt", "alpha\n", "alpha transition")
 		gitkit.CommitFile(t, h.PairRecordsSibling("beta"), "beta.txt", "beta\n", "beta transition")
 		alphaHead := gitkit.RevParse(t, h.PairRecordsSibling("alpha"), "HEAD")
@@ -90,7 +91,7 @@ func TestHubCatchUp(t *testing.T) {
 	t.Run("An_unreachable_origin_returns_ErrOriginUnreachable_and_pushes_nothing", func(t *testing.T) {
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		alpha := hubforge.AddPair(t, h, "alpha")
-		branch := fabricengine.RecordsBranchName(alpha.Branch)
+		branch := fabriclayout.RecordsBranchName(alpha.Branch)
 		gitkit.CommitFile(t, h.PairRecordsSibling("alpha"), "alpha.txt", "alpha\n", "alpha transition")
 		tipBefore := recordsTip(t, h, branch)
 		gitkit.Git(t, h.PairRecordsSibling("alpha"), "remote", "set-url", "origin", "http://127.0.0.1:1/x")
@@ -150,7 +151,7 @@ func TestHubCatchUp(t *testing.T) {
 
 		got := HubCatchUp(h.Location, func() ([]string, error) { return nil, nil }).Launcher
 
-		want := dobbyengine.Launcher{BoardDir: fabricengine.BoardDir(h.Location.HubPath), Shortname: hubforge.TestShortname}
+		want := dobbyengine.Launcher{BoardDir: fabriclayout.BoardDir(h.Location.HubPath), Shortname: hubforge.TestShortname}
 		if got != want {
 			t.Errorf("HubCatchUp().Launcher = %+v; want %+v", got, want)
 		}

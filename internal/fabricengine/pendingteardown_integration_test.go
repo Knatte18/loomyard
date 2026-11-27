@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -25,7 +26,7 @@ func TestRunTeardownChild_SettlesThePendingRecordOnceItEnds(t *testing.T) {
 	t.Parallel()
 	const slug = "pair"
 	taskTip := strings.Repeat("b", 40)
-	taskTag := ArchiveTagName(slug, taskTip)
+	taskTag := fabriclayout.ArchiveTagName(slug, taskTip)
 	encode := func(t *testing.T, job remoteTeardownJob) string {
 		t.Helper()
 		raw, err := json.Marshal(job)

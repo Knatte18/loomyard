@@ -19,6 +19,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -176,8 +177,8 @@ func isLandingProducer(producer string) bool {
 
 // ownMergeInLeftover reports whether st is a parked merge-in of parentBranch that the producer aborts and redoes itself:
 // a parked `merge-in` sourced from the parent branch, at Parent-Align or Finalize.
-func ownMergeInLeftover(st fabricengine.MidMergeState, producer, parentBranch string) bool {
-	return st.Kind == fabricengine.MidMergeParked && st.Verb == fabricengine.MergeVerbMergeIn && st.Source == parentBranch && isLandingProducer(producer)
+func ownMergeInLeftover(st fabriclayout.MidMergeState, producer, parentBranch string) bool {
+	return st.Kind == fabriclayout.MidMergeParked && st.Verb == fabriclayout.MergeVerbMergeIn && st.Source == parentBranch && isLandingProducer(producer)
 }
 
 // readRecordedParentBranch returns the parent branch the pair's fabric origin record names.
@@ -231,10 +232,10 @@ func (c *loomCLI) refuseOverUnfinishedMerge(ctx context.Context, out io.Writer, 
 	}
 	var msg string
 	switch st.Kind {
-	case fabricengine.MidMergeNone:
+	case fabriclayout.MidMergeNone:
 		return true
-	case fabricengine.MidMergeParked:
-		if st.Verb == fabricengine.MergeVerbMergeIn && isLandingProducer(producer) {
+	case fabriclayout.MidMergeParked:
+		if st.Verb == fabriclayout.MergeVerbMergeIn && isLandingProducer(producer) {
 			parentBranch, err := c.recordedParentBranch(c.location)
 			if err != nil {
 				_ = bootstrapLock.Release()

@@ -16,6 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/testkit/permkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -36,7 +37,7 @@ type fakeHubs struct {
 	registryErr error
 	// cwd is the hub the cwdHub seam answers, none when empty.
 	cwd         string
-	skip        map[string]fabricengine.BoltSkip
+	skip        map[string]fabriclayout.BoltSkip
 	pullErr     map[string]error
 	unpushedErr map[string]error
 	ahead       map[string]bool
@@ -62,7 +63,7 @@ const freshID = "fresh-id"
 func newFakeHubs(registry ...string) *fakeHubs {
 	return &fakeHubs{
 		registry:    registry,
-		skip:        map[string]fabricengine.BoltSkip{},
+		skip:        map[string]fabriclayout.BoltSkip{},
 		pullErr:     map[string]error{},
 		unpushedErr: map[string]error{},
 		ahead:       map[string]bool{},
@@ -101,7 +102,7 @@ func (f *fakeHubs) registrationTotal() int {
 
 // board returns the board directory the seams are keyed by for hub.
 func (f *fakeHubs) board(hub string) string {
-	return fabricengine.BoardDir(hub)
+	return fabriclayout.BoardDir(hub)
 }
 
 // requestsFor returns the owner write requests the hub received.
@@ -126,7 +127,7 @@ func (f *fakeHubs) requestTotal() int {
 func (f *fakeHubs) attach(d deps) deps {
 	d.hubs = func() ([]string, error) { return f.registry, f.registryErr }
 	d.cwdHub = func(string) (string, bool) { return f.cwd, f.cwd != "" }
-	d.pull = func(boardDir string) (fabricengine.BoltSkip, string, error) {
+	d.pull = func(boardDir string) (fabriclayout.BoltSkip, string, error) {
 		return f.skip[boardDir], "skip detail", f.pullErr[boardDir]
 	}
 	d.unpushed = func(boardDir string) (bool, error) { return f.ahead[boardDir], f.unpushedErr[boardDir] }
@@ -491,7 +492,7 @@ func TestName_Set(t *testing.T) {
 	t.Run("PullSkipOrErrorIsCheckedLocally", func(t *testing.T) {
 		t.Parallel()
 		f := newFakeHubs(hubA, hubB)
-		f.skip[f.board(hubA)] = fabricengine.BoltSkip("dirty")
+		f.skip[f.board(hubA)] = fabriclayout.BoltSkip("dirty")
 		f.pullErr[f.board(hubB)] = errors.New("pull boom")
 		path := machineFileAt(t, "", false)
 
@@ -719,10 +720,10 @@ func TestName_Set(t *testing.T) {
 		t.Parallel()
 		f := newFakeHubs()
 		container := t.TempDir()
-		if err := os.MkdirAll(fabricengine.BoltDir(container), 0o755); err != nil {
+		if err := os.MkdirAll(fabriclayout.BoltDir(container), 0o755); err != nil {
 			t.Fatalf("make the container's Bolt directory: %v", err)
 		}
-		if err := fabricengine.WriteShortname(fabricengine.BoltDir(container), "tst"); err != nil {
+		if err := fabricengine.WriteShortname(fabriclayout.BoltDir(container), "tst"); err != nil {
 			t.Fatalf("record a shortname: %v", err)
 		}
 		d := seams{path: machineFileAt(t, "", false), host: "box"}.deps(f)

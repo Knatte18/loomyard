@@ -7,7 +7,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/runpusher"
@@ -43,8 +43,8 @@ func TestPusherDeps(t *testing.T) {
 			wantCall: pushCall{
 				prime: prime, l: pair, slug: "task",
 				push: pairteardown.RunPush{
-					LockWait:       fabricengine.StatusPushLockWait,
-					TeardownWait:   fabricengine.StatusPushLockWait,
+					LockWait:       fabriclayout.StatusPushLockWait,
+					TeardownWait:   fabriclayout.StatusPushLockWait,
 					OwedUnrecorded: true,
 					InsidePair:     true,
 				},
@@ -56,7 +56,7 @@ func TestPusherDeps(t *testing.T) {
 			target: runpusher.Target{Location: prime},
 			wantCall: pushCall{
 				prime: prime, l: prime, slug: "",
-				push: pairteardown.RunPush{LockWait: fabricengine.StatusPushLockWait, OwedUnrecorded: true},
+				push: pairteardown.RunPush{LockWait: fabriclayout.StatusPushLockWait, OwedUnrecorded: true},
 			},
 		},
 	}

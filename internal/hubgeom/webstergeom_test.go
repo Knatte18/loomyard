@@ -1,5 +1,5 @@
 // webstergeom_test.go pins WebsterGeometry against the websterengine accessors.
-// It also pins it against planparser.PlanDir and fabricengine.StencilsDir,
+// It also pins it against planparser.PlanDir and fabriclayout.StencilsDir,
 // so this test cannot drift from those packages' own joins.
 // The fixture keeps the hub, the worktree root and the anchor path in three distinct directories,
 // so a field mix-up inside WebsterGeometry surfaces instead of passing silently.
@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -77,10 +77,10 @@ func TestWebsterGeometry(t *testing.T) {
 			if want := websterengine.PromptsDir(anchorPath); got.PromptsDir != want {
 				t.Errorf("WebsterGeometry(l).PromptsDir = %q; want %q", got.PromptsDir, want)
 			}
-			if want := fabricengine.StencilsDir(hub); got.StencilsDir != want {
+			if want := fabriclayout.StencilsDir(hub); got.StencilsDir != want {
 				t.Errorf("WebsterGeometry(l).StencilsDir = %q; want %q", got.StencilsDir, want)
 			}
-			if want := fabricengine.SpecsDir(hub); got.SpecsDir != want {
+			if want := fabriclayout.SpecsDir(hub); got.SpecsDir != want {
 				t.Errorf("WebsterGeometry(l).SpecsDir = %q; want %q", got.SpecsDir, want)
 			}
 			if want := planparser.PlanDir(anchorPath); got.PlanDir != want {
@@ -98,7 +98,7 @@ func TestWebsterGeometry(t *testing.T) {
 			if got.GateSlots == nil {
 				t.Fatal("WebsterGeometry(l).GateSlots = nil; want the hub's pool")
 			}
-			boardDir := fabricengine.BoardDir(hub)
+			boardDir := fabriclayout.BoardDir(hub)
 			if want := gateslot.Dir(boardDir); got.GateSlots.Dir != want {
 				t.Errorf("WebsterGeometry(l).GateSlots.Dir = %q; want %q", got.GateSlots.Dir, want)
 			}

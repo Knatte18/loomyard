@@ -19,7 +19,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fswatch"
 	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -898,7 +898,7 @@ func TestWatchdogCmd_ExitsZeroBeforeOrInsteadOfLooping(t *testing.T) {
 				logger.SetDurableSinkDir("")
 				logger.SetVerbosity(0)
 			})
-			scratch := fabricengine.HubScratchDir(hub)
+			scratch := fabriclayout.HubScratchDir(hub)
 			if err := os.MkdirAll(scratch, 0o755); err != nil {
 				t.Fatalf("mkdir scratch: %v", err)
 			}
@@ -1019,12 +1019,12 @@ func TestWatchdogCmd_ExitsZeroBeforeOrInsteadOfLooping(t *testing.T) {
 				t.Errorf("lister calls = %d, want none after the call that found the marker consumed (%d)", calls.Load(), goneCall.Load())
 			}
 			var trace strings.Builder
-			entries, err := os.ReadDir(fabricengine.HubLogsDir(hub))
+			entries, err := os.ReadDir(fabriclayout.HubLogsDir(hub))
 			if err != nil && !errors.Is(err, fs.ErrNotExist) {
 				t.Fatalf("read the hub logs directory: %v", err)
 			}
 			for _, entry := range entries {
-				body, err := os.ReadFile(filepath.Join(fabricengine.HubLogsDir(hub), entry.Name()))
+				body, err := os.ReadFile(filepath.Join(fabriclayout.HubLogsDir(hub), entry.Name()))
 				if err != nil {
 					t.Fatalf("read trace file: %v", err)
 				}

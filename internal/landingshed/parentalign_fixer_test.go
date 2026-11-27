@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -310,7 +310,7 @@ func TestMergeIn_Fixer(t *testing.T) {
 				brought(fx)
 				fx.mergeHead = "f1"
 				fx.reviewOff = tt.reviewOff
-				fx.lineChange = fabricengine.LineChange{Lines: tt.lines}
+				fx.lineChange = fabriclayout.LineChange{Lines: tt.lines}
 				fx.seedAttempts(t, tt.seed)
 				writeVerifyLog(t, fx.gate, "FAIL")
 				fx.scriptGate(tt.gate)
@@ -336,7 +336,7 @@ func TestMergeIn_Fixer(t *testing.T) {
 		fx := newMergeInFixture(t)
 		fx.m.deps.CodeReviewOff = nil
 		fx.mergeHead = "f1"
-		fx.lineChange = fabricengine.LineChange{Lines: 500}
+		fx.lineChange = fabriclayout.LineChange{Lines: 500}
 		fx.seedAttempts(t, spentEntry)
 
 		outcome, ptr := fx.call(t)
@@ -348,12 +348,12 @@ func TestMergeIn_Fixer(t *testing.T) {
 		t.Parallel()
 		tests := []struct {
 			name       string
-			change     fabricengine.LineChange
+			change     fabriclayout.LineChange
 			wantReason []string
 		}{
-			{name: "a change past finalize_fix_max_lines halts naming its commits", change: fabricengine.LineChange{Lines: 500}, wantReason: []string{"over the cap of 100", "t2..f1"}},
-			{name: "a change that edits a test file halts naming its commits", change: fabricengine.LineChange{Lines: 3, Paths: []string{"a/a_test.go"}}, wantReason: []string{"the test file a/a_test.go", "t2..f1"}},
-			{name: "a merge that exceeds the caps followed by a change within them is Done", change: fabricengine.LineChange{Lines: 3, Paths: []string{"a/a.go"}}},
+			{name: "a change past finalize_fix_max_lines halts naming its commits", change: fabriclayout.LineChange{Lines: 500}, wantReason: []string{"over the cap of 100", "t2..f1"}},
+			{name: "a change that edits a test file halts naming its commits", change: fabriclayout.LineChange{Lines: 3, Paths: []string{"a/a_test.go"}}, wantReason: []string{"the test file a/a_test.go", "t2..f1"}},
+			{name: "a merge that exceeds the caps followed by a change within them is Done", change: fabriclayout.LineChange{Lines: 3, Paths: []string{"a/a.go"}}},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -387,7 +387,7 @@ func TestMergeIn_Fixer(t *testing.T) {
 		t.Parallel()
 		fx := newMergeInFixture(t)
 		brought(fx)
-		fx.lineChange = fabricengine.LineChange{Lines: 500}
+		fx.lineChange = fabriclayout.LineChange{Lines: 500}
 		fx.seats.turns = []func(){fx.fixerTurn(t, fixedReport, "f1")}
 
 		if outcome, ptr := fx.call(t); outcome != shedengine.Done || len(fx.lineChangeCalls) != 0 {
@@ -449,7 +449,7 @@ func TestMergeIn_Fixer(t *testing.T) {
 				brought(fx)
 				fx.reviewOff = true
 				fx.mergeHead = "h5"
-				fx.lineChange = fabricengine.LineChange{Lines: 500}
+				fx.lineChange = fabriclayout.LineChange{Lines: 500}
 				fx.seedAttempts(t, tt.seed)
 				writeVerifyLog(t, fx.gate, "FAIL")
 				fx.scriptGate(tt.gate)

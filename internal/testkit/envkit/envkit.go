@@ -29,6 +29,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hardenshed"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -217,8 +218,8 @@ func LandingDeps(dir string) landingshed.Deps {
 			WaitPath:       parentlock.WaitRecordPath(filepath.Join(dir, "landing-scratch")),
 			PauseRequested: func() (bool, error) { return false, nil },
 		},
-		ReadParentTips: func(bool) (fabricengine.ParentTips, error) {
-			return fabricengine.ParentTips{Local: "tip", Upstream: "tip", Relation: fabricengine.ParentEqual}, nil
+		ReadParentTips: func(bool) (fabriclayout.ParentTips, error) {
+			return fabriclayout.ParentTips{Local: "tip", Upstream: "tip", Relation: fabriclayout.ParentEqual}, nil
 		},
 		HoldsWork:          func(string, string) (bool, error) { return false, nil },
 		ChangedPaths:       func(string, string) ([]string, error) { return nil, nil },
@@ -227,7 +228,7 @@ func LandingDeps(dir string) landingshed.Deps {
 		FixerSeats:         noopFixerSeats{},
 		DecisionRecordPath: filepath.Join(dir, "decision-record.md"),
 		PlanDir:            filepath.Join(dir, "plan"),
-		LineChange:         func(string, string) (fabricengine.LineChange, error) { return fabricengine.LineChange{}, nil },
+		LineChange:         func(string, string) (fabriclayout.LineChange, error) { return fabriclayout.LineChange{}, nil },
 		IsTestFile:         func(string) bool { return false },
 		RowEntry:           func(string) (int, error) { return 1, nil },
 		TaskRemoteTip:      func() (string, error) { return "", nil },
@@ -741,15 +742,15 @@ func driftDeps(root string) driftengine.Deps {
 		BranchPoint:  func() (string, error) { return "branch-point", nil },
 		DirtyPaths:   func() ([]string, error) { return nil, nil },
 		Commit:       func([]string) error { return nil },
-		CommitWithTrailers: func([]string, []fabricengine.Trailer) error {
+		CommitWithTrailers: func([]string, []fabriclayout.Trailer) error {
 			return nil
 		},
-		TrailerCommit: func(string, bool) (fabricengine.TrailerCommit, bool, error) {
-			return fabricengine.TrailerCommit{}, false, nil
+		TrailerCommit: func(string, bool) (fabriclayout.TrailerCommit, bool, error) {
+			return fabriclayout.TrailerCommit{}, false, nil
 		},
 		FileAt:       func(string, string) ([]byte, bool, error) { return nil, false, nil },
 		CommitsSince: func(string) ([]string, error) { return nil, nil },
-		ChangedFiles: func(string) ([]fabricengine.FileDiff, error) { return nil, nil },
+		ChangedFiles: func(string) ([]fabriclayout.FileDiff, error) { return nil, nil },
 		RangeDiff:    func(string) (string, error) { return "", nil },
 		CommitMessages: func(string) ([]string, error) {
 			return nil, nil
@@ -767,8 +768,8 @@ func driftDeps(root string) driftengine.Deps {
 			return driftengine.CompareResult{Passed: true}, nil
 		},
 		JudgeTable: func(string) (seatengine.Table, error) { return table() },
-		Checkouts: func() (fabricengine.CheckoutState, fabricengine.CheckoutState, error) {
-			return fabricengine.CheckoutState{}, fabricengine.CheckoutState{}, nil
+		Checkouts: func() (fabriclayout.CheckoutState, fabriclayout.CheckoutState, error) {
+			return fabriclayout.CheckoutState{}, fabriclayout.CheckoutState{}, nil
 		},
 		RecordsChangedSince: func(string) ([]string, error) { return nil, nil },
 		LockDecisionRecord: func() (func() error, error) {

@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -41,7 +42,7 @@ func TestWeftSHAForWarpSHA_DetachedPathSelfCorrection(t *testing.T) {
 	warpSHA := fabricengine.CommitWarpForTest(t, warpPath, "warp change")
 	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeRecords(), "weft change")
 
-	preAmendSHA, committed, err := fabricengine.CommitWeftForTest(f, []string{"_lym"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{})
+	preAmendSHA, committed, err := fabricengine.CommitWeftForTest(f, []string{"_lym"}, fabriclayout.DefaultCommitMessage, fabricengine.SyncOptions{})
 	if err != nil {
 		t.Fatalf("commitWeft() error = %v", err)
 	}
@@ -94,7 +95,7 @@ func staleCorrespondenceFixture(t *testing.T) (f *fabricengine.Fabric, warpSHA s
 
 	warpSHA = fabricengine.CommitWarpForTest(t, warpPath, "warp change")
 	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeRecords(), "weft change")
-	weftSHA, committed, err := fabricengine.CommitWeftForTest(f, []string{"_lym"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{})
+	weftSHA, committed, err := fabricengine.CommitWeftForTest(f, []string{"_lym"}, fabriclayout.DefaultCommitMessage, fabricengine.SyncOptions{})
 	if err != nil {
 		t.Fatalf("commitWeft() error = %v", err)
 	}

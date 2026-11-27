@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -23,7 +24,7 @@ import (
 func plantTransition(t *testing.T, d *divergedPair, codeTip string) {
 	t.Helper()
 
-	message := "transition\n\n" + fabricengine.TransitionTrailerKey + ": " + d.slug + "\n" + fabricengine.WarpSHATrailerKey + ": " + codeTip
+	message := "transition\n\n" + fabriclayout.TransitionTrailerKey + ": " + d.slug + "\n" + fabriclayout.WarpSHATrailerKey + ": " + codeTip
 	d.originCommit(d.weftBranch, "transition-"+codeTip[:8]+".txt", codeTip, message)
 	gitkit.Git(t, d.weftPath, "fetch")
 }
@@ -110,7 +111,7 @@ func TestHandOverTips(t *testing.T) {
 		if err != nil {
 			t.Fatalf("HandOverTips() error = %v", err)
 		}
-		mergeTag := fabricengine.OwnerArchiveTagName(slug, merge)
+		mergeTag := fabriclayout.OwnerArchiveTagName(slug, merge)
 		if !slices.Contains(res.Tags, mergeTag) {
 			t.Errorf("tags = %v; want the merge's tag %s among them", res.Tags, mergeTag)
 		}
@@ -215,7 +216,7 @@ func TestHandOverTips(t *testing.T) {
 		if got := gitkit.Git(t, d.hub.CodeBare, "for-each-ref", "--format=%(refname)", "refs/heads/"+d.warpBranch); got != "" {
 			t.Errorf("origin code branch refs = %q; want the branch the push created deleted", got)
 		}
-		tag := fabricengine.OwnerArchiveTagName(slug, localCode)
+		tag := fabriclayout.OwnerArchiveTagName(slug, localCode)
 		if got := tagTargetAt(t, d.hub.CodeBare, tag); got != localCode {
 			t.Errorf("origin tag %s points at %q; want the given-up tip %s", tag, got, localCode)
 		}
@@ -248,7 +249,7 @@ func TestHandOverTips(t *testing.T) {
 		if err != nil {
 			t.Fatalf("HandOverTips() error = %v", err)
 		}
-		tag := fabricengine.OwnerArchiveTagName(slug, primeRecordsTip)
+		tag := fabriclayout.OwnerArchiveTagName(slug, primeRecordsTip)
 		if hookCalls != 1 || !slices.Equal(res.Tags, []string{tag}) {
 			t.Fatalf("HandOverTips() = %+v with %d tag pushes; want the one tag %s", res, hookCalls, tag)
 		}

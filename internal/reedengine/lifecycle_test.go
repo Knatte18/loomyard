@@ -18,7 +18,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
@@ -677,7 +677,7 @@ func TestDown_WritesTheDiscoverStopOnlyWhenItEndsTheServer(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			e := newTestEngine(t)
 			logs := logcapture.Capture(t)
-			scratch := fabricengine.HubScratchDir(e.geom.HubPath)
+			scratch := fabriclayout.HubScratchDir(e.geom.HubPath)
 			signalPath := filepath.Join(scratch, DiscoverSignalFileName)
 			if err := os.MkdirAll(scratch, 0o755); err != nil {
 				t.Fatal(err)

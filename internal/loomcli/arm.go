@@ -15,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/arbiterstop"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/frictionengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
@@ -453,7 +454,7 @@ func (c *loomCLI) specFor(verb string) shedverbs.Spec {
 		spec.Loop.OnWatchdogKill = watchdogKillNote(c.stopStepRuns, spec.StepsDir)
 		spec.Loop.OnStepOrphaned = orphanedStepNote(c.stopStepRuns, spec.StepsDir)
 		spec.Loop.ReconcileOrphanedSteps = orphanedStepsNote(c.stopOrphanedStepRuns, spec.StepsDir)
-		locks := &parentlock.Store{Dir: parentlock.Dir(fabricengine.BoltDir(c.location.HubPath))}
+		locks := &parentlock.Store{Dir: parentlock.Dir(fabriclayout.BoltDir(c.location.HubPath))}
 		self := selfLockOwner(c.location, c.runID)
 		spec.Loop.OnExit = loopLockExit(locks, self)
 		covered := pauseCovered(c.location)

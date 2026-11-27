@@ -8,12 +8,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // writeVerdictRecords commits scope and judged as the records of d, with trailers on the records commit.
-func writeVerdictRecords(t *testing.T, d Deps, scope ScopeRecord, judged JudgedRecord, trailers ...fabricengine.Trailer) {
+func writeVerdictRecords(t *testing.T, d Deps, scope ScopeRecord, judged JudgedRecord, trailers ...fabriclayout.Trailer) {
 	t.Helper()
 	err := WriteRecords(d, func(s *ScopeRecord, j *JudgedRecord) error {
 		*s, *j = scope, judged
@@ -142,7 +142,7 @@ func TestVerdict(t *testing.T) {
 			LastCheck: CheckResult{Head: "head2", Passed: true, At: "2026-01-02T03:04:05Z", Mode: DiffLines},
 			Metadata:  Volatile{Files: []string{"_source.txt", "b.txt"}, Keys: []string{"captured_at"}},
 		}
-		writeVerdictRecords(t, d, scope, JudgedRecord{}, fabricengine.Trailer{Key: BaselineTrailerKey, Value: "digest"})
+		writeVerdictRecords(t, d, scope, JudgedRecord{}, fabriclayout.Trailer{Key: BaselineTrailerKey, Value: "digest"})
 		want := strings.Join([]string{"## Regression check", "", "- Scope: full.",
 			"- Baseline: captured at `code-head-0`, the base of this branch.",
 			"- Diff: lines.",

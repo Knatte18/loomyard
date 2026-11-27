@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -27,7 +27,7 @@ func TestRecipeKeyedWiring(t *testing.T) {
 	t.Parallel()
 
 	loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
-	if err := os.MkdirAll(fabricengine.BoardDir(loc.HubPath), 0o755); err != nil {
+	if err := os.MkdirAll(fabriclayout.BoardDir(loc.HubPath), 0o755); err != nil {
 		t.Fatalf("MkdirAll(board dir) = %v; want nil", err)
 	}
 	// The hub holds a gate.yaml and no darn.yaml: the plan source reads the gate call alone,

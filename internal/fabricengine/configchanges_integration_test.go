@@ -17,6 +17,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -203,7 +204,7 @@ func TestReadConfigChanges(t *testing.T) {
 			if tc.baseFile != "" {
 				gitkit.CommitFile(t, weftRoot, filepath.Join(l.AnchorRel, tc.baseFile), "base content", "base config")
 			}
-			forkPoint := gitkit.RevParse(t, weftRoot, fabricengine.RecordsBranchName("main"))
+			forkPoint := gitkit.RevParse(t, weftRoot, fabriclayout.RecordsBranchName("main"))
 
 			hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
@@ -219,7 +220,7 @@ func TestReadConfigChanges(t *testing.T) {
 				gitkit.CommitFile(t, weftRoot, filepath.Join(l.AnchorRel, tc.parentFileAfterFork), content, "parent change")
 			}
 			if tc.pickParentIntoTask {
-				gitkit.MustRun(t, pairWeft, "git", "cherry-pick", fabricengine.RecordsBranchName(tc.parentBranch))
+				gitkit.MustRun(t, pairWeft, "git", "cherry-pick", fabriclayout.RecordsBranchName(tc.parentBranch))
 			}
 
 			got, err := fabricengine.ReadConfigChanges(l, slug, tc.parentBranch, tc.rels)
@@ -227,7 +228,7 @@ func TestReadConfigChanges(t *testing.T) {
 				if err == nil {
 					t.Fatalf("ReadConfigChanges() = %+v, nil; want an error", got)
 				}
-				for _, branch := range []string{fabricengine.RecordsBranchName(slug), fabricengine.RecordsBranchName(tc.parentBranch)} {
+				for _, branch := range []string{fabriclayout.RecordsBranchName(slug), fabriclayout.RecordsBranchName(tc.parentBranch)} {
 					if !strings.Contains(err.Error(), branch) {
 						t.Errorf("ReadConfigChanges() error = %q; want it to name %q", err, branch)
 					}
@@ -278,10 +279,10 @@ func TestReadConfigChanges(t *testing.T) {
 			if got.Base != forkPoint {
 				t.Errorf("Base = %s; want the fork point %s", got.Base, forkPoint)
 			}
-			if wantTip := gitkit.RevParse(t, weftRoot, fabricengine.RecordsBranchName(slug)); got.Tip != wantTip {
+			if wantTip := gitkit.RevParse(t, weftRoot, fabriclayout.RecordsBranchName(slug)); got.Tip != wantTip {
 				t.Errorf("Tip = %s; want the task branch tip %s", got.Tip, wantTip)
 			}
-			if wantParentTip := gitkit.RevParse(t, weftRoot, fabricengine.RecordsBranchName(tc.parentBranch)); got.ParentTip != wantParentTip {
+			if wantParentTip := gitkit.RevParse(t, weftRoot, fabriclayout.RecordsBranchName(tc.parentBranch)); got.ParentTip != wantParentTip {
 				t.Errorf("ParentTip = %s; want the parent branch tip %s", got.ParentTip, wantParentTip)
 			}
 		})

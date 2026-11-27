@@ -11,7 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -111,7 +111,7 @@ func TestServeOptions(t *testing.T) {
 		if err := opts.Register(); err != nil {
 			t.Fatalf("Register: %v", err)
 		}
-		records, err := runproc.List(fabricengine.RunProcDir(hub), runproc.HubOwner)
+		records, err := runproc.List(fabriclayout.RunProcDir(hub), runproc.HubOwner)
 		if err != nil {
 			t.Fatalf("List: %v", err)
 		}

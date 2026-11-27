@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -45,7 +45,7 @@ func TestRaddleHandOff(t *testing.T) {
 
 			hub := t.TempDir()
 			if tt.store != nil {
-				directory := boardengine.RaddleStoreDir(fabricengine.BoardDir(hub), "the-sketch")
+				directory := boardengine.RaddleStoreDir(fabriclayout.BoardDir(hub), "the-sketch")
 				if err := os.MkdirAll(directory, 0o755); err != nil {
 					t.Fatal(err)
 				}

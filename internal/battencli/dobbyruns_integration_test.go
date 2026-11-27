@@ -13,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/runpusher"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -76,7 +77,7 @@ func TestDobbyRuns_ReadsTheKeptCancelTheHandOverMarkTheOwnerAndTheBoltHold(t *te
 			}
 			writeHubBoard(t, h, `{"version":1,`+tt.members+`"entries":[`+entry+`]}`)
 			if tt.markMade {
-				mark := fabricengine.HandOverMark{Machine: "other-machine", At: "2026-11-15T09:00:00Z", Written: time.Date(2026, 11, 15, 9, 5, 0, 0, time.UTC)}
+				mark := fabriclayout.HandOverMark{Machine: "other-machine", At: "2026-11-15T09:00:00Z", Written: time.Date(2026, 11, 15, 9, 5, 0, 0, time.UTC)}
 				if err := fabricengine.WriteHandOverMark(h.Path, "subject", mark); err != nil {
 					t.Fatalf("write the hand-over mark: %v", err)
 				}
@@ -137,7 +138,7 @@ func TestDobbyRuns_StartsThePusherOfOnlyAPairThisMachineOwns(t *testing.T) {
 			}
 			writeHubBoard(t, h, `{"version":1,`+tt.members+`"entries":[`+entry+`]}`)
 			if tt.markMade {
-				mark := fabricengine.HandOverMark{Machine: "other-machine", At: "2026-11-15T09:00:00Z", Written: time.Date(2026, 11, 15, 9, 5, 0, 0, time.UTC)}
+				mark := fabriclayout.HandOverMark{Machine: "other-machine", At: "2026-11-15T09:00:00Z", Written: time.Date(2026, 11, 15, 9, 5, 0, 0, time.UTC)}
 				if err := fabricengine.WriteHandOverMark(h.Path, "subject", mark); err != nil {
 					t.Fatalf("write the hand-over mark: %v", err)
 				}

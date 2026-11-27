@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -46,7 +47,7 @@ func failingInstructionFiles() ([]string, error) {
 // It is the shipped gate template with tier0 declared, so every gate lists it.
 func seedHubGateConfig(t *testing.T, hubPath string) {
 	t.Helper()
-	configDir := filepath.Join(fabricengine.BoardDir(hubPath), "_lym", "config")
+	configDir := filepath.Join(fabriclayout.BoardDir(hubPath), "_lym", "config")
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll(%q) = %v; want nil", configDir, err)
 	}

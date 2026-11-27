@@ -8,15 +8,16 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lock"
 )
 
 // writeMoveRecord stands record on the weft worktree at weftPath and removes it when the test ends.
-func writeMoveRecord(t *testing.T, weftPath string, record fabricengine.MoveRecord) {
+func writeMoveRecord(t *testing.T, weftPath string, record fabriclayout.MoveRecord) {
 	t.Helper()
 
-	if _, err := os.Stat(fabricengine.RecordsLockDirPath(weftPath)); err != nil {
-		if err := os.MkdirAll(fabricengine.RecordsLockDirPath(weftPath), 0o755); err != nil {
+	if _, err := os.Stat(fabriclayout.RecordsLockDirPath(weftPath)); err != nil {
+		if err := os.MkdirAll(fabriclayout.RecordsLockDirPath(weftPath), 0o755); err != nil {
 			t.Fatalf("create the lock directory of %s: %v", weftPath, err)
 		}
 	}
@@ -24,7 +25,7 @@ func writeMoveRecord(t *testing.T, weftPath string, record fabricengine.MoveReco
 	if err != nil {
 		t.Fatalf("marshal the move record: %v", err)
 	}
-	if err := os.WriteFile(fabricengine.MoveRecordPath(weftPath), data, 0o644); err != nil {
+	if err := os.WriteFile(fabriclayout.MoveRecordPath(weftPath), data, 0o644); err != nil {
 		t.Fatalf("write the move record of %s: %v", weftPath, err)
 	}
 	t.Cleanup(func() {

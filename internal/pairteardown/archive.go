@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
@@ -192,7 +192,7 @@ func (t *Teardown) archivePairLogs(slug string) {
 		return
 	}
 
-	archive := logArchive{root: fabricengine.LogArchiveDir(t.prime.HubPath), now: time.Now, removeAll: os.RemoveAll}
+	archive := logArchive{root: fabriclayout.LogArchiveDir(t.prime.HubPath), now: time.Now, removeAll: os.RemoveAll}
 	archive.prune()
 	entry, files, err := archive.write(slug, []archiveSource{{name: "trace", files: traceFiles}, {name: "verify", files: verifyFiles}})
 	if err != nil {

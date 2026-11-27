@@ -14,20 +14,21 @@ import (
 	"fmt"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
 // fabricSync stages and commits the _lym pathspec under anchorRel through the fabric repo that open returns.
 // The records commit's message ends with trailers, one line each, after the trailer fabric always writes.
 // A nil open means standalone mode: fabricSync then reports (false, nil) without touching git.
-func fabricSync(open func() (*fabricengine.Fabric, error), anchorRel, label string, trailers ...fabricengine.Trailer) (bool, error) {
+func fabricSync(open func() (*fabricengine.Fabric, error), anchorRel, label string, trailers ...fabriclayout.Trailer) (bool, error) {
 	opts := fabricengine.EnvSyncOptions()
 
 	if open == nil {
 		return false, nil
 	}
 
-	files := fabricengine.ScopedPathspec(anchorRel, []string{lymdirs.LymDirName})
+	files := fabriclayout.ScopedPathspec(anchorRel, []string{lymdirs.LymDirName})
 
 	var committed bool
 	if !opts.SkipGit {

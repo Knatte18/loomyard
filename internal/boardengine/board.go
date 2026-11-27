@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	flock "github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
@@ -276,7 +277,7 @@ func (b *Board) SetStatusPushed(slug string, status *string) error {
 	}
 	switch result.Skipped {
 	case "":
-	case fabricengine.BoltSkipFetchFailed:
+	case fabriclayout.BoltSkipFetchFailed:
 		return fmt.Errorf("%w: %s", ErrOwnerOriginUnreachable, result.SkipDetail)
 	default:
 		return fmt.Errorf("board: the status write was refused, since the board could not be brought up to date: %s", result.SkipDetail)

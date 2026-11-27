@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -242,9 +243,9 @@ func TestOwnerPreflight_TeardownResume(t *testing.T) {
 			fake := fakeOwners{machine: "here", owners: tt.owners}
 			c.owner = fake.seams()
 			reconciled := false
-			c.reconcile = func(string) (fabricengine.OriginReport, error) {
+			c.reconcile = func(string) (fabriclayout.OriginReport, error) {
 				reconciled = true
-				return fabricengine.OriginReport{}, nil
+				return fabriclayout.OriginReport{}, nil
 			}
 
 			err := c.ownerPreflight(true, shedengine.Status{CurrentProducer: tt.producer})
@@ -303,10 +304,10 @@ func TestPreflightRunOwner_RemoveFollowUp(t *testing.T) {
 			if err := state.WriteJSON(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, record); err != nil {
 				t.Fatalf("write the status file: %v", err)
 			}
-			c.reconcile = func(string) (fabricengine.OriginReport, error) {
-				return fabricengine.OriginReport{
-					Entries:  []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryStopped, WayForward: tt.wayForward}},
-					Branches: []fabricengine.BranchOutcome{{Branch: "some-slug-records", Repo: "records", Slug: slug, State: fabricengine.BranchDiverged, WayForward: tt.wayForward}},
+			c.reconcile = func(string) (fabriclayout.OriginReport, error) {
+				return fabriclayout.OriginReport{
+					Entries:  []fabriclayout.EntryOutcome{{Slug: slug, State: fabriclayout.EntryStopped, WayForward: tt.wayForward}},
+					Branches: []fabriclayout.BranchOutcome{{Branch: "some-slug-records", Repo: "records", Slug: slug, State: fabriclayout.BranchDiverged, WayForward: tt.wayForward}},
 				}, nil
 			}
 
@@ -339,7 +340,7 @@ func TestPassExitCode(t *testing.T) {
 	t.Parallel()
 
 	const slug = "some-slug"
-	elsewhereReport := fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryOwnedElsewhere, Owner: "there"}}}
+	elsewhereReport := fabriclayout.OriginReport{Entries: []fabriclayout.EntryOutcome{{Slug: slug, State: fabriclayout.EntryOwnedElsewhere, Owner: "there"}}}
 	tests := []struct {
 		name string
 		err  func() error

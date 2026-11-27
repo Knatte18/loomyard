@@ -226,19 +226,17 @@ func TestEnforcement_GeometryLiterals(t *testing.T) {
 	// geometryTokenOwners maps each policed geometry token to the set of directories permitted to declare or construct it in path-construction context: the finished per-token ownership map, converged batch by batch from a single allowlisted directory (internal/hubgeometry, then internal/lymcwd) to this map, each token's row landing in the same batch that moved its declaration.
 	//
 	geometryTokenOwners := map[string][]string{
-		// "_bolt" is declared once, as lymdirs.BoltDirName, which lymcwd.BoltDirName re-exports; fabricengine and runproc take the name from it.
+		// "_bolt" is declared once, as lymdirs.BoltDirName, which the layout package and runproc take the name from.
 		// "-LYMHUB" is dual-owned: internal/lymcwd keeps a private hubSuffix const
-		// (Location.RepoName derives from it), while internal/fabricengine
+		// (Location.RepoName derives from it), while internal/fabriclayout
 		// owns the exported HubPath constructor every other caller uses.
 		// The duplication is sanctioned by this map, not a leak.
 		"_bolt":   {"internal/lymdirs"},
 		"-weft":   {"internal/weftname"},
-		"-LYMHUB": {"internal/lymcwd", "internal/fabricengine"},
-		// "_portals" and "_launchers" are fabric's own illusion-maintenance
-		// plumbing: the portal/launcher path surface relocated to
-		// internal/fabricengine in this batch.
-		"_portals":   {"internal/fabricengine"},
-		"_launchers": {"internal/fabricengine"},
+		"-LYMHUB": {"internal/lymcwd", "internal/fabriclayout"},
+		// "_portals" and "_launchers" are reserved hub-level names, which the layout package owns.
+		"_portals":   {"internal/fabriclayout"},
+		"_launchers": {"internal/fabriclayout"},
 		// "_lym"'s declaration moved to internal/lymdirs (lymdirs.LymDirName) in
 		// this slice, the single leaf every module now names both directory
 		// tokens through.
@@ -577,9 +575,12 @@ func TestEnforcement_BoltDirNameDeclaredOnce(t *testing.T) {
 // weftnameImportOwners is the set of directories permitted to import internal/weftname: the
 // narrower owner set fabric-vocabulary-rule's rule (3) grants, excluding boardengine and
 // configsync (owners for the bare-token rule but not for this import rule).
+// fabriclayout is an owner too.
 var weftnameImportOwners = map[string]bool{
 	"internal/fabricengine": true,
 	"internal/fabriccli":    true,
+	// internal/fabriclayout imports weftname for the functions that compose and parse the weft branch names.
+	"internal/fabriclayout": true,
 	"internal/gitkit":       true,
 	// internal/weftname's own external-package test imports the package it tests.
 	"internal/weftname": true,
@@ -781,7 +782,8 @@ func importsWeftname(f *ast.File) bool {
 // and the root README.md, minus vocabScanAllowlist.
 // The host-phrase rule fails any production file or markdown body in its scope, owner set or not --
 // host is retired, not merely scoped, so the owner set never carves out a host hit.
-// The import rule fails any file outside {fabricengine, fabriccli, gitkit, hubforge} that imports internal/weftname,
+// The import rule's owners are {fabricengine, fabriccli, fabriclayout, gitkit, hubforge}.
+// It fails any other file that imports internal/weftname,
 // except weftnameTestImporter, which tests weftname.SiblingPath.
 // The walk is plain, not a //go:embed parse, so a future non-embedded template is policed rather than silently skipped.
 //

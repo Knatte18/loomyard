@@ -11,82 +11,57 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
-// ParentRelation names how a branch's local tip stands to its upstream tip.
-type ParentRelation string
-
-const (
-	// ParentEqual means the local and upstream tips are the same commit.
-	ParentEqual ParentRelation = "equal"
-	// ParentBehind means local is an ancestor of upstream, so a fast-forward reaches upstream.
-	ParentBehind ParentRelation = "behind"
-	// ParentAhead means upstream is an ancestor of local.
-	ParentAhead ParentRelation = "ahead"
-	// ParentDiverged means each tip holds a commit the other lacks.
-	ParentDiverged ParentRelation = "diverged"
-	// ParentNoUpstream means the branch tracks no remote branch, or the tracked one was never fetched.
-	ParentNoUpstream ParentRelation = "no-upstream"
-)
-
-// ParentTips is a branch's local and upstream tips and how they relate.
-type ParentTips struct {
-	// Local is the SHA of refs/heads/<branch>.
-	Local string
-	// Upstream is the SHA of the remote-tracking ref the branch tracks, empty when Relation is ParentNoUpstream.
-	Upstream string
-	// Relation is how Local stands to Upstream.
-	Relation ParentRelation
-}
-
 // ReadParentTips returns the tips of branch in the pair's code repository.
 // When fetch is true it fetches the repository's remotes first.
 // A missing local branch is an error naming it; a failed fetch is an error naming the command that reproduces it.
 // A branch with no configured or no fetched upstream returns ParentNoUpstream with an empty Upstream.
-func (f *Fabric) ReadParentTips(branch string, fetch bool) (ParentTips, error) {
+func (f *Fabric) ReadParentTips(branch string, fetch bool) (fabriclayout.ParentTips, error) {
 	if fetch {
 		if err := f.code.Fetch(); err != nil {
-			return ParentTips{}, fmt.Errorf("fabricengine: read tips of %q: %w", branch, err)
+			return fabriclayout.ParentTips{}, fmt.Errorf("fabricengine: read tips of %q: %w", branch, err)
 		}
 	}
 
 	local, err := f.code.RefSHA("refs/heads/" + branch)
 	if err != nil {
-		return ParentTips{}, fmt.Errorf("fabricengine: read tips of %q: local branch: %w", branch, err)
+		return fabriclayout.ParentTips{}, fmt.Errorf("fabricengine: read tips of %q: local branch: %w", branch, err)
 	}
 	upstream, hasUpstream, err := f.code.Upstream(branch)
 	if err != nil {
-		return ParentTips{}, fmt.Errorf("fabricengine: read tips of %q: upstream: %w", branch, err)
+		return fabriclayout.ParentTips{}, fmt.Errorf("fabricengine: read tips of %q: upstream: %w", branch, err)
 	}
 	if !hasUpstream {
-		return ParentTips{Local: local, Relation: ParentNoUpstream}, nil
+		return fabriclayout.ParentTips{Local: local, Relation: fabriclayout.ParentNoUpstream}, nil
 	}
 
-	tips := ParentTips{Local: local, Upstream: upstream}
+	tips := fabriclayout.ParentTips{Local: local, Upstream: upstream}
 	if local == upstream {
-		tips.Relation = ParentEqual
+		tips.Relation = fabriclayout.ParentEqual
 		return tips, nil
 	}
 	behind, err := f.code.IsAncestor(local, upstream)
 	if err != nil {
-		return ParentTips{}, fmt.Errorf("fabricengine: read tips of %q: classify: %w", branch, err)
+		return fabriclayout.ParentTips{}, fmt.Errorf("fabricengine: read tips of %q: classify: %w", branch, err)
 	}
 	if behind {
-		tips.Relation = ParentBehind
+		tips.Relation = fabriclayout.ParentBehind
 		return tips, nil
 	}
 	ahead, err := f.code.IsAncestor(upstream, local)
 	if err != nil {
-		return ParentTips{}, fmt.Errorf("fabricengine: read tips of %q: classify: %w", branch, err)
+		return fabriclayout.ParentTips{}, fmt.Errorf("fabricengine: read tips of %q: classify: %w", branch, err)
 	}
 	if ahead {
-		tips.Relation = ParentAhead
+		tips.Relation = fabriclayout.ParentAhead
 		return tips, nil
 	}
-	tips.Relation = ParentDiverged
+	tips.Relation = fabriclayout.ParentDiverged
 	return tips, nil
 }
 
@@ -313,71 +288,49 @@ func (f *Fabric) ConflictsWith(ref string) (bool, error) {
 	return !clean, nil
 }
 
-// FastForwardRefusal names why a fast-forward left the pair unmoved without returning an error.
-type FastForwardRefusal string
-
-const (
-	// FastForwardDirty means the code worktree carries uncommitted tracked changes.
-	FastForwardDirty FastForwardRefusal = "dirty"
-	// FastForwardMergeInProgress means a fabric merge record exists on the pair.
-	FastForwardMergeInProgress FastForwardRefusal = "merge-in-progress"
-	// FastForwardNotFastForward means the local head is not an ancestor of the freshly fetched upstream.
-	FastForwardNotFastForward FastForwardRefusal = "not-fast-forward"
-)
-
-// FastForwardResult reports what a fast-forward did to the pair.
-// It embeds MutationRecord, which is empty on a refusal.
-type FastForwardResult struct {
-	MutationRecord
-	// Refusal is set when the pair was left unmoved, and is empty otherwise.
-	Refusal FastForwardRefusal
-	// NewHead is the upstream SHA the code side moved to, empty when it did not move.
-	NewHead string
-}
-
 // FastForwardPair moves the pair to its upstream only as a fast-forward and never rewrites it.
 // A merge record, a dirty code worktree, or a local head that is not an ancestor of the fetched upstream is a refusal.
 // A refusal returns a nil error and moves nothing.
 // Once none applies, it pulls the weft first; a failure there is logged and does not stop the code side.
 // It then resets the code side to the upstream the fetch returned.
 // opts.SkipGit skips the weft side.
-func (f *Fabric) FastForwardPair(opts SyncOptions) (res FastForwardResult, err error) {
+func (f *Fabric) FastForwardPair(opts SyncOptions) (res fabriclayout.FastForwardResult, err error) {
 	rec := NewMutations(filepath.Dir(f.warpPath))
 	defer func() { res.Mutations = rec.Snapshot() }()
 
 	recordExists, err := f.mergeRecordExists()
 	if err != nil {
-		return FastForwardResult{}, err
+		return fabriclayout.FastForwardResult{}, err
 	}
 	if recordExists {
-		return FastForwardResult{Refusal: FastForwardMergeInProgress}, nil
+		return fabriclayout.FastForwardResult{Refusal: fabriclayout.FastForwardMergeInProgress}, nil
 	}
 
 	if err := f.code.Fetch(); err != nil {
-		return FastForwardResult{}, err
+		return fabriclayout.FastForwardResult{}, err
 	}
 	dirty, err := f.warpWorktreeDirty()
 	if err != nil {
-		return FastForwardResult{}, err
+		return fabriclayout.FastForwardResult{}, err
 	}
 	if dirty {
-		return FastForwardResult{Refusal: FastForwardDirty}, nil
+		return fabriclayout.FastForwardResult{Refusal: fabriclayout.FastForwardDirty}, nil
 	}
 
 	upstreamSHA, err := f.warpUpstreamSHA()
 	if err != nil {
-		return FastForwardResult{}, err
+		return fabriclayout.FastForwardResult{}, err
 	}
 	localHEAD, err := f.code.CurrentSHA()
 	if err != nil {
-		return FastForwardResult{}, err
+		return fabriclayout.FastForwardResult{}, err
 	}
 	isFastForward, err := f.code.IsAncestor(localHEAD, upstreamSHA)
 	if err != nil {
-		return FastForwardResult{}, err
+		return fabriclayout.FastForwardResult{}, err
 	}
 	if !isFastForward {
-		return FastForwardResult{Refusal: FastForwardNotFastForward}, nil
+		return fabriclayout.FastForwardResult{Refusal: fabriclayout.FastForwardNotFastForward}, nil
 	}
 
 	if !opts.SkipGit {
@@ -385,13 +338,13 @@ func (f *Fabric) FastForwardPair(opts SyncOptions) (res FastForwardResult, err e
 	}
 
 	if err := f.ResetHard(rec, upstreamSHA); err != nil {
-		return FastForwardResult{}, err
+		return fabriclayout.FastForwardResult{}, err
 	}
 	f.recordWarpAdvance(rec, localHEAD)
 	// The pair took in origin's commits; the worktree seam hears of them.
 	// The call logs a failure and never fails the move.
 	f.fireTookIn(localHEAD, upstreamSHA)
-	return FastForwardResult{NewHead: upstreamSHA}, nil
+	return fabriclayout.FastForwardResult{NewHead: upstreamSHA}, nil
 }
 
 // fastForwardWeft pulls the weft during a fast-forward.
@@ -435,6 +388,6 @@ func (f *Fabric) fastForwardWeft(rec *Mutations, opts SyncOptions) {
 		return
 	}
 	if after, afterErr := weftSHAOrEmpty(f); afterErr == nil && after != before {
-		rec.Append(KindRepoAdvanced, f.weftPath, after)
+		rec.Append(fabriclayout.KindRepoAdvanced, f.weftPath, after)
 	}
 }

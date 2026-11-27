@@ -10,6 +10,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -22,13 +23,13 @@ func TestSpawnDetachedPush_SkipEnvAndEmptyPaths(t *testing.T) {
 	tests := []struct {
 		name    string
 		envKey  string
-		req     PushSpawn
+		req     fabriclayout.PushSpawn
 		wantErr error
 	}{
-		{name: "SkipGit", envKey: "FABRIC_SKIP_GIT", req: PushSpawn{WarpPath: "/warp", WeftPath: "/weft"}},
-		{name: "SkipPush", envKey: "FABRIC_SKIP_PUSH", req: PushSpawn{WarpPath: "/warp", WeftPath: "/weft"}},
-		{name: "BothPathsEmpty", req: PushSpawn{}},
-		{name: "UnderTest", req: PushSpawn{WarpPath: "/warp", WeftPath: "/weft"}, wantErr: ErrSpawnUnderTest},
+		{name: "SkipGit", envKey: "FABRIC_SKIP_GIT", req: fabriclayout.PushSpawn{WarpPath: "/warp", WeftPath: "/weft"}},
+		{name: "SkipPush", envKey: "FABRIC_SKIP_PUSH", req: fabriclayout.PushSpawn{WarpPath: "/warp", WeftPath: "/weft"}},
+		{name: "BothPathsEmpty", req: fabriclayout.PushSpawn{}},
+		{name: "UnderTest", req: fabriclayout.PushSpawn{WarpPath: "/warp", WeftPath: "/weft"}, wantErr: ErrSpawnUnderTest},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -51,41 +52,41 @@ func TestPushSpawnCommand(t *testing.T) {
 
 	warp := filepath.Join(t.TempDir(), "warp")
 	weft := filepath.Join(t.TempDir(), "weft")
-	board := filepath.Join(t.TempDir(), BoltDirName)
+	board := filepath.Join(t.TempDir(), fabriclayout.BoltDirName)
 
 	tests := []struct {
 		name      string
-		req       PushSpawn
+		req       fabriclayout.PushSpawn
 		wantArgs  []string
 		wantOwner string
 	}{
 		{
 			"EveryFieldSet",
-			PushSpawn{WarpPath: warp, WeftPath: weft, PauseSlug: "task", TeardownSlug: "task", WorkDir: board},
+			fabriclayout.PushSpawn{WarpPath: warp, WeftPath: weft, PauseSlug: "task", TeardownSlug: "task", WorkDir: board},
 			[]string{"fabric", "--warp-path", warp, "--weft-path", weft, "--teardown-slug", "task", "--pause-slug=task", "push"},
 			"task",
 		},
 		{
 			"ParentLockedCarriesItsFlag",
-			PushSpawn{WarpPath: warp, WeftPath: weft, PauseSlug: "task", TeardownSlug: "task", ParentLocked: true, WorkDir: board},
+			fabriclayout.PushSpawn{WarpPath: warp, WeftPath: weft, PauseSlug: "task", TeardownSlug: "task", ParentLocked: true, WorkDir: board},
 			[]string{"fabric", "--warp-path", warp, "--weft-path", weft, "--teardown-slug", "task", "--parent-locked", "--pause-slug=task", "push"},
 			"task",
 		},
 		{
 			"EmptyWarpPathOmitsItsFlagOnly",
-			PushSpawn{WeftPath: weft, PauseSlug: "task", TeardownSlug: "task", WorkDir: board},
+			fabriclayout.PushSpawn{WeftPath: weft, PauseSlug: "task", TeardownSlug: "task", WorkDir: board},
 			[]string{"fabric", "--weft-path", weft, "--teardown-slug", "task", "--pause-slug=task", "push"},
 			"task",
 		},
 		{
 			"EmptyTeardownSlugOmitsItsFlagOnly",
-			PushSpawn{WeftPath: weft, PauseSlug: "gate", WorkDir: board},
+			fabriclayout.PushSpawn{WeftPath: weft, PauseSlug: "gate", WorkDir: board},
 			[]string{"fabric", "--weft-path", weft, "--pause-slug=gate", "push"},
 			runproc.HubOwner,
 		},
 		{
 			"EmptyPauseSlugIsStillWritten",
-			PushSpawn{WeftPath: weft, WorkDir: board},
+			fabriclayout.PushSpawn{WeftPath: weft, WorkDir: board},
 			[]string{"fabric", "--weft-path", weft, "--pause-slug=", "push"},
 			runproc.HubOwner,
 		},

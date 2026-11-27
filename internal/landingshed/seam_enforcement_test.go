@@ -21,6 +21,7 @@ import (
 var landingshedAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/beamsetting",
 	"github.com/Knatte18/loomyard/internal/fabricengine",
+	"github.com/Knatte18/loomyard/internal/fabriclayout",
 	"github.com/Knatte18/loomyard/internal/gateslot",
 	"github.com/Knatte18/loomyard/internal/githubclient",
 	"github.com/Knatte18/loomyard/internal/mergeresolve",

@@ -10,7 +10,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/creelconfig"
 	"github.com/Knatte18/loomyard/internal/creelengine"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/hubregistry"
 )
@@ -87,7 +87,7 @@ func (d *hubDirectory) RepositoryName(hubPath string) (string, error) {
 
 // TrustedHubs reads this hub's creel.yaml at each call, so a changed list applies with no daemon restart.
 func (d *hubDirectory) TrustedHubs() ([]string, error) {
-	cfg, err := creelconfig.LoadConfig(configengine.Dirs{Board: fabricengine.BoltDir(d.hubPath)})
+	cfg, err := creelconfig.LoadConfig(configengine.Dirs{Board: fabriclayout.BoltDir(d.hubPath)})
 	if err != nil {
 		return nil, err
 	}

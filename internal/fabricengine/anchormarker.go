@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -66,14 +67,14 @@ func commitAnchorMarker(rec *Mutations, weftPath, anchor, subject string) (strin
 	if err := root.WriteFile(lymcwd.AnchorFileName, []byte(anchor+"\n"), 0o644); err != nil {
 		return "", fmt.Errorf("fabricengine: write %s in %s: %w", lymcwd.AnchorFileName, weftPath, err)
 	}
-	rec.Append(KindFileWritten, filepath.Join(weftPath, lymcwd.AnchorFileName), "")
+	rec.Append(fabriclayout.KindFileWritten, filepath.Join(weftPath, lymcwd.AnchorFileName), "")
 
 	sha, committed, err := gitrepo.New(weftPath).StageAndCommit(subject, []string{lymcwd.AnchorFileName})
 	if err != nil {
 		return "", fmt.Errorf("fabricengine: commit %s in %s: %w", lymcwd.AnchorFileName, weftPath, err)
 	}
 	if committed {
-		rec.Append(KindCommitCreated, weftPath, sha)
+		rec.Append(fabriclayout.KindCommitCreated, weftPath, sha)
 	}
 	return sha, nil
 }

@@ -10,6 +10,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
@@ -45,6 +46,6 @@ func TaskSettingChain(prime *lymcwd.Location, slug string) (dobbyengine.TaskSett
 	}
 	chain.Anchors = append(chain.Anchors, prime.AnchorPath())
 	chain.Names = append(chain.Names, "")
-	chain.Board = fabricengine.BoltDir(prime.HubPath)
+	chain.Board = fabriclayout.BoltDir(prime.HubPath)
 	return chain, nil
 }

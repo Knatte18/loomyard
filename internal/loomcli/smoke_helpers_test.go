@@ -15,6 +15,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
@@ -330,19 +331,19 @@ func processesUnder(root string) []int {
 
 // hubStampPath returns the hub's build stamp file.
 func hubStampPath(loc *lymcwd.Location) string {
-	return hubreconcile.Geometry{BoardDir: fabricengine.BoardDir(loc.HubPath)}.StampPath()
+	return hubreconcile.Geometry{BoardDir: fabriclayout.BoardDir(loc.HubPath)}.StampPath()
 }
 
 // boardLensesDefault returns the path of the lenses repo default in loc's hub board.
 func boardLensesDefault(loc *lymcwd.Location) string {
-	return configengine.ConfigFile(fabricengine.BoardDir(loc.HubPath), "lenses")
+	return configengine.ConfigFile(fabriclayout.BoardDir(loc.HubPath), "lenses")
 }
 
 // deleteBoardLensesDefault commits the deletion of the lenses repo default in loc's hub board.
 // This is the state that a hub reconcile after a binary change reseeds.
 func deleteBoardLensesDefault(t *testing.T, loc *lymcwd.Location) {
 	t.Helper()
-	board := fabricengine.BoardDir(loc.HubPath)
+	board := fabriclayout.BoardDir(loc.HubPath)
 	gitkit.Git(t, board, "rm", "-q", "--", filepath.ToSlash(configengine.ConfigFileRel("lenses")))
 	gitkit.Git(t, board, "commit", "-q", "-m", "fixture: delete lenses default")
 }

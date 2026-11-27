@@ -19,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -70,7 +71,7 @@ type driftTables struct {
 func driftRecordsDeps(location *lymcwd.Location) driftengine.Deps {
 	return driftengine.Deps{
 		Paths: driftengine.NewPaths(location.AnchorPath()),
-		TrailerCommit: func(key string, newest bool) (fabricengine.TrailerCommit, bool, error) {
+		TrailerCommit: func(key string, newest bool) (fabriclayout.TrailerCommit, bool, error) {
 			return fabricengine.FindTrailerCommit(location, key, newest)
 		},
 		FileAt: func(rev, relPath string) ([]byte, bool, error) {
@@ -187,12 +188,12 @@ func driftDeps(location *lymcwd.Location, statusPath, statusLockPath string, tab
 			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, relPaths, fmt.Sprintf("loom: drift records for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
 			return err
 		},
-		CommitWithTrailers: func(relPaths []string, trailers []fabricengine.Trailer) error {
+		CommitWithTrailers: func(relPaths []string, trailers []fabriclayout.Trailer) error {
 			message := fmt.Sprintf("loom: drift records for %s", seedSlug(location.WorktreeName))
 			_, _, err := fabricengine.CommitAnchoredPathsWithTrailers(fabricengine.NewMutations(""), location, relPaths, message, trailers, fabricengine.EnvSyncOptions())
 			return err
 		},
-		TrailerCommit: func(key string, newest bool) (fabricengine.TrailerCommit, bool, error) {
+		TrailerCommit: func(key string, newest bool) (fabriclayout.TrailerCommit, bool, error) {
 			return fabricengine.FindTrailerCommit(location, key, newest)
 		},
 		FileAt: func(rev, relPath string) ([]byte, bool, error) {
@@ -205,7 +206,7 @@ func driftDeps(location *lymcwd.Location, statusPath, statusLockPath string, tab
 			}
 			return fabric.CommitLog(base, "HEAD")
 		},
-		ChangedFiles: func(base string) ([]fabricengine.FileDiff, error) {
+		ChangedFiles: func(base string) ([]fabriclayout.FileDiff, error) {
 			fabric, err := fabricengine.Open(location)
 			if err != nil {
 				return nil, err
@@ -263,7 +264,7 @@ func driftDeps(location *lymcwd.Location, statusPath, statusLockPath string, tab
 				JudgementPath:      paths.Judgement,
 			}, cfg, tables.registry)
 		},
-		Checkouts: func() (fabricengine.CheckoutState, fabricengine.CheckoutState, error) {
+		Checkouts: func() (fabriclayout.CheckoutState, fabriclayout.CheckoutState, error) {
 			return fabricengine.CheckoutStates(location)
 		},
 		RecordsChangedSince: func(rev string) ([]string, error) {
@@ -305,7 +306,7 @@ func driftDeps(location *lymcwd.Location, statusPath, statusLockPath string, tab
 			request.LockRetry = driftCompareLockRetry
 			return driftengine.RunCompare(ctx, request)
 		},
-		JudgeSnapshotDir: filepath.Join(fabricengine.HubScratchDir(location.HubPath), lymdirs.DriftJudgeDirName, seedSlug(location.WorktreeName)),
+		JudgeSnapshotDir: filepath.Join(fabriclayout.HubScratchDir(location.HubPath), lymdirs.DriftJudgeDirName, seedSlug(location.WorktreeName)),
 		LoomRecordsDirs:  loomRecordsDirs(location, tables.runID),
 		DecisionRecord:   tables.decisionRecordPath,
 		LockDecisionRecord: func() (func() error, error) {
@@ -435,7 +436,7 @@ func captureSpawnRequest(location *lymcwd.Location, paths driftengine.Paths, exe
 		Executable: executable,
 		AnchorDir:  location.AnchorPath(),
 		Paths:      paths,
-		RunProcDir: fabricengine.RunProcDir(location.HubPath),
+		RunProcDir: fabriclayout.RunProcDir(location.HubPath),
 		Owner:      location.WorktreeName,
 		RecordWait: driftCaptureRecordWait,
 		Poll:       driftCaptureRecordPoll,

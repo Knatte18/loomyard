@@ -16,7 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/boardserve"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
@@ -36,7 +36,7 @@ func TestBoardServeScenario(t *testing.T) {
 	hubforge.AddPair(t, hub, "serve-pair")
 	pair := hub.PairCodeWorktree("serve-pair")
 	primeAnchor := filepath.Join(hub.PrimeWorktree(), hub.Anchor)
-	paths := boardserve.Paths(fabricengine.HubScratchDir(hub.Path))
+	paths := boardserve.Paths(fabriclayout.HubScratchDir(hub.Path))
 
 	stubDir := t.TempDir()
 	recorded := filepath.Join(stubDir, "opened.txt")

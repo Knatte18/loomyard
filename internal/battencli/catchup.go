@@ -13,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -123,9 +124,9 @@ func (c *battenCLI) ownerAndSubject() (owner, subject string, ok bool) {
 // The catch-up removes the hub's desktop launcher once this machine owns nothing there.
 // A hub with no shortname keeps none.
 func HubCatchUp(prime *lymcwd.Location, runs func() ([]string, error)) dobbyengine.CatchUpDeps {
-	shortname, _ := fabricengine.ReadShortname(fabricengine.BoltDir(prime.HubPath))
+	shortname, _ := fabricengine.ReadShortname(fabriclayout.BoltDir(prime.HubPath))
 	return dobbyengine.CatchUpDeps{
-		Launcher:          dobbyengine.Launcher{BoardDir: fabricengine.BoardDir(prime.HubPath), Shortname: shortname},
+		Launcher:          dobbyengine.Launcher{BoardDir: fabriclayout.BoardDir(prime.HubPath), Shortname: shortname},
 		PullBolt:          func() error { return pullBoltForCatchUp(prime) },
 		Register:          func() error { return registerThisMachine(prime) },
 		Runs:              runs,
@@ -139,7 +140,7 @@ func HubCatchUp(prime *lymcwd.Location, runs func() ([]string, error)) dobbyengi
 
 // boltStands reports whether the hub of prime has a Bolt checkout, which a hub with no board does not.
 func boltStands(prime *lymcwd.Location) (bool, error) {
-	if _, err := os.Stat(fabricengine.BoltDir(prime.HubPath)); err != nil {
+	if _, err := os.Stat(fabriclayout.BoltDir(prime.HubPath)); err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return false, nil
 		}
@@ -158,14 +159,14 @@ func pullBoltForCatchUp(prime *lymcwd.Location) error {
 	if skip := boardengine.ApplySkipEnv(boardengine.Config{}); skip.SkipGit || skip.SkipPush {
 		return nil
 	}
-	skipped, detail, err := fabricengine.NewBolt(fabricengine.BoltDir(prime.HubPath)).Pull(fabricengine.SyncOptions{}, fabricengine.NewMutations(prime.HubPath))
+	skipped, detail, err := fabricengine.NewBolt(fabriclayout.BoltDir(prime.HubPath)).Pull(fabricengine.SyncOptions{}, fabricengine.NewMutations(prime.HubPath))
 	if err != nil {
 		return err
 	}
 	switch skipped {
 	case "":
 		return nil
-	case fabricengine.BoltSkipFetchFailed:
+	case fabriclayout.BoltSkipFetchFailed:
 		return fmt.Errorf("%w: %s", dobbyengine.ErrOriginUnreachable, detail)
 	default:
 		return fmt.Errorf("the board could not be brought up to date (%s): %s", skipped, detail)
@@ -183,7 +184,7 @@ func registerThisMachine(prime *lymcwd.Location) error {
 	if err != nil {
 		return err
 	}
-	if _, err := boardengine.RegisterMachine(fabricengine.BoardDir(prime.HubPath), boardengine.Registration{Identity: identity}); err != nil {
+	if _, err := boardengine.RegisterMachine(fabriclayout.BoardDir(prime.HubPath), boardengine.Registration{Identity: identity}); err != nil {
 		if errors.Is(err, boardengine.ErrOwnerOriginUnreachable) {
 			return fmt.Errorf("%w: %v", dobbyengine.ErrOriginUnreachable, err)
 		}
@@ -262,7 +263,7 @@ func readRunForCatchUp(prime *lymcwd.Location, slug string) (dobbyengine.CatchUp
 // pushOwedForCatchUp pushes the prime's records and then the pair of slug when it stands here, records side first.
 // A push that meets another machine's takeover entry hands the run over, and ends the call with nil.
 func pushOwedForCatchUp(prime *lymcwd.Location, slug string) error {
-	push := pairteardown.RunPush{LockWait: fabricengine.StatusPushLockWait}
+	push := pairteardown.RunPush{LockWait: fabriclayout.StatusPushLockWait}
 	if _, err := pairteardown.PushRun(prime, prime, slug, push); err != nil {
 		return handedOverIsDone(err)
 	}

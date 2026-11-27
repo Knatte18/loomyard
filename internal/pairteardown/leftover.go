@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/runproc"
@@ -35,7 +36,7 @@ func RemoveHandedOverPair(prime *lymcwd.Location, slug string) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	request := Request{Slug: slug, Local: true, Force: true, Verdict: fabricengine.EntryOwnedElsewhere}
+	request := Request{Slug: slug, Local: true, Force: true, Verdict: fabriclayout.EntryOwnedElsewhere}
 	session, err := td.EndSession(context.Background(), request)
 	if err != nil {
 		return Result{Session: session}, err
@@ -68,7 +69,7 @@ func RemoveOrphanPair(ctx context.Context, prime *lymcwd.Location, slug string) 
 	if err != nil {
 		return Result{}, err
 	}
-	return td.Run(ctx, Request{Slug: slug, Force: true, LeaveClaim: true, Verdict: fabricengine.EntryEnded})
+	return td.Run(ctx, Request{Slug: slug, Force: true, LeaveClaim: true, Verdict: fabriclayout.EntryEnded})
 }
 
 // RemoveBenchPairs tears down every bench pair of the task taskSlug in the hub and returns their slugs.
@@ -125,7 +126,7 @@ func RemoveBenchPairs(ctx context.Context, prime *lymcwd.Location, taskSlug stri
 		if _, err := fabricengine.ArchiveOwnerTips(prime.HubPath, archive); err != nil {
 			return removed, fmt.Errorf("pairteardown: archive the tips of the bench pair %q: %w", slug, err)
 		}
-		if _, err := td.Run(ctx, Request{Slug: slug, Force: true, LeaveClaim: true, Verdict: fabricengine.EntryEnded}); err != nil {
+		if _, err := td.Run(ctx, Request{Slug: slug, Force: true, LeaveClaim: true, Verdict: fabriclayout.EntryEnded}); err != nil {
 			return removed, fmt.Errorf("pairteardown: remove the bench pair %q: %w", slug, err)
 		}
 		removed = append(removed, slug)
@@ -144,7 +145,7 @@ func warnHalfRemovedBenchPair(taskSlug, name, reason string) {
 // runNamingReason returns why slug is a run's own pair: a board entry or a batten run directory names it.
 // It returns "" when neither does.
 func runNamingReason(prime *lymcwd.Location, slug string) (string, error) {
-	tasks, err := boardengine.ReadTasks(fabricengine.BoardDir(prime.HubPath))
+	tasks, err := boardengine.ReadTasks(fabriclayout.BoardDir(prime.HubPath))
 	if err != nil {
 		return "", fmt.Errorf("pairteardown: read the board before removing the pair %q: %w", slug, err)
 	}
@@ -168,7 +169,7 @@ func requireStillOrphan(prime *lymcwd.Location, slug string) error {
 	if reason != "" {
 		return fmt.Errorf("pairteardown: %q is no orphan pair: %s", slug, reason)
 	}
-	live, err := runproc.List(fabricengine.RunProcDir(prime.HubPath), slug)
+	live, err := runproc.List(fabriclayout.RunProcDir(prime.HubPath), slug)
 	if err != nil {
 		return fmt.Errorf("pairteardown: read the processes of %q: %w", slug, err)
 	}

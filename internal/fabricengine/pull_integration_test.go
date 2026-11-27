@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -41,7 +42,7 @@ func buildReconcileFixture(t *testing.T, fixturesDir string, n int) (f *fabricen
 	for i := 0; i < n; i++ {
 		warpSHA := fabricengine.CommitWarpForTest(t, warpPath, fmt.Sprintf("warp change %d", i))
 		fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeRecords(), fmt.Sprintf("weft change %d", i))
-		weftSHA, committed, err := fabricengine.CommitWeftForTest(f, []string{"_lym"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{})
+		weftSHA, committed, err := fabricengine.CommitWeftForTest(f, []string{"_lym"}, fabriclayout.DefaultCommitMessage, fabricengine.SyncOptions{})
 		if err != nil {
 			t.Fatalf("commitWeft() round %d error = %v", i, err)
 		}
@@ -234,13 +235,13 @@ func TestPull_WeftDivergedAndWarpFetchFails_PartialError(t *testing.T) {
 	weftFixture := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
 
-	// A real hub's weft primary checks out the suffixed branch (fabricengine.RecordsBranchName), never bare "main".
+	// A real hub's weft primary checks out the suffixed branch (fabriclayout.RecordsBranchName), never bare "main".
 	// That branch carries no upstream until something pushes it.
 	// A fresh hub's primary stays local-only until the first real push.
 	// Establish that upstream explicitly here.
 	// Without it, weftHasUpstream() reports false, so the weft pull is skipped as a vacuous success.
 	// The genuine divergence this test needs never happens.
-	weftBranch := fabricengine.RecordsBranchName("main")
+	weftBranch := fabriclayout.RecordsBranchName("main")
 	gitkit.MustRun(t, weftFixture.PrimeRecords(), "git", "push", "-u", "origin", weftBranch)
 
 	cloneB := filepath.Join(fixturesDir, "weft-cloneB")
@@ -326,7 +327,7 @@ func newDivergedWeftFixture(t *testing.T, originRel, originContent, originMarker
 	f, warpPath, bareDir, weftFixture, _, _, _ := buildReconcileFixture(t, fixturesDir, 1)
 	weftPath := weftFixture.PrimeRecords()
 
-	weftBranch := fabricengine.RecordsBranchName("main")
+	weftBranch := fabriclayout.RecordsBranchName("main")
 	gitkit.MustRun(t, weftPath, "git", "push", "-u", "origin", weftBranch)
 
 	cloneB := filepath.Join(fixturesDir, "weft-diverge-cloneB")
@@ -363,7 +364,7 @@ func newDivergedWeftFixture(t *testing.T, originRel, originContent, originMarker
 func TestPull_ReplayHeldByAPauseWithoutTheWeftLocks(t *testing.T) {
 	tiergate.Require(t, 1)
 	fx := newDivergedWeftFixture(t, "from-clone-b.txt", "b", "", "local-only.txt", "local weft change", "")
-	lockDir := fabricengine.RecordsLockDirPath(fx.weftPath)
+	lockDir := fabriclayout.RecordsLockDirPath(fx.weftPath)
 	waitsBeforeReplay := 0
 	waits := fabricengine.PassingPauseGateForTest(t, func() {
 		for _, name := range []string{fabricengine.WeftWriteLockFileForTest, fabricengine.WeftPushLockFileForTest} {
@@ -595,7 +596,7 @@ func TestPull_WeftDivergedWarpAdvancesCleanly(t *testing.T) {
 		t.Parallel()
 		fx := newDivergedWeftFixture(t, "from-clone-b.txt", "b", "", "local-only.txt", "local weft change", "")
 		warpHeadWas := fabricengine.CurrentSHAForTest(t, fx.warpPath)
-		writeMoveRecord(t, fx.weftPath, fabricengine.MoveRecord{A: ".", B: "x", Kind: fabricengine.MoveKindMove, PID: 4242})
+		writeMoveRecord(t, fx.weftPath, fabriclayout.MoveRecord{A: ".", B: "x", Kind: fabriclayout.MoveKindMove, PID: 4242})
 
 		result, err := fx.f.Pull(fabricengine.SyncOptions{})
 
@@ -695,7 +696,7 @@ func TestPull_RecordsStoreWithNoNamespacedFetchRefspecFails(t *testing.T) {
 	t.Parallel()
 	const slug = "ns-pull-norefspec"
 	h := hubforge.NewOneRepoHub(t, hubforge.OneRepoOptions{})
-	recordsBranch := fabricengine.RecordsBranchName(hubforge.AddPair(t, h, slug).Branch)
+	recordsBranch := fabriclayout.RecordsBranchName(hubforge.AddPair(t, h, slug).Branch)
 	sibling := h.PairRecordsSibling(slug)
 	before := gitkit.RevParse(t, sibling, "HEAD")
 	gitkit.CommitFile(t, sibling, "ahead.txt", "ahead\n", "origin's next records commit")

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/parentlock"
@@ -127,7 +128,7 @@ type Deps struct {
 	// A returned error is returned from Call.
 	//
 	// Nil means no reconcile.
-	Reconcile func() (fabricengine.OriginReport, error)
+	Reconcile func() (fabriclayout.OriginReport, error)
 	// RemoveFollowUp returns the step that settles the run's batten record.
 	// A stopped reason whose way forward names `lym fabric remove` ends in that step instead of the resume.
 	// The removal deletes the task worktree the resume runs in.
@@ -225,7 +226,7 @@ type Deps struct {
 	//
 	// A nil MergeState skips the step, a nil AbortMerge aborts nothing, and a nil StopConflictSession stops nothing.
 	// `internal/loomcli`'s `landingDeps` fills them all, and its drift guard keeps them filled.
-	MergeState          func() (fabricengine.MidMergeState, error)
+	MergeState          func() (fabriclayout.MidMergeState, error)
 	AbortMerge          func() error
 	StopConflictSession func() (guid string, err error)
 
@@ -267,7 +268,7 @@ type Deps struct {
 	//
 	// Nil means "no config changes to report".
 	// `internal/loomcli`'s `landingDeps` fills it, and its drift guard keeps it filled.
-	ConfigChanges func() (fabricengine.ConfigChanges, error)
+	ConfigChanges func() (fabriclayout.ConfigChanges, error)
 
 	// Notify queues one single-line notice for the hub's orchestrator.
 	// The finalize step calls it once, at Done, when the config changes produced a line.
@@ -365,7 +366,7 @@ type Deps struct {
 	// Lock is the parent lock's told seams, which the lock-taking rows share through one guard.
 	Lock ParentLockDeps
 	// ReadParentTips reads the parent branch's local and upstream tips over the task pair, fetching first when fetch is true.
-	ReadParentTips func(fetch bool) (fabricengine.ParentTips, error)
+	ReadParentTips func(fetch bool) (fabriclayout.ParentTips, error)
 	// HoldsWork reports whether merging source into base adds nothing, over the task pair.
 	HoldsWork func(base, source string) (bool, error)
 	// ChangedPaths returns the sorted paths that differ between from and to, over the task pair.
@@ -384,7 +385,7 @@ type Deps struct {
 	PlanDir string
 	// LineChange reads the paths, line count and added lines of the change between two commits of the task pair.
 	// The fixer's caps judge that change.
-	LineChange func(from, to string) (fabricengine.LineChange, error)
+	LineChange func(from, to string) (fabriclayout.LineChange, error)
 	// IsTestFile reports whether a slash-separated repository-relative path is a test file of the run's language.
 	// The fixer's kind cap uses it to judge a change.
 	IsTestFile func(path string) bool

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -41,7 +42,7 @@ func TestSeedLocalBares(t *testing.T) {
 		t.Errorf("weft refs = %q; want none", got)
 	}
 
-	if _, err := fabricengine.CloneHub(t.TempDir(), fabricengine.CloneOptions{WeftURL: weft, WarpURL: warp, Shortname: "tst"}); err != nil {
+	if _, err := fabricengine.CloneHub(t.TempDir(), fabriclayout.CloneOptions{WeftURL: weft, WarpURL: warp, Shortname: "tst"}); err != nil {
 		t.Errorf("CloneHub over the seeded bares error = %v", err)
 	}
 }
@@ -61,7 +62,7 @@ func TestSeedLocalOrigin(t *testing.T) {
 		t.Errorf("origin main holds %q; want only README", got)
 	}
 
-	if _, err := fabricengine.CloneHub(t.TempDir(), fabricengine.CloneOptions{WeftURL: origin, Shortname: "tst", SingleRepo: true}); err != nil {
+	if _, err := fabricengine.CloneHub(t.TempDir(), fabriclayout.CloneOptions{WeftURL: origin, Shortname: "tst", SingleRepo: true}); err != nil {
 		t.Errorf("CloneHub of a one-repository hub over the seeded origin error = %v", err)
 	}
 }

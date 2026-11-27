@@ -10,36 +10,10 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
-
-// HealthCause names the condition that made a health check fail,
-// so a caller can classify the failure without parsing a display string.
-type HealthCause string
-
-// The closed set of causes a failed health check can report, one per drift shape.
-const (
-	// CauseBranchMismatch reports that the weft worktree is not on the paired weft branch.
-	CauseBranchMismatch HealthCause = "branch-mismatch"
-	// CauseConfigLoadFailed reports that the wired name-set could not be loaded from fabric.yaml.
-	CauseConfigLoadFailed HealthCause = "config-load-failed"
-	// CauseJunctionMissing reports that a warp junction entry does not exist on disk.
-	CauseJunctionMissing HealthCause = "junction-missing"
-	// CauseNotAJunction reports that a warp junction entry exists but is not a link.
-	CauseNotAJunction HealthCause = "not-a-junction"
-	// CauseJunctionPointsElsewhere reports that a warp junction link resolves to the wrong target.
-	CauseJunctionPointsElsewhere HealthCause = "junction-points-elsewhere"
-)
-
-// HealthReason describes why a health check failed.
-// Cause is the drift shape a caller switches on.
-// Detail is a display string, worded for fabric, that a caller may print verbatim.
-// The zero value carries no reason, as it does for a passing check or an error.
-type HealthReason struct {
-	Cause  HealthCause
-	Detail string
-}
 
 // Healthy reports whether the warp worktree and its paired weft worktree are in sync.
 // The weft worktree must be on the paired weft branch,
@@ -48,27 +22,27 @@ type HealthReason struct {
 // It returns (true, HealthReason{}, nil) when they are in sync.
 // It returns (false, reason, nil) when they are out of sync.
 // It returns (false, HealthReason{}, err) when a system error occurs.
-func Healthy(l *lymcwd.Location) (ok bool, reason HealthReason, err error) {
+func Healthy(l *lymcwd.Location) (ok bool, reason fabriclayout.HealthReason, err error) {
 	// Both branch reads go through readBranch, not a bare `rev-parse --abbrev-ref HEAD`.
 	// readBranch answers an unborn branch, the state of the weft primary just after a clone of an empty remote.
 	// loom's preflight consumes this verdict, and a just-cloned hub must not make it hard-error.
 	warpBranch, err := readBranch(l.WorktreePath())
 	if err != nil {
-		return false, HealthReason{}, fmt.Errorf("get warp branch: %w", err)
+		return false, fabriclayout.HealthReason{}, fmt.Errorf("get warp branch: %w", err)
 	}
 
 	weftWorktree := RecordsWorktree(l)
 	weftBranch, err := readBranch(weftWorktree)
 	if err != nil {
-		return false, HealthReason{}, fmt.Errorf("get weft branch: %w", err)
+		return false, fabriclayout.HealthReason{}, fmt.Errorf("get weft branch: %w", err)
 	}
 
 	// The weft branch must be the suffixed sibling of the warp branch, not merely an equal name.
 	// The uniform fabric scheme is `<warp>/<warp>-weft`.
-	expectedWeftBranch := RecordsBranchName(warpBranch)
+	expectedWeftBranch := fabriclayout.RecordsBranchName(warpBranch)
 	if weftBranch != expectedWeftBranch {
-		return false, HealthReason{
-			Cause:  CauseBranchMismatch,
+		return false, fabriclayout.HealthReason{
+			Cause:  fabriclayout.CauseBranchMismatch,
 			Detail: fmt.Sprintf("fabric out of sync: on %s (want %s)", warpBranch, expectedWeftBranch),
 		}, nil
 	}
@@ -79,8 +53,8 @@ func Healthy(l *lymcwd.Location) (ok bool, reason HealthReason, err error) {
 	// so the caller treats it as a failed check rather than an aborted preflight.
 	names, err := RepoWiredNames(l)
 	if err != nil {
-		return false, HealthReason{
-			Cause:  CauseConfigLoadFailed,
+		return false, fabriclayout.HealthReason{
+			Cause:  fabriclayout.CauseConfigLoadFailed,
 			Detail: fmt.Sprintf("junction check unavailable: cannot load fabric.yaml: %v", err),
 		}, nil
 	}
@@ -93,42 +67,42 @@ func Healthy(l *lymcwd.Location) (ok bool, reason HealthReason, err error) {
 		// so a real directory where the junction belongs must not look merely missing.
 		if _, lstatErr := os.Lstat(j.Link); lstatErr != nil {
 			if os.IsNotExist(lstatErr) {
-				return false, HealthReason{
-					Cause:  CauseJunctionMissing,
+				return false, fabriclayout.HealthReason{
+					Cause:  fabriclayout.CauseJunctionMissing,
 					Detail: fmt.Sprintf("%s junction missing", j.Name),
 				}, nil
 			}
-			return false, HealthReason{}, fmt.Errorf("check warp junction: %w", lstatErr)
+			return false, fabriclayout.HealthReason{}, fmt.Errorf("check warp junction: %w", lstatErr)
 		}
 		isLink, err := fslink.IsLink(j.Link)
 		if err != nil {
-			return false, HealthReason{}, fmt.Errorf("check warp junction: %w", err)
+			return false, fabriclayout.HealthReason{}, fmt.Errorf("check warp junction: %w", err)
 		}
 		if !isLink {
 			// The status and reconcile paths word this drift shape the same way, so they describe it identically.
-			return false, HealthReason{
-				Cause:  CauseNotAJunction,
+			return false, fabriclayout.HealthReason{
+				Cause:  fabriclayout.CauseNotAJunction,
 				Detail: fmt.Sprintf("%s is not a junction", j.Name),
 			}, nil
 		}
 
 		linkTarget, err := fslink.PointsTo(j.Link)
 		if err != nil {
-			return false, HealthReason{}, fmt.Errorf("resolve warp junction: %w", err)
+			return false, fabriclayout.HealthReason{}, fmt.Errorf("resolve warp junction: %w", err)
 		}
 
 		weftTargetResolved, err := filepath.EvalSymlinks(j.Target)
 		if err != nil {
-			return false, HealthReason{}, fmt.Errorf("resolve weft target: %w", err)
+			return false, fabriclayout.HealthReason{}, fmt.Errorf("resolve weft target: %w", err)
 		}
 
 		if linkTarget != weftTargetResolved {
-			return false, HealthReason{
-				Cause:  CauseJunctionPointsElsewhere,
+			return false, fabriclayout.HealthReason{
+				Cause:  fabriclayout.CauseJunctionPointsElsewhere,
 				Detail: fmt.Sprintf("%s junction points elsewhere", j.Name),
 			}, nil
 		}
 	}
 
-	return true, HealthReason{}, nil
+	return true, fabriclayout.HealthReason{}, nil
 }

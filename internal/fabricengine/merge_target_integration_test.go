@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -86,7 +87,7 @@ func TestMerge_DirtyTargetHalts(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(targetWarpPath1, "tracked.txt"), []byte("v2 (uncommitted)\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(tracked.txt): %v", err)
 	}
-	_, errWarpDirty := target1.Merge("feature", fabricengine.MergeOptions{})
+	_, errWarpDirty := target1.Merge("feature", fabriclayout.MergeOptions{})
 
 	var guardErrWarp *fabricengine.MergeGuardError
 	if !errors.As(errWarpDirty, &guardErrWarp) {
@@ -120,7 +121,7 @@ func TestMerge_DirtyTargetHalts(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(targetWeftPath2, "_lym", "tracked.txt"), []byte("v2 (uncommitted)\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(_lym/tracked.txt): %v", err)
 	}
-	res, errWeftDirty := target2.Merge("feature", fabricengine.MergeOptions{})
+	res, errWeftDirty := target2.Merge("feature", fabriclayout.MergeOptions{})
 	if errWeftDirty != nil {
 		t.Fatalf("Merge(feature) [weft dirty] error = %v; want nil — a dirty weft must no longer halt a merge the warp alone completes", errWeftDirty)
 	}
@@ -154,7 +155,7 @@ func TestMerge_StaleTargetSyncsBeforeMerging(t *testing.T) {
 
 	advanceRemoteBranch(t, h.CodeBare, "target", "remote-warp.txt", "remote content\n", "origin: advance target")
 
-	res, err := target.Merge("feature", fabricengine.MergeOptions{})
+	res, err := target.Merge("feature", fabriclayout.MergeOptions{})
 	if err != nil {
 		t.Fatalf("Merge(feature) error = %v", err)
 	}
@@ -164,7 +165,7 @@ func TestMerge_StaleTargetSyncsBeforeMerging(t *testing.T) {
 
 	foundAdvance := false
 	for _, e := range res.Mutated().Entries() {
-		if e.Kind == fabricengine.KindRepoAdvanced {
+		if e.Kind == fabriclayout.KindRepoAdvanced {
 			foundAdvance = true
 		}
 	}
@@ -197,7 +198,7 @@ func TestMerge_DivergedTargetRefuses(t *testing.T) {
 	warpBefore := fabricengine.CurrentSHAForTest(t, targetWarpPath)
 	weftBefore := fabricengine.CurrentSHAForTest(t, h.PairRecordsSibling("target"))
 
-	res, err := target.Merge("feature", fabricengine.MergeOptions{})
+	res, err := target.Merge("feature", fabriclayout.MergeOptions{})
 	var guardErr *fabricengine.MergeGuardError
 	if !errors.As(err, &guardErr) {
 		t.Fatalf("Merge(feature) error = %v (%T); want *MergeGuardError", err, err)
@@ -233,7 +234,7 @@ func TestMerge_ConflictSelfAborts(t *testing.T) {
 	warpBeforeW := fabricengine.CurrentSHAForTest(t, hWarp.PairCodeWorktree("target"))
 	weftBeforeW := fabricengine.CurrentSHAForTest(t, hWarp.PairRecordsSibling("target"))
 
-	_, errWarpConflict := targetWarp.Merge("feature", fabricengine.MergeOptions{})
+	_, errWarpConflict := targetWarp.Merge("feature", fabriclayout.MergeOptions{})
 	var reqWarp *fabricengine.ErrMergeInRequired
 	if !errors.As(errWarpConflict, &reqWarp) {
 		t.Fatalf("Merge(feature) [warp conflict] error = %v (%T); want *ErrMergeInRequired", errWarpConflict, errWarpConflict)
@@ -269,7 +270,7 @@ func TestMerge_BothSidesAlreadyUpToDate(t *testing.T) {
 	branchAtCurrentHEAD(t, h.PrimeWorktree(), "feature")
 	branchAtCurrentHEAD(t, h.PrimeRecords(), "feature-weft")
 
-	res, err := target.Merge("feature", fabricengine.MergeOptions{})
+	res, err := target.Merge("feature", fabriclayout.MergeOptions{})
 	if err != nil {
 		t.Fatalf("Merge(feature) error = %v", err)
 	}
@@ -311,7 +312,7 @@ func divergeSideWithoutFetching(t *testing.T, worktree, bareRemote, branch, remo
 
 // assertMergeRefusedAsNotSynced asserts res/err is exactly the not-synced guard refusal and that
 // neither side of the target pair moved.
-func assertMergeRefusedAsNotSynced(t *testing.T, h *hubforge.Hub, res fabricengine.MergeResult, err error, warpBefore, weftBefore string) {
+func assertMergeRefusedAsNotSynced(t *testing.T, h *hubforge.Hub, res fabriclayout.MergeResult, err error, warpBefore, weftBefore string) {
 	t.Helper()
 
 	var guardErr *fabricengine.MergeGuardError
@@ -351,7 +352,7 @@ func TestMerge_UnfetchedDivergedTargetRefuses(t *testing.T) {
 	warpBefore := fabricengine.CurrentSHAForTest(t, h.PairCodeWorktree("target"))
 	weftBefore := fabricengine.CurrentSHAForTest(t, h.PairRecordsSibling("target"))
 
-	res, err := target.Merge("feature", fabricengine.MergeOptions{})
+	res, err := target.Merge("feature", fabriclayout.MergeOptions{})
 	assertMergeRefusedAsNotSynced(t, h, res, err, warpBefore, weftBefore)
 }
 
@@ -380,7 +381,7 @@ func TestMerge_FetchedBehindTargetIsSyncedNotRefused(t *testing.T) {
 		t.Fatalf("HEAD (%s) is not an ancestor of origin/target (%s); want the strictly-behind shape", head, tracking)
 	}
 
-	res, err := target.Merge("feature", fabricengine.MergeOptions{})
+	res, err := target.Merge("feature", fabriclayout.MergeOptions{})
 	if err != nil {
 		t.Fatalf("Merge(feature) error = %v; want a behind-but-not-diverged target to pass the sync guard and be fast-forwarded", err)
 	}

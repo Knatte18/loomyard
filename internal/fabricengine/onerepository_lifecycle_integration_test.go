@@ -17,6 +17,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -29,9 +30,9 @@ import (
 // The origin ref prefixes of a one-repository hub's tags, below the records namespace root.
 const (
 	// namespaceTagsPrefix holds the records store's tags.
-	namespaceTagsPrefix = fabricengine.RecordsNamespaceRoot + fabricengine.RecordsNamespaceTags
+	namespaceTagsPrefix = fabriclayout.RecordsNamespaceRoot + fabriclayout.RecordsNamespaceTags
 	// namespaceCodeTagsPrefix holds the code store's archive tags.
-	namespaceCodeTagsPrefix = fabricengine.RecordsNamespaceRoot + fabricengine.RecordsNamespaceCodeTags
+	namespaceCodeTagsPrefix = fabriclayout.RecordsNamespaceRoot + fabriclayout.RecordsNamespaceCodeTags
 )
 
 // TestOneRepositoryMerge_RefusesARecordsStoreThatLostItsFetchRefspecs asserts a merge reads the records layout first.
@@ -72,9 +73,9 @@ func TestOneRepositoryOrigin_PlainArchiveTagsAreListedWithTheirMove(t *testing.T
 	h := hubforge.NewOneRepoHub(t, hubforge.OneRepoOptions{})
 	bare, prime := h.CodeBare, h.PrimeWorktree()
 	tip := gitkit.RevParse(t, bare, "main")
-	archiveName := fabricengine.ArchiveTagName("t5", tip)
-	ownerName := fabricengine.OwnerArchiveTagName("t6", tip)
-	for _, ref := range []string{"refs/tags/" + archiveName, "refs/tags/" + ownerName, namespaceCodeTagsPrefix + fabricengine.ArchiveTagName("t7", tip)} {
+	archiveName := fabriclayout.ArchiveTagName("t5", tip)
+	ownerName := fabriclayout.OwnerArchiveTagName("t6", tip)
+	for _, ref := range []string{"refs/tags/" + archiveName, "refs/tags/" + ownerName, namespaceCodeTagsPrefix + fabriclayout.ArchiveTagName("t7", tip)} {
 		gitkit.Git(t, bare, "update-ref", ref, tip)
 	}
 	move := func(name string) string {
@@ -87,7 +88,7 @@ func TestOneRepositoryOrigin_PlainArchiveTagsAreListedWithTheirMove(t *testing.T
 	if err != nil {
 		t.Fatalf("PlainArchiveTagsOnOrigin() error = %v", err)
 	}
-	want := []fabricengine.PlainArchiveTag{
+	want := []fabriclayout.PlainArchiveTag{
 		{Ref: "refs/tags/" + ownerName, SHA: tip, WayForward: move(ownerName)},
 		{Ref: "refs/tags/" + archiveName, SHA: tip, WayForward: move(archiveName)},
 	}
@@ -189,7 +190,7 @@ func TestOneRepositoryPair_RecordsLiveInTheNamespace(t *testing.T) {
 		refsBefore := refLines(t, bare, "%(refname)")
 
 		added := hubforge.AddPair(t, h, slug)
-		recordsBranch := fabricengine.RecordsBranchName(added.Branch)
+		recordsBranch := fabriclayout.RecordsBranchName(added.Branch)
 		gitkit.CommitFile(t, h.PairCodeWorktree(slug), "work.txt", "work\n", "code work")
 		if _, err := oneRepoPairFabric(t, h, slug).PushBranch(fabricengine.SyncOptions{}); err != nil {
 			t.Fatalf("PushBranch: %v", err)
@@ -208,19 +209,19 @@ func TestOneRepositoryPair_RecordsLiveInTheNamespace(t *testing.T) {
 		}
 		var outside []string
 		for _, ref := range refsAddedSince(refsBefore, refLines(t, bare, "%(refname)")) {
-			if !strings.HasPrefix(ref, fabricengine.RecordsNamespaceRoot) {
+			if !strings.HasPrefix(ref, fabriclayout.RecordsNamespaceRoot) {
 				outside = append(outside, ref)
 			}
 		}
 		if want := []string{"refs/heads/" + added.Branch}; !slices.Equal(outside, want) {
-			t.Errorf("refs the pair added outside %s = %v; want %v", fabricengine.RecordsNamespaceRoot, outside, want)
+			t.Errorf("refs the pair added outside %s = %v; want %v", fabriclayout.RecordsNamespaceRoot, outside, want)
 		}
 
 		res, err := h.Topology.Remove(h.Location, slug, false, true, "")
 		if err != nil {
 			t.Fatalf("Remove(%s): %v", slug, err)
 		}
-		wantTag := fabricengine.ArchiveTagName(slug, tip)
+		wantTag := fabriclayout.ArchiveTagName(slug, tip)
 		if res.ArchiveTag != wantTag {
 			t.Fatalf("ArchiveTag = %q; want %q", res.ArchiveTag, wantTag)
 		}
@@ -241,7 +242,7 @@ func TestOneRepositoryPair_RecordsLiveInTheNamespace(t *testing.T) {
 		const slug = "ns-leftover"
 		h := hubforge.NewOneRepoHub(t, hubforge.OneRepoOptions{})
 		bare := h.CodeBare
-		recordsBranch := fabricengine.RecordsBranchName(hubforge.AddPair(t, h, slug).Branch)
+		recordsBranch := fabriclayout.RecordsBranchName(hubforge.AddPair(t, h, slug).Branch)
 		gitkit.CommitFile(t, h.PairRecordsSibling(slug), "extra.txt", "extra\n", "extra records work")
 		oneRepoPushRecords(t, h, slug)
 		oldTip := oneRepoRecordsTip(t, bare, recordsBranch)
@@ -257,15 +258,15 @@ func TestOneRepositoryPair_RecordsLiveInTheNamespace(t *testing.T) {
 		if got := refLines(t, bare, "%(refname)", namespaceHeadsPrefix+recordsBranch); len(got) != 0 {
 			t.Errorf("origin still holds %v after Add; want the archived leftover deleted", got)
 		}
-		if got := refLines(t, bare, "%(objectname)", namespaceTagsPrefix+fabricengine.ArchiveTagName(slug, oldTip)); !slices.Equal(got, []string{oldTip}) {
+		if got := refLines(t, bare, "%(objectname)", namespaceTagsPrefix+fabriclayout.ArchiveTagName(slug, oldTip)); !slices.Equal(got, []string{oldTip}) {
 			t.Errorf("origin's archive tag of the leftover = %v; want one at %s", got, oldTip)
 		}
 		deleted := false
 		for _, m := range res.Mutations.Entries() {
-			deleted = deleted || (m.Kind == fabricengine.KindRemoteBranchDeleted && m.Target == recordsBranch)
+			deleted = deleted || (m.Kind == fabriclayout.KindRemoteBranchDeleted && m.Target == recordsBranch)
 		}
 		if !deleted {
-			t.Errorf("record %+v carries no %s entry for %q", res.Mutations.Entries(), fabricengine.KindRemoteBranchDeleted, recordsBranch)
+			t.Errorf("record %+v carries no %s entry for %q", res.Mutations.Entries(), fabriclayout.KindRemoteBranchDeleted, recordsBranch)
 		}
 	})
 
@@ -285,7 +286,7 @@ func TestOneRepositoryPair_RecordsLiveInTheNamespace(t *testing.T) {
 		if err != nil {
 			t.Fatalf("archive of an origin-only branch: %v", err)
 		}
-		wantTag := fabricengine.ArchiveTagName(slug, tip)
+		wantTag := fabriclayout.ArchiveTagName(slug, tip)
 		if tag != wantTag || reason != "" {
 			t.Fatalf("archive = (%q, %q); want (%q, empty reason)", tag, reason, wantTag)
 		}
@@ -307,7 +308,7 @@ func TestOneRepositoryOrigin_ReconcileAndCleanupSeeTheNamespace(t *testing.T) {
 		boardkit.InstallReplay(t)
 		const slug = "ns-reconcile"
 		first := hubforge.NewOneRepoHub(t, hubforge.OneRepoOptions{})
-		recordsBranch := fabricengine.RecordsBranchName(hubforge.AddPair(t, first, slug).Branch)
+		recordsBranch := fabriclayout.RecordsBranchName(hubforge.AddPair(t, first, slug).Branch)
 		second := hubforge.CloneSecond(t, first)
 		if _, err := second.Topology.Add(second.Location, slug, fabricengine.AddOptions{}); err != nil {
 			t.Fatalf("adopt on the second machine: %v", err)
@@ -315,7 +316,7 @@ func TestOneRepositoryOrigin_ReconcileAndCleanupSeeTheNamespace(t *testing.T) {
 		tip := gitkit.CommitFile(t, second.PairRecordsSibling(slug), "second.txt", "second\n", "second machine records")
 		oneRepoPushRecords(t, second, slug)
 
-		report, err := fabricengine.ReconcileOrigin(first.Location, fabricengine.ReconcileScope{}, fabricengine.OriginSeams{}, fabricengine.ReconcileOptions{})
+		report, err := fabricengine.ReconcileOrigin(first.Location, fabriclayout.ReconcileScope{}, fabricengine.OriginSeams{}, fabricengine.ReconcileOptions{})
 		if err != nil {
 			t.Fatalf("ReconcileOrigin: %v", err)
 		}
@@ -349,10 +350,10 @@ func TestOneRepositoryOrigin_ReconcileAndCleanupSeeTheNamespace(t *testing.T) {
 		}
 		// A code branch is fabric-managed by a records branch of its own in the namespace.
 		landed("by-branch")
-		gitkit.Git(t, recordsRoot, "push", "origin", "HEAD:"+namespaceHeadsPrefix+fabricengine.RecordsBranchName("by-branch"))
+		gitkit.Git(t, recordsRoot, "push", "origin", "HEAD:"+namespaceHeadsPrefix+fabriclayout.RecordsBranchName("by-branch"))
 		// It is also managed by an archive tag in the namespace.
 		landed("by-tag")
-		archiveTag := fabricengine.ArchiveTagName("by-tag", gitkit.RevParse(t, recordsRoot, "HEAD"))
+		archiveTag := fabriclayout.ArchiveTagName("by-tag", gitkit.RevParse(t, recordsRoot, "HEAD"))
 		gitkit.Git(t, recordsRoot, "tag", archiveTag)
 		gitkit.Git(t, recordsRoot, "push", "origin", "refs/tags/"+archiveTag+":"+namespaceTagsPrefix+archiveTag)
 		// A code branch named like another's records branch is no evidence of that other's management.
@@ -360,7 +361,7 @@ func TestOneRepositoryOrigin_ReconcileAndCleanupSeeTheNamespace(t *testing.T) {
 		landed("decoy-weft")
 		landed("unmanaged")
 
-		nsBefore := refLines(t, bare, "%(refname) %(objectname)", fabricengine.RecordsNamespaceRoot)
+		nsBefore := refLines(t, bare, "%(refname) %(objectname)", fabriclayout.RecordsNamespaceRoot)
 		dry, err := h.Topology.CleanupRemoteWarp(h.Location, false, map[string]bool{})
 		if err != nil {
 			t.Fatalf("CleanupRemoteWarp dry run: %v", err)
@@ -377,7 +378,7 @@ func TestOneRepositoryOrigin_ReconcileAndCleanupSeeTheNamespace(t *testing.T) {
 			}
 		}
 		for branch := range entries {
-			if branch == fabricengine.RecordsBranchName("by-branch") || strings.HasPrefix(branch, fabricengine.RecordsNamespaceRoot) {
+			if branch == fabriclayout.RecordsBranchName("by-branch") || strings.HasPrefix(branch, fabriclayout.RecordsNamespaceRoot) {
 				t.Errorf("the sweep reports %q as a code branch; want records branches left out", branch)
 			}
 		}
@@ -394,7 +395,7 @@ func TestOneRepositoryOrigin_ReconcileAndCleanupSeeTheNamespace(t *testing.T) {
 		if got := refLines(t, bare, "%(refname)", "refs/heads/"+defaultBranch); len(got) != 1 {
 			t.Errorf("origin's code branch %s = %v after the sweep; want it kept", defaultBranch, got)
 		}
-		if got := refLines(t, bare, "%(refname) %(objectname)", fabricengine.RecordsNamespaceRoot); !slices.Equal(got, nsBefore) {
+		if got := refLines(t, bare, "%(refname) %(objectname)", fabriclayout.RecordsNamespaceRoot); !slices.Equal(got, nsBefore) {
 			t.Errorf("origin's records namespace = %v after the sweep; want it as before, %v", got, nsBefore)
 		}
 	})
@@ -413,7 +414,7 @@ func TestOneRepositorySecondMachine_AdoptPullAndReplay(t *testing.T) {
 		t.Helper()
 		boardkit.InstallReplay(t)
 		first = hubforge.NewOneRepoHub(t, hubforge.OneRepoOptions{})
-		recordsBranch = fabricengine.RecordsBranchName(hubforge.AddPair(t, first, slug).Branch)
+		recordsBranch = fabriclayout.RecordsBranchName(hubforge.AddPair(t, first, slug).Branch)
 		second = hubforge.CloneSecond(t, first)
 		if _, err := second.Topology.Add(second.Location, slug, fabricengine.AddOptions{}); err != nil {
 			t.Fatalf("adopt %s on the second machine: %v", slug, err)
@@ -426,7 +427,7 @@ func TestOneRepositorySecondMachine_AdoptPullAndReplay(t *testing.T) {
 
 		const slug = "ns-adopt"
 		first := hubforge.NewOneRepoHub(t, hubforge.OneRepoOptions{})
-		recordsBranch := fabricengine.RecordsBranchName(hubforge.AddPair(t, first, slug).Branch)
+		recordsBranch := fabriclayout.RecordsBranchName(hubforge.AddPair(t, first, slug).Branch)
 		gitkit.CommitFile(t, first.PairRecordsSibling(slug), "first.txt", "first\n", "first machine records")
 		oneRepoPushRecords(t, first, slug)
 		second := hubforge.CloneSecond(t, first)
@@ -528,7 +529,7 @@ func TestOneRepositorySecondMachine_AdoptPullAndReplay(t *testing.T) {
 		const slug = "ns-takeover"
 		boardkit.InstallReplay(t)
 		first := hubforge.NewOneRepoHub(t, hubforge.OneRepoOptions{})
-		recordsBranch := fabricengine.RecordsBranchName(hubforge.AddPair(t, first, slug).Branch)
+		recordsBranch := fabriclayout.RecordsBranchName(hubforge.AddPair(t, first, slug).Branch)
 		_, statusRel, err := shedrun.TreeRunFileRels(slug)
 		if err != nil {
 			t.Fatalf("TreeRunFileRels(%s): %v", slug, err)
@@ -586,7 +587,7 @@ func TestOneRepositorySecondMachine_AdoptPullAndReplay(t *testing.T) {
 
 		advanced := 0
 		for _, m := range res.Mutations.Entries() {
-			if m.Kind == fabricengine.KindRepoAdvanced && strings.Contains(m.Detail, originTip) {
+			if m.Kind == fabriclayout.KindRepoAdvanced && strings.Contains(m.Detail, originTip) {
 				advanced++
 			}
 		}
@@ -604,7 +605,7 @@ func TestOneRepositorySecondMachine_AdoptPullAndReplay(t *testing.T) {
 		const slug = "ns-checkout"
 		first := hubforge.NewOneRepoHub(t, hubforge.OneRepoOptions{})
 		second := hubforge.CloneSecond(t, first)
-		recordsBranch := fabricengine.RecordsBranchName(hubforge.AddPair(t, second, slug).Branch)
+		recordsBranch := fabriclayout.RecordsBranchName(hubforge.AddPair(t, second, slug).Branch)
 		tip := gitkit.CommitFile(t, second.PairRecordsSibling(slug), "second.txt", "second\n", "second machine records")
 		oneRepoPushRecords(t, second, slug)
 		gitkit.Git(t, first.PrimeWorktree(), "fetch", "origin")
@@ -632,7 +633,7 @@ func TestOneRepositorySecondMachine_AdoptPullAndReplay(t *testing.T) {
 
 		const slug = "ns-push-records"
 		h := hubforge.NewOneRepoHub(t, hubforge.OneRepoOptions{})
-		recordsBranch := fabricengine.RecordsBranchName(hubforge.AddPair(t, h, slug).Branch)
+		recordsBranch := fabriclayout.RecordsBranchName(hubforge.AddPair(t, h, slug).Branch)
 		tip := gitkit.CommitFile(t, h.PairRecordsSibling(slug), "unpushed.txt", "unpushed\n", "unpushed records")
 		codeRefsBefore := refLines(t, h.CodeBare, "%(refname) %(objectname)", "refs/heads/")
 
@@ -662,7 +663,7 @@ func TestOneRepositorySecondMachine_AdoptPullAndReplay(t *testing.T) {
 			t.Fatalf("ArchiveOwnerTips: %v", err)
 		}
 
-		wantTag := fabricengine.OwnerArchiveTagName(slug, tip)
+		wantTag := fabriclayout.OwnerArchiveTagName(slug, tip)
 		if !slices.Contains(tags, wantTag) {
 			t.Fatalf("ArchiveOwnerTips() = %v; want the records tip tagged %s", tags, wantTag)
 		}
@@ -674,9 +675,9 @@ func TestOneRepositorySecondMachine_AdoptPullAndReplay(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ReadOwnerArchives: %v", err)
 		}
-		var records []fabricengine.OwnerArchive
+		var records []fabriclayout.OwnerArchive
 		for _, archive := range archives {
-			if archive.Side == fabricengine.OwnerArchiveSideRecords {
+			if archive.Side == fabriclayout.OwnerArchiveSideRecords {
 				records = append(records, archive)
 			}
 		}

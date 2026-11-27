@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
@@ -215,7 +215,7 @@ func newRunFixtureOver(t *testing.T, numCards int, worktree string, git webstere
 			ScratchDir:   t.TempDir(),
 			ReportsDir:   t.TempDir(),
 			PromptsDir:   t.TempDir(),
-			StencilsDir:  fabricengine.StencilsDir(hubPath),
+			StencilsDir:  fabriclayout.StencilsDir(hubPath),
 			PlanDir:      planDir,
 			GateConfig:   func() (gateslot.Config, error) { return testGateConfig(), nil },
 			Git:          git,

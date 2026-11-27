@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -22,7 +23,7 @@ func TestGateCallSource(t *testing.T) {
 	hub := loc.HubPath
 	// The hub's board directory exists from the start, as in a real hub,
 	// so the config dirs the source reads name it before the gate.yaml does.
-	if err := os.MkdirAll(fabricengine.BoardDir(hub), 0o755); err != nil {
+	if err := os.MkdirAll(fabriclayout.BoardDir(hub), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	source := gateCallSource(fabricengine.ConfigDirs(loc))

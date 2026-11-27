@@ -1,6 +1,6 @@
 // Package fabriccli is the `lym fabric` command, driving `internal/fabricengine` (see docs/overview.md).
 // It is the one git-coordination module over a hub's code side (warp) and records side (weft).
-// Every weft branch is its warp branch's name plus the uniform suffix (`fabricengine.RecordsBranchName`).
+// Every weft branch is its warp branch's name plus the uniform suffix (`fabriclayout.RecordsBranchName`).
 // The clone-time primary is included.
 //
 // # Clone
@@ -8,7 +8,7 @@
 // `lym fabric clone` wires the whole hub in one command, with no follow-up activation step.
 // Warp junctions are excluded through the warp's `.git/info/exclude`, never a committed `.gitignore`.
 // The warp URL and the shortname are recorded once in the board's binding files:
-// `fabricengine.WarpBindingFileName` and `fabricengine.ShortnameFileName`;
+// `fabriclayout.WarpBindingFileName` and `fabriclayout.ShortnameFileName`;
 // the one-argument form derives the hub from them, and a supplied value that disagrees with a record is refused.
 // A failed render of heddle's files never fails the clone: the envelope's `seam_warning` names `lym heddle render`.
 //

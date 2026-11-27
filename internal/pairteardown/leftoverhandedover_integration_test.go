@@ -13,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -43,14 +44,14 @@ func TestRemoveHandedOverPair(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolveWorktree: %v", err)
 	}
-	if _, err := fabricengine.PushPairAnchored(pair, fabricengine.EnvSyncOptions(), fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded}); err != nil {
+	if _, err := fabricengine.PushPairAnchored(pair, fabricengine.EnvSyncOptions(), fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded}); err != nil {
 		t.Fatalf("priming push error = %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(h.PairCodeWorktree(slug), "dirty.txt"), []byte("uncommitted\n"), 0o644); err != nil {
 		t.Fatalf("write the uncommitted file: %v", err)
 	}
 	codeRef := "refs/heads/" + gitkit.CurrentBranch(t, h.PairCodeWorktree(slug))
-	recordsRef := "refs/heads/" + fabricengine.RecordsBranchName(gitkit.CurrentBranch(t, h.PairCodeWorktree(slug)))
+	recordsRef := "refs/heads/" + fabriclayout.RecordsBranchName(gitkit.CurrentBranch(t, h.PairCodeWorktree(slug)))
 	codeBefore := gitkit.RevParse(t, h.CodeBare, codeRef)
 	recordsBefore := gitkit.RevParse(t, h.RecordsBare, recordsRef)
 	if !p.sessionUp(t) {

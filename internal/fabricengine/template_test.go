@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 	"gopkg.in/yaml.v3"
@@ -23,9 +24,9 @@ import (
 // an empty default leaves pathspec free to name only the optional per-repo directories the operator adds.
 // The resolved value is whitespace-split and compared name by name, so a splitting bug cannot pass silently;
 // warp_exclude resolves to exactly CLAUDE.local.md, AGENTS.override.md, .heddle and .claude/settings.local.json;
-// and an empty pathspec leaves the routing set and the wired-name set at their structural sets alone.
+// and an empty pathspec leaves the routing set at its structural set alone.
 //
-//testtiming:keep the config template being valid YAML with its keys, resolving to an empty branch prefix, an empty pathspec, no added secret-file pattern and the default warp exclude paths, and degrading to the structural sets alone; coverage of its blocks by other tests does not show an assertion of this
+//testtiming:keep the config template being valid YAML with its keys, resolving to an empty branch prefix, an empty pathspec, no added secret-file pattern and the default warp exclude paths, and degrading to the structural routing set alone; coverage of its blocks by other tests does not show an assertion of this
 func TestConfigTemplate(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -89,17 +90,8 @@ func TestConfigTemplate(t *testing.T) {
 	}
 
 	gotPathspecNames := pathspecNames(cfg)
-	wantPathspecNames := structuralCommittedDirs
+	wantPathspecNames := fabriclayout.StructuralCommittedDirs()
 	if !reflect.DeepEqual(gotPathspecNames, wantPathspecNames) {
-		t.Errorf("pathspecNames(cfg) = %v; want %v (structuralCommittedDirs alone)", gotPathspecNames, wantPathspecNames)
-	}
-
-	// junctionNames reads its config from disk, so the test applies its wired-name-set formula directly:
-	// dedupUnion(structuralCommittedDirs, structuralNeverCommittedDirs, filterHubReserved(cfg.Dirs())):
-	// over an empty pathspec it degrades to the two structural sets alone.
-	gotJunctionNames := dedupUnion(structuralCommittedDirs, structuralNeverCommittedDirs, filterHubReserved(cfg.Dirs()))
-	wantJunctionNames := dedupUnion(structuralCommittedDirs, structuralNeverCommittedDirs)
-	if !reflect.DeepEqual(gotJunctionNames, wantJunctionNames) {
-		t.Errorf("junctionNames formula over cfg.Dirs() = %v; want %v (both structural sets alone)", gotJunctionNames, wantJunctionNames)
+		t.Errorf("pathspecNames(cfg) = %v; want %v (the committed structural set alone)", gotPathspecNames, wantPathspecNames)
 	}
 }

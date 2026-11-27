@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -138,7 +139,7 @@ func TestCommand_CloneEndToEnd(t *testing.T) {
 	}
 
 	// The prime warp worktree's structural junctions (_lym and .lym) must be wired.
-	// .lym is structural (structuralNeverCommittedDirs), and every clone wires it regardless of pathspec.
+	// .lym is structural (fabriclayout.StructuralNeverCommittedDirs), and every clone wires it regardless of pathspec.
 	// So the check uses it, not an optional config-driven name.
 	// An empty bare weft clone, with no commits and no fabric.yaml on weft:main, never wires such a name.
 	primeCwd := filepath.Join(hubPath, "clonecli-warp", "backend")
@@ -158,10 +159,10 @@ func TestCommand_CloneEndToEnd(t *testing.T) {
 	// Being present on disk is not enough.
 	// The checks use git ls-files to test tracked-ness directly, not a blanket `git status --porcelain` check.
 	// The .lym-anchor marker is tracked at the root of the prime's weft worktree and absent from the board.
-	boardDir := fabricengine.BoardDir(hubPath)
+	boardDir := fabriclayout.BoardDir(hubPath)
 	for _, relPath := range []string{
 		filepath.Join(lymdirs.LymDirName, "config", "fabric.yaml"),
-		fabricengine.WarpBindingFileName,
+		fabriclayout.WarpBindingFileName,
 	} {
 		tracked := strings.TrimSpace(gitOutputCLI(t, boardDir, "ls-files", "--", filepath.ToSlash(relPath)))
 		if tracked == "" {
@@ -202,7 +203,7 @@ func TestCommand_CloneEndToEnd(t *testing.T) {
 	baseRecorded := false
 	for _, entry := range mutations {
 		fields, _ := entry.(map[string]any)
-		if fields["kind"] == string(fabricengine.KindFileWritten) && fields["target"] == wantBaseTarget {
+		if fields["kind"] == string(fabriclayout.KindFileWritten) && fields["target"] == wantBaseTarget {
 			baseRecorded = true
 		}
 	}
@@ -284,7 +285,7 @@ func TestCommand_CloneEngineRefusalReachesEnvelopeUnchanged(t *testing.T) {
 	fixtures := t.TempDir()
 	weftBare := filepath.ToSlash(makeCLICloneWeftBare(t, fixtures, "clonecli-unbound-weft"))
 
-	_, engineErr := fabricengine.CloneHub(t.TempDir(), fabricengine.CloneOptions{WeftURL: weftBare})
+	_, engineErr := fabricengine.CloneHub(t.TempDir(), fabriclayout.CloneOptions{WeftURL: weftBare})
 	if !errors.Is(engineErr, fabricengine.ErrNoWarpBinding) {
 		t.Fatalf("CloneHub(%s) error = %v; want errors.Is ErrNoWarpBinding", weftBare, engineErr)
 	}
@@ -355,9 +356,9 @@ func TestCommand_ReconcileLeavesAMissingWarpBindingUnrecorded(t *testing.T) {
 		t.Fatalf("Execute(clone) output missing non-empty 'hub' key; got %v", cloneResult)
 	}
 
-	boardDir := fabricengine.BoardDir(hubPath)
+	boardDir := fabriclayout.BoardDir(hubPath)
 	baseRel := filepath.ToSlash(configengine.TemplateBaseFileRel("profiles"))
-	gitkit.MustRun(t, boardDir, "git", "rm", fabricengine.WarpBindingFileName, baseRel)
+	gitkit.MustRun(t, boardDir, "git", "rm", fabriclayout.WarpBindingFileName, baseRel)
 	gitkit.MustRun(t, boardDir, "git", "commit", "-m", "test fixture: unbind hub and drop the profiles template base")
 
 	// cwd is a per-call value, passed here rather than hoisted to a shared variable.
@@ -369,8 +370,8 @@ func TestCommand_ReconcileLeavesAMissingWarpBindingUnrecorded(t *testing.T) {
 	}
 
 	result := envelope.RequireOK(t, reconcileOut.String())
-	if binding, _ := result.Raw["warp_binding"].(string); binding != string(fabricengine.WarpBindingOutcomeSkipped) {
-		t.Errorf("Execute(reconcile) warp_binding = %q; want %q", binding, fabricengine.WarpBindingOutcomeSkipped)
+	if binding, _ := result.Raw["warp_binding"].(string); binding != string(fabriclayout.WarpBindingOutcomeSkipped) {
+		t.Errorf("Execute(reconcile) warp_binding = %q; want %q", binding, fabriclayout.WarpBindingOutcomeSkipped)
 	}
 	if detail, _ := result.Raw["warp_binding_detail"].(string); detail == "" {
 		t.Errorf("Execute(reconcile) output holds no warp_binding_detail; want the detail of the unrecorded binding")
@@ -379,8 +380,8 @@ func TestCommand_ReconcileLeavesAMissingWarpBindingUnrecorded(t *testing.T) {
 		t.Errorf("Execute(reconcile) output missing 'pairs' key; want it present and unchanged in shape")
 	}
 
-	if tracked := strings.TrimSpace(gitOutputCLI(t, boardDir, "ls-files", "--", fabricengine.WarpBindingFileName)); tracked != "" {
-		t.Errorf("%s is tracked on weft:main at %s after the reconcile; want it left unrecorded", fabricengine.WarpBindingFileName, boardDir)
+	if tracked := strings.TrimSpace(gitOutputCLI(t, boardDir, "ls-files", "--", fabriclayout.WarpBindingFileName)); tracked != "" {
+		t.Errorf("%s is tracked on weft:main at %s after the reconcile; want it left unrecorded", fabriclayout.WarpBindingFileName, boardDir)
 	}
 	if tracked := strings.TrimSpace(gitOutputCLI(t, boardDir, "ls-files", "--", baseRel)); tracked != baseRel {
 		t.Errorf("board tracks %q for the profiles template base after the reconcile; want %q committed again", tracked, baseRel)
@@ -452,7 +453,7 @@ func TestCommand_ReconcileBoardFailureFailsTheVerb(t *testing.T) {
 				t.Fatalf("Execute(clone) output missing non-empty 'hub' key; got %v", cloneResult)
 			}
 
-			boardDir := fabricengine.BoardDir(hubPath)
+			boardDir := fabriclayout.BoardDir(hubPath)
 			if tt.staleHubConfig {
 				landingConfig := configengine.ConfigFile(boardDir, "landing")
 				if err := os.Remove(landingConfig); err != nil {

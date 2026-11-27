@@ -1,6 +1,4 @@
-// recordslayout.go names the one-repository hub layout and reads it from a store's fetch refspecs.
-// It is the only place the layout is spelled:
-// the namespace constants, the board branch and the prime's records branch key.
+// recordslayout.go reads the one-repository hub layout from a store's fetch refspecs.
 
 package fabricengine
 
@@ -12,35 +10,18 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
-// The one-repository layout keeps a hub's records store under origin's refs/lym/ namespace.
-const (
-	// RecordsNamespaceRoot is the origin ref prefix that holds the records store's branches and tags.
-	RecordsNamespaceRoot = "refs/lym/"
-	// RecordsNamespaceHeads is the part of the namespace under RecordsNamespaceRoot that holds branches.
-	RecordsNamespaceHeads = "heads/"
-	// RecordsNamespaceTags is the part of the namespace under RecordsNamespaceRoot that holds tags.
-	RecordsNamespaceTags = "tags/"
-	// RecordsNamespaceCodeTags is the part under RecordsNamespaceRoot that holds the code store's archive tags.
-	// No fetch refspec of either store maps it, so the records store never lists or fetches a code commit through it.
-	RecordsNamespaceCodeTags = "code-tags/"
-	// OneRepositoryBoardBranch is the fixed branch of the board in a one-repository hub.
-	// It is a branch lym owns inside its records namespace, never read from git.
-	OneRepositoryBoardBranch = "main"
-	// PrimeRecordsBranchKey is the records store's git config key that names the prime's records branch.
-	PrimeRecordsBranchKey = "lym.primeRecordsBranch"
-)
-
 // oneRepositoryNamespace returns the ref namespace of a one-repository hub's records store.
 func oneRepositoryNamespace() gitrepo.RefNamespace {
 	return gitrepo.RefNamespace{
-		Heads: RecordsNamespaceRoot + RecordsNamespaceHeads,
-		Tags:  RecordsNamespaceRoot + RecordsNamespaceTags,
+		Heads: fabriclayout.RecordsNamespaceRoot + fabriclayout.RecordsNamespaceHeads,
+		Tags:  fabriclayout.RecordsNamespaceRoot + fabriclayout.RecordsNamespaceTags,
 	}
 }
 
@@ -120,7 +101,7 @@ func originNamespaceAt(dir string) (gitrepo.RefNamespace, error) {
 // A branch whose merge setting names a ref under that namespace marks it too.
 func recordsStoreClaim(dir string) (string, error) {
 	pushKey := "remote." + originRemoteName + ".push"
-	pattern := "^(" + strings.ReplaceAll(pushKey, ".", `\.`) + "|" + strings.ReplaceAll(strings.ToLower(PrimeRecordsBranchKey), ".", `\.`) + `|branch\..+\.merge)$`
+	pattern := "^(" + strings.ReplaceAll(pushKey, ".", `\.`) + "|" + strings.ReplaceAll(strings.ToLower(fabriclayout.PrimeRecordsBranchKey), ".", `\.`) + `|branch\..+\.merge)$`
 	listing, err := gitexec.Run([]string{"config", "--get-regexp", pattern}, dir)
 	var gitErr *gitexec.GitError
 	if errors.As(err, &gitErr) && gitErr.ExitCode == 1 {
@@ -134,11 +115,11 @@ func recordsStoreClaim(dir string) (string, error) {
 		name, value, _ := strings.Cut(strings.TrimSpace(line), " ")
 		value = strings.TrimSpace(value)
 		switch {
-		case name == strings.ToLower(PrimeRecordsBranchKey) && value != "":
-			return fmt.Sprintf("%s %s", PrimeRecordsBranchKey, value), nil
-		case name == pushKey && strings.Contains(value, RecordsNamespaceRoot):
+		case name == strings.ToLower(fabriclayout.PrimeRecordsBranchKey) && value != "":
+			return fmt.Sprintf("%s %s", fabriclayout.PrimeRecordsBranchKey, value), nil
+		case name == pushKey && strings.Contains(value, fabriclayout.RecordsNamespaceRoot):
 			return fmt.Sprintf("the push refspec %s", value), nil
-		case strings.HasPrefix(name, "branch.") && strings.HasSuffix(name, ".merge") && strings.HasPrefix(value, RecordsNamespaceRoot):
+		case strings.HasPrefix(name, "branch.") && strings.HasSuffix(name, ".merge") && strings.HasPrefix(value, fabriclayout.RecordsNamespaceRoot):
 			return fmt.Sprintf("the upstream setting %s %s", name, value), nil
 		}
 	}
@@ -206,7 +187,7 @@ func readOriginLayout(cwd, url string) (originLayout, error) {
 			layout.heads[name] = sha
 		}
 	}
-	layout.boardTip = layout.heads[OneRepositoryBoardBranch]
+	layout.boardTip = layout.heads[fabriclayout.OneRepositoryBoardBranch]
 	return layout, nil
 }
 
@@ -218,7 +199,7 @@ func readOriginLayout(cwd, url string) (originLayout, error) {
 // It refuses one whose default branch is a records repository.
 // It refuses one whose default branch tracks the earlier layout's directories.
 // The default branch's root is read through a throwaway shallow clone under cwd.
-func refuseOneURLClone(cwd string, layout originLayout, opts CloneOptions) error {
+func refuseOneURLClone(cwd string, layout originLayout, opts fabriclayout.CloneOptions) error {
 	legacyRefusal := fmt.Errorf("%s holds the branch %s, the layout of an earlier one-repository hub; "+
 		"way forward: delete %s on origin and remove %s and %s from the code branches, then clone again",
 		opts.WeftURL, legacyBoltBranch, legacyBoltBranch, lymcwd.AnchorFileName, lymdirs.LymDirName)
@@ -229,13 +210,13 @@ func refuseOneURLClone(cwd string, layout originLayout, opts CloneOptions) error
 		if len(layout.heads) > 0 && layout.boardTip == "" {
 			return fmt.Errorf("%s holds records under %s and no board, so a one-repository seed stopped before its board landed; "+
 				"way forward: run `lym fabric clone --single-repo --shortname <shortname> %s` to seed it",
-				opts.WeftURL, RecordsNamespaceRoot, opts.WeftURL)
+				opts.WeftURL, fabriclayout.RecordsNamespaceRoot, opts.WeftURL)
 		}
 		return nil
 	}
 	if layout.boardTip != "" {
 		return fmt.Errorf("%s already holds a one-repository hub's board under %s; way forward: run the same clone without --single-repo to join it",
-			opts.WeftURL, RecordsNamespaceRoot)
+			opts.WeftURL, fabriclayout.RecordsNamespaceRoot)
 	}
 
 	bindingFound, recordsFound, err := probeCodeOriginRoot(cwd, opts.WeftURL)
@@ -245,7 +226,7 @@ func refuseOneURLClone(cwd string, layout originLayout, opts CloneOptions) error
 	if bindingFound {
 		return fmt.Errorf("%s holds %s on its default branch %s, so it is a records repository; "+
 			"way forward: make a two-repository hub with `lym fabric clone <records-url> <code-url>`",
-			opts.WeftURL, WarpBindingFileName, layout.defaultBranch)
+			opts.WeftURL, fabriclayout.WarpBindingFileName, layout.defaultBranch)
 	}
 	if recordsFound {
 		return legacyRefusal

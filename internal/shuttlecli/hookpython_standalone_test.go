@@ -12,7 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/cliwire"
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -50,7 +50,7 @@ func TestHookPythonAllowedVerb_FollowsAStandaloneRunsStateDirConfig(t *testing.T
 			gitDir := filepath.Join(target, ".git")
 			dirs := []string{filepath.Join(gitDir, "objects"), filepath.Join(gitDir, "refs"), filepath.Join(target, "below", "the", "root")}
 			if tt.damagedHub {
-				dirs = append(dirs, fabricengine.BoltDir(root))
+				dirs = append(dirs, fabriclayout.BoltDir(root))
 			}
 			for _, dir := range dirs {
 				if err := os.MkdirAll(dir, 0o755); err != nil {

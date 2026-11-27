@@ -5,7 +5,7 @@ package hubgeom
 import (
 	"path/filepath"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
@@ -30,7 +30,7 @@ func pauseGeometry(l *lymcwd.Location, prime bool) pauserecord.Geometry {
 		slug = l.WorktreeName
 	}
 	return pauserecord.Geometry{
-		RecordPath: filepath.Join(fabricengine.HubScratchDir(l.HubPath), lymdirs.PauseDirName, pauserecord.RecordFileName),
+		RecordPath: filepath.Join(fabriclayout.HubScratchDir(l.HubPath), lymdirs.PauseDirName, pauserecord.RecordFileName),
 		Slug:       slug,
 	}
 }

@@ -24,6 +24,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -55,7 +56,7 @@ func newClonedHubFixture(t *testing.T) clonedHubFixture {
 	weftBare := makeBareRemote(t, fixtures, "warpbind-weft")
 
 	cloneParent := t.TempDir()
-	res, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
+	res, err := fabricengine.CloneHub(cloneParent, fabriclayout.CloneOptions{
 		WeftURL:        filepath.ToSlash(weftBare),
 		WarpURL:        filepath.ToSlash(warpBare),
 		Subpath:        ".",
@@ -74,7 +75,7 @@ func newClonedHubFixture(t *testing.T) clonedHubFixture {
 		t.Fatalf("lymcwd.Resolve(%s): %v", res.PrimeCwd, err)
 	}
 
-	cfg, err := fabricengine.LoadConfig(configengine.Dirs{Board: fabricengine.BoardDir(res.HubPath)})
+	cfg, err := fabricengine.LoadConfig(configengine.Dirs{Board: fabriclayout.BoardDir(res.HubPath)})
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}
@@ -99,7 +100,7 @@ func newClonedHubFixture(t *testing.T) clonedHubFixture {
 func unbindHub(t *testing.T, boardDir string) {
 	t.Helper()
 
-	path := filepath.Join(boardDir, fabricengine.WarpBindingFileName)
+	path := filepath.Join(boardDir, fabriclayout.WarpBindingFileName)
 	if err := os.Remove(path); err != nil {
 		t.Fatalf("remove warp binding record at %s: %v", path, err)
 	}
@@ -114,7 +115,7 @@ func unbindHub(t *testing.T, boardDir string) {
 func writeAndCommitBinding(t *testing.T, boardDir, url string) {
 	t.Helper()
 
-	path := filepath.Join(boardDir, fabricengine.WarpBindingFileName)
+	path := filepath.Join(boardDir, fabriclayout.WarpBindingFileName)
 	if err := os.WriteFile(path, []byte(url+"\n"), 0o644); err != nil {
 		t.Fatalf("write %s: %v", path, err)
 	}
@@ -137,11 +138,11 @@ func TestReconcile_UnboundHubIsReportedNotBackfilled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Reconcile: %v", err)
 	}
-	if result.WarpBinding != fabricengine.WarpBindingOutcomeSkipped || result.WarpBindingDetail == "" {
-		t.Fatalf("WarpBinding = %q (detail %q); want %q with a detail", result.WarpBinding, result.WarpBindingDetail, fabricengine.WarpBindingOutcomeSkipped)
+	if result.WarpBinding != fabriclayout.WarpBindingOutcomeSkipped || result.WarpBindingDetail == "" {
+		t.Fatalf("WarpBinding = %q (detail %q); want %q with a detail", result.WarpBinding, result.WarpBindingDetail, fabriclayout.WarpBindingOutcomeSkipped)
 	}
 
-	bindingPath := filepath.Join(fixture.Result.BoardDir, fabricengine.WarpBindingFileName)
+	bindingPath := filepath.Join(fixture.Result.BoardDir, fabriclayout.WarpBindingFileName)
 	if _, statErr := os.Stat(bindingPath); statErr == nil {
 		t.Errorf("binding file %s was written; want Reconcile to write nothing", bindingPath)
 	}
@@ -169,14 +170,14 @@ func TestReconcile_DivergentRecordIsLeftUntouched(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Reconcile: %v", err)
 	}
-	if result.WarpBinding != fabricengine.WarpBindingOutcomeDiverged {
-		t.Fatalf("WarpBinding = %q (detail %q); want %q", result.WarpBinding, result.WarpBindingDetail, fabricengine.WarpBindingOutcomeDiverged)
+	if result.WarpBinding != fabriclayout.WarpBindingOutcomeDiverged {
+		t.Fatalf("WarpBinding = %q (detail %q); want %q", result.WarpBinding, result.WarpBindingDetail, fabriclayout.WarpBindingOutcomeDiverged)
 	}
 	if !strings.Contains(result.WarpBindingDetail, divergent) || !strings.Contains(result.WarpBindingDetail, origin) {
 		t.Errorf("WarpBindingDetail = %q; want both %q and %q named", result.WarpBindingDetail, divergent, origin)
 	}
 
-	bindingPath := filepath.Join(fixture.Result.BoardDir, fabricengine.WarpBindingFileName)
+	bindingPath := filepath.Join(fixture.Result.BoardDir, fabriclayout.WarpBindingFileName)
 	data, err := os.ReadFile(bindingPath)
 	if err != nil {
 		t.Fatalf("read %s: %v", bindingPath, err)
@@ -200,8 +201,8 @@ func TestReconcile_NoWarpOriginIsSkipped(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Reconcile: %v", err)
 	}
-	if result.WarpBinding != fabricengine.WarpBindingOutcomeSkipped {
-		t.Errorf("WarpBinding = %q; want %q", result.WarpBinding, fabricengine.WarpBindingOutcomeSkipped)
+	if result.WarpBinding != fabriclayout.WarpBindingOutcomeSkipped {
+		t.Errorf("WarpBinding = %q; want %q", result.WarpBinding, fabriclayout.WarpBindingOutcomeSkipped)
 	}
 	if result.WarpBindingDetail != "" {
 		t.Errorf("WarpBindingDetail = %q; want empty", result.WarpBindingDetail)
@@ -217,7 +218,7 @@ func TestUnwire_LeavesWarpBindingInPlace(t *testing.T) {
 
 	fixture := newClonedHubFixture(t)
 
-	bindingPath := filepath.Join(fixture.Result.BoardDir, fabricengine.WarpBindingFileName)
+	bindingPath := filepath.Join(fixture.Result.BoardDir, fabriclayout.WarpBindingFileName)
 	before, err := os.ReadFile(bindingPath)
 	if err != nil {
 		t.Fatalf("read %s: %v", bindingPath, err)

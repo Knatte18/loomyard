@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -27,7 +28,7 @@ func TestCommitSeededStencils_EmptyInputIsNoOp(t *testing.T) {
 	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	rec := fabricengine.NewMutations(filepath.Dir(hub.Path))
 
-	res, err := fabricengine.CommitSeededStencils(hub.Path, fabricengine.StencilsSubtreeRel(), fabricengine.StencilsDir(hub.Path), nil, "lym: seed stencils", rec)
+	res, err := fabricengine.CommitSeededStencils(hub.Path, fabriclayout.StencilsSubtreeRel(), fabriclayout.StencilsDir(hub.Path), nil, "lym: seed stencils", rec)
 	if err != nil {
 		t.Fatalf("CommitSeededStencils(nil) error = %v", err)
 	}
@@ -70,7 +71,7 @@ func TestCommitSeededStencils_ScopedCommitExcludesUnrelatedDirt(t *testing.T) {
 		t.Fatalf("write unrelated dirty file: %v", err)
 	}
 
-	stencilsDir := fabricengine.StencilsDir(hub.Path)
+	stencilsDir := fabriclayout.StencilsDir(hub.Path)
 	if err := os.MkdirAll(filepath.Join(stencilsDir, "loom"), 0o755); err != nil {
 		t.Fatalf("mkdir stencils dir: %v", err)
 	}
@@ -88,7 +89,7 @@ func TestCommitSeededStencils_ScopedCommitExcludesUnrelatedDirt(t *testing.T) {
 	}
 
 	rec := fabricengine.NewMutations(filepath.Dir(hub.Path))
-	res, err := fabricengine.CommitSeededStencils(hub.Path, fabricengine.StencilsSubtreeRel(), stencilsDir, writtenRelPaths, "lym: seed stencils", rec)
+	res, err := fabricengine.CommitSeededStencils(hub.Path, fabriclayout.StencilsSubtreeRel(), stencilsDir, writtenRelPaths, "lym: seed stencils", rec)
 	if err != nil {
 		t.Fatalf("CommitSeededStencils() error = %v", err)
 	}
@@ -129,9 +130,9 @@ func TestCommitSeededStencils_ScopedCommitExcludesUnrelatedDirt(t *testing.T) {
 	var sawFileWritten, sawCommitCreated int
 	for _, e := range entries {
 		switch e.Kind {
-		case fabricengine.KindFileWritten:
+		case fabriclayout.KindFileWritten:
 			sawFileWritten++
-		case fabricengine.KindCommitCreated:
+		case fabriclayout.KindCommitCreated:
 			sawCommitCreated++
 		}
 	}
@@ -160,7 +161,7 @@ func TestCommitSeededStencils_SecondSubtreeCommitsAndRecordsItsOwnDirectory(t *t
 
 	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 
-	specsDir := fabricengine.SpecsDir(hub.Path)
+	specsDir := fabriclayout.SpecsDir(hub.Path)
 	if err := os.MkdirAll(specsDir, 0o755); err != nil {
 		t.Fatalf("mkdir specs dir: %v", err)
 	}
@@ -170,7 +171,7 @@ func TestCommitSeededStencils_SecondSubtreeCommitsAndRecordsItsOwnDirectory(t *t
 	writtenRelPaths := []string{"format-contract.md"}
 
 	rec := fabricengine.NewMutations(filepath.Dir(hub.Path))
-	res, err := fabricengine.CommitSeededStencils(hub.Path, fabricengine.SpecsSubtreeRel(), specsDir, writtenRelPaths, "lym: seed specs", rec)
+	res, err := fabricengine.CommitSeededStencils(hub.Path, fabriclayout.SpecsSubtreeRel(), specsDir, writtenRelPaths, "lym: seed specs", rec)
 	if err != nil {
 		t.Fatalf("CommitSeededStencils() error = %v", err)
 	}
@@ -184,7 +185,7 @@ func TestCommitSeededStencils_SecondSubtreeCommitsAndRecordsItsOwnDirectory(t *t
 	wantTarget := hubRelativeTargetForTest(t, hub.Path, filepath.Join(specsDir, "format-contract.md"))
 	found := false
 	for _, e := range rec.Snapshot().Entries() {
-		if e.Kind != fabricengine.KindFileWritten {
+		if e.Kind != fabriclayout.KindFileWritten {
 			continue
 		}
 		if e.Target == wantTarget {

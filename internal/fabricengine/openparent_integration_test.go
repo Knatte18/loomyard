@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -187,7 +188,7 @@ func TestCodeWorktrees_ListOpenAndPairComplete(t *testing.T) {
 			gone := hubforge.AddPair(t, h, "gone")
 			anchorOf := func(worktree string) string { return filepath.Join(worktree, h.Location.AnchorRel) }
 
-			want := []fabricengine.CodeWorktree{
+			want := []fabriclayout.CodeWorktree{
 				{Path: h.PrimeWorktree(), Anchor: h.Location.AnchorPath(), Main: true},
 				{Path: kept.Path, Anchor: anchorOf(kept.Path)},
 				{Path: gone.Path, Anchor: anchorOf(gone.Path)},
@@ -279,11 +280,11 @@ func TestCodeWorktrees_ListOpenAndPairComplete(t *testing.T) {
 }
 
 // sameCodeWorktrees reports whether got is want's main worktree first followed by the same pairs in any order.
-func sameCodeWorktrees(got, want []fabricengine.CodeWorktree) bool {
+func sameCodeWorktrees(got, want []fabriclayout.CodeWorktree) bool {
 	if len(got) != len(want) || len(got) == 0 || got[0] != want[0] || !got[0].Main {
 		return false
 	}
-	byPath := func(a, b fabricengine.CodeWorktree) int { return strings.Compare(a.Path, b.Path) }
+	byPath := func(a, b fabriclayout.CodeWorktree) int { return strings.Compare(a.Path, b.Path) }
 	gotPairs, wantPairs := slices.Clone(got[1:]), slices.Clone(want[1:])
 	slices.SortFunc(gotPairs, byPath)
 	slices.SortFunc(wantPairs, byPath)

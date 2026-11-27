@@ -13,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -254,7 +255,7 @@ func (j *landingJoiner) taskCommitBelow(tagCommit, slug string) (taskCommitSearc
 		}
 		for _, commit := range commits {
 			subject, _, _ := strings.Cut(commit.Message, "\n")
-			if opened, ok := fabricengine.OriginRecordSlug(subject); ok && opened == slug {
+			if opened, ok := fabriclayout.OriginRecordSlug(subject); ok && opened == slug {
 				return taskCommitSearch{openedAt: commit.Committed}, nil
 			}
 			if sha, ok := fabricengine.TaskCommitOf(commit.Message); ok {

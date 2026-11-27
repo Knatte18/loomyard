@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/runproc"
@@ -108,7 +108,7 @@ func TestDownCmd_WaitsForTheWatchdogOnlyWhenItEndedTheServer(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			logs := logcapture.Capture(t)
 			hub := t.TempDir()
-			scratch := fabricengine.HubScratchDir(hub)
+			scratch := fabriclayout.HubScratchDir(hub)
 			if tt.scratchDir {
 				if err := os.MkdirAll(scratch, 0o755); err != nil {
 					t.Fatalf("mkdir scratch: %v", err)

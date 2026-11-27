@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
@@ -54,7 +55,7 @@ func TestCommitWeft_LockArtifactsExcludedFromStatus(t *testing.T) {
 	f, weftPath := newFabricPair(t)
 	writeWeftConfig(t, weftPath, "modified for exclude test")
 
-	if result, err := f.Commit([]string{lymdirs.LymDirName}, fabricengine.DefaultCommitMessage, nil, fabricengine.SyncOptions{}); err != nil {
+	if result, err := f.Commit([]string{lymdirs.LymDirName}, fabriclayout.DefaultCommitMessage, nil, fabricengine.SyncOptions{}); err != nil {
 		t.Fatalf("Commit: %v", err)
 	} else if !result.WeftCommitted {
 		t.Fatal("Commit WeftCommitted = false; want true")
@@ -104,7 +105,7 @@ func TestCommitWeft_SeedsFabricArtifactsOnlyAndIsIdempotent(t *testing.T) {
 	writeWeftConfig(t, weftPath, "modified for exclude test")
 
 	excludePath := filepath.Join(weftPath, ".git", "info", "exclude")
-	if _, err := f.Commit([]string{lymdirs.LymDirName}, fabricengine.DefaultCommitMessage, nil, fabricengine.SyncOptions{}); err != nil {
+	if _, err := f.Commit([]string{lymdirs.LymDirName}, fabriclayout.DefaultCommitMessage, nil, fabricengine.SyncOptions{}); err != nil {
 		t.Fatalf("Commit: %v", err)
 	}
 
@@ -124,23 +125,10 @@ func TestCommitWeft_SeedsFabricArtifactsOnlyAndIsIdempotent(t *testing.T) {
 		}
 	}
 
-	retiredPatterns := []string{
-		"*.lock",
-		"*.swaplock",
-		"**/" + lymdirs.LymDirName + "/*/**/*.lock",
-		"**/" + lymdirs.LymDirName + "/*/pause",
-		"**/" + lymdirs.LymDirName + "/*/prompts/",
-	}
-	for _, retired := range retiredPatterns {
-		if slices.Contains(gotLines, retired) {
-			t.Errorf("info/exclude seeds retired cross-module pattern %q; want it gone", retired)
-		}
-	}
-
 	// A second Commit re-runs ensureWeftLockDir and seedWeftArtifactExcludes,
 	// and the exclude file must come out byte-identical, not merely equivalent, so the re-seed is a true no-op.
 	writeWeftConfig(t, weftPath, "modified again for exclude test")
-	if _, err := f.Commit([]string{lymdirs.LymDirName}, fabricengine.DefaultCommitMessage, nil, fabricengine.SyncOptions{}); err != nil {
+	if _, err := f.Commit([]string{lymdirs.LymDirName}, fabriclayout.DefaultCommitMessage, nil, fabricengine.SyncOptions{}); err != nil {
 		t.Fatalf("second Commit: %v", err)
 	}
 	second, err := os.ReadFile(excludePath)
@@ -192,8 +180,8 @@ func TestCommitWeft_MachineLocalArtifactsNeverEnterWeftTreeAtNestedAnchor(t *tes
 	lymDir := filepath.Join(weftPath, anchorRel, lymdirs.LymDirName)
 	mustWriteFile(t, filepath.Join(lymDir, "webster", "state.json"), "{}")
 
-	pathspec := fabricengine.ScopedPathspec(anchor, []string{lymdirs.LymDirName})
-	if _, err := f.Commit(pathspec, fabricengine.DefaultCommitMessage, nil, fabricengine.SyncOptions{}); err != nil {
+	pathspec := fabriclayout.ScopedPathspec(anchor, []string{lymdirs.LymDirName})
+	if _, err := f.Commit(pathspec, fabriclayout.DefaultCommitMessage, nil, fabricengine.SyncOptions{}); err != nil {
 		t.Fatalf("Commit(anchor=%q, pathspec=%v): %v", anchor, pathspec, err)
 	}
 

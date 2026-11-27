@@ -5,7 +5,7 @@ package pairteardown
 import (
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -17,13 +17,13 @@ type recordingRemover struct {
 	rerun         string
 }
 
-func (r *recordingRemover) Remove(_ *lymcwd.Location, slug string, force, remote bool, rerun string) (fabricengine.RemoveResult, error) {
+func (r *recordingRemover) Remove(_ *lymcwd.Location, slug string, force, remote bool, rerun string) (fabriclayout.RemoveResult, error) {
 	r.slug, r.force, r.remote, r.rerun = slug, force, remote, rerun
-	return fabricengine.RemoveResult{}, nil
+	return fabriclayout.RemoveResult{}, nil
 }
 
-func (r *recordingRemover) RemoveLocal(*lymcwd.Location, string, bool) (fabricengine.RemoveResult, error) {
-	return fabricengine.RemoveResult{}, nil
+func (r *recordingRemover) RemoveLocal(*lymcwd.Location, string, bool) (fabriclayout.RemoveResult, error) {
+	return fabriclayout.RemoveResult{}, nil
 }
 
 func TestRemoveThrough_HandsTheRequestToTheOriginRemoval(t *testing.T) {

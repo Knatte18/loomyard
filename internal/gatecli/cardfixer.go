@@ -13,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/creelcli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gatefixer"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -190,14 +191,14 @@ func newCardFixer(request detachRequest) (cardFixerKit, bool, error) {
 		ShuttleCfg: rig.shuttleCfg,
 		AnchorRoot: rig.anchorRoot,
 		Clock:      wallClock{},
-		Register:   gatefixer.Registrar(rig.reed, fabricengine.RunProcDir(location.HubPath), slug, gatefixer.RoleGateFixer),
+		Register:   gatefixer.Registrar(rig.reed, fabriclayout.RunProcDir(location.HubPath), slug, gatefixer.RoleGateFixer),
 	})
 	model := shuttleengine.NewModelChoice(resolved)
 	return cardFixerKit{
 		fixer:        fixer,
 		timeout:      cfg.FixerTimeout(),
 		worktreeRoot: location.WorktreePath(),
-		stencilsDir:  fabricengine.StencilsDir(location.HubPath),
+		stencilsDir:  fabriclayout.StencilsDir(location.HubPath),
 		model:        model,
 		skills:       language.Skills,
 		engine:       rig.engines.EngineName(model),

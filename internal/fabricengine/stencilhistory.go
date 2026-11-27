@@ -11,8 +11,8 @@ import (
 	"fmt"
 	"path"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
-	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
@@ -26,8 +26,8 @@ import (
 // rev is the matching revision's SHA, valid only when found is true.
 // It mutates nothing, so it takes no *Mutations and returns a plain tuple.
 func StencilBaseByStamp(hub, name, stampHash string) (base []byte, rev string, found bool, err error) {
-	relPath := path.Join(lymdirs.LymDirName, stencilsDirName, stencilstore.RelPath(name))
-	repo := gitrepo.New(BoltDir(hub))
+	relPath := path.Join(fabriclayout.StencilsSubtreeRel(), stencilstore.RelPath(name))
+	repo := gitrepo.New(fabriclayout.BoltDir(hub))
 
 	revisions, err := repo.PathRevisions(relPath, 0)
 	if err != nil {

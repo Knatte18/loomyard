@@ -12,6 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -46,9 +47,9 @@ type runReader struct {
 	// pauseCovers reports whether this machine's pause record covers the slug.
 	pauseCovers func(slug string) (bool, error)
 	// owedPush lists the failed-push records that hold a push of the slug's run owed, newest first.
-	owedPush func(slug string) ([]fabricengine.FailedPush, error)
+	owedPush func(slug string) ([]fabriclayout.FailedPush, error)
 	// codeTip reads the code tip the slug's last transition on origin names, and whether origin lacks it.
-	codeTip func(slug string) (fabricengine.CodeTipReading, error)
+	codeTip func(slug string) (fabriclayout.CodeTipReading, error)
 	// localHoldsTip reports whether the local code branch of the slug's pair holds the code tip.
 	// Only a read of a pair standing here calls it.
 	localHoldsTip func(slug, tip string) (bool, error)
@@ -75,7 +76,7 @@ func ReadRun(prime *lymcwd.Location, slug string) (runfsm.Records, runfsm.Inputs
 // An unreachable origin reads the local Bolt and goes on, and so does a hub with no Bolt checkout.
 // Any other failed pull returns an error naming the pull's detail and the way forward, and reads nothing.
 func ReadRunPulled(prime *lymcwd.Location, slug string) (runfsm.Records, runfsm.Inputs, error) {
-	boltDir := fabricengine.BoltDir(prime.HubPath)
+	boltDir := fabriclayout.BoltDir(prime.HubPath)
 	if _, err := os.Stat(boltDir); err == nil {
 		if err := boardengine.PullBolt(boltDir); err != nil && !errors.Is(err, boardengine.ErrOwnerOriginUnreachable) {
 			return runfsm.Records{}, runfsm.Inputs{}, fmt.Errorf(
@@ -88,7 +89,7 @@ func ReadRunPulled(prime *lymcwd.Location, slug string) (runfsm.Records, runfsm.
 
 // hubRunReader wires a runReader over the hub of prime.
 func hubRunReader(prime *lymcwd.Location) runReader {
-	boardDir := fabricengine.BoardDir(prime.HubPath)
+	boardDir := fabriclayout.BoardDir(prime.HubPath)
 	taskLocation := func(slug string) (*lymcwd.Location, error) {
 		return lymcwd.ResolveWorktree(fabricengine.WorktreePath(prime, slug))
 	}
@@ -143,10 +144,10 @@ func hubRunReader(prime *lymcwd.Location) runReader {
 			coverage, err := pauserecord.ReadCoverage(geometry.RecordPath, slug, time.Now())
 			return coverage.Covered, err
 		},
-		owedPush: func(slug string) ([]fabricengine.FailedPush, error) {
+		owedPush: func(slug string) ([]fabriclayout.FailedPush, error) {
 			return fabricengine.FailedPushesOwedBy(prime.HubPath, slug)
 		},
-		codeTip: func(slug string) (fabricengine.CodeTipReading, error) { return fabricengine.OriginCodeTip(prime, slug) },
+		codeTip: func(slug string) (fabriclayout.CodeTipReading, error) { return fabricengine.OriginCodeTip(prime, slug) },
 		localHoldsTip: func(slug, tip string) (bool, error) {
 			return fabricengine.HeadContains(fabricengine.WorktreePath(prime, slug), tip)
 		},

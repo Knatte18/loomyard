@@ -11,6 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/machinename"
@@ -36,7 +37,7 @@ func DobbyGeometry(prime *lymcwd.Location, worktree string) (dobbyengine.Geometr
 		return dobbyengine.Geometry{}, fmt.Errorf("hubgeom: locate the lym executable: %w", err)
 	}
 	slug := worktree
-	moveRecords := []string{fabricengine.MoveRecordPath(fabricengine.RecordsWorktreePath(prime, prime.WorktreeName))}
+	moveRecords := []string{fabriclayout.MoveRecordPath(fabricengine.RecordsWorktreePath(prime, prime.WorktreeName))}
 	own := prime
 	if worktree == prime.WorktreeName {
 		slug = ""
@@ -46,12 +47,12 @@ func DobbyGeometry(prime *lymcwd.Location, worktree string) (dobbyengine.Geometr
 		if err != nil {
 			return dobbyengine.Geometry{}, fmt.Errorf("hubgeom: read the anchor of the worktree %q: %w", worktree, err)
 		}
-		moveRecords = append([]string{fabricengine.MoveRecordPath(fabricengine.RecordsWorktreePath(own, worktree))}, moveRecords...)
+		moveRecords = append([]string{fabriclayout.MoveRecordPath(fabricengine.RecordsWorktreePath(own, worktree))}, moveRecords...)
 	}
 	beamDir := DobbyBeamDir(own)
 	return dobbyengine.Geometry{
 		HubRoot:       prime.HubPath,
-		BoardDir:      fabricengine.BoardDir(prime.HubPath),
+		BoardDir:      fabriclayout.BoardDir(prime.HubPath),
 		PrimeAnchor:   prime.AnchorPath(),
 		WorktreeRoot:  root,
 		WorktreeName:  worktree,
@@ -101,7 +102,7 @@ func PawlPaths(beam *lymcwd.Location) pawlengine.Paths {
 // The move check reads an anchor change standing on a worktree's own records worktree or on the prime's.
 // A landing hold is read from the local board's entry of the worktree.
 func DobbyStart(prime *lymcwd.Location) dobbyengine.StartDeps {
-	boardDir := fabricengine.BoardDir(prime.HubPath)
+	boardDir := fabriclayout.BoardDir(prime.HubPath)
 	return dobbyengine.StartDeps{
 		Machine: func() (string, error) {
 			identity, err := boardengine.EnsureIdentity()
@@ -153,7 +154,7 @@ func LandingHeld(prime *lymcwd.Location, worktree string) (bool, error) {
 	if worktree == prime.WorktreeName {
 		return false, nil
 	}
-	tasks, err := boardengine.ReadTasks(fabricengine.BoardDir(prime.HubPath))
+	tasks, err := boardengine.ReadTasks(fabriclayout.BoardDir(prime.HubPath))
 	if err != nil {
 		return false, fmt.Errorf("hubgeom: read the board: %w", err)
 	}

@@ -92,7 +92,7 @@ type websterCLI struct {
 	instructionFiles func() ([]string, error)
 
 	// anchorRel is the hub-mode Location's anchor-relative path (loc.AnchorRel), and it is empty in standalone.
-	// Fabric sync needs it to scope its pathspec with fabricengine.ScopedPathspec.
+	// Fabric sync needs it to scope its pathspec with fabriclayout.ScopedPathspec.
 	// No other field supplies that path.
 	anchorRel string
 	// runID is the worktree's own run, whose transition a reset's records commit marks; it is empty in standalone.

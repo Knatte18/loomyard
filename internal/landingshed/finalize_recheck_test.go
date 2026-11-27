@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -96,8 +97,8 @@ func TestFinalize_LockRecheckAndLanding(t *testing.T) {
 		outcome, ptr := fx.call(t)
 		requireHalt(t, outcome, ptr, haltFragments...)
 
-		fx.fz.deps.Reconcile = func() (fabricengine.OriginReport, error) {
-			return fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: "me", State: fabricengine.EntryOwnedElsewhere, Owner: "other-box"}}}, nil
+		fx.fz.deps.Reconcile = func() (fabriclayout.OriginReport, error) {
+			return fabriclayout.OriginReport{Entries: []fabriclayout.EntryOutcome{{Slug: "me", State: fabriclayout.EntryOwnedElsewhere, Owner: "other-box"}}}, nil
 		}
 		outcome, ptr = fx.call(t)
 
@@ -111,7 +112,7 @@ func TestFinalize_LockRecheckAndLanding(t *testing.T) {
 
 	t.Run("a release during the retry after a merge-in-required error halts before the retry's landing", func(t *testing.T) {
 		fx := newFixture(t, 2, releaseOwn)
-		fx.merger.results = []mergeCallResult{{err: &fabricengine.ErrMergeInRequired{Source: fx.deps.TaskBranch}}, {result: fabricengine.MergeResult{Committed: true}}}
+		fx.merger.results = []mergeCallResult{{err: &fabricengine.ErrMergeInRequired{Source: fx.deps.TaskBranch}}, {result: fabriclayout.MergeResult{Committed: true}}}
 
 		outcome, ptr := fx.call(t)
 

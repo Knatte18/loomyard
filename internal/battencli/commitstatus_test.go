@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
@@ -233,9 +233,9 @@ func TestStatusPushSpawns_TellTheirLocationAndGateSlug(t *testing.T) {
 	}
 	var requests []spawnRequest
 	original := spawnStatusPush
-	spawnStatusPush = func(l *lymcwd.Location, gateSlug string) (fabricengine.SpawnResult, error) {
+	spawnStatusPush = func(l *lymcwd.Location, gateSlug string) (fabriclayout.SpawnResult, error) {
 		requests = append(requests, spawnRequest{l, gateSlug})
-		return fabricengine.SpawnResult{}, nil
+		return fabriclayout.SpawnResult{}, nil
 	}
 	t.Cleanup(func() { spawnStatusPush = original })
 

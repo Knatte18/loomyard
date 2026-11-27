@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -50,7 +51,7 @@ func advanceOrigin(t *testing.T, h *hubforge.Hub, branch string) string {
 func archiveTagsOnOrigin(t *testing.T, h *hubforge.Hub, slug string) []string {
 	t.Helper()
 
-	return strings.Fields(gitkit.Git(t, h.CodeBare, "tag", "--list", fabricengine.ArchiveTagPrefix+slug+"/*"))
+	return strings.Fields(gitkit.Git(t, h.CodeBare, "tag", "--list", fabriclayout.ArchiveTagPrefix+slug+"/*"))
 }
 
 // TestDiscardTaskBranch pins which tips DiscardTaskBranch archives.
@@ -102,7 +103,7 @@ func TestDiscardTaskBranch(t *testing.T) {
 			}
 			var wantTags []string
 			for _, tip := range wantTipped {
-				wantTags = append(wantTags, fabricengine.ArchiveTagPrefix+slug+"/"+tip[:12])
+				wantTags = append(wantTags, fabriclayout.ArchiveTagPrefix+slug+"/"+tip[:12])
 			}
 			slices.Sort(wantTags)
 			gotTags := slices.Clone(res.ArchiveTags)
@@ -143,7 +144,7 @@ func TestDiscardTaskBranch(t *testing.T) {
 		if !errors.Is(err, fabricengine.ErrArchiveFailed) {
 			t.Fatalf("DiscardTaskBranch error = %v; want one wrapping ErrArchiveFailed", err)
 		}
-		if got := gitkit.RevParse(t, h.PrimeWorktree(), "refs/tags/"+fabricengine.ArchiveTagName(slug, localTip)); got != localTip {
+		if got := gitkit.RevParse(t, h.PrimeWorktree(), "refs/tags/"+fabriclayout.ArchiveTagName(slug, localTip)); got != localTip {
 			t.Errorf("local archive tag points at %s; want the local tip %s", got, localTip)
 		}
 		if gitkit.BranchExists(t, h.PrimeWorktree(), slug) {
@@ -188,7 +189,7 @@ func TestDiscardTaskBranch_OneRepositoryHubArchivesUnderTheCodeStoresPrefix(t *t
 			if err != nil {
 				t.Fatalf("DiscardTaskBranch: %v", err)
 			}
-			tag := fabricengine.ArchiveTagName(slug, tip)
+			tag := fabriclayout.ArchiveTagName(slug, tip)
 			if !slices.Equal(res.ArchiveTags, []string{tag}) {
 				t.Errorf("ArchiveTags = %v; want [%s]", res.ArchiveTags, tag)
 			}

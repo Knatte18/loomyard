@@ -10,7 +10,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/creelengine"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
@@ -41,7 +41,7 @@ func newSlackBridge(hubPath string) *slackBridge {
 
 // hubBeamSlugs lists the slugs of the local beams of the hub at hubPath, read through the prime's dobby start.
 func hubBeamSlugs(hubPath string) ([]string, error) {
-	primeName := strings.TrimSuffix(filepath.Base(hubPath), fabricengine.HubSuffix)
+	primeName := strings.TrimSuffix(filepath.Base(hubPath), fabriclayout.HubSuffix)
 	prime, err := lymcwd.NamedWorktree(hubPath, primeName)
 	if err != nil {
 		return nil, err

@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -254,7 +255,7 @@ func TestWriteSeed_RefusesFabricsOwnCheckouts(t *testing.T) {
 		name         string
 		worktreeName string
 	}{
-		{name: "BoardCheckout", worktreeName: fabricengine.BoltDirName},
+		{name: "BoardCheckout", worktreeName: fabriclayout.BoltDirName},
 		{name: "PairSibling", worktreeName: siblingName},
 	}
 	for _, tt := range tests {

@@ -22,6 +22,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/buildvcs"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -47,9 +48,9 @@ func TestStencilSeedTarget_PlainRepoHasNoHub(t *testing.T) {
 		t.Errorf("stencilSeedTarget(plain repo) ok = true, hub = %q, worktree = %q; want ok = false", hub, worktree)
 	}
 
-	// The absent path is pinned via fabricengine.BoardDir applied to the repository's parent directory.
+	// The absent path is pinned via fabriclayout.BoardDir applied to the repository's parent directory.
 	// It is not a joined Bolt directory literal, per the geometry-literal enforcement walk.
-	wantAbsent := fabricengine.BoardDir(filepath.Dir(repoDir))
+	wantAbsent := fabriclayout.BoardDir(filepath.Dir(repoDir))
 	if _, err := os.Stat(wantAbsent); !os.IsNotExist(err) {
 		t.Errorf("stat %s after stencilSeedTarget(plain repo) = %v; want it still absent -- a plain repo with no hub-level sibling must never cause a hub-level Bolt checkout to be created", wantAbsent, err)
 	}
@@ -66,9 +67,9 @@ func TestStencilSeeding_HubScenario(t *testing.T) {
 
 	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	worktree := hub.PrimeWorktree()
-	stencilsDir := fabricengine.StencilsDir(hub.Path)
-	specsDir := fabricengine.SpecsDir(hub.Path)
-	specsSubtreeRel := fabricengine.SpecsSubtreeRel()
+	stencilsDir := fabriclayout.StencilsDir(hub.Path)
+	specsDir := fabriclayout.SpecsDir(hub.Path)
+	specsSubtreeRel := fabriclayout.SpecsSubtreeRel()
 	discussionPath := filepath.Join(stencilsDir, "loom", "loom-template-discussion.md")
 	specNames := []string{"loom-plan-spec", "loom-final-summary-spec"}
 	board := hub.BoardDir()
@@ -79,7 +80,7 @@ func TestStencilSeeding_HubScenario(t *testing.T) {
 	identity := buildvcs.Identity{Revision: "0123456789abcdef0123456789abcdef01234567", Time: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)}
 	seed := func() { seedStencilsAt(hub.Path, worktree, stencilstore.ModeProduction, identity) }
 	seedSubject := func(subtree string) string {
-		return fabricengine.SeedCommitMessage(subtree, fabricengine.BinaryLabel())
+		return fabriclayout.SeedCommitMessage(subtree, fabricengine.BinaryLabel())
 	}
 	// moveUpstream commits a file on the records bare from a second clone.
 	moveUpstream := func(t *testing.T, rel string) string {
@@ -218,7 +219,7 @@ func TestStencilSeeding_HubScenario(t *testing.T) {
 		if _, err := os.Stat(discussionPath); !os.IsNotExist(err) {
 			t.Errorf("stat %s = %v; want it still deleted, since nothing is written when the fetch fails", discussionPath, err)
 		}
-		if !strings.Contains(logs.String(), string(fabricengine.BoltSkipFetchFailed)) {
+		if !strings.Contains(logs.String(), string(fabriclayout.BoltSkipFetchFailed)) {
 			t.Errorf("log %q does not carry the fetch Warn", logs.String())
 		}
 	}) {
@@ -250,7 +251,7 @@ func TestStencilSeeding_HubScenario(t *testing.T) {
 	// Relies on the reseed: its seed commit is the one ahead of the moved upstream.
 	if !t.Run("a seed commit ahead of a moved upstream is dropped", func(t *testing.T) {
 		gitkit.Git(t, board, "push", "origin", branch)
-		gitkit.Git(t, board, "rm", "-q", "--", filepath.ToSlash(filepath.Join(fabricengine.StencilsSubtreeRel(), "loom", "loom-template-discussion.md")))
+		gitkit.Git(t, board, "rm", "-q", "--", filepath.ToSlash(filepath.Join(fabriclayout.StencilsSubtreeRel(), "loom", "loom-template-discussion.md")))
 		gitkit.Git(t, board, "commit", "-q", "-m", seedSubject("stencils"))
 		dropped := gitkit.RevParse(t, board, "HEAD")
 		upstream := moveUpstream(t, "notes/up2.md")
@@ -338,7 +339,7 @@ func TestStencilSeeding_HubScenario(t *testing.T) {
 		{
 			name:         "HubLevelBoardDirectory",
 			cwd:          func(t *testing.T) string { return hub.BoardDir() },
-			wantWorktree: fabricengine.BoardDir(hub.Path),
+			wantWorktree: fabriclayout.BoardDir(hub.Path),
 		},
 		{
 			name: "WorktreeWithPairedSiblingRemoved",
@@ -379,7 +380,7 @@ func TestStencilSeeding_HubScenario(t *testing.T) {
 func TestSeedStencils_NoOpAndEnvelopeUnderRoot(t *testing.T) {
 	tiergate.Require(t, 1)
 	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	stencilsDir := fabricengine.StencilsDir(hub.Path)
+	stencilsDir := fabriclayout.StencilsDir(hub.Path)
 	if _, err := os.Stat(stencilsDir); !os.IsNotExist(err) {
 		t.Fatalf("precondition failed: %s already exists", stencilsDir)
 	}

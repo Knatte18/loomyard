@@ -32,6 +32,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/gatefixer"
 	"github.com/Knatte18/loomyard/internal/gateslot"
@@ -418,7 +419,7 @@ func createRefusal(err error, slug, taskBranch string, taskPathStands func() boo
 // the child mails the orchestrator a failed step with its way forward.
 // A failed remote deletion that the removal did report, when the steps ran in process, is returned here,
 // so the row halts resumable and the resumed row retries the deletion.
-func finishRemoval(res fabricengine.RemoveResult, err error, slug string) error {
+func finishRemoval(res fabriclayout.RemoveResult, err error, slug string) error {
 	if errors.Is(err, fabricengine.ErrPairNotFound) {
 		logger.Info("battencli: teardown found nothing of the pair left, done", "slug", slug)
 		return nil
@@ -562,12 +563,12 @@ func childRefusalOwner(childOutput string) string {
 // An unreachable report is Unreachable,
 // and the slug's owned-elsewhere entry is Elsewhere with its owner and adopt subject.
 // Any other report, one without the slug included, is owned here.
-func ownerVerdictOf(report fabricengine.OriginReport, slug string) battenshed.OwnerVerdict {
+func ownerVerdictOf(report fabriclayout.OriginReport, slug string) battenshed.OwnerVerdict {
 	if report.Unreachable {
 		return battenshed.OwnerVerdict{Unreachable: true}
 	}
 	for _, entry := range report.Entries {
-		if entry.Slug == slug && entry.State == fabricengine.EntryOwnedElsewhere {
+		if entry.Slug == slug && entry.State == fabriclayout.EntryOwnedElsewhere {
 			return battenshed.OwnerVerdict{Owner: entry.Owner, AdoptSubject: entry.AdoptSubject, Elsewhere: true}
 		}
 	}
@@ -773,7 +774,7 @@ func readAgentActivity(taskLocation *lymcwd.Location) (runs []dobbyengine.AgentR
 // A fixer record counts only while it is younger than the fixer's own timeout at now.
 // The age bound matters: a fixer that ended without its strand removed leaves a pane process outliving its work.
 func gateProcessLive(taskLocation *lymcwd.Location, now time.Time) (bool, error) {
-	records, err := runproc.List(fabricengine.RunProcDir(taskLocation.HubPath), taskLocation.WorktreeName)
+	records, err := runproc.List(fabriclayout.RunProcDir(taskLocation.HubPath), taskLocation.WorktreeName)
 	if err != nil {
 		return false, err
 	}
@@ -1299,14 +1300,14 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 				}
 				return awakeReading(time.Now(), sleeps)
 			},
-			ParentLock: childParentLock(slug, locateTask, fabricengine.BoltDir(location.HubPath), lockIdleBound(location)),
+			ParentLock: childParentLock(slug, locateTask, fabriclayout.BoltDir(location.HubPath), lockIdleBound(location)),
 			// OwnerCheck judges, without moving a ref, the slug's run-scope reconcile from the prime and reads its owner verdict.
 			OwnerCheck: func(ctx context.Context) (battenshed.OwnerVerdict, error) {
 				teardown, err := pairteardown.New(location)
 				if err != nil {
 					return battenshed.OwnerVerdict{}, err
 				}
-				report, err := fabricengine.ReconcileOrigin(location, fabricengine.ReconcileScope{Run: slug, JudgeOnly: true}, teardown.OriginSeams(pairteardown.HubSeamOptions(location)), fabricengine.ReconcileOptions{})
+				report, err := fabricengine.ReconcileOrigin(location, fabriclayout.ReconcileScope{Run: slug, JudgeOnly: true}, teardown.OriginSeams(pairteardown.HubSeamOptions(location)), fabricengine.ReconcileOptions{})
 				if err != nil {
 					return battenshed.OwnerVerdict{}, err
 				}
@@ -1584,7 +1585,7 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 			},
 			// ReadRunSettings opens the Board fresh on every call and returns the task's profile and run_settings.
 			ReadRunSettings: func(ctx context.Context) (battenshed.RunSettings, error) {
-				b := boardengine.New(boardengine.Config{Path: fabricengine.BoardDir(location.HubPath)})
+				b := boardengine.New(boardengine.Config{Path: fabriclayout.BoardDir(location.HubPath)})
 				task, found, err := b.GetTask(slug)
 				if err != nil {
 					return battenshed.RunSettings{}, err
@@ -1599,7 +1600,7 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 			// An unknown profile or a refusal of the settings is wrapped in battenshed.ErrInvalidRunSettings,
 			// so the seeding step routes it to Stuck.
 			PrepareRunSettings: func(settings battenshed.RunSettings) (map[string][]byte, error) {
-				return prepareRunSettings(configengine.Dirs{Board: fabricengine.BoltDir(location.HubPath)}, settings)
+				return prepareRunSettings(configengine.Dirs{Board: fabriclayout.BoltDir(location.HubPath)}, settings)
 			},
 			// WriteLocalOverride writes one module's local file in the task worktree, creating its directory.
 			WriteLocalOverride: func(ctx context.Context, module string, document []byte) error {
@@ -1800,8 +1801,8 @@ func teardownPushSeams(location *lymcwd.Location, slug string, locateTask func()
 		}
 		return teardownPushError(runpusher.PushUntilLanded(ctx, func() error {
 			_, pushErr := pairteardown.PushRun(location, taskLocation, slug, pairteardown.RunPush{
-				LockWait:       fabricengine.StatusPushLockWait,
-				TeardownWait:   fabricengine.StatusPushLockWait,
+				LockWait:       fabriclayout.StatusPushLockWait,
+				TeardownWait:   fabriclayout.StatusPushLockWait,
 				OwedUnrecorded: true,
 			})
 			return pushErr

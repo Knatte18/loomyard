@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -267,7 +268,7 @@ func (c *battenCLI) registerSeededRun(location *lymcwd.Location, runID, verb str
 	if verb != "run" {
 		return
 	}
-	if err := runproc.Register(fabricengine.RunProcDir(location.HubPath), runID, runproc.SelfRecord(runproc.RoleBatten)); err != nil {
+	if err := runproc.Register(fabriclayout.RunProcDir(location.HubPath), runID, runproc.SelfRecord(runproc.RoleBatten)); err != nil {
 		logger.Warn("battencli: could not register the batten process", "slug", runID, "error", err.Error())
 	}
 }
@@ -490,7 +491,7 @@ func battenLoopSpec(location *lymcwd.Location, slug string) shedverbs.LoopSpec {
 		LoopTraceFile: logger.TraceFile,
 		Executable:    executable,
 		OnStart: func() {
-			if err := runproc.Register(fabricengine.RunProcDir(location.HubPath), slug, runproc.SelfRecord(runproc.RoleLoop)); err != nil {
+			if err := runproc.Register(fabriclayout.RunProcDir(location.HubPath), slug, runproc.SelfRecord(runproc.RoleLoop)); err != nil {
 				logger.Warn("battencli: could not register the loop process", "slug", slug, "error", err.Error())
 			}
 		},

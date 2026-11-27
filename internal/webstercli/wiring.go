@@ -15,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/creelcli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/languageconfig"
@@ -236,7 +237,7 @@ func (c *websterCLI) wireHub(loc *lymcwd.Location, stencilsDir, planDir, targetD
 	c.secretPaths = func() (secretpath.Matcher, error) {
 		return fabricengine.LoadSecretPathMatcher(fabricengine.ConfigDirs(loc))
 	}
-	c.runProcDir = fabricengine.RunProcDir(loc.HubPath)
+	c.runProcDir = fabriclayout.RunProcDir(loc.HubPath)
 	c.pairSlugRead = func() string { return originPairSlug(loc) }
 	c.batcher = activeBatcher
 	c.languageSkills = languageSkills

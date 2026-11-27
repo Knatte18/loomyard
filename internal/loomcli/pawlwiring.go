@@ -15,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -248,7 +249,7 @@ func ownerOfSubject(location *lymcwd.Location, slug string) (owner, subject stri
 	if err != nil {
 		return "", "", err
 	}
-	owners, err := boardengine.ReadOwners(fabricengine.BoardDir(location.HubPath))
+	owners, err := boardengine.ReadOwners(fabriclayout.BoardDir(location.HubPath))
 	if err != nil {
 		return "", "", err
 	}
@@ -265,7 +266,7 @@ func ownerOfSubject(location *lymcwd.Location, slug string) (owner, subject stri
 
 // hubRegistry reads the machine registry the hub's local board records.
 func hubRegistry(location *lymcwd.Location) (boardengine.Registry, error) {
-	owners, err := boardengine.ReadOwners(fabricengine.BoardDir(location.HubPath))
+	owners, err := boardengine.ReadOwners(fabriclayout.BoardDir(location.HubPath))
 	if err != nil {
 		return nil, err
 	}
@@ -377,7 +378,7 @@ func stopBeamDobby(prime *lymcwd.Location, slug string) error {
 	if err != nil || !live {
 		return err
 	}
-	_, err = runproc.EndRole(fabricengine.RunProcDir(prime.HubPath), slug, runproc.RoleDobby, os.Getpid())
+	_, err = runproc.EndRole(fabriclayout.RunProcDir(prime.HubPath), slug, runproc.RoleDobby, os.Getpid())
 	return err
 }
 

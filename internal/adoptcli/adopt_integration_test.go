@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -84,7 +85,7 @@ func TestAdoptIntegration_SecondCloneTakesOver(t *testing.T) {
 	if _, committed, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), first.Location, rels, "test: run record", fabricengine.EnvSyncOptions()); err != nil || !committed {
 		t.Fatalf("commit the run record: committed=%v err=%v", committed, err)
 	}
-	if _, err := fabricengine.PushPairAnchored(first.Location, fabricengine.EnvSyncOptions(), fabricengine.PairPush{LockWait: fabricengine.StatusPushLockWait}); err != nil {
+	if _, err := fabricengine.PushPairAnchored(first.Location, fabricengine.EnvSyncOptions(), fabriclayout.PairPush{LockWait: fabriclayout.StatusPushLockWait}); err != nil {
 		t.Fatalf("push the run record: %v", err)
 	}
 	_, pairStatusRel, err := shedrun.TreeRunFileRels(taskSlug)
@@ -156,7 +157,7 @@ func commitTransitionLocally(t *testing.T, l *lymcwd.Location) {
 	seam := statuscommit.New(statuscommit.Deps{
 		MergeActive: func() (bool, error) { return fabricengine.MergeStateActive(l) },
 		Commit: func(msg string) (bool, error) {
-			trailers := []fabricengine.Trailer{{Key: fabricengine.TransitionTrailerKey, Value: taskSlug}}
+			trailers := []fabriclayout.Trailer{{Key: fabriclayout.TransitionTrailerKey, Value: taskSlug}}
 			_, committed, err := fabricengine.CommitAnchoredPathsWithTrailers(fabricengine.NewMutations(""), l, []string{shedrun.StatusRel(l, taskSlug)}, msg, trailers, fabricengine.EnvSyncOptions())
 			return committed, err
 		},
@@ -285,7 +286,7 @@ func TestCheckCmd_FromABeamExitsZeroWhileOneRuns(t *testing.T) {
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	hubforge.AddPairWith(t, h, "b", fabricengine.AddOptions{Beam: true})
-	scratch := filepath.Join(fabricengine.AdoptScratchDir(h.Path), "root")
+	scratch := filepath.Join(fabriclayout.AdoptScratchDir(h.Path), "root")
 	if err := os.MkdirAll(scratch, 0o755); err != nil {
 		t.Fatal(err)
 	}

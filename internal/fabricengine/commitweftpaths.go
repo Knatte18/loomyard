@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -15,7 +16,7 @@ import (
 // It is the single place the anchor join happens.
 // Callers therefore never join AnchorRel or name the durable lym directory in a pathspec themselves.
 func weftCommitPathspec(anchorRel string, relPaths []string) []string {
-	return ScopedPathspec(anchorRel, relPaths)
+	return fabriclayout.ScopedPathspec(anchorRel, relPaths)
 }
 
 // CommitRecordsPaths stages and commits exactly relPaths, scoped under anchorRel, in the weft
@@ -68,7 +69,7 @@ func commitRecordsPathsHeld(rec *Mutations, weftPath, anchorRel string, relPaths
 		return "", false, err
 	}
 	if committed {
-		rec.Append(KindCommitCreated, weftPath, sha)
+		rec.Append(fabriclayout.KindCommitCreated, weftPath, sha)
 	}
 	return sha, committed, nil
 }

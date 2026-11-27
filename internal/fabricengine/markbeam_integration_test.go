@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -95,7 +96,7 @@ func TestMarkBeam(t *testing.T) {
 		if err == nil || marked {
 			t.Fatalf("MarkBeam(%q) = (%v, %v); want a refusal", slug, marked, err)
 		}
-		recordPath := filepath.ToSlash(filepath.Join(l.AnchorRel, fabricengine.OriginRecordRel()))
+		recordPath := filepath.ToSlash(filepath.Join(l.AnchorRel, fabriclayout.OriginRecordRel()))
 		for _, want := range []string{slug, "git checkout HEAD -- " + recordPath} {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("MarkBeam(%q) error = %v; want it to contain %q", slug, err, want)

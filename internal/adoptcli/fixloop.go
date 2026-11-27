@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fronttask"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
@@ -392,7 +393,7 @@ func hubFixDeps(prime *lymcwd.Location, subject string) (fixDeps, error) {
 	if err != nil {
 		return fixDeps{}, err
 	}
-	boardDir := fabricengine.BoardDir(prime.HubPath)
+	boardDir := fabriclayout.BoardDir(prime.HubPath)
 	project := ""
 	if subject != boardengine.RootSubject {
 		project = subject

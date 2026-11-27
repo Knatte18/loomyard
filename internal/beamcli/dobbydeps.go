@@ -31,6 +31,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fronttask"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hibernatecli"
@@ -160,7 +161,7 @@ func syncBoltHoldEntries(prime *lymcwd.Location, recordPath, boardDir string, sc
 	if err != nil {
 		return err
 	}
-	locks := &parentlock.Store{Dir: parentlock.Dir(fabricengine.BoltDir(prime.HubPath))}
+	locks := &parentlock.Store{Dir: parentlock.Dir(fabriclayout.BoltDir(prime.HubPath))}
 	req := tenderengine.BoltHoldRequest{Scope: scope, Hold: held, Grace: boltHoldGrace, HoldsParentLock: locks.HeldBy}
 	if len(owners.Holds) > 0 {
 		req.Standing, req.Machine = true, owners.Holds[0].Machine
@@ -355,7 +356,7 @@ func hubDobbyDepsStarting(prime *lymcwd.Location, geom dobbyengine.Geometry, sta
 				logger.Debug("beamcli: a dobby log line was not written", "path", path, "error", err)
 			}
 		},
-		StencilsDir: fabricengine.StencilsDir(prime.HubPath),
+		StencilsDir: fabriclayout.StencilsDir(prime.HubPath),
 		NearestOrch: func() (string, error) {
 			parent, err := hubgeom.NearestLiveOrch(worktree, orchcli.OrchLive)
 			return parent.Name, err
@@ -363,7 +364,7 @@ func hubDobbyDepsStarting(prime *lymcwd.Location, geom dobbyengine.Geometry, sta
 	}
 	if geom.Slug == "" {
 		deps.Orphans = func() ([]dobbyengine.OrphanView, error) { return battencli.DobbyOrphans(prime, boardDir) }
-		deps.OrphanRecord = fabricengine.OrphanFirstSightPath(prime.HubPath)
+		deps.OrphanRecord = fabriclayout.OrphanFirstSightPath(prime.HubPath)
 		carrier, err := hibernatecli.NewDobbyCarrier(prime)
 		if err != nil {
 			return dobbyengine.Deps{}, err
@@ -525,7 +526,7 @@ func tearDownLeftover(prime *lymcwd.Location, pair dobbyengine.LeftoverPair) err
 		Remote:  true,
 		Force:   pair.Kind == dobbyengine.LeftoverCancelled,
 		Landed:  pair.Kind == dobbyengine.LeftoverLanded,
-		Verdict: fabricengine.EntryEnded,
+		Verdict: fabriclayout.EntryEnded,
 	})
 	return err
 }
@@ -538,9 +539,9 @@ func tearDownLeftover(prime *lymcwd.Location, pair dobbyengine.LeftoverPair) err
 func reconcileEnded(prime *lymcwd.Location, slugs []string, opts fabricengine.ReconcileOptions) map[string]error {
 	teardown, err := pairteardown.New(prime)
 	if err != nil {
-		return endedTeardownResults(slugs, fabricengine.OriginReport{}, err)
+		return endedTeardownResults(slugs, fabriclayout.OriginReport{}, err)
 	}
-	report, err := fabricengine.ReconcileOrigin(prime, fabricengine.ReconcileScope{}, teardown.OriginSeams(pairteardown.HubSeamOptions(prime)), opts)
+	report, err := fabricengine.ReconcileOrigin(prime, fabriclayout.ReconcileScope{}, teardown.OriginSeams(pairteardown.HubSeamOptions(prime)), opts)
 	for _, mutation := range report.Mutations.Entries() {
 		logger.Info("beamcli: origin reconcile mutation", "kind", string(mutation.Kind), "target", mutation.Target, "detail", mutation.Detail)
 	}
@@ -549,7 +550,7 @@ func reconcileEnded(prime *lymcwd.Location, slugs []string, opts fabricengine.Re
 
 // endedTeardownResults maps each of slugs to nil when report shows its pair removed, and to the reason otherwise.
 // reconcileErr is the error the reconcile behind report returned, which every slug then carries.
-func endedTeardownResults(slugs []string, report fabricengine.OriginReport, reconcileErr error) map[string]error {
+func endedTeardownResults(slugs []string, report fabriclayout.OriginReport, reconcileErr error) map[string]error {
 	results := make(map[string]error, len(slugs))
 	for _, slug := range slugs {
 		results[slug] = endedTeardownResult(slug, report, reconcileErr)
@@ -558,7 +559,7 @@ func endedTeardownResults(slugs []string, report fabricengine.OriginReport, reco
 }
 
 // endedTeardownResult reads slug's ended entry in report: nil when its pair was removed, and the reason otherwise.
-func endedTeardownResult(slug string, report fabricengine.OriginReport, reconcileErr error) error {
+func endedTeardownResult(slug string, report fabriclayout.OriginReport, reconcileErr error) error {
 	switch {
 	case reconcileErr != nil:
 		return fmt.Errorf("the hub's origin reconcile failed: %w", reconcileErr)
@@ -566,7 +567,7 @@ func endedTeardownResult(slug string, report fabricengine.OriginReport, reconcil
 		return errors.New("origin was unreachable, so the reconcile judged no run ended")
 	}
 	for _, entry := range report.Entries {
-		if entry.Slug != slug || entry.State != fabricengine.EntryEnded {
+		if entry.Slug != slug || entry.State != fabriclayout.EntryEnded {
 			continue
 		}
 		switch {
@@ -695,7 +696,7 @@ func beamLandReading(prime *lymcwd.Location, slug string) (dobbyengine.LandReadi
 	if err != nil {
 		return dobbyengine.LandReading{}, err
 	}
-	owners, err := boardengine.ReadOwners(fabricengine.BoardDir(prime.HubPath))
+	owners, err := boardengine.ReadOwners(fabriclayout.BoardDir(prime.HubPath))
 	if err != nil {
 		return dobbyengine.LandReading{}, err
 	}

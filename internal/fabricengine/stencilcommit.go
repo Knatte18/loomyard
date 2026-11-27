@@ -7,31 +7,20 @@ package fabricengine
 import (
 	"fmt"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/buildinfo"
 	"github.com/Knatte18/loomyard/internal/buildvcs"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
-
-// StencilsSubtreeRel returns the slash-separated, board-repo-relative prefix of the stencils subtree.
-func StencilsSubtreeRel() string {
-	return path.Join(lymdirs.LymDirName, stencilsDirName)
-}
-
-// SpecsSubtreeRel returns the slash-separated, board-repo-relative prefix of the deployed-specs subtree.
-func SpecsSubtreeRel() string {
-	return path.Join(lymdirs.LymDirName, specsDirName)
-}
 
 // StencilSeedResult reports the landed commit's SHA and whether CommitSeededStencils made a commit.
 // It embeds MutationRecord, which every mutating verb's result type carries.
 type StencilSeedResult struct {
-	MutationRecord
+	fabriclayout.MutationRecord
 	SHA       string
 	Committed bool
 }
@@ -70,27 +59,22 @@ func CommitSeededStencils(hub, subtreeRel, subtreeDir string, writtenRelPaths []
 
 	defer func() { res.Mutations = rec.Snapshot() }()
 
-	pathspec := ScopedPathspec(subtreeRel, writtenRelPaths)
+	pathspec := fabriclayout.ScopedPathspec(subtreeRel, writtenRelPaths)
 
-	sha, committed, err := gitrepo.New(BoltDir(hub)).StageAndCommit(message, pathspec)
+	sha, committed, err := gitrepo.New(fabriclayout.BoltDir(hub)).StageAndCommit(message, pathspec)
 	if err != nil {
 		return StencilSeedResult{}, fmt.Errorf("fabricengine: commit seeded stencils: %w", err)
 	}
 
 	for _, relPath := range writtenRelPaths {
-		rec.Append(KindFileWritten, filepath.Join(subtreeDir, relPath), "")
+		rec.Append(fabriclayout.KindFileWritten, filepath.Join(subtreeDir, relPath), "")
 	}
 	if committed {
-		rec.Append(KindCommitCreated, BoltDir(hub), sha)
+		rec.Append(fabriclayout.KindCommitCreated, fabriclayout.BoltDir(hub), sha)
 	}
 
 	return StencilSeedResult{SHA: sha, Committed: committed}, nil
 }
-
-const (
-	seedSubjectPrefix = "lym: seed "
-	syncSubjectPrefix = "lym: sync "
-)
 
 // BinaryLabel renders the running binary for a commit subject.
 // The label has the form `(<revision label> <channel> <executable path>)`.
@@ -113,18 +97,6 @@ func binaryLabel(id buildvcs.Identity, channel, executable string) string {
 	return fmt.Sprintf("(%s %s %s)", id.Label(), channel, executable)
 }
 
-// SeedCommitMessage returns the subject of a seeding commit for a subtree (`stencils` or `specs`).
-// label is the parenthesised binary label.
-func SeedCommitMessage(subtree, label string) string {
-	return seedSubjectPrefix + subtree + " " + label
-}
-
-// SyncCommitMessage returns the subject of a commit that an operator-requested `lym stencil sync` makes for a subtree.
-// label is the parenthesised binary label.
-func SyncCommitMessage(subtree, label string) string {
-	return syncSubjectPrefix + subtree + " " + label
-}
-
 // IsSeedCommit reports whether a commit is a droppable seeding commit:
 // its first line is `lym: seed <subtree>` followed by one space and a non-empty parenthesised label,
 // and every path lies under the stencils or specs subtree.
@@ -132,7 +104,7 @@ func SyncCommitMessage(subtree, label string) string {
 // A commit that touches any other path also reports false.
 func IsSeedCommit(message string, paths []string) bool {
 	subject, _, _ := strings.Cut(message, "\n")
-	rest, found := strings.CutPrefix(subject, seedSubjectPrefix)
+	rest, found := strings.CutPrefix(subject, fabriclayout.SeedSubjectPrefix)
 	if !found {
 		return false
 	}
@@ -144,7 +116,7 @@ func IsSeedCommit(message string, paths []string) bool {
 		return false
 	}
 	for _, p := range paths {
-		if !underSubtree(p, StencilsSubtreeRel()) && !underSubtree(p, SpecsSubtreeRel()) {
+		if !underSubtree(p, fabriclayout.StencilsSubtreeRel()) && !underSubtree(p, fabriclayout.SpecsSubtreeRel()) {
 			return false
 		}
 	}

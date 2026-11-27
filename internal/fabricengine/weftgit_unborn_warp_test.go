@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -39,18 +40,18 @@ func TestCommitWeft_UnbornWarpHEAD_WritesTheCallersTrailers(t *testing.T) {
 	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
 	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeRecords(), "weft change, unborn warp")
 
-	trailers := []fabricengine.Trailer{{Key: fabricengine.TransitionTrailerKey, Value: "run-1"}}
-	sha, committed, err := fabricengine.CommitWeftWithTrailersForTest(f, []string{"_lym"}, fabricengine.DefaultCommitMessage, trailers, fabricengine.SyncOptions{})
+	trailers := []fabriclayout.Trailer{{Key: fabriclayout.TransitionTrailerKey, Value: "run-1"}}
+	sha, committed, err := fabricengine.CommitWeftWithTrailersForTest(f, []string{"_lym"}, fabriclayout.DefaultCommitMessage, trailers, fabricengine.SyncOptions{})
 	if err != nil || !committed {
 		t.Fatalf("commitWeft() = (%q, %v, %v); want a landed commit", sha, committed, err)
 	}
 
 	message := strings.TrimSpace(fabricengine.CommitMessageAtForTest(t, weftFixture.PrimeRecords(), sha))
-	if wantTail := fabricengine.TransitionTrailerKey + ": run-1"; !strings.HasSuffix(message, wantTail) {
+	if wantTail := fabriclayout.TransitionTrailerKey + ": run-1"; !strings.HasSuffix(message, wantTail) {
 		t.Errorf("commit message = %q; want it to end with %q", message, wantTail)
 	}
-	if strings.Contains(message, fabricengine.WarpSHATrailerKey+":") {
-		t.Errorf("commit message = %q; want no %s trailer (warp has no HEAD yet)", message, fabricengine.WarpSHATrailerKey)
+	if strings.Contains(message, fabriclayout.WarpSHATrailerKey+":") {
+		t.Errorf("commit message = %q; want no %s trailer (warp has no HEAD yet)", message, fabriclayout.WarpSHATrailerKey)
 	}
 }
 
@@ -68,7 +69,7 @@ func TestCommitWeft_UnbornWarpHEAD_CommitsWithoutTrailerOrRecord(t *testing.T) {
 
 	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeRecords(), "weft change, unborn warp")
 
-	sha, committed, err := fabricengine.CommitWeftForTest(f, []string{"_lym"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{})
+	sha, committed, err := fabricengine.CommitWeftForTest(f, []string{"_lym"}, fabriclayout.DefaultCommitMessage, fabricengine.SyncOptions{})
 	if err != nil {
 		t.Fatalf("commitWeft() against an unborn warp HEAD error = %v; want nil", err)
 	}
@@ -77,8 +78,8 @@ func TestCommitWeft_UnbornWarpHEAD_CommitsWithoutTrailerOrRecord(t *testing.T) {
 	}
 
 	rawMessage := fabricengine.CommitMessageAtForTest(t, weftFixture.PrimeRecords(), sha)
-	if strings.Contains(rawMessage, fabricengine.WarpSHATrailerKey+":") {
-		t.Errorf("commit message = %q; want no %s trailer (warp has no HEAD yet)", rawMessage, fabricengine.WarpSHATrailerKey)
+	if strings.Contains(rawMessage, fabriclayout.WarpSHATrailerKey+":") {
+		t.Errorf("commit message = %q; want no %s trailer (warp has no HEAD yet)", rawMessage, fabriclayout.WarpSHATrailerKey)
 	}
 
 	path, err := fabricengine.CorrIndexPathForTest(f)
@@ -99,7 +100,7 @@ func TestCommitWeft_UnbornWarpHEAD_CommitsWithoutTrailerOrRecord(t *testing.T) {
 	warpSHA := fabricengine.CommitWarpForTest(t, warpPath, "warp's first commit")
 	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeRecords(), "weft change, warp now born")
 
-	sha2, committed2, err := fabricengine.CommitWeftForTest(f, []string{"_lym"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{})
+	sha2, committed2, err := fabricengine.CommitWeftForTest(f, []string{"_lym"}, fabriclayout.DefaultCommitMessage, fabricengine.SyncOptions{})
 	if err != nil {
 		t.Fatalf("commitWeft() after warp's first commit error = %v; want nil", err)
 	}
@@ -108,7 +109,7 @@ func TestCommitWeft_UnbornWarpHEAD_CommitsWithoutTrailerOrRecord(t *testing.T) {
 	}
 
 	rawMessage2 := fabricengine.CommitMessageAtForTest(t, weftFixture.PrimeRecords(), sha2)
-	wantTrailer := fabricengine.WarpSHATrailerKey + ": " + warpSHA
+	wantTrailer := fabriclayout.WarpSHATrailerKey + ": " + warpSHA
 	if !strings.Contains(rawMessage2, wantTrailer) {
 		t.Errorf("commit message after warp's first commit = %q; want it to contain %q", rawMessage2, wantTrailer)
 	}

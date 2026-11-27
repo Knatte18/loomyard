@@ -24,7 +24,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/entrymerge"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fsx"
 )
 
@@ -276,14 +276,14 @@ func parseReplayBoard(data []byte) (map[string]Task, []Task, error) {
 
 // Runs decodes data, a `board.json`, into each entry's slug, whether it is done and its created stamp, in file order.
 // Empty data holds no entry.
-func (FabricReplay) Runs(data []byte) ([]fabricengine.LedgerRun, error) {
+func (FabricReplay) Runs(data []byte) ([]fabriclayout.LedgerRun, error) {
 	_, tasks, err := parseReplayBoard(data)
 	if err != nil {
 		return nil, err
 	}
-	runs := make([]fabricengine.LedgerRun, len(tasks))
+	runs := make([]fabriclayout.LedgerRun, len(tasks))
 	for i, task := range tasks {
-		runs[i] = fabricengine.LedgerRun{Slug: task.Slug, Ended: isDone(task), Created: task.Created}
+		runs[i] = fabriclayout.LedgerRun{Slug: task.Slug, Ended: isDone(task), Created: task.Created}
 	}
 	return runs, nil
 }
@@ -298,7 +298,7 @@ type replayRun struct {
 	refusedAdds map[string]bool
 	// lostAdds holds the slugs of the added entries origin already held under a different entry, whose add was reported lost.
 	lostAdds map[string]bool
-	result   fabricengine.ReplayResult
+	result   fabriclayout.ReplayResult
 	applied  bool
 	// The holds and machine registry of the merge base, the commit's parent and the commit.
 	baseHolds, parentHolds, commitHolds          []Hold
@@ -443,16 +443,16 @@ func (r *replayRun) changeRegistry() {
 // It saves board.json and re-renders the board's output files when anything was applied;
 // and writes nothing otherwise.
 // It takes no lock and spawns no sync, since its caller holds the board and push locks.
-func (FabricReplay) Apply(req fabricengine.ReplayRequest) (fabricengine.ReplayResult, error) {
+func (FabricReplay) Apply(req fabriclayout.ReplayRequest) (fabriclayout.ReplayResult, error) {
 	cfg, err := LoadConfig(configengine.Dirs{Board: req.Dir}, "board")
 	if err != nil {
-		return fabricengine.ReplayResult{}, err
+		return fabriclayout.ReplayResult{}, err
 	}
 	vocabulary := cfg.Vocabulary()
 
 	var baseJSON, parentJSON, commitJSON []byte
-	var designFiles, recordFiles []fabricengine.ReplayFile
-	storeFiles := map[string][]fabricengine.ReplayFile{}
+	var designFiles, recordFiles []fabriclayout.ReplayFile
+	storeFiles := map[string][]fabriclayout.ReplayFile{}
 	for _, file := range req.Files {
 		if file.Path == boardFile {
 			baseJSON, parentJSON, commitJSON = file.Base, file.Before, file.After
@@ -467,46 +467,46 @@ func (FabricReplay) Apply(req fabricengine.ReplayRequest) (fabricengine.ReplayRe
 
 	base, _, err := parseReplayBoard(baseJSON)
 	if err != nil {
-		return fabricengine.ReplayResult{}, fmt.Errorf("merge base %s: %w", boardFile, err)
+		return fabriclayout.ReplayResult{}, fmt.Errorf("merge base %s: %w", boardFile, err)
 	}
 	parent, parentTasks, err := parseReplayBoard(parentJSON)
 	if err != nil {
-		return fabricengine.ReplayResult{}, fmt.Errorf("parent %s: %w", boardFile, err)
+		return fabriclayout.ReplayResult{}, fmt.Errorf("parent %s: %w", boardFile, err)
 	}
 	_, commitTasks, err := parseReplayBoard(commitJSON)
 	if err != nil {
-		return fabricengine.ReplayResult{}, fmt.Errorf("commit %s: %w", boardFile, err)
+		return fabriclayout.ReplayResult{}, fmt.Errorf("commit %s: %w", boardFile, err)
 	}
 
 	basePrime, err := parsePrimeOwner(baseJSON)
 	if err != nil {
-		return fabricengine.ReplayResult{}, fmt.Errorf("merge base %s: %w", boardFile, err)
+		return fabriclayout.ReplayResult{}, fmt.Errorf("merge base %s: %w", boardFile, err)
 	}
 	parentPrime, err := parsePrimeOwner(parentJSON)
 	if err != nil {
-		return fabricengine.ReplayResult{}, fmt.Errorf("parent %s: %w", boardFile, err)
+		return fabriclayout.ReplayResult{}, fmt.Errorf("parent %s: %w", boardFile, err)
 	}
 	commitPrime, err := parsePrimeOwner(commitJSON)
 	if err != nil {
-		return fabricengine.ReplayResult{}, fmt.Errorf("commit %s: %w", boardFile, err)
+		return fabriclayout.ReplayResult{}, fmt.Errorf("commit %s: %w", boardFile, err)
 	}
 
 	store := NewStore(req.Dir)
 	store.vocab = &vocabulary
 	if err := store.Load(); err != nil {
-		return fabricengine.ReplayResult{}, err
+		return fabriclayout.ReplayResult{}, err
 	}
 	baseOwners, err := ParseOwners(baseJSON)
 	if err != nil {
-		return fabricengine.ReplayResult{}, fmt.Errorf("merge base %s: %w", boardFile, err)
+		return fabriclayout.ReplayResult{}, fmt.Errorf("merge base %s: %w", boardFile, err)
 	}
 	parentOwners, err := ParseOwners(parentJSON)
 	if err != nil {
-		return fabricengine.ReplayResult{}, fmt.Errorf("parent %s: %w", boardFile, err)
+		return fabriclayout.ReplayResult{}, fmt.Errorf("parent %s: %w", boardFile, err)
 	}
 	commitOwners, err := ParseOwners(commitJSON)
 	if err != nil {
-		return fabricengine.ReplayResult{}, fmt.Errorf("commit %s: %w", boardFile, err)
+		return fabriclayout.ReplayResult{}, fmt.Errorf("commit %s: %w", boardFile, err)
 	}
 
 	run := &replayRun{
@@ -541,7 +541,7 @@ func (FabricReplay) Apply(req fabricengine.ReplayRequest) (fabricengine.ReplayRe
 	for _, file := range designFiles {
 		applied, err := run.applyDesignFile(req.Dir, "design file", file)
 		if err != nil {
-			return fabricengine.ReplayResult{}, err
+			return fabriclayout.ReplayResult{}, err
 		}
 		designsApplied = designsApplied || applied
 	}
@@ -554,7 +554,7 @@ func (FabricReplay) Apply(req fabricengine.ReplayRequest) (fabricengine.ReplayRe
 		}
 		applied, err := run.applyDesignFile(req.Dir, "decision record", file)
 		if err != nil {
-			return fabricengine.ReplayResult{}, err
+			return fabriclayout.ReplayResult{}, err
 		}
 		designsApplied = designsApplied || applied
 	}
@@ -570,7 +570,7 @@ func (FabricReplay) Apply(req fabricengine.ReplayRequest) (fabricengine.ReplayRe
 		for _, file := range files {
 			applied, err := run.applyDesignFile(req.Dir, "raddle store file", file)
 			if err != nil {
-				return fabricengine.ReplayResult{}, err
+				return fabriclayout.ReplayResult{}, err
 			}
 			designsApplied = designsApplied || applied
 		}
@@ -583,11 +583,11 @@ func (FabricReplay) Apply(req fabricengine.ReplayRequest) (fabricengine.ReplayRe
 	if run.applied {
 		assignHandles(store.tasks, store.vocab)
 		if err := store.Save(); err != nil {
-			return fabricengine.ReplayResult{}, fmt.Errorf("save store: %w", err)
+			return fabriclayout.ReplayResult{}, fmt.Errorf("save store: %w", err)
 		}
 	}
 	if err := RenderToDisk(req.Dir, store.Tasks(), store.primeOwner, cfg.Outputs(), time.Now()); err != nil {
-		return fabricengine.ReplayResult{}, fmt.Errorf("render: %w", err)
+		return fabriclayout.ReplayResult{}, fmt.Errorf("render: %w", err)
 	}
 	return run.result, nil
 }
@@ -596,7 +596,7 @@ func (FabricReplay) Apply(req fabricengine.ReplayRequest) (fabricengine.ReplayRe
 // They are when the commit's store.json among them records as filed an entry whose add was refused or lost.
 // The store is the done marker of the entries it names, so origin never holds one without them.
 // A store.json that cannot be decoded sets them aside too, since origin would then refuse every slug-making write.
-func (r *replayRun) storeSetAsideReason(files []fabricengine.ReplayFile) (string, bool) {
+func (r *replayRun) storeSetAsideReason(files []fabriclayout.ReplayFile) (string, bool) {
 	for _, file := range files {
 		if filepath.Base(file.Path) != raddleStoreFileName || file.After == nil {
 			continue
@@ -618,11 +618,11 @@ func (r *replayRun) storeSetAsideReason(files []fabricengine.ReplayFile) (string
 }
 
 func (r *replayRun) lost(entry, field, reason, local string) {
-	r.result.Lost = append(r.result.Lost, fabricengine.ReplayFinding{Entry: entry, Field: field, Reason: reason, Local: local})
+	r.result.Lost = append(r.result.Lost, fabriclayout.ReplayFinding{Entry: entry, Field: field, Reason: reason, Local: local})
 }
 
 func (r *replayRun) refuse(entry, field string, err error) {
-	r.result.Refused = append(r.result.Refused, fabricengine.ReplayFinding{Entry: entry, Field: field, Reason: err.Error()})
+	r.result.Refused = append(r.result.Refused, fabriclayout.ReplayFinding{Entry: entry, Field: field, Reason: err.Error()})
 }
 
 // originEntry returns the store's current entry for slug and its index, or false when the store holds none.
@@ -784,7 +784,7 @@ func (r *replayRun) removeEntry(before Task) {
 // A design file or decision record must be a plain file name, and a store file a path directly in a store directory.
 // A path of any other shape is refused.
 // A file origin changed too stays as origin holds it and is reported lost.
-func (r *replayRun) applyDesignFile(boardDir, label string, file fabricengine.ReplayFile) (bool, error) {
+func (r *replayRun) applyDesignFile(boardDir, label string, file fabriclayout.ReplayFile) (bool, error) {
 	_, inStore := raddleStorePath(file.Path)
 	if file.Path == "" || (!inStore && file.Path != filepath.Base(file.Path)) {
 		r.refuse(file.Path, label, fmt.Errorf("%s name %q is not a plain file name", label, file.Path))

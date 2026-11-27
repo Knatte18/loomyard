@@ -21,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lenses"
@@ -111,7 +112,7 @@ func TestSmokeBurlerReviewCodexAssistant(t *testing.T) {
 	}
 	// Every seat's edit directive is its engine's copy, so a seat naming no engine needs a default.
 	burlerGeom.DefaultEngine = "claude"
-	engine := burlerengine.New(seatengine.RunnerShuttle(runner), burlerGeom, lenses.Config{}, fabricengine.StencilsDir(h.Location.HubPath), "", nil)
+	engine := burlerengine.New(seatengine.RunnerShuttle(runner), burlerGeom, lenses.Config{}, fabriclayout.StencilsDir(h.Location.HubPath), "", nil)
 
 	opts := burlerengine.RunOpts{
 		Review:        shuttleengine.ModelChoice{Engine: "claude", Model: "haiku", Effort: "low"},

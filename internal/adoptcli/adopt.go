@@ -13,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -148,10 +149,10 @@ type adoptDeps struct {
 	RunRecord      func(slug string) (shedengine.Status, bool, error)
 	OriginRun      func(slug, parent string) (shedengine.Status, bool, error)
 	LocalPair      func(slug string) bool
-	AddPair        func(slug string) (fabricengine.AddResult, error)
+	AddPair        func(slug string) (fabriclayout.AddResult, error)
 	PickAccount    func(slug string)
 	WriteAdopt     func(req boardengine.AdoptRequest) (boardengine.AdoptWrite, error)
-	TakeOver       func(slug, subject string) (fabricengine.TakeOverResult, error)
+	TakeOver       func(slug, subject string) (fabriclayout.TakeOverResult, error)
 	CatchUp        func() error
 	MoveInProgress func(worktree string) (wayForward string, standing bool, err error)
 	DeployState    func() (deployState, error)

@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -32,7 +32,7 @@ type expectation struct {
 }
 
 func tagName(slug, sha string) string {
-	return fabricengine.ArchiveTagPrefix + slug + "/" + sha
+	return fabriclayout.ArchiveTagPrefix + slug + "/" + sha
 }
 
 func TestCompute_SelectsRuns(t *testing.T) {

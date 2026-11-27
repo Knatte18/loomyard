@@ -19,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -83,14 +84,14 @@ func TestWire_DarnRecipe(t *testing.T) {
 		t.Parallel()
 		loc := hubLocation(t, "pair", ".")
 		// A darn seed has no Plan-Review row, so wire reads no tapestry.yaml and wires a hub that holds none.
-		for _, dir := range []string{loc.AnchorPath(), fabricengine.BoardDir(loc.HubPath)} {
+		for _, dir := range []string{loc.AnchorPath(), fabriclayout.BoardDir(loc.HubPath)} {
 			if err := os.Remove(configengine.ConfigFile(dir, "tapestry")); err != nil {
 				t.Fatalf("Remove(tapestry.yaml in %q) = %v; want nil", dir, err)
 			}
 		}
 		seedDarnHubConfig(t, loc.HubPath, "5", "verify_budget_min: 30", "verify_budget_min: 45")
 		writeHubGateConfig(t, loc.HubPath, gateConfigWithTwoTiers())
-		driftConfig := filepath.Join(fabricengine.BoardDir(loc.HubPath), "_lym", "config", "drift.yaml")
+		driftConfig := filepath.Join(fabriclayout.BoardDir(loc.HubPath), "_lym", "config", "drift.yaml")
 		if err := os.WriteFile(driftConfig, []byte(driftengine.ConfigTemplate()), 0o644); err != nil {
 			t.Fatalf("WriteFile drift.yaml = %v; want nil", err)
 		}
@@ -679,12 +680,12 @@ func TestWire_DriftExpectPlanReading(t *testing.T) {
 			loc := hubLocation(t, "pair", ".")
 			seedDarnHubConfig(t, loc.HubPath, "3")
 			writeHubGateConfig(t, loc.HubPath, gateConfigWithTwoTiers())
-			boardConfigDir := filepath.Join(fabricengine.BoardDir(loc.HubPath), "_lym", "config")
+			boardConfigDir := filepath.Join(fabriclayout.BoardDir(loc.HubPath), "_lym", "config")
 			if err := os.WriteFile(filepath.Join(boardConfigDir, "drift.yaml"), []byte(driftengine.ConfigTemplate()), 0o644); err != nil {
 				t.Fatalf("WriteFile drift.yaml = %v; want nil", err)
 			}
 			if tt.recipe == shedrun.RecipeSampler {
-				samplerPath := configengine.ConfigFile(fabricengine.BoardDir(loc.HubPath), "sampler")
+				samplerPath := configengine.ConfigFile(fabriclayout.BoardDir(loc.HubPath), "sampler")
 				if err := os.WriteFile(samplerPath, []byte(samplerengine.ConfigTemplate()), 0o644); err != nil {
 					t.Fatalf("WriteFile(%q) = %v; want nil", samplerPath, err)
 				}

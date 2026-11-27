@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -34,7 +35,7 @@ func TestPendingTeardowns(t *testing.T) {
 		hub := t.TempDir()
 		handedAt := time.Date(2026, 11, 22, 10, 0, 0, 0, time.UTC)
 		taskTip := strings.Repeat("b", 40)
-		taskTag := ArchiveTagName("tipped", taskTip)
+		taskTag := fabriclayout.ArchiveTagName("tipped", taskTip)
 		for _, job := range []remoteTeardownJob{
 			{Kind: remoteTeardownRemove, Slug: "ended"},
 			{Kind: remoteTeardownRemove, Slug: "cancelled", Rerun: "lym batten cancel cancelled --remove"},
@@ -46,7 +47,7 @@ func TestPendingTeardowns(t *testing.T) {
 				t.Fatalf("writePendingTeardown(%s) error = %v; want nil", job.Slug, err)
 			}
 		}
-		held, acquired, err := lock.TryAcquireWriteLock(TeardownLockPath(hub, "running"))
+		held, acquired, err := lock.TryAcquireWriteLock(fabriclayout.TeardownLockPath(hub, "running"))
 		if err != nil || !acquired {
 			t.Fatalf("TryAcquireWriteLock() = (%v, %v); want (true, nil)", acquired, err)
 		}
@@ -57,14 +58,14 @@ func TestPendingTeardowns(t *testing.T) {
 		if err != nil {
 			t.Fatalf("PendingTeardowns() error = %v; want nil", err)
 		}
-		want := []PendingTeardown{
+		want := []fabriclayout.PendingTeardown{
 			{Slug: "cancelled", Kind: remoteTeardownRemove, HandedAt: handedAt, WayForward: "run `lym batten cancel cancelled --remove` again"},
 			{Slug: "discarded", Kind: remoteTeardownDiscard, HandedAt: handedAt, WayForward: "run the command that discarded the task branch again"},
 			{Slug: "ended", Kind: remoteTeardownRemove, HandedAt: handedAt, WayForward: "run `lym fabric remove ended --remote` again"},
 			{Slug: "tipped", Kind: remoteTeardownDiscard, HandedAt: handedAt, WayForward: "push the archive tag with `git -C /code push origin refs/tags/" + taskTag + ":refs/tags/" + taskTag +
 				"`, then run the command that discarded the task branch again"},
 		}
-		same := func(a, b PendingTeardown) bool {
+		same := func(a, b fabriclayout.PendingTeardown) bool {
 			return a.Slug == b.Slug && a.Kind == b.Kind && a.HandedAt.Equal(b.HandedAt) && a.WayForward == b.WayForward
 		}
 		if !slices.EqualFunc(got, want, same) {

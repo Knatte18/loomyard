@@ -24,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -917,7 +918,7 @@ func TestFinishRemoval(t *testing.T) {
 
 	tests := []struct {
 		name       string
-		result     fabricengine.RemoveResult
+		result     fabriclayout.RemoveResult
 		removeErr  error
 		wantErr    bool
 		wantSubstr []string
@@ -926,10 +927,10 @@ func TestFinishRemoval(t *testing.T) {
 			name:      "NotFoundIsDone",
 			removeErr: fmt.Errorf("remove: %w: nothing of %q remains", fabricengine.ErrPairNotFound, slug),
 		},
-		{name: "FinishedHalfRemovedPairIsDone", result: fabricengine.RemoveResult{Finished: true}},
+		{name: "FinishedHalfRemovedPairIsDone", result: fabriclayout.RemoveResult{Finished: true}},
 		{
 			name:       "RemoteBranchErrorHaltsResumable",
-			result:     fabricengine.RemoveResult{RemoteBranchError: "push refused"},
+			result:     fabriclayout.RemoveResult{RemoteBranchError: "push refused"},
 			wantErr:    true,
 			wantSubstr: []string{slug, "push refused", "re-run lym batten run " + slug + " to retry the deletion"},
 		},
@@ -970,26 +971,26 @@ func TestOwnerVerdictOf(t *testing.T) {
 
 	tests := []struct {
 		name   string
-		report fabricengine.OriginReport
+		report fabriclayout.OriginReport
 		want   battenshed.OwnerVerdict
 	}{
 		{
 			name:   "owned_elsewhere_entry_names_its_owner_and_adopt_subject",
-			report: fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: "other", State: fabricengine.EntryActive}, {Slug: "task", State: fabricengine.EntryOwnedElsewhere, Owner: "laptop", AdoptSubject: "beam"}}},
+			report: fabriclayout.OriginReport{Entries: []fabriclayout.EntryOutcome{{Slug: "other", State: fabriclayout.EntryActive}, {Slug: "task", State: fabriclayout.EntryOwnedElsewhere, Owner: "laptop", AdoptSubject: "beam"}}},
 			want:   battenshed.OwnerVerdict{Owner: "laptop", AdoptSubject: "beam", Elsewhere: true},
 		},
 		{
 			name:   "active_entry_is_owned_here",
-			report: fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: "task", State: fabricengine.EntryActive}}},
+			report: fabriclayout.OriginReport{Entries: []fabriclayout.EntryOutcome{{Slug: "task", State: fabriclayout.EntryActive}}},
 		},
 		{
 			name:   "unreachable_report_is_unreachable",
-			report: fabricengine.OriginReport{Unreachable: true},
+			report: fabriclayout.OriginReport{Unreachable: true},
 			want:   battenshed.OwnerVerdict{Unreachable: true},
 		},
 		{
 			name:   "report_without_the_slug_is_owned_here",
-			report: fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: "other", State: fabricengine.EntryOwnedElsewhere, Owner: "laptop"}}},
+			report: fabriclayout.OriginReport{Entries: []fabriclayout.EntryOutcome{{Slug: "other", State: fabriclayout.EntryOwnedElsewhere, Owner: "laptop"}}},
 		},
 	}
 	for _, tt := range tests {

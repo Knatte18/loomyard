@@ -9,6 +9,7 @@ import (
 	"fmt"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -211,7 +212,7 @@ func (t *Teardown) holdRecordsWriteLocks(slug string) (release func() error, err
 			return nil, errors.Join(err, releaseAll())
 		}
 		if !held {
-			return nil, errors.Join(writeLockBusyError(slug, fabricengine.RecordsLockDirPath(worktree)), releaseAll())
+			return nil, errors.Join(writeLockBusyError(slug, fabriclayout.RecordsLockDirPath(worktree)), releaseAll())
 		}
 		releases = append(releases, releaseOne)
 	}

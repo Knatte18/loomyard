@@ -17,7 +17,8 @@
 // reedengine is told its geometry as a Geometry value (geometry.go) and derives none of it.
 // internal/lymcwd is absent from its direct production imports (the Told-Geometry Invariant).
 // hubgeom.ReedGeometry builds a Geometry from a resolved *lymcwd.Location for every hub-mode caller.
-// The one fabricengine call, fabricengine.HubScratchDir in SpawnWatchdog, takes hubPath as a parameter.
+// The one fabric call, fabriclayout.HubScratchDir in SpawnWatchdog, takes hubPath as a parameter.
+// reedengine's production files import no internal/fabricengine.
 // The environment keys the tmux server spawn must not inherit are told as an EnvScrub passed to New;
 // reedengine carries no provider's names itself.
 // The spawn order of a hub's worktrees is told as Geometry.SpawnOrder, nil in standalone mode.

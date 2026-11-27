@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -61,7 +62,7 @@ func newHandOverFixtureWith(t *testing.T, slug string, plantTakeover bool) *hand
 	if err != nil {
 		t.Fatalf("ResolveWorktree: %v", err)
 	}
-	if _, err := fabricengine.PushPairAnchored(pair, fabricengine.EnvSyncOptions(), fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded}); err != nil {
+	if _, err := fabricengine.PushPairAnchored(pair, fabricengine.EnvSyncOptions(), fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded}); err != nil {
 		t.Fatalf("priming push error = %v", err)
 	}
 	f := &handOverFixture{h: h, slug: slug, pair: pair, entry: shedengine.Takeover{Machine: "oslo-takeover-test", Subject: "sub", At: "2026-11-16T10:00:00Z"}}
@@ -69,7 +70,7 @@ func newHandOverFixtureWith(t *testing.T, slug string, plantTakeover bool) *hand
 	gitkit.CommitFile(t, h.PairCodeWorktree(slug), "code-file.txt", "code\n", "code transition")
 	gitkit.CommitFile(t, h.PairRecordsSibling(slug), "records-file.txt", "records\n", "records transition")
 	if plantTakeover {
-		f.plantRunRecord(t, fabricengine.RecordsBranchName(added.Branch), slug, shedengine.Status{State: shedengine.StateRunning}, &f.entry)
+		f.plantRunRecord(t, fabriclayout.RecordsBranchName(added.Branch), slug, shedengine.Status{State: shedengine.StateRunning}, &f.entry)
 	}
 
 	sleeper := exec.Command("sleep", "300")
@@ -83,7 +84,7 @@ func newHandOverFixtureWith(t *testing.T, slug string, plantTakeover bool) *hand
 		close(f.sleeperG)
 	}()
 	t.Cleanup(func() { _ = syscall.Kill(-sleeper.Process.Pid, syscall.SIGKILL) })
-	if err := runproc.Register(fabricengine.RunProcDir(h.Path), slug, runproc.ChildRecord(sleeper.Process.Pid, runproc.RoleBatten, []string{"sleep", "300"})); err != nil {
+	if err := runproc.Register(fabriclayout.RunProcDir(h.Path), slug, runproc.ChildRecord(sleeper.Process.Pid, runproc.RoleBatten, []string{"sleep", "300"})); err != nil {
 		t.Fatalf("register the sleeping process: %v", err)
 	}
 	return f
@@ -168,7 +169,7 @@ func (f *handOverFixture) requireMark(t *testing.T) {
 func captureNotices(t *testing.T) *[]string {
 	t.Helper()
 	var lines []string
-	t.Cleanup(fabricengine.InstallPushNotifier(func(_ string, notice fabricengine.PushNotice) (bool, error) {
+	t.Cleanup(fabricengine.InstallPushNotifier(func(_ string, notice fabriclayout.PushNotice) (bool, error) {
 		lines = append(lines, notice.Line)
 		return true, nil
 	}))
@@ -186,7 +187,7 @@ func TestHandOverOwnedElsewhere(t *testing.T) {
 	}
 	archiveTagsOn := func(t *testing.T, bare string) string {
 		t.Helper()
-		return gitkit.Git(t, bare, "tag", "--list", fabricengine.OwnerArchiveTagPrefix+slug+"/*")
+		return gitkit.Git(t, bare, "tag", "--list", fabriclayout.OwnerArchiveTagPrefix+slug+"/*")
 	}
 	requirePairGone := func(t *testing.T, f *handOverFixture) {
 		t.Helper()
@@ -215,7 +216,7 @@ func TestHandOverOwnedElsewhere(t *testing.T) {
 			t.Fatalf("HandOverOwnedElsewhere() error = %v; want nil", err)
 		}
 
-		if got := gitkit.RevParse(t, f.h.RecordsBare, "refs/heads/"+fabricengine.RecordsBranchName(codeBranch)); got != recordsHead {
+		if got := gitkit.RevParse(t, f.h.RecordsBare, "refs/heads/"+fabriclayout.RecordsBranchName(codeBranch)); got != recordsHead {
 			t.Errorf("origin records tip = %s; want the local commit %s pushed first", got, recordsHead)
 		}
 		if got := gitkit.RevParse(t, f.h.CodeBare, "refs/heads/"+codeBranch); got != codeHead {
@@ -252,7 +253,7 @@ func TestHandOverOwnedElsewhere(t *testing.T) {
 		primeBranch := gitkit.CurrentBranch(t, f.h.PrimeRecords())
 		gitkit.Git(t, f.h.PrimeRecords(), "push", "--set-upstream", "origin", primeBranch)
 		f.plantRunRecord(t, primeBranch, slug, shedengine.Status{State: shedengine.StateRunning}, &f.entry)
-		originRecords := "refs/heads/" + fabricengine.RecordsBranchName(gitkit.CurrentBranch(t, f.h.PairCodeWorktree(slug)))
+		originRecords := "refs/heads/" + fabriclayout.RecordsBranchName(gitkit.CurrentBranch(t, f.h.PairCodeWorktree(slug)))
 		before := gitkit.RevParse(t, f.h.RecordsBare, originRecords)
 
 		if err := handOver(f); err != nil {
@@ -299,7 +300,7 @@ func TestPushRun_HandsOverOnATakeover(t *testing.T) {
 
 	const slug = "hand-over-run"
 	run := func(f *handOverFixture, insidePair bool) error {
-		_, err := pairteardown.PushRun(f.h.Location, f.pair, slug, pairteardown.RunPush{LockWait: fabricengine.LockWaitUnbounded, InsidePair: insidePair})
+		_, err := pairteardown.PushRun(f.h.Location, f.pair, slug, pairteardown.RunPush{LockWait: fabriclayout.LockWaitUnbounded, InsidePair: insidePair})
 		return err
 	}
 	notices := captureNotices
@@ -334,10 +335,10 @@ func TestPushRun_HandsOverOnATakeover(t *testing.T) {
 		}
 		f.requireMark(t)
 
-		originRecords := gitkit.RevParse(t, f.h.RecordsBare, "refs/heads/"+fabricengine.RecordsBranchName(gitkit.CurrentBranch(t, f.h.PairCodeWorktree(slug))))
+		originRecords := gitkit.RevParse(t, f.h.RecordsBare, "refs/heads/"+fabriclayout.RecordsBranchName(gitkit.CurrentBranch(t, f.h.PairCodeWorktree(slug))))
 		err = run(f, true)
 		f.requireHandedOver(t, err)
-		if got := gitkit.RevParse(t, f.h.RecordsBare, "refs/heads/"+fabricengine.RecordsBranchName(gitkit.CurrentBranch(t, f.h.PairCodeWorktree(slug)))); got != originRecords {
+		if got := gitkit.RevParse(t, f.h.RecordsBare, "refs/heads/"+fabriclayout.RecordsBranchName(gitkit.CurrentBranch(t, f.h.PairCodeWorktree(slug)))); got != originRecords {
 			t.Errorf("origin records tip = %s after the second PushRun; want it unchanged at %s", got, originRecords)
 		}
 	})
@@ -386,7 +387,7 @@ func TestPushRun_HandsOverOnATakeover(t *testing.T) {
 			if err != nil {
 				t.Fatalf("TreeRunFileRels(%q): %v", runSlug, err)
 			}
-			message := fmt.Sprintf("transition %d of %s\n\n%s: %s", i, runSlug, fabricengine.TransitionTrailerKey, runSlug)
+			message := fmt.Sprintf("transition %d of %s\n\n%s: %s", i, runSlug, fabriclayout.TransitionTrailerKey, runSlug)
 			gitkit.CommitFile(t, primeRecords, path.Join(path.Dir(statusRel), fmt.Sprintf("transition-%d.txt", i)), "x\n", message)
 		}
 		head := gitkit.RevParse(t, primeRecords, "HEAD")
@@ -394,7 +395,7 @@ func TestPushRun_HandsOverOnATakeover(t *testing.T) {
 		return f, branch, head
 	}
 	runPrime := func(f *handOverFixture, named string) error {
-		_, err := pairteardown.PushRun(f.h.Location, f.h.Location, named, pairteardown.RunPush{LockWait: fabricengine.LockWaitUnbounded})
+		_, err := pairteardown.PushRun(f.h.Location, f.h.Location, named, pairteardown.RunPush{LockWait: fabriclayout.LockWaitUnbounded})
 		return err
 	}
 	// originTransitions returns the subjects of the transition commits on origin's prime records branch, oldest first.
@@ -430,7 +431,7 @@ func TestPushRun_HandsOverOnATakeover(t *testing.T) {
 		f.requireProcessEnded(t)
 		requirePairGone(t, f)
 		holdsPrimeTip := false
-		for _, tag := range strings.Fields(gitkit.Git(t, f.h.RecordsBare, "tag", "--list", fabricengine.OwnerArchiveTagPrefix+slug+"/*")) {
+		for _, tag := range strings.Fields(gitkit.Git(t, f.h.RecordsBare, "tag", "--list", fabriclayout.OwnerArchiveTagPrefix+slug+"/*")) {
 			if gitkit.RevParse(t, f.h.RecordsBare, tag+"^{commit}") == primeHead {
 				holdsPrimeTip = true
 			}

@@ -7,7 +7,7 @@ import (
 	"fmt"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fronttask"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
@@ -59,7 +59,7 @@ func hubGreenDeps(prime *lymcwd.Location, subject, rerun string) (greenDeps, err
 	if err != nil {
 		return greenDeps{}, err
 	}
-	boardDir := fabricengine.BoardDir(prime.HubPath)
+	boardDir := fabriclayout.BoardDir(prime.HubPath)
 	worktree, project := prime.WorktreeName, ""
 	if subject != boardengine.RootSubject {
 		worktree, project = subject, subject

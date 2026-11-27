@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
@@ -171,7 +171,7 @@ func requireRecordsCommits(t *testing.T, f *baselineFixture, n int) {
 		t.Errorf("%d records commits; want %d", len(f.store.commits), n)
 	}
 	for _, commit := range f.store.commits {
-		if !slices.ContainsFunc(commit.trailers, func(trailer fabricengine.Trailer) bool { return trailer.Key == RecordsTrailerKey }) {
+		if !slices.ContainsFunc(commit.trailers, func(trailer fabriclayout.Trailer) bool { return trailer.Key == RecordsTrailerKey }) {
 			t.Errorf("commit %s carries trailers %v; want %s", commit.sha, commit.trailers, RecordsTrailerKey)
 		}
 	}

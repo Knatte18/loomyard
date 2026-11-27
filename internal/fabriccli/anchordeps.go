@@ -22,6 +22,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -53,7 +54,7 @@ var hibernateEndedPhases = []string{"done", "failed", "cancelled"}
 // The daemon is the prime's dobby.
 // A hub with no request file, or with an ended request, reports false.
 func hibernateDaemonLive(hub string) (bool, error) {
-	path := filepath.Join(fabricengine.HubScratchDir(hub), lymdirs.HibernateDirName, hibernateRequestFileName)
+	path := filepath.Join(fabriclayout.HubScratchDir(hub), lymdirs.HibernateDirName, hibernateRequestFileName)
 	data, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return false, nil
@@ -84,9 +85,9 @@ func hubAnchorDeps(acting *lymcwd.Location) (anchorDeps, error) {
 		return anchorDeps{}, err
 	}
 	hub := acting.HubPath
-	boardDir := fabricengine.BoardDir(hub)
-	boltDir := fabricengine.BoltDir(hub)
-	runProcDir := fabricengine.RunProcDir(hub)
+	boardDir := fabriclayout.BoardDir(hub)
+	boltDir := fabriclayout.BoltDir(hub)
+	runProcDir := fabriclayout.RunProcDir(hub)
 	prime := func() (*lymcwd.Location, error) { return lymcwd.NamedWorktree(hub, primeName) }
 	// dobbyOwner names the owner a worktree's dobby registers its process under, which is the hub owner for the prime.
 	dobbyOwner := func(worktree string) string {
@@ -151,7 +152,7 @@ func hubAnchorDeps(acting *lymcwd.Location) (anchorDeps, error) {
 			}
 			return fabricengine.UpstreamAnchor(location, names)
 		},
-		MoveRecord: func(location *lymcwd.Location) (fabricengine.MoveRecord, bool, error) {
+		MoveRecord: func(location *lymcwd.Location) (fabriclayout.MoveRecord, bool, error) {
 			return fabricengine.ReadMoveRecord(fabricengine.RecordsWorktreePath(location, location.WorktreeName))
 		},
 		ReedHeld: reedHeld,

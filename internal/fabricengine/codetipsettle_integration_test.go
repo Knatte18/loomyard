@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -27,11 +28,11 @@ func plantTwoTransitions(t *testing.T, p *pairFixture, slug string) (first, seco
 
 	first = bareBranchTip(t, p.hub.CodeBare, p.warpBranch)
 	plantRunTransition(t, p, slug, first, "oslo")
-	p.originCommit(p.weftBranch, "fabric-note-1.txt", "note\n", "fabric commit\n\n"+fabricengine.WarpSHATrailerKey+": "+first)
+	p.originCommit(p.weftBranch, "fabric-note-1.txt", "note\n", "fabric commit\n\n"+fabriclayout.WarpSHATrailerKey+": "+first)
 	second = gitkit.CommitFile(t, p.warpPath, "second.txt", "second\n", "second tip")
 	plantRunTransition(t, p, slug, second, "bergen")
 	gitkit.CommitFile(t, p.warpPath, "later.txt", "later\n", "later local code")
-	p.originCommit(p.weftBranch, "fabric-note-2.txt", "note\n", "fabric commit\n\n"+fabricengine.WarpSHATrailerKey+": "+first)
+	p.originCommit(p.weftBranch, "fabric-note-2.txt", "note\n", "fabric commit\n\n"+fabriclayout.WarpSHATrailerKey+": "+first)
 	gitkit.Git(t, p.weftPath, "fetch")
 	gitkit.Git(t, p.weftPath, "merge", "--ff-only", "origin/"+p.weftBranch)
 	return first, second
@@ -61,7 +62,7 @@ func TestOneRepositoryPairTips_RefuseARecordsStoreThatLostItsFetchRefspecs(t *te
 			t.Parallel()
 
 			h := hubforge.NewOneRepoHub(t, hubforge.OneRepoOptions{})
-			recordsBranch := fabricengine.RecordsBranchName(hubforge.AddPair(t, h, slug).Branch)
+			recordsBranch := fabriclayout.RecordsBranchName(hubforge.AddPair(t, h, slug).Branch)
 			sibling := h.PairRecordsSibling(slug)
 			before := gitkit.RevParse(t, sibling, "HEAD")
 			gitkit.CommitFile(t, sibling, "ahead.txt", "ahead\n", "origin's next records commit")
@@ -111,8 +112,8 @@ func TestReturnToPreviousTransition(t *testing.T) {
 		}
 		message := gitkit.Git(t, p.weftPath, "log", "-1", "--format=%B")
 		for _, want := range []string{
-			fabricengine.WarpSHATrailerKey + ": " + first,
-			fabricengine.TransitionTrailerKey + ": " + slug,
+			fabriclayout.WarpSHATrailerKey + ": " + first,
+			fabriclayout.TransitionTrailerKey + ": " + slug,
 		} {
 			if !strings.Contains(message, want) {
 				t.Errorf("commit message = %q; want it to hold %q", message, want)

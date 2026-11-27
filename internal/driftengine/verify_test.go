@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -145,7 +145,7 @@ type verifyFixture struct {
 	// liveChair is whether a probe finds the judge's chair.
 	liveChair bool
 	// codeCheckout and recordsCheckout are the two fake checkouts, and recordsChanged is what RecordsChangedSince answers.
-	codeCheckout, recordsCheckout fabricengine.CheckoutState
+	codeCheckout, recordsCheckout fabriclayout.CheckoutState
 	// checkoutsErr, when set, is what the checkouts read fails with, so taking the judge snapshot fails.
 	checkoutsErr   error
 	recordsChanged []string
@@ -153,7 +153,7 @@ type verifyFixture struct {
 	// addedDiff is the diff of the files the range adds, which the full range diff holds after the changed files' diffs.
 	// changedFilesBases, commitMessagesBases and rangeDiffBases hold the base each of those reads was called with.
 	reviewBase          string
-	changedFiles        []fabricengine.FileDiff
+	changedFiles        []fabriclayout.FileDiff
 	addedDiff           string
 	commitMessages      []string
 	changedFilesBases   []string
@@ -194,8 +194,8 @@ func newVerifyFixture(t *testing.T) *verifyFixture {
 		rangeChecked:    "read what the range covers",
 		reviewBase:      "review-base",
 		compare:         passingCompare,
-		codeCheckout:    fabricengine.CheckoutState{Root: t.TempDir(), Head: "code-1"},
-		recordsCheckout: fabricengine.CheckoutState{Root: t.TempDir(), Head: "records-1"},
+		codeCheckout:    fabriclayout.CheckoutState{Root: t.TempDir(), Head: "code-1"},
+		recordsCheckout: fabriclayout.CheckoutState{Root: t.TempDir(), Head: "records-1"},
 	}
 
 	actions := make([]func(), 12)
@@ -236,7 +236,7 @@ func newVerifyFixture(t *testing.T) *verifyFixture {
 	}
 	d.JudgeSnapshotDir = filepath.Join(t.TempDir(), "snapshot")
 	d.LoomRecordsDirs = []string{testRunDirRel, testFrictionRel, testFrictionPrefix}
-	d.Checkouts = func() (fabricengine.CheckoutState, fabricengine.CheckoutState, error) {
+	d.Checkouts = func() (fabriclayout.CheckoutState, fabriclayout.CheckoutState, error) {
 		return f.codeCheckout, f.recordsCheckout, f.checkoutsErr
 	}
 	d.RecordsChangedSince = func(string) ([]string, error) { return f.recordsChanged, nil }
@@ -246,7 +246,7 @@ func newVerifyFixture(t *testing.T) *verifyFixture {
 	}
 	d.BranchPoint = func() (string, error) { return "branch-point", nil }
 	d.ReviewBase = func() (string, error) { return f.reviewBase, nil }
-	d.ChangedFiles = func(base string) ([]fabricengine.FileDiff, error) {
+	d.ChangedFiles = func(base string) ([]fabriclayout.FileDiff, error) {
 		f.changedFilesBases = append(f.changedFilesBases, base)
 		return f.changedFiles, nil
 	}
@@ -367,7 +367,7 @@ func (f *verifyFixture) seed(scope ScopeRecord, baseline map[string]string) {
 		f.t.Fatalf("WriteCapture() = %v; want nil", err)
 	}
 	change := func(s *ScopeRecord, _ *JudgedRecord) error { *s = scope; return nil }
-	if err := WriteRecords(f.deps, change, fabricengine.Trailer{Key: BaselineTrailerKey, Value: digest}); err != nil {
+	if err := WriteRecords(f.deps, change, fabriclayout.Trailer{Key: BaselineTrailerKey, Value: digest}); err != nil {
 		f.t.Fatalf("WriteRecords() = %v; want nil", err)
 	}
 }
@@ -1290,7 +1290,7 @@ func TestDriftVerify(t *testing.T) {
 		t.Parallel()
 		const limitsTest = "limits_test.go"
 		const trailer = "Loosened-Check: TestLimit — the limit from 5 to 50 — measured 40 under load"
-		widened := []fabricengine.FileDiff{{Path: limitsTest, Diff: "-\tlimit := 5\n+\tlimit := 50\n"}}
+		widened := []fabriclayout.FileDiff{{Path: limitsTest, Diff: "-\tlimit := 5\n+\tlimit := 50\n"}}
 		uncaused := map[string][]LoosenedRuling{limitsTest: {{Test: "TestLimit", Loosened: "the limit from 5 to 50", Ruling: RulingUncaused, Reason: "no measurement is named"}}}
 		caused := map[string][]LoosenedRuling{limitsTest: {{Test: "TestLimit", Loosened: "the limit from 5 to 50", Ruling: RulingCaused, Cause: "measured 40 under load", Reason: "the trailer names a measurement"}}}
 		wantUncaused := LoosenedCheck{Path: limitsTest, Test: "TestLimit", Loosened: "the limit from 5 to 50", Ruling: RulingUncaused, Reason: "no measurement is named"}
@@ -1361,12 +1361,12 @@ func TestDriftVerify(t *testing.T) {
 			t.Parallel()
 			const movedTo = "limits_class_test.go"
 			const untouchedTest = "names_test.go"
-			before := fabricengine.FileDiff{Path: movedTo, Diff: "+type limitsClass struct{}\n"}
-			untouched := fabricengine.FileDiff{Path: untouchedTest, Diff: "+\tname := \"limit\"\n"}
+			before := fabriclayout.FileDiff{Path: movedTo, Diff: "+type limitsClass struct{}\n"}
+			untouched := fabriclayout.FileDiff{Path: untouchedTest, Diff: "+\tname := \"limit\"\n"}
 			f := newVerifyFixture(t)
 			f.seed(countedScope(), verifyBaseline)
 			f.current = verifyBaseline
-			f.changedFiles = []fabricengine.FileDiff{widened[0], before, untouched}
+			f.changedFiles = []fabriclayout.FileDiff{widened[0], before, untouched}
 			f.commitMessages = []string{"3: widen the limit\n"}
 			f.fileRulings = uncaused
 			storedUntouched := func() JudgedFile {
@@ -1383,9 +1383,9 @@ func TestDriftVerify(t *testing.T) {
 			requireStuck(t, outcome, pointer, err, true, "has no measured cause", "commit the dropped checks in a test", "has the judge rule again on a file whose stored ruling the new commits may answer")
 			ruledFirst := storedUntouched()
 
-			added := fabricengine.FileDiff{Path: movedTo, Diff: before.Diff + "+\tif got > 5 {\n+\t\tt.Errorf(\"limit exceeded\")\n"}
+			added := fabriclayout.FileDiff{Path: movedTo, Diff: before.Diff + "+\tif got > 5 {\n+\t\tt.Errorf(\"limit exceeded\")\n"}
 			f.moveHead("code-head-1")
-			f.changedFiles = []fabricengine.FileDiff{widened[0], added, untouched}
+			f.changedFiles = []fabriclayout.FileDiff{widened[0], added, untouched}
 			f.commitMessages = []string{"4: add the dropped checks\n", "3: widen the limit\n"}
 			f.fileRulings = nil
 

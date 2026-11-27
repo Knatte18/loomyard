@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/runproc"
@@ -57,7 +57,7 @@ func spawnSync(boardPath string) error {
 	proc.Reap(cmd)
 	pid := cmd.Process.Pid
 	record := runproc.ChildRecord(pid, runproc.RoleSync, cmd.Args)
-	if err := runproc.Register(fabricengine.RunProcDir(filepath.Dir(abs)), runproc.HubOwner, record); err != nil {
+	if err := runproc.Register(fabriclayout.RunProcDir(filepath.Dir(abs)), runproc.HubOwner, record); err != nil {
 		logger.Warn("boardengine: board sync not registered", "pid", pid, "cause", err)
 	}
 	return nil

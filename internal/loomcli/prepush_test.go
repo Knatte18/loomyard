@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -22,24 +23,24 @@ func TestPrePushCheckGuard(t *testing.T) {
 	t.Parallel()
 
 	const slug = "task"
-	ownNamed := func(name string, state fabricengine.BranchState, moved bool) fabricengine.BranchOutcome {
-		return fabricengine.BranchOutcome{Branch: name, Repo: fabricengine.RepoCode, Slug: slug, State: state, Moved: moved}
+	ownNamed := func(name string, state fabriclayout.BranchState, moved bool) fabriclayout.BranchOutcome {
+		return fabriclayout.BranchOutcome{Branch: name, Repo: fabriclayout.RepoCode, Slug: slug, State: state, Moved: moved}
 	}
-	own := func(state fabricengine.BranchState, moved bool) fabricengine.BranchOutcome {
+	own := func(state fabriclayout.BranchState, moved bool) fabriclayout.BranchOutcome {
 		return ownNamed(slug, state, moved)
 	}
-	parent := func(state fabricengine.BranchState) fabricengine.BranchOutcome {
-		return fabricengine.BranchOutcome{Branch: "main", Repo: fabricengine.RepoCode, Prime: true, State: state}
+	parent := func(state fabriclayout.BranchState) fabriclayout.BranchOutcome {
+		return fabriclayout.BranchOutcome{Branch: "main", Repo: fabriclayout.RepoCode, Prime: true, State: state}
 	}
-	boltMain := fabricengine.BranchOutcome{Branch: "main", Repo: fabricengine.RepoBolt, State: fabricengine.BranchFastForward, Moved: true}
-	entry := func(state fabricengine.EntryState) fabricengine.EntryOutcome {
-		return fabricengine.EntryOutcome{Slug: slug, State: state}
+	boltMain := fabriclayout.BranchOutcome{Branch: "main", Repo: fabriclayout.RepoBolt, State: fabriclayout.BranchFastForward, Moved: true}
+	entry := func(state fabriclayout.EntryState) fabriclayout.EntryOutcome {
+		return fabriclayout.EntryOutcome{Slug: slug, State: state}
 	}
 	tests := []struct {
 		name         string
 		skip         bool
 		skipErr      error
-		report       fabricengine.OriginReport
+		report       fabriclayout.OriginReport
 		reconcileErr error
 		parentErr    error
 		landed       bool
@@ -54,70 +55,70 @@ func TestPrePushCheckGuard(t *testing.T) {
 		{name: "Skipped", skip: true},
 		{name: "SkipUnreadable", skipErr: errors.New("status locked")},
 		{name: "ReconcileFails", reconcileErr: errors.New("ls-remote refused"), wantCalls: []string{"reconcile"}},
-		{name: "Unreachable", report: fabricengine.OriginReport{Unreachable: true}, wantCalls: []string{"reconcile"}},
+		{name: "Unreachable", report: fabriclayout.OriginReport{Unreachable: true}, wantCalls: []string{"reconcile"}},
 		{
 			name:      "ActiveNothingMoved",
-			report:    fabricengine.OriginReport{Branches: []fabricengine.BranchOutcome{own(fabricengine.BranchAhead, false)}, Entries: []fabricengine.EntryOutcome{entry(fabricengine.EntryActive)}},
+			report:    fabriclayout.OriginReport{Branches: []fabriclayout.BranchOutcome{own(fabriclayout.BranchAhead, false)}, Entries: []fabriclayout.EntryOutcome{entry(fabriclayout.EntryActive)}},
 			wantCalls: []string{"reconcile"},
 		},
 		{
 			name: "ActiveOwnBranchMoved",
-			report: fabricengine.OriginReport{
-				Branches: []fabricengine.BranchOutcome{own(fabricengine.BranchLevel, true), boltMain},
-				Entries:  []fabricengine.EntryOutcome{entry(fabricengine.EntryActive)},
+			report: fabriclayout.OriginReport{
+				Branches: []fabriclayout.BranchOutcome{own(fabriclayout.BranchLevel, true), boltMain},
+				Entries:  []fabriclayout.EntryOutcome{entry(fabriclayout.EntryActive)},
 			},
 			wantCalls:   []string{"reconcile"},
 			wantNotices: []string{"task: origin moved task; the run took the new tips before its push"},
 		},
 		{
 			name: "ActiveSeveralOwnBranchesMoved",
-			report: fabricengine.OriginReport{
-				Branches: []fabricengine.BranchOutcome{own(fabricengine.BranchLevel, true), ownNamed("task-records", fabricengine.BranchAhead, true)},
-				Entries:  []fabricengine.EntryOutcome{entry(fabricengine.EntryActive)},
+			report: fabriclayout.OriginReport{
+				Branches: []fabriclayout.BranchOutcome{own(fabriclayout.BranchLevel, true), ownNamed("task-records", fabriclayout.BranchAhead, true)},
+				Entries:  []fabriclayout.EntryOutcome{entry(fabriclayout.EntryActive)},
 			},
 			wantCalls:   []string{"reconcile"},
 			wantNotices: []string{"task: origin moved task, task-records; the run took the new tips before its push"},
 		},
 		{
 			name: "ActiveParentBranchFastForward",
-			report: fabricengine.OriginReport{
-				Branches: []fabricengine.BranchOutcome{parent(fabricengine.BranchFastForward)},
-				Entries:  []fabricengine.EntryOutcome{entry(fabricengine.EntryActive)},
+			report: fabriclayout.OriginReport{
+				Branches: []fabriclayout.BranchOutcome{parent(fabriclayout.BranchFastForward)},
+				Entries:  []fabriclayout.EntryOutcome{entry(fabriclayout.EntryActive)},
 			},
 			wantCalls:   []string{"reconcile"},
 			wantNotices: []string{"task: origin moved the parent branch main (fast_forward) past this machine's tip"},
 		},
 		{
 			name: "ActiveParentBranchDiverged",
-			report: fabricengine.OriginReport{
-				Branches: []fabricengine.BranchOutcome{parent(fabricengine.BranchDiverged)},
-				Entries:  []fabricengine.EntryOutcome{entry(fabricengine.EntryActive)},
+			report: fabriclayout.OriginReport{
+				Branches: []fabriclayout.BranchOutcome{parent(fabriclayout.BranchDiverged)},
+				Entries:  []fabriclayout.EntryOutcome{entry(fabriclayout.EntryActive)},
 			},
 			wantCalls:   []string{"reconcile"},
 			wantNotices: []string{"task: origin moved the parent branch main (diverged) past this machine's tip"},
 		},
 		{
 			name: "ActiveParentBranchLevelAndBoltBranchOfTheSameNameMoved",
-			report: fabricengine.OriginReport{
-				Branches: []fabricengine.BranchOutcome{parent(fabricengine.BranchLevel), boltMain},
-				Entries:  []fabricengine.EntryOutcome{entry(fabricengine.EntryActive)},
+			report: fabriclayout.OriginReport{
+				Branches: []fabriclayout.BranchOutcome{parent(fabriclayout.BranchLevel), boltMain},
+				Entries:  []fabriclayout.EntryOutcome{entry(fabriclayout.EntryActive)},
 			},
 			wantCalls: []string{"reconcile"},
 		},
 		{
 			name: "ActiveParentBranchUnreadable",
-			report: fabricengine.OriginReport{
-				Branches: []fabricengine.BranchOutcome{parent(fabricengine.BranchFastForward)},
-				Entries:  []fabricengine.EntryOutcome{entry(fabricengine.EntryActive)},
+			report: fabriclayout.OriginReport{
+				Branches: []fabriclayout.BranchOutcome{parent(fabriclayout.BranchFastForward)},
+				Entries:  []fabriclayout.EntryOutcome{entry(fabriclayout.EntryActive)},
 			},
 			parentErr: errors.New("no origin record"),
 			wantCalls: []string{"reconcile"},
 		},
 		{
 			name: "ActiveParentBranchNoticePostedOncePerTip",
-			report: fabricengine.OriginReport{
-				Branches: []fabricengine.BranchOutcome{parent(fabricengine.BranchFastForward)},
-				Entries:  []fabricengine.EntryOutcome{entry(fabricengine.EntryActive)},
+			report: fabriclayout.OriginReport{
+				Branches: []fabriclayout.BranchOutcome{parent(fabriclayout.BranchFastForward)},
+				Entries:  []fabriclayout.EntryOutcome{entry(fabriclayout.EntryActive)},
 			},
 			repeat:      true,
 			wantCalls:   []string{"reconcile", "reconcile"},
@@ -125,9 +126,9 @@ func TestPrePushCheckGuard(t *testing.T) {
 		},
 		{
 			name: "StoppedLeavesOutAParentBranchOriginDidNotMove",
-			report: fabricengine.OriginReport{
-				Branches: []fabricengine.BranchOutcome{own(fabricengine.BranchDiverged, false), parent(fabricengine.BranchLive)},
-				Entries:  []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryStopped, WayForward: "merge origin's task"}},
+			report: fabriclayout.OriginReport{
+				Branches: []fabriclayout.BranchOutcome{own(fabriclayout.BranchDiverged, false), parent(fabriclayout.BranchLive)},
+				Entries:  []fabriclayout.EntryOutcome{{Slug: slug, State: fabriclayout.EntryStopped, WayForward: "merge origin's task"}},
 			},
 			wantStop:    true,
 			wantCalls:   []string{"reconcile", "pause"},
@@ -135,7 +136,7 @@ func TestPrePushCheckGuard(t *testing.T) {
 		},
 		{
 			name:        "NoticePostFails",
-			report:      fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryOwnedElsewhere, Owner: "neve"}}},
+			report:      fabriclayout.OriginReport{Entries: []fabriclayout.EntryOutcome{{Slug: slug, State: fabriclayout.EntryOwnedElsewhere, Owner: "neve"}}},
 			notifyErr:   errors.New("no orch"),
 			wantStop:    true,
 			wantCalls:   []string{"reconcile"},
@@ -143,28 +144,28 @@ func TestPrePushCheckGuard(t *testing.T) {
 		},
 		{
 			name:      "EntryOfAnotherSlug",
-			report:    fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: "other", State: fabricengine.EntryStopped, WayForward: "lym fabric pull"}}},
+			report:    fabriclayout.OriginReport{Entries: []fabriclayout.EntryOutcome{{Slug: "other", State: fabriclayout.EntryStopped, WayForward: "lym fabric pull"}}},
 			wantCalls: []string{"reconcile"},
 		},
 		{
 			name:        "OwnedElsewhere",
-			report:      fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryOwnedElsewhere, Owner: "neve", AdoptSubject: "beam"}}},
+			report:      fabriclayout.OriginReport{Entries: []fabriclayout.EntryOutcome{{Slug: slug, State: fabriclayout.EntryOwnedElsewhere, Owner: "neve", AdoptSubject: "beam"}}},
 			wantStop:    true,
 			wantCalls:   []string{"reconcile"},
 			wantNotices: []string{"task: stopped before its push: the run is owned by machine \"neve\"; take it over with `lym adopt beam` from this machine's prime"},
 		},
 		{
 			name:        "OwnedElsewhereNoSubject",
-			report:      fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryOwnedElsewhere, Owner: "neve"}}},
+			report:      fabriclayout.OriginReport{Entries: []fabriclayout.EntryOutcome{{Slug: slug, State: fabriclayout.EntryOwnedElsewhere, Owner: "neve"}}},
 			wantStop:    true,
 			wantCalls:   []string{"reconcile"},
 			wantNotices: []string{"task: stopped before its push: the run is owned by machine \"neve\"; take it over with `lym adopt task` from this machine's prime"},
 		},
 		{
 			name: "StoppedOwnBranch",
-			report: fabricengine.OriginReport{
-				Branches: []fabricengine.BranchOutcome{own(fabricengine.BranchDiverged, false)},
-				Entries:  []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryStopped, WayForward: "merge origin's task"}},
+			report: fabriclayout.OriginReport{
+				Branches: []fabriclayout.BranchOutcome{own(fabriclayout.BranchDiverged, false)},
+				Entries:  []fabriclayout.EntryOutcome{{Slug: slug, State: fabriclayout.EntryStopped, WayForward: "merge origin's task"}},
 			},
 			wantStop:    true,
 			wantCalls:   []string{"reconcile", "pause"},
@@ -172,13 +173,13 @@ func TestPrePushCheckGuard(t *testing.T) {
 		},
 		{
 			name: "StoppedNamesOnlyTheStoppingOwnBranch",
-			report: fabricengine.OriginReport{
-				Branches: []fabricengine.BranchOutcome{
-					ownNamed("task-level", fabricengine.BranchLevel, false),
-					own(fabricengine.BranchDiverged, false),
-					ownNamed("task-ahead", fabricengine.BranchAhead, false),
+			report: fabriclayout.OriginReport{
+				Branches: []fabriclayout.BranchOutcome{
+					ownNamed("task-level", fabriclayout.BranchLevel, false),
+					own(fabriclayout.BranchDiverged, false),
+					ownNamed("task-ahead", fabriclayout.BranchAhead, false),
 				},
-				Entries: []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryStopped, WayForward: "merge origin's task"}},
+				Entries: []fabriclayout.EntryOutcome{{Slug: slug, State: fabriclayout.EntryStopped, WayForward: "merge origin's task"}},
 			},
 			wantStop:    true,
 			wantCalls:   []string{"reconcile", "pause"},
@@ -186,9 +187,9 @@ func TestPrePushCheckGuard(t *testing.T) {
 		},
 		{
 			name: "StoppedNamesTheParentBranch",
-			report: fabricengine.OriginReport{
-				Branches: []fabricengine.BranchOutcome{own(fabricengine.BranchLevel, false), parent(fabricengine.BranchDiverged)},
-				Entries:  []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryStopped, WayForward: "merge origin's main"}},
+			report: fabriclayout.OriginReport{
+				Branches: []fabriclayout.BranchOutcome{own(fabriclayout.BranchLevel, false), parent(fabriclayout.BranchDiverged)},
+				Entries:  []fabriclayout.EntryOutcome{{Slug: slug, State: fabriclayout.EntryStopped, WayForward: "merge origin's main"}},
 			},
 			wantStop:    true,
 			wantCalls:   []string{"reconcile", "pause"},
@@ -196,16 +197,16 @@ func TestPrePushCheckGuard(t *testing.T) {
 		},
 		{
 			name:        "StoppedSharedBranch",
-			report:      fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryStopped, WayForward: "lym fabric pull"}}},
+			report:      fabriclayout.OriginReport{Entries: []fabriclayout.EntryOutcome{{Slug: slug, State: fabriclayout.EntryStopped, WayForward: "lym fabric pull"}}},
 			wantStop:    true,
 			wantCalls:   []string{"reconcile", "pause"},
 			wantNotices: []string{"task: paused before its push: origin moved a branch every run shares: lym fabric pull; then `lym tender resume task`"},
 		},
 		{
 			name: "StoppedSharedBranchBesideOwnNeedsReplay",
-			report: fabricengine.OriginReport{
-				Branches: []fabricengine.BranchOutcome{ownNamed("task-records", fabricengine.BranchNeedsReplay, false)},
-				Entries:  []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryStopped, WayForward: "lym fabric pull"}},
+			report: fabriclayout.OriginReport{
+				Branches: []fabriclayout.BranchOutcome{ownNamed("task-records", fabriclayout.BranchNeedsReplay, false)},
+				Entries:  []fabriclayout.EntryOutcome{{Slug: slug, State: fabriclayout.EntryStopped, WayForward: "lym fabric pull"}},
 			},
 			wantStop:    true,
 			wantCalls:   []string{"reconcile", "pause"},
@@ -213,9 +214,9 @@ func TestPrePushCheckGuard(t *testing.T) {
 		},
 		{
 			name: "StoppedSharedBranchBesideOwnBusyRecords",
-			report: fabricengine.OriginReport{
-				Branches: []fabricengine.BranchOutcome{{Branch: "task-records", Repo: fabricengine.RepoRecords, Slug: slug, State: fabricengine.BranchBusy}},
-				Entries:  []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryStopped, WayForward: "lym fabric pull"}},
+			report: fabriclayout.OriginReport{
+				Branches: []fabriclayout.BranchOutcome{{Branch: "task-records", Repo: fabriclayout.RepoRecords, Slug: slug, State: fabriclayout.BranchBusy}},
+				Entries:  []fabriclayout.EntryOutcome{{Slug: slug, State: fabriclayout.EntryStopped, WayForward: "lym fabric pull"}},
 			},
 			wantStop:    true,
 			wantCalls:   []string{"reconcile", "pause"},
@@ -223,26 +224,26 @@ func TestPrePushCheckGuard(t *testing.T) {
 		},
 		{
 			name:      "EndedAfterOwnLanding",
-			report:    fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryEnded, How: "done"}}},
+			report:    fabriclayout.OriginReport{Entries: []fabriclayout.EntryOutcome{{Slug: slug, State: fabriclayout.EntryEnded, How: "done"}}},
 			landed:    true,
 			wantCalls: []string{"reconcile", "landed"},
 		},
 		{
 			name:        "EndedElsewhere",
-			report:      fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryEnded, How: "removed"}}},
+			report:      fabriclayout.OriginReport{Entries: []fabriclayout.EntryOutcome{{Slug: slug, State: fabriclayout.EntryEnded, How: "removed"}}},
 			wantStop:    true,
 			wantCalls:   []string{"reconcile", "landed", "pause"},
 			wantNotices: []string{"task: paused before its push: origin shows the run removed; `lym cleanup --apply` from the prime removes its pair"},
 		},
 		{
 			name:      "EndedWithUnreadableLanding",
-			report:    fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryEnded, How: "removed"}}},
+			report:    fabriclayout.OriginReport{Entries: []fabriclayout.EntryOutcome{{Slug: slug, State: fabriclayout.EntryEnded, How: "removed"}}},
 			landedErr: errors.New("prime unreadable"),
 			wantCalls: []string{"reconcile", "landed"},
 		},
 		{
 			name:        "PauseFails",
-			report:      fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryStopped, WayForward: "lym fabric pull"}}},
+			report:      fabriclayout.OriginReport{Entries: []fabriclayout.EntryOutcome{{Slug: slug, State: fabriclayout.EntryStopped, WayForward: "lym fabric pull"}}},
 			pauseErr:    errors.New("record locked"),
 			wantStop:    true,
 			wantCalls:   []string{"reconcile", "pause"},
@@ -257,7 +258,7 @@ func TestPrePushCheckGuard(t *testing.T) {
 			check := prePushCheck{
 				slug: slug,
 				skip: func() (bool, error) { return tt.skip, tt.skipErr },
-				reconcile: func() (fabricengine.OriginReport, error) {
+				reconcile: func() (fabriclayout.OriginReport, error) {
 					calls = append(calls, "reconcile")
 					return tt.report, tt.reconcileErr
 				},
@@ -380,8 +381,8 @@ func stoppingPrePushCheck() prePushCheck {
 	return prePushCheck{
 		slug: "task",
 		skip: func() (bool, error) { return false, nil },
-		reconcile: func() (fabricengine.OriginReport, error) {
-			return fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: "task", State: fabricengine.EntryOwnedElsewhere, Owner: "neve"}}}, nil
+		reconcile: func() (fabriclayout.OriginReport, error) {
+			return fabriclayout.OriginReport{Entries: []fabriclayout.EntryOutcome{{Slug: "task", State: fabriclayout.EntryOwnedElsewhere, Owner: "neve"}}}, nil
 		},
 		notify: func(string) error { return nil },
 	}

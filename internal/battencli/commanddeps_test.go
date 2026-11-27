@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -39,10 +40,10 @@ func TestCommandDeps_TitleIsTheTasksConsoleTitle(t *testing.T) {
 			t.Parallel()
 			location := locationkit.Location(t.TempDir(), "main", "")
 			if len(tt.entries) > 0 {
-				boardkit.WriteBoard(t, fabricengine.BoardDir(location.HubPath), tt.entries...)
+				boardkit.WriteBoard(t, fabriclayout.BoardDir(location.HubPath), tt.entries...)
 			}
 			if tt.shortname != "" {
-				if err := fabricengine.WriteShortname(fabricengine.BoardDir(location.HubPath), tt.shortname); err != nil {
+				if err := fabricengine.WriteShortname(fabriclayout.BoardDir(location.HubPath), tt.shortname); err != nil {
 					t.Fatalf("record the shortname: %v", err)
 				}
 			}

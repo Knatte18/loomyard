@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
@@ -206,12 +207,12 @@ func (w *worktree) checkDeps() (driftengine.Deps, error) {
 			return verb.Status, err
 		},
 		Rows: rows,
-		CommitWithTrailers: func(relPaths []string, trailers []fabricengine.Trailer) error {
+		CommitWithTrailers: func(relPaths []string, trailers []fabriclayout.Trailer) error {
 			message := fmt.Sprintf("loom: drift records for %s", w.location.WorktreeName)
 			_, _, err := fabricengine.CommitAnchoredPathsWithTrailers(fabricengine.NewMutations(""), w.location, relPaths, message, trailers, fabricengine.EnvSyncOptions())
 			return err
 		},
-		TrailerCommit: func(key string, newest bool) (fabricengine.TrailerCommit, bool, error) {
+		TrailerCommit: func(key string, newest bool) (fabriclayout.TrailerCommit, bool, error) {
 			return fabricengine.FindTrailerCommit(w.location, key, newest)
 		},
 		FileAt: func(rev, relPath string) ([]byte, bool, error) {

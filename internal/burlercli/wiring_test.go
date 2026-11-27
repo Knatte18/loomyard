@@ -55,7 +55,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/cliwire"
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -132,7 +132,7 @@ func TestWire_SelectsModeAndWiresItsFields(t *testing.T) {
 		if c.stateDir != "" {
 			t.Errorf("c.stateDir = %q; want empty in hub mode", c.stateDir)
 		}
-		if want := fabricengine.StencilsDir(loc.HubPath); c.stencilsDir != want {
+		if want := fabriclayout.StencilsDir(loc.HubPath); c.stencilsDir != want {
 			t.Errorf("c.stencilsDir = %q; want %q", c.stencilsDir, want)
 		}
 		if c.engine == nil {
@@ -148,7 +148,7 @@ func TestWire_SelectsModeAndWiresItsFields(t *testing.T) {
 
 	writeHubLanguageFile := func(t *testing.T, hub, contents string) {
 		t.Helper()
-		configDir := filepath.Join(fabricengine.BoardDir(hub), "_lym", "config")
+		configDir := filepath.Join(fabriclayout.BoardDir(hub), "_lym", "config")
 		if err := os.MkdirAll(configDir, 0o755); err != nil {
 			t.Fatalf("MkdirAll(%q) = %v; want nil", configDir, err)
 		}
@@ -867,7 +867,7 @@ fixer-report-path: reviews/fixer-report.md
 }
 
 // TestProductionFiles_NeverReferenceHubWatchdogMechanism proves standalone never touches the hub watchdog.
-// The scan forbids three things that belong to hub mode alone: the hub lock path (fabricengine.HubScratchDir).
+// The scan forbids three things that belong to hub mode alone: the hub lock path (fabriclayout.HubScratchDir).
 // It also forbids the daemon spawn verb ("reed watchdog").
 // It also forbids the seam that owns the detached spawn (reedengine.SpawnWatchdog).
 //
@@ -899,8 +899,8 @@ func TestProductionFiles_NeverReferenceHubWatchdogMechanism(t *testing.T) {
 			t.Fatalf("read %s: %v", path, err)
 		}
 		content := string(data)
-		if strings.Contains(content, "fabricengine.HubScratchDir") {
-			t.Errorf("%s references fabricengine.HubScratchDir; standalone must compute no hub lock path", path)
+		if strings.Contains(content, "fabriclayout.HubScratchDir") {
+			t.Errorf("%s references fabriclayout.HubScratchDir; standalone must compute no hub lock path", path)
 		}
 		if strings.Contains(content, "reed watchdog") {
 			t.Errorf("%s references \"reed watchdog\"; standalone must spawn no daemon", path)

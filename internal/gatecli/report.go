@@ -15,7 +15,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -87,7 +87,7 @@ func runReportVerb(ctx context.Context, out io.Writer, slug string, since time.T
 // Inside a hub it is the gate directory of the Bolt checkout; outside every hub it is the worktree's own.
 func runLogDirOf(location *lymcwd.Location, inHub bool) string {
 	if inHub {
-		return gateslot.RunLogDir(gateslot.Dir(fabricengine.BoltDir(location.HubPath)))
+		return gateslot.RunLogDir(gateslot.Dir(fabriclayout.BoltDir(location.HubPath)))
 	}
 	return gateslot.RunLogDir(gateslot.WaitDir(location.WorktreePath()))
 }

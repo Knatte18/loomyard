@@ -15,6 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -45,7 +46,7 @@ func pendingFlagPath(lockDir, side string) string {
 // A push that a pause deferred leaves one.
 // The flag stays until the pair's next push carries that side, so a lift reads from it whether a push is owed.
 func PairPushDeferred(l *lymcwd.Location) bool {
-	lockDir := RecordsLockDirPath(RecordsWorktree(l))
+	lockDir := fabriclayout.RecordsLockDirPath(RecordsWorktree(l))
 	for _, side := range []string{pushSideCode, pushSideRecords} {
 		if pathPresent(pendingFlagPath(lockDir, side)) {
 			return true
@@ -64,7 +65,7 @@ var exitDeferred = func() { os.Exit(0) }
 // On a later acquire, after earlier steps pushed, the flags it puts back may name sides with nothing left to push.
 // The commits not yet pushed stay local and the flags stay on disk for the next push,
 // so the push is deferred and not failed.
-func pushDeferral(lockDir string, owed map[string]PushSpawn, exit func()) func() {
+func pushDeferral(lockDir string, owed map[string]fabriclayout.PushSpawn, exit func()) func() {
 	return func() {
 		var sides []string
 		for side := range owed {
@@ -82,9 +83,9 @@ func pushDeferral(lockDir string, owed map[string]PushSpawn, exit func()) func()
 // markPending writes one flag per owed side into lockDir.
 // Each flag holds that side's path, the slugs of the push it serves, and its parent-locked mark.
 // A flag is written atomically, so a reader sees no flag or a whole one.
-func markPending(lockDir string, owed map[string]PushSpawn) error {
+func markPending(lockDir string, owed map[string]fabriclayout.PushSpawn) error {
 	for side, req := range owed {
-		narrowed := PushSpawn{PauseSlug: req.PauseSlug, TeardownSlug: req.TeardownSlug, ParentLocked: req.ParentLocked}
+		narrowed := fabriclayout.PushSpawn{PauseSlug: req.PauseSlug, TeardownSlug: req.TeardownSlug, ParentLocked: req.ParentLocked}
 		switch side {
 		case pushSideCode:
 			narrowed.WarpPath = req.WarpPath
@@ -109,25 +110,25 @@ func markPending(lockDir string, owed map[string]PushSpawn) error {
 // so no process holds a file at a flag path open and a writer's rename onto that path never meets a sharing violation.
 // A flag whose content does not decode is still removed and reported found.
 // The error wraps errPendingFlagCorrupt and the JSON error.
-func takePending(lockDir, side string) (req PushSpawn, found bool, err error) {
+func takePending(lockDir, side string) (req fabriclayout.PushSpawn, found bool, err error) {
 	flag := pendingFlagPath(lockDir, side)
 	taken := fmt.Sprintf("%s.taken.%d.%d", flag, os.Getpid(), takenFlagCounter.Add(1))
 	if err := os.Rename(flag, taken); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return PushSpawn{}, false, nil
+			return fabriclayout.PushSpawn{}, false, nil
 		}
-		return PushSpawn{}, false, fmt.Errorf("fabricengine: take pending flag %s: %w", flag, err)
+		return fabriclayout.PushSpawn{}, false, fmt.Errorf("fabricengine: take pending flag %s: %w", flag, err)
 	}
 	content, readErr := os.ReadFile(taken)
 	removeErr := os.Remove(taken)
 	if readErr != nil {
-		return PushSpawn{}, true, fmt.Errorf("fabricengine: read pending flag %s: %w", flag, readErr)
+		return fabriclayout.PushSpawn{}, true, fmt.Errorf("fabricengine: read pending flag %s: %w", flag, readErr)
 	}
 	if removeErr != nil {
-		return PushSpawn{}, true, fmt.Errorf("fabricengine: remove pending flag %s: %w", flag, removeErr)
+		return fabriclayout.PushSpawn{}, true, fmt.Errorf("fabricengine: remove pending flag %s: %w", flag, removeErr)
 	}
 	if err := json.Unmarshal(content, &req); err != nil {
-		return PushSpawn{}, true, fmt.Errorf("%w: %s: %w", errPendingFlagCorrupt, flag, err)
+		return fabriclayout.PushSpawn{}, true, fmt.Errorf("%w: %s: %w", errPendingFlagCorrupt, flag, err)
 	}
 	return req, true, nil
 }
@@ -144,7 +145,7 @@ func takePending(lockDir, side string) (req PushSpawn, found bool, err error) {
 // acquired is false only when the first acquire missed, which leaves the commits and the flags to the current holder;
 // a missed re-acquire after a step ran reports true, since the caller's own push landed.
 // A step error releases the lock and is returned.
-func coalesceFlagged(lockDir string, owed map[string]PushSpawn, acquire func(lockPath string) (*lock.FileLock, bool, error), step func() (progressed bool, err error)) (acquired bool, err error) {
+func coalesceFlagged(lockDir string, owed map[string]fabriclayout.PushSpawn, acquire func(lockPath string) (*lock.FileLock, bool, error), step func() (progressed bool, err error)) (acquired bool, err error) {
 	if err := markPending(lockDir, owed); err != nil {
 		return false, err
 	}
@@ -173,7 +174,7 @@ func coalesceFlagged(lockDir string, owed map[string]PushSpawn, acquire func(loc
 
 // runHeld runs step under the held push lock, taking the owed flags before each run.
 // It calls release, the lock's release, before returning.
-func runHeld(release func() error, lockDir string, owed map[string]PushSpawn, step func() (bool, error)) (err error) {
+func runHeld(release func() error, lockDir string, owed map[string]fabriclayout.PushSpawn, step func() (bool, error)) (err error) {
 	defer func() {
 		if releaseErr := release(); err == nil {
 			err = releaseErr
@@ -197,7 +198,7 @@ func runHeld(release func() error, lockDir string, owed map[string]PushSpawn, st
 }
 
 // ownedFlagSet reports whether a flag of any owed side is on disk.
-func ownedFlagSet(lockDir string, owed map[string]PushSpawn) bool {
+func ownedFlagSet(lockDir string, owed map[string]fabriclayout.PushSpawn) bool {
 	for side := range owed {
 		if _, err := os.Stat(pendingFlagPath(lockDir, side)); err == nil {
 			return true

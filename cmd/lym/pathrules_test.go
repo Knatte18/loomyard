@@ -14,7 +14,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/battencli"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -98,9 +98,9 @@ var pathRules = []pathRule{
 	{name: "battencli.PrimeRunLock", class: classTransient, path: battencli.PrimeRunLock},
 
 	// HubLogsDir is hub-anchored through the board, so one reed server per hub resolves to one place.
-	{name: "fabricengine.HubLogsDir", class: classHub, path: func(l *lymcwd.Location) string { return fabricengine.HubLogsDir(l.HubPath) }},
+	{name: "fabriclayout.HubLogsDir", class: classHub, path: func(l *lymcwd.Location) string { return fabriclayout.HubLogsDir(l.HubPath) }},
 	// gateslot.Dir is hub-wide, over the board dir of the hub.
-	{name: "gateslot.Dir", class: classHub, path: func(l *lymcwd.Location) string { return gateslot.Dir(fabricengine.BoardDir(l.HubPath)) }},
+	{name: "gateslot.Dir", class: classHub, path: func(l *lymcwd.Location) string { return gateslot.Dir(fabriclayout.BoardDir(l.HubPath)) }},
 }
 
 // under reports whether path is root or lies beneath it, by whole path segments.

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -38,7 +39,7 @@ func TestReplayRequest_RefusesABoardWorktreeOfNoHub(t *testing.T) {
 	t.Parallel()
 
 	repo, _ := landedWorkRepo(t)
-	foreign := filepath.Join(t.TempDir(), "elsewhere", BoardDirName)
+	foreign := filepath.Join(t.TempDir(), "elsewhere", fabriclayout.BoardDirName)
 	if err := os.MkdirAll(filepath.Dir(foreign), 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}

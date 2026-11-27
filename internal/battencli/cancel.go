@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
@@ -39,7 +40,7 @@ type cancelDeps struct {
 	// TaskWorktreePresent reports whether the slug's task worktree is on disk.
 	TaskWorktreePresent func() (bool, error)
 	// Reconcile runs the run-scope origin reconcile for the slug, judging only: it moves no ref.
-	Reconcile func() (fabricengine.OriginReport, error)
+	Reconcile func() (fabriclayout.OriginReport, error)
 	// PullBolt brings the hub's Bolt level with origin; an unreachable origin wraps boardengine.ErrOwnerOriginUnreachable.
 	PullBolt func() error
 	// Owner returns the slug's effective owner on the local Bolt, empty when none is recorded.
@@ -67,7 +68,7 @@ type cancelDeps struct {
 	// CreatedAt reads when the process of a pid was created; ok is false when it cannot be read.
 	CreatedAt func(pid int) (created time.Time, ok bool)
 	// PairParts reads which parts of the slug's pair are present locally.
-	PairParts func() (fabricengine.PairParts, error)
+	PairParts func() (fabriclayout.PairParts, error)
 	// SessionLive reports whether the pair's reed session is live.
 	SessionLive func() (bool, error)
 	// EndForCancel runs the teardown's cancel phase.
@@ -79,11 +80,11 @@ type cancelDeps struct {
 	// StopTackler stops the strand the slug's tackler marker names and returns its guid, empty when none was named.
 	StopTackler func() (guid string, err error)
 	// RemovePair removes the pair through a teardown request and returns the removal's result.
-	RemovePair func(req pairteardown.Request) (fabricengine.RemoveResult, error)
+	RemovePair func(req pairteardown.Request) (fabriclayout.RemoveResult, error)
 	// TaskBranchOnOrigin reports whether the slug's task branch is on origin.
 	TaskBranchOnOrigin func() (bool, error)
 	// DiscardTaskBranch archives and deletes the task branch, locally and on origin.
-	DiscardTaskBranch func() (fabricengine.DiscardResult, error)
+	DiscardTaskBranch func() (fabriclayout.DiscardResult, error)
 	// TeardownPending reports whether an unfinished teardown of the slug names this cancel, with --remove, as its re-run.
 	TeardownPending func() (bool, error)
 	// SettleTeardown drops the record of an unfinished teardown of the slug once nothing of its pair remains.
@@ -121,7 +122,7 @@ type cancelDeps struct {
 	// A nil BeamProject reads as no beam; on a beam, the cancel judges the beam seams that follow.
 	BeamProject func() (bool, error)
 	// ReconcileHub runs the hub-scope origin reconcile from the prime, which brings the Bolt level with origin.
-	ReconcileHub func() (fabricengine.OriginReport, error)
+	ReconcileHub func() (fabriclayout.OriginReport, error)
 	// LandRefusal refuses while work remains under the beam, read over the Bolt the reconcile left.
 	LandRefusal func() error
 	// LandingHeld reports whether the beam's pawl run holds its entry, read over the Bolt the reconcile left.
@@ -648,7 +649,7 @@ func judgeOrigin(slug, rerun string, deps cancelDeps) (endOnly bool, err error) 
 		return false, probeRefusal("the task worktree", slug, rerun, err)
 	}
 
-	var report fabricengine.OriginReport
+	var report fabriclayout.OriginReport
 	if present {
 		report, err = deps.Reconcile()
 		if err != nil {
@@ -682,14 +683,14 @@ func judgeOrigin(slug, rerun string, deps cancelDeps) (endOnly bool, err error) 
 			continue
 		}
 		switch entry.State {
-		case fabricengine.EntryOwnedElsewhere:
+		case fabriclayout.EntryOwnedElsewhere:
 			return false, cancelOwnedElsewhere(slug, entry.Owner, entry.AdoptSubject)
-		case fabricengine.EntryStopped:
+		case fabriclayout.EntryStopped:
 			if stoppedOnlyByAnchor(slug, report.Branches) {
 				break
 			}
 			return false, cancelStoppedRefusal(slug, fmt.Sprintf("then run %s again", rerun), entry, report.Branches, deps)
-		case fabricengine.EntryEnded:
+		case fabriclayout.EntryEnded:
 			if entry.How != "done" {
 				break
 			}
@@ -710,7 +711,7 @@ func judgeOrigin(slug, rerun string, deps cancelDeps) (endOnly bool, err error) 
 // That step is read from batten's status.
 // The removal leaves that record standing, and a cancel at Land would release a landed entry.
 // A read that fails is logged and keeps reentry, and so does an empty follow-up.
-func cancelStoppedRefusal(slug, reentry string, entry fabricengine.EntryOutcome, branches []fabricengine.BranchOutcome, deps cancelDeps) error {
+func cancelStoppedRefusal(slug, reentry string, entry fabriclayout.EntryOutcome, branches []fabriclayout.BranchOutcome, deps cancelDeps) error {
 	refusal := stoppedRefusal(slug, "cancel", reentry, entry, branches)
 	if !strings.Contains(refusal.Error(), fabricRemoveCommand) {
 		return refusal
@@ -732,18 +733,18 @@ func cancelStoppedRefusal(slug, reentry string, entry fabricengine.EntryOutcome,
 // so the cancel that clears the run is the exit to take first.
 // The branches counted are the entry's own, bar its run's busy records branch.
 // Branches every pair shares count too, bar a busy one.
-func stoppedOnlyByAnchor(slug string, branches []fabricengine.BranchOutcome) bool {
+func stoppedOnlyByAnchor(slug string, branches []fabriclayout.BranchOutcome) bool {
 	anchorStopped := false
 	for _, branch := range branches {
-		own := branch.Slug == slug && !(branch.Repo == sideRecords && branch.State == fabricengine.BranchBusy)
+		own := branch.Slug == slug && !(branch.Repo == sideRecords && branch.State == fabriclayout.BranchBusy)
 		shared := branch.Repo == sideBolt || (branch.Repo == sideRecords && branch.Prime)
-		if !own && !(shared && branch.State != fabricengine.BranchBusy) {
+		if !own && !(shared && branch.State != fabriclayout.BranchBusy) {
 			continue
 		}
 		if branch.WayForward == "" {
 			continue
 		}
-		if branch.State != fabricengine.BranchAnchorStopped {
+		if branch.State != fabriclayout.BranchAnchorStopped {
 			return false
 		}
 		anchorStopped = true
@@ -765,7 +766,7 @@ func cancelOwnedElsewhere(slug, owner, subject string) error {
 // With remove, an unfinished teardown that names this cancel counts as left too,
 // so the re-run its record names finishes it whatever of the pair is still on origin.
 // A task branch on origin counts as left, and it is read only when nothing else is left and origin was reached.
-func refuseNothingLeft(slug string, remove, endOnly bool, rerun string, reading cancelMarkerReading, parts fabricengine.PairParts, deps cancelDeps) error {
+func refuseNothingLeft(slug string, remove, endOnly bool, rerun string, reading cancelMarkerReading, parts fabriclayout.PairParts, deps cancelDeps) error {
 	recordsHere, err := deps.RecordsPresent()
 	if err != nil {
 		return probeRefusal("the run's records", slug, rerun, err)

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -29,11 +30,11 @@ func TestStatus_PrintsOutstandingFailedPushes(t *testing.T) {
 		t.Errorf("failed_pushes with no record = %v; want an empty array", none.Raw["failed_pushes"])
 	}
 
-	record := fabricengine.FailedPush{
+	record := fabriclayout.FailedPush{
 		Repo:     "code",
 		RepoPath: prime,
 		Branch:   "feature/x",
-		Class:    fabricengine.PushFailureAuth,
+		Class:    fabriclayout.PushFailureAuth,
 		Error:    "permission denied",
 	}
 	if err := fabricengine.RecordPushFailure(h.Location.HubPath, record, time.Now()); err != nil {

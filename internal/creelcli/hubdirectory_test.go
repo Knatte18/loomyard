@@ -15,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubregistry"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -23,7 +24,7 @@ import (
 func newShortnameHub(t *testing.T, root, name, shortname string) string {
 	t.Helper()
 	hub := filepath.Join(root, name)
-	boltDir := fabricengine.BoltDir(hub)
+	boltDir := fabriclayout.BoltDir(hub)
 	if err := os.MkdirAll(boltDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll(%q) = %v", boltDir, err)
 	}
@@ -36,7 +37,7 @@ func newShortnameHub(t *testing.T, root, name, shortname string) string {
 // writeBoardCreelConfig writes the hub's board creel.yaml.
 func writeBoardCreelConfig(t *testing.T, hub, text string) {
 	t.Helper()
-	board := fabricengine.BoltDir(hub)
+	board := fabriclayout.BoltDir(hub)
 	if err := os.MkdirAll(configengine.ConfigDir(board), 0o755); err != nil {
 		t.Fatalf("MkdirAll(config dir) = %v", err)
 	}

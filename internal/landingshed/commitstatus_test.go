@@ -10,7 +10,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -67,7 +67,7 @@ func TestFinalize_CommitStatus(t *testing.T) {
 				deps.CommitStatus = nil
 			}
 			res := &orderRecordingResolver{events: &events, result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
-			merger := &recordingParentMerger{results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}}}
+			merger := &recordingParentMerger{results: []mergeCallResult{{result: fabriclayout.MergeResult{Committed: true}}}}
 			fz := &Finalize{deps: deps, resolver: res, parentOpener: func() (parentMerger, error) { return merger, nil }}
 
 			outcome, ptr, err := fz.Call(context.Background())

@@ -127,7 +127,7 @@
 //
 // The prompt assets are the seat stencils `burler-template-*`.
 // They also include the instruction files `burler-step-*` and `burler-review-format`.
-// They are read at call time via stencilstore.Read from the hub's stencils directory (fabricengine.StencilsDir).
+// They are read at call time via stencilstore.Read from the hub's stencils directory (fabriclayout.StencilsDir).
 // No compiled-in copy is used.
 // Each half renders its instruction files per call into a fresh directory under `.lym` at AnchorPath.
 // Nothing prunes those directories; `.lym` is machine-local and never committed.

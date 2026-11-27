@@ -27,7 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/driftengine"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -79,7 +79,7 @@ func newHubFixture(t *testing.T) hubFixture {
 	t.Helper()
 	hub := t.TempDir()
 	layout := &lymcwd.Location{HubPath: hub, WorktreeName: "wt", AnchorRel: "."}
-	fx := hubFixture{layout: layout, worktree: baseDirOf(layout), board: fabricengine.BoardDir(hub)}
+	fx := hubFixture{layout: layout, worktree: baseDirOf(layout), board: fabriclayout.BoardDir(hub)}
 	for _, dir := range []string{fx.worktree, fx.board} {
 		if err := os.MkdirAll(configengine.ConfigDir(dir), 0o755); err != nil {
 			t.Fatalf("failed to create config dir: %v", err)
@@ -644,7 +644,7 @@ func TestDispatchSet(t *testing.T) {
 			// A board dir marks the worktree as a hub, and a hub keeps its fabric sync.
 			layout := makeLayoutAt(baseDir)
 			if tt.wantSyncs > 0 {
-				if err := os.MkdirAll(fabricengine.BoardDir(layout.HubPath), 0o755); err != nil {
+				if err := os.MkdirAll(fabriclayout.BoardDir(layout.HubPath), 0o755); err != nil {
 					t.Fatalf("create the hub's board dir: %v", err)
 				}
 			}
@@ -802,7 +802,7 @@ func TestDispatchHubWideBoard(t *testing.T) {
 				if !strings.Contains(hubFile, "x: desc") || !strings.Contains(hubFile, "old: kept") {
 					t.Errorf("hub file lacks the new and the existing label; got %q", hubFile)
 				}
-				assertJSONOkContains(t, out, map[string]any{"module": "board", "message": "edited and committed " + configengine.ConfigFile(fx.board, "board") + " in " + fabricengine.BoltDirName})
+				assertJSONOkContains(t, out, map[string]any{"module": "board", "message": "edited and committed " + configengine.ConfigFile(fx.board, "board") + " in " + fabriclayout.BoltDirName})
 			},
 		},
 		{

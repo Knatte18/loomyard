@@ -17,6 +17,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
@@ -220,7 +221,7 @@ type Hub struct {
 	// Mutations is the mutation record fabriccli.CloneAndWire produced while building this hub.
 	// It is copied verbatim from CloneResult.Mutated().
 	// A test asserts the record's shape through it, without rebuilding the bare-template machinery.
-	Mutations fabricengine.Mutations
+	Mutations fabriclayout.Mutations
 }
 
 // PrimeWorktree returns the path to this hub's prime warp worktree, the warp repository itself rather than a pair.
@@ -238,7 +239,7 @@ func (h *Hub) PrimeRecords() string {
 
 // BoardDir returns the path to this hub's Bolt checkout directory, the repo-wide weft:main checkout.
 func (h *Hub) BoardDir() string {
-	return fabricengine.BoardDir(h.Path)
+	return fabriclayout.BoardDir(h.Path)
 }
 
 // PairCodeWorktree returns the path to slug's warp worktree.
@@ -343,7 +344,7 @@ func cloneHub(tb testing.TB, anchor, warpBare, weftBare, container string, singl
 		subpath = anchor
 	}
 
-	cloneOptions := fabricengine.CloneOptions{
+	cloneOptions := fabriclayout.CloneOptions{
 		WeftURL:    filepath.ToSlash(weftBare),
 		Subpath:    subpath,
 		Shortname:  TestShortname,
@@ -399,7 +400,7 @@ func forgetCloneCorrespondence(tb testing.TB, weftBase string, loc *lymcwd.Locat
 	tb.Helper()
 
 	message := gitkit.Git(tb, weftBase, "log", "-1", "--format=%B")
-	if !strings.Contains(message, fabricengine.WarpSHATrailerKey+":") {
+	if !strings.Contains(message, fabriclayout.WarpSHATrailerKey+":") {
 		return
 	}
 	subject := gitkit.Git(tb, weftBase, "log", "-1", "--format=%s")
@@ -464,7 +465,7 @@ func RegisterTeardown(tb testing.TB, hubPath string) {
 
 // AddPair drives h.Topology.Add for slug against h with zero AddOptions, fataling on error.
 // Several verb tests need a pair to exist before the verb under test runs.
-func AddPair(tb testing.TB, h *Hub, slug string) fabricengine.AddResult {
+func AddPair(tb testing.TB, h *Hub, slug string) fabriclayout.AddResult {
 	tb.Helper()
 
 	return AddPairWith(tb, h, slug, fabricengine.AddOptions{})
@@ -475,7 +476,7 @@ func AddPair(tb testing.TB, h *Hub, slug string) fabricengine.AddResult {
 // Add pushes nothing itself.
 // The foreground push stands in for the detached push a production caller spawns.
 // Fixtures therefore see both branches on the remotes.
-func AddPairWith(tb testing.TB, h *Hub, slug string, opts fabricengine.AddOptions) fabricengine.AddResult {
+func AddPairWith(tb testing.TB, h *Hub, slug string, opts fabricengine.AddOptions) fabriclayout.AddResult {
 	tb.Helper()
 
 	defer markFixtureBuild()()

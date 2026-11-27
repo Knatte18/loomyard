@@ -23,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/landingshed"
@@ -84,13 +85,13 @@ func openFabricAtLanding(t *testing.T, path string) *fabricengine.Fabric {
 // configNoticeSeams returns the two config-notice seams for a landing test on the real pair at taskCode.
 // The first reads the loom config changes that the task branch commits against the branch named `parent`.
 // The second appends every notice to `notices`.
-func configNoticeSeams(t *testing.T, taskBranch, taskCode string, notices *[]string) (func() (fabricengine.ConfigChanges, error), func(string) error) {
+func configNoticeSeams(t *testing.T, taskBranch, taskCode string, notices *[]string) (func() (fabriclayout.ConfigChanges, error), func(string) error) {
 	t.Helper()
 	l, err := lymcwd.ResolveWorktree(taskCode)
 	if err != nil {
 		t.Fatalf("lymcwd.ResolveWorktree(%s): %v", taskCode, err)
 	}
-	changes := func() (fabricengine.ConfigChanges, error) {
+	changes := func() (fabriclayout.ConfigChanges, error) {
 		return fabricengine.ReadConfigChanges(l, taskBranch, "parent", []string{configengine.ConfigFileRel("loom")})
 	}
 	notify := func(line string) error {
@@ -103,7 +104,7 @@ func configNoticeSeams(t *testing.T, taskBranch, taskCode string, notices *[]str
 // newFinalizeAt builds a `Finalize` that lands the task pair at taskCode into the parent pair at parentCode.
 // Its conflict-resolution sessions run through `shuttle`, a fake.
 // `configChanges` and `notify` fill the config-notice seams and may be nil.
-func newFinalizeAt(t *testing.T, taskBranch, taskCode, parentCode string, shuttle *shedfake.MergeShuttle, squash bool, configChanges func() (fabricengine.ConfigChanges, error), notify func(string) error) *landingshed.Finalize {
+func newFinalizeAt(t *testing.T, taskBranch, taskCode, parentCode string, shuttle *shedfake.MergeShuttle, squash bool, configChanges func() (fabriclayout.ConfigChanges, error), notify func(string) error) *landingshed.Finalize {
 	t.Helper()
 	deps := landingshed.NewTestDeps(t)
 	deps.WorktreeRoot = taskCode

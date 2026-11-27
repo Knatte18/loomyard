@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -30,18 +31,18 @@ func TestStartDetachedPush_RegistersTheChild(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		req       PushSpawn
+		req       fabriclayout.PushSpawn
 		wantOwner string
 		blocked   bool
 	}{
-		{name: "PairPushOwnsUnderItsSlug", req: PushSpawn{WeftPath: "/weft", PauseSlug: "task", TeardownSlug: "task"}, wantOwner: "task"},
-		{name: "PrimePushOwnsUnderTheHubOwner", req: PushSpawn{WeftPath: "/weft", PauseSlug: "gate"}, wantOwner: runproc.HubOwner},
-		{name: "UnwritableRecordDirStillStartsTheChild", req: PushSpawn{WeftPath: "/weft", TeardownSlug: "task"}, blocked: true},
+		{name: "PairPushOwnsUnderItsSlug", req: fabriclayout.PushSpawn{WeftPath: "/weft", PauseSlug: "task", TeardownSlug: "task"}, wantOwner: "task"},
+		{name: "PrimePushOwnsUnderTheHubOwner", req: fabriclayout.PushSpawn{WeftPath: "/weft", PauseSlug: "gate"}, wantOwner: runproc.HubOwner},
+		{name: "UnwritableRecordDirStillStartsTheChild", req: fabriclayout.PushSpawn{WeftPath: "/weft", TeardownSlug: "task"}, blocked: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			hub := t.TempDir()
-			board := BoardDir(hub)
+			board := fabriclayout.BoardDir(hub)
 			if err := os.MkdirAll(board, 0o755); err != nil {
 				t.Fatal(err)
 			}
@@ -50,10 +51,10 @@ func TestStartDetachedPush_RegistersTheChild(t *testing.T) {
 			buf := logcapture.Capture(t)
 
 			if tt.blocked {
-				if err := os.MkdirAll(HubScratchDir(hub), 0o755); err != nil {
+				if err := os.MkdirAll(fabriclayout.HubScratchDir(hub), 0o755); err != nil {
 					t.Fatal(err)
 				}
-				if err := os.WriteFile(RunProcDir(hub), nil, 0o644); err != nil {
+				if err := os.WriteFile(fabriclayout.RunProcDir(hub), nil, 0o644); err != nil {
 					t.Fatal(err)
 				}
 				t.Cleanup(func() {
@@ -72,7 +73,7 @@ func TestStartDetachedPush_RegistersTheChild(t *testing.T) {
 			if err := startDetachedPush(truePath, req); err != nil {
 				t.Fatalf("startDetachedPush() = %v; want nil", err)
 			}
-			records, err := filepath.Glob(filepath.Join(RunProcDir(hub), tt.wantOwner, "*.json"))
+			records, err := filepath.Glob(filepath.Join(fabriclayout.RunProcDir(hub), tt.wantOwner, "*.json"))
 			if err != nil {
 				t.Fatal(err)
 			}

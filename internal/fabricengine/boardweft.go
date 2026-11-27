@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 )
 
@@ -41,7 +42,7 @@ func ensureBoardWorktree(weftRepoRoot, boardBranch, boardPath string) error {
 		if err := containedWorktreeAdd(weftRepoRoot, boardContainer, boardPath, func(worktreePath string) []string {
 			return []string{"worktree", "add", worktreePath, boardBranch}
 		}); err != nil {
-			return fmt.Errorf("add %s worktree on existing branch %q: %w", BoltDirName, boardBranch, err)
+			return fmt.Errorf("add %s worktree on existing branch %q: %w", fabriclayout.BoltDirName, boardBranch, err)
 		}
 		return nil
 	}
@@ -50,7 +51,7 @@ func ensureBoardWorktree(weftRepoRoot, boardBranch, boardPath string) error {
 		if err := containedWorktreeAdd(weftRepoRoot, boardContainer, boardPath, func(worktreePath string) []string {
 			return []string{"worktree", "add", "--track", "-b", boardBranch, worktreePath, remoteBranch}
 		}); err != nil {
-			return fmt.Errorf("add %s worktree tracking %q: %w", BoltDirName, remoteBranch, err)
+			return fmt.Errorf("add %s worktree tracking %q: %w", fabriclayout.BoltDirName, remoteBranch, err)
 		}
 		return nil
 	}
@@ -58,7 +59,7 @@ func ensureBoardWorktree(weftRepoRoot, boardBranch, boardPath string) error {
 	if err := containedWorktreeAdd(weftRepoRoot, boardContainer, boardPath, func(worktreePath string) []string {
 		return []string{"worktree", "add", "--orphan", "-b", boardBranch, worktreePath}
 	}); err != nil {
-		return fmt.Errorf("add orphan %s worktree on branch %q: %w", BoltDirName, boardBranch, err)
+		return fmt.Errorf("add orphan %s worktree on branch %q: %w", fabriclayout.BoltDirName, boardBranch, err)
 	}
 	return nil
 }

@@ -8,6 +8,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
@@ -24,7 +25,7 @@ func ParentOf(prime *lymcwd.Location, slug string) (string, error) {
 		return "", fmt.Errorf("hubgeom: read origin record for %q: %w", slug, err)
 	}
 	if !found {
-		tasks, err := boardengine.ReadTasks(fabricengine.BoardDir(prime.HubPath))
+		tasks, err := boardengine.ReadTasks(fabriclayout.BoardDir(prime.HubPath))
 		if err != nil {
 			return "", fmt.Errorf("hubgeom: read the board for the parent of %q: %w", slug, err)
 		}

@@ -14,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gatefixer"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/landingshed"
@@ -651,7 +652,7 @@ func TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker(t *testing.T) {
 		}
 	}
 
-	runProcDir := fabricengine.RunProcDir(taskLocation.HubPath)
+	runProcDir := fabriclayout.RunProcDir(taskLocation.HubPath)
 	if err := runproc.Register(runProcDir, "another-slug", runproc.SelfRecord(runproc.RoleGate)); err != nil {
 		t.Fatal(err)
 	}
@@ -738,7 +739,7 @@ func TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker(t *testing.T) {
 	if err := os.WriteFile(websterStatePath, []byte("{not json"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	writeConfigLayer(fabricengine.BoltDir(taskLocation.HubPath), "tapestry", strings.Replace(loomengine.TapestryConfigTemplate(), "implementer: webster", "implementer: weaver", 1))
+	writeConfigLayer(fabriclayout.BoltDir(taskLocation.HubPath), "tapestry", strings.Replace(loomengine.TapestryConfigTemplate(), "implementer: webster", "implementer: weaver", 1))
 	checkWeaverVerifyFixerBound("beside a corrupt Webster state with the setting naming weaver")
 }
 
@@ -856,7 +857,7 @@ func TestWire_CreateWorktreeClaimsTheBoardEntry(t *testing.T) {
 			}
 			wantErr := tt.wantErr
 			if len(wantErr) == 0 {
-				wantErr = []string{configengine.ConfigFile(fabricengine.BoardDir(hub), "fabric")}
+				wantErr = []string{configengine.ConfigFile(fabriclayout.BoardDir(hub), "fabric")}
 			}
 			for _, want := range wantErr {
 				if !strings.Contains(err.Error(), want) {

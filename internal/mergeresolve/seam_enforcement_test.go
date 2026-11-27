@@ -21,12 +21,14 @@ import (
 // may use: the fabric engine (the merge seam), the shuttle engine (the conflict-session seam), the
 // model-spec package (resolving the conflict session's model), the stencil store (reading the
 // conflict prompt off disk), the stencil filler (rendering it), and the logger.
+// The fabric layout package holds the merge seam's plain result types, which do no I/O.
 // The segment vocabulary names the conflict session's segment.
 // The agent config package is admitted for its Role constants alone, which read no file and carry no geometry.
 // internal/logger carries no geometry and opens no seam.
 // Admitting it leaves the Told-Geometry Invariant's actual property intact.
 var mergeresolveAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/fabricengine",
+	"github.com/Knatte18/loomyard/internal/fabriclayout",
 	"github.com/Knatte18/loomyard/internal/shuttleengine",
 	"github.com/Knatte18/loomyard/internal/modelspec",
 	"github.com/Knatte18/loomyard/internal/editdirective",

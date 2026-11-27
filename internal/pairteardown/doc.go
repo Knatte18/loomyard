@@ -8,7 +8,7 @@
 // The sequence lives in its own package because reedengine imports fabricengine:
 // fabric cannot end a session itself without an import cycle.
 // The package sits outside the Fabric Vocabulary owner set,
-// so it says "pair" and "task worktree" and passes fabricengine.RemoveResult through whole.
+// so it says "pair" and "task worktree" and passes fabriclayout.RemoveResult through whole.
 //
 // # Sequence
 //
@@ -67,7 +67,7 @@
 //
 // # Log archive
 //
-// RemovePair copies the pair's trace logs and `verify-<n>.log` files into `fabricengine.LogArchiveDir`.
+// RemovePair copies the pair's trace logs and `verify-<n>.log` files into `fabriclayout.LogArchiveDir`.
 // It copies them before the removal.
 // It writes one timestamped entry per teardown under the pair's slug.
 // The archive copies and never moves, and it never fails or delays the teardown.

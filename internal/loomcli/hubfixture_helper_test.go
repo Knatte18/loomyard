@@ -12,7 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/darnengine"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -82,14 +82,14 @@ func hubLocation(t *testing.T, worktreeName, anchorRel string) *lymcwd.Location 
 		t.Fatalf("MkdirAll(.git) = %v; want nil", err)
 	}
 	seedLoomConfig(t, loc.AnchorPath())
-	seedLoomConfig(t, fabricengine.BoardDir(hub))
+	seedLoomConfig(t, fabriclayout.BoardDir(hub))
 	seedTapestryConfig(t, loc.AnchorPath())
-	seedTapestryConfig(t, fabricengine.BoardDir(hub))
-	seedLandingConfig(t, fabricengine.BoardDir(hub), hubDeploy)
+	seedTapestryConfig(t, fabriclayout.BoardDir(hub))
+	seedLandingConfig(t, fabriclayout.BoardDir(hub), hubDeploy)
 	seedLandingConfig(t, loc.AnchorPath(), "")
 	// stencilstore.Read hard-errors on a missing file,
 	// so the stencils the Spec closures read are seeded into the hub's stencils directory.
-	stencilkit.SeedInto(t, fabricengine.StencilsDir(hub))
+	stencilkit.SeedInto(t, fabriclayout.StencilsDir(hub))
 	return loc
 }
 
@@ -100,7 +100,7 @@ func hubLocationAt(t *testing.T, anchorPath, languageContent string) *lymcwd.Loc
 	t.Helper()
 	loc := &lymcwd.Location{HubPath: filepath.Dir(anchorPath), WorktreeName: filepath.Base(anchorPath), AnchorRel: "."}
 	if languageContent != "" {
-		languagePath := configengine.ConfigFile(fabricengine.BoardDir(loc.HubPath), "language")
+		languagePath := configengine.ConfigFile(fabriclayout.BoardDir(loc.HubPath), "language")
 		if err := os.MkdirAll(filepath.Dir(languagePath), 0o755); err != nil {
 			t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(languagePath), err)
 		}
@@ -116,7 +116,7 @@ func hubLocationAt(t *testing.T, anchorPath, languageContent string) *lymcwd.Loc
 // Each old, new pair of replacements is applied after the substitution.
 func seedDarnHubConfig(t *testing.T, hub, verifyAttempts string, replacements ...string) {
 	t.Helper()
-	configDir := filepath.Join(fabricengine.BoardDir(hub), "_lym", "config")
+	configDir := filepath.Join(fabriclayout.BoardDir(hub), "_lym", "config")
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll(%q) = %v; want nil", configDir, err)
 	}
@@ -130,7 +130,7 @@ func seedDarnHubConfig(t *testing.T, hub, verifyAttempts string, replacements ..
 // writeSamplerConfig writes contents as the hub-wide sampler.yaml in hub's board config directory.
 func writeSamplerConfig(t *testing.T, hub, contents string) {
 	t.Helper()
-	path := configengine.ConfigFile(fabricengine.BoardDir(hub), "sampler")
+	path := configengine.ConfigFile(fabriclayout.BoardDir(hub), "sampler")
 	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
 		t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
 	}
@@ -139,7 +139,7 @@ func writeSamplerConfig(t *testing.T, hub, contents string) {
 // writeHubGateConfig writes contents as the hub-wide gate.yaml in hub's board directory.
 func writeHubGateConfig(t *testing.T, hub, contents string) {
 	t.Helper()
-	configDir := filepath.Join(fabricengine.BoardDir(hub), "_lym", "config")
+	configDir := filepath.Join(fabriclayout.BoardDir(hub), "_lym", "config")
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll(%q) = %v; want nil", configDir, err)
 	}

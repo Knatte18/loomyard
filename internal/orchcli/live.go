@@ -5,6 +5,7 @@ package orchcli
 
 import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/orchroute"
@@ -29,7 +30,7 @@ func HubOrchs(location *lymcwd.Location) ([]*lymcwd.Location, error) {
 	for _, worktree := range worktrees {
 		// A worktree still being created is skipped before anything reads through it: it has no origin yet,
 		// and its wiring refuses a real _lym a read could leave behind.
-		if worktree.Main || worktree.Prunable || fabricengine.InWorktreeStaging(worktree.Path) {
+		if worktree.Main || worktree.Prunable || fabriclayout.InWorktreeStaging(worktree.Path) {
 			continue
 		}
 		pair, err := lymcwd.ResolveWorktree(worktree.Path)

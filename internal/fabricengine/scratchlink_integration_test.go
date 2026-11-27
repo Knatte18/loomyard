@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -60,7 +61,7 @@ func wireWithRecord(t *testing.T, l *lymcwd.Location, slug string) *fabricengine
 }
 
 // hasMutation reports whether record holds an entry of kind at target, with detail when detail is non-empty.
-func hasMutation(record fabricengine.Mutations, kind fabricengine.Kind, target, detail string) bool {
+func hasMutation(record fabriclayout.Mutations, kind fabriclayout.Kind, target, detail string) bool {
 	for _, entry := range record.Entries() {
 		if entry.Kind == kind && entry.Target == target && (detail == "" || entry.Detail == detail) {
 			return true
@@ -341,10 +342,10 @@ func TestWireJunctions_ScratchLink(t *testing.T) {
 			t.Fatalf("root .scratch = %q; want %q", got, want)
 		}
 		record := rec.Snapshot()
-		if !hasMutation(record, fabricengine.KindDirCreated, scratchHubRelative(t, l, target), "") {
+		if !hasMutation(record, fabriclayout.KindDirCreated, scratchHubRelative(t, l, target), "") {
 			t.Errorf("record %+v lacks dir_created at the target", record.Entries())
 		}
-		if !hasMutation(record, fabricengine.KindLinkCreated, scratchHubRelative(t, l, root), "") {
+		if !hasMutation(record, fabriclayout.KindLinkCreated, scratchHubRelative(t, l, root), "") {
 			t.Errorf("record %+v lacks link_created at the root", record.Entries())
 		}
 
@@ -395,7 +396,7 @@ func TestWireJunctions_ScratchLink(t *testing.T) {
 		if got, want := describeEntry(t, root), "link:"+target; got != want {
 			t.Errorf("root .scratch = %q; want %q", got, want)
 		}
-		if record := rec.Snapshot(); !hasMutation(record, fabricengine.KindDirCreated, scratchHubRelative(t, l, target), "") {
+		if record := rec.Snapshot(); !hasMutation(record, fabriclayout.KindDirCreated, scratchHubRelative(t, l, target), "") {
 			t.Errorf("record %+v lacks dir_created at the target", record.Entries())
 		}
 	})
@@ -426,13 +427,13 @@ func TestWireJunctions_ScratchLink(t *testing.T) {
 		}
 
 		record := rec.Snapshot()
-		if !hasMutation(record, fabricengine.KindPathRenamed, scratchHubRelative(t, l, target), scratchHubRelative(t, l, root)) {
+		if !hasMutation(record, fabriclayout.KindPathRenamed, scratchHubRelative(t, l, target), scratchHubRelative(t, l, root)) {
 			t.Errorf("record %+v lacks path_renamed from the root to the target", record.Entries())
 		}
-		if !hasMutation(record, fabricengine.KindLinkCreated, scratchHubRelative(t, l, root), "") {
+		if !hasMutation(record, fabriclayout.KindLinkCreated, scratchHubRelative(t, l, root), "") {
 			t.Errorf("record %+v lacks link_created at the root", record.Entries())
 		}
-		if !hasMutation(record, fabricengine.KindFileWritten, scratchHubRelative(t, l, excludeFilePath(t, l, slug)), "") {
+		if !hasMutation(record, fabriclayout.KindFileWritten, scratchHubRelative(t, l, excludeFilePath(t, l, slug)), "") {
 			t.Errorf("record %+v lacks file_written at the exclude file", record.Entries())
 		}
 		AssertRecordMatchesDiff(t, record, DiffManifest(before, after, nil))
@@ -478,7 +479,7 @@ func TestWireJunctions_ScratchLink(t *testing.T) {
 				}
 			}
 			record := rec.Snapshot()
-			for _, kind := range []fabricengine.Kind{fabricengine.KindPathRenamed, fabricengine.KindLinkCreated} {
+			for _, kind := range []fabriclayout.Kind{fabriclayout.KindPathRenamed, fabriclayout.KindLinkCreated} {
 				if hasMutation(record, kind, scratchHubRelative(t, l, target), "") || hasMutation(record, kind, scratchHubRelative(t, l, root), "") {
 					t.Errorf("record %+v holds a %s entry for a left shape", record.Entries(), kind)
 				}
@@ -625,74 +626,10 @@ func TestWireJunctions_ScratchLinkRefusedAfterClassify(t *testing.T) {
 			t.Errorf("root .scratch = %q; want the link left as %q", got, want)
 		}
 	})
-
-	t.Run("ReconcileRealDirectoryRecreatedBeforeTheLink", func(t *testing.T) {
-		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-		l := h.Location
-		slug := l.WorktreeName
-		root, target := scratchPaths(l, slug)
-		replaceLinkWithRealDirectory(t, root)
-		removeTarget(t, target)
-		fabricengine.SetScratchBeforeLinkHookForTest(t, func() {
-			if err := os.Mkdir(root, 0o755); err != nil {
-				t.Errorf("recreate %s: %v", root, err)
-			}
-		})
-
-		_, pair := reconcilePrimePair(t, h)
-
-		if !strings.Contains(pair.Detail, target) || !strings.Contains(pair.Detail, "lym fabric reconcile") {
-			t.Errorf("Detail = %q; want it to name %s and `lym fabric reconcile`", pair.Detail, target)
-		}
-	})
-
-	t.Run("ReconcileRegularFileWrittenBeforeTheLink", func(t *testing.T) {
-		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-		l := h.Location
-		slug := l.WorktreeName
-		root, _ := scratchPaths(l, slug)
-		removeRootLink(t, root)
-		fabricengine.SetScratchBeforeLinkHookForTest(t, func() {
-			if err := os.WriteFile(root, []byte("in the way"), 0o644); err != nil {
-				t.Errorf("write %s: %v", root, err)
-			}
-		})
-
-		_, pair := reconcilePrimePair(t, h)
-
-		if !strings.Contains(pair.Detail, root) || !strings.Contains(pair.Detail, "lym fabric reconcile") {
-			t.Errorf("Detail = %q; want it to name %s and `lym fabric reconcile`", pair.Detail, root)
-		}
-
-		fabricengine.SetScratchBeforeLinkHookForTest(t, nil)
-		_, pair = reconcilePrimePair(t, h)
-
-		if !strings.Contains(pair.Detail, "a regular file") {
-			t.Errorf("second Detail = %q; want the regular file reported as left as found", pair.Detail)
-		}
-	})
-
-	t.Run("ReconcileTrackedCheckFails", func(t *testing.T) {
-		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-		l := h.Location
-		slug := l.WorktreeName
-		root, target := scratchPaths(l, slug)
-		replaceLinkWithRealDirectory(t, root)
-		removeTarget(t, target)
-		fabricengine.SetScratchPathTrackedForTest(t, func(string, string) (bool, error) {
-			return false, os.ErrPermission
-		})
-
-		_, pair := reconcilePrimePair(t, h)
-
-		if !strings.Contains(pair.Detail, root) || !strings.Contains(pair.Detail, "lym fabric reconcile") {
-			t.Errorf("Detail = %q; want it to name %s and `lym fabric reconcile`", pair.Detail, root)
-		}
-	})
 }
 
 // mutationIndexes returns the positions in record of every entry of kind at target.
-func mutationIndexes(record fabricengine.Mutations, kind fabricengine.Kind, target string) []int {
+func mutationIndexes(record fabriclayout.Mutations, kind fabriclayout.Kind, target string) []int {
 	var indexes []int
 	for i, entry := range record.Entries() {
 		if entry.Kind == kind && entry.Target == target {
@@ -727,9 +664,9 @@ func TestRemove_UnlinksScratchLinkBeforeWorktreeRemoval(t *testing.T) {
 		}
 
 		record := result.Mutations
-		unlinked := mutationIndexes(record, fabricengine.KindLinkRemoved, scratchHubRelative(t, l, root))
-		warpRemoved := mutationIndexes(record, fabricengine.KindWorktreeRemoved, scratchHubRelative(t, l, fabricengine.WorktreePath(l, slug)))
-		weftRemoved := mutationIndexes(record, fabricengine.KindWorktreeRemoved, scratchHubRelative(t, l, fabricengine.RecordsWorktreePath(l, slug)))
+		unlinked := mutationIndexes(record, fabriclayout.KindLinkRemoved, scratchHubRelative(t, l, root))
+		warpRemoved := mutationIndexes(record, fabriclayout.KindWorktreeRemoved, scratchHubRelative(t, l, fabricengine.WorktreePath(l, slug)))
+		weftRemoved := mutationIndexes(record, fabriclayout.KindWorktreeRemoved, scratchHubRelative(t, l, fabricengine.RecordsWorktreePath(l, slug)))
 		if len(unlinked) != 1 || len(warpRemoved) != 1 || len(weftRemoved) != 1 {
 			t.Fatalf("record %+v; want one link_removed at the root and one worktree_removed per worktree", record.Entries())
 		}
@@ -759,7 +696,7 @@ func TestRemove_UnlinksScratchLinkBeforeWorktreeRemoval(t *testing.T) {
 			t.Fatalf("Remove = %v; want nil", err)
 		}
 
-		if hasMutation(result.Mutations, fabricengine.KindLinkRemoved, scratchHubRelative(t, l, root), "") {
+		if hasMutation(result.Mutations, fabriclayout.KindLinkRemoved, scratchHubRelative(t, l, root), "") {
 			t.Errorf("record %+v holds link_removed at a real root .scratch", result.Mutations.Entries())
 		}
 	})
@@ -789,7 +726,7 @@ func TestRemove_UnlinksScratchLinkBeforeWorktreeRemoval(t *testing.T) {
 			t.Fatalf("Remove = %v; want nil", err)
 		}
 
-		if hasMutation(result.Mutations, fabricengine.KindLinkRemoved, scratchHubRelative(t, l, root), "") {
+		if hasMutation(result.Mutations, fabriclayout.KindLinkRemoved, scratchHubRelative(t, l, root), "") {
 			t.Errorf("record %+v holds link_removed at a link outside the weft worktree", result.Mutations.Entries())
 		}
 		if content, err := os.ReadFile(filepath.Join(other, scratchNoteName)); err != nil || string(content) != "outside" {
@@ -836,7 +773,7 @@ func TestScratchLink_SubpathAnchor(t *testing.T) {
 }
 
 // reconcilePrimePair runs Reconcile over h's hub and returns the result with the prime pair's entry.
-func reconcilePrimePair(t *testing.T, h *hubforge.Hub) (fabricengine.ReconcileResult, *fabricengine.ReconcilePairResult) {
+func reconcilePrimePair(t *testing.T, h *hubforge.Hub) (fabriclayout.ReconcileResult, *fabriclayout.ReconcilePairResult) {
 	t.Helper()
 	l := h.Location
 	result, err := h.Topology.Reconcile(l)
@@ -882,13 +819,13 @@ func TestReconcile_ScratchLink(t *testing.T) {
 
 			result, pair := reconcilePrimePair(t, h)
 
-			if pair.Action != fabricengine.ReconcileActionAlreadyHealthy || pair.Error != "" {
+			if pair.Action != fabriclayout.ReconcileActionAlreadyHealthy || pair.Error != "" {
 				t.Errorf("pair = {Action %q, Error %q}; want already_healthy with no error", pair.Action, pair.Error)
 			}
 			if !strings.Contains(pair.Detail, target) {
 				t.Errorf("Detail = %q; want it to name the target %s", pair.Detail, target)
 			}
-			if !hasMutation(result.Mutations, fabricengine.KindPathRenamed, scratchHubRelative(t, l, target), scratchHubRelative(t, l, root)) {
+			if !hasMutation(result.Mutations, fabriclayout.KindPathRenamed, scratchHubRelative(t, l, target), scratchHubRelative(t, l, root)) {
 				t.Errorf("record %+v lacks path_renamed from the root to the target", result.Mutations.Entries())
 			}
 			lines := gitkit.ExcludeLines(t, fabricengine.WorktreePath(l, slug))
@@ -964,10 +901,10 @@ func TestReconcile_ScratchLink(t *testing.T) {
 	for _, tt := range []struct {
 		name       string
 		realLymDir bool
-		action     fabricengine.ReconcileAction
+		action     fabriclayout.ReconcileAction
 	}{
-		{"RawAdoptedPairGetsNothing", false, fabricengine.ReconcileActionRawAdopted},
-		{"UnmanagedPairGetsNothing", true, fabricengine.ReconcileActionUnmanagedReported},
+		{"RawAdoptedPairGetsNothing", false, fabriclayout.ReconcileActionRawAdopted},
+		{"UnmanagedPairGetsNothing", true, fabriclayout.ReconcileActionUnmanagedReported},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()

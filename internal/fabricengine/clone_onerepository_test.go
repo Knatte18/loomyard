@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
@@ -53,12 +54,12 @@ func TestCloneHub_OneURLRefusals(t *testing.T) {
 		}, true, "tst", false, []string{"without --single-repo"}},
 		{"RecordsRepository", func(t *testing.T, fixtures string) string {
 			bare := makeBareRemote(t, fixtures, "records-repository")
-			commitFileOnBranch(t, fixtures, bare, "main", fabricengine.WarpBindingFileName, codeURL+"\n")
+			commitFileOnBranch(t, fixtures, bare, "main", fabriclayout.WarpBindingFileName, codeURL+"\n")
 			return bare
 		}, true, "tst", false, []string{"lym fabric clone <records-url> <code-url>"}},
 		{"TwoRepositoryWeftTrackingTheLegacyAnchor", func(t *testing.T, fixtures string) string {
 			bare := makeBareRemote(t, fixtures, "records-with-anchor")
-			commitFileOnBranch(t, fixtures, bare, "main", fabricengine.WarpBindingFileName, codeURL+"\n")
+			commitFileOnBranch(t, fixtures, bare, "main", fabriclayout.WarpBindingFileName, codeURL+"\n")
 			commitFileOnBranch(t, fixtures, bare, "main", lymcwd.AnchorFileName, ".\n")
 			return bare
 		}, true, "tst", false, []string{"lym fabric clone <records-url> <code-url>"}},
@@ -85,7 +86,7 @@ func TestCloneHub_OneURLRefusals(t *testing.T) {
 
 			origin := filepath.ToSlash(tt.prepare(t, t.TempDir()))
 			cloneParent := t.TempDir()
-			opts := fabricengine.CloneOptions{WeftURL: origin, SingleRepo: tt.singleRepo, Shortname: tt.shortname}
+			opts := fabriclayout.CloneOptions{WeftURL: origin, SingleRepo: tt.singleRepo, Shortname: tt.shortname}
 			if tt.secondURL {
 				opts.WarpURL = origin
 			}
@@ -118,7 +119,7 @@ func TestCloneHub_RefusesAParentDirectoryThatIsNotThere(t *testing.T) {
 
 	cloneParent := filepath.Join(t.TempDir(), "missing")
 
-	_, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{WeftURL: "https://example.com/code"})
+	_, err := fabricengine.CloneHub(cloneParent, fabriclayout.CloneOptions{WeftURL: "https://example.com/code"})
 
 	if err == nil {
 		t.Fatalf("CloneHub(%s) = nil error; want a refusal", cloneParent)

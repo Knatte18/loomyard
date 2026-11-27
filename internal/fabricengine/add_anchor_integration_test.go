@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -61,10 +62,10 @@ func TestAdd_AtAnchor(t *testing.T) {
 		hubforge.AddPairWith(t, h, "beam", fabricengine.AddOptions{Anchor: "y"})
 
 		requireWeftAtY(t, h, "beam")
-		if tree := gitkit.Git(t, weftRoot, "ls-tree", "-r", "--name-only", fabricengine.RecordsBranchName("beam")); strings.Contains(tree, "shed") {
+		if tree := gitkit.Git(t, weftRoot, "ls-tree", "-r", "--name-only", fabriclayout.RecordsBranchName("beam")); strings.Contains(tree, "shed") {
 			t.Errorf("weft branch of the beam tracks run records:\n%s", tree)
 		}
-		if _, err := os.Stat(filepath.Join(h.PairRecordsSibling("beam"), "y", fabricengine.OriginRecordRel())); err != nil {
+		if _, err := os.Stat(filepath.Join(h.PairRecordsSibling("beam"), "y", fabriclayout.OriginRecordRel())); err != nil {
 			t.Errorf("origin record at y: %v; want it", err)
 		}
 	})
@@ -120,7 +121,7 @@ func TestAdd_AtAnchor(t *testing.T) {
 				if _, statErr := os.Stat(h.PairRecordsSibling(slug)); !os.IsNotExist(statErr) {
 					t.Errorf("weft worktree of %s: %v; want none created", slug, statErr)
 				}
-				if gitkit.BranchExists(t, mustRecordsRepoRoot(t, h.Location), fabricengine.RecordsBranchName(slug)) {
+				if gitkit.BranchExists(t, mustRecordsRepoRoot(t, h.Location), fabriclayout.RecordsBranchName(slug)) {
 					t.Errorf("weft branch of %s exists; want none created", slug)
 				}
 			})

@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -84,7 +85,7 @@ type weftLeftover struct {
 // under opts.SkipGit or opts.SkipPush nothing is probed and the branch reads not live.
 // A failed origin read is returned as the error.
 func (t *Topology) RecordsBranchLive(l *lymcwd.Location, slug string, opts AddOptions) (bool, error) {
-	weftBranch := RecordsBranchName(t.cfg.BranchPrefix + slug)
+	weftBranch := fabriclayout.RecordsBranchName(t.cfg.BranchPrefix + slug)
 	if weftBranchExists(l, weftBranch) {
 		return true, nil
 	}
@@ -264,7 +265,7 @@ func remoteHeadTip(dir, branch string) (string, error) {
 
 // remoteArchiveTags maps each archive/<slug>/* tag name on origin to its commit target, preferring a peeled ^{} line.
 func remoteArchiveTags(weftRoot, slug string) (map[string]string, error) {
-	tags, err := remoteTagsUnder(weftRoot, ArchiveTagPrefix+slug+"/")
+	tags, err := remoteTagsUnder(weftRoot, fabriclayout.ArchiveTagPrefix+slug+"/")
 	if err != nil {
 		return nil, fmt.Errorf("list archive tags of %q on %q: %w", slug, originRemoteName, err)
 	}

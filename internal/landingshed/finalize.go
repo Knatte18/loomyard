@@ -28,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/beamsetting"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -43,15 +44,15 @@ const finalizeName = "Finalize"
 // production opens the pair only through `deps.OpenParentFabric`.
 type parentMerger interface {
 	// Merge merges source into the parent pair's own worktree.
-	Merge(source string, opts fabricengine.MergeOptions) (fabricengine.MergeResult, error)
+	Merge(source string, opts fabriclayout.MergeOptions) (fabriclayout.MergeResult, error)
 	// PushBranch pushes the parent pair's own branch to its upstream.
-	PushBranch(opts fabricengine.SyncOptions) (fabricengine.PushResult, error)
+	PushBranch(opts fabricengine.SyncOptions) (fabriclayout.PushResult, error)
 	// HeadSHA reads the parent pair's own current head commit.
 	HeadSHA() (string, error)
 	// MidMerge reads the merge the parent pair has parked, if any.
-	MidMerge() (fabricengine.MidMergeState, error)
+	MidMerge() (fabriclayout.MidMergeState, error)
 	// FastForwardPair moves the parent pair to its upstream as a fast-forward only.
-	FastForwardPair(opts fabricengine.SyncOptions) (fabricengine.FastForwardResult, error)
+	FastForwardPair(opts fabricengine.SyncOptions) (fabriclayout.FastForwardResult, error)
 	// CodeDirtyPaths reads the parent pair's code checkout and its tracked uncommitted paths.
 	CodeDirtyPaths() (checkout string, paths []string, err error)
 }
@@ -101,7 +102,7 @@ type Finalize struct {
 
 // configRead is what one read of the task's per-worktree config changes answered.
 type configRead struct {
-	changes fabricengine.ConfigChanges
+	changes fabriclayout.ConfigChanges
 	err     error
 }
 
@@ -517,7 +518,7 @@ func (fz *Finalize) landUnderLock(ctx context.Context, front bool, summary summa
 		// A parent that takes its pull request at once always squashes on GitHub,
 		// so the parent-side merge squashes too, whatever landing.yaml says.
 		// A true merge never squashes, since a squash would drop the merged commit from the parent's history.
-		mergeOpts := fabricengine.MergeOptions{Squash: (fz.deps.Config.Squash || landing.atOnce) && !landing.trueMerge, Message: landingMessage}
+		mergeOpts := fabriclayout.MergeOptions{Squash: (fz.deps.Config.Squash || landing.atOnce) && !landing.trueMerge, Message: landingMessage}
 		_, mergeErr := parentHandle.Merge(fz.deps.TaskBranch, mergeOpts)
 		if mergeErr == nil {
 			// The landing has happened: the parent is pushed,
@@ -594,7 +595,7 @@ func (fz *Finalize) syncParent(parent parentMerger, held bool) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("landingshed: %s: read the merge state of the parent pair of %q: %w", finalizeName, branch, err)
 	}
-	if state.Kind != fabricengine.MidMergeNone {
+	if state.Kind != fabriclayout.MidMergeNone {
 		return fmt.Sprintf("a merge is in progress in the parent pair of %q; way forward: finish or abort that merge in the parent pair, %s", branch, resume), nil
 	}
 	checkout, dirty, err := parent.CodeDirtyPaths()
@@ -613,13 +614,13 @@ func (fz *Finalize) syncParent(parent parentMerger, held bool) (string, error) {
 		return "", fmt.Errorf("landingshed: %s: read the tips of parent branch %q: %w", finalizeName, branch, err)
 	}
 	switch tips.Relation {
-	case fabricengine.ParentNoUpstream, fabricengine.ParentEqual:
+	case fabriclayout.ParentNoUpstream, fabriclayout.ParentEqual:
 		return "", nil
-	case fabricengine.ParentAhead:
+	case fabriclayout.ParentAhead:
 		return fmt.Sprintf("the local parent branch %q is ahead of its upstream; way forward: push or reconcile %q in its own pair, %s", branch, branch, resume), nil
-	case fabricengine.ParentDiverged:
+	case fabriclayout.ParentDiverged:
 		return fmt.Sprintf("the local parent branch %q has diverged from its upstream; way forward: push or reconcile %q in its own pair, %s", branch, branch, resume), nil
-	case fabricengine.ParentBehind:
+	case fabriclayout.ParentBehind:
 	default:
 		return "", fmt.Errorf("landingshed: %s: unknown relation %q of parent branch %q to its upstream", finalizeName, tips.Relation, branch)
 	}
@@ -631,11 +632,11 @@ func (fz *Finalize) syncParent(parent parentMerger, held bool) (string, error) {
 	switch result.Refusal {
 	case "":
 		return "", nil
-	case fabricengine.FastForwardDirty:
+	case fabriclayout.FastForwardDirty:
 		return fmt.Sprintf("the parent pair of %q has uncommitted changes; way forward: commit or stash them in the parent pair, %s", branch, resume), nil
-	case fabricengine.FastForwardMergeInProgress:
+	case fabriclayout.FastForwardMergeInProgress:
 		return fmt.Sprintf("a merge is in progress in the parent pair of %q; way forward: finish or abort that merge in the parent pair, %s", branch, resume), nil
-	case fabricengine.FastForwardNotFastForward:
+	case fabriclayout.FastForwardNotFastForward:
 		return fmt.Sprintf("the upstream of %q is no longer a fast-forward of the parent pair; way forward: reconcile %q with its upstream in its own pair, %s", branch, branch, resume), nil
 	default:
 		return "", fmt.Errorf("landingshed: %s: unknown fast-forward refusal %q for parent branch %q", finalizeName, result.Refusal, branch)
@@ -694,7 +695,7 @@ func (fz *Finalize) dirtyParentReason(parentHandle parentMerger, guardErr *fabri
 		case err != nil:
 			logger.Warn("landingshed: read the parent pair's parked merge failed", "producer", finalizeName, "cause", err)
 			wayForward = fz.parkedMergeWayForward(checkout)
-		case state.Kind == fabricengine.MidMergeParked:
+		case state.Kind == fabriclayout.MidMergeParked:
 			reason += fmt.Sprintf("; the parked fabric merge is a %s of %s in the parent pair", state.Verb, state.Source)
 			wayForward = fz.parkedMergeWayForward(checkout)
 		}
@@ -747,7 +748,7 @@ func (fz *Finalize) configChangeNotice() string {
 	}
 	fz.readConfigBeforeMerge()
 	changes, err := fz.configBeforeMerge.changes, fz.configBeforeMerge.err
-	var current fabricengine.ConfigChanges
+	var current fabriclayout.ConfigChanges
 	if err == nil {
 		current, err = fz.deps.ConfigChanges()
 	}

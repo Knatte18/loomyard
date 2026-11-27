@@ -9,21 +9,9 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 )
-
-// WarpSHATrailerKey is the git-trailer key fabric writes into every weft commit message as "Warp-SHA: <sha>".
-const WarpSHATrailerKey = "Warp-SHA"
-
-// TransitionTrailerKey is the git-trailer key of a records commit marking a run's transition.
-// It is written as "Run-Transition: <run id>".
-// Only a run's transition commits, its code-tip give-up and webster's reset of the code branch write it.
-// The newest commit carrying it thus names the run's last transition.
-// Fabric's other records commits carry a Warp-SHA trailer too, but never this one.
-const TransitionTrailerKey = "Run-Transition"
-
-// SnapshotTrailerKey is the git-trailer key fabric writes into a weft commit message.
-// It is written once per caller-supplied snapshot tag, alongside the Warp-SHA trailer.
-const SnapshotTrailerKey = "Snapshot"
 
 // snapshotTagPattern is the single-line charset a snapshot tag must match: letters, digits, dot, underscore, hyphen.
 // It excludes newline, carriage return and colon.
@@ -67,7 +55,7 @@ func appendSnapshotTrailers(message string, tags []string) (string, error) {
 
 	result := strings.TrimRight(message, "\n")
 	for i, tag := range tags {
-		trailerLine := fmt.Sprintf("%s: %s", SnapshotTrailerKey, tag)
+		trailerLine := fmt.Sprintf("%s: %s", fabriclayout.SnapshotTrailerKey, tag)
 		if i == 0 && !endsInTrailerBlock(result) {
 			// The first line decides whether to start a new trailer-block paragraph.
 			// Every later line joins the block this call has just started.
@@ -89,7 +77,7 @@ var trailerLinePattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9-]*:\s+\S.*$`)
 // Otherwise it starts a new block after a blank line, as git's trailer conventions do.
 func appendWarpSHATrailer(message, warpSHA string) string {
 	trimmed := strings.TrimRight(message, "\n")
-	trailerLine := fmt.Sprintf("%s: %s", WarpSHATrailerKey, warpSHA)
+	trailerLine := fmt.Sprintf("%s: %s", fabriclayout.WarpSHATrailerKey, warpSHA)
 
 	if endsInTrailerBlock(trimmed) {
 		return trimmed + "\n" + trailerLine
@@ -143,7 +131,7 @@ func TaskCommitOf(message string) (string, bool) {
 // When multiple "Warp-SHA:" lines exist, the last one wins, as in git's trailer semantics.
 // ok is false when the message carries no Warp-SHA trailer at all.
 func parseWarpSHATrailer(message string) (sha string, ok bool) {
-	prefix := WarpSHATrailerKey + ":"
+	prefix := fabriclayout.WarpSHATrailerKey + ":"
 	for _, line := range strings.Split(message, "\n") {
 		trimmed := strings.TrimSpace(line)
 		if !strings.HasPrefix(trimmed, prefix) {

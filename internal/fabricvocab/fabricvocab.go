@@ -15,6 +15,8 @@ import (
 var owners = map[string]bool{
 	"internal/fabricengine": true,
 	"internal/fabriccli":    true,
+	"internal/fabriclayout": true,
+	"internal/fabriccore":   true,
 	"internal/weftname":     true,
 	"internal/gitkit":       true,
 	"internal/boardengine":  true,

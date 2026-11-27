@@ -13,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
@@ -137,7 +138,7 @@ func forgetFormer(d deps, cwd, name string) (forgetResult, error) {
 // forgetOnHub registers identity on the hub with name forgotten.
 // A failed registration is the hub's failure with the re-run as its way forward.
 func forgetOnHub(d deps, hub string, identity machinename.Identity, name string) hubOutcome {
-	registered, err := d.register(fabricengine.BoardDir(hub), boardengine.Registration{Identity: identity, Forget: []string{name}})
+	registered, err := d.register(fabriclayout.BoardDir(hub), boardengine.Registration{Identity: identity, Forget: []string{name}})
 	if err != nil {
 		return hubOutcome{Hub: hub, Outcome: outcomeFailed, Error: fmt.Sprintf("register this machine: %v", err), WayForward: forgetRerun(name)}
 	}
@@ -169,7 +170,7 @@ func runForget(out io.Writer, d deps, cwd, name string) int {
 // They also include each takeover entry and unfinished cancel intent that names it in a batten record.
 // Only a run whose pair stands here has one that is read.
 func hubReferences(hub, name string) ([]formerReference, error) {
-	owners, err := boardengine.ReadOwners(fabricengine.BoardDir(hub))
+	owners, err := boardengine.ReadOwners(fabriclayout.BoardDir(hub))
 	if err != nil {
 		return nil, fmt.Errorf("read the board's owners: %w", err)
 	}
@@ -215,7 +216,7 @@ func primeOfHub(hub string) (*lymcwd.Location, error) {
 		return nil, fmt.Errorf("read the hub %s: %w", hub, err)
 	}
 	for _, child := range children {
-		if !child.IsDir() || child.Name() == fabricengine.BoltDirName {
+		if !child.IsDir() || child.Name() == fabriclayout.BoltDirName {
 			continue
 		}
 		location, err := lymcwd.ResolveWorktree(filepath.Join(hub, child.Name()))

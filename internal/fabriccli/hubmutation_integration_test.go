@@ -18,7 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabriccli"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -48,7 +48,7 @@ func TestCommand_BypassPushPointsTheTraceSinkAtItsHub(t *testing.T) {
 	}
 
 	envelope.RequireOK(t, out.String())
-	if got, want := logger.TraceDir(), fabricengine.HubLogsDir(h.Path); got != want {
+	if got, want := logger.TraceDir(), fabriclayout.HubLogsDir(h.Path); got != want {
 		t.Errorf("trace sink after bypass push = %q; want the test hub's %q", got, want)
 	}
 }
@@ -335,7 +335,7 @@ func TestCommand_HubMutationScenario(t *testing.T) {
 				if !isMap {
 					continue
 				}
-				if action, _ := pair["action"].(string); action == string(fabricengine.ReconcileActionVanishedMidWalk) {
+				if action, _ := pair["action"].(string); action == string(fabriclayout.ReconcileActionVanishedMidWalk) {
 					sawVanished = true
 					if reason, _ := pair["error"].(string); reason != "" {
 						t.Errorf("vanished pair carries error %q; want none — nothing failed to reconcile", reason)
@@ -343,7 +343,7 @@ func TestCommand_HubMutationScenario(t *testing.T) {
 				}
 			}
 			if !sawVanished {
-				t.Errorf("no pair reported %q\noutput: %s", fabricengine.ReconcileActionVanishedMidWalk, output)
+				t.Errorf("no pair reported %q\noutput: %s", fabriclayout.ReconcileActionVanishedMidWalk, output)
 			}
 		}},
 		{"PrimePushReportsItsUnpushedCodeBranchAndPushesRecords", func(t *testing.T) {

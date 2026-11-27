@@ -20,6 +20,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -52,7 +53,7 @@ func recordLaunches(t *testing.T) (launched *[]string, opened *[][]string) {
 // setIDEConfig writes h's hub ide.yaml with contents and removes it on cleanup.
 func setIDEConfig(t *testing.T, h *hubforge.Hub, contents string) {
 	t.Helper()
-	board := fabricengine.BoltDir(h.Location.HubPath)
+	board := fabriclayout.BoltDir(h.Location.HubPath)
 	if err := os.MkdirAll(configengine.ConfigDir(board), 0o755); err != nil {
 		t.Fatalf("MkdirAll(%q): %v", configengine.ConfigDir(board), err)
 	}
@@ -212,7 +213,7 @@ func checkPrimeWritesHubWorkspace(t *testing.T, h *hubforge.Hub) {
 	wantNames := []string{primeBranch, "Bolt"}
 	wantDirs := []string{
 		filepath.Join(h.Path, prime, l.AnchorRel),
-		fabricengine.BoardDir(h.Path),
+		fabriclayout.BoardDir(h.Path),
 	}
 	entries, err := fabricengine.List(l.AnchorPath())
 	if err != nil {
@@ -462,7 +463,7 @@ func checkBeamWithoutReadableOriginOpensBareFolder(t *testing.T, h *hubforge.Hub
 	if err != nil {
 		t.Fatalf("NamedWorktree(%q): %v", slug, err)
 	}
-	lockDir := fabricengine.RecordsLockDirPath(fabricengine.RecordsWorktreePath(pair, slug))
+	lockDir := fabriclayout.RecordsLockDirPath(fabricengine.RecordsWorktreePath(pair, slug))
 	bareFolder := filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel)
 
 	if _, err := os.Stat(lockDir); err != nil {
@@ -752,7 +753,7 @@ func readPrimeLook(t *testing.T, path string) primeLook {
 func setDesktopWindowCommand(t *testing.T, h *hubforge.Hub) string {
 	t.Helper()
 	markerPath := filepath.Join(t.TempDir(), "marker")
-	board := fabricengine.BoltDir(h.Location.HubPath)
+	board := fabriclayout.BoltDir(h.Location.HubPath)
 	if err := os.MkdirAll(configengine.ScratchDir(board), 0o755); err != nil {
 		t.Fatalf("MkdirAll(%q): %v", configengine.ScratchDir(board), err)
 	}

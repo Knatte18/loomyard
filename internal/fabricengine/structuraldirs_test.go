@@ -1,4 +1,5 @@
-// structuraldirs_test.go covers structuralCommittedDirs and structuralNeverCommittedDirs over a hand-built Config.
+// structuraldirs_test.go covers fabriclayout.StructuralCommittedDirs and fabriclayout.StructuralNeverCommittedDirs.
+// It runs them over a hand-built Config.
 // It checks the name-sets built on them: wired, pathspec and commit-routing, and slug reservation.
 // Any two of these three can pass while the third is broken, so all three are tested together in this file.
 
@@ -7,6 +8,7 @@ package fabricengine
 import (
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -14,18 +16,19 @@ import (
 // Hub-reserved names are filtered from the pathspec, and duplicates are removed.
 // It does no file I/O, so a hand-built Config needs no fixture on disk.
 func wiredNamesFromConfig(cfg Config) []string {
-	return dedupUnion(structuralCommittedDirs, structuralNeverCommittedDirs, filterHubReserved(cfg.Dirs()))
+	return dedupUnion(fabriclayout.StructuralCommittedDirs(), fabriclayout.StructuralNeverCommittedDirs(), filterHubReserved(cfg.Dirs()))
 }
 
 // TestStructuralNameSets_ForAConfigNamingNeitherStructuralDirectory asserts the following:
 // The wired name-set always contains `_lym`, which arrives structurally, not from config,
 // so an empty or unrelated pathspec cannot remove it.
 // The pathspec/commit-routing set always contains `_lym` but never `.lym`:
-// if `.lym` reached it, classifyPaths or Commit would route never-committed content into the weft-side commit.
-// The wired name-set does contain `.lym`, since structuralNeverCommittedDirs is folded in; the routing set never does.
+// A `.lym` in it would make fabriclayout.ClassifyPaths or Commit put never-committed content in the weft-side commit.
+// The wired name-set does contain `.lym`, since fabriclayout.StructuralNeverCommittedDirs is folded in;
+// the routing set never does.
 // That asymmetry is deliberate.
 // `.lym` is refused as a worktree slug even when the caller-supplied junctionNames argument is empty.
-// The refusal comes from the structuralNeverCommittedDirs union in IsReservedHubName.
+// The refusal comes from the fabriclayout.StructuralNeverCommittedDirs union in IsReservedHubName.
 // It does not depend on what a config wires.
 //
 //testtiming:keep _lym always wired and routed, .lym wired but never routed, .lym refused as a slug; coverage of its blocks by other tests does not show an assertion of this
@@ -49,7 +52,7 @@ func TestStructuralNameSets_ForAConfigNamingNeitherStructuralDirectory(t *testin
 		t.Errorf("pathspecNames(%+v) = %v; want it to NEVER contain %q", cfg, routing, ".lym")
 	}
 
-	if !IsReservedHubName(".lym", nil) {
+	if !fabriclayout.IsReservedHubName(".lym", nil) {
 		t.Errorf("IsReservedHubName(%q, nil) = false; want true", ".lym")
 	}
 }
@@ -75,23 +78,6 @@ func TestDeployedLymPathspec_YieldsNoDuplicateLym(t *testing.T) {
 	routing := pathspecNames(cfg)
 	if got := countName(routing, "_lym"); got != 1 {
 		t.Errorf("pathspecNames(%+v) = %v; want exactly one %q, got %d", cfg, routing, "_lym", got)
-	}
-}
-
-// TestHubReservedNames_StillReturnsExactlyTheThreeHubStructuralTokens asserts the following:
-// HubReservedNames returns exactly the three hub-structural tokens, with `.lym` absent.
-// HubReservedNames is the junction-wiring block set that scanOnDiskJunctionNames relies on to see `.lym`.
-//
-//testtiming:keep HubReservedNames returning exactly the three hub tokens without .lym; coverage of its blocks by other tests does not show an assertion of this
-func TestHubReservedNames_StillReturnsExactlyTheThreeHubStructuralTokens(t *testing.T) {
-	tiergate.Require(t, 0)
-	want := []string{BoardDirName, portalsDirName, launchersDirName}
-	got := HubReservedNames()
-	if !stringSlicesEqual(got, want) {
-		t.Errorf("HubReservedNames() = %v; want %v", got, want)
-	}
-	if containsName(got, ".lym") {
-		t.Errorf("HubReservedNames() = %v; want it to NEVER contain %q", got, ".lym")
 	}
 }
 

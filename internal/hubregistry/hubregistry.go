@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
@@ -79,7 +80,7 @@ func Lookup(dir, shortname string) (string, error) {
 		if entry.Shortname != shortname {
 			continue
 		}
-		if got, found := fabricengine.ReadShortname(fabricengine.BoltDir(entry.HubPath)); found && got == shortname {
+		if got, found := fabricengine.ReadShortname(fabriclayout.BoltDir(entry.HubPath)); found && got == shortname {
 			paths = append(paths, entry.HubPath)
 		}
 	}
@@ -102,7 +103,7 @@ func Live(dir string) ([]Entry, error) {
 	}
 	var live []Entry
 	for _, entry := range entries {
-		if got, found := fabricengine.ReadShortname(fabricengine.BoltDir(entry.HubPath)); found && got == entry.Shortname {
+		if got, found := fabricengine.ReadShortname(fabriclayout.BoltDir(entry.HubPath)); found && got == entry.Shortname {
 			live = append(live, entry)
 		}
 	}
@@ -137,7 +138,7 @@ func entryGone(entry Entry) bool {
 	if _, err := os.Stat(entry.HubPath); errors.Is(err, fs.ErrNotExist) {
 		return true
 	}
-	got, found := fabricengine.ReadShortname(fabricengine.BoltDir(entry.HubPath))
+	got, found := fabricengine.ReadShortname(fabriclayout.BoltDir(entry.HubPath))
 	return found && got != entry.Shortname
 }
 

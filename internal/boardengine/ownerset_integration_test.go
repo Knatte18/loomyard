@@ -17,6 +17,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/machinename"
@@ -46,7 +47,7 @@ func newOwnerFixture(t *testing.T, primeOwner string) *ownerFixture {
 	bare := newBareRemote(t, side)
 	// The hub's records repository sits beside the Bolt checkout under a name that pairs with a warp branch;
 	// fabric alone composes that name.
-	weftDir := newBoardRepo(t, hub, fabricengine.RecordsBranchName("hub"), bare)
+	weftDir := newBoardRepo(t, hub, fabriclayout.RecordsBranchName("hub"), bare)
 
 	store := NewStore(weftDir)
 	for _, fields := range []map[string]any{
@@ -98,7 +99,7 @@ func newOwnerFixture(t *testing.T, primeOwner string) *ownerFixture {
 	gitkit.Git(t, weftDir, "push", "-u", "origin", "main")
 
 	// The weft repository's own checkout moves off main, which the hub's Bolt checkout worktree then holds.
-	boardDir := fabricengine.BoltDir(hub)
+	boardDir := fabriclayout.BoltDir(hub)
 	gitkit.Git(t, weftDir, "checkout", "-b", "home")
 	gitkit.Git(t, weftDir, "worktree", "add", boardDir, "main")
 	gitkit.MustRun(t, side, "git", "clone", bare, "other")
@@ -598,7 +599,7 @@ func TestSetOwners(t *testing.T) {
 							}
 						}
 					})
-					boardLockPath, err := fabricengine.BoltLockPath(f.boardDir, fabricengine.BoardWriteLockFile)
+					boardLockPath, err := fabricengine.BoltLockPath(f.boardDir, fabriclayout.BoardWriteLockFile)
 					if err != nil {
 						t.Fatalf("locate the board write lock: %v", err)
 					}

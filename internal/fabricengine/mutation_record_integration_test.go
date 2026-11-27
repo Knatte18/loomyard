@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -57,21 +58,21 @@ func TestMutationRecord_AddRollbackOrdersCreationBeforeItsOwnDestruction(t *test
 	entries := res.Mutated().Entries()
 	createdIdx, removedIdx := -1, -1
 	for i, entry := range entries {
-		if entry.Kind == fabricengine.KindWorktreeCreated && createdIdx == -1 {
+		if entry.Kind == fabriclayout.KindWorktreeCreated && createdIdx == -1 {
 			createdIdx = i
 		}
-		if entry.Kind == fabricengine.KindWorktreeRemoved && removedIdx == -1 {
+		if entry.Kind == fabriclayout.KindWorktreeRemoved && removedIdx == -1 {
 			removedIdx = i
 		}
 	}
 	if createdIdx == -1 {
-		t.Fatalf("record %+v has no %s entry; want Add's own worktree creation recorded", entries, fabricengine.KindWorktreeCreated)
+		t.Fatalf("record %+v has no %s entry; want Add's own worktree creation recorded", entries, fabriclayout.KindWorktreeCreated)
 	}
 	if removedIdx == -1 {
-		t.Fatalf("record %+v has no %s entry; want rollbackAdd's own destruction recorded", entries, fabricengine.KindWorktreeRemoved)
+		t.Fatalf("record %+v has no %s entry; want rollbackAdd's own destruction recorded", entries, fabriclayout.KindWorktreeRemoved)
 	}
 	if createdIdx > removedIdx {
 		t.Errorf("record has %s at index %d before %s at index %d; want the creation to precede its own rollback destruction: %+v",
-			fabricengine.KindWorktreeRemoved, removedIdx, fabricengine.KindWorktreeCreated, createdIdx, entries)
+			fabriclayout.KindWorktreeRemoved, removedIdx, fabriclayout.KindWorktreeCreated, createdIdx, entries)
 	}
 }

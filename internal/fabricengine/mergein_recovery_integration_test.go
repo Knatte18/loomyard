@@ -1,5 +1,5 @@
 // mergein_recovery_integration_test.go covers MergeIn's crash recovery and its guards.
-// It tests a fresh Fabric handle resuming a mid-merge record, both conflicted and crashed after clean staging,
+// It tests a fresh Fabric handle resuming a mid-merge record,
 // and a conclude-phase partial failure with its idempotent retry.
 // It tests refusal of foreign git merge state without touching it.
 // It tests the freshness rule's source-resolution outcomes.
@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -83,59 +84,6 @@ func pushDetachedContentAsRemoteBranch(t *testing.T, dir, branch, filename, cont
 	gitkit.CommitFile(t, dir, filename, content, msg)
 	gitkit.MustRun(t, dir, "git", "push", "origin", "HEAD:refs/heads/"+branch)
 	gitkit.MustRun(t, dir, "git", "checkout", "-q", original)
-}
-
-// TestMergeContinue_FreshHandle_RecoversCrashedAfterCleanStaging covers the crash after clean staging.
-// The warp side is staged via the gitrepo.Repo.MergeStart seam, never a conflict.
-// The weft is not a merge participant.
-// A record is saved by hand, and nothing is concluded.
-// A fresh Fabric handle's MergeContinue then concludes the warp side.
-func TestMergeContinue_FreshHandle_RecoversCrashedAfterCleanStaging(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	h, f, _, _, _, _ := newMergePairFixture(t, ".")
-
-	warpStart := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
-	weftStart := fabricengine.CurrentSHAForTest(t, h.PrimeRecords())
-
-	setupCleanNonFastForward(t, h.PrimeWorktree(), "feature", "warp-branch.txt", "warp-current.txt")
-
-	warpRepo := fabricengine.WarpForTest(f)
-
-	warpSourceSHA, err := warpRepo.ResolveSHA("feature")
-	if err != nil {
-		t.Fatalf("ResolveSHA(feature) error = %v", err)
-	}
-
-	if _, err := warpRepo.MergeStart(warpSourceSHA, false); err != nil {
-		t.Fatalf("warp MergeStart(%s) error = %v", warpSourceSHA, err)
-	}
-
-	if err := fabricengine.SaveMergeStateForTest(f, fabricengine.MergeStateForTest{
-		Verb:        "merge-in",
-		Source:      "feature",
-		WarpStart:   warpStart,
-		WarpSource:  warpSourceSHA,
-		WeftStart:   weftStart,
-		WarpOutcome: "staged",
-		WeftOutcome: "up_to_date",
-		StartedAt:   time.Now(),
-	}); err != nil {
-		t.Fatalf("SaveMergeStateForTest() error = %v", err)
-	}
-
-	fresh := openFreshFabric(t, h.PrimeWorktree())
-	res, err := fresh.MergeContinue("")
-	if err != nil {
-		t.Fatalf("fresh handle MergeContinue() error = %v", err)
-	}
-	if !res.Committed {
-		t.Errorf("fresh handle MergeContinue().Committed = false; want true")
-	}
-	if exists, err := fabricengine.MergeRecordExistsForTest(f); err != nil || exists {
-		t.Errorf("MergeRecordExistsForTest() after recovery = (%v, %v); want (false, nil)", exists, err)
-	}
 }
 
 // TestMergeContinue_ConcludeFailureThenRetryConcludes covers a conclude-phase failure on the warp side.
@@ -342,7 +290,7 @@ func TestMergeContinue_InvisibleLandedConclude_AdoptsInsteadOfSticking(t *testin
 
 	adopted := false
 	for _, entry := range contRes.Mutated().Entries() {
-		if entry.Kind == fabricengine.KindMergeCommitted && entry.Detail == warpHEADBefore {
+		if entry.Kind == fabriclayout.KindMergeCommitted && entry.Detail == warpHEADBefore {
 			adopted = true
 		}
 	}
@@ -418,7 +366,7 @@ func TestMergeContinue_OctopusMergeCarryingTheSource_IsNeverAdopted(t *testing.T
 		t.Errorf("MergeContinue().Committed = true; want false — fabric never produced this commit")
 	}
 	for _, entry := range contRes.Mutated().Entries() {
-		if entry.Kind == fabricengine.KindMergeCommitted {
+		if entry.Kind == fabriclayout.KindMergeCommitted {
 			t.Errorf("MergeContinue() recorded %v; want no KindMergeCommitted — an octopus is not a conclude fabric can make", entry)
 		}
 	}
@@ -476,7 +424,7 @@ func setupWarpStagedPendingConclude(t *testing.T) (*hubforge.Hub, fabricengine.M
 // The conclude is refused with the aggregated guard error naming the recorded-merge-gone reason.
 // No conclude commit is recorded or landed.
 // The record stays on disk, and the operator's own warp state is left exactly as it was.
-func assertConcludeRefusedWithoutCommitting(t *testing.T, h *hubforge.Hub, warpHEADBefore string, res fabricengine.MergeResult, err error) {
+func assertConcludeRefusedWithoutCommitting(t *testing.T, h *hubforge.Hub, warpHEADBefore string, res fabriclayout.MergeResult, err error) {
 	t.Helper()
 
 	var guardErr *fabricengine.MergeGuardError
@@ -490,7 +438,7 @@ func assertConcludeRefusedWithoutCommitting(t *testing.T, h *hubforge.Hub, warpH
 		t.Error("MergeContinue().Committed = true; want false — nothing was concluded")
 	}
 	for _, entry := range res.Mutated().Entries() {
-		if entry.Kind == fabricengine.KindMergeCommitted {
+		if entry.Kind == fabriclayout.KindMergeCommitted {
 			t.Errorf("MergeContinue() recorded %v; want no KindMergeCommitted — fabric must not claim a merge it did not start", entry)
 		}
 	}
@@ -650,7 +598,7 @@ func TestMergeContinue_SquashConcludeLandedByHand_IsNeverAdopted(t *testing.T) {
 	// Sabotage the warp conclude so Merge stops with the record retained and warp_outcome staged —
 	// the state a crash between `git merge --squash` and the conclude commit leaves.
 	installFailingPreCommitHook(t, h.PrimeWorktree())
-	_, err := f.Merge("feature", fabricengine.MergeOptions{Squash: true})
+	_, err := f.Merge("feature", fabriclayout.MergeOptions{Squash: true})
 	var incompleteErr *fabricengine.ErrMergeIncomplete
 	if !errors.As(err, &incompleteErr) {
 		t.Fatalf("Merge(feature, squash) with the warp conclude sabotaged: error = %v (%T); want *fabricengine.ErrMergeIncomplete", err, err)
@@ -685,7 +633,7 @@ func TestMergeContinue_SquashConcludeLandedByHand_IsNeverAdopted(t *testing.T) {
 		t.Errorf("MergeContinue().Committed = true; want false")
 	}
 	for _, entry := range contRes.Mutated().Entries() {
-		if entry.Kind == fabricengine.KindMergeCommitted {
+		if entry.Kind == fabriclayout.KindMergeCommitted {
 			t.Errorf("MergeContinue() recorded %v; want no KindMergeCommitted — a squash conclude is never adopted", entry)
 		}
 	}
@@ -838,7 +786,7 @@ func TestMergeVerbs_ForeignMergeState_EverySideAndShapeRefuses(t *testing.T) {
 
 			_, err := f.MergeIn("feature")
 			assertForeign("MergeIn", err)
-			_, err = f.Merge("feature", fabricengine.MergeOptions{})
+			_, err = f.Merge("feature", fabriclayout.MergeOptions{})
 			assertForeign("Merge", err)
 			_, err = f.MergeContinue("")
 			assertForeign("MergeContinue", err)

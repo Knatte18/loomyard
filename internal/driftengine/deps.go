@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -36,7 +36,7 @@ type Deps struct {
 	// Nil lists no file, since a standalone run records no parent branch and has no review range.
 	ReviewBase func() (string, error)
 	// ChangedFiles lists the files that exist at base and that the commits from base to HEAD change, each with its diff.
-	ChangedFiles func(base string) ([]fabricengine.FileDiff, error)
+	ChangedFiles func(base string) ([]fabriclayout.FileDiff, error)
 	// RangeDiff reads the full diff of the commits from base to HEAD, added files included.
 	RangeDiff func(base string) (string, error)
 	// CommitMessages lists the whole message of every commit from base to HEAD.
@@ -45,9 +45,9 @@ type Deps struct {
 	Commit func(relPaths []string) error
 	// CommitWithTrailers commits the told anchor-relative paths as one records commit.
 	// The told trailers follow the commit's own code-head trailer.
-	CommitWithTrailers func(relPaths []string, trailers []fabricengine.Trailer) error
+	CommitWithTrailers func(relPaths []string, trailers []fabriclayout.Trailer) error
 	// TrailerCommit finds the newest records commit carrying the trailer key when newest is true, and the oldest otherwise; found is false when none carries it.
-	TrailerCommit func(key string, newest bool) (fabricengine.TrailerCommit, bool, error)
+	TrailerCommit func(key string, newest bool) (fabriclayout.TrailerCommit, bool, error)
 	// FileAt reads an anchor-relative file as stored in the records commit rev; found is false when the commit lacks it.
 	FileAt func(rev, relPath string) ([]byte, bool, error)
 	// Seats and Now are the seat runner and the clock the registry entry fills from the recipe's environment.
@@ -63,7 +63,7 @@ type Deps struct {
 	// Nil asks the parent nothing.
 	JudgeParent *JudgeParentSeat
 	// Checkouts reads the state of the code checkout and of the records checkout.
-	Checkouts func() (code, records fabricengine.CheckoutState, err error)
+	Checkouts func() (code, records fabriclayout.CheckoutState, err error)
 	// RecordsChangedSince lists the records paths committed since the revision rev.
 	RecordsChangedSince func(rev string) ([]string, error)
 	// EndRoles ends every live strand of this worktree whose role is exactly one of the told roles, and none of any other role.

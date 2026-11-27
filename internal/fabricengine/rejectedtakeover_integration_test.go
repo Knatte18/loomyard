@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -55,10 +56,10 @@ func plantTakeover(t *testing.T, f *recordsFixture, branch, slug string, entry s
 }
 
 // writeHandOverMark writes this machine's hand-over mark of slug as the JSON the mark's reader decodes.
-func writeHandOverMark(t *testing.T, hubPath, slug string, mark fabricengine.HandOverMark) {
+func writeHandOverMark(t *testing.T, hubPath, slug string, mark fabriclayout.HandOverMark) {
 	t.Helper()
 
-	path := fabricengine.HandOverMarkPath(hubPath, slug)
+	path := fabriclayout.HandOverMarkPath(hubPath, slug)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatalf("mkdir the hand-over directory: %v", err)
 	}
@@ -98,8 +99,8 @@ func newDivergedPair(t *testing.T, slug string, entry shedengine.Takeover) *dive
 }
 
 // push runs the pair's synchronous push as the machine names.
-func (d *divergedPair) push(names fabricengine.MachineNames) error {
-	_, err := fabricengine.PushPairAnchored(d.location, d.fake.options(nil), fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded, Here: names})
+func (d *divergedPair) push(names fabriclayout.MachineNames) error {
+	_, err := fabricengine.PushPairAnchored(d.location, d.fake.options(nil), fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded, Here: names})
 	return err
 }
 
@@ -166,7 +167,7 @@ func newPrimeRunsAhead(t *testing.T, slugs []string) *recordsFixture {
 		if err != nil {
 			t.Fatalf("TreeRunFileRels(%q): %v", slug, err)
 		}
-		message := "transition of " + slug + "\n\n" + fabricengine.TransitionTrailerKey + ": " + slug
+		message := "transition of " + slug + "\n\n" + fabriclayout.TransitionTrailerKey + ": " + slug
 		gitkit.CommitFile(t, weft, path.Join(path.Dir(statusRel), "transition.txt"), slug+"\n", message)
 	}
 	f.originCommit(branch, "other.txt", "other\n", "another machine's commit")
@@ -201,8 +202,8 @@ func newPrimeRunsAheadWithOrigin(t *testing.T, slugs []string) *primeRunsAhead {
 }
 
 // push runs the prime's synchronous push as the machine names, naming the run runSlug when it is not empty.
-func (p *primeRunsAhead) push(names fabricengine.MachineNames, runSlug string) error {
-	_, err := fabricengine.PushPairAnchored(p.location, fabricengine.SyncOptions{}, fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded, RunSlug: runSlug, Here: names})
+func (p *primeRunsAhead) push(names fabriclayout.MachineNames, runSlug string) error {
+	_, err := fabricengine.PushPairAnchored(p.location, fabricengine.SyncOptions{}, fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded, RunSlug: runSlug, Here: names})
 	return err
 }
 
@@ -232,7 +233,7 @@ func TestRejectedRecordsPush_ReadsTheTakeover(t *testing.T) {
 
 	const slug = "takeover-read"
 	entry := shedengine.Takeover{Machine: "oslo", Subject: "sub", At: "2026-11-16T10:00:00Z"}
-	here := fabricengine.MachineNames{Current: "neve"}
+	here := fabriclayout.MachineNames{Current: "neve"}
 
 	t.Run("EntryNamingAnotherMachineReturnsATakeoverErrorAndPushesNothing", func(t *testing.T) {
 		d := newDivergedPair(t, slug, entry)
@@ -259,7 +260,7 @@ func TestRejectedRecordsPush_ReadsTheTakeover(t *testing.T) {
 	t.Run("EntryNamingAFormerNameOfThisMachineReplaysAndLandsBothSides", func(t *testing.T) {
 		d := newDivergedPair(t, slug, entry)
 
-		err := d.push(fabricengine.MachineNames{Current: "oslo-2", Former: []string{"oslo"}})
+		err := d.push(fabriclayout.MachineNames{Current: "oslo-2", Former: []string{"oslo"}})
 
 		if err != nil {
 			t.Fatalf("push error = %v; want nil", err)
@@ -269,7 +270,7 @@ func TestRejectedRecordsPush_ReadsTheTakeover(t *testing.T) {
 
 	t.Run("MarkNamingTheEntrysMachineReturnsErrHandedOverAndPushesNothing", func(t *testing.T) {
 		d := newDivergedPair(t, slug, entry)
-		writeHandOverMark(t, d.hub.Location.HubPath, slug, fabricengine.HandOverMark{Machine: entry.Machine, At: entry.At, Written: time.Now()})
+		writeHandOverMark(t, d.hub.Location.HubPath, slug, fabriclayout.HandOverMark{Machine: entry.Machine, At: entry.At, Written: time.Now()})
 
 		err := d.push(here)
 
@@ -281,7 +282,7 @@ func TestRejectedRecordsPush_ReadsTheTakeover(t *testing.T) {
 
 	t.Run("MarkNamingAnotherMachineThanTheEntrysDoesNotMatch", func(t *testing.T) {
 		d := newDivergedPair(t, slug, entry)
-		writeHandOverMark(t, d.hub.Location.HubPath, slug, fabricengine.HandOverMark{Machine: "paris", At: entry.At, Written: time.Now()})
+		writeHandOverMark(t, d.hub.Location.HubPath, slug, fabriclayout.HandOverMark{Machine: "paris", At: entry.At, Written: time.Now()})
 
 		err := d.push(here)
 
@@ -292,7 +293,7 @@ func TestRejectedRecordsPush_ReadsTheTakeover(t *testing.T) {
 	t.Run("ZeroMachineNamesLeavesTheTakeoverUnreadAndReplays", func(t *testing.T) {
 		d := newDivergedPair(t, slug, entry)
 
-		err := d.push(fabricengine.MachineNames{})
+		err := d.push(fabriclayout.MachineNames{})
 
 		if err != nil {
 			t.Fatalf("push error = %v; want nil", err)
@@ -316,7 +317,7 @@ func TestRejectedRecordsPush_ReadsTheTakeover(t *testing.T) {
 		f.originCommit(branch, "other.txt", "other\n", "another run's batten commit")
 		gitkit.CommitFile(t, weft, "local.txt", "local\n", "local")
 
-		_, err := fabricengine.PushPairAnchored(f.hub.Location, fake.options(nil), fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded, RunSlug: "other-run", Here: here})
+		_, err := fabricengine.PushPairAnchored(f.hub.Location, fake.options(nil), fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded, RunSlug: "other-run", Here: here})
 
 		if err != nil {
 			t.Fatalf("prime push error = %v; want nil", err)
@@ -370,7 +371,7 @@ func TestRejectedRecordsPush_ReadsTheTakeover(t *testing.T) {
 			if err != nil {
 				t.Fatalf("TreeRunFileRels(%q): %v", takenOver, err)
 			}
-			message := "land status of " + takenOver + "\n\n" + fabricengine.TransitionTrailerKey + ": " + takenOver
+			message := "land status of " + takenOver + "\n\n" + fabriclayout.TransitionTrailerKey + ": " + takenOver
 			gitkit.CommitFile(t, p.weft, statusRel, statusJSON("Land"), message)
 		}},
 	}
@@ -378,7 +379,7 @@ func TestRejectedRecordsPush_ReadsTheTakeover(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			p := newPrimeRunsAheadWithOrigin(t, []string{takenOver, other})
 			plantTakeover(t, p.origin, p.branch, takenOver, entry)
-			writeHandOverMark(t, p.location.HubPath, takenOver, fabricengine.HandOverMark{Machine: entry.Machine, At: entry.At, Written: time.Now()})
+			writeHandOverMark(t, p.location.HubPath, takenOver, fabriclayout.HandOverMark{Machine: entry.Machine, At: entry.At, Written: time.Now()})
 			tt.prepare(t, p)
 
 			err := p.push(here, "")
@@ -419,7 +420,7 @@ func TestRejectedRecordsPush_ReadsTheTakeover(t *testing.T) {
 		p := newPrimeRunsAheadWithOrigin(t, []string{takenOver, ended, other})
 		plantTakeover(t, p.origin, p.branch, takenOver, entry)
 		p.origin.endEntryOnOrigin(ended)
-		writeHandOverMark(t, p.location.HubPath, takenOver, fabricengine.HandOverMark{Machine: entry.Machine, At: entry.At, Written: time.Now()})
+		writeHandOverMark(t, p.location.HubPath, takenOver, fabriclayout.HandOverMark{Machine: entry.Machine, At: entry.At, Written: time.Now()})
 
 		err := p.push(here, "")
 

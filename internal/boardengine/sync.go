@@ -14,12 +14,13 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	flock "github.com/Knatte18/loomyard/internal/lock"
 )
 
-// writeLockFile aliases fabricengine.BoardWriteLockFile, which declares the literal.
-// The name lives in fabricengine because a stencil-seeding commit verb outside boardengine must take the same lock.
-const writeLockFile = fabricengine.BoardWriteLockFile
+// writeLockFile aliases fabriclayout.BoardWriteLockFile, which declares the literal.
+// The name lives in fabric's layout because a stencil-seeding commit verb outside boardengine must take the same lock.
+const writeLockFile = fabriclayout.BoardWriteLockFile
 
 // Sync commits pending changes and pushes to the remote, looping until clean and unpushed changes are gone.
 // skipGit disables it entirely;

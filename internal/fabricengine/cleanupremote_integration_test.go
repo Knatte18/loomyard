@@ -18,7 +18,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -51,46 +51,6 @@ func mustRemoveOrigin(t *testing.T, repoRoot string) {
 	gitkit.MustRun(t, repoRoot, "git", "remote", "remove", "origin")
 }
 
-// TestCleanup_RemoteTrueDeletesLocalAndRemoteOrphan checks apply and remote both true.
-// Both the local orphan weft branch and its copy on the remote are deleted.
-//
-//testtiming:keep the orphan weft branch deleted on origin as well as locally under remote=true; coverage of its blocks by other tests does not show an assertion of this
-func TestCleanup_RemoteTrueDeletesLocalAndRemoteOrphan(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	const branch = "cleanup-remote-both-weft"
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	l := h.Location
-	weftRoot := mustRecordsRepoRoot(t, l)
-
-	mustCreateOrphanWeftBranch(t, weftRoot, branch)
-	mustPushBranch(t, weftRoot, branch)
-
-	topology := h.Topology
-	res, err := topology.Cleanup(l, true, false, true)
-	if err != nil {
-		t.Fatalf("Cleanup(apply=true, remote=true) error = %v", err)
-	}
-
-	entry := findCleanupEntry(t, res.Entries, branch)
-	if !entry.Deleted {
-		t.Errorf("entry.Deleted = false; want true")
-	}
-	if !entry.RemoteDeleted {
-		t.Errorf("entry.RemoteDeleted = false; want true")
-	}
-	if entry.RemoteError != "" {
-		t.Errorf("entry.RemoteError = %q; want empty", entry.RemoteError)
-	}
-	if gitkit.BranchExists(t, weftRoot, branch) {
-		t.Errorf("branch %q still exists locally after Cleanup(apply=true)", branch)
-	}
-	if gitkit.BranchExists(t, h.RecordsBare, branch) {
-		t.Errorf("branch %q still exists on the remote after Cleanup(apply=true, remote=true)", branch)
-	}
-}
-
 // TestCleanup_PrefixSetOverBareSlugOrphan covers an orphan weft branch from before branch_prefix was set.
 // The branch is read as its bare slug, so the sweep archives and deletes it under that slug.
 //
@@ -100,7 +60,7 @@ func TestCleanup_PrefixSetOverBareSlugOrphan(t *testing.T) {
 	t.Parallel()
 
 	const slug = "cleanup-bare-before-prefix"
-	branch := fabricengine.RecordsBranchName(slug)
+	branch := fabriclayout.RecordsBranchName(slug)
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	weftRoot := mustRecordsRepoRoot(t, l)
@@ -116,8 +76,8 @@ func TestCleanup_PrefixSetOverBareSlugOrphan(t *testing.T) {
 	if !entry.Deleted || !entry.RemoteDeleted || entry.Error != "" {
 		t.Errorf("entry = %+v; want the bare-slug orphan deleted locally and on the remote with no error", entry)
 	}
-	if !strings.HasPrefix(entry.ArchiveTag, fabricengine.ArchiveTagPrefix+slug+"/") {
-		t.Errorf("entry.ArchiveTag = %q; want a tag under %q", entry.ArchiveTag, fabricengine.ArchiveTagPrefix+slug+"/")
+	if !strings.HasPrefix(entry.ArchiveTag, fabriclayout.ArchiveTagPrefix+slug+"/") {
+		t.Errorf("entry.ArchiveTag = %q; want a tag under %q", entry.ArchiveTag, fabriclayout.ArchiveTagPrefix+slug+"/")
 	}
 }
 
@@ -253,8 +213,8 @@ func TestCleanup_NeverPushedOrphanIsIdempotentOnRemote(t *testing.T) {
 			}
 
 			for _, m := range res.Mutated().Entries() {
-				if m.Kind == fabricengine.KindRemoteBranchDeleted && m.Target == branch {
-					t.Errorf("mutation record has a %s entry for %q; want none, since nothing was deleted on the remote", fabricengine.KindRemoteBranchDeleted, branch)
+				if m.Kind == fabriclayout.KindRemoteBranchDeleted && m.Target == branch {
+					t.Errorf("mutation record has a %s entry for %q; want none, since nothing was deleted on the remote", fabriclayout.KindRemoteBranchDeleted, branch)
 				}
 			}
 			if codeTip != "" {

@@ -14,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/creelcli"
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -143,11 +144,11 @@ func TestCreelNoticeTags(t *testing.T) {
 		t.Setenv(agentname.StrandNameEnv, "")
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		receiver := startHubOrchDaemon(t, h)
-		t.Cleanup(fabricengine.InstallPushNotifier(func(string, fabricengine.PushNotice) (bool, error) { return false, nil }))
-		InstallPushNotifier(lymcwd.WithCwd(context.Background(), fabricengine.BoardDir(h.Path)))
-		failure := fabricengine.FailedPush{
+		t.Cleanup(fabricengine.InstallPushNotifier(func(string, fabriclayout.PushNotice) (bool, error) { return false, nil }))
+		InstallPushNotifier(lymcwd.WithCwd(context.Background(), fabriclayout.BoardDir(h.Path)))
+		failure := fabriclayout.FailedPush{
 			Repo: "code", RepoPath: h.PairCodeWorktree("task"), Branch: "task",
-			Class: fabricengine.PushFailureTransport, Error: "connection refused",
+			Class: fabriclayout.PushFailureTransport, Error: "connection refused",
 		}
 		if err := fabricengine.RecordPushFailure(h.Path, failure, time.Now()); err != nil {
 			t.Fatalf("RecordPushFailure: %v", err)
@@ -220,12 +221,12 @@ func TestInstallPushNotifier(t *testing.T) {
 		t.Setenv(agentname.StrandNameEnv, "")
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		receiver := startHubOrchDaemon(t, h)
-		t.Cleanup(fabricengine.InstallPushNotifier(func(string, fabricengine.PushNotice) (bool, error) { return false, nil }))
+		t.Cleanup(fabricengine.InstallPushNotifier(func(string, fabriclayout.PushNotice) (bool, error) { return false, nil }))
 
-		InstallPushNotifier(lymcwd.WithCwd(context.Background(), fabricengine.BoardDir(h.Path)))
-		failure := fabricengine.FailedPush{
+		InstallPushNotifier(lymcwd.WithCwd(context.Background(), fabriclayout.BoardDir(h.Path)))
+		failure := fabriclayout.FailedPush{
 			Repo: "code", RepoPath: h.PrimeWorktree(), Branch: "main", Prime: true,
-			Class: fabricengine.PushFailureTransport, Error: "connection refused",
+			Class: fabriclayout.PushFailureTransport, Error: "connection refused",
 		}
 		if err := fabricengine.RecordPushFailure(h.Path, failure, time.Now()); err != nil {
 			t.Fatalf("RecordPushFailure: %v", err)
@@ -247,13 +248,13 @@ func TestInstallPushNotifier(t *testing.T) {
 
 	t.Run("OutsideAHubInstallsNothing", func(t *testing.T) {
 		calls := 0
-		t.Cleanup(fabricengine.InstallPushNotifier(func(string, fabricengine.PushNotice) (bool, error) {
+		t.Cleanup(fabricengine.InstallPushNotifier(func(string, fabriclayout.PushNotice) (bool, error) {
 			calls++
 			return true, nil
 		}))
 
 		InstallPushNotifier(lymcwd.WithCwd(context.Background(), t.TempDir()))
-		failure := fabricengine.FailedPush{Repo: "code", Branch: "main", Class: fabricengine.PushFailureTransport}
+		failure := fabriclayout.FailedPush{Repo: "code", Branch: "main", Class: fabriclayout.PushFailureTransport}
 		if err := fabricengine.RecordPushFailure(t.TempDir(), failure, time.Now()); err != nil {
 			t.Fatalf("RecordPushFailure: %v", err)
 		}

@@ -14,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/heddleengine"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -493,7 +494,7 @@ func (c *heddleCLI) renderEveryWorktree() (rendered []string, failed []worktreeF
 		return nil, nil, []string{fmt.Sprintf("the hub's worktrees did not list, so none was rendered: %v; way forward: run `lym heddle render <worktree>` for each worktree `lym fabric list` prints", err)}
 	}
 	for _, entry := range entries {
-		if entry.Prunable || fabricengine.InWorktreeStaging(entry.Path) {
+		if entry.Prunable || fabriclayout.InWorktreeStaging(entry.Path) {
 			continue
 		}
 		path := filepath.Clean(filepath.FromSlash(entry.Path))
@@ -563,7 +564,7 @@ func (c *heddleCLI) renderInto(location *lymcwd.Location) (heddleengine.Report, 
 
 // saveLocked loads file, applies change, saves it and renders the overview, all under the Bolt write lock.
 func (c *heddleCLI) saveLocked(file storeFile, change func(*heddleengine.Store) error) error {
-	lockPath, err := fabricengine.BoltLockPath(c.boltDir, fabricengine.BoardWriteLockFile)
+	lockPath, err := fabricengine.BoltLockPath(c.boltDir, fabriclayout.BoardWriteLockFile)
 	if err != nil {
 		return fmt.Errorf("heddle: %w", err)
 	}

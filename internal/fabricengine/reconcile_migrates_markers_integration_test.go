@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -40,7 +41,7 @@ func committedMarkerAt(t *testing.T, dir, rev string) string {
 }
 
 // reconcileWithoutPairErrors runs a reconcile pass and fails the test on a pass error or on any pair carrying an Error.
-func reconcileWithoutPairErrors(t *testing.T, h *hubforge.Hub) fabricengine.ReconcileResult {
+func reconcileWithoutPairErrors(t *testing.T, h *hubforge.Hub) fabriclayout.ReconcileResult {
 	t.Helper()
 
 	res, err := h.Topology.Reconcile(h.Location)
@@ -157,7 +158,7 @@ func TestReconcile_RecordsMarkersOfMarkerlessWefts(t *testing.T) {
 			t.Run(tt.name, func(t *testing.T) {
 				const slug = "adopted"
 				h := removedPair(t, slug)
-				weftBranch := fabricengine.RecordsBranchName(slug)
+				weftBranch := fabriclayout.RecordsBranchName(slug)
 
 				clone := t.TempDir()
 				mustGit(clone, "clone", "--quiet", h.RecordsBare, ".")

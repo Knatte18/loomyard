@@ -19,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -90,11 +91,11 @@ type BeamUpReport struct {
 	WatcherStopping bool   `json:"watcher_stopping,omitempty"`
 	// Reconcile, FailedPushes and OwnerPauses are what Prepare gathered.
 	// OwnerPauses names each owned run whose processes it ended.
-	Reconcile    fabricengine.OriginReport `json:"reconcile"`
+	Reconcile    fabriclayout.OriginReport `json:"reconcile"`
 	FailedPushes []map[string]any          `json:"failed_pushes"`
 	OwnerPauses  []map[string]string       `json:"owner_pauses"`
 	// Mutations is what the reconcile changed, and Partial whether a failure left that change standing.
-	Mutations []fabricengine.Mutation `json:"mutations"`
+	Mutations []fabriclayout.Mutation `json:"mutations"`
 	Partial   bool                    `json:"partial"`
 	// Warnings are the notes that did not stop the start.
 	Warnings []string `json:"warnings,omitempty"`
@@ -282,7 +283,7 @@ func (c *orchCLI) orchReceiver(listed reedengine.StrandStatus, hasStrand bool) (
 	if hasStrand {
 		return orchStrandFullName(listed, true, ""), nil
 	}
-	shortname, found := fabricengine.ReadShortname(fabricengine.BoltDir(c.location.HubPath))
+	shortname, found := fabricengine.ReadShortname(fabriclayout.BoltDir(c.location.HubPath))
 	if !found {
 		return "", fmt.Errorf("orch: the hub of %s has no usable shortname record to name the orch strand; way forward: run `lym fabric shortname <shortname>`, then run `lym beam start` again", c.location.WorktreePath())
 	}
@@ -373,16 +374,16 @@ func (c *orchCLI) saveFreshLaunch(next orchengine.State, firstFailure string, cr
 // reconcileHub runs the hub-scope origin reconcile from the prime of the hub that location belongs to.
 // Any bring-up of `lym beam start` runs it.
 // It passes the seams pairteardown builds for the hub, and zero ReconcileScope and ReconcileOptions.
-func reconcileHub(location *lymcwd.Location) (fabricengine.OriginReport, error) {
+func reconcileHub(location *lymcwd.Location) (fabriclayout.OriginReport, error) {
 	prime, err := resolvePrime(location)
 	if err != nil {
-		return fabricengine.OriginReport{}, err
+		return fabriclayout.OriginReport{}, err
 	}
 	teardown, err := pairteardown.New(prime)
 	if err != nil {
-		return fabricengine.OriginReport{}, err
+		return fabriclayout.OriginReport{}, err
 	}
-	return fabricengine.ReconcileOrigin(prime, fabricengine.ReconcileScope{}, teardown.OriginSeams(pairteardown.HubSeamOptions(prime)), fabricengine.ReconcileOptions{})
+	return fabricengine.ReconcileOrigin(prime, fabriclayout.ReconcileScope{}, teardown.OriginSeams(pairteardown.HubSeamOptions(prime)), fabricengine.ReconcileOptions{})
 }
 
 // ensureDobbies starts the dobby of the worktree at location when it is not live already.
@@ -426,11 +427,11 @@ func (c *orchCLI) claimPrimeNotes() []string {
 // An unwired end names every such entry in a warning, since nothing ended it.
 // A failed read of whether an entry is a beam ends nothing for that entry,
 // so a beam's dobby is never left running by a guess.
-func (c *orchCLI) pauseOwnedRuns(report fabricengine.OriginReport) ([]map[string]string, []string) {
+func (c *orchCLI) pauseOwnedRuns(report fabriclayout.OriginReport) ([]map[string]string, []string) {
 	ended := []map[string]string{}
 	var warnings []string
 	for _, entry := range report.Entries {
-		if entry.State != fabricengine.EntryOwnedElsewhere {
+		if entry.State != fabriclayout.EntryOwnedElsewhere {
 			continue
 		}
 		if c.endOwned == nil {
@@ -458,7 +459,7 @@ func (c *orchCLI) pauseOwnedRuns(report fabricengine.OriginReport) ([]map[string
 // reconcileNote renders the note a fresh launch's prompt gains.
 // It holds the report's summary and the outstanding failed pushes with their branches.
 // It is empty when the reconcile moved, stopped and ended nothing, and no push is outstanding.
-func reconcileNote(report fabricengine.OriginReport, failedPushes []map[string]any) string {
+func reconcileNote(report fabriclayout.OriginReport, failedPushes []map[string]any) string {
 	var parts []string
 	if summary := report.Summary(); summary != "" {
 		parts = append(parts, "origin reconcile at start: "+summary)
@@ -482,7 +483,7 @@ func (c *orchCLI) prepare(report *BeamUpReport, claimPrime bool) string {
 	report.Reconcile = reconciled
 	report.Mutations = reconciled.Mutations.Entries()
 	if report.Mutations == nil {
-		report.Mutations = []fabricengine.Mutation{}
+		report.Mutations = []fabriclayout.Mutation{}
 	}
 	if reconcileErr != nil {
 		report.Warnings = append(report.Warnings, fmt.Sprintf("origin reconcile failed: %v", reconcileErr))
@@ -514,7 +515,7 @@ func (c *orchCLI) beamUp(opts BeamUpOptions) (report BeamUpReport, err error) {
 		Worktree:     c.location.WorktreeName,
 		FailedPushes: []map[string]any{},
 		OwnerPauses:  []map[string]string{},
-		Mutations:    []fabricengine.Mutation{},
+		Mutations:    []fabriclayout.Mutation{},
 	}
 	defer func() { report.Partial = err != nil && len(report.Mutations) > 0 }()
 	if err := os.MkdirAll(c.paths.Dir, 0o755); err != nil {

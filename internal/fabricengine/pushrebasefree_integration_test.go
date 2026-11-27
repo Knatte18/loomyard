@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -47,7 +48,7 @@ func TestPushWarpRebaseFreeAt_PushesAndRecordsBranchPush(t *testing.T) {
 	entries := res.Mutated().Entries()
 	found := false
 	for _, entry := range entries {
-		if entry.Kind == fabricengine.KindBranchPushed {
+		if entry.Kind == fabriclayout.KindBranchPushed {
 			found = true
 		}
 	}

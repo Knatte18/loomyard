@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -62,7 +63,7 @@ func moveForkedWeftToAnchor(rec *Mutations, fork *lymcwd.Location, slug, to stri
 	}
 	defer func() { _ = moveLock.Release() }()
 
-	record := MoveRecord{A: fork.AnchorRel, B: to, Kind: MoveKindMove, PID: os.Getpid(), StartTime: ownStartTime()}
+	record := fabriclayout.MoveRecord{A: fork.AnchorRel, B: to, Kind: fabriclayout.MoveKindMove, PID: os.Getpid(), StartTime: ownStartTime()}
 	if err := writeMoveRecordFile(weftPath, record); err != nil {
 		return err
 	}
@@ -77,7 +78,7 @@ func moveForkedWeftToAnchor(rec *Mutations, fork *lymcwd.Location, slug, to stri
 	defer func() { _ = writeLock.Release() }()
 
 	if runRecordsTracked {
-		root := filepath.ToSlash(ScopedPathspec(fork.AnchorRel, []string{shedrun.RunsRootRel()})[0])
+		root := filepath.ToSlash(fabriclayout.ScopedPathspec(fork.AnchorRel, []string{shedrun.RunsRootRel()})[0])
 		if _, err := gitexec.Run([]string{"rm", "-r", "--cached", "-q", "--", root}, weftPath); err != nil {
 			return fmt.Errorf("stage the deletion of the run records in %s: %w", weftPath, err)
 		}

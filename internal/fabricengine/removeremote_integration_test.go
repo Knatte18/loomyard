@@ -17,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -33,7 +34,7 @@ func TestRemove_RemoteTrueDeletesWeftBranchOnRemote(t *testing.T) {
 	const slug = "remove-remote-both"
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
-	weftBranch := fabricengine.RecordsBranchName(slug)
+	weftBranch := fabriclayout.RecordsBranchName(slug)
 
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
@@ -54,12 +55,12 @@ func TestRemove_RemoteTrueDeletesWeftBranchOnRemote(t *testing.T) {
 
 	var seen int
 	for _, m := range res.Mutated().Entries() {
-		if m.Kind == fabricengine.KindRemoteBranchDeleted && m.Target == weftBranch {
+		if m.Kind == fabriclayout.KindRemoteBranchDeleted && m.Target == weftBranch {
 			seen++
 		}
 	}
 	if seen != 1 {
-		t.Errorf("mutation record has %d %s entries for %q; want exactly 1", seen, fabricengine.KindRemoteBranchDeleted, weftBranch)
+		t.Errorf("mutation record has %d %s entries for %q; want exactly 1", seen, fabriclayout.KindRemoteBranchDeleted, weftBranch)
 	}
 }
 
@@ -80,7 +81,7 @@ func TestRemove_LeasedWeftDelete(t *testing.T) {
 
 	t.Run("OriginMovedBeforeTheDeleteKeepsItsBranchAndReportsKept", func(t *testing.T) {
 		const slug = "leased-moved"
-		weftBranch := fabricengine.RecordsBranchName(slug)
+		weftBranch := fabriclayout.RecordsBranchName(slug)
 		h := newPairHub(t, slug)
 		var movedTip string
 		fabricengine.SetRemoveBeforeWeftDeleteHookForTest(t, func() {
@@ -102,7 +103,7 @@ func TestRemove_LeasedWeftDelete(t *testing.T) {
 
 	t.Run("OriginWithoutABranchAndARefusedPushGetsNoDelete", func(t *testing.T) {
 		const slug = "leased-no-origin-branch"
-		weftBranch := fabricengine.RecordsBranchName(slug)
+		weftBranch := fabriclayout.RecordsBranchName(slug)
 		h := newPairHub(t, slug)
 		gitkit.Git(t, h.RecordsBare, "update-ref", "-d", "refs/heads/"+weftBranch)
 		installUpdateHook(t, h.RecordsBare, "case \"$1\" in\nrefs/heads/"+weftBranch+")\n  echo \"weft branch updates refused\" >&2\n  exit 1\n  ;;\nesac")
@@ -120,7 +121,7 @@ func TestRemove_LeasedWeftDelete(t *testing.T) {
 
 	t.Run("OriginLackingTheLocalTipIsPushedThenDeletedUnderALeaseOnThePushedTip", func(t *testing.T) {
 		const slug = "leased-pushed-tip"
-		weftBranch := fabricengine.RecordsBranchName(slug)
+		weftBranch := fabriclayout.RecordsBranchName(slug)
 		h := newPairHub(t, slug)
 		tip := gitkit.CommitFile(t, h.PairRecordsSibling(slug), "_lym/record.txt", "run record\n", "record")
 		var originAtDelete string
@@ -145,7 +146,7 @@ func TestRemove_LeasedWeftDelete(t *testing.T) {
 
 	t.Run("OriginOnlyBranchIsDeletedUnderALeaseOnTheTipTheArchiveRead", func(t *testing.T) {
 		const slug = "leased-origin-only"
-		weftBranch := fabricengine.RecordsBranchName(slug)
+		weftBranch := fabriclayout.RecordsBranchName(slug)
 		h := newPairHub(t, slug)
 		readTip := gitkit.RevParse(t, h.RecordsBare, weftBranch)
 		leaveSiblingBranchOnlyOnOrigin(t, h, slug)
@@ -168,7 +169,7 @@ func TestRemove_LeasedWeftDelete(t *testing.T) {
 
 	t.Run("OriginOnlyBranchThatMovedIsKeptAndReported", func(t *testing.T) {
 		const slug = "leased-origin-only-moved"
-		weftBranch := fabricengine.RecordsBranchName(slug)
+		weftBranch := fabriclayout.RecordsBranchName(slug)
 		h := newPairHub(t, slug)
 		leaveSiblingBranchOnlyOnOrigin(t, h, slug)
 		var movedTip string
@@ -201,7 +202,7 @@ func TestRemove_RemoteFalseLeavesRemoteBranchIntact(t *testing.T) {
 	const slug = "remove-remote-off"
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
-	weftBranch := fabricengine.RecordsBranchName(slug)
+	weftBranch := fabriclayout.RecordsBranchName(slug)
 
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})

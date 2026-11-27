@@ -9,6 +9,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/runproc"
@@ -62,7 +63,7 @@ func DobbyOrphans(prime *lymcwd.Location, boardDir string) ([]dobbyengine.Orphan
 			continue
 		}
 		unreadableOrphanTip.Recover(slug, "battencli: a pair's last commit reads again and it is listed as an orphan again", "slug", slug)
-		live, err := runproc.List(fabricengine.RunProcDir(prime.HubPath), slug)
+		live, err := runproc.List(fabriclayout.RunProcDir(prime.HubPath), slug)
 		if err != nil {
 			return nil, fmt.Errorf("read the processes of %s: %w", slug, err)
 		}

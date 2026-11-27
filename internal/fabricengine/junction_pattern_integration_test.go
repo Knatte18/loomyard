@@ -17,6 +17,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
@@ -46,13 +47,13 @@ func resetWarpJunction(t *testing.T, l *lymcwd.Location, slug, name string) stri
 // A case seeds the file with hubforge.SeedFabricConfig, or with seedRepoWideExtraFabricConfig.
 const extraFabricConfigYAML = "branch_prefix: \"\"\npathspec: _extra\n"
 
-// seedRepoWideExtraFabricConfig overwrites the repo-wide fabric.yaml at fabricengine.BoardDir(hub)
+// seedRepoWideExtraFabricConfig overwrites the repo-wide fabric.yaml at fabriclayout.BoardDir(hub)
 // with extraFabricConfigYAML.
 // It takes a bare hub path rather than a *hubforge.Hub.
 func seedRepoWideExtraFabricConfig(t testing.TB, hub string) {
 	t.Helper()
 
-	boardDir := fabricengine.BoardDir(hub)
+	boardDir := fabriclayout.BoardDir(hub)
 	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
 		t.Fatalf("mkdir repo-wide config dir: %v", err)
 	}
@@ -291,7 +292,7 @@ func TestDetectWarpPollution_LymTrackedAsRestorable(t *testing.T) {
 	}
 
 	wantPath := lymdirs.LymDirName + "/PATTERN.md"
-	var found *fabricengine.PollutionEntry
+	var found *fabriclayout.PollutionEntry
 	for i, entry := range result.Pairs[0].Pollution {
 		if entry.Path == wantPath {
 			found = &result.Pairs[0].Pollution[i]

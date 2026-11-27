@@ -17,6 +17,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -487,7 +488,7 @@ func runWatchdogLoop(ctx context.Context, hub, tmuxPath, shellPath string, timin
 		wg.Wait()
 	}()
 
-	signalDir := fabricengine.HubScratchDir(hub)
+	signalDir := fabriclayout.HubScratchDir(hub)
 	signalPath := filepath.Join(signalDir, reedengine.DiscoverSignalFileName)
 	// A failed open leaves events nil, a channel that never delivers.
 	// unwatched is whether no watch delivers the signal's events, so each timer wake reads the file itself.
@@ -713,7 +714,7 @@ func hubIsLiveDir(hub string) bool {
 }
 
 // watchdogLockFileName names the daemon's single-instance lock file.
-// It lies in the directory that fabricengine.HubScratchDir returns for the hub.
+// It lies in the directory that fabriclayout.HubScratchDir returns for the hub.
 const watchdogLockFileName = "reed-watchdog.lock"
 
 // The bounds of the wait that `down` makes, after it ends the hub's server, for the watchdog to leave its loop.
@@ -744,7 +745,7 @@ func probeWatchdogLock(lockPath string) (free bool, err error) {
 // When the probes run out, it logs one Warn naming the hub and the lock path.
 // The wait never fails its caller.
 func waitWatchdogLockFree(hub string, wait, poll time.Duration, probe func(lockPath string) (bool, error), sleep func(time.Duration)) {
-	lockPath := filepath.Join(fabricengine.HubScratchDir(hub), watchdogLockFileName)
+	lockPath := filepath.Join(fabriclayout.HubScratchDir(hub), watchdogLockFileName)
 	for probes := int(wait/poll) + 1; probes > 0; probes-- {
 		free, err := probe(lockPath)
 		if err != nil {
@@ -822,9 +823,9 @@ Example:
 			// Point the durable sink before taking the lock.
 			// Its cwd-anchored fallback arms only inside a lym-owned worktree, never from a hub cwd,
 			// and a detached spawn pins its cwd to the hub, so without this call every diagnostic would go nowhere.
-			logger.SetDurableSinkDir(fabricengine.HubLogsDir(hubPath))
+			logger.SetDurableSinkDir(fabriclayout.HubLogsDir(hubPath))
 
-			lockPath := filepath.Join(fabricengine.HubScratchDir(hubPath), watchdogLockFileName)
+			lockPath := filepath.Join(fabriclayout.HubScratchDir(hubPath), watchdogLockFileName)
 			fl, acquired, err := lock.TryAcquireWriteLock(lockPath)
 			if err != nil {
 				// A non-nil error is a failure, not contention.

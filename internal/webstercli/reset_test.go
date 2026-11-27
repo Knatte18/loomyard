@@ -18,6 +18,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -244,8 +245,8 @@ func TestResetCmd(t *testing.T) {
 		if len(mutations) != 1 {
 			t.Fatalf("mutations = %v; want exactly one worktree_reset entry", envelope["mutations"])
 		}
-		if entry, _ := mutations[0].(map[string]any); entry["kind"] != string(fabricengine.KindWorktreeReset) {
-			t.Errorf("mutation = %v; want kind %s", mutations[0], fabricengine.KindWorktreeReset)
+		if entry, _ := mutations[0].(map[string]any); entry["kind"] != string(fabriclayout.KindWorktreeReset) {
+			t.Errorf("mutation = %v; want kind %s", mutations[0], fabriclayout.KindWorktreeReset)
 		}
 		if got := gitkit.RevParse(t, fx.checkout, "HEAD"); got != fx.base {
 			t.Errorf("HEAD = %s; want %s", got, fx.base)
@@ -324,7 +325,7 @@ func TestResetCmd(t *testing.T) {
 		if got := fx.remoteTip(t); got != fx.base {
 			t.Errorf("remote task branch = %q; want the start commit %s", got, fx.base)
 		}
-		if got := mutationKinds(envelope["mutations"]); !slices.Equal(got, []string{string(fabricengine.KindRemoteBranchUpdated), string(fabricengine.KindWorktreeReset)}) {
+		if got := mutationKinds(envelope["mutations"]); !slices.Equal(got, []string{string(fabriclayout.KindRemoteBranchUpdated), string(fabriclayout.KindWorktreeReset)}) {
 			t.Errorf("mutation kinds = %v; want remote_branch_updated then worktree_reset", got)
 		}
 	}) {
@@ -348,7 +349,7 @@ func TestResetCmd(t *testing.T) {
 		if strings.HasPrefix(msg, "webster: reset --to start refused") || !strings.Contains(msg, "already updated") || !strings.Contains(msg, "re-run this reset") {
 			t.Errorf("error = %q; want the remote-already-moved message, not a refusal", msg)
 		}
-		if got := mutationKinds(envelope["mutations"]); !slices.Equal(got, []string{string(fabricengine.KindRemoteBranchUpdated)}) {
+		if got := mutationKinds(envelope["mutations"]); !slices.Equal(got, []string{string(fabriclayout.KindRemoteBranchUpdated)}) {
 			t.Errorf("mutation kinds = %v; want only remote_branch_updated", got)
 		}
 		if got := fx.remoteTip(t); got != fx.base {
@@ -417,7 +418,7 @@ func TestResetCmd(t *testing.T) {
 			if code != 0 || envelope["ok"] != true || envelope["target"] != tc.target || envelope["sha"] != fx.base || envelope["partial"] != false {
 				t.Fatalf("reset %v = %d, %v; want ok at %s", tc.args, code, envelope, fx.base)
 			}
-			if got := mutationKinds(envelope["mutations"]); !slices.Equal(got, []string{string(fabricengine.KindWorktreeReset)}) {
+			if got := mutationKinds(envelope["mutations"]); !slices.Equal(got, []string{string(fabriclayout.KindWorktreeReset)}) {
 				t.Errorf("mutation kinds = %v; want only worktree_reset", got)
 			}
 			if got := gitkit.RevParse(t, fx.checkout, "HEAD"); got != fx.base {

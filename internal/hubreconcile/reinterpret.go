@@ -18,7 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/configsync"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/logger"
 )
@@ -101,7 +101,7 @@ func notifyReinterpretations(boardDir, label string, lines []string) {
 }
 
 // hubWorktrees tells a reinterpretation the hub's code worktrees: each one's name in the hub and its anchor directory.
-func hubWorktrees(worktrees []fabricengine.CodeWorktree) []configengine.HubWorktree {
+func hubWorktrees(worktrees []fabriclayout.CodeWorktree) []configengine.HubWorktree {
 	told := make([]configengine.HubWorktree, 0, len(worktrees))
 	for _, w := range worktrees {
 		told = append(told, configengine.HubWorktree{Name: filepath.Base(w.Path), Anchor: w.Anchor, Main: w.Main})
@@ -115,7 +115,7 @@ func hubWorktrees(worktrees []fabricengine.CodeWorktree) []configengine.HubWorkt
 // A marker beside the build stamp guards it instead.
 // A board that cannot be read leaves that marker unwritten, so the next walk tries again.
 // What it carried or flagged goes to the hub's orch.
-func carryBeamTaskSettings(geom Geometry, worktrees []fabricengine.CodeWorktree, label string) {
+func carryBeamTaskSettings(geom Geometry, worktrees []fabriclayout.CodeWorktree, label string) {
 	marker := geom.carriedMarker(dobbyengine.PerTaskSettingsReinterpretationID)
 	if fileExists(marker) {
 		return

@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
@@ -41,7 +42,7 @@ func TestAdd_FromParentPair(t *testing.T) {
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	gitkit.CommitFile(t, h.PrimeWorktree(), tracked, "original\n", "add tracked file")
-	addSkippingPush := func(slug, parent string, beam bool) (fabricengine.AddResult, error) {
+	addSkippingPush := func(slug, parent string, beam bool) (fabriclayout.AddResult, error) {
 		return h.Topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true, Parent: parent, Beam: beam})
 	}
 
@@ -52,7 +53,7 @@ func TestAdd_FromParentPair(t *testing.T) {
 	beamPath := fabricengine.WorktreePath(l, "beam")
 	gitkit.CommitFile(t, beamPath, "beam-only.txt", "beam\n", "commit on the beam")
 	beamHead := gitOut(t, beamPath, "rev-parse", "HEAD")
-	beamRecords := fabricengine.RecordsBranchName(gitOut(t, beamPath, "rev-parse", "--abbrev-ref", "HEAD"))
+	beamRecords := fabriclayout.RecordsBranchName(gitOut(t, beamPath, "rev-parse", "--abbrev-ref", "HEAD"))
 	beamWeftPath := fabricengine.RecordsWorktreePath(l, "beam")
 	beamRecordsTip := gitOut(t, beamWeftPath, "rev-parse", beamRecords)
 
@@ -98,7 +99,7 @@ func TestAdd_FromParentPair(t *testing.T) {
 		if err != nil || !found {
 			t.Fatalf("ReadOriginFor(%q) = (%+v, %v, %v); want a record", slug, origin, found, err)
 		}
-		want := fabricengine.Origin{ParentBranch: gitOut(t, beamPath, "rev-parse", "--abbrev-ref", "HEAD"), ParentWorktree: "beam"}
+		want := fabriclayout.Origin{ParentBranch: gitOut(t, beamPath, "rev-parse", "--abbrev-ref", "HEAD"), ParentWorktree: "beam"}
 		if origin != want {
 			t.Errorf("member origin record = %+v; want %+v", origin, want)
 		}
@@ -140,11 +141,11 @@ func TestAdd_FromParentPair(t *testing.T) {
 				return "beam"
 			}, []string{lymcwd.AnchorFileName, "git -C"}},
 			{"MoveRecordOnForkPoint_LockFree", func(t *testing.T) string {
-				writeMoveRecord(t, beamWeftPath, fabricengine.MoveRecord{A: ".", B: "x", Kind: fabricengine.MoveKindMove, PID: 4242})
+				writeMoveRecord(t, beamWeftPath, fabriclayout.MoveRecord{A: ".", B: "x", Kind: fabriclayout.MoveKindMove, PID: 4242})
 				return "beam"
 			}, []string{"interrupted", "lym fabric anchor beam --set x"}},
 			{"MoveRecordOnForkPoint_LockHeld", func(t *testing.T) string {
-				writeMoveRecord(t, beamWeftPath, fabricengine.MoveRecord{A: ".", B: "x", Kind: fabricengine.MoveKindMove, PID: 4242})
+				writeMoveRecord(t, beamWeftPath, fabriclayout.MoveRecord{A: ".", B: "x", Kind: fabriclayout.MoveKindMove, PID: 4242})
 				holdMoveLock(t, beamWeftPath)
 				return "beam"
 			}, []string{"starting in another process", "run the verb again"}},
@@ -229,8 +230,8 @@ func TestAdd_FromParentPair(t *testing.T) {
 					t.Errorf("scratch link of %s = (%q, %v); want it to point at %s", slug, got, err, wantScratch)
 				}
 
-				if _, err := os.Stat(filepath.Join(weftPath, anchor, fabricengine.OriginRecordRel())); err != nil {
-					t.Errorf("origin record at %s/%s in the records worktree: %v", anchor, fabricengine.OriginRecordRel(), err)
+				if _, err := os.Stat(filepath.Join(weftPath, anchor, fabriclayout.OriginRecordRel())); err != nil {
+					t.Errorf("origin record at %s/%s in the records worktree: %v", anchor, fabriclayout.OriginRecordRel(), err)
 				}
 			})
 		}

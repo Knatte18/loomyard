@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/parentlock"
@@ -19,40 +20,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/selfexec"
 )
 
-const (
-	// PauseSlugFlag is the hidden flag naming the slug a push child's network calls are held under; empty for the prime.
-	PauseSlugFlag = "pause-slug"
-	// TeardownSlugFlag is the hidden fabric flag that tells a detached push child the pair whose teardown it yields to.
-	TeardownSlugFlag = "teardown-slug"
-	// ParentLockedFlag is the hidden flag marking a child spawned under a held parent lock; it never exits for coverage.
-	ParentLockedFlag = "parent-locked"
-)
-
 // ErrSpawnUnderTest is returned by SpawnDetachedPush in a test binary, where forking the binary would re-run the suite.
 var ErrSpawnUnderTest = errors.New("fabricengine: detached push not spawned under test")
-
-// PushSpawn is one detached push request.
-// WarpPath and WeftPath name the worktrees to push, either empty to leave that side out.
-// PauseSlug is the slug the child's network calls are held under, empty for the hub's prime.
-// TeardownSlug is the pair whose teardown the child yields to, empty when no teardown can remove what the child pushes.
-// ParentLocked reports that the pair's parent lock was held when the child was spawned;
-// the child never exits for a pause covering it.
-// WorkDir is the directory the child starts in.
-type PushSpawn struct {
-	WarpPath     string
-	WeftPath     string
-	PauseSlug    string
-	TeardownSlug string
-	ParentLocked bool
-	WorkDir      string
-}
-
-// SpawnResult reports what SpawnStatusPush did.
-// Spawned reports whether a child was requested, and Request is what it was asked to push.
-type SpawnResult struct {
-	Spawned bool
-	Request PushSpawn
-}
 
 // SpawnDetachedPush launches a detached, windowless child that pushes the sides req carries.
 // Returns nil immediately, forking no child, when FABRIC_SKIP_GIT or FABRIC_SKIP_PUSH is set.
@@ -61,7 +30,7 @@ type SpawnResult struct {
 // The child is reaped in the background through proc.Reap rather than waited for,
 // and its stdin/stdout/stderr are left nil so no handle is inherited from the parent.
 // The started child is registered in the hub's owner record.
-func SpawnDetachedPush(req PushSpawn) error {
+func SpawnDetachedPush(req fabriclayout.PushSpawn) error {
 	if os.Getenv("FABRIC_SKIP_GIT") == "1" || os.Getenv("FABRIC_SKIP_PUSH") == "1" {
 		return nil
 	}
@@ -82,7 +51,7 @@ func SpawnDetachedPush(req PushSpawn) error {
 
 // startDetachedPush starts the detached push child of req from exe and registers it in the owner record.
 // A registration failure is logged and never fails the spawn, since the push is already running.
-func startDetachedPush(exe string, req PushSpawn) error {
+func startDetachedPush(exe string, req fabriclayout.PushSpawn) error {
 	args, dir, owner := pushSpawnCommand(req)
 	cmd := exec.Command(exe, args...)
 	cmd.Dir = dir
@@ -95,7 +64,7 @@ func startDetachedPush(exe string, req PushSpawn) error {
 	proc.Reap(cmd)
 	pid := cmd.Process.Pid
 	logger.Info("fabricengine: spawned detached push", "exe", exe, "args", args, "dir", dir, "pid", pid)
-	if err := runproc.Register(RunProcDir(filepath.Dir(dir)), owner, runproc.ChildRecord(pid, runproc.RolePush, args)); err != nil {
+	if err := runproc.Register(fabriclayout.RunProcDir(filepath.Dir(dir)), owner, runproc.ChildRecord(pid, runproc.RolePush, args)); err != nil {
 		logger.Warn("fabricengine: detached push not registered", "owner", owner, "pid", pid, "error", err)
 	}
 	return nil
@@ -106,7 +75,7 @@ func startDetachedPush(exe string, req PushSpawn) error {
 // The pause flag is always present, written `--pause-slug=` when empty so the prime's empty slug reaches the child.
 // The owner is the teardown slug when set, so a pair's teardown ends its own pushes;
 // otherwise it is the hub owner, so a teardown never ends a prime's records push.
-func pushSpawnCommand(req PushSpawn) (args []string, dir, owner string) {
+func pushSpawnCommand(req fabriclayout.PushSpawn) (args []string, dir, owner string) {
 	args = []string{"fabric"}
 	if req.WarpPath != "" {
 		args = append(args, "--warp-path", absoluteOrAsGiven(req.WarpPath))
@@ -115,12 +84,12 @@ func pushSpawnCommand(req PushSpawn) (args []string, dir, owner string) {
 		args = append(args, "--weft-path", absoluteOrAsGiven(req.WeftPath))
 	}
 	if req.TeardownSlug != "" {
-		args = append(args, "--"+TeardownSlugFlag, req.TeardownSlug)
+		args = append(args, "--"+fabriclayout.TeardownSlugFlag, req.TeardownSlug)
 	}
 	if req.ParentLocked {
-		args = append(args, "--"+ParentLockedFlag)
+		args = append(args, "--"+fabriclayout.ParentLockedFlag)
 	}
-	args = append(args, "--"+PauseSlugFlag+"="+req.PauseSlug, "push")
+	args = append(args, "--"+fabriclayout.PauseSlugFlag+"="+req.PauseSlug, "push")
 	owner = runproc.HubOwner
 	if req.TeardownSlug != "" {
 		owner = req.TeardownSlug
@@ -144,21 +113,21 @@ func absoluteOrAsGiven(path string) string {
 // The child starts in the hub's board worktree, outside both of the pair's worktrees.
 // A failed or never-run push leaves the commits local; the next detached push carries them.
 // That push also creates the upstream of a never-pushed branch.
-func SpawnStatusPush(l *lymcwd.Location, gateSlug string) (SpawnResult, error) {
+func SpawnStatusPush(l *lymcwd.Location, gateSlug string) (fabriclayout.SpawnResult, error) {
 	req, err := statusPushRequest(l, gateSlug)
 	if err != nil {
-		return SpawnResult{}, err
+		return fabriclayout.SpawnResult{}, err
 	}
-	return SpawnResult{Request: req, Spawned: true}, spawnDetachedPushFn(req)
+	return fabriclayout.SpawnResult{Request: req, Spawned: true}, spawnDetachedPushFn(req)
 }
 
 // statusPushRequest builds the detached push request for l's status records.
-func statusPushRequest(l *lymcwd.Location, gateSlug string) (PushSpawn, error) {
+func statusPushRequest(l *lymcwd.Location, gateSlug string) (fabriclayout.PushSpawn, error) {
 	isPrime, err := IsPrimeWorktree(l)
 	if err != nil {
-		return PushSpawn{}, err
+		return fabriclayout.PushSpawn{}, err
 	}
-	req := PushSpawn{WeftPath: RecordsWorktree(l), PauseSlug: gateSlug, WorkDir: BoltDir(l.HubPath)}
+	req := fabriclayout.PushSpawn{WeftPath: RecordsWorktree(l), PauseSlug: gateSlug, WorkDir: fabriclayout.BoltDir(l.HubPath)}
 	if !isPrime {
 		req.WarpPath = l.WorktreePath()
 		req.PauseSlug = l.WorktreeName
@@ -172,7 +141,7 @@ func statusPushRequest(l *lymcwd.Location, gateSlug string) (PushSpawn, error) {
 // It is set only for the pushes a Finalize spawns past its parent-side merge.
 // A failed read is logged and reads as not held.
 func parentLockHeldBy(l *lymcwd.Location) bool {
-	store := parentlock.Store{Dir: parentlock.Dir(BoltDir(l.HubPath))}
+	store := parentlock.Store{Dir: parentlock.Dir(fabriclayout.BoltDir(l.HubPath))}
 	held, err := store.HeldBy(l.WorktreeName)
 	if err != nil {
 		logger.Warn("fabricengine: parent lock records unreadable; the push is spawned without the parent-locked mark", "slug", l.WorktreeName, "error", err)
@@ -200,16 +169,16 @@ func SpawnPairPush(l *lymcwd.Location) error {
 // A rejection is retried over the push backoff only while origin holds no commit the branch lacks.
 // A rejection that remains is a condition a human must decide.
 // A task branch that origin does not have, or that origin rewound past commits this machine holds, is not pushed.
-func PushWarpRebaseFreeAt(warpPath string, opts SyncOptions) (res PushResult, err error) {
+func PushWarpRebaseFreeAt(warpPath string, opts SyncOptions) (res fabriclayout.PushResult, err error) {
 	rec := NewMutations(filepath.Dir(warpPath))
 	defer func() { res.Mutations = rec.Snapshot() }()
 
 	if opts.SkipGit || opts.SkipPush {
-		return PushResult{}, nil
+		return fabriclayout.PushResult{}, nil
 	}
 
-	if err := pushClassified(rec, filepath.Dir(warpPath), failedPushSideCode, warpPath, opts, nil); err != nil {
-		return PushResult{}, err
+	if err := pushClassified(rec, filepath.Dir(warpPath), fabriclayout.RepoCode, warpPath, opts, nil); err != nil {
+		return fabriclayout.PushResult{}, err
 	}
-	return PushResult{}, nil
+	return fabriclayout.PushResult{}, nil
 }

@@ -11,6 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
@@ -49,7 +50,7 @@ type landingSeams struct {
 func hubLandingSeams(location *lymcwd.Location, slug string) landingSeams {
 	return landingSeams{
 		Project: func() (bool, error) {
-			owners, err := boardengine.ReadOwners(fabricengine.BoardDir(location.HubPath))
+			owners, err := boardengine.ReadOwners(fabriclayout.BoardDir(location.HubPath))
 			if err != nil {
 				return false, err
 			}
@@ -113,7 +114,7 @@ func beamLandRefusal(slug string, blockers BeamLandBlockers) error {
 // beamMembers lists, sorted by slug, the open tasks and beam projects whose parent is the beam slug.
 // Parentage counts through any depth of grouping projects.
 func beamMembers(prime *lymcwd.Location, slug string) ([]BeamLandMember, error) {
-	tasks, err := boardengine.ReadTasks(fabricengine.BoardDir(prime.HubPath))
+	tasks, err := boardengine.ReadTasks(fabriclayout.BoardDir(prime.HubPath))
 	if err != nil {
 		return nil, fmt.Errorf("battencli: read the board for the members of the beam %s: %w", slug, err)
 	}

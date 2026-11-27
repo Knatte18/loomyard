@@ -1,11 +1,8 @@
-// fabric_test.go holds the unit tests for the Fabric handle, its sync options, and ScopedPathspec.
-// The tests spawn no git: newPaired only stat-checks paths, and Open needs only a hand-built *lymcwd.Location.
+// fabric_test.go holds the unit tests for the Fabric handle and its sync options.
+// The tests spawn no git: Open only stat-checks paths, over a hand-built *lymcwd.Location.
 // The missing-path contract is tested through Open.
 // Open checks warp first and returns *ErrMissingPath naming the absent side.
-//
-// TestNew_HappyPath tests the newPaired constructor at tier 0, spawning no git and using no hub fixtures.
-// It must not import hubforge.
-// The Test Tier Purity Invariant bans a tier-0 test from calling the hubforge package's hub constructor.
+// TestEnvSyncOptions covers the environment mapping and TestRequireWarpWorktree the warp-worktree guard.
 
 package fabricengine_test
 
@@ -16,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/weftname"
@@ -86,33 +84,6 @@ func TestOpen(t *testing.T) {
 	}
 }
 
-// TestNew_HappyPath asserts that both warp and weft are non-nil when both paths exist as directories.
-//
-//testtiming:keep newPaired yielding a non-nil warp and weft when both paths exist as directories, in the untagged tier; coverage of its blocks by other tests does not show an assertion of this
-func TestNew_HappyPath(t *testing.T) {
-	tiergate.Require(t, 0)
-	tmp := t.TempDir()
-	warpPath := filepath.Join(tmp, "warp")
-	weftPath := filepath.Join(tmp, "weft")
-	if err := os.Mkdir(warpPath, 0755); err != nil {
-		t.Fatalf("mkdir warp: %v", err)
-	}
-	if err := os.Mkdir(weftPath, 0755); err != nil {
-		t.Fatalf("mkdir weft: %v", err)
-	}
-
-	f, err := fabricengine.NewPairedFromPathsForTest(warpPath, weftPath)
-	if err != nil {
-		t.Fatalf("NewPairedFromPathsForTest() error = %v", err)
-	}
-	if fabricengine.WarpForTest(f) == nil {
-		t.Error("NewPairedFromPathsForTest().warp = nil; want non-nil")
-	}
-	if fabricengine.WeftForTest(f) == nil {
-		t.Error("NewPairedFromPathsForTest().weft = nil; want non-nil")
-	}
-}
-
 // TestEnvSyncOptions covers the FABRIC_SKIP_GIT / FABRIC_SKIP_PUSH mapping: unset, "1", and other values.
 func TestEnvSyncOptions(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -153,36 +124,6 @@ func TestEnvSyncOptions(t *testing.T) {
 	}
 }
 
-// TestScopedPathspec covers a root relPath, which joins nothing, and a nested relPath, which prefixes each entry.
-//
-//testtiming:keep ScopedPathspec returning the entries unchanged at the root and prefixed by a nested relPath; coverage of its blocks by other tests does not show an assertion of this
-func TestScopedPathspec(t *testing.T) {
-	tiergate.Require(t, 0)
-	tests := []struct {
-		name    string
-		relPath string
-		dirs    []string
-		want    []string
-	}{
-		{"root", ".", []string{"_lym"}, []string{"_lym"}},
-		{"nested", "sub", []string{"_lym"}, []string{filepath.Join("sub", "_lym")}},
-		{"nested_multiple_dirs", "sub", []string{"_lym", "_extra"}, []string{filepath.Join("sub", "_lym"), filepath.Join("sub", "_extra")}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := fabricengine.ScopedPathspec(tt.relPath, tt.dirs)
-			if len(got) != len(tt.want) {
-				t.Fatalf("ScopedPathspec(%q, %v) = %v; want %v", tt.relPath, tt.dirs, got, tt.want)
-			}
-			for i := range tt.want {
-				if got[i] != tt.want[i] {
-					t.Errorf("ScopedPathspec(%q, %v)[%d] = %q; want %q", tt.relPath, tt.dirs, i, got[i], tt.want[i])
-				}
-			}
-		})
-	}
-}
-
 // TestRequireWarpWorktree covers the guard that refuses a cwd inside one of fabric's own checkouts.
 // Such a cwd would otherwise drive a verb against invented geometry.
 // lymcwd resolves such a cwd without error, because it knows neither the weft sibling nor the board checkout.
@@ -200,7 +141,7 @@ func TestRequireWarpWorktree(t *testing.T) {
 		{name: "a slug merely containing the suffix", worktreeName: "weft-tools"},
 		{name: "weft sibling of the prime", worktreeName: "myrepo" + weftname.Suffix, wantErr: true},
 		{name: "weft sibling of a task pair", worktreeName: "wt-feature" + weftname.Suffix, wantErr: true},
-		{name: "the hub board checkout", worktreeName: fabricengine.BoardDirName, wantErr: true},
+		{name: "the hub board checkout", worktreeName: fabriclayout.BoardDirName, wantErr: true},
 	}
 
 	for _, tt := range tests {

@@ -15,7 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/creelconfig"
 	"github.com/Knatte18/loomyard/internal/creelengine"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/hubregistry"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -82,7 +82,7 @@ Example:
 				if err != nil {
 					return result{}, err
 				}
-				cfg, err := creelconfig.LoadConfig(configengine.Dirs{Board: fabricengine.BoltDir(hubPath)})
+				cfg, err := creelconfig.LoadConfig(configengine.Dirs{Board: fabriclayout.BoltDir(hubPath)})
 				if errors.Is(err, configengine.ErrInvalid) {
 					return result{}, fmt.Errorf("%w; way forward: correct the file with `lym config creel`", err)
 				}

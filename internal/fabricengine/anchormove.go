@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -110,19 +111,19 @@ func moveWeftContent(rec *Mutations, weftPath, from, to string, names []string, 
 		if _, err := gitexec.Run([]string{"mv", "--", src, dst}, weftPath); err != nil {
 			return false, fmt.Errorf("fabricengine: move %s to %s in %s: %w", src, dst, weftPath, err)
 		}
-		rec.Append(KindPathRenamed, filepath.Join(weftPath, filepath.FromSlash(dst)), renamedFrom(weftPath, src))
+		rec.Append(fabriclayout.KindPathRenamed, filepath.Join(weftPath, filepath.FromSlash(dst)), renamedFrom(weftPath, src))
 		specs = append(specs, src, dst)
 	}
 	if lymPresent {
 		if err := root.Rename(lymFrom, lymTo); err != nil {
 			return false, fmt.Errorf("fabricengine: move %s to %s in %s: %w", lymFrom, lymTo, weftPath, err)
 		}
-		rec.Append(KindPathRenamed, filepath.Join(weftPath, filepath.FromSlash(lymTo)), renamedFrom(weftPath, lymFrom))
+		rec.Append(fabriclayout.KindPathRenamed, filepath.Join(weftPath, filepath.FromSlash(lymTo)), renamedFrom(weftPath, lymFrom))
 	}
 	if err := root.WriteFile(lymcwd.AnchorFileName, []byte(to+"\n"), 0o644); err != nil {
 		return false, fmt.Errorf("fabricengine: write %s in %s: %w", lymcwd.AnchorFileName, weftPath, err)
 	}
-	rec.Append(KindFileWritten, filepath.Join(weftPath, lymcwd.AnchorFileName), "")
+	rec.Append(fabriclayout.KindFileWritten, filepath.Join(weftPath, lymcwd.AnchorFileName), "")
 
 	if err := seams.runFail(false); err != nil {
 		return false, err
@@ -135,7 +136,7 @@ func moveWeftContent(rec *Mutations, weftPath, from, to string, names []string, 
 	if err != nil {
 		return true, fmt.Errorf("fabricengine: read the weft's commit after the move of the weft from %s to %s: %w", from, to, err)
 	}
-	rec.Append(KindCommitCreated, weftPath, sha)
+	rec.Append(fabriclayout.KindCommitCreated, weftPath, sha)
 	return true, seams.runFail(true)
 }
 

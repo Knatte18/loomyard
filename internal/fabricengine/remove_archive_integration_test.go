@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -129,7 +130,7 @@ func TestRemove_LeavesAnOwnerArchiveTagOutOfTheTeardownArchive(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NamedWorktree(%q) = %v; want nil", slug, err)
 	}
-	ownerTag := fabricengine.OwnerArchiveTagName(slug, tip)
+	ownerTag := fabriclayout.OwnerArchiveTagName(slug, tip)
 	ownerTags, err := fabricengine.ArchiveOwnerTips(l.HubPath, []fabricengine.OwnerArchivePair{{Slug: slug, Pair: pair}})
 	if err != nil || !slices.Contains(ownerTags, ownerTag) {
 		t.Fatalf("ArchiveOwnerTips() = %v, %v; want the weft tip tagged %s", ownerTags, err, ownerTag)
@@ -139,7 +140,7 @@ func TestRemove_LeavesAnOwnerArchiveTagOutOfTheTeardownArchive(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Remove(%q) error = %v", slug, err)
 	}
-	wantTag := fabricengine.ArchiveTagName(slug, tip)
+	wantTag := fabriclayout.ArchiveTagName(slug, tip)
 	if res.ArchiveTag != wantTag {
 		t.Errorf("ArchiveTag = %q; want %q", res.ArchiveTag, wantTag)
 	}
@@ -216,7 +217,7 @@ func TestRemove_UnreachableOriginFailsClosed(t *testing.T) {
 	weftRoot := mustRecordsRepoRoot(t, l)
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
-	weftTip := gitkit.RevParse(t, weftRoot, fabricengine.RecordsBranchName(slug))
+	weftTip := gitkit.RevParse(t, weftRoot, fabriclayout.RecordsBranchName(slug))
 	mustBreakOrigin(t, weftRoot)
 
 	_, err := topology.Remove(l, slug, false, false, "")
@@ -232,7 +233,7 @@ func TestRemove_UnreachableOriginFailsClosed(t *testing.T) {
 			t.Errorf("%s after a failed remote archive: Lstat error = %v; want the local teardown done", p, err)
 		}
 	}
-	if got := gitkit.RevParse(t, weftRoot, "refs/tags/"+fabricengine.ArchiveTagName(slug, weftTip)); got != weftTip {
+	if got := gitkit.RevParse(t, weftRoot, "refs/tags/"+fabriclayout.ArchiveTagName(slug, weftTip)); got != weftTip {
 		t.Errorf("local archive tag points at %s; want the weft tip %s kept", got, weftTip)
 	}
 }
@@ -323,7 +324,7 @@ func TestRemove_ArchiveOrder(t *testing.T) {
 
 	t.Run("BranchIsPushedBeforeTheTagThatNamesIt", func(t *testing.T) {
 		const slug = "order-branch-first"
-		weftBranch := fabricengine.RecordsBranchName(slug)
+		weftBranch := fabriclayout.RecordsBranchName(slug)
 		h := newPairHub(t, slug)
 		warpBranchCommit(t, h.Location, slug, "unpushed-code.txt")
 		codeTipBefore := gitkit.RevParse(t, h.CodeBare, slug)
@@ -348,7 +349,7 @@ func TestRemove_ArchiveOrder(t *testing.T) {
 
 	t.Run("DivergedOriginTipGetsATagOfItsOwn", func(t *testing.T) {
 		const slug = "order-diverged"
-		weftBranch := fabricengine.RecordsBranchName(slug)
+		weftBranch := fabriclayout.RecordsBranchName(slug)
 		h := newPairHub(t, slug)
 		localTip := gitkit.CommitFile(t, h.PairRecordsSibling(slug), "_lym/local.txt", "local\n", "local records")
 		pushCommitToOrigin(t, h.RecordsBare, weftBranch)
@@ -380,7 +381,7 @@ func TestRemove_ArchiveOrder(t *testing.T) {
 
 	t.Run("AheadOriginTipGetsATagAndNoBranchIsPushed", func(t *testing.T) {
 		const slug = "order-ahead"
-		weftBranch := fabricengine.RecordsBranchName(slug)
+		weftBranch := fabriclayout.RecordsBranchName(slug)
 		h := newPairHub(t, slug)
 		localTip := gitkit.RevParse(t, h.PairRecordsSibling(slug), "HEAD")
 		pushCommitToOrigin(t, h.RecordsBare, weftBranch)
@@ -426,7 +427,7 @@ func TestRemove_ArchiveOrder(t *testing.T) {
 
 	t.Run("RefusedBranchPushNeverFailsTheRemoval", func(t *testing.T) {
 		const slug = "order-branch-refused"
-		weftBranch := fabricengine.RecordsBranchName(slug)
+		weftBranch := fabriclayout.RecordsBranchName(slug)
 		h := newPairHub(t, slug)
 		tip := gitkit.CommitFile(t, h.PairRecordsSibling(slug), "_lym/record.txt", "run record\n", "record")
 		installUpdateHook(t, h.RecordsBare, "case \"$1\" in\nrefs/heads/"+weftBranch+")\n  echo \"weft branch updates refused\" >&2\n  exit 1\n  ;;\nesac")

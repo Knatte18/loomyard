@@ -15,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -62,7 +63,7 @@ func runOwnerVerdict(l *lymcwd.Location, slug string, identity func() (machinena
 	}
 	options := pairteardown.HubSeamOptions(prime)
 	options.Machine = identity
-	report, err := fabricengine.ReconcileOrigin(prime, fabricengine.ReconcileScope{Run: slug, JudgeOnly: true}, teardown.OriginSeams(options), fabricengine.ReconcileOptions{})
+	report, err := fabricengine.ReconcileOrigin(prime, fabriclayout.ReconcileScope{Run: slug, JudgeOnly: true}, teardown.OriginSeams(options), fabricengine.ReconcileOptions{})
 	if err != nil {
 		return ownerVerdict{}, fmt.Errorf("origin reconcile of %q: %w", slug, err)
 	}
@@ -70,7 +71,7 @@ func runOwnerVerdict(l *lymcwd.Location, slug string, identity func() (machinena
 		return localOwnerVerdict(l, slug, identity, options.ParentOf)
 	}
 	for _, entry := range reportOfRun(report, slug).Entries {
-		if entry.State == fabricengine.EntryOwnedElsewhere {
+		if entry.State == fabriclayout.EntryOwnedElsewhere {
 			return ownerVerdict{Owner: entry.Owner, AdoptSubject: entry.AdoptSubject, Elsewhere: true}, nil
 		}
 	}
@@ -83,7 +84,7 @@ func localOwnerVerdict(l *lymcwd.Location, slug string, identity func() (machine
 	if err != nil {
 		return ownerVerdict{}, err
 	}
-	owners, err := boardengine.ReadOwners(fabricengine.BoardDir(l.HubPath))
+	owners, err := boardengine.ReadOwners(fabriclayout.BoardDir(l.HubPath))
 	if err != nil {
 		return ownerVerdict{}, err
 	}

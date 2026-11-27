@@ -18,6 +18,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
@@ -245,7 +246,7 @@ func TestCommand_CleanupRemoveScenario(t *testing.T) {
 		{"CleanupRemoteAloneWithoutApplyDeletesNothing", func(t *testing.T) {
 			// --remote alone on cleanup, without --apply, deletes nothing on either side and exits 0.
 			// It is the flag combination an operator most likely gets wrong, and the help text states it explicitly.
-			branch := fabricengine.RecordsBranchName("cli-remote-no-apply")
+			branch := fabriclayout.RecordsBranchName("cli-remote-no-apply")
 			remoteEnvelopeCreateOrphanBranch(t, weftRoot, branch)
 			remoteEnvelopePushBranch(t, weftRoot, branch)
 
@@ -265,7 +266,7 @@ func TestCommand_CleanupRemoveScenario(t *testing.T) {
 			// An unreachable GitHub skips every task-branch deletion while the weft sweep still runs.
 			landedManagedBranch(t, h, "gone-landed-unreachable")
 
-			orphan := fabricengine.RecordsBranchName("weft-orphan")
+			orphan := fabriclayout.RecordsBranchName("weft-orphan")
 			remoteEnvelopeCreateOrphanBranch(t, weftRoot, orphan)
 			remoteEnvelopePushBranch(t, weftRoot, orphan)
 
@@ -336,7 +337,7 @@ func TestCommand_CleanupRemoveScenario(t *testing.T) {
 			// A cleanup run where one entry carries a local Error — the git branch -D itself failed — exits non-zero.
 			// It pins the verdict for a local failure, which nothing else in the suite would notice flipping back.
 			// Induced by pre-creating the branch's own ref lock file, so `git branch -D` cannot acquire the lock it needs.
-			branch := fabricengine.RecordsBranchName("cli-cleanup-local-fail")
+			branch := fabriclayout.RecordsBranchName("cli-cleanup-local-fail")
 			remoteEnvelopeCreateOrphanBranch(t, weftRoot, branch)
 
 			lockPath := filepath.Join(weftRoot, ".git", "refs", "heads", branch+".lock")
@@ -389,7 +390,7 @@ func TestCommand_CleanupRemoveScenario(t *testing.T) {
 			// The branch is already deleted locally under its local tag,
 			// and the envelope reports "partial":true with the reason in the entry's error.
 			// The envelope carries no "refusal" key, since a synthesised fmt.Errorf never matches `RefusalOf`.
-			branch := fabricengine.RecordsBranchName("cli-cleanup-remote-fail")
+			branch := fabriclayout.RecordsBranchName("cli-cleanup-remote-fail")
 			remoteEnvelopeCreateOrphanBranch(t, weftRoot, branch)
 			remoteEnvelopeBreakOrigin(t, weftRoot)
 
@@ -435,7 +436,7 @@ func TestCommand_CleanupRemoveScenario(t *testing.T) {
 			// Both halves are needed.
 			// An asymmetric exit code for one configuration across the two verbs is the defect this test guards against.
 			// Only a CLI-level test can observe an exit code at all.
-			branch := fabricengine.RecordsBranchName("cli-cleanup-no-origin")
+			branch := fabriclayout.RecordsBranchName("cli-cleanup-no-origin")
 			remoteEnvelopeCreateOrphanBranch(t, weftRoot, branch)
 			remoteEnvelopeRemoveOrigin(t, weftRoot)
 

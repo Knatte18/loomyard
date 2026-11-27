@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/shellguard"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -49,7 +49,7 @@ func TestOrchIntegration_WireCLILaunchFollowsDenyPythonAtTheDefaultLayer(t *test
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-			shuttleFile := configengine.ConfigFile(fabricengine.BoltDir(h.Path), "shuttle")
+			shuttleFile := configengine.ConfigFile(fabriclayout.BoltDir(h.Path), "shuttle")
 			if err := os.MkdirAll(filepath.Dir(shuttleFile), 0o755); err != nil {
 				t.Fatalf("mkdir %s: %v", filepath.Dir(shuttleFile), err)
 			}

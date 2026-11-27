@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
@@ -48,7 +49,7 @@ func seedWarpExcludeLines(rec *Mutations, worktree, anchorRel string, paths []st
 		return err
 	}
 	if changed {
-		rec.Append(KindFileWritten, excludePath, "")
+		rec.Append(fabriclayout.KindFileWritten, excludePath, "")
 	}
 	return nil
 }

@@ -14,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/runfsm"
@@ -34,7 +35,7 @@ type cancelFake struct {
 
 	hubPaused       bool
 	worktreePresent bool
-	report          fabricengine.OriginReport
+	report          fabriclayout.OriginReport
 	reconcileErr    error
 	pullErr         error
 	machine, owner  string
@@ -50,17 +51,17 @@ type cancelFake struct {
 	goos            string
 	recordLists     [][]runproc.Record
 	createdAt       map[int]time.Time
-	parts           fabricengine.PairParts
+	parts           fabriclayout.PairParts
 	sessionLive     bool
 	endResult       pairteardown.CancelResult
 	endErr          error
 	lockAnswers     []string
 	tackler         string
 	tacklerErr      error
-	removeResult    fabricengine.RemoveResult
+	removeResult    fabriclayout.RemoveResult
 	removeErr       error
 	onOrigin        bool
-	discardResult   fabricengine.DiscardResult
+	discardResult   fabriclayout.DiscardResult
 	discardErr      error
 	teardownPending bool
 	settleErr       error
@@ -88,7 +89,7 @@ type cancelFake struct {
 	// The fields from beamProject through stopBeamErr answer the beam seams;
 	// their zero values make the slug a task.
 	beamProject     bool
-	hubReport       fabricengine.OriginReport
+	hubReport       fabriclayout.OriginReport
 	hubReconcileErr error
 	landRefusal     error
 	landingHeld     bool
@@ -137,7 +138,7 @@ func (f *cancelFake) deps() cancelDeps {
 			return func() { f.gateRestored, f.callsAtRestore = true, len(f.calls) }, nil
 		},
 		TaskWorktreePresent: func() (bool, error) { f.call("TaskWorktreePresent"); return f.worktreePresent, nil },
-		Reconcile: func() (fabricengine.OriginReport, error) {
+		Reconcile: func() (fabriclayout.OriginReport, error) {
 			f.call("Reconcile")
 			return f.report, f.reconcileErr
 		},
@@ -177,7 +178,7 @@ func (f *cancelFake) deps() cancelDeps {
 			created, ok := f.createdAt[pid]
 			return created, ok
 		},
-		PairParts:   func() (fabricengine.PairParts, error) { f.call("PairParts"); return f.parts, nil },
+		PairParts:   func() (fabriclayout.PairParts, error) { f.call("PairParts"); return f.parts, nil },
 		SessionLive: func() (bool, error) { f.call("SessionLive"); return f.sessionLive, nil },
 		EndForCancel: func(_ context.Context, req pairteardown.CancelRequest) (pairteardown.CancelResult, error) {
 			f.call("EndForCancel")
@@ -211,13 +212,13 @@ func (f *cancelFake) deps() cancelDeps {
 			return func() { f.locksHeld-- }, "", nil
 		},
 		StopTackler: func() (string, error) { f.call("StopTackler"); return f.tackler, f.tacklerErr },
-		RemovePair: func(req pairteardown.Request) (fabricengine.RemoveResult, error) {
+		RemovePair: func(req pairteardown.Request) (fabriclayout.RemoveResult, error) {
 			f.call("RemovePair")
 			f.removeRequest = req
 			return f.removeResult, f.removeErr
 		},
 		TaskBranchOnOrigin: func() (bool, error) { f.call("TaskBranchOnOrigin"); return f.onOrigin, nil },
-		DiscardTaskBranch: func() (fabricengine.DiscardResult, error) {
+		DiscardTaskBranch: func() (fabriclayout.DiscardResult, error) {
 			f.call("DiscardTaskBranch")
 			return f.discardResult, f.discardErr
 		},
@@ -245,7 +246,7 @@ func (f *cancelFake) deps() cancelDeps {
 			return f.notifyErr
 		},
 		BeamProject: func() (bool, error) { f.call("BeamProject"); return f.beamProject, nil },
-		ReconcileHub: func() (fabricengine.OriginReport, error) {
+		ReconcileHub: func() (fabriclayout.OriginReport, error) {
 			f.call("ReconcileHub")
 			return f.hubReport, f.hubReconcileErr
 		},
@@ -280,8 +281,8 @@ func TestCancelRun(t *testing.T) {
 	t.Parallel()
 
 	liveRecord := runproc.Record{PID: 4242, Role: "batten", RegisteredAt: time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)}
-	entry := func(state fabricengine.EntryState) fabricengine.OriginReport {
-		return fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: cancelSlug, State: state, Owner: "other-machine", AdoptSubject: "some-beam", How: "done", WayForward: "fix it"}}}
+	entry := func(state fabriclayout.EntryState) fabriclayout.OriginReport {
+		return fabriclayout.OriginReport{Entries: []fabriclayout.EntryOutcome{{Slug: cancelSlug, State: state, Owner: "other-machine", AdoptSubject: "some-beam", How: "done", WayForward: "fix it"}}}
 	}
 	pullUnreachable := fmt.Errorf("pull: %w", boardengine.ErrOwnerOriginUnreachable)
 
@@ -458,7 +459,7 @@ func TestCancelRun(t *testing.T) {
 			setup: func(f *cancelFake) {
 				f.worktreePresent = true
 				f.status = runningStatus(battenrecipe.NameRunShed)
-				f.parts = fabricengine.PairParts{TaskWorktree: true, RecordsWorktree: true, RecordsBranch: true, TaskBranch: true}
+				f.parts = fabriclayout.PairParts{TaskWorktree: true, RecordsWorktree: true, RecordsBranch: true, TaskBranch: true}
 				f.endResult = pairteardown.CancelResult{Ended: []runproc.Ended{{PID: 7, Role: "batten"}}, StrandsStopped: []string{"agent-1"}}
 			},
 			wantCalls: []string{"Reconcile", "EndForCancel", "StopTackler", "FinishCancel", "CommitRecord", "ClearClaim"},
@@ -486,10 +487,10 @@ func TestCancelRun(t *testing.T) {
 			setup: func(f *cancelFake) {
 				f.worktreePresent = true
 				f.status = runningStatus(battenrecipe.NameRunShed)
-				f.parts = fabricengine.PairParts{TaskWorktree: true, TaskBranch: true}
+				f.parts = fabriclayout.PairParts{TaskWorktree: true, TaskBranch: true}
 				f.onOrigin = true
-				f.removeResult = fabricengine.RemoveResult{SnapshotTag: "snapshot/some-slug/1"}
-				f.discardResult = fabricengine.DiscardResult{ArchiveTags: []string{"archive/some-slug/abc"}}
+				f.removeResult = fabriclayout.RemoveResult{SnapshotTag: "snapshot/some-slug/1"}
+				f.discardResult = fabriclayout.DiscardResult{ArchiveTags: []string{"archive/some-slug/abc"}}
 			},
 			wantCalls: []string{"WriteIntent", "CommitRecord", "EndForCancel", "RemovePair", "DiscardTaskBranch", "RemoveRecords", "ClearClaim"},
 			noCalls:   []string{"FinishCancel"},
@@ -579,7 +580,7 @@ func TestCancelRun(t *testing.T) {
 		},
 		{
 			name:    "EndedDoneWithRecordsRefuses",
-			setup:   func(f *cancelFake) { f.worktreePresent = true; f.report = entry(fabricengine.EntryEnded) },
+			setup:   func(f *cancelFake) { f.worktreePresent = true; f.report = entry(fabriclayout.EntryEnded) },
 			wantErr: `some-slug was landed by another machine; way forward: run "lym cleanup --apply" from the prime`,
 			noCalls: append([]string{"TakeMarker"}, destructiveCancelCalls...),
 			marker:  "none",
@@ -588,8 +589,8 @@ func TestCancelRun(t *testing.T) {
 			name:   "EndedWithNoRecordsHereGoesOn",
 			remove: true,
 			setup: func(f *cancelFake) {
-				f.worktreePresent, f.report, f.recordsPresent = true, entry(fabricengine.EntryEnded), false
-				f.parts = fabricengine.PairParts{TaskWorktree: true}
+				f.worktreePresent, f.report, f.recordsPresent = true, entry(fabriclayout.EntryEnded), false
+				f.parts = fabriclayout.PairParts{TaskWorktree: true}
 			},
 			wantCalls: []string{"Reconcile", "RemovePair", "RemoveRecords"},
 			marker:    "removed",
@@ -606,7 +607,7 @@ func TestCancelRun(t *testing.T) {
 		},
 		{
 			name:    "OwnedElsewherePresentRefuses",
-			setup:   func(f *cancelFake) { f.worktreePresent = true; f.report = entry(fabricengine.EntryOwnedElsewhere) },
+			setup:   func(f *cancelFake) { f.worktreePresent = true; f.report = entry(fabriclayout.EntryOwnedElsewhere) },
 			wantErr: `some-slug is owned by machine other-machine; way forward: run "lym adopt some-beam" on this machine first, or "lym batten cancel some-slug" on other-machine`,
 			noCalls: append([]string{"TakeMarker"}, destructiveCancelCalls...),
 			marker:  "none",
@@ -628,7 +629,7 @@ func TestCancelRun(t *testing.T) {
 		{
 			name: "OwnedElsewhereWithOriginUnreachableNamesTheBeam",
 			setup: func(f *cancelFake) {
-				f.worktreePresent, f.report = true, fabricengine.OriginReport{Unreachable: true}
+				f.worktreePresent, f.report = true, fabriclayout.OriginReport{Unreachable: true}
 				f.owner, f.subject = "other-machine", "some-beam"
 			},
 			wantErr: `some-slug is owned by machine other-machine; way forward: run "lym adopt some-beam" on this machine first`,
@@ -639,8 +640,8 @@ func TestCancelRun(t *testing.T) {
 			name: "StoppedBranchNamesTheCancel",
 			setup: func(f *cancelFake) {
 				f.worktreePresent = true
-				f.report = entry(fabricengine.EntryStopped)
-				f.report.Branches = []fabricengine.BranchOutcome{{Branch: "some-slug-records", Repo: "records", Slug: cancelSlug, State: fabricengine.BranchDiverged, WayForward: "reset it"}}
+				f.report = entry(fabriclayout.EntryStopped)
+				f.report.Branches = []fabriclayout.BranchOutcome{{Branch: "some-slug-records", Repo: "records", Slug: cancelSlug, State: fabriclayout.BranchDiverged, WayForward: "reset it"}}
 			},
 			wantErr: `cannot cancel "some-slug": branch some-slug-records is diverged against origin; reset it; then run "lym batten cancel some-slug" again`,
 			noCalls: append([]string{"TakeMarker"}, destructiveCancelCalls...),
@@ -651,8 +652,8 @@ func TestCancelRun(t *testing.T) {
 			setup: func(f *cancelFake) {
 				f.worktreePresent = true
 				f.status = runningStatus(battenrecipe.NameLand)
-				f.report = entry(fabricengine.EntryStopped)
-				f.report.Branches = []fabricengine.BranchOutcome{{Branch: "some-slug-records", Repo: "records", Slug: cancelSlug, State: fabricengine.BranchDiverged, WayForward: "run `lym fabric remove some-slug` to clear it"}}
+				f.report = entry(fabriclayout.EntryStopped)
+				f.report.Branches = []fabriclayout.BranchOutcome{{Branch: "some-slug-records", Repo: "records", Slug: cancelSlug, State: fabriclayout.BranchDiverged, WayForward: "run `lym fabric remove some-slug` to clear it"}}
 			},
 			wantErr:   "cannot cancel \"some-slug\": branch some-slug-records is diverged against origin; run `lym fabric remove some-slug` to clear it; " + pairteardown.BattenFollowUp(cancelSlug, runningStatus(battenrecipe.NameLand), true),
 			errAbsent: []string{`then run "lym batten cancel some-slug" again`},
@@ -663,8 +664,8 @@ func TestCancelRun(t *testing.T) {
 			name: "AnchorStoppedBranchLetsTheCancelThrough",
 			setup: func(f *cancelFake) {
 				f.worktreePresent = true
-				f.report = entry(fabricengine.EntryStopped)
-				f.report.Branches = []fabricengine.BranchOutcome{{Branch: "some-slug-records", Repo: "records", Slug: cancelSlug, State: fabricengine.BranchAnchorStopped, WayForward: "run the set"}}
+				f.report = entry(fabriclayout.EntryStopped)
+				f.report.Branches = []fabriclayout.BranchOutcome{{Branch: "some-slug-records", Repo: "records", Slug: cancelSlug, State: fabriclayout.BranchAnchorStopped, WayForward: "run the set"}}
 			},
 			marker: "removed",
 		},
@@ -672,10 +673,10 @@ func TestCancelRun(t *testing.T) {
 			name: "AnchorStoppedWithADivergedBranchStillRefuses",
 			setup: func(f *cancelFake) {
 				f.worktreePresent = true
-				f.report = entry(fabricengine.EntryStopped)
-				f.report.Branches = []fabricengine.BranchOutcome{
-					{Branch: "some-slug", Repo: "code", Slug: cancelSlug, State: fabricengine.BranchDiverged, WayForward: "reset it"},
-					{Branch: "some-slug-records", Repo: "records", Slug: cancelSlug, State: fabricengine.BranchAnchorStopped, WayForward: "run the set"},
+				f.report = entry(fabriclayout.EntryStopped)
+				f.report.Branches = []fabriclayout.BranchOutcome{
+					{Branch: "some-slug", Repo: "code", Slug: cancelSlug, State: fabriclayout.BranchDiverged, WayForward: "reset it"},
+					{Branch: "some-slug-records", Repo: "records", Slug: cancelSlug, State: fabriclayout.BranchAnchorStopped, WayForward: "run the set"},
 				}
 			},
 			wantErr: `cannot cancel "some-slug": branch some-slug is diverged against origin; reset it; then run "lym batten cancel some-slug" again`,
@@ -750,7 +751,7 @@ func TestCancelRun(t *testing.T) {
 			name: "TaskBranchAloneRefusesWithoutRemove",
 			setup: func(f *cancelFake) {
 				f.recordsPresent, f.boardStatus, f.boardFound = false, nil, false
-				f.parts = fabricengine.PairParts{TaskBranch: true}
+				f.parts = fabriclayout.PairParts{TaskBranch: true}
 			},
 			wantErr: `run "lym batten cancel some-slug --remove", which archives and deletes its task branch`,
 			noCalls: append([]string{"TakeMarker"}, destructiveCancelCalls...),
@@ -835,7 +836,7 @@ func TestCancelRun(t *testing.T) {
 			name:   "RefusedRemovePairNamesTheCancelWithRemove",
 			remove: true,
 			setup: func(f *cancelFake) {
-				f.parts = fabricengine.PairParts{TaskWorktree: true}
+				f.parts = fabriclayout.PairParts{TaskWorktree: true}
 				f.removeErr = errors.New("dirty beyond force")
 			},
 			wantErr: `dirty beyond force; way forward: fix the cause it names, then run "lym batten cancel some-slug --remove" again`,
@@ -846,7 +847,7 @@ func TestCancelRun(t *testing.T) {
 			name:   "FailedDiscardNamesTheCancelWithRemove",
 			remove: true,
 			setup: func(f *cancelFake) {
-				f.parts = fabricengine.PairParts{TaskBranch: true}
+				f.parts = fabriclayout.PairParts{TaskBranch: true}
 				f.discardErr = errors.New("archive tag push refused")
 			},
 			wantErr: `archive tag push refused; way forward: fix the cause it names, then run "lym batten cancel some-slug --remove" again`,
@@ -857,7 +858,7 @@ func TestCancelRun(t *testing.T) {
 			name: "StrayDirectoryAloneRefusesWithoutRemove",
 			setup: func(f *cancelFake) {
 				f.recordsPresent, f.boardStatus, f.boardFound = false, nil, false
-				f.parts = fabricengine.PairParts{StrayPath: true}
+				f.parts = fabriclayout.PairParts{StrayPath: true}
 			},
 			wantErr: `a directory that is no worktree is all that is left of some-slug, at its task worktree path; way forward: run "lym batten cancel some-slug --remove", which deletes it`,
 			noCalls: append([]string{"TakeMarker"}, destructiveCancelCalls...),
@@ -868,9 +869,9 @@ func TestCancelRun(t *testing.T) {
 			remove: true,
 			setup: func(f *cancelFake) {
 				f.recordsPresent, f.boardStatus, f.boardFound, f.statusFound = false, nil, false, false
-				f.parts = fabricengine.PairParts{StrayPath: true}
+				f.parts = fabriclayout.PairParts{StrayPath: true}
 				f.removeErr = fmt.Errorf("remove: %w", fabricengine.ErrPairNotFound)
-				f.removeResult = fabricengine.RemoveResult{StrayPathDeleted: true}
+				f.removeResult = fabriclayout.RemoveResult{StrayPathDeleted: true}
 			},
 			wantCalls: []string{"TakeMarker", "EndForCancel", "RemovePair", "RemoveRecords", "ClearClaim"},
 			noCalls:   []string{"DiscardTaskBranch"},
@@ -977,7 +978,7 @@ func TestCancelRun(t *testing.T) {
 		},
 		{
 			name:        "BeamWithOriginUnreachableRefusesNamingTheReRun",
-			setup:       func(f *cancelFake) { f.beamProject = true; f.hubReport = fabricengine.OriginReport{Unreachable: true} },
+			setup:       func(f *cancelFake) { f.beamProject = true; f.hubReport = fabriclayout.OriginReport{Unreachable: true} },
 			wantErr:     "the members of the beam some-slug could not be read against it",
 			wantErrAlso: []string{`run "lym batten cancel some-slug" once origin answers`},
 			noCalls:     append([]string{"TakeMarker", "LandRefusal", "StopBeam"}, destructiveCancelCalls...),
@@ -1109,7 +1110,7 @@ func TestCancelRun(t *testing.T) {
 		name  string
 		setup func(*cancelFake)
 	}{
-		{"ReconcileUnreachable", func(f *cancelFake) { f.worktreePresent = true; f.report = fabricengine.OriginReport{Unreachable: true} }},
+		{"ReconcileUnreachable", func(f *cancelFake) { f.worktreePresent = true; f.report = fabriclayout.OriginReport{Unreachable: true} }},
 		{"PullUnreachable", func(f *cancelFake) { f.pullErr = pullUnreachable }},
 	} {
 		for _, remove := range []bool{false, true} {
@@ -1118,7 +1119,7 @@ func TestCancelRun(t *testing.T) {
 				name:      name,
 				remove:    remove,
 				judging:   "endonly",
-				setup:     func(f *cancelFake) { unreachable.setup(f); f.parts = fabricengine.PairParts{TaskBranch: true} },
+				setup:     func(f *cancelFake) { unreachable.setup(f); f.parts = fabriclayout.PairParts{TaskBranch: true} },
 				wantCalls: []string{"Owner", "WriteIntent", "CommitRecord", "EndForCancel", "StopTackler", "Notify"},
 				noCalls:   []string{"RemovePair", "DiscardTaskBranch", "FinishCancel", "RemoveRecords", "ClearClaim", "LiftPauses", "PushRecords"},
 				marker:    "left",
@@ -1274,7 +1275,7 @@ func TestCommitCancelRecord(t *testing.T) {
 	t.Parallel()
 
 	boom := errors.New("boom")
-	owed := &fabricengine.PushFailedError{Record: fabricengine.FailedPush{Class: fabricengine.PushFailureTransport}, Err: boom}
+	owed := &fabricengine.PushFailedError{Record: fabriclayout.FailedPush{Class: fabriclayout.PushFailureTransport}, Err: boom}
 	tests := []struct {
 		name          string
 		mergeActive   bool

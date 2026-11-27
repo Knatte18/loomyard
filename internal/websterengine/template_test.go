@@ -22,7 +22,7 @@ import (
 
 	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/batcher"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gatefixer"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/runplan"
@@ -108,7 +108,7 @@ func mustImplementerBodyTemplate(t *testing.T, stencilsDir string) []byte {
 }
 
 // testLayout returns the told anchor root and stencils directory for a real t.TempDir() hub.
-// The hub is seeded with webster's stencils at fabricengine.StencilsDir(hub).
+// The hub is seeded with webster's stencils at fabriclayout.StencilsDir(hub).
 // Prompt renders that do not exercise pattern_directive's active branch use this fixture.
 // The anchor root's worktree subdirectory is never created on disk.
 // Its absence means pattern.Directive's stat on the PATTERN.md path always resolves PATTERN inactive.
@@ -117,12 +117,12 @@ func testLayout(t *testing.T) (anchorRoot, stencilsDir string) {
 	t.Helper()
 	hub := t.TempDir()
 	seedHubStencils(t, hub)
-	return filepath.Join(hub, "worktree"), fabricengine.StencilsDir(hub)
+	return filepath.Join(hub, "worktree"), fabriclayout.StencilsDir(hub)
 }
 
 // patternActiveLayout returns the told anchor root and stencils directory for a real t.TempDir() hub.
 // A real PATTERN.md file sits directly under the returned root, so pattern.Directive returns non-empty.
-// The hub is seeded with webster's stencils at fabricengine.StencilsDir(hub).
+// The hub is seeded with webster's stencils at fabriclayout.StencilsDir(hub).
 func patternActiveLayout(t *testing.T) (anchorRoot, stencilsDir string) {
 	t.Helper()
 	hub := t.TempDir()
@@ -134,7 +134,7 @@ func patternActiveLayout(t *testing.T) (anchorRoot, stencilsDir string) {
 	if err := os.WriteFile(filepath.Join(dir, "PATTERN.md"), []byte("# PATTERN\n\nsome constraints\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(PATTERN.md) = %v", err)
 	}
-	return filepath.Join(hub, "worktree"), fabricengine.StencilsDir(hub)
+	return filepath.Join(hub, "worktree"), fabriclayout.StencilsDir(hub)
 }
 
 // frictionActiveLayout returns the told anchor root and stencils directory for a real t.TempDir() hub.
@@ -144,7 +144,7 @@ func frictionActiveLayout(t *testing.T) (anchorRoot, stencilsDir string) {
 	t.Helper()
 	hub := t.TempDir()
 	seedHubStencils(t, hub)
-	return filepath.Join(hub, "worktree"), fabricengine.StencilsDir(hub)
+	return filepath.Join(hub, "worktree"), fabriclayout.StencilsDir(hub)
 }
 
 // patternActiveMissingPatternStencilsLayout returns a PATTERN-active anchor root and stencils directory.
@@ -262,7 +262,7 @@ func forkTemplateMarkerValues() map[string]string {
 		"self_fix_cap":       "2",
 		"worktree_root":      "/worktree",
 		"prev_digest":        "01-json-flag: done head_sha=abc123",
-		"specs_dir":          "/hub/repo/" + fabricengine.BoltDirName + "/_lym/specs",
+		"specs_dir":          "/hub/repo/" + fabriclayout.BoltDirName + "/_lym/specs",
 		"gate_tiers":         "- tier1: unit tests of `x`",
 		"rename_tools":       "- rename `y` through the language server",
 		"outcome_path":       testOutcomePath,

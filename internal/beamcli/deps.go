@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -41,7 +42,7 @@ func hubCreateDeps(prime *lymcwd.Location) (createDeps, error) {
 		return createDeps{}, err
 	}
 	topology := fabricengine.NewTopology(config)
-	boardDir := fabricengine.BoardDir(prime.HubPath)
+	boardDir := fabriclayout.BoardDir(prime.HubPath)
 
 	return createDeps{
 		PrimeName:  prime.WorktreeName,
@@ -93,17 +94,17 @@ func hubLandDeps(prime *lymcwd.Location) landDeps {
 		return lymcwd.ResolveWorktree(fabricengine.WorktreePath(prime, slug))
 	}
 	// beamOrigin returns the beam's location with the origin record of its pair.
-	beamOrigin := func(slug string) (*lymcwd.Location, fabricengine.Origin, error) {
+	beamOrigin := func(slug string) (*lymcwd.Location, fabriclayout.Origin, error) {
 		beam, err := beamOf(slug)
 		if err != nil {
-			return nil, fabricengine.Origin{}, err
+			return nil, fabriclayout.Origin{}, err
 		}
 		origin, found, err := fabricengine.ReadOriginFor(prime, slug)
 		if err != nil {
-			return nil, fabricengine.Origin{}, err
+			return nil, fabriclayout.Origin{}, err
 		}
 		if !found {
-			return nil, fabricengine.Origin{}, fmt.Errorf("the pair of the beam %s has no readable origin record; way forward: run `lym fabric reconcile` to restore its records worktree, then run the verb again", slug)
+			return nil, fabriclayout.Origin{}, fmt.Errorf("the pair of the beam %s has no readable origin record; way forward: run `lym fabric reconcile` to restore its records worktree, then run the verb again", slug)
 		}
 		return beam, origin, nil
 	}
@@ -189,13 +190,13 @@ func hubLandDeps(prime *lymcwd.Location) landDeps {
 		Machine:  machinename.Name,
 		Identity: machinename.ReadIdentity,
 		ReadOwners: func() (boardengine.Owners, error) {
-			return boardengine.ReadOwners(fabricengine.BoardDir(prime.HubPath))
+			return boardengine.ReadOwners(fabriclayout.BoardDir(prime.HubPath))
 		},
 		ParentOf: func(slug string) (string, error) {
 			return hubgeom.ParentOf(prime, slug)
 		},
 		PairPresent: func(slug string) bool { return pairWorktreePresent(prime, slug) },
-		OriginRecord: func(slug string) (fabricengine.Origin, bool, error) {
+		OriginRecord: func(slug string) (fabriclayout.Origin, bool, error) {
 			return fabricengine.ReadOriginFor(prime, slug)
 		},
 		ChildStatus: func(slug string) (shedengine.Status, bool, error) {
@@ -263,7 +264,7 @@ func hubLandDeps(prime *lymcwd.Location) landDeps {
 		},
 		Now: time.Now,
 		Tasks: func() ([]boardengine.Task, error) {
-			return boardengine.ReadTasks(fabricengine.BoardDir(prime.HubPath))
+			return boardengine.ReadTasks(fabriclayout.BoardDir(prime.HubPath))
 		},
 		// The board gives a new task the draft status, so the filing releases it with a second write.
 		// The writes carry no strand name, so the run-agent task guard does not judge them.
@@ -366,7 +367,7 @@ func hubLandDeps(prime *lymcwd.Location) landDeps {
 				return "", err
 			}
 			// A beam verb may run inside the beam's pair, so a hand-over leaves the pair for the parent's dobby to remove.
-			push := pairteardown.RunPush{LockWait: fabricengine.StatusPushLockWait, InsidePair: true}
+			push := pairteardown.RunPush{LockWait: fabriclayout.StatusPushLockWait, InsidePair: true}
 			if _, err := pairteardown.PushRun(prime, beam, slug, push); err != nil {
 				return "", err
 			}

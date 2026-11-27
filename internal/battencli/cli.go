@@ -178,6 +178,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -257,7 +258,7 @@ type battenCLI struct {
 	pairStart func(parent string) error
 	// reconcile runs the run-scope origin reconcile of a slug that the pre-run resumes.
 	// Nil reads as no reconcile, which only a hand-populated receiver has.
-	reconcile func(slug string) (fabricengine.OriginReport, error)
+	reconcile func(slug string) (fabriclayout.OriginReport, error)
 	// catchUp runs the catch-up from origin over this pass's own run, before a pass that is not a continue pass resumes.
 	// Nil reads as no catch-up, which only a hand-populated receiver has.
 	catchUp func() (dobbyengine.CatchUpReport, error)
@@ -458,7 +459,7 @@ Example:
 // Command returns the cobra command tree for the batten module.
 func Command() *cobra.Command {
 	c := &battenCLI{spec: &shedverbs.Spec{}, reconcileOptions: fabricengine.RunStartReconcileOptions()}
-	c.reconcile = func(slug string) (fabricengine.OriginReport, error) {
+	c.reconcile = func(slug string) (fabriclayout.OriginReport, error) {
 		return reconcileRun(c.location, slug, false, c.reconcileOptions)
 	}
 
@@ -482,7 +483,7 @@ finish, and with --remove also removes its pair and task branches and deletes it
 
 Every verb runs from the hub's prime worktree and from any beam: they refuse when
 invoked from a task worktree that is not a beam, from the pair's fabric sibling, or
-from ` + fabricengine.BoltDirName + `.
+from ` + fabriclayout.BoltDirName + `.
 
 Example:
   lym batten run some-slug
@@ -795,7 +796,7 @@ type FirstPassOptions struct {
 // The run's own driver lock, inside the pass, refuses a second driver.
 func StartFirstPass(location *lymcwd.Location, slug string, opts FirstPassOptions) (map[string]any, error) {
 	c := &battenCLI{spec: &shedverbs.Spec{}, firstPassAnchor: opts.Anchor, reconcileOptions: fabricengine.RunStartReconcileOptions()}
-	c.reconcile = func(slug string) (fabricengine.OriginReport, error) {
+	c.reconcile = func(slug string) (fabriclayout.OriginReport, error) {
 		return reconcileRun(c.location, slug, false, c.reconcileOptions)
 	}
 	armed, err := c.armAt(location, slug, true, "run")

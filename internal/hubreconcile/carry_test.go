@@ -13,13 +13,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // carryHub lays out a board dir holding boardJSON, and a prime and one worktree called task-a, under a temp dir.
 // It returns the walk geometry and the hub's code worktrees, the prime first.
-func carryHub(t *testing.T, boardJSON string) (Geometry, []fabricengine.CodeWorktree) {
+func carryHub(t *testing.T, boardJSON string) (Geometry, []fabriclayout.CodeWorktree) {
 	t.Helper()
 	hub := t.TempDir()
 	geom := Geometry{BoardDir: filepath.Join(hub, "board")}
@@ -33,7 +33,7 @@ func carryHub(t *testing.T, boardJSON string) (Geometry, []fabricengine.CodeWork
 	if err := os.WriteFile(filepath.Join(geom.BoardDir, "board.json"), []byte(boardJSON), 0o644); err != nil {
 		t.Fatalf("WriteFile(board.json) = %v; want nil", err)
 	}
-	return geom, []fabricengine.CodeWorktree{{Path: prime, Anchor: prime, Main: true}, {Path: task, Anchor: task}}
+	return geom, []fabriclayout.CodeWorktree{{Path: prime, Anchor: prime, Main: true}, {Path: task, Anchor: task}}
 }
 
 // TestCarryMovedRunSettings_FailedBoardWriteIsSkippedAndLeavesTheBoard pins when the carry leaves board.json alone.

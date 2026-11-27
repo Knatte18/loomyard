@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -35,7 +35,7 @@ type guardedRow struct {
 var guardedRows = []guardedRow{
 	{finalizeName, func(t *testing.T, deps Deps) guardedRowFixture {
 		res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
-		merger := &recordingParentMerger{results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}}}
+		merger := &recordingParentMerger{results: []mergeCallResult{{result: fabriclayout.MergeResult{Committed: true}}}}
 		fz := &Finalize{deps: deps, resolver: res, guard: newParentGuard(deps), parentOpener: func() (parentMerger, error) { return merger, nil }}
 		return guardedRowFixture{producer: fz, touched: func() bool { return res.called || len(merger.calls) > 0 }}
 	}},
@@ -94,15 +94,15 @@ func TestGuardedRows_LockLifecycle(t *testing.T) {
 				res.result = mergeresolve.Result{Outcome: mergeresolve.OutcomeStuck, Reason: "conflict could not be resolved"}
 			}, shedengine.Stuck, false, false},
 			{"a failed origin reconcile is an error", func(deps *Deps, _ *recordingResolver, _ *recordingParentMerger) {
-				deps.Reconcile = func() (fabricengine.OriginReport, error) {
-					return fabricengine.OriginReport{}, errors.New("ls-remote failed")
+				deps.Reconcile = func() (fabriclayout.OriginReport, error) {
+					return fabriclayout.OriginReport{}, errors.New("ls-remote failed")
 				}
 			}, "", false, true},
 		}
 		for _, tt := range tests {
 			deps := newTestDeps(t)
 			res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
-			merger := &recordingParentMerger{results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}}}
+			merger := &recordingParentMerger{results: []mergeCallResult{{result: fabriclayout.MergeResult{Committed: true}}}}
 			tt.setup(&deps, res, merger)
 			fz := &Finalize{deps: deps, resolver: res, guard: newParentGuard(deps), parentOpener: func() (parentMerger, error) { return merger, nil }}
 

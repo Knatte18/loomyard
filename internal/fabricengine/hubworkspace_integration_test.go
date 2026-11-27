@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -165,13 +166,13 @@ func assertNoWorkspaceFile(t *testing.T, h *hubforge.Hub) {
 }
 
 // recordedFileWrite reports whether rec holds a file_written entry for path.
-func recordedFileWrite(rec *fabricengine.Mutations, hubPath, path string) bool {
+func recordedFileWrite(rec recordEntries, hubPath, path string) bool {
 	rel, err := filepath.Rel(hubPath, path)
 	if err != nil {
 		return false
 	}
 	for _, m := range rec.Entries() {
-		if m.Kind == fabricengine.KindFileWritten && m.Target == filepath.ToSlash(rel) {
+		if m.Kind == fabriclayout.KindFileWritten && m.Target == filepath.ToSlash(rel) {
 			return true
 		}
 	}
@@ -281,7 +282,7 @@ func TestRegenerateHubWorkspace(t *testing.T) {
 	t.Run("ListsFolderAddedWhileWaitingForTheLock", func(t *testing.T) {
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		l := *h.Location
-		hubScratch := fabricengine.HubScratchDir(h.Path)
+		hubScratch := fabriclayout.HubScratchDir(h.Path)
 		if err := os.MkdirAll(hubScratch, 0o755); err != nil {
 			t.Fatalf("create scratch dir: %v", err)
 		}
@@ -505,7 +506,7 @@ func TestRegenerateHubWorkspace(t *testing.T) {
 		t.Parallel()
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		hubforge.AddPairWith(t, h, "b", beamAddOptions)
-		if err := os.Remove(filepath.Join(h.BoardDir(), fabricengine.ShortnameFileName)); err != nil {
+		if err := os.Remove(filepath.Join(h.BoardDir(), fabriclayout.ShortnameFileName)); err != nil {
 			t.Fatalf("remove the shortname record: %v", err)
 		}
 
@@ -598,7 +599,7 @@ func TestRegenerateHubWorkspace(t *testing.T) {
 			t.Fatalf("delete the origin record by hand: %v", err)
 		}
 		rec := fabricengine.NewMutations(h.Path)
-		if err := fabricengine.WriteOrigin(rec, l, "emptyparent", fabricengine.Origin{ParentBranch: primeBranch(t, h)}); err != nil {
+		if err := fabricengine.WriteOrigin(rec, l, "emptyparent", fabriclayout.Origin{ParentBranch: primeBranch(t, h)}); err != nil {
 			t.Fatalf("rewrite the origin record with an empty parent worktree: %v", err)
 		}
 		if err := os.RemoveAll(filepath.Join(h.PairRecordsSibling("nolock"), ".weft")); err != nil {
@@ -707,7 +708,7 @@ func TestRegenerateHubWorkspace(t *testing.T) {
 	t.Run("RecreatesTheScratchDirAndRecordsTheLockFileOnce", func(t *testing.T) {
 		t.Parallel()
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-		if err := os.RemoveAll(fabricengine.HubScratchDir(h.Path)); err != nil {
+		if err := os.RemoveAll(fabriclayout.HubScratchDir(h.Path)); err != nil {
 			t.Fatalf("remove the scratch dir: %v", err)
 		}
 		lockPath := fabricengine.HubWorkspaceLockPath(h.Path)
@@ -763,7 +764,7 @@ func TestRegenerateHubWorkspace(t *testing.T) {
 		t.Parallel()
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		removeWorkspaceFile(t, h)
-		if err := os.MkdirAll(fabricengine.HubScratchDir(h.Path), 0o755); err != nil {
+		if err := os.MkdirAll(fabriclayout.HubScratchDir(h.Path), 0o755); err != nil {
 			t.Fatalf("create scratch dir: %v", err)
 		}
 		lockPath := fabricengine.HubWorkspaceLockPath(h.Path)

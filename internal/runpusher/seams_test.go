@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
@@ -90,7 +91,7 @@ func TestHandedOver_ReadsTheMarkOfTheRun(t *testing.T) {
 		t.Errorf("handedOver() with no mark = %v, %v; want false, nil", marked, err)
 	}
 
-	mark := fabricengine.HandOverMark{Machine: "oslo", At: "2026-11-15T09:00:00Z", Written: time.Now()}
+	mark := fabriclayout.HandOverMark{Machine: "oslo", At: "2026-11-15T09:00:00Z", Written: time.Now()}
 	if err := fabricengine.WriteHandOverMark(target.Location.HubPath, target.Slug, mark); err != nil {
 		t.Fatalf("write the hand-over mark: %v", err)
 	}

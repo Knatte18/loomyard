@@ -14,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/configsync"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -22,7 +23,7 @@ import (
 // CloneAndWireFromLocalBares clones a hub named shortname under container from two local bare repositories and wires it.
 // It returns the hub's path and its prime's cwd; the clone is left intact on error, as CloneAndWire leaves it.
 func CloneAndWireFromLocalBares(container, codeBare, recordsBare, shortname string) (hubPath, primeCwd string, err error) {
-	res, err := CloneAndWire(container, fabricengine.CloneOptions{
+	res, err := CloneAndWire(container, fabriclayout.CloneOptions{
 		WarpURL:   codeBare,
 		WeftURL:   recordsBare,
 		Shortname: shortname,
@@ -35,7 +36,7 @@ func CloneAndWireFromLocalBares(container, codeBare, recordsBare, shortname stri
 // The clone seeds the hub's records and board into origin under its records namespace.
 // It returns the hub's path and its prime's cwd; the clone is left intact on error, as CloneAndWire leaves it.
 func CloneAndWireFromLocalOrigin(container, origin, shortname string) (hubPath, primeCwd string, err error) {
-	res, err := CloneAndWire(container, fabricengine.CloneOptions{
+	res, err := CloneAndWire(container, fabriclayout.CloneOptions{
 		WeftURL:    origin,
 		Shortname:  shortname,
 		SingleRepo: true,
@@ -58,7 +59,7 @@ func CloneAndWireFromLocalOrigin(container, origin, shortname string) (hubPath, 
 //
 // On error, the clone is left intact, and the operator completes the wiring with `lym fabric reconcile`.
 // The result's Mutations records every change the call made.
-func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.CloneResult, err error) {
+func CloneAndWire(cwd string, opts fabriclayout.CloneOptions) (res fabricengine.CloneResult, err error) {
 	res, err = fabricengine.CloneHub(cwd, opts)
 	if err != nil {
 		return res, err
@@ -75,10 +76,10 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.
 	}
 	for _, hubWideResult := range hubWideResults {
 		if hubWideResult.Applied {
-			rec.Append(fabricengine.KindFileWritten, configengine.ConfigFile(res.BoardDir, hubWideResult.Module), "")
+			rec.Append(fabriclayout.KindFileWritten, configengine.ConfigFile(res.BoardDir, hubWideResult.Module), "")
 		}
 		if hubWideResult.WroteTemplateBase {
-			rec.Append(fabricengine.KindFileWritten, configengine.TemplateBaseFile(res.BoardDir, hubWideResult.Module), "")
+			rec.Append(fabriclayout.KindFileWritten, configengine.TemplateBaseFile(res.BoardDir, hubWideResult.Module), "")
 		}
 	}
 	b := fabricengine.NewBolt(res.BoardDir)
@@ -87,7 +88,7 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.
 		return fabricengine.CloneResult{}, fabricengine.AbandonSeededClone(res, rec, err)
 	}
 	if committed {
-		rec.Append(fabricengine.KindCommitCreated, res.BoardDir, sha)
+		rec.Append(fabriclayout.KindCommitCreated, res.BoardDir, sha)
 	}
 	// The push records no branch_pushed entry, and that is deliberate.
 	// The push returns nil both when a push landed and when nothing was unpushed.
@@ -125,7 +126,7 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.
 	var relPaths []string
 	for _, r := range results {
 		if r.Applied && r.Layer == configengine.LayerWorktree {
-			rec.Append(fabricengine.KindFileWritten, configengine.ConfigFile(res.WeftBase, r.Module), "")
+			rec.Append(fabriclayout.KindFileWritten, configengine.ConfigFile(res.WeftBase, r.Module), "")
 			relPaths = append(relPaths, configengine.ConfigFileRel(r.Module))
 		}
 	}
@@ -159,7 +160,7 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.
 	}
 	for _, module := range absentDefaults {
 		if _, statErr := os.Stat(configengine.ConfigFile(res.BoardDir, module)); statErr == nil {
-			rec.Append(fabricengine.KindFileWritten, configengine.ConfigFile(res.BoardDir, module), "")
+			rec.Append(fabriclayout.KindFileWritten, configengine.ConfigFile(res.BoardDir, module), "")
 		}
 	}
 
@@ -220,7 +221,7 @@ func runCloneWithReset(ctx context.Context, out io.Writer, args []string, reset 
 		warpURL = args[1]
 	}
 
-	res, err := CloneAndWire(cloneDestination(cwd, into), fabricengine.CloneOptions{
+	res, err := CloneAndWire(cloneDestination(cwd, into), fabriclayout.CloneOptions{
 		WeftURL:        weftURL,
 		WarpURL:        warpURL,
 		Subpath:        subpath,

@@ -21,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardserve"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -103,7 +104,7 @@ Takes no argument, and is refused from a run's agent session.`,
 func serveOptions(boardConfig boardengine.Config, hub string) boardserve.Options {
 	boardConfig.StrandName = ""
 	return boardserve.Options{
-		Paths:     boardserve.Paths(fabricengine.HubScratchDir(hub)),
+		Paths:     boardserve.Paths(fabriclayout.HubScratchDir(hub)),
 		Board:     boardengine.New(boardConfig),
 		BoardPath: boardConfig.Path,
 		LockWait:  boardserve.DefaultLockWait,
@@ -111,7 +112,7 @@ func serveOptions(boardConfig boardengine.Config, hub string) boardserve.Options
 		PollBound: boardserve.DefaultPollBound,
 		Log:       os.Stderr,
 		Register: func() error {
-			return runproc.Register(fabricengine.RunProcDir(hub), runproc.HubOwner, runproc.SelfRecord(runproc.RoleBoardServer))
+			return runproc.Register(fabriclayout.RunProcDir(hub), runproc.HubOwner, runproc.SelfRecord(runproc.RoleBoardServer))
 		},
 		Replaced: selfexec.New().Replaced,
 		Watch:    boardserve.WatchDirectory,
@@ -155,7 +156,7 @@ Output:
 // A named agent session, such as an orch's, waits on the opener only as long as its keep-warm cap allows.
 func productionOpenDeps(resolved *lymcwd.Location) openDeps {
 	deps := openDeps{
-		Paths: boardserve.Paths(fabricengine.HubScratchDir(resolved.HubPath)),
+		Paths: boardserve.Paths(fabriclayout.HubScratchDir(resolved.HubPath)),
 		Prime: func() (string, error) {
 			prime, err := fabricengine.PrimeName(resolved)
 			if err != nil {

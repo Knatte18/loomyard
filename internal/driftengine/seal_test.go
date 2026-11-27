@@ -10,7 +10,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -43,7 +43,7 @@ func commitBaselineDigest(t *testing.T, d Deps) {
 	if err != nil {
 		t.Fatalf("BaselineDigest() = %v; want nil", err)
 	}
-	if err := d.CommitWithTrailers(nil, []fabricengine.Trailer{{Key: BaselineTrailerKey, Value: digest}}); err != nil {
+	if err := d.CommitWithTrailers(nil, []fabriclayout.Trailer{{Key: BaselineTrailerKey, Value: digest}}); err != nil {
 		t.Fatalf("commit the baseline digest: %v", err)
 	}
 }
@@ -86,7 +86,7 @@ func TestSealAndBaseline(t *testing.T) {
 			name: "SealCopyFailingItsOwnHashFaultsDiscard", current: "Drift-Verify",
 			setup: func(t *testing.T, _ *commitStore, d Deps) Records {
 				writeFileString(t, d.Paths.Expected, expected)
-				if err := d.CommitWithTrailers([]string{durableRel(expectedFileName)}, []fabricengine.Trailer{{Key: SealTrailerKey, Value: "not-the-hash"}}); err != nil {
+				if err := d.CommitWithTrailers([]string{durableRel(expectedFileName)}, []fabriclayout.Trailer{{Key: SealTrailerKey, Value: "not-the-hash"}}); err != nil {
 					t.Fatalf("commit the bad seal: %v", err)
 				}
 				return Records{}
@@ -150,7 +150,7 @@ func TestSealAndBaseline(t *testing.T) {
 		t.Parallel()
 		store, d := sealDeps(t, "Drift-Verify")
 		writeFileString(t, d.Paths.Expected, expected)
-		extra := fabricengine.Trailer{Key: BaselineTrailerKey, Value: "digest"}
+		extra := fabriclayout.Trailer{Key: BaselineTrailerKey, Value: "digest"}
 		if err := SealExpectation(d, extra); err != nil {
 			t.Fatalf("SealExpectation() = %v; want nil", err)
 		}
@@ -160,7 +160,7 @@ func TestSealAndBaseline(t *testing.T) {
 		if _, found := store.commits[0].files[durableRel(expectedFileName)]; !found || len(store.commits[0].files) != 1 {
 			t.Fatalf("SealExpectation() committed %d files; want the expectation alone", len(store.commits[0].files))
 		}
-		want := []fabricengine.Trailer{{Key: SealTrailerKey, Value: sealDigest([]byte(expected))}, extra}
+		want := []fabriclayout.Trailer{{Key: SealTrailerKey, Value: sealDigest([]byte(expected))}, extra}
 		if diff := cmp.Diff(want, store.commits[0].trailers); diff != "" {
 			t.Errorf("commit trailers mismatch (-want +got):\n%s", diff)
 		}

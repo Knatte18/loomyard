@@ -15,7 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/driftengine"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -308,8 +308,8 @@ func newTestEnv(t *testing.T) Env {
 			CaptureCurrent: func(context.Context) (driftengine.CurrentCapture, error) {
 				return driftengine.CurrentCapture{Passed: true}, nil
 			},
-			TrailerCommit: func(string, bool) (fabricengine.TrailerCommit, bool, error) {
-				return fabricengine.TrailerCommit{}, false, nil
+			TrailerCommit: func(string, bool) (fabriclayout.TrailerCommit, bool, error) {
+				return fabriclayout.TrailerCommit{}, false, nil
 			},
 			FileAt: func(string, string) ([]byte, bool, error) { return nil, false, nil },
 			Compare: func(context.Context) (driftengine.CompareResult, error) {

@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -184,8 +185,8 @@ func TestRemove_SweepsAnchoredLinksOnSubpathHub(t *testing.T) {
 
 	// The scratch link at the anchor is no junction, so it is unlinked separately and ahead of the warp worktree removal.
 	link, _ := scratchPaths(l, slug)
-	unlinked := mutationIndexes(result.Mutations, fabricengine.KindLinkRemoved, scratchHubRelative(t, l, link))
-	warpRemoved := mutationIndexes(result.Mutations, fabricengine.KindWorktreeRemoved, scratchHubRelative(t, l, fabricengine.WorktreePath(l, slug)))
+	unlinked := mutationIndexes(result.Mutations, fabriclayout.KindLinkRemoved, scratchHubRelative(t, l, link))
+	warpRemoved := mutationIndexes(result.Mutations, fabriclayout.KindWorktreeRemoved, scratchHubRelative(t, l, fabricengine.WorktreePath(l, slug)))
 	if len(unlinked) != 1 || len(warpRemoved) != 1 || unlinked[0] > warpRemoved[0] {
 		t.Errorf("record %+v; want one link_removed at the anchor .scratch ahead of the warp worktree_removed", result.Mutations.Entries())
 	}

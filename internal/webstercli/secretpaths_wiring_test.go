@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -31,8 +31,8 @@ func TestWire_HubLoadsSecretPathsFromFabricYAML(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			hub := t.TempDir()
-			loc := hubLocation(t, hub, fabricengine.BoltDirName, ".")
-			boardDir := fabricengine.BoardDir(hub)
+			loc := hubLocation(t, hub, fabriclayout.BoltDirName, ".")
+			boardDir := fabriclayout.BoardDir(hub)
 			if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
 				t.Fatalf("mkdir config dir: %v", err)
 			}

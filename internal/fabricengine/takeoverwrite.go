@@ -11,6 +11,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -45,14 +46,6 @@ type TakeOverRequest struct {
 	Delays []time.Duration
 	// LockWait is the wait for each teardown lock, and zero means StatusPushLockWait.
 	LockWait time.Duration
-}
-
-// TakeOverResult reports what a takeover did.
-type TakeOverResult struct {
-	// Tags lists the owner archive tags it pushed.
-	Tags []string
-	// Retries counts the pushes it repeated after origin rejected one.
-	Retries int
 }
 
 // takeoverStatusPatch declares the one key of a status file the takeover writes.
@@ -93,7 +86,7 @@ type takeoverBranch struct {
 // It last moves the local branches to origin's tips and drops this machine's hand-over mark of the slug.
 // A fetch or fast-forward error is returned as it is.
 // The entry stays once pushed, and a re-run finds the run's record on origin naming this machine.
-func TakeOverRun(prime *lymcwd.Location, req TakeOverRequest) (TakeOverResult, error) {
+func TakeOverRun(prime *lymcwd.Location, req TakeOverRequest) (fabriclayout.TakeOverResult, error) {
 	hubPath := prime.HubPath
 	parent, parentSlug := req.Parent, primePairSlug
 	if parent == nil {
@@ -103,27 +96,27 @@ func TakeOverRun(prime *lymcwd.Location, req TakeOverRequest) (TakeOverResult, e
 	}
 	lockWait := req.LockWait
 	if lockWait == 0 {
-		lockWait = StatusPushLockWait
+		lockWait = fabriclayout.StatusPushLockWait
 	}
 
 	leaveGate := pauserecord.Admit(pushLockGateOp)
 	defer leaveGate()
 	for _, slug := range []string{req.Slug, parentSlug} {
 		if err := ensureTeardownLockDir(hubPath, slug); err != nil {
-			return TakeOverResult{}, err
+			return fabriclayout.TakeOverResult{}, err
 		}
-		held, acquired, err := lock.AcquireWriteLockWithin(TeardownLockPath(hubPath, slug), lockWait)
+		held, acquired, err := lock.AcquireWriteLockWithin(fabriclayout.TeardownLockPath(hubPath, slug), lockWait)
 		if err != nil {
-			return TakeOverResult{}, fmt.Errorf("take the teardown lock of the pair %q for the takeover of run %q: %w", slug, req.Slug, err)
+			return fabriclayout.TakeOverResult{}, fmt.Errorf("take the teardown lock of the pair %q for the takeover of run %q: %w", slug, req.Slug, err)
 		}
 		if !acquired {
-			return TakeOverResult{}, fmt.Errorf("a push or removal of the pair %q still holds its teardown lock, so the takeover of run %q is not started: %w", slug, req.Slug, ErrPairPushRunning)
+			return fabriclayout.TakeOverResult{}, fmt.Errorf("a push or removal of the pair %q still holds its teardown lock, so the takeover of run %q is not started: %w", slug, req.Slug, ErrPairPushRunning)
 		}
 		defer func() { _ = held.Release() }()
 	}
 
 	rec := NewMutations(hubPath)
-	var result TakeOverResult
+	var result fabriclayout.TakeOverResult
 
 	for _, dir := range []string{req.Pair.WorktreePath(), RecordsWorktree(req.Pair), parent.WorktreePath(), RecordsWorktree(parent)} {
 		if err := gitrepo.New(dir).Fetch(); err != nil {
@@ -174,7 +167,7 @@ func (b *takeoverBranch) land(rec *Mutations, req TakeOverRequest, entry shedeng
 	if err != nil {
 		return err
 	}
-	held, acquired, err := lock.AcquireWriteLockWithin(filepath.Join(lockDir, weftPushLockFile), StatusPushLockWait)
+	held, acquired, err := lock.AcquireWriteLockWithin(filepath.Join(lockDir, weftPushLockFile), fabriclayout.StatusPushLockWait)
 	if err != nil {
 		return fmt.Errorf("take the push lock of %s for the takeover of run %q: %w", b.weft, req.Slug, err)
 	}
@@ -233,7 +226,7 @@ func (b *takeoverBranch) commitEntry(rec *Mutations, slug string, entry shedengi
 		return err
 	}
 	if committed {
-		rec.Append(KindCommitCreated, b.weft, sha)
+		rec.Append(fabriclayout.KindCommitCreated, b.weft, sha)
 	}
 	return nil
 }

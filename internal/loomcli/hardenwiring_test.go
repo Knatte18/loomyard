@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hardenshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -28,7 +29,7 @@ import (
 // seedHardenerConfig writes contents as the hub-wide hardener.yaml in hub's board directory.
 func seedHardenerConfig(t *testing.T, hub, contents string) {
 	t.Helper()
-	path := configengine.ConfigFile(fabricengine.BoardDir(hub), hardenshed.ConfigModule)
+	path := configengine.ConfigFile(fabriclayout.BoardDir(hub), hardenshed.ConfigModule)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(path), err)
 	}
@@ -257,7 +258,7 @@ func TestHardenCampaign_EntryRefusesAnEntryTheHubsBoardLacks(t *testing.T) {
 	t.Parallel()
 
 	loc := hubLocation(t, "pair", ".")
-	boardConfig := configengine.ConfigFile(fabricengine.BoardDir(loc.HubPath), "board")
+	boardConfig := configengine.ConfigFile(fabriclayout.BoardDir(loc.HubPath), "board")
 	if err := os.WriteFile(boardConfig, []byte(boardengine.ConfigTemplate()), 0o644); err != nil {
 		t.Fatalf("WriteFile(%q) = %v; want nil", boardConfig, err)
 	}

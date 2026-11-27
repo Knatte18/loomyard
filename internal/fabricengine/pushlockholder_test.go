@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -123,7 +124,7 @@ func TestCoalesceFlagged_HolderRecordLivesWhileTheLockIsHeld(t *testing.T) {
 		}
 		return false, nil
 	}
-	acquired, err := coalesceFlagged(f.lockDir, map[string]PushSpawn{pushSideRecords: {WeftPath: f.records}}, lock.TryAcquireWriteLock, step)
+	acquired, err := coalesceFlagged(f.lockDir, map[string]fabriclayout.PushSpawn{pushSideRecords: {WeftPath: f.records}}, lock.TryAcquireWriteLock, step)
 	if !acquired || err != nil {
 		t.Fatalf("coalesceFlagged() = (%v, %v); want (true, nil)", acquired, err)
 	}

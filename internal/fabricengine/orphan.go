@@ -5,23 +5,11 @@ package fabricengine
 
 import (
 	"fmt"
-	"path/filepath"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
-	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
-
-// orphanFirstSightFileName is the file under the hub's orphan directory that holds each orphan's first-sight time.
-const orphanFirstSightFileName = "first-sight.json"
-
-// OrphanFirstSightPath returns the machine-local record of when the dobby first noticed each orphan pair of the hub:
-// <HubScratchDir(hubPath)>/<lymdirs.OrphanDirName>/first-sight.json.
-// A pair removal does not take it, since it sits under the hub's `.lym` and never in a pair.
-func OrphanFirstSightPath(hubPath string) string {
-	return filepath.Join(HubScratchDir(hubPath), lymdirs.OrphanDirName, orphanFirstSightFileName)
-}
 
 // PairLastCommit returns the newer commit time of the tips checked out in the pair's code and records worktrees.
 // A worktree that is not there counts no commit, so a pair with neither reads the zero time.

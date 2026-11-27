@@ -8,6 +8,7 @@ import (
 	"path"
 	"path/filepath"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -62,7 +63,7 @@ func ReturnToPreviousTransition(pair *lymcwd.Location, slug string) (returned bo
 	}
 	var transitions []gitrepo.LogCommit
 	for _, commit := range commits {
-		if trailerValue(commit.Message, TransitionTrailerKey) != slug {
+		if trailerValue(commit.Message, fabriclayout.TransitionTrailerKey) != slug {
 			continue
 		}
 		transitions = append(transitions, commit)
@@ -74,7 +75,7 @@ func ReturnToPreviousTransition(pair *lymcwd.Location, slug string) (returned bo
 		return false, nil
 	}
 	previous := transitions[1]
-	previousTip := trailerValue(previous.Message, WarpSHATrailerKey)
+	previousTip := trailerValue(previous.Message, fabriclayout.WarpSHATrailerKey)
 	if previousTip == "" {
 		return false, fmt.Errorf("the previous transition %s of %q names no code tip", previous.SHA, slug)
 	}
@@ -95,7 +96,7 @@ func ReturnToPreviousTransition(pair *lymcwd.Location, slug string) (returned bo
 		return false, fmt.Errorf("place the status path of %q under its anchor: %w", slug, err)
 	}
 
-	message := appendTrailerLine(appendWarpSHATrailer(slug+": return to the previous transition", previousTip), TransitionTrailerKey, slug)
+	message := appendTrailerLine(appendWarpSHATrailer(slug+": return to the previous transition", previousTip), fabriclayout.TransitionTrailerKey, slug)
 	_, committed, err := CommitAnchoredPaths(NewMutations(pair.HubPath), pair, []string{statusRel}, message, SyncOptions{})
 	if err != nil {
 		return false, fmt.Errorf("commit the return of %q to its previous transition: %w", slug, err)

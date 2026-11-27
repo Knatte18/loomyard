@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
@@ -204,7 +204,7 @@ func TestLogArchive(t *testing.T) {
 
 			td.archivePairLogs("slug")
 
-			slugDir := filepath.Join(fabricengine.LogArchiveDir(td.prime.HubPath), "slug")
+			slugDir := filepath.Join(fabriclayout.LogArchiveDir(td.prime.HubPath), "slug")
 			entries, err := os.ReadDir(slugDir)
 			if err != nil || len(entries) != 1 {
 				t.Fatalf("ReadDir(%s) = %v, %v; want one entry", slugDir, entries, err)
@@ -235,7 +235,7 @@ func TestLogArchive(t *testing.T) {
 
 			td.archivePairLogs("slug")
 
-			requireArchiveEntries(t, filepath.Join(fabricengine.LogArchiveDir(td.prime.HubPath), "slug"))
+			requireArchiveEntries(t, filepath.Join(fabriclayout.LogArchiveDir(td.prime.HubPath), "slug"))
 			if got := countArchiveLogLines(buf.String(), "WARN", ""); got != 1 {
 				t.Errorf("WARN lines = %d; want 1\n%s", got, buf.String())
 			}

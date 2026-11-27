@@ -19,6 +19,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -688,7 +689,7 @@ func TestGateTest_Scopes(t *testing.T) {
 		}
 		vanished := recorded
 		vanished.ParentBranch = "vanished-parent-branch"
-		rewrite := func(origin fabricengine.Origin) error {
+		rewrite := func(origin fabriclayout.Origin) error {
 			return fabricengine.WriteOrigin(new(fabricengine.Mutations), h.Location, hubforge.TemplatePairSlug, origin)
 		}
 		if err := rewrite(vanished); err != nil {

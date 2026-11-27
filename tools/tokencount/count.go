@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -459,7 +459,7 @@ func archivedSlugs(refs string) map[string][]ArchiveTag {
 		if !ok || fields[1] == "" {
 			continue
 		}
-		slug, ok := fabricengine.ArchiveTagSlug(name)
+		slug, ok := fabriclayout.ArchiveTagSlug(name)
 		if !ok {
 			continue
 		}

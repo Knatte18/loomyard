@@ -13,7 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/darnengine"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/reviewbudget"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"gopkg.in/yaml.v3"
@@ -41,7 +41,7 @@ func TestMergeParent(t *testing.T) {
 		{name: "DoneBeamRefused", slug: "landed", wantErr: []string{"already landed"}},
 		{
 			name: "BeamWithNoParentBranchRefusedNamingReconcile", slug: "b",
-			setup:   func(w *landWorld) { w.origins["b"] = fabricengine.Origin{Beam: true} },
+			setup:   func(w *landWorld) { w.origins["b"] = fabriclayout.Origin{Beam: true} },
 			wantErr: []string{"names no parent branch", "lym fabric reconcile"},
 		},
 		{
@@ -79,7 +79,7 @@ func TestMergeParent(t *testing.T) {
 			setup: func(w *landWorld) {
 				w.owners.Entries[longBeam] = boardengine.OwnerEntry{IsProject: true, Beam: true, Owner: here}
 				w.pairs[longBeam] = true
-				w.origins[longBeam] = fabricengine.Origin{Beam: true, ParentBranch: "main"}
+				w.origins[longBeam] = fabriclayout.Origin{Beam: true, ParentBranch: "main"}
 			},
 			wantTask: longBeam[:boardengine.MaxSlugLength-len(darnengine.MergeTaskSuffix)] + darnengine.MergeTaskSuffix, wantRounds: 1, wantHard: 2,
 		},

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
@@ -32,7 +33,7 @@ func CommittedAnchoredFile(l *lymcwd.Location, relPath string) (data []byte, fou
 		return nil, false, fmt.Errorf("fabricengine: resolve HEAD for %s: %w", relPath, err)
 	}
 
-	scoped := ScopedPathspec(l.AnchorRel, []string{relPath})[0]
+	scoped := fabriclayout.ScopedPathspec(l.AnchorRel, []string{relPath})[0]
 	data, err = repo.FileAtRevision(sha, filepath.ToSlash(scoped))
 	if err != nil {
 		if errors.Is(err, gitrepo.ErrPathNotAtRevision) {
@@ -41,17 +42,6 @@ func CommittedAnchoredFile(l *lymcwd.Location, relPath string) (data []byte, fou
 		return nil, false, fmt.Errorf("fabricengine: read %s at %s: %w", relPath, sha, err)
 	}
 	return data, true, nil
-}
-
-// AnchoredFileVersion is one committed version of an anchored file on the records branch's first-parent line.
-type AnchoredFileVersion struct {
-	// SHA is the full object name of the commit that changed the file.
-	SHA string
-	// Position is that commit's first-parent position on the records branch:
-	// the number of first-parent steps from the branch's root commit, so the root is 0 and each later commit is one more.
-	Position int
-	// Data is the file's contents at that commit.
-	Data []byte
 }
 
 // AnchoredFileFirstParentHistory returns relPath's contents at each records-branch first-parent commit that changed it.
@@ -65,12 +55,12 @@ type AnchoredFileVersion struct {
 // A path with no history, or an unborn HEAD, returns an empty slice and a nil error;
 // every other failure is an error naming the path.
 // It is read-only, so the Fabric Git Invariant exempts it from the commit seam.
-func AnchoredFileFirstParentHistory(l *lymcwd.Location, relPath string) ([]AnchoredFileVersion, error) {
+func AnchoredFileFirstParentHistory(l *lymcwd.Location, relPath string) ([]fabriclayout.AnchoredFileVersion, error) {
 	all, err := recordsFirstParentCommits(l)
 	if err != nil {
 		return nil, fmt.Errorf("fabricengine: list history for %s: %w", relPath, err)
 	}
-	versions := []AnchoredFileVersion{}
+	versions := []fabriclayout.AnchoredFileVersion{}
 	if len(all) == 0 {
 		return versions, nil
 	}
@@ -80,7 +70,7 @@ func AnchoredFileFirstParentHistory(l *lymcwd.Location, relPath string) ([]Ancho
 	}
 
 	repo := gitrepo.New(RecordsWorktree(l))
-	scoped := filepath.ToSlash(ScopedPathspec(l.AnchorRel, []string{relPath})[0])
+	scoped := filepath.ToSlash(fabriclayout.ScopedPathspec(l.AnchorRel, []string{relPath})[0])
 	changed, err := repo.Log(all[0].SHA, gitrepo.LogQuery{FirstParent: true, PathPrefix: scoped})
 	if err != nil {
 		return nil, fmt.Errorf("fabricengine: list commits that changed %s: %w", relPath, err)
@@ -93,7 +83,7 @@ func AnchoredFileFirstParentHistory(l *lymcwd.Location, relPath string) ([]Ancho
 			}
 			return nil, fmt.Errorf("fabricengine: read %s at %s: %w", relPath, commit.SHA, err)
 		}
-		versions = append(versions, AnchoredFileVersion{SHA: commit.SHA, Position: positions[commit.SHA], Data: data})
+		versions = append(versions, fabriclayout.AnchoredFileVersion{SHA: commit.SHA, Position: positions[commit.SHA], Data: data})
 	}
 	return versions, nil
 }
@@ -109,7 +99,7 @@ func AnchoredFileFirstParentHistory(l *lymcwd.Location, relPath string) ([]Ancho
 // It is read-only, so the Fabric Git Invariant exempts it from the commit seam.
 func CommittedAnchoredFileHistory(l *lymcwd.Location, relPath string) ([][]byte, error) {
 	repo := gitrepo.New(RecordsWorktree(l))
-	scoped := filepath.ToSlash(ScopedPathspec(l.AnchorRel, []string{relPath})[0])
+	scoped := filepath.ToSlash(fabriclayout.ScopedPathspec(l.AnchorRel, []string{relPath})[0])
 
 	revisions, err := repo.PathRevisions(scoped, 0)
 	if err != nil {

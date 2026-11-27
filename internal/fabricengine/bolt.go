@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -66,12 +67,12 @@ func (b *Bolt) CommitWritten(message string, write func() ([]string, error), opt
 	if err != nil {
 		return "", false, err
 	}
-	return repo.StageAndCommit(message, ScopedPathspec(".", stageable))
+	return repo.StageAndCommit(message, fabriclayout.ScopedPathspec(".", stageable))
 }
 
 // acquireWriteLock takes the board write lock of the Bolt's checkout, waiting while another holder has it.
 func (b *Bolt) acquireWriteLock() (*lock.FileLock, error) {
-	path, err := BoltLockPath(b.path, BoardWriteLockFile)
+	path, err := BoltLockPath(b.path, fabriclayout.BoardWriteLockFile)
 	if err != nil {
 		return nil, err
 	}
@@ -121,7 +122,7 @@ func (b *Bolt) Push(opts SyncOptions) error {
 	rec := NewMutations(filepath.Dir(b.path))
 	err := b.PushRecorded(opts, rec)
 	for _, entry := range rec.Snapshot().Entries() {
-		if entry.Kind == KindCommitsDropped {
+		if entry.Kind == fabriclayout.KindCommitsDropped {
 			logger.Info("fabricengine: dropped seed commits from the board at push", "path", b.path, "commits", entry.Detail)
 		}
 	}
@@ -143,12 +144,12 @@ func (b *Bolt) PushRecorded(opts SyncOptions, rec *Mutations) error {
 		return nil
 	}
 	retry := func() (bool, error) { return retryBoltPush(rec, b.path) }
-	return pushClassified(rec, filepath.Dir(b.path), failedPushSideBolt, b.path, opts, retry)
+	return pushClassified(rec, filepath.Dir(b.path), fabriclayout.RepoBolt, b.path, opts, retry)
 }
 
 // Sync drives step to completion under an absorbing push lock, looping while step reports progress.
 func (b *Bolt) Sync(step func() (progressed bool, err error)) error {
-	lockPath, err := BoltLockPath(b.path, BoardPushLockFile)
+	lockPath, err := BoltLockPath(b.path, fabriclayout.BoardPushLockFile)
 	if err != nil {
 		return err
 	}
@@ -168,35 +169,11 @@ func (b *Bolt) HasUncommitted() (bool, error) {
 	return len(changed) > 0, err
 }
 
-// BoltSkip names why a pull-first write did not run: Bolt could not be brought up to date.
-// The empty value means Bolt is up to date and the writes ran.
-type BoltSkip string
-
-const (
-	// BoltSkipFetchFailed means the fetch from the remote failed.
-	BoltSkipFetchFailed BoltSkip = "fetch_failed"
-	// BoltSkipDiverged means Bolt holds commits the moved upstream lacks and they could not be replayed onto it.
-	BoltSkipDiverged BoltSkip = "diverged"
-	// BoltSkipDirty means an uncommitted change in Bolt blocked bringing it up to date.
-	BoltSkipDirty BoltSkip = "dirty"
-)
-
 // BoltWrite is one write and the commit message for its paths.
 // Write returns the board-relative paths it wrote or deleted, and they are committed under Message.
 type BoltWrite struct {
 	Message string
 	Write   func() ([]string, error)
-}
-
-// BoltWriteResult reports the outcome of a pull-first write sequence.
-// SHAs lists the landed commits in order, and Committed is true when any landed.
-// A non-empty Skipped means no write ran, and SkipDetail names the way forward.
-type BoltWriteResult struct {
-	MutationRecord
-	SHAs       []string
-	Committed  bool
-	Skipped    BoltSkip
-	SkipDetail string
 }
 
 // PullThenCommitWritten brings Bolt up to date with its upstream.
@@ -212,12 +189,12 @@ type BoltWriteResult struct {
 // A path that no longer exists stages its deletion and is not recorded as a written file.
 // A path HEAD does not hold either is left out of the commit.
 // It never pushes.
-func (b *Bolt) PullThenCommitWritten(writes []BoltWrite, rec *Mutations) (res BoltWriteResult, err error) {
+func (b *Bolt) PullThenCommitWritten(writes []BoltWrite, rec *Mutations) (res fabriclayout.BoltWriteResult, err error) {
 	leaveGate := pauserecord.Admit(pushLockGateOp)
 	defer leaveGate()
 	l, err := b.acquireWriteLock()
 	if err != nil {
-		return BoltWriteResult{}, err
+		return fabriclayout.BoltWriteResult{}, err
 	}
 	defer func() { _ = l.Release() }()
 
@@ -225,10 +202,10 @@ func (b *Bolt) PullThenCommitWritten(writes []BoltWrite, rec *Mutations) (res Bo
 
 	skip, detail, err := b.pullFirst(rec)
 	if err != nil {
-		return BoltWriteResult{}, err
+		return fabriclayout.BoltWriteResult{}, err
 	}
 	if skip != "" {
-		return BoltWriteResult{Skipped: skip, SkipDetail: detail}, nil
+		return fabriclayout.BoltWriteResult{Skipped: skip, SkipDetail: detail}, nil
 	}
 
 	repo := gitrepo.New(b.path)
@@ -242,7 +219,7 @@ func (b *Bolt) PullThenCommitWritten(writes []BoltWrite, rec *Mutations) (res Bo
 			if _, err := os.Lstat(abs); errors.Is(err, fs.ErrNotExist) {
 				continue
 			}
-			rec.Append(KindFileWritten, abs, "")
+			rec.Append(fabriclayout.KindFileWritten, abs, "")
 		}
 		stageable, err := stageablePaths(repo, b.path, paths)
 		if err != nil {
@@ -251,12 +228,12 @@ func (b *Bolt) PullThenCommitWritten(writes []BoltWrite, rec *Mutations) (res Bo
 		if len(stageable) == 0 {
 			continue
 		}
-		sha, committed, err := repo.StageAndCommit(write.Message, ScopedPathspec(".", stageable))
+		sha, committed, err := repo.StageAndCommit(write.Message, fabriclayout.ScopedPathspec(".", stageable))
 		if err != nil {
 			return res, err
 		}
 		if committed {
-			rec.Append(KindCommitCreated, b.path, sha)
+			rec.Append(fabriclayout.KindCommitCreated, b.path, sha)
 			res.SHAs = append(res.SHAs, sha)
 			res.Committed = true
 		}
@@ -270,7 +247,7 @@ func (b *Bolt) PullThenCommitWritten(writes []BoltWrite, rec *Mutations) (res Bo
 // it returns a non-empty skip with a detail naming the way forward.
 // A Bolt with no upstream, and a pull honoring SkipGit, does nothing.
 // It passes the process's pause gate before it takes the board write lock and stays admitted until it returns.
-func (b *Bolt) Pull(opts SyncOptions, rec *Mutations) (BoltSkip, string, error) {
+func (b *Bolt) Pull(opts SyncOptions, rec *Mutations) (fabriclayout.BoltSkip, string, error) {
 	if opts.SkipGit {
 		return "", "", nil
 	}
@@ -299,7 +276,7 @@ func (b *Bolt) Pull(opts SyncOptions, rec *Mutations) (BoltSkip, string, error) 
 // A replay that stops on a conflict skips as diverged, and one an uncommitted change blocks skips as dirty.
 // Each skip is logged at Warn here, once, so no caller repeats the text.
 // A records store whose origin layout cannot be read is an error naming the refspecs to restore, with nothing fetched.
-func (b *Bolt) pullFirst(rec *Mutations) (BoltSkip, string, error) {
+func (b *Bolt) pullFirst(rec *Mutations) (fabriclayout.BoltSkip, string, error) {
 	// A one-repository store that lost its fetch refspecs fetches nothing and still exits clean,
 	// and its upstream then fails to resolve with no way forward; the layout read names one.
 	if _, err := originNamespaceAt(b.path); err != nil {
@@ -320,7 +297,7 @@ func (b *Bolt) pullFirst(rec *Mutations) (BoltSkip, string, error) {
 		if _, upstreamErr := repo.UpstreamSHA(); errors.Is(upstreamErr, gitrepo.ErrNoUpstream) {
 			return "", "", nil
 		}
-		return b.skip(BoltSkipFetchFailed, fmt.Sprintf("fetching %s for the board at %s failed (%v); re-run the command once the remote is reachable", originRemoteName, b.path, err))
+		return b.skip(fabriclayout.BoltSkipFetchFailed, fmt.Sprintf("fetching %s for the board at %s failed (%v); re-run the command once the remote is reachable", originRemoteName, b.path, err))
 	}
 	upstream, err := repo.UpstreamSHA()
 	if errors.Is(err, gitrepo.ErrNoUpstream) {
@@ -347,9 +324,9 @@ func (b *Bolt) pullFirst(rec *Mutations) (BoltSkip, string, error) {
 
 	if len(ahead) == 0 {
 		if err := repo.MergeFFOnly(upstream); err != nil {
-			return b.skip(BoltSkipDirty, b.dirtyDetail(err))
+			return b.skip(fabriclayout.BoltSkipDirty, b.dirtyDetail(err))
 		}
-		rec.Append(KindRepoAdvanced, b.path, upstream)
+		rec.Append(fabriclayout.KindRepoAdvanced, b.path, upstream)
 		return "", "", nil
 	}
 
@@ -364,9 +341,9 @@ func (b *Bolt) pullFirst(rec *Mutations) (BoltSkip, string, error) {
 		b.logReplay(outcome)
 		return "", "", nil
 	case errors.Is(err, ErrReplayDirty):
-		return b.skip(BoltSkipDirty, b.dirtyDetail(err))
+		return b.skip(fabriclayout.BoltSkipDirty, b.dirtyDetail(err))
 	case errors.Is(err, ErrReplayConflict), errors.As(err, &refusal):
-		return b.skip(BoltSkipDiverged, b.divergedDetail(repo, outcome.Conflicts, ahead))
+		return b.skip(fabriclayout.BoltSkipDiverged, b.divergedDetail(repo, outcome.Conflicts, ahead))
 	default:
 		return "", "", err
 	}
@@ -410,7 +387,7 @@ func (b *Bolt) logReplay(outcome ReplayOutcome) {
 }
 
 // skip logs a pull-first skip at Warn and returns it.
-func (b *Bolt) skip(skip BoltSkip, detail string) (BoltSkip, string, error) {
+func (b *Bolt) skip(skip fabriclayout.BoltSkip, detail string) (fabriclayout.BoltSkip, string, error) {
 	logger.Warn("fabricengine: board not brought up to date, nothing written", "skip", string(skip), "detail", detail)
 	return skip, detail, nil
 }
@@ -428,5 +405,5 @@ func (b *Bolt) divergedDetail(repo *gitrepo.Repo, conflicts, localCommits []stri
 		branch = "<branch>"
 	}
 	return fmt.Sprintf("the board at %s holds commits its upstream lacks and could not replay them onto the moved upstream: %s; re-run the command afterwards",
-		b.path, recordsConflictWayForward(b.path, branch, conflicts, localCommits, pushStep(FailedPush{Repo: failedPushSideBolt})))
+		b.path, recordsConflictWayForward(b.path, branch, conflicts, localCommits, pushStep(fabriclayout.FailedPush{Repo: fabriclayout.RepoBolt})))
 }

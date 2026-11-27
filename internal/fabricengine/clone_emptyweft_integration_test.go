@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -38,7 +39,7 @@ func TestCloneHub_EmptyWeftRemoteLeavesPrimaryBranchBorn(t *testing.T) {
 
 	cloneParent := t.TempDir()
 
-	res, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
+	res, err := fabricengine.CloneHub(cloneParent, fabriclayout.CloneOptions{
 		WeftURL:   weftRemote,
 		WarpURL:   warpRemote,
 		Shortname: "tst",
@@ -48,7 +49,7 @@ func TestCloneHub_EmptyWeftRemoteLeavesPrimaryBranchBorn(t *testing.T) {
 	}
 
 	weftPrimary := filepath.Join(res.HubPath, "warp-weft")
-	suffixed := fabricengine.RecordsBranchName("main")
+	suffixed := fabriclayout.RecordsBranchName("main")
 
 	// The ref must exist, not merely be the checked-out name.
 	// An unborn branch is checked out and reports as current, while refs/heads/<branch> resolves to nothing;
@@ -64,7 +65,7 @@ func TestCloneHub_EmptyWeftRemoteLeavesPrimaryBranchBorn(t *testing.T) {
 	// Driving Add itself is impossible here;
 	// the repo-wide fabric.yaml is materialised by the CLI layer through configsync, which fabricengine must never import.
 	gitkit.MustRun(t, weftPrimary, "git", "worktree", "add", "-b",
-		fabricengine.RecordsBranchName("my-task"), filepath.Join(res.HubPath, "my-task-weft"), suffixed)
+		fabriclayout.RecordsBranchName("my-task"), filepath.Join(res.HubPath, "my-task-weft"), suffixed)
 }
 
 // TestCloneHub_NonEmptyWeftRemoteBranchUnchanged asserts that the ordinary clone path does this:
@@ -82,7 +83,7 @@ func TestCloneHub_NonEmptyWeftRemoteBranchUnchanged(t *testing.T) {
 
 	cloneParent := t.TempDir()
 
-	res, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
+	res, err := fabricengine.CloneHub(cloneParent, fabriclayout.CloneOptions{
 		WeftURL: weftRemote,
 		WarpURL: warpRemote,
 		// The weft fixture carries a commit but no .lym-anchor,
@@ -95,7 +96,7 @@ func TestCloneHub_NonEmptyWeftRemoteBranchUnchanged(t *testing.T) {
 	}
 
 	weftPrimary := filepath.Join(res.HubPath, "warp-weft")
-	suffixed := fabricengine.RecordsBranchName("main")
+	suffixed := fabriclayout.RecordsBranchName("main")
 
 	suffixedParentSHA := gitOutput(t, weftPrimary, "rev-parse", "refs/heads/"+suffixed+"^")
 	clonedSHA := gitOutput(t, weftPrimary, "rev-parse", "refs/remotes/origin/main")

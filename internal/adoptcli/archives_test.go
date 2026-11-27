@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -25,13 +25,13 @@ func TestRunArchives(t *testing.T) {
 		"t2":    {IsTask: true},
 	}}
 	parents := map[string]string{"t2": "alpha"}
-	archive := func(slug, side string) fabricengine.OwnerArchive {
+	archive := func(slug, side string) fabriclayout.OwnerArchive {
 		tag := "archive-owner/" + slug + "/" + side
-		return fabricengine.OwnerArchive{Slug: slug, Side: side, Tag: tag, Commit: "c-" + slug, Branch: "b-" + slug, Dir: "/repo/" + side}
+		return fabriclayout.OwnerArchive{Slug: slug, Side: side, Tag: tag, Commit: "c-" + slug, Branch: "b-" + slug, Dir: "/repo/" + side}
 	}
 	// stored is every owner archive origin holds that its branch lacks, sorted by slug as the read returns them.
 	// gone is a slug the board no longer holds, under the prime.
-	stored := []fabricengine.OwnerArchive{
+	stored := []fabriclayout.OwnerArchive{
 		archive("alpha", "code"), archive("gone", "code"),
 		archive("root", "code"), archive("root", "records"), archive("t1", "code"), archive("t2", "records"),
 	}
@@ -48,7 +48,7 @@ func TestRunArchives(t *testing.T) {
 		name    string
 		req     request
 		flags   callFlags
-		stored  []fabricengine.OwnerArchive
+		stored  []fabriclayout.OwnerArchive
 		readErr error
 		want    []archiveSlug
 		// wantErr lists what a refusal's message holds; a refusal reads no archive.
@@ -80,9 +80,9 @@ func TestRunArchives(t *testing.T) {
 			deps := archiveDeps{
 				ReadOwners: func() (boardengine.Owners, error) { return owners, nil },
 				ParentOf:   func(slug string) (string, error) { return parents[slug], nil },
-				ReadArchives: func(keep func(slug string) bool) ([]fabricengine.OwnerArchive, error) {
+				ReadArchives: func(keep func(slug string) bool) ([]fabriclayout.OwnerArchive, error) {
 					reads++
-					var kept []fabricengine.OwnerArchive
+					var kept []fabriclayout.OwnerArchive
 					for _, a := range tt.stored {
 						if keep(a.Slug) {
 							kept = append(kept, a)

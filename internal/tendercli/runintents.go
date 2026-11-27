@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
@@ -154,7 +155,7 @@ func pauseFromIntent(prime *lymcwd.Location, deps tenderengine.Deps, recordPath,
 // Any other failed pull is returned with the way forward of bringing the board level.
 // A hub with no Bolt checkout has no owners.
 func ownerElsewhere(prime *lymcwd.Location, slug string) (owner, subject string, err error) {
-	boltDir := fabricengine.BoltDir(prime.HubPath)
+	boltDir := fabriclayout.BoltDir(prime.HubPath)
 	if _, err := os.Stat(boltDir); errors.Is(err, os.ErrNotExist) {
 		return "", "", nil
 	}
@@ -165,7 +166,7 @@ func ownerElsewhere(prime *lymcwd.Location, slug string) (owner, subject string,
 	if err != nil {
 		return "", "", err
 	}
-	owners, err := boardengine.ReadOwners(fabricengine.BoardDir(prime.HubPath))
+	owners, err := boardengine.ReadOwners(fabriclayout.BoardDir(prime.HubPath))
 	if err != nil {
 		return "", "", err
 	}
@@ -190,14 +191,14 @@ func ownerElsewhere(prime *lymcwd.Location, slug string) (owner, subject string,
 // A hub with no Bolt checkout records no hold.
 // The fix task is the one an adopt-fix hold stands over, and only while no other hold holds it.
 func boltHoldState(hubPath string) (tenderengine.BoltHoldState, error) {
-	boltDir := fabricengine.BoltDir(hubPath)
+	boltDir := fabriclayout.BoltDir(hubPath)
 	if _, err := os.Stat(boltDir); errors.Is(err, os.ErrNotExist) {
 		return tenderengine.BoltHoldState{}, nil
 	}
 	if err := boardengine.PullBolt(boltDir); err != nil && !errors.Is(err, boardengine.ErrOwnerOriginUnreachable) {
 		return tenderengine.BoltHoldState{}, fmt.Errorf("the board could not be pulled: %w", err)
 	}
-	owners, err := boardengine.ReadOwners(fabricengine.BoardDir(hubPath))
+	owners, err := boardengine.ReadOwners(fabriclayout.BoardDir(hubPath))
 	if err != nil {
 		return tenderengine.BoltHoldState{}, err
 	}
@@ -239,7 +240,7 @@ func commitRunIntent(prime *lymcwd.Location, slug, message string, stderr io.Wri
 	if err != nil || !committed {
 		return err
 	}
-	_, err = pairteardown.PushRun(prime, prime, slug, pairteardown.RunPush{LockWait: fabricengine.StatusPushLockWait})
+	_, err = pairteardown.PushRun(prime, prime, slug, pairteardown.RunPush{LockWait: fabriclayout.StatusPushLockWait})
 	return owedIntentPush(slug, err, stderr)
 }
 

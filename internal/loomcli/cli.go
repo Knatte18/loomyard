@@ -11,6 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/frictionengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/landingshed"
@@ -121,7 +122,7 @@ type loomCLI struct {
 	spawnWatchdog func(hubPath, tmuxPath, shellPath string, suppress bool)
 	// midMerge is the seam through which start reads the pair's merge state before spawning or resuming a driver.
 	// The Test Tier Purity Invariant bars real mid-merge pairs in untagged tests; tests substitute a canned state or error.
-	midMerge func(*lymcwd.Location) (fabricengine.MidMergeState, error)
+	midMerge func(*lymcwd.Location) (fabriclayout.MidMergeState, error)
 	// recordedParentBranch is the seam through which start and resume read the pair's recorded parent branch.
 	// It tells a parked merge-in of that branch from any other merge state; a test substitutes a canned branch or error.
 	recordedParentBranch func(*lymcwd.Location) (string, error)

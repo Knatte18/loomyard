@@ -11,6 +11,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -19,15 +20,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
 )
-
-// StatusPushLockWait is the wait for the push lock and for the pair's teardown lock.
-// A worktree's pusher and Worktree-Teardown pass it.
-// It is also the default for a pair's teardown lock.
-// It is long enough to ride out a detached push child, and short enough that a stuck holder never stalls a run.
-const StatusPushLockWait = 30 * time.Second
-
-// LockWaitUnbounded is the lockWait value that blocks until the push lock is free.
-const LockWaitUnbounded time.Duration = 0
 
 // ErrPushLockBusy is wrapped by the error a bounded push returns when the push lock is still held once its wait ran out.
 // Nothing was pushed.
@@ -51,9 +43,9 @@ func (e entryEndedError) Error() string { return e.text }
 func (e entryEndedError) Is(target error) bool { return target == ErrEntryEnded }
 
 // isOwedClass reports whether class is one a caller retries until the push lands: transport, deferred or teardown_lock.
-func isOwedClass(class PushFailureClass) bool {
+func isOwedClass(class fabriclayout.PushFailureClass) bool {
 	switch class {
-	case PushFailureTransport, PushFailureDeferred, PushFailureTeardownLock:
+	case fabriclayout.PushFailureTransport, fabriclayout.PushFailureDeferred, fabriclayout.PushFailureTeardownLock:
 		return true
 	}
 	return false
@@ -103,7 +95,7 @@ func pushFailuresOf(err error) []*PushFailedError {
 // A positive lockWait gives up once it expires, reporting the lock as not acquired.
 func acquirePushLock(lockWait time.Duration) func(lockPath string) (*lock.FileLock, bool, error) {
 	return func(lockPath string) (*lock.FileLock, bool, error) {
-		if lockWait == LockWaitUnbounded {
+		if lockWait == fabriclayout.LockWaitUnbounded {
 			held, err := lock.AcquireWriteLock(lockPath)
 			if err != nil {
 				return nil, false, fmt.Errorf("fabricengine: acquire push lock: %w", err)
@@ -176,27 +168,27 @@ func pushLockBusyError(lockDir string, lockWait time.Duration) error {
 // Every side that observably advanced is recorded in the returned PushResult.
 // Returns (PushResult{}, nil) immediately, with no lock taken, when opts.SkipGit or opts.SkipPush is true.
 // A failure to resolve whether l is the prime returns that error before the lock is taken and nothing is pushed.
-func PushPairAnchored(l *lymcwd.Location, opts SyncOptions, push PairPush) (res PushResult, err error) {
+func PushPairAnchored(l *lymcwd.Location, opts SyncOptions, push fabriclayout.PairPush) (res fabriclayout.PushResult, err error) {
 	lockWait := push.LockWait
 	rec := NewMutations(l.HubPath)
 	defer func() { res.Mutations = rec.Snapshot() }()
 
 	if opts.SkipGit || opts.SkipPush {
-		return PushResult{}, nil
+		return fabriclayout.PushResult{}, nil
 	}
 	leaveGate := pauserecord.Admit(pushLockGateOp)
 	defer leaveGate()
 
 	isPrime, err := IsPrimeWorktree(l)
 	if err != nil {
-		return PushResult{}, err
+		return fabriclayout.PushResult{}, err
 	}
 	warpPath := l.WorktreePath()
 	weftPath := RecordsWorktree(l)
 
 	request, err := statusPushRequest(l, "")
 	if err != nil {
-		return PushResult{}, err
+		return fabriclayout.PushResult{}, err
 	}
 	opts.RunSlug = push.RunSlug
 	opts.OwedUnrecorded = push.OwedUnrecorded
@@ -204,20 +196,20 @@ func PushPairAnchored(l *lymcwd.Location, opts SyncOptions, push PairPush) (res 
 		opts.RunSlug = request.TeardownSlug
 		releaseTeardown, acquired, err := acquireTeardownShared(l.HubPath, request.TeardownSlug, push.TeardownWait)
 		if err != nil {
-			return PushResult{}, err
+			return fabriclayout.PushResult{}, err
 		}
 		if !acquired {
-			return PushResult{}, teardownLockOwedError(l.HubPath, weftPath, request.TeardownSlug, push.TeardownWait, opts)
+			return fabriclayout.PushResult{}, teardownLockOwedError(l.HubPath, weftPath, request.TeardownSlug, push.TeardownWait, opts)
 		}
 		defer releaseTeardown()
 	}
 	lockDir, err := ensureWeftLockDirAt(weftPath)
 	if err != nil {
-		return PushResult{}, err
+		return fabriclayout.PushResult{}, err
 	}
-	owed := map[string]PushSpawn{pushSideRecords: {WeftPath: weftPath, PauseSlug: request.PauseSlug, TeardownSlug: request.TeardownSlug}}
+	owed := map[string]fabriclayout.PushSpawn{pushSideRecords: {WeftPath: weftPath, PauseSlug: request.PauseSlug, TeardownSlug: request.TeardownSlug}}
 	if !isPrime {
-		owed[pushSideCode] = PushSpawn{WarpPath: warpPath, PauseSlug: request.PauseSlug, TeardownSlug: request.TeardownSlug}
+		owed[pushSideCode] = fabriclayout.PushSpawn{WarpPath: warpPath, PauseSlug: request.PauseSlug, TeardownSlug: request.TeardownSlug}
 	}
 
 	var codePushSkipped string
@@ -267,7 +259,7 @@ func PushPairAnchored(l *lymcwd.Location, opts SyncOptions, push PairPush) (res 
 				return fmt.Errorf("fabricengine: push records side at %s: %w", weftPath, notLanded)
 			}
 			if attempt == len(delays) {
-				owed := recordOwedRecordsPush(l.HubPath, weftPath, PushFailureDeferred, notLanded, opts)
+				owed := recordOwedRecordsPush(l.HubPath, weftPath, fabriclayout.PushFailureDeferred, notLanded, opts)
 				return fmt.Errorf("fabricengine: push records side at %s: %w", weftPath, owed)
 			}
 			logger.Warn("fabricengine: records side still unpushed after its push, pushed again", "path", weftPath, "attempt", attempt+1, "error", notLanded)
@@ -289,32 +281,9 @@ func PushPairAnchored(l *lymcwd.Location, opts SyncOptions, push PairPush) (res 
 
 	acquired, err := coalesceFlagged(lockDir, owed, acquirePushLock(lockWait), step)
 	if err == nil && !acquired {
-		return PushResult{}, pushLockBusyError(lockDir, lockWait)
+		return fabriclayout.PushResult{}, pushLockBusyError(lockDir, lockWait)
 	}
-	return PushResult{CodePushSkipped: codePushSkipped}, err
-}
-
-// MachineNames carries the names that read as this machine.
-// Current is the machine's present name and Former the names it carried before.
-// The caller fills it, since fabric reads no board.
-// The zero value turns the takeover read off.
-type MachineNames struct {
-	Current string
-	Former  []string
-}
-
-// PairPush carries what a pair push takes beyond the sync options.
-// LockWait bounds the wait for the push lock, and LockWaitUnbounded blocks.
-// TeardownWait bounds the wait for the pair's teardown lock: zero makes one try, and a longer wait owes the push.
-// RunSlug names the run whose records a rejected prime push reads.
-// Here names this machine, for a takeover read; its zero value turns that read off.
-// OwedUnrecorded returns an owed push's error with no failed-push record, as SyncOptions.OwedUnrecorded says.
-type PairPush struct {
-	LockWait       time.Duration
-	TeardownWait   time.Duration
-	RunSlug        string
-	Here           MachineNames
-	OwedUnrecorded bool
+	return fabriclayout.PushResult{CodePushSkipped: codePushSkipped}, err
 }
 
 // teardownLockOwedError is the error of a pair push that found slug's teardown lock held.
@@ -332,18 +301,18 @@ func teardownLockOwedError(hubPath, weftPath, slug string, wait time.Duration, o
 		return refusal
 	}
 	refusal = fmt.Errorf("the teardown lock of the pair %q was still held after %s, so nothing was pushed and its commits stay local for the pair's next push: %w", slug, wait, ErrPairPushRunning)
-	record := FailedPush{
-		Repo:         failedPushSideRecords,
+	record := fabriclayout.FailedPush{
+		Repo:         fabriclayout.RepoRecords,
 		RepoPath:     weftPath,
 		CodeWorktree: pairedCodeWorktree(hubPath, weftPath),
 		Branch:       branch,
-		Class:        PushFailureTeardownLock,
+		Class:        fabriclayout.PushFailureTeardownLock,
 		Error:        refusal.Error(),
 		Runs:         []string{slug},
 	}
 	if !opts.OwedUnrecorded {
 		if err := recordPushFailure(hubPath, record, time.Now(), opts.notifier()); err != nil {
-			logger.Warn("fabricengine: failed-push record not written", "side", failedPushSideRecords, "branch", branch, "error", err)
+			logger.Warn("fabricengine: failed-push record not written", "side", fabriclayout.RepoRecords, "branch", branch, "error", err)
 		}
 	}
 	return &PushFailedError{Record: record, Err: refusal}
@@ -371,11 +340,11 @@ func recordsSideNotLanded(hubPath, weftPath string, started time.Time, opts Sync
 		return err
 	}
 	if !opts.OwedUnrecorded {
-		record, found, err := readFailedPush(hubPath, failedPushSideRecords, branch)
+		record, found, err := readFailedPush(hubPath, fabriclayout.RepoRecords, branch)
 		if err != nil {
 			return err
 		}
-		if found && record.Class == PushFailureDeferred && !record.LastSeen.Before(started) {
+		if found && record.Class == fabriclayout.PushFailureDeferred && !record.LastSeen.Before(started) {
 			return &PushFailedError{Record: record, Err: errors.New(record.Error)}
 		}
 	}
@@ -383,7 +352,7 @@ func recordsSideNotLanded(hubPath, weftPath string, started time.Time, opts Sync
 	if err != nil {
 		lookupErr := fmt.Errorf("look up branch %s on origin after its push: %w", branch, err)
 		if gitexec.IsTransportFailure(err) {
-			return recordOwedRecordsPush(hubPath, weftPath, PushFailureTransport, lookupErr, opts)
+			return recordOwedRecordsPush(hubPath, weftPath, fabriclayout.PushFailureTransport, lookupErr, opts)
 		}
 		return lookupErr
 	}
@@ -398,13 +367,13 @@ func recordsSideNotLanded(hubPath, weftPath string, started time.Time, opts Sync
 // The classes it is given read as owed pushes, so the caller retries the push.
 // With opts.OwedUnrecorded it writes no record and posts no notice.
 // A records branch that cannot be read returns cause with nothing recorded.
-func recordOwedRecordsPush(hubPath, weftPath string, class PushFailureClass, cause error, opts SyncOptions) error {
+func recordOwedRecordsPush(hubPath, weftPath string, class fabriclayout.PushFailureClass, cause error, opts SyncOptions) error {
 	branch, err := gitrepo.New(weftPath).CurrentBranch()
 	if err != nil {
 		return cause
 	}
-	record := FailedPush{
-		Repo:         failedPushSideRecords,
+	record := fabriclayout.FailedPush{
+		Repo:         fabriclayout.RepoRecords,
 		RepoPath:     weftPath,
 		CodeWorktree: pairedCodeWorktree(hubPath, weftPath),
 		Branch:       branch,
@@ -416,7 +385,7 @@ func recordOwedRecordsPush(hubPath, weftPath string, class PushFailureClass, cau
 	}
 	if !opts.OwedUnrecorded {
 		if err := recordPushFailure(hubPath, record, time.Now(), opts.notifier()); err != nil {
-			logger.Warn("fabricengine: failed-push record not written", "side", failedPushSideRecords, "branch", branch, "error", err)
+			logger.Warn("fabricengine: failed-push record not written", "side", fabriclayout.RepoRecords, "branch", branch, "error", err)
 		}
 	}
 	return &PushFailedError{Record: record, Err: cause}

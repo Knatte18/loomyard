@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
@@ -79,7 +79,7 @@ func gateEnding(ctx context.Context, producer, reason string, err error) *ending
 // A cancellation or a reconcile error ends the call as an error.
 // Each entry of the report's mutation record is logged at Info, since a row has no envelope to carry it.
 // followUp, when non-nil, ends a stopped reason whose way forward names the pair's removal.
-func reconcileVerdict(ctx context.Context, producer string, reconcile func() (fabricengine.OriginReport, error), followUp func() string) *ending {
+func reconcileVerdict(ctx context.Context, producer string, reconcile func() (fabriclayout.OriginReport, error), followUp func() string) *ending {
 	if reconcile == nil {
 		return nil
 	}
@@ -96,7 +96,7 @@ func reconcileVerdict(ctx context.Context, producer string, reconcile func() (fa
 
 // reconcileReport runs the run-scope origin reconcile and logs each entry of the report's mutation record at Info.
 // A cancellation is returned as the cancellation error and any other failure wrapped, with the producer named.
-func reconcileReport(ctx context.Context, producer string, reconcile func() (fabricengine.OriginReport, error)) (fabricengine.OriginReport, error) {
+func reconcileReport(ctx context.Context, producer string, reconcile func() (fabriclayout.OriginReport, error)) (fabriclayout.OriginReport, error) {
 	report, err := reconcile()
 	for _, mutation := range report.Mutations.Entries() {
 		logger.Info("landingshed: origin reconcile mutation", "producer", producer, "kind", string(mutation.Kind), "target", mutation.Target, "detail", mutation.Detail)
@@ -116,12 +116,12 @@ func reconcileReport(ctx context.Context, producer string, reconcile func() (fab
 // Its way forward is the end of the run from the prime.
 // A stopped entry gives a Stuck naming the branch, its state and its way forward, then the row's re-entry.
 // followUp, when non-nil, ends a stopped reason whose way forward names the pair's removal.
-func reportVerdict(ctx context.Context, producer string, report fabricengine.OriginReport, followUp func() string) *ending {
+func reportVerdict(ctx context.Context, producer string, report fabriclayout.OriginReport, followUp func() string) *ending {
 	for _, entry := range report.Entries {
 		switch entry.State {
-		case fabricengine.EntryEnded:
+		case fabriclayout.EntryEnded:
 			return halt(ctx, producer, endedReason(entry.How))
-		case fabricengine.EntryStopped:
+		case fabriclayout.EntryStopped:
 			return stuck(ctx, producer, stoppedReason(entry, report.Branches, followUp))
 		}
 	}
@@ -143,7 +143,7 @@ func endedReason(how string) string {
 // The stopping branch is the one whose way forward equals the entry's; without one, no branch is named.
 // A way forward that names the pair's removal ends in followUp instead, when followUp returns non-empty text.
 // That removal deletes the task worktree the resume runs in.
-func stoppedReason(entry fabricengine.EntryOutcome, branches []fabricengine.BranchOutcome, followUp func() string) string {
+func stoppedReason(entry fabriclayout.EntryOutcome, branches []fabriclayout.BranchOutcome, followUp func() string) string {
 	for _, branch := range branches {
 		if branch.WayForward != "" && branch.WayForward == entry.WayForward {
 			return fmt.Sprintf("origin reconcile stopped this run: branch %s is %s against origin; way forward: %s; %s", branch.Branch, branch.State, branch.WayForward, reentryAfter(branch.WayForward, followUp))

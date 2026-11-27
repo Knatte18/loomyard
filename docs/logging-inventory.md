@@ -56,7 +56,7 @@ PATTERN.md has no other logging rule.
    Log once per distinct error (or per state change) and count repeats; the abandon line at `watchloop.go:439-441` already shows the intended once-per-outage shape, and the dormant branch at `watchloop.go:415-421` states that same rule.
 2. **claudeengine: could not read the session name** - `internal/shuttleengine/claudeengine/sessionname.go:28` and `:40`. Verdict (c) plus (b): all 1104 lines are the `path=` variant, a transcript not yet written, which the doc comment at `sessionname.go:21-23` calls an expected state; it is polled.
    Log once per session id at Debug, or Warn only when the file is absent past a deadline.
-3. **fabric: mutation** - `internal/fabricengine/mutation.go:158` and `:216`. Verdict (a): the policy names recorded durable mutations as Info.
+3. **fabric: mutation** - `internal/fabricengine/mutation.go:48` and `:105`. Verdict (a): the policy names recorded durable mutations as Info.
    Kinds: commit_created 161, branch_pushed 147, file_written 85, path_removed 52, link_created 42, link_removed 37.
    `file_written` and `path_removed` may be the weakest candidates for Debug; otherwise right.
 4. **orch: injection held** - `internal/orchengine/watcher.go:535` (the sibling `held by the session` is at `:466`). Verdict (c): doc says once per change of reason, but 409 of 494 carry `reason="the input box holds a draft: "` followed by the draft text, which varies, so the reason string changes per keystroke and defeats the dedupe.

@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -50,7 +51,7 @@ func validLandingDeps(t *testing.T) landingshed.Deps {
 			Store: &parentlock.Store{Dir: filepath.Join(dir, "locks")},
 			Owner: func() (parentlock.Owner, error) { return parentlock.Owner{Slug: "fixture", RunID: "fixture"}, nil },
 		},
-		ReadParentTips:  func(bool) (fabricengine.ParentTips, error) { return fabricengine.ParentTips{}, nil },
+		ReadParentTips:  func(bool) (fabriclayout.ParentTips, error) { return fabriclayout.ParentTips{}, nil },
 		ChangedPaths:    func(string, string) ([]string, error) { return nil, nil },
 		MergeBase:       func(string) (string, error) { return "base", nil },
 		TaskHead:        func() (string, error) { return "head", nil },

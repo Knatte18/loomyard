@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/battenshed"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
@@ -132,7 +132,7 @@ func isoWeekLabel(at time.Time) string {
 func selectRuns(src Sources, opts Options, report *Report, batten *battenIndex) error {
 	previousTag := map[string]gitrepo.TagRef{}
 	for _, tag := range src.Tags {
-		slug, named := fabricengine.ArchiveTagSlug(tag.Name)
+		slug, named := fabriclayout.ArchiveTagSlug(tag.Name)
 		var previous *gitrepo.TagRef
 		if named {
 			if earlier, ok := previousTag[slug]; ok {

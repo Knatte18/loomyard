@@ -20,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -366,8 +367,8 @@ func TestCancelIntegration_RemoveTearsDownPairAndBranch(t *testing.T) {
 	if gitkit.BranchExists(t, h.PrimeWorktree(), slug) || gitkit.BranchExists(t, h.CodeBare, slug) {
 		t.Errorf("task branch %q survived locally or on origin", slug)
 	}
-	wantTag := fabricengine.ArchiveTagPrefix + slug + "/" + tip[:12]
-	if tags := strings.Fields(gitkit.Git(t, h.CodeBare, "tag", "--list", fabricengine.ArchiveTagPrefix+slug+"/*")); !slices.Contains(tags, wantTag) {
+	wantTag := fabriclayout.ArchiveTagPrefix + slug + "/" + tip[:12]
+	if tags := strings.Fields(gitkit.Git(t, h.CodeBare, "tag", "--list", fabriclayout.ArchiveTagPrefix+slug+"/*")); !slices.Contains(tags, wantTag) {
 		t.Errorf("archive tags on origin = %v; want %s", tags, wantTag)
 	}
 	if status, _ := boardStatusOf(t, h, slug); status == nil || *status != boardengine.StatusDraft {
@@ -387,7 +388,7 @@ func TestCancelIntegration_FinishesAnUnfinishedRemoval(t *testing.T) {
 	slug := hubforge.TemplatePairSlug
 	boardkit.InstallReplay(t)
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: ".", Pairs: []string{slug}})
-	recordsBranch := fabricengine.RecordsBranchName(slug)
+	recordsBranch := fabriclayout.RecordsBranchName(slug)
 	if _, err := h.Topology.Remove(h.Location, slug, true, false, ""); err != nil {
 		t.Fatalf("Remove(%s): %v", slug, err)
 	}
@@ -398,8 +399,8 @@ func TestCancelIntegration_FinishesAnUnfinishedRemoval(t *testing.T) {
 		t.Fatalf("origin holds no %q after the local removal; the fixture needs it", recordsBranch)
 	}
 	// The record a removal's teardown child leaves behind when it ends before its job does.
-	recordPath := filepath.Join(filepath.Dir(fabricengine.TeardownLockPath(h.Path, slug)), slug+".pending.json")
-	record := fabricengine.PendingTeardown{Slug: slug, Kind: "remove", HandedAt: time.Now(), Worktree: h.PrimeWorktree(), Rerun: "lym batten cancel " + slug + " --remove"}
+	recordPath := filepath.Join(filepath.Dir(fabriclayout.TeardownLockPath(h.Path, slug)), slug+".pending.json")
+	record := fabriclayout.PendingTeardown{Slug: slug, Kind: "remove", HandedAt: time.Now(), Worktree: h.PrimeWorktree(), Rerun: "lym batten cancel " + slug + " --remove"}
 	if err := state.WriteJSON(recordPath, recordPath+".lock", record); err != nil {
 		t.Fatalf("write the pending teardown record: %v", err)
 	}

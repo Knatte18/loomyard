@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -27,7 +27,7 @@ func TestReconcileNotifierFor(t *testing.T) {
 		noticeBoardDir func(t *testing.T, hubPath string) string
 		wantPosted     bool
 	}{
-		{"ThisHubsNoticeMailsThePrimeOrchAsReconcile", func(_ *testing.T, hubPath string) string { return fabricengine.BoltDir(hubPath) }, true},
+		{"ThisHubsNoticeMailsThePrimeOrchAsReconcile", func(_ *testing.T, hubPath string) string { return fabriclayout.BoltDir(hubPath) }, true},
 		{"AnotherHubsNoticeIsNotPostedAndMailsNothing", func(t *testing.T, _ string) string { return t.TempDir() }, false},
 	}
 	for _, tt := range tests {
@@ -35,7 +35,7 @@ func TestReconcileNotifierFor(t *testing.T) {
 			t.Setenv(agentname.StrandNameEnv, "")
 			h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 			receiver := startHubOrchDaemon(t, h)
-			location, inHub := hubLocation(lymcwd.WithCwd(context.Background(), fabricengine.BoardDir(h.Path)))
+			location, inHub := hubLocation(lymcwd.WithCwd(context.Background(), fabriclayout.BoardDir(h.Path)))
 			if !inHub {
 				t.Fatalf("hubLocation(board worktree) found no hub")
 			}

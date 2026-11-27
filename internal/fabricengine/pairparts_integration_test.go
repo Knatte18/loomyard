@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -24,7 +25,7 @@ func TestPairParts(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	all := fabricengine.PairParts{TaskWorktree: true, RecordsWorktree: true, RecordsBranch: true, TaskBranch: true}
+	all := fabriclayout.PairParts{TaskWorktree: true, RecordsWorktree: true, RecordsBranch: true, TaskBranch: true}
 
 	t.Run("AfterAddEveryPartIsPresent", func(t *testing.T) {
 		t.Parallel()
@@ -55,7 +56,7 @@ func TestPairParts(t *testing.T) {
 		if err != nil {
 			t.Fatalf("PairParts: %v", err)
 		}
-		if want := (fabricengine.PairParts{TaskBranch: true}); got != want {
+		if want := (fabriclayout.PairParts{TaskBranch: true}); got != want {
 			t.Errorf("PairParts() = %+v; want %+v", got, want)
 		}
 		onOrigin, err := h.Topology.TaskBranchOnOrigin(h.Location, slug)
@@ -76,7 +77,7 @@ func TestPairParts(t *testing.T) {
 		if err != nil {
 			t.Fatalf("PairParts: %v", err)
 		}
-		if want := (fabricengine.PairParts{StrayPath: true}); got != want || !got.Any() {
+		if want := (fabriclayout.PairParts{StrayPath: true}); got != want || !got.Any() {
 			t.Errorf("PairParts() = %+v, Any() = %v; want %+v, true", got, got.Any(), want)
 		}
 	})

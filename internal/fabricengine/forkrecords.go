@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -42,10 +43,10 @@ func createWeftWorktreeDroppingRuns(rec *Mutations, l *lymcwd.Location, slug, br
 	}); err != nil {
 		return false, fmt.Errorf("create weft worktree %q for branch %q failed: %w", weftPath, branch, err)
 	}
-	rec.Append(KindWorktreeCreated, weftPath, "")
-	rec.AppendRef(KindBranchCreated, branch, refDetail("records", weftRepoRoot, ""))
+	rec.Append(fabriclayout.KindWorktreeCreated, weftPath, "")
+	rec.AppendRef(fabriclayout.KindBranchCreated, branch, refDetail("records", weftRepoRoot, ""))
 
-	root := ScopedPathspec(l.AnchorRel, []string{shedrun.RunsRootRel()})[0]
+	root := fabriclayout.ScopedPathspec(l.AnchorRel, []string{shedrun.RunsRootRel()})[0]
 	root = filepath.ToSlash(root)
 
 	if _, err := gitexec.Run([]string{"read-tree", "HEAD"}, weftPath); err != nil {

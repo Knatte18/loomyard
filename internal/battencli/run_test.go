@@ -23,7 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
@@ -245,14 +245,14 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 
 	const slug = "some-slug"
 	land := battenrecipe.NameLand
-	activeReport := fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryActive}}}
-	elsewhereReport := fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryOwnedElsewhere, Owner: "there", AdoptSubject: "some-beam"}}}
-	unreachableReport := fabricengine.OriginReport{Unreachable: true}
+	activeReport := fabriclayout.OriginReport{Entries: []fabriclayout.EntryOutcome{{Slug: slug, State: fabriclayout.EntryActive}}}
+	elsewhereReport := fabriclayout.OriginReport{Entries: []fabriclayout.EntryOutcome{{Slug: slug, State: fabriclayout.EntryOwnedElsewhere, Owner: "there", AdoptSubject: "some-beam"}}}
+	unreachableReport := fabriclayout.OriginReport{Unreachable: true}
 	owning := func(fake fakeOwners) func() *fakeOwners { return func() *fakeOwners { return &fake } }
 	const stopWayForward = "`lym fabric pull` in /hub/example"
-	stoppedReport := fabricengine.OriginReport{
-		Branches: []fabricengine.BranchOutcome{{Branch: "some-slug", Repo: "code", Slug: slug, State: fabricengine.BranchRewritten, WayForward: stopWayForward}},
-		Entries:  []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryStopped, WayForward: stopWayForward}},
+	stoppedReport := fabriclayout.OriginReport{
+		Branches: []fabriclayout.BranchOutcome{{Branch: "some-slug", Repo: "code", Slug: slug, State: fabriclayout.BranchRewritten, WayForward: stopWayForward}},
+		Entries:  []fabriclayout.EntryOutcome{{Slug: slug, State: fabriclayout.EntryStopped, WayForward: stopWayForward}},
 	}
 	tests := []struct {
 		name         string
@@ -260,7 +260,7 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 		producer     string
 		pauseAfter   string
 		lockErr      error
-		report       fabricengine.OriginReport
+		report       fabriclayout.OriginReport
 		reconcileErr error
 		wantOutcome  string
 		wantErrors   []string
@@ -294,11 +294,11 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 		{name: "failed_again", state: shedengine.StateFailed, producer: battenrecipe.NameLand, lockErr: errors.New("prime lock unavailable"), wantErrors: []string{"prime lock unavailable"}, wantReconcile: 1},
 		{
 			name: "reconcile_active", state: shedengine.StateRunning, wantOutcome: "done", wantReconcile: 1,
-			report: fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryActive}}},
+			report: fabriclayout.OriginReport{Entries: []fabriclayout.EntryOutcome{{Slug: slug, State: fabriclayout.EntryActive}}},
 		},
 		{
 			name: "reconcile_ended", state: shedengine.StateRunning, wantReconcile: 1,
-			report:     fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryEnded, How: "done"}}},
+			report:     fabriclayout.OriginReport{Entries: []fabriclayout.EntryOutcome{{Slug: slug, State: fabriclayout.EntryEnded, How: "done"}}},
 			wantErrors: []string{"landed", "lym cleanup --apply", "from the prime"},
 		},
 		{
@@ -308,7 +308,7 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 		},
 		{
 			name: "reconcile_unreachable", state: shedengine.StateRunning, wantOutcome: "done", wantReconcile: 1,
-			report: fabricengine.OriginReport{Unreachable: true},
+			report: fabriclayout.OriginReport{Unreachable: true},
 		},
 		{
 			name: "catch_up_unreachable_refuses_before_the_reconcile", state: shedengine.StateRunning,
@@ -421,7 +421,7 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 				}()
 			}
 			reconciled := 0
-			c.reconcile = func(got string) (fabricengine.OriginReport, error) {
+			c.reconcile = func(got string) (fabriclayout.OriginReport, error) {
 				reconciled++
 				if got != slug {
 					t.Errorf("reconcile(%q); want the run's slug %q", got, slug)

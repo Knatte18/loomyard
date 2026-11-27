@@ -20,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/configsync"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -238,7 +239,7 @@ func reconcileDefaultLayer(l *lymcwd.Location, out io.Writer, apply bool, guard 
 	}
 	if committed {
 		if pushErr := bolt.Push(syncOpts); pushErr != nil {
-			return output.Err(out, fmt.Sprintf("reconciled %s in %s and committed them in %s but did not push: %v; the next board push carries them", strings.Join(written, ", "), board, fabricengine.BoltDirName, pushErr))
+			return output.Err(out, fmt.Sprintf("reconciled %s in %s and committed them in %s but did not push: %v; the next board push carries them", strings.Join(written, ", "), board, fabriclayout.BoltDirName, pushErr))
 		}
 	}
 	return output.Ok(out, reconcileEnvelope(true, results))
@@ -349,7 +350,7 @@ func reportHubWrite(out io.Writer, module, path string, commitErr, writeErr erro
 	}
 	fields := map[string]any{
 		"module":  module,
-		"message": fmt.Sprintf("edited and committed %s in %s", path, fabricengine.BoltDirName),
+		"message": fmt.Sprintf("edited and committed %s in %s", path, fabriclayout.BoltDirName),
 	}
 	for key, value := range extra {
 		fields[key] = value

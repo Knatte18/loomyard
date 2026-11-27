@@ -21,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/dotgit"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
@@ -124,7 +125,7 @@ func strandHubWorktree(worktree string, name agentname.Name, named func(worktree
 	if err != nil || !named(location.WorktreeName) || location.WorktreePath() != worktree {
 		return nil, false
 	}
-	shortname, found := fabricengine.ReadShortname(fabricengine.BoltDir(location.HubPath))
+	shortname, found := fabricengine.ReadShortname(fabriclayout.BoltDir(location.HubPath))
 	return location, found && shortname == name.Shortname
 }
 
@@ -312,7 +313,7 @@ func mergeTaskVerb(cmd *cobra.Command) bool {
 // shortname with no argument, prune and cleanup without --apply.
 // Any other subcommand, one added later included, is not a reader.
 func readerVerb(cmd *cobra.Command) bool {
-	if !slices.Contains(fabricengine.FabricReaderVerbs(), cmd.Name()) {
+	if !slices.Contains(fabriclayout.FabricReaderVerbs(), cmd.Name()) {
 		return false
 	}
 	switch cmd.Name() {
@@ -348,7 +349,7 @@ func sandboxedRoleRefusal(cmd *cobra.Command, strandName string) string {
 	if agentname.MatchesRole(name.Role, agentname.RoleDriver) || agentname.MatchesRole(name.Role, agentname.RoleOrch) {
 		return ""
 	}
-	if cmd.Name() == fabricengine.TeardownChildVerb {
+	if cmd.Name() == fabriclayout.TeardownChildVerb {
 		return ""
 	}
 	injectedWeft, _ := cmd.Flags().GetString("weft-path")

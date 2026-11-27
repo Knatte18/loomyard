@@ -13,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -23,7 +24,7 @@ import (
 
 // findReconcilePair returns the ReconcilePairResult for weftPath, failing the test if none is found.
 // Result paths are emitted forward-slashed, so weftPath is normalized the same way before comparing.
-func findReconcilePair(t *testing.T, pairs []fabricengine.ReconcilePairResult, weftPath string) *fabricengine.ReconcilePairResult {
+func findReconcilePair(t *testing.T, pairs []fabriclayout.ReconcilePairResult, weftPath string) *fabriclayout.ReconcilePairResult {
 	t.Helper()
 	want := filepath.ToSlash(weftPath)
 	for i := range pairs {
@@ -59,7 +60,7 @@ func TestReconcile_CorrectJunctionsAreNoOp(t *testing.T) {
 	// Widen the repo-wide pathspec to match what is wired on disk above.
 	// The fixture's default empty pathspec alone would make _extra stale,
 	// so this widening keeps the pair a genuine no-op rather than a stale-removal case.
-	boardDir := fabricengine.BoardDir(l.HubPath)
+	boardDir := fabriclayout.BoardDir(l.HubPath)
 	cfgPath := configengine.ConfigFile(boardDir, "fabric")
 	if err := os.WriteFile(cfgPath, []byte("branch_prefix: \"\"\npathspec: _lym _extra\n"), 0o644); err != nil {
 		t.Fatalf("widen repo-wide pathspec: %v", err)
@@ -72,8 +73,8 @@ func TestReconcile_CorrectJunctionsAreNoOp(t *testing.T) {
 	}
 
 	pair := findReconcilePair(t, result.Pairs, fabricengine.RecordsWorktreePath(l, slug))
-	if pair.Action != fabricengine.ReconcileActionAlreadyHealthy {
-		t.Errorf("Action = %q; want %q (fully correct pair, nothing to converge)", pair.Action, fabricengine.ReconcileActionAlreadyHealthy)
+	if pair.Action != fabriclayout.ReconcileActionAlreadyHealthy {
+		t.Errorf("Action = %q; want %q (fully correct pair, nothing to converge)", pair.Action, fabriclayout.ReconcileActionAlreadyHealthy)
 	}
 	if pair.Detail != "" {
 		t.Errorf("Detail = %q; want empty for a true no-op", pair.Detail)
@@ -86,7 +87,7 @@ func TestReconcile_CorrectJunctionsAreNoOp(t *testing.T) {
 	if lines := gitkit.ExcludeLines(t, fabricengine.WorktreePath(l, slug)); !containsLine(lines, "/.scratch") {
 		t.Errorf("exclude lines = %v; want /.scratch kept", lines)
 	}
-	if hasMutation(result.Mutations, fabricengine.KindLinkRemoved, scratchHubRelative(t, l, root), "") {
+	if hasMutation(result.Mutations, fabriclayout.KindLinkRemoved, scratchHubRelative(t, l, root), "") {
 		t.Errorf("record %+v holds link_removed at the root .scratch", result.Mutations.Entries())
 	}
 	if strings.Contains(logs.String(), "stale-junction removal refused") {
@@ -246,7 +247,7 @@ func TestReconcile_RefusedStaleRemovalReportsNothing(t *testing.T) {
 	const slug = "stale-removal-refused"
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
-	boardDir := fabricengine.BoardDir(l.HubPath)
+	boardDir := fabriclayout.BoardDir(l.HubPath)
 	cfgPath := configengine.ConfigFile(boardDir, "fabric")
 
 	// Wire _lym + _other with _other correct, then narrow the repo-wide pathspec so _other is stale.
@@ -286,7 +287,7 @@ func TestReconcile_RefusedStaleRemovalReportsNothing(t *testing.T) {
 	}
 
 	pair := findReconcilePair(t, result.Pairs, fabricengine.RecordsWorktreePath(l, slug))
-	if pair.Action == fabricengine.ReconcileActionStaleRemoved {
+	if pair.Action == fabriclayout.ReconcileActionStaleRemoved {
 		t.Errorf("Action = %q; a refused stale removal must not report stale_removed", pair.Action)
 	}
 	if strings.Contains(pair.Detail, "removed") {

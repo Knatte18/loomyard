@@ -8,7 +8,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -240,8 +240,8 @@ func parentMergeTip(ctx context.Context, deps Deps, guard parentGuard, producer 
 			return "", "", fmt.Errorf("landingshed: %s: read the tips of parent branch %q: %w", producer, branch, err)
 		}
 		switch tips.Relation {
-		case fabricengine.ParentNoUpstream:
-		case fabricengine.ParentEqual, fabricengine.ParentAhead, fabricengine.ParentBehind, fabricengine.ParentDiverged:
+		case fabriclayout.ParentNoUpstream:
+		case fabriclayout.ParentEqual, fabriclayout.ParentAhead, fabriclayout.ParentBehind, fabriclayout.ParentDiverged:
 			return tips.Upstream, "", nil
 		default:
 			return "", "", fmt.Errorf("landingshed: %s: unknown relation %q of parent branch %q to its upstream", producer, tips.Relation, branch)

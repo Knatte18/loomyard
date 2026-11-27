@@ -7,56 +7,9 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
-
-// HubPullSideKind names which part of the hub a side of a hub pull covers.
-type HubPullSideKind string
-
-// The side kinds of a hub pull, in the order the pull visits them.
-const (
-	HubPullBoard HubPullSideKind = "board"
-	HubPullPrime HubPullSideKind = "prime"
-	HubPullBeam  HubPullSideKind = "beam"
-)
-
-// HubPullOutcome is what a hub pull did to one side.
-type HubPullOutcome string
-
-// The outcomes of one side of a hub pull.
-const (
-	// HubPullMoved means the side's local branches moved to take in origin's commits.
-	HubPullMoved HubPullOutcome = "moved"
-	// HubPullUpToDate means the side already held everything origin had, or has no upstream to pull from.
-	HubPullUpToDate HubPullOutcome = "up_to_date"
-	// HubPullStopped means the side could not be brought up to date; the detail names the way forward.
-	HubPullStopped HubPullOutcome = "stopped"
-)
-
-// HubPullSide is one side of a hub pull: Bolt, the prime pair or one local beam pair.
-// Worktree is the board directory's name for Bolt and the pair's worktree name otherwise.
-type HubPullSide struct {
-	Kind     HubPullSideKind
-	Worktree string
-	Outcome  HubPullOutcome
-	Detail   string
-}
-
-// HubPullResult reports every side of a hub pull in pull order, with the mutation record accumulated over all of them.
-type HubPullResult struct {
-	MutationRecord
-	Sides []HubPullSide
-}
-
-// Stopped reports whether any side of the hub pull stopped.
-func (r HubPullResult) Stopped() bool {
-	for _, side := range r.Sides {
-		if side.Outcome == HubPullStopped {
-			return true
-		}
-	}
-	return false
-}
 
 // PairLock takes the parent lock of the code branch checked out in pair and returns its release.
 type PairLock func(pair *lymcwd.Location) (release func(), err error)
@@ -72,13 +25,13 @@ type PairLock func(pair *lymcwd.Location) (release func(), err error)
 // A pull honoring SkipGit leaves every side up to date.
 // A side that stops, including a beam whose origin record cannot be read, never keeps the next side from running.
 // The error is only a failure to list the hub's worktrees, and the sides already pulled are kept in the result.
-func PullHub(prime *lymcwd.Location, opts SyncOptions, lockPair PairLock) (res HubPullResult, err error) {
+func PullHub(prime *lymcwd.Location, opts SyncOptions, lockPair PairLock) (res fabriclayout.HubPullResult, err error) {
 	rec := NewMutations(prime.HubPath)
 	defer func() { res.Mutations = rec.Snapshot() }()
 
-	boardDir := BoltDir(prime.HubPath)
+	boardDir := fabriclayout.BoltDir(prime.HubPath)
 	res.Sides = append(res.Sides, pullBoardSide(boardDir, opts, rec))
-	res.Sides = append(res.Sides, pullPairSide(HubPullPrime, prime, opts, lockPair, rec))
+	res.Sides = append(res.Sides, pullPairSide(fabriclayout.HubPullPrime, prime, opts, lockPair, rec))
 
 	beams, err := localBeamCandidates(prime)
 	if err != nil {
@@ -86,24 +39,24 @@ func PullHub(prime *lymcwd.Location, opts SyncOptions, lockPair PairLock) (res H
 	}
 	for _, beam := range beams {
 		if beam.err != nil {
-			res.Sides = append(res.Sides, HubPullSide{Kind: HubPullBeam, Worktree: beam.slug, Outcome: HubPullStopped, Detail: beam.err.Error()})
+			res.Sides = append(res.Sides, fabriclayout.HubPullSide{Kind: fabriclayout.HubPullBeam, Worktree: beam.slug, Outcome: fabriclayout.HubPullStopped, Detail: beam.err.Error()})
 			continue
 		}
-		res.Sides = append(res.Sides, pullPairSide(HubPullBeam, beam.location, opts, lockPair, rec))
+		res.Sides = append(res.Sides, pullPairSide(fabriclayout.HubPullBeam, beam.location, opts, lockPair, rec))
 	}
 	return res, nil
 }
 
 // pullBoardSide pulls Bolt at boardDir and reports it as one side, extending rec with what moved.
-func pullBoardSide(boardDir string, opts SyncOptions, rec *Mutations) HubPullSide {
-	side := HubPullSide{Kind: HubPullBoard, Worktree: filepath.Base(boardDir)}
+func pullBoardSide(boardDir string, opts SyncOptions, rec *Mutations) fabriclayout.HubPullSide {
+	side := fabriclayout.HubPullSide{Kind: fabriclayout.HubPullBoard, Worktree: filepath.Base(boardDir)}
 	before := rec.Len()
 	skip, detail, err := NewBolt(boardDir).Pull(opts, rec)
 	switch {
 	case err != nil:
-		side.Outcome, side.Detail = HubPullStopped, err.Error()
+		side.Outcome, side.Detail = fabriclayout.HubPullStopped, err.Error()
 	case skip != "":
-		side.Outcome, side.Detail = HubPullStopped, detail
+		side.Outcome, side.Detail = fabriclayout.HubPullStopped, detail
 	default:
 		side.Outcome = movedOrCurrent(rec, before)
 	}
@@ -113,23 +66,23 @@ func pullBoardSide(boardDir string, opts SyncOptions, rec *Mutations) HubPullSid
 // pullPairSide pulls the pair under its parent lock and reports it as one side of kind.
 // It extends rec with what moved.
 // A beam whose code branch has no upstream is reported up to date without taking the lock.
-func pullPairSide(kind HubPullSideKind, pair *lymcwd.Location, opts SyncOptions, lockPair PairLock, rec *Mutations) HubPullSide {
-	side := HubPullSide{Kind: kind, Worktree: pair.WorktreeName}
-	stop := func(err error) HubPullSide {
-		side.Outcome, side.Detail = HubPullStopped, err.Error()
+func pullPairSide(kind fabriclayout.HubPullSideKind, pair *lymcwd.Location, opts SyncOptions, lockPair PairLock, rec *Mutations) fabriclayout.HubPullSide {
+	side := fabriclayout.HubPullSide{Kind: kind, Worktree: pair.WorktreeName}
+	stop := func(err error) fabriclayout.HubPullSide {
+		side.Outcome, side.Detail = fabriclayout.HubPullStopped, err.Error()
 		return side
 	}
 	if opts.SkipGit {
-		side.Outcome, side.Detail = HubPullUpToDate, "git is skipped, so nothing was pulled"
+		side.Outcome, side.Detail = fabriclayout.HubPullUpToDate, "git is skipped, so nothing was pulled"
 		return side
 	}
-	if kind == HubPullBeam {
+	if kind == fabriclayout.HubPullBeam {
 		_, hasUpstream, err := upstreamSHAAt(pair.WorktreePath())
 		if err != nil {
 			return stop(err)
 		}
 		if !hasUpstream {
-			side.Outcome, side.Detail = HubPullUpToDate, "the code branch has no upstream to pull from"
+			side.Outcome, side.Detail = fabriclayout.HubPullUpToDate, "the code branch has no upstream to pull from"
 			return side
 		}
 	}
@@ -147,7 +100,7 @@ func pullPairSide(kind HubPullSideKind, pair *lymcwd.Location, opts SyncOptions,
 	pullRes, pullErr := fab.Pull(opts)
 	rec.Extend(pullRes.Mutated())
 	// A failed worktree event is a warning on the pair's line, whatever else the line says.
-	withWarning := func(side HubPullSide) HubPullSide {
+	withWarning := func(side fabriclayout.HubPullSide) fabriclayout.HubPullSide {
 		if pullRes.SeamWarning == "" {
 			return side
 		}
@@ -161,7 +114,7 @@ func pullPairSide(kind HubPullSideKind, pair *lymcwd.Location, opts SyncOptions,
 		return withWarning(stop(pullErr))
 	}
 	if !pullRes.WeftPulled {
-		side.Outcome, side.Detail = HubPullStopped, "the records side's origin could not be reached; re-run the pull once it is reachable"
+		side.Outcome, side.Detail = fabriclayout.HubPullStopped, "the records side's origin could not be reached; re-run the pull once it is reachable"
 		return withWarning(side)
 	}
 	side.Outcome = movedOrCurrent(rec, before)
@@ -169,11 +122,11 @@ func pullPairSide(kind HubPullSideKind, pair *lymcwd.Location, opts SyncOptions,
 }
 
 // movedOrCurrent reports a side as moved when rec grew past the length before the pull, and as up to date otherwise.
-func movedOrCurrent(rec *Mutations, before int) HubPullOutcome {
+func movedOrCurrent(rec *Mutations, before int) fabriclayout.HubPullOutcome {
 	if rec.Len() > before {
-		return HubPullMoved
+		return fabriclayout.HubPullMoved
 	}
-	return HubPullUpToDate
+	return fabriclayout.HubPullUpToDate
 }
 
 // beamCandidate is one local beam pair: its location, or the error that kept it from being resolved.

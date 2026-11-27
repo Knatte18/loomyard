@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
@@ -46,5 +47,5 @@ func TargetOf(l *lymcwd.Location, slug string) (Target, error) {
 // It is one file per records worktree, under the hub's never-tracked directory.
 func LockPath(t Target) string {
 	name := filepath.Base(fabricengine.RecordsWorktree(t.Location)) + ".lock"
-	return filepath.Join(fabricengine.HubScratchDir(t.Location.HubPath), lymdirs.PusherDirName, name)
+	return filepath.Join(fabriclayout.HubScratchDir(t.Location.HubPath), lymdirs.PusherDirName, name)
 }

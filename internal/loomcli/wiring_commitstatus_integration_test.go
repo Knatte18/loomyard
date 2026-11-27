@@ -15,7 +15,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -456,7 +456,7 @@ func TestCommitStatusSeam_Real(t *testing.T) {
 		if !strings.Contains(message, codeHead) || !strings.Contains(trailers, codeHead) {
 			t.Errorf("records HEAD message = %q; want a trailer naming the code HEAD %q", message, codeHead)
 		}
-		if want := fabricengine.TransitionTrailerKey + ": " + shedrun.ResolveRunID(location, shedrun.SelfRunID); !strings.Contains(message, want) {
+		if want := fabriclayout.TransitionTrailerKey + ": " + shedrun.ResolveRunID(location, shedrun.SelfRunID); !strings.Contains(message, want) {
 			t.Errorf("records HEAD message = %q; want it to contain the trailer %q", message, want)
 		}
 	})

@@ -19,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -36,7 +37,7 @@ type startGuard struct {
 	// SourceDirty lists the tracked uncommitted paths of the source worktree.
 	SourceDirty func() ([]string, error)
 	// PairParts reads which parts of the slug's pair are present locally.
-	PairParts func() (fabricengine.PairParts, error)
+	PairParts func() (fabriclayout.PairParts, error)
 	// ParentBeam reads the beam the slug's pair forks from over the local board, "" meaning the prime.
 	// A nil ParentBeam reads every task as forked from the prime.
 	ParentBeam func() (string, error)
@@ -94,14 +95,14 @@ func hubStartGuard(location *lymcwd.Location, slug string) startGuard {
 		Lock:        func() (cancelMarkerReading, error) { return readCancelLock(location, slug) },
 		SourceDirty: func() ([]string, error) { return fabricengine.SourceDirtyPaths(location) },
 		ParentBeam: func() (string, error) {
-			tasks, err := boardengine.ReadTasks(fabricengine.BoardDir(location.HubPath))
+			tasks, err := boardengine.ReadTasks(fabriclayout.BoardDir(location.HubPath))
 			if err != nil {
 				return "", err
 			}
 			return boardengine.ParentBeam(tasks, slug), nil
 		},
 		Promoted: func() (bool, error) {
-			owners, err := boardengine.ReadOwners(fabricengine.BoardDir(location.HubPath))
+			owners, err := boardengine.ReadOwners(fabriclayout.BoardDir(location.HubPath))
 			if err != nil {
 				return false, err
 			}
@@ -115,7 +116,7 @@ func hubStartGuard(location *lymcwd.Location, slug string) startGuard {
 			return found && origin.Beam, nil
 		},
 		Project: func() (bool, bool, error) {
-			owners, err := boardengine.ReadOwners(fabricengine.BoardDir(location.HubPath))
+			owners, err := boardengine.ReadOwners(fabriclayout.BoardDir(location.HubPath))
 			if err != nil {
 				return false, false, err
 			}
@@ -132,7 +133,7 @@ func hubStartGuard(location *lymcwd.Location, slug string) startGuard {
 		},
 		ReachedParent: hubChildReachedParent(location, slug),
 		Unreleased: func() (string, error) {
-			tasks, err := boardengine.ReadTasks(fabricengine.BoardDir(location.HubPath))
+			tasks, err := boardengine.ReadTasks(fabriclayout.BoardDir(location.HubPath))
 			if err != nil {
 				return "", err
 			}
@@ -146,10 +147,10 @@ func hubStartGuard(location *lymcwd.Location, slug string) startGuard {
 			}
 			return "", nil
 		},
-		PairParts: func() (fabricengine.PairParts, error) {
+		PairParts: func() (fabriclayout.PairParts, error) {
 			cfg, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(location))
 			if err != nil {
-				return fabricengine.PairParts{}, err
+				return fabriclayout.PairParts{}, err
 			}
 			return fabricengine.NewTopology(cfg).PairParts(location, slug)
 		},
@@ -185,7 +186,7 @@ func startClearsMotifRun(location *lymcwd.Location, task boardengine.Task) (bool
 // The board's entry under slug decides; an absent entry clears nothing.
 // It removes nothing.
 func clearsMotifRunOfRaddleEntry(location *lymcwd.Location, slug string) (bool, error) {
-	tasks, err := boardengine.ReadTasks(fabricengine.BoardDir(location.HubPath))
+	tasks, err := boardengine.ReadTasks(fabriclayout.BoardDir(location.HubPath))
 	if err != nil {
 		return false, err
 	}
@@ -199,7 +200,7 @@ func clearsMotifRunOfRaddleEntry(location *lymcwd.Location, slug string) (bool, 
 // readRaddleStartRefusal reads the slug's board entry and, when its recipe is raddle, judges its start.
 // An absent entry and an entry of another recipe pass.
 func readRaddleStartRefusal(location *lymcwd.Location, slug string) error {
-	boardDir := fabricengine.BoardDir(location.HubPath)
+	boardDir := fabriclayout.BoardDir(location.HubPath)
 	tasks, err := boardengine.ReadTasks(boardDir)
 	if err != nil {
 		return err
@@ -442,7 +443,7 @@ func (g startGuard) forksFromPrime() (bool, error) {
 // leftPartNames names the parts of a pair that make a start refuse:
 // the task worktree, the records worktree and the local records branch.
 // A task branch left alone is not named, since the add refuses it and Worktree-Create halts on it.
-func leftPartNames(parts fabricengine.PairParts) []string {
+func leftPartNames(parts fabriclayout.PairParts) []string {
 	var names []string
 	if parts.TaskWorktree {
 		names = append(names, "task worktree")

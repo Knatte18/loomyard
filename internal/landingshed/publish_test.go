@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/parentlock"
@@ -93,8 +93,8 @@ func newTestDeps(t *testing.T) Deps {
 			Owner:    func() (parentlock.Owner, error) { return owner, nil },
 			WaitPath: parentlock.WaitRecordPath(scratchDir),
 		},
-		ReadParentTips: func(bool) (fabricengine.ParentTips, error) {
-			return fabricengine.ParentTips{Local: testParentTip, Upstream: testParentTip, Relation: fabricengine.ParentEqual}, nil
+		ReadParentTips: func(bool) (fabriclayout.ParentTips, error) {
+			return fabriclayout.ParentTips{Local: testParentTip, Upstream: testParentTip, Relation: fabriclayout.ParentEqual}, nil
 		},
 		HoldsWork:       func(string, string) (bool, error) { return false, nil },
 		TaskHead:        func() (string, error) { return "task-head", nil },

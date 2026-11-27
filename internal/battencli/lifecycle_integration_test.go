@@ -36,6 +36,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
@@ -211,7 +212,7 @@ type madeRecorder struct {
 }
 
 // Made records event's root.
-func (r *madeRecorder) Made(event fabricengine.WorktreeEvent) error {
+func (r *madeRecorder) Made(event fabriclayout.WorktreeEvent) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.roots = append(r.roots, event.Root)
@@ -219,7 +220,7 @@ func (r *madeRecorder) Made(event fabricengine.WorktreeEvent) error {
 }
 
 // TookIn records nothing.
-func (r *madeRecorder) TookIn(fabricengine.WorktreeEvent) error { return nil }
+func (r *madeRecorder) TookIn(fabriclayout.WorktreeEvent) error { return nil }
 
 // madeCount returns how many times the seam was told the worktree at root was made.
 func (r *madeRecorder) madeCount(root string) int {
@@ -673,7 +674,7 @@ func fourRowRunForRecipe(t *testing.T, h *hubforge.Hub, recipe string) {
 	// A batten-driven teardown is the task's final removal, and nothing will ever re-adopt its records branch.
 	// The remote copy must therefore not linger.
 	// "lym fabric cleanup" enumerates local branches only, so it can never reach a remote copy.
-	recordsBranch := fabricengine.RecordsBranchName(slug)
+	recordsBranch := fabriclayout.RecordsBranchName(slug)
 	if err := exec.Command("git", "-C", h.RecordsBare, "rev-parse", "--verify", "refs/heads/"+recordsBranch).Run(); err == nil {
 		t.Errorf("records branch %q still present on the remote after teardown; want it deleted alongside the local copy", recordsBranch)
 	}
@@ -700,7 +701,7 @@ func stepTeardown_AlreadyGonePairFinishesItsBranchDeletion(t *testing.T, h *hubf
 		t.Run(tt.name, func(t *testing.T) {
 			slug := "batten-branch-left-" + tt.name
 			hubforge.AddPair(t, h, slug)
-			recordsBranch := fabricengine.RecordsBranchName(slug)
+			recordsBranch := fabriclayout.RecordsBranchName(slug)
 			if !remoteBranchExists(h.RecordsBare, recordsBranch) {
 				t.Fatalf("precondition: %q not on the remote after the create", recordsBranch)
 			}
@@ -787,7 +788,7 @@ func stepTeardown_ResumedRowWhosePairIsGoneFinishesDone(t *testing.T, h *hubforg
 func stepTeardown_FailedRemoteDeletionHaltsResumably(t *testing.T, h *hubforge.Hub) {
 	slug := "batten-remote-fails"
 	hubforge.AddPair(t, h, slug)
-	recordsBranch := fabricengine.RecordsBranchName(slug)
+	recordsBranch := fabriclayout.RecordsBranchName(slug)
 	restore := refuseRemoteBranchDeletions(t, h.RecordsBare)
 
 	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
@@ -823,7 +824,7 @@ func stepTeardown_FailedRemoteDeletionHaltsResumably(t *testing.T, h *hubforge.H
 func stepTeardown_UnreachableRemoteHaltsBeforeRemovalResumably(t *testing.T, h *hubforge.Hub) {
 	slug := "batten-remote-unreachable"
 	hubforge.AddPair(t, h, slug)
-	recordsBranch := fabricengine.RecordsBranchName(slug)
+	recordsBranch := fabriclayout.RecordsBranchName(slug)
 	recordsRepoRoot, err := fabricengine.RecordsRepoRoot(h.Location)
 	if err != nil {
 		t.Fatalf("resolve records repo root: %v", err)
@@ -1184,7 +1185,7 @@ func TestBattenIntegration_CreateRow_IncompletePairRemedyWorksVerbatimOnAPrefixe
 	if err != nil {
 		t.Fatalf("resolve records repo root: %v", err)
 	}
-	gitkit.MustRun(t, recordsRepoRoot, "git", "worktree", "add", "-b", fabricengine.RecordsBranchName(branch), h.PairRecordsSibling(slug))
+	gitkit.MustRun(t, recordsRepoRoot, "git", "worktree", "add", "-b", fabriclayout.RecordsBranchName(branch), h.PairRecordsSibling(slug))
 
 	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
 		t.Fatal("ReadStatus must not be called by the create row")
@@ -1204,7 +1205,7 @@ func TestBattenIntegration_CreateRow_IncompletePairRemedyWorksVerbatimOnAPrefixe
 	}
 
 	// The remedy, verbatim: the fabric verb's own engine call with --force, then the branch, only if it survived the removal.
-	cfg, err := fabricengine.LoadConfig(configengine.Dirs{Board: fabricengine.BoardDir(h.Location.HubPath)})
+	cfg, err := fabricengine.LoadConfig(configengine.Dirs{Board: fabriclayout.BoardDir(h.Location.HubPath)})
 	if err != nil {
 		t.Fatalf("load fabric config: %v", err)
 	}

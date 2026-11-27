@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 )
 
 // fakePushNotifier counts the calls carrying its own hub path and answers any other hub as posted.
@@ -16,10 +17,10 @@ type fakePushNotifier struct {
 	err    error
 	lines  []string
 	// notices holds the whole notice of every counted call, in the order the calls came.
-	notices []fabricengine.PushNotice
+	notices []fabriclayout.PushNotice
 }
 
-func (n *fakePushNotifier) notify(hubPath string, notice fabricengine.PushNotice) (bool, error) {
+func (n *fakePushNotifier) notify(hubPath string, notice fabriclayout.PushNotice) (bool, error) {
 	if hubPath != n.hub {
 		return true, nil
 	}

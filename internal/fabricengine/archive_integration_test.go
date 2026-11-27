@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -30,10 +31,15 @@ func tagTargetAt(t *testing.T, repoRoot, tag string) string {
 	return strings.TrimSpace(out)
 }
 
+// recordEntries is what a recorder and a record value share.
+type recordEntries interface {
+	Entries() []fabriclayout.Mutation
+}
+
 // countKind counts the entries of kind in rec's record.
-func countKind(rec *fabricengine.Mutations, kind fabricengine.Kind) int {
+func countKind(rec recordEntries, kind fabriclayout.Kind) int {
 	n := 0
-	for _, m := range rec.Snapshot().Entries() {
+	for _, m := range rec.Entries() {
 		if m.Kind == kind {
 			n++
 		}
@@ -76,11 +82,11 @@ func TestArchiveWeftTip(t *testing.T) {
 		if got := tagTargetAt(t, h.RecordsBare, tag); got != tip {
 			t.Errorf("origin tag %s points at %q; want the tip %s", tag, got, tip)
 		}
-		if gotSlug, ok := fabricengine.ArchiveTagSlug(tag); !ok || gotSlug != slug {
+		if gotSlug, ok := fabriclayout.ArchiveTagSlug(tag); !ok || gotSlug != slug {
 			t.Errorf("ArchiveTagSlug(%q) = (%q, %v); want (%q, true)", tag, gotSlug, ok, slug)
 		}
-		if n := countKind(rec, fabricengine.KindTagPushed); n != 1 {
-			t.Errorf("first call recorded %d %s entries; want 1", n, fabricengine.KindTagPushed)
+		if n := countKind(rec, fabriclayout.KindTagPushed); n != 1 {
+			t.Errorf("first call recorded %d %s entries; want 1", n, fabriclayout.KindTagPushed)
 		}
 
 		tag2, reason2, err := fabricengine.ArchiveWeftTipForTest(rec, l, slug, branch)
@@ -172,8 +178,8 @@ func TestArchiveWeftTip_NoOriginSkips(t *testing.T) {
 	if got := tagTargetAt(t, weftRoot, "archive/archive-no-origin/"+tip[:12]); got != "" {
 		t.Errorf("a local archive tag exists at %s; want none", got)
 	}
-	if n := countKind(rec, fabricengine.KindTagPushed); n != 0 {
-		t.Errorf("recorded %d %s entries; want 0", n, fabricengine.KindTagPushed)
+	if n := countKind(rec, fabriclayout.KindTagPushed); n != 0 {
+		t.Errorf("recorded %d %s entries; want 0", n, fabriclayout.KindTagPushed)
 	}
 }
 
@@ -209,7 +215,7 @@ func TestArchiveWeftTip_UnreachableOriginErrors(t *testing.T) {
 	if got := tagTargetAt(t, h.RecordsBare, wantTag); got != "" {
 		t.Errorf("the real origin holds tag %s at %s; want none", wantTag, got)
 	}
-	if n := countKind(rec, fabricengine.KindTagPushed); n != 0 {
-		t.Errorf("recorded %d %s entries; want 0", n, fabricengine.KindTagPushed)
+	if n := countKind(rec, fabriclayout.KindTagPushed); n != 0 {
+		t.Errorf("recorded %d %s entries; want 0", n, fabriclayout.KindTagPushed)
 	}
 }

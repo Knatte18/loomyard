@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -24,37 +25,14 @@ import (
 // pendingTeardownSuffix ends the file name of a pending-teardown record, which sits beside the slug's teardown lock.
 const pendingTeardownSuffix = ".pending.json"
 
-// PendingTeardown is the record of a remote teardown handed to a detached child.
-// The command writes it before the handover, and the child removes it once the job has run with no failed step.
-// A record whose slug's teardown lock no process holds therefore names a teardown that did not finish:
-// its child ended before the job did, killed outright for instance, or a remote step of the job failed.
-// Either can leave the pair's branches on origin.
-// A record whose pair is gone everywhere stays until it is settled.
-type PendingTeardown struct {
-	Slug     string    `json:"slug"`
-	Kind     string    `json:"kind"`
-	HandedAt time.Time `json:"handed_at"`
-	// Worktree is the code worktree the teardown ran from.
-	Worktree string `json:"worktree,omitempty"`
-	// WeftTip is the local records tip the teardown tagged before it deleted the branch, empty when it found none.
-	WeftTip string `json:"weft_tip,omitempty"`
-	// TaskTip is the local task tip a discard tagged before it deleted the branch, empty when it found none.
-	TaskTip string `json:"task_tip,omitempty"`
-	// Rerun is the command whose re-run retries a discard or a removal, empty when its caller named none.
-	Rerun string `json:"rerun,omitempty"`
-	// WayForward is what finishes the teardown.
-	// A record on disk holds one only once a remote step failed; a listed record always holds one.
-	WayForward string `json:"way_forward,omitempty"`
-}
-
 // pendingTeardownPath returns the pending-teardown record of slug in the hub at hubPath.
 func pendingTeardownPath(hubPath, slug string) string {
-	return filepath.Join(filepath.Dir(TeardownLockPath(hubPath, slug)), slug+pendingTeardownSuffix)
+	return filepath.Join(filepath.Dir(fabriclayout.TeardownLockPath(hubPath, slug)), slug+pendingTeardownSuffix)
 }
 
 // pendingTeardownOf returns the record of job, handed over at handedAt, with the tips job tagged locally and its re-run.
-func pendingTeardownOf(job remoteTeardownJob, handedAt time.Time) PendingTeardown {
-	return PendingTeardown{
+func pendingTeardownOf(job remoteTeardownJob, handedAt time.Time) fabriclayout.PendingTeardown {
+	return fabriclayout.PendingTeardown{
 		Slug: job.Slug, Kind: job.Kind, HandedAt: handedAt.UTC(), Worktree: job.Worktree,
 		WeftTip: job.WeftTip, TaskTip: job.TaskTip, Rerun: job.Rerun,
 	}
@@ -78,7 +56,7 @@ func keepFailedTeardown(hubPath string, job remoteTeardownJob, failures []remote
 		}
 	}
 	path := pendingTeardownPath(hubPath, job.Slug)
-	err := state.UpdateJSON(path, path+".lock", func(record PendingTeardown, found bool) (PendingTeardown, error) {
+	err := state.UpdateJSON(path, path+".lock", func(record fabriclayout.PendingTeardown, found bool) (fabriclayout.PendingTeardown, error) {
 		if !found {
 			record = pendingTeardownOf(job, time.Now())
 		}
@@ -139,29 +117,29 @@ func (t *Topology) SettleGonePairTeardown(l *lymcwd.Location, slug, rerun string
 // Each listed record carries what finishes its teardown:
 // the way forward of its failed step, or else the re-run, behind the hand push of the archive tag of a tip it carries.
 // A hub with no record lists none, as an empty slice.
-func PendingTeardowns(hubPath string) ([]PendingTeardown, error) {
-	dir := filepath.Join(HubScratchDir(hubPath), teardownLockDirName)
+func PendingTeardowns(hubPath string) ([]fabriclayout.PendingTeardown, error) {
+	dir := filepath.Join(fabriclayout.HubScratchDir(hubPath), fabriclayout.TeardownLockDirName)
 	entries, err := os.ReadDir(dir)
 	if errors.Is(err, os.ErrNotExist) {
-		return []PendingTeardown{}, nil
+		return []fabriclayout.PendingTeardown{}, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("list the pending teardowns: %w", err)
 	}
-	pending := []PendingTeardown{}
+	pending := []fabriclayout.PendingTeardown{}
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), pendingTeardownSuffix) {
 			continue
 		}
 		path := filepath.Join(dir, entry.Name())
-		record, found, err := state.ReadJSON[PendingTeardown](path, path+".lock")
+		record, found, err := state.ReadJSON[fabriclayout.PendingTeardown](path, path+".lock")
 		if err != nil {
 			return nil, fmt.Errorf("read the pending teardown %s: %w", entry.Name(), err)
 		}
 		if !found {
 			continue
 		}
-		held, acquired, err := lock.TryAcquireReadLock(TeardownLockPath(hubPath, record.Slug))
+		held, acquired, err := lock.TryAcquireReadLock(fabriclayout.TeardownLockPath(hubPath, record.Slug))
 		if err != nil {
 			return nil, fmt.Errorf("probe the teardown lock of %q: %w", record.Slug, err)
 		}
@@ -182,7 +160,7 @@ func PendingTeardowns(hubPath string) ([]PendingTeardown, error) {
 // A tip the record carries may be tagged on this machine alone,
 // so the hand push of its archive tag comes before the re-run.
 // A records tip whose records repository cannot be found from the record's worktree names the re-run alone.
-func pendingTeardownWayForward(record PendingTeardown) string {
+func pendingTeardownWayForward(record fabriclayout.PendingTeardown) string {
 	job := remoteTeardownJob{
 		Kind: record.Kind, Slug: record.Slug, Worktree: record.Worktree,
 		WeftTip: record.WeftTip, TaskTip: record.TaskTip, Rerun: record.Rerun,

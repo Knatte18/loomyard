@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/dotgit"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/weftname"
@@ -18,21 +19,12 @@ import (
 // detachedBranch is the branch name recorded for a worktree whose HEAD is detached.
 const detachedBranch = "(detached)"
 
-// WorktreeEntry represents a single worktree of a repository, as `git worktree list` reports it.
-type WorktreeEntry struct {
-	Path     string `json:"path"`
-	Head     string `json:"head"`
-	Branch   string `json:"branch"`
-	Main     bool   `json:"main"`
-	Prunable bool   `json:"prunable"`
-}
-
 // List returns every worktree of the repository holding sourceDir, an absolute path anywhere inside a worktree.
 // The main worktree comes first with Main=true; all others have Main=false.
 // It reads the repository's files and starts no git process.
 // A repository whose refs are not files is the exception: it lists through `git worktree list --porcelain`.
 // A sourceDir that does not exist, a bare repository and a directory in no repository are errors.
-func List(sourceDir string) ([]WorktreeEntry, error) {
+func List(sourceDir string) ([]fabriclayout.WorktreeEntry, error) {
 	worktrees, err := dotgit.ListWorktrees(sourceDir)
 	if errors.Is(err, dotgit.ErrRefStorage) {
 		return listFromPorcelain(sourceDir)
@@ -47,14 +39,14 @@ func List(sourceDir string) ([]WorktreeEntry, error) {
 // entriesFromWorktrees converts dotgit's worktrees into entries.
 // The first worktree is the main one.
 // An empty branch reads as detached, and a branch loses its refs/heads/ prefix.
-func entriesFromWorktrees(worktrees []dotgit.Worktree) []WorktreeEntry {
-	entries := make([]WorktreeEntry, len(worktrees))
+func entriesFromWorktrees(worktrees []dotgit.Worktree) []fabriclayout.WorktreeEntry {
+	entries := make([]fabriclayout.WorktreeEntry, len(worktrees))
 	for i, worktree := range worktrees {
 		branch := detachedBranch
 		if worktree.Branch != "" {
 			branch = strings.TrimPrefix(worktree.Branch, "refs/heads/")
 		}
-		entries[i] = WorktreeEntry{
+		entries[i] = fabriclayout.WorktreeEntry{
 			Path:     worktree.Path,
 			Head:     worktree.Head,
 			Branch:   branch,
@@ -66,7 +58,7 @@ func entriesFromWorktrees(worktrees []dotgit.Worktree) []WorktreeEntry {
 }
 
 // listFromPorcelain lists the worktrees of the repository holding sourceDir through `git worktree list --porcelain`.
-func listFromPorcelain(sourceDir string) ([]WorktreeEntry, error) {
+func listFromPorcelain(sourceDir string) ([]fabriclayout.WorktreeEntry, error) {
 	stdout, err := gitexec.Run([]string{"worktree", "list", "--porcelain"}, sourceDir)
 	if err != nil {
 		return nil, fmt.Errorf("list git worktrees in %q: %w", sourceDir, err)
@@ -76,9 +68,9 @@ func listFromPorcelain(sourceDir string) ([]WorktreeEntry, error) {
 
 // parseWorktreePorcelain parses the porcelain output from `git worktree list --porcelain`.
 // The first block gets Main=true; all others get Main=false.
-func parseWorktreePorcelain(out string) ([]WorktreeEntry, error) {
+func parseWorktreePorcelain(out string) ([]fabriclayout.WorktreeEntry, error) {
 	blocks := strings.Split(out, "\n\n")
-	var entries []WorktreeEntry
+	var entries []fabriclayout.WorktreeEntry
 	firstBlock := true
 
 	for _, block := range blocks {
@@ -88,7 +80,7 @@ func parseWorktreePorcelain(out string) ([]WorktreeEntry, error) {
 		}
 
 		lines := strings.Split(block, "\n")
-		entry := WorktreeEntry{
+		entry := fabriclayout.WorktreeEntry{
 			Main: firstBlock, // FIRST non-empty block is main
 		}
 		firstBlock = false
@@ -129,7 +121,7 @@ func parseWorktreePorcelain(out string) ([]WorktreeEntry, error) {
 // A match on the caller's own branch is an ordinary match: refusing it is the caller's policy.
 // Main plays no role in matching.
 // Returns ("", false) when no live entry matches.
-func matchParentBranch(entries []WorktreeEntry, parentBranch string) (path string, ok bool) {
+func matchParentBranch(entries []fabriclayout.WorktreeEntry, parentBranch string) (path string, ok bool) {
 	for _, entry := range entries {
 		if entry.Prunable {
 			continue

@@ -18,7 +18,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -42,7 +42,7 @@ func TestRunDispatchesToBoard(t *testing.T) {
 	gitkit.Git(t, cwd, "init")
 
 	// The board config is the hub's: the hub is cwd's parent.
-	boardDir := fabricengine.BoardDir(filepath.Dir(cwd))
+	boardDir := fabriclayout.BoardDir(filepath.Dir(cwd))
 	configDir := configengine.ConfigDir(boardDir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("failed to create hub board config dir: %v", err)

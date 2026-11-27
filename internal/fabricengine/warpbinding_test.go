@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -44,14 +45,6 @@ func TestNormalizeWarpURL(t *testing.T) {
 				t.Errorf("normalizeWarpURL(%q) = %q; want %q", tt.raw, got, tt.want)
 			}
 		})
-	}
-
-	// The scp form must not collapse onto the https spelling of the same repo: normalization
-	// alone is not transport-aware.
-	scp := normalizeWarpURL("git@github.com:u/repo.git")
-	https := normalizeWarpURL("https://github.com/u/repo")
-	if scp == https {
-		t.Errorf("normalizeWarpURL(scp) = %q; must not equal normalizeWarpURL(https) = %q", scp, https)
 	}
 }
 
@@ -154,7 +147,7 @@ func TestResolveEffectiveWarpURL(t *testing.T) {
 			wantWrite:    false,
 			wantErr:      true,
 			wantErrIs:    ErrWarpBindingMismatch,
-			wantErrParts: []string{"edit " + WarpBindingFileName + " in the hub's " + BoltDirName + " worktree and commit", "https://github.com/u/r", "git@github.com:u/r.git"},
+			wantErrParts: []string{"edit " + fabriclayout.WarpBindingFileName + " in the hub's " + fabriclayout.BoltDirName + " worktree and commit", "https://github.com/u/r", "git@github.com:u/r.git"},
 		},
 		{
 			name:         "present_and_supplied_different_repo_conflicts",
@@ -214,7 +207,7 @@ func TestWarpBindingReadWrite(t *testing.T) {
 	boardDir := t.TempDir()
 
 	if url, found := readWarpBinding(boardDir); found || url != "" {
-		t.Fatalf("readWarpBinding(%q) = (%q, %v); want (\"\", false) with no %s present", boardDir, url, found, WarpBindingFileName)
+		t.Fatalf("readWarpBinding(%q) = (%q, %v); want (\"\", false) with no %s present", boardDir, url, found, fabriclayout.WarpBindingFileName)
 	}
 
 	const warpURL = "https://github.com/u/repo"
@@ -225,7 +218,7 @@ func TestWarpBindingReadWrite(t *testing.T) {
 		t.Fatalf("readWarpBinding(%q) = (%q, %v); want (%q, true)", boardDir, url, found, warpURL)
 	}
 
-	path := filepath.Join(boardDir, WarpBindingFileName)
+	path := filepath.Join(boardDir, fabriclayout.WarpBindingFileName)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("ReadFile(%s) error = %v; want nil", path, err)

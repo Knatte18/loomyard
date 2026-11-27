@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -37,7 +38,7 @@ func TestArchiveParentMerge(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ArchiveParentMerge() error = %v", err)
 		}
-		if want := fabricengine.OwnerArchiveTagName(slug, merge); tag != want {
+		if want := fabriclayout.OwnerArchiveTagName(slug, merge); tag != want {
 			t.Errorf("ArchiveParentMerge() tag = %q; want %q", tag, want)
 		}
 		if got := tagTargetAt(t, d.hub.CodeBare, tag); got != merge {

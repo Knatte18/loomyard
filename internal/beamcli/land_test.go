@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/githubclient"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/pawlengine"
@@ -30,7 +30,7 @@ type landWorld struct {
 	owners  boardengine.Owners
 	parents map[string]string
 	pairs   map[string]bool
-	origins map[string]fabricengine.Origin
+	origins map[string]fabriclayout.Origin
 	// children holds each beam's pawl run status; a beam with no entry has no pawl run.
 	children map[string]shedengine.Status
 	// ready holds each beam whose ready record flags it, and marked holds the ready records written.
@@ -114,7 +114,7 @@ func newLandWorld() *landWorld {
 		}},
 		parents:  map[string]string{},
 		pairs:    map[string]bool{"b": true, "landed": true},
-		origins:  map[string]fabricengine.Origin{"b": {Beam: true, ParentBranch: "main"}, "landed": {Beam: true}},
+		origins:  map[string]fabriclayout.Origin{"b": {Beam: true, ParentBranch: "main"}, "landed": {Beam: true}},
 		children: map[string]shedengine.Status{"b": {State: shedengine.StateRunning, CurrentProducer: pawlengine.NameBeamAwait}},
 		runID:    "2026-02-28T08:00:00Z",
 		ready:    map[string]bool{"b": true},
@@ -140,7 +140,7 @@ func (w *landWorld) deps() landDeps {
 		ReadOwners:  func() (boardengine.Owners, error) { return w.owners, nil },
 		ParentOf:    func(slug string) (string, error) { return w.parents[slug], nil },
 		PairPresent: func(slug string) bool { return w.pairs[slug] },
-		OriginRecord: func(slug string) (fabricengine.Origin, bool, error) {
+		OriginRecord: func(slug string) (fabriclayout.Origin, bool, error) {
 			origin, found := w.origins[slug]
 			return origin, found, nil
 		},
@@ -274,7 +274,7 @@ func TestLand(t *testing.T) {
 			name: "UnmarkedPairRefusedNamingCreate",
 			slug: "b",
 			setup: func(w *landWorld) {
-				w.origins["b"] = fabricengine.Origin{}
+				w.origins["b"] = fabriclayout.Origin{}
 			},
 			wantErr: []string{"beam mark", "lym beam create b"},
 		},
@@ -327,7 +327,7 @@ func TestLand(t *testing.T) {
 				w.owners.Entries["inner"] = boardengine.OwnerEntry{IsProject: true, Beam: true, Owner: here}
 				w.parents["inner"] = "outer"
 				w.pairs["inner"] = true
-				w.origins["inner"] = fabricengine.Origin{Beam: true}
+				w.origins["inner"] = fabriclayout.Origin{Beam: true}
 				w.children["inner"] = shedengine.Status{State: shedengine.StateRunning, CurrentProducer: pawlengine.NameBeamAwait}
 			},
 			wantErr: []string{"parent of inner is owned by machine there", "lym adopt outer"},

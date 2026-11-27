@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -92,8 +93,8 @@ func pushSideDetached(rec *Mutations, hubPath, side, path string, opts SyncOptio
 // A call with warpPath set and weftPath empty is rejected by the same guard.
 // It blocks until the lock is free,
 // and it marks the sides it pushes pending.
-func CoalescePushBothAt(warpPath, weftPath string, opts SyncOptions) (res PushResult, err error) {
-	return coalescePushSides(PushSpawn{WarpPath: warpPath, WeftPath: weftPath}, opts, MachineNames{}, "CoalescePushBothAt", func(lockPath string) (*lock.FileLock, bool, error) {
+func CoalescePushBothAt(warpPath, weftPath string, opts SyncOptions) (res fabriclayout.PushResult, err error) {
+	return coalescePushSides(fabriclayout.PushSpawn{WarpPath: warpPath, WeftPath: weftPath}, opts, fabriclayout.MachineNames{}, "CoalescePushBothAt", func(lockPath string) (*lock.FileLock, bool, error) {
 		held, err := lock.AcquireWriteLock(lockPath)
 		if err != nil {
 			return nil, false, fmt.Errorf("fabricengine: acquire push lock: %w", err)
@@ -111,7 +112,7 @@ func CoalescePushBothAt(warpPath, weftPath string, opts SyncOptions) (res PushRe
 // It honors SkipGit and SkipPush.
 // A rejected records push reads the run's record on origin first, for the run req names, through here.
 // A takeover entry of a machine here does not hold returns a *TakeoverError, with no side pushed after the rejection.
-func CoalescePushRequest(req PushSpawn, opts SyncOptions, here MachineNames) (res PushResult, err error) {
+func CoalescePushRequest(req fabriclayout.PushSpawn, opts SyncOptions, here fabriclayout.MachineNames) (res fabriclayout.PushResult, err error) {
 	return coalescePushSides(req, opts, here, "CoalescePushRequest", lock.TryAcquireWriteLock)
 }
 
@@ -124,7 +125,7 @@ func CoalescePushRequest(req PushSpawn, opts SyncOptions, here MachineNames) (re
 // For the duration of the call it installs a gate deferral.
 // A pause triggers it at the gate before an acquire of the lock:
 // the flags of the owed sides go back, and the process exits.
-func coalescePushSides(req PushSpawn, opts SyncOptions, here MachineNames, caller string, acquire func(lockPath string) (*lock.FileLock, bool, error)) (res PushResult, err error) {
+func coalescePushSides(req fabriclayout.PushSpawn, opts SyncOptions, here fabriclayout.MachineNames, caller string, acquire func(lockPath string) (*lock.FileLock, bool, error)) (res fabriclayout.PushResult, err error) {
 	warpPath, weftPath := req.WarpPath, req.WeftPath
 	hubRoot := ""
 	if warpPath != "" {
@@ -134,15 +135,15 @@ func coalescePushSides(req PushSpawn, opts SyncOptions, here MachineNames, calle
 	defer func() { res.Mutations = rec.Snapshot() }()
 
 	if opts.SkipGit || opts.SkipPush {
-		return PushResult{}, nil
+		return fabriclayout.PushResult{}, nil
 	}
 	if weftPath == "" {
-		return PushResult{}, fmt.Errorf("fabricengine: %s requires a weft path for the absorbing push lock", caller)
+		return fabriclayout.PushResult{}, fmt.Errorf("fabricengine: %s requires a weft path for the absorbing push lock", caller)
 	}
 
 	lockDir, err := ensureWeftLockDirAt(weftPath)
 	if err != nil {
-		return PushResult{}, err
+		return fabriclayout.PushResult{}, err
 	}
 	hubPath := filepath.Dir(weftPath)
 	runSlug := req.TeardownSlug
@@ -150,9 +151,9 @@ func coalescePushSides(req PushSpawn, opts SyncOptions, here MachineNames, calle
 		runSlug = req.PauseSlug
 	}
 
-	owed := map[string]PushSpawn{pushSideRecords: {WeftPath: weftPath, PauseSlug: req.PauseSlug, TeardownSlug: req.TeardownSlug, ParentLocked: req.ParentLocked}}
+	owed := map[string]fabriclayout.PushSpawn{pushSideRecords: {WeftPath: weftPath, PauseSlug: req.PauseSlug, TeardownSlug: req.TeardownSlug, ParentLocked: req.ParentLocked}}
 	if warpPath != "" {
-		owed[pushSideCode] = PushSpawn{WarpPath: warpPath, PauseSlug: req.PauseSlug, TeardownSlug: req.TeardownSlug, ParentLocked: req.ParentLocked}
+		owed[pushSideCode] = fabriclayout.PushSpawn{WarpPath: warpPath, PauseSlug: req.PauseSlug, TeardownSlug: req.TeardownSlug, ParentLocked: req.ParentLocked}
 	}
 
 	codeOpts := opts
@@ -175,13 +176,13 @@ func coalescePushSides(req PushSpawn, opts SyncOptions, here MachineNames, calle
 		recordsLanded := true
 		if beforeWeft != "" {
 			retryWeft := func() (bool, error) { return retryWeftPush(rec, hubPath, weftPath, runSlug, here) }
-			recordsLanded, err = pushSideDetached(rec, hubPath, failedPushSideRecords, weftPath, opts, retryWeft)
+			recordsLanded, err = pushSideDetached(rec, hubPath, fabriclayout.RepoRecords, weftPath, opts, retryWeft)
 			if err != nil {
 				return false, err
 			}
 		}
 		if recordsLanded && warpPath != "" && beforeWarp != "" {
-			if _, err := pushSideDetached(rec, hubPath, failedPushSideCode, warpPath, codeOpts, nil); err != nil {
+			if _, err := pushSideDetached(rec, hubPath, fabriclayout.RepoCode, warpPath, codeOpts, nil); err != nil {
 				return false, err
 			}
 		}
@@ -199,5 +200,5 @@ func coalescePushSides(req PushSpawn, opts SyncOptions, here MachineNames, calle
 	}
 
 	_, err = coalesceFlagged(lockDir, owed, acquire, step)
-	return PushResult{}, err
+	return fabriclayout.PushResult{}, err
 }

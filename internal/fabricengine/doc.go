@@ -36,7 +36,7 @@
 //
 // The weft arm never stalls the warp side.
 // A replay that stops on a conflict or an uncommitted change returns a `*WeftStopError` beside the warp result.
-// `PullResult` reports what each side did, and `*PartialPullError` carries the warp-side-failure contract.
+// `fabriclayout.PullResult` reports what each side did, and `*PartialPullError` carries the warp-side-failure contract.
 //
 // A weft never crosses a change of its anchor marker on the pull and push paths (anchorstop.go).
 // `Pull` returns a `*WeftStopError` wrapping `ErrAnchorChange` before the warp arm runs, so neither side moves.
@@ -55,18 +55,19 @@
 //
 // `ReconcileOrigin` judges this machine's local branches against origin.
 // It runs before anything acts on a run or the hub after the machine may have been away.
-// It takes the hub location, a `ReconcileScope` and the `OriginSeams` a call site injects.
+// It takes the hub location, a `fabriclayout.ReconcileScope` and the `OriginSeams` a call site injects.
 // A nil seam reads as no live pair, a free parent lock and no teardown.
-// The `OriginReport` embeds `MutationRecord`.
-// It holds one `BranchOutcome` per judged branch and one `EntryOutcome` per pair with a batten run record.
-// An empty `ReconcileScope.Run` judges the hub; a slug judges that run.
+// The `fabriclayout.OriginReport` embeds `MutationRecord`.
+// It holds one `fabriclayout.BranchOutcome` per judged branch.
+// It also holds one `fabriclayout.EntryOutcome` per pair with a batten run record.
+// An empty `fabriclayout.ReconcileScope.Run` judges the hub; a slug judges that run.
 // A branch with no origin tracking ref was never pushed and is not judged.
 //
 // A judge-only scope moves nothing and writes no `FETCH_HEAD`.
 // The reconcile holds both repositories' remote-refs locks (`gitrepo.Repo.HoldRemoteRefs`);
 // it holds them from the `ls-remote` pair through the last verdict,
 // so a concurrent push is judged against the origin read before it, never as a rewind.
-// A transport failure is `OriginReport.Unreachable` with a nil error, nothing judged and nothing moved.
+// A transport failure is `fabriclayout.OriginReport.Unreachable` with a nil error, nothing judged and nothing moved.
 // Any other failure is the returned error.
 //
 // A moving scope fast-forwards only.
@@ -79,7 +80,7 @@
 // its way forward names `lym adopt <subject>`.
 // An ended entry goes to `OriginSeams.Teardown` when it has a local part.
 // A teardown that reports busy leaves the pair, and its way forward names the wait and `lym cleanup --apply`.
-// A run scope refuses when its task worktree is not registered, unless `ReconcileScope.PairMayBeAbsent` is set.
+// A run scope refuses an unregistered task worktree unless `fabriclayout.ReconcileScope.PairMayBeAbsent` is set.
 // Only a batten resume sets it.
 //
 // # Commit and push
@@ -117,7 +118,7 @@
 // The one exception is `commitWeftAt`, which seeds the weft artifact excludes before every stage.
 //
 // `Fabric.Diff` answers what changed since a warp SHA on both sides, bridged through the correspondence index.
-// A SHA older than the first correspondence gives an empty weft side with `DiffResult.NoWeftCorrespondence`.
+// A SHA older than the first correspondence gives an empty weft side with `fabriclayout.DiffResult.NoWeftCorrespondence`.
 // `Fabric.Status` answers what is uncommitted on both sides, with no correspondence anchor involved.
 // `Topology.Status` is the separate pairing and junction-health report.
 //
@@ -126,9 +127,9 @@
 // Pushes are rebase-free (`gitrepo.PushRebaseFree`), so a rejected push never mutates the calling working tree.
 // `PushPairAnchored` is the synchronous form.
 // It pushes the records side first and sends no code side unless the records side landed.
-// `PairPush.LockWait` bounds the wait for the push lock, and an expiry wraps `ErrPushLockBusy`.
+// `fabriclayout.PairPush.LockWait` bounds the wait for the push lock, and an expiry wraps `ErrPushLockBusy`.
 // `IsPushRejected` and `IsPushOwed` classify a failed push for callers outside this package.
-// `PairPush.OwedUnrecorded` is the mode of a caller that retries an owed push itself:
+// `fabriclayout.PairPush.OwedUnrecorded` is the mode of a caller that retries an owed push itself:
 // a failure of an owed class returns its `*PushFailedError` with no failed-push record,
 // and every other class is recorded.
 // A records push is skipped when its branch is gone from origin and its entry is ended.
@@ -161,7 +162,7 @@
 // `HandOverTips`, `TakeOverRun` and `ArchiveParentMerge` are the git steps of a hand-over.
 // Each runs under the slug's teardown lock and tags unpushed local tips `archive-owner/<slug>/<tip>`.
 //
-// A pair's teardown lock is `TeardownLockPath(hub, slug)`, outside both of the pair's worktrees.
+// A pair's teardown lock is `fabriclayout.TeardownLockPath(hub, slug)`, outside both of the pair's worktrees.
 // A detached push child takes it shared and exits quietly when a removal holds it.
 // `Remove`, `Add` and `DiscardTaskBranch` take it exclusive and fail with `ErrPairPushRunning` when the wait runs out.
 //
@@ -175,10 +176,10 @@
 // `configsync` never rewrites a `pathspec:` key already present, so a template change governs new clones only.
 // `Reconcile` converges every pair to that set: add what is missing, re-point what is broken, remove what is stale.
 // It is fail-closed: an unreadable repo-wide `fabric.yaml` aborts stale removal for that pair.
-// A pair that lacks a junction is reported unhealthy on purpose (`CauseJunctionMissing`) until a reconcile.
+// A pair that lacks a junction is reported unhealthy on purpose (`fabriclayout.CauseJunctionMissing`) until a reconcile.
 // Downgrade is unsupported: an older binary's reconcile unwires `.lym` and strands scratch in the weft worktree.
 // `Unwire` removes every fabric junction on disk and its exclude entries, never weft content or the repo-wide records.
-// `UnwireVerbResult.WeftContent` is `"preserved"` or `"not_present"`, never `"cleared"`.
+// `fabriclayout.UnwireVerbResult.WeftContent` is `"preserved"` or `"not_present"`, never `"cleared"`.
 //
 // Every junction is excluded through the warp's `.git/info/exclude`, never a committed `.gitignore`.
 // The entry is the junction's anchored path, because a slash-free pattern would untrack same-named directories.
@@ -278,7 +279,7 @@
 // "Made" fires once a worktree is fully set up.
 // "Took in commits" fires when a warp pull or reconcile fast-forwards a code branch;
 // weft and Bolt moves fire nothing.
-// A seam failure never fails a verb; it is returned as warning text such as `PullResult.SeamWarning`.
+// A seam failure never fails a verb; it is returned as warning text such as `fabriclayout.PullResult.SeamWarning`.
 //
 // # The one-repo illusion at the public API boundary
 //
@@ -290,8 +291,9 @@
 //   - `PushPairAnchored`, `MergeStateActive`, `MidMerge`
 //   - `RequireDrivableWorktree`, `NewRefScanner`, `NewReferenceRule`
 //
-// Such a caller reads only `CommitResult.Committed()`; the raw side fields stay exported for `internal/fabriccli`.
-// `Healthy` returns a typed `HealthReason` so a caller switches on `Cause` instead of parsing prose.
+// Such a caller reads only `fabriclayout.CommitResult.Committed()`.
+// The raw side fields stay exported for `internal/fabriccli`.
+// `Healthy` returns a typed `fabriclayout.HealthReason` so a caller switches on `Cause` instead of parsing prose.
 // `IsReadOnlyCommand` rejects an unquoted parenthesis and a dollar expansion in a reader segment.
 // A zsh glob qualifier or parameter expansion runs code with no substitution marker.
 //
@@ -304,7 +306,9 @@
 //
 // # The mutation record
 //
-// Every mutating verb accumulates a `*Mutations` record (mutation.go) naming, in order, the primitives it performed.
+// The entry, the kinds, the record value `Mutations` and the carrier `MutationRecord` live in internal/fabriclayout;
+// the recorder, `Mutations` of this package, lives here (mutation.go).
+// Every mutating verb accumulates a `*Mutations` record naming, in order, the primitives it performed.
 // The record lists what changed, not what the verb attempted and not what its success return implies.
 // `ok`, or at this layer a nil error, means only that no error was returned, never that nothing happened;
 // `mutations` and `partial` keep a consumer from confusing the two.
@@ -319,7 +323,7 @@
 // It installs `defer func() { res.Mutations = rec.Snapshot() }()` right after construction,
 // so the record reaches the caller through every return, early error returns included.
 //
-// Every mutating verb's result type embeds `MutationRecord` (mutation.go), which exposes `Mutated() Mutations`.
+// Every mutating verb's result type embeds `MutationRecord`, which exposes `Mutated()`, the record value.
 // Read-only verbs' result types, `StatusResult` and `DiffResult` among them, do not embed it.
 //
 // At the CLI envelope layer (`internal/fabriccli`), every mutating verb's JSON output carries two fixed keys:
@@ -511,12 +515,12 @@
 // `MergeContinue` and `MergeAbort` take it before reading the record and re-verify under it what they checked before.
 // The lock never covers the resolution window between `MergeIn`/`Merge` and `MergeContinue`.
 //
-// `MergeResult.Committed` and `AlreadyUpToDate` are read off the merge-state record.
+// `fabriclayout.MergeResult.Committed` and `AlreadyUpToDate` are read off the merge-state record.
 // A resumed call and a sequential one therefore agree.
 // "Already up to date" means git had nothing to do, not that the trees already agreed:
 // a merge whose result tree equals HEAD's own is a real merge and concludes with `Committed` true.
 // Only a squash with an empty result is a no-op.
-// Conflicted paths surface as one flat, sorted, deduplicated list of worktree-relative paths in `MergeResult.Conflicts`.
+// `fabriclayout.MergeResult.Conflicts` holds conflicted paths as one flat, sorted, deduplicated, worktree-relative list.
 // When empty, it is never nil.
 // A path outside the single visible worktree self-aborts the attempt with `*ErrUnmergeableState`.
 // A conflict under a wired junction name lives in the weft and can be staged only through `MergeStageResolved`.
@@ -539,7 +543,7 @@
 // # The one-repository layout
 //
 // A one-repository hub keeps its records store's branches and tags on the code store's origin, under `refs/lym/`.
-// Its only spelling is the constants whose names open with `RecordsNamespace`.
+// Its only spelling is `fabriclayout`'s constants whose names open with `RecordsNamespace`.
 // The layout is the records store's origin fetch refspec, read per repository by `originNamespaceAt(dir)`.
 // A store whose prime key, push refspecs or a branch's merge setting names the namespace is a records store.
 // Its layout read fails when no fetch refspec maps the namespace or when it has no origin.
@@ -607,6 +611,47 @@
 // **Local bares.** `SeedLocalBares` creates a bare warp with one commit on `main` and an empty bare weft.
 // `SeedLocalOrigin` creates the one bare of a one-repository hub, holding the same commit.
 // They are the shapes `CloneHub` clones a hub from, so a throwaway hub of either layout needs no remote and no work tree.
+//
+// **The executor loop.** A verb's rule lives in `internal/fabriccore` and is a pure function:
+// its input is a snapshot, the facts read from the hub and from origin,
+// and its answer refuses, asks for another read phase, or lists actions to run, an action list.
+// This "snapshot" is the core's input.
+// It is distinct from the snapshot tags the `Snapshot:` trailer records and from the recorder's `Snapshot`.
+// `runRule` drives one rule from an empty snapshot, taking the answer it is started with as the first one:
+//
+//   - A refusal ends the loop and is the returned error.
+//   - A phase request calls the lock seam at that phase's first request, then reads the requested fields.
+//     The phase enters the snapshot's phases once a read of it succeeds.
+//     A lock a phase needs none of is one whose release does nothing.
+//   - An action list runs in order, each action through the runner of its kind, until an action is not done.
+//     The wait action needs no runner.
+//     The reread fields are then read under the phase requested last, still locked.
+//   - An answer holding nothing ends the loop.
+//
+// The rule is asked again after each of the two middle steps, so it alone decides when the loop stops.
+// Every lock taken is held until the loop returns, and released in reverse order.
+// A read that fails only as transport failures enters the snapshot as read failures,
+// so the rule decides what an unreachable origin means; any other read error is returned.
+//
+// The engine's one rule of its own is `outcomeClassOf`, which maps an error to the class a rule decides on:
+// done, anchor stop, auth refused, rejected, destructive refusal, transport failure or failed.
+// A runner is registered with the rule that emits its kind; a list naming an unregistered kind runs nothing.
+//
+// `snapshotReader` is the loop's read.
+// A rule's request names a phase (before any lock, under the lock, or origin) and the fields to read in it,
+// and the reader reads those alone.
+// The fields are:
+//
+//   - the code store's worktrees;
+//   - each store's local refs;
+//   - each store's origin heads;
+//   - each records worktree's committed anchor;
+//   - the records store's presence and layout;
+//   - the pending teardowns.
+//
+// Each store's ref storage is probed in process before its local refs are read:
+// a `files` store is read in process, and any other through `git for-each-ref`.
+// The records store's layout is cached for the process, so a rule reads it in its first phase.
 //
 // **Test layout.**
 // A test builds its hub through `internal/hubforge` only, never a package-local fixture type.

@@ -13,7 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/beamsetting"
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/pawlengine"
@@ -73,7 +73,7 @@ type landDeps struct {
 	ReadOwners     func() (boardengine.Owners, error)
 	ParentOf       func(slug string) (string, error)
 	PairPresent    func(slug string) bool
-	OriginRecord   func(slug string) (fabricengine.Origin, bool, error)
+	OriginRecord   func(slug string) (fabriclayout.Origin, bool, error)
 	ChildStatus    func(slug string) (status shedengine.Status, found bool, err error)
 	RunID          func(slug string) (string, error)
 	Ready          func(slug string) (bool, error)

@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -189,7 +190,7 @@ func stepSyncGitignoreIgnoresManifest(t *testing.T, f *syncFixture) {
 
 // stepSyncConcurrentCallSerializesOnBoardPushLock asserts concurrent Sync calls serialize on the board push lock.
 func stepSyncConcurrentCallSerializesOnBoardPushLock(t *testing.T, f *syncFixture) {
-	pushLockPath, err := fabricengine.BoltLockPath(f.boardPath, fabricengine.BoardPushLockFile)
+	pushLockPath, err := fabricengine.BoltLockPath(f.boardPath, fabriclayout.BoardPushLockFile)
 	if err != nil {
 		t.Fatalf("BoltLockPath() error = %v", err)
 	}

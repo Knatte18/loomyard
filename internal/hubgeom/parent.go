@@ -11,6 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
@@ -38,7 +39,7 @@ func ResolveParent(l *lymcwd.Location) (Parent, error) {
 	if err != nil {
 		return Parent{}, fmt.Errorf("hubgeom: read origin record for %q: %w", l.WorktreeName, err)
 	}
-	shortname, shortnameFound := fabricengine.ReadShortname(fabricengine.BoltDir(l.HubPath))
+	shortname, shortnameFound := fabricengine.ReadShortname(fabriclayout.BoltDir(l.HubPath))
 	if !shortnameFound {
 		logger.Warn("hubgeom: hub has no recorded shortname; the run gets no parent", "worktree", l.WorktreeName)
 		return Parent{}, nil
@@ -77,7 +78,7 @@ func parentWorktreeIsPrime(root string) (bool, error) {
 // decideParent decides the parent from values already read, so it touches no filesystem.
 // An empty shortname yields no parent.
 // parentIsPrime is read only when origin names a parent worktree.
-func decideParent(shortname string, origin fabricengine.Origin, originFound bool, parentIsPrime bool) (Parent, error) {
+func decideParent(shortname string, origin fabriclayout.Origin, originFound bool, parentIsPrime bool) (Parent, error) {
 	if shortname == "" {
 		return Parent{}, nil
 	}

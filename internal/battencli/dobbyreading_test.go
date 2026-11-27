@@ -13,7 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -153,7 +153,7 @@ func TestDobbyTasks_AnUnreadableParentFailsOnlyAReleasedTask(t *testing.T) {
 			}
 			// The hub's own board is unreadable, which is what fails the parent read of a slug with no origin record.
 			prime := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "main", AnchorRel: "."}
-			hubBoard := fabricengine.BoardDir(prime.HubPath)
+			hubBoard := fabriclayout.BoardDir(prime.HubPath)
 			if err := os.MkdirAll(hubBoard, 0o755); err != nil {
 				t.Fatalf("create the hub board directory: %v", err)
 			}
@@ -237,7 +237,7 @@ func TestDobbyTasks_ReadsTheStartRefusalOfAFinishedRunRecord(t *testing.T) {
 			parents := NewDobbyParents(prime)
 			parents.known["released"] = "main"
 
-			views, err := DobbyTasks(prime, fabricengine.BoardDir(prime.HubPath), parents)
+			views, err := DobbyTasks(prime, fabriclayout.BoardDir(prime.HubPath), parents)
 			if err != nil {
 				t.Fatalf("DobbyTasks() error = %v; want nil", err)
 			}

@@ -11,6 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
@@ -24,7 +25,7 @@ import (
 // A hub with no recorded shortname yields no parent and a warning, since no name can be formed.
 // A read error, and an error from live, are returned.
 func NearestLiveOrch(from *lymcwd.Location, live func(worktree *lymcwd.Location) (bool, error)) (Parent, error) {
-	shortname, found := fabricengine.ReadShortname(fabricengine.BoltDir(from.HubPath))
+	shortname, found := fabricengine.ReadShortname(fabriclayout.BoltDir(from.HubPath))
 	if !found {
 		logger.Warn("hubgeom: hub has no recorded shortname; the notice gets no orch", "worktree", from.WorktreeName)
 		return Parent{}, nil

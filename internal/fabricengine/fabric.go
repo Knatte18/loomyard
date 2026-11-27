@@ -13,13 +13,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
-
-// DefaultCommitMessage is the commit message for a weft commit that does not need a custom one.
-const DefaultCommitMessage = "weft sync"
 
 // ErrMissingPath is the error for a warp or weft path that does not exist or is not a directory.
 // It names the missing path, so a caller can tell which of the two checkouts is absent.
@@ -130,9 +128,9 @@ func RequireWarpWorktree(l *lymcwd.Location) error {
 		return fmt.Errorf("%w: %s is the records sibling of a pair, not a warp worktree; run lym from the paired warp worktree instead",
 			ErrNotAWarpWorktree, l.WorktreePath())
 	}
-	if name == BoltDirName {
+	if name == fabriclayout.BoltDirName {
 		return fmt.Errorf("%w: %s is the hub's %s checkout, not a warp worktree; run lym from a warp worktree instead",
-			ErrNotAWarpWorktree, l.WorktreePath(), BoltDirName)
+			ErrNotAWarpWorktree, l.WorktreePath(), fabriclayout.BoltDirName)
 	}
 	return nil
 }
@@ -183,17 +181,6 @@ func (f *Fabric) OriginURL() (string, error) {
 
 // PushBranch pushes f's warp side without a rebase and returns the PushResult as it came back.
 // It discards nothing from the PushResult; the caller decides what to keep.
-func (f *Fabric) PushBranch(opts SyncOptions) (PushResult, error) {
+func (f *Fabric) PushBranch(opts SyncOptions) (fabriclayout.PushResult, error) {
 	return PushWarpRebaseFreeAt(f.warpPath, opts)
-}
-
-// ScopedPathspec returns the entries of dirs joined under relPath.
-// At relPath == ".", this returns dirs unchanged;
-// at relPath == "sub", ["_lym"] becomes ["sub/_lym"].
-func ScopedPathspec(relPath string, dirs []string) []string {
-	result := make([]string, len(dirs))
-	for i, dir := range dirs {
-		result[i] = filepath.Join(relPath, dir)
-	}
-	return result
 }

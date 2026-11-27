@@ -37,6 +37,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gatefixer"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -298,9 +299,9 @@ type decisionDeps struct {
 	// writeRecord writes data as the decision record's working copy.
 	writeRecord func(data []byte) error
 	// commitReplace commits the record alone with msg and trailers; committed is false when nothing was staged.
-	commitReplace func(msg string, trailers []fabricengine.Trailer) (committed bool, err error)
+	commitReplace func(msg string, trailers []fabriclayout.Trailer) (committed bool, err error)
 	// commitEmpty commits the record's path alone with msg and trailers, landing an empty commit when it is unchanged.
-	commitEmpty func(msg string, trailers []fabricengine.Trailer) error
+	commitEmpty func(msg string, trailers []fabriclayout.Trailer) error
 	// headCarries reports whether HEAD is a commit whose replace trailer carries value.
 	headCarries func(value string) (bool, error)
 	// implementerSpan reports whether the run at currentRow stands past its plan's approval.
@@ -1507,7 +1508,7 @@ func decisionReplaceVerb(out io.Writer, slug string, deps decisionDeps, input re
 		return refuse("write the decision record: %s; %s", err, replaceWayRetry)
 	}
 	value := recordReplacedValue(input.by, deps.recordRel, file)
-	trailers := []fabricengine.Trailer{{Key: recordReplacedTrailerKey, Value: value}}
+	trailers := []fabriclayout.Trailer{{Key: recordReplacedTrailerKey, Value: value}}
 	msg := fmt.Sprintf("loom: decision record replaced for %s: %s", slug, strings.TrimSpace(input.title))
 	commitError, refusal := landReplace(deps, file, working, msg, trailers)
 	if refusal != "" {
@@ -1547,7 +1548,7 @@ func decisionReplaceVerb(out io.Writer, slug string, deps decisionDeps, input re
 // the bytes without that trailer get the empty trailer commit;
 // and a HEAD without the bytes gets prior written back as the record.
 // It returns the refusal text when the call fails.
-func landReplace(deps decisionDeps, written, prior []byte, msg string, trailers []fabricengine.Trailer) (commitError, refusal string) {
+func landReplace(deps decisionDeps, written, prior []byte, msg string, trailers []fabriclayout.Trailer) (commitError, refusal string) {
 	committed, err := deps.commitReplace(msg, trailers)
 	if err == nil {
 		if !committed {
@@ -1654,11 +1655,11 @@ func (s *decisionState) preRun(cmd *cobra.Command, args []string) error {
 		recordRel:      filepath.ToSlash(record.rel),
 		lockRecord:     func() (func() error, error) { return holdDecisionLock(recordPath) },
 		writeRecord:    func(data []byte) error { return os.WriteFile(recordPath, data, 0o644) },
-		commitReplace: func(msg string, trailers []fabricengine.Trailer) (bool, error) {
+		commitReplace: func(msg string, trailers []fabriclayout.Trailer) (bool, error) {
 			_, committed, err := fabricengine.CommitAnchoredPathsWithTrailers(fabricengine.NewMutations(""), target, []string{record.rel}, msg, trailers, fabricengine.EnvSyncOptions())
 			return committed, err
 		},
-		commitEmpty: func(msg string, trailers []fabricengine.Trailer) error {
+		commitEmpty: func(msg string, trailers []fabriclayout.Trailer) error {
 			_, _, err := fabricengine.CommitEmptyWithTrailers(fabricengine.NewMutations(""), target, record.rel, msg, trailers, fabricengine.EnvSyncOptions())
 			return err
 		},

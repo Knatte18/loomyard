@@ -19,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -419,7 +420,7 @@ func dobbyStatus(prime *lymcwd.Location, now time.Time) (statusResult, error) {
 		failures = append(failures, fmt.Errorf("adopt checks: %w", err))
 	}
 	result.AdoptChecks = checks
-	owners, err := boardengine.ReadOwners(fabricengine.BoardDir(prime.HubPath))
+	owners, err := boardengine.ReadOwners(fabriclayout.BoardDir(prime.HubPath))
 	if err != nil {
 		failures = append(failures, fmt.Errorf("adopt hold: %w", err))
 	} else if len(owners.Holds) > 0 {
@@ -463,10 +464,10 @@ type startEntry struct {
 	AbandonedSession string                     `json:"abandoned_session,omitempty"`
 	Warnings         []string                   `json:"warnings,omitempty"`
 	Error            string                     `json:"error,omitempty"`
-	Reconcile        *fabricengine.OriginReport `json:"reconcile,omitempty"`
+	Reconcile        *fabriclayout.OriginReport `json:"reconcile,omitempty"`
 	FailedPushes     []map[string]any           `json:"failed_pushes,omitempty"`
 	OwnerPauses      []map[string]string        `json:"owner_pauses,omitempty"`
-	Mutations        []fabricengine.Mutation    `json:"mutations,omitempty"`
+	Mutations        []fabriclayout.Mutation    `json:"mutations,omitempty"`
 }
 
 // startCmd returns the `beam start` verb.
@@ -767,7 +768,7 @@ func runDobbyWith(
 		return output.Err(out, fmt.Sprintf("lym beam dobby: wire the dobby over the hub: %v", err))
 	}
 	deps.Locked = func() error {
-		if err := registerDobby(fabricengine.RunProcDir(prime.HubPath), geom); err != nil {
+		if err := registerDobby(fabriclayout.RunProcDir(prime.HubPath), geom); err != nil {
 			return fmt.Errorf("register the dobby: %w", err)
 		}
 		if selfexecs() {

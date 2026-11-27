@@ -8,18 +8,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
-
-// DiscardResult reports what a discard of a task branch did.
-// It embeds MutationRecord, which holds the mutations accumulated over the call.
-// ArchiveTags lists the archive tags that now hold the discarded tips, none when no branch existed.
-type DiscardResult struct {
-	MutationRecord
-	ArchiveTags   []string `json:"archive_tags,omitempty"`
-	LocalDeleted  bool     `json:"local_deleted,omitempty"`
-	OriginDeleted bool     `json:"origin_deleted,omitempty"`
-}
 
 // DiscardTaskBranch archives and deletes slug's task branch locally and on the task repository's origin.
 // It does so whether or not the pair's work is landed.
@@ -42,7 +33,7 @@ type DiscardResult struct {
 // The lock is held until the remote half ends.
 // When the wait runs out, it returns an error wrapping ErrPairPushRunning.
 // The error names re-running the discard, with nothing archived or deleted.
-func (t *Topology) DiscardTaskBranch(l *lymcwd.Location, slug, rerun string) (res DiscardResult, err error) {
+func (t *Topology) DiscardTaskBranch(l *lymcwd.Location, slug, rerun string) (res fabriclayout.DiscardResult, err error) {
 	rec := NewMutations(l.HubPath)
 	defer func() { res.Mutations = rec.Snapshot() }()
 
@@ -54,7 +45,7 @@ func (t *Topology) DiscardTaskBranch(l *lymcwd.Location, slug, rerun string) (re
 	// so it goes to a record of its own, and a slug with no branch keeps a zero result.
 	hold, err := t.holdTeardown(NewMutations(l.HubPath), rec, l, slug, false, lockRerun, true)
 	if err != nil {
-		return DiscardResult{}, err
+		return fabriclayout.DiscardResult{}, err
 	}
 	var job *remoteTeardownJob
 	defer func() {
@@ -66,18 +57,18 @@ func (t *Topology) DiscardTaskBranch(l *lymcwd.Location, slug, rerun string) (re
 	repoDir := l.WorktreePath()
 	warpBranch, err := t.PairTaskBranch(l, slug)
 	if err != nil {
-		return DiscardResult{}, err
+		return fabriclayout.DiscardResult{}, err
 	}
 	localTip, err := localBranchTip(repoDir, warpBranch)
 	if err != nil {
-		return DiscardResult{}, err
+		return fabriclayout.DiscardResult{}, err
 	}
 	if localTip == "" {
 		// No local branch names the task branch, so origin names it.
 		// That is required for a pair made before the branch prefix changed.
 		onOrigin, err := t.originTaskBranch(l, slug)
 		if err != nil {
-			return DiscardResult{}, err
+			return fabriclayout.DiscardResult{}, err
 		}
 		if onOrigin != "" {
 			warpBranch = onOrigin
@@ -86,10 +77,10 @@ func (t *Topology) DiscardTaskBranch(l *lymcwd.Location, slug, rerun string) (re
 	if localTip != "" {
 		localTag, err := createArchiveTag(repoDir, slug, localTip, "task")
 		if err != nil {
-			return DiscardResult{}, fmt.Errorf("%w: %w", ErrArchiveFailed, err)
+			return fabriclayout.DiscardResult{}, fmt.Errorf("%w: %w", ErrArchiveFailed, err)
 		}
 		if _, _, err := deleteArchivedTaskBranch(rec, repoDir, warpBranch, localTag, "", ""); err != nil {
-			return DiscardResult{}, err
+			return fabriclayout.DiscardResult{}, err
 		}
 		res.LocalDeleted = true
 		res.ArchiveTags = []string{localTag}

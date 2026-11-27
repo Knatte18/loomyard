@@ -9,76 +9,57 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 )
 
-// LineChange is the tree difference between two commits of a pair's code repository.
-type LineChange struct {
-	// Paths are the sorted changed paths, a rename counted at both its old and its new path.
-	Paths []string
-	// Lines is the added plus the deleted lines.
-	// A pure rename adds none, and a binary file counts as one line, so it is never free.
-	Lines int
-	// AddedLines is the text of every added line, without its leading plus.
-	AddedLines []string
-}
-
 // LineChange reads the tree difference from from to to in the pair's code repository.
 // A failed read is an error naming both commits.
-func (f *Fabric) LineChange(from, to string) (LineChange, error) {
+func (f *Fabric) LineChange(from, to string) (fabriclayout.LineChange, error) {
 	paths, err := f.ChangedPathsBothSides(from, to)
 	if err != nil {
-		return LineChange{}, fmt.Errorf("fabricengine: line change from %s to %s: %w", from, to, err)
+		return fabriclayout.LineChange{}, fmt.Errorf("fabricengine: line change from %s to %s: %w", from, to, err)
 	}
 	numstat, err := gitexec.Run([]string{"diff", "--numstat", "-M", from, to}, f.warpPath)
 	if err != nil {
-		return LineChange{}, fmt.Errorf("fabricengine: line change from %s to %s: %w", from, to, err)
+		return fabriclayout.LineChange{}, fmt.Errorf("fabricengine: line change from %s to %s: %w", from, to, err)
 	}
 	lines, err := countNumstatLines(numstat)
 	if err != nil {
-		return LineChange{}, fmt.Errorf("fabricengine: line change from %s to %s: %w", from, to, err)
+		return fabriclayout.LineChange{}, fmt.Errorf("fabricengine: line change from %s to %s: %w", from, to, err)
 	}
 	patch, err := gitexec.Run([]string{"diff", "--unified=0", "--no-color", "-M", from, to}, f.warpPath)
 	if err != nil {
-		return LineChange{}, fmt.Errorf("fabricengine: line change from %s to %s: %w", from, to, err)
+		return fabriclayout.LineChange{}, fmt.Errorf("fabricengine: line change from %s to %s: %w", from, to, err)
 	}
-	return LineChange{Paths: paths, Lines: lines, AddedLines: addedPatchLines(patch)}, nil
-}
-
-// DiffSize is the size of the tree difference between two commits of a pair's code repository.
-type DiffSize struct {
-	// LinesAdded and LinesDeleted are the added and deleted lines, a pure rename adding and deleting none.
-	LinesAdded   int
-	LinesDeleted int
-	// FilesChanged counts each changed file once, renamed and binary files included; binary files add and delete no lines.
-	FilesChanged int
+	return fabriclayout.LineChange{Paths: paths, Lines: lines, AddedLines: addedPatchLines(patch)}, nil
 }
 
 // DiffSize reads the size of the tree difference from from to to in the pair's code repository.
 // A failed read is an error naming both commits.
-func (f *Fabric) DiffSize(from, to string) (DiffSize, error) {
+func (f *Fabric) DiffSize(from, to string) (fabriclayout.DiffSize, error) {
 	numstat, err := gitexec.Run([]string{"diff", "--numstat", "-M", from, to}, f.warpPath)
 	if err != nil {
-		return DiffSize{}, fmt.Errorf("fabricengine: diff size from %s to %s: %w", from, to, err)
+		return fabriclayout.DiffSize{}, fmt.Errorf("fabricengine: diff size from %s to %s: %w", from, to, err)
 	}
 	size, err := diffSizeOfNumstat(numstat)
 	if err != nil {
-		return DiffSize{}, fmt.Errorf("fabricengine: diff size from %s to %s: %w", from, to, err)
+		return fabriclayout.DiffSize{}, fmt.Errorf("fabricengine: diff size from %s to %s: %w", from, to, err)
 	}
 	return size, nil
 }
 
 // diffSizeOfNumstat totals `git diff --numstat` output, which has one file per line.
 // A binary file's "-" pair adds no lines.
-func diffSizeOfNumstat(numstat string) (DiffSize, error) {
-	var size DiffSize
+func diffSizeOfNumstat(numstat string) (fabriclayout.DiffSize, error) {
+	var size fabriclayout.DiffSize
 	for _, line := range strings.Split(numstat, "\n") {
 		if line == "" {
 			continue
 		}
 		fields := strings.SplitN(line, "\t", 3)
 		if len(fields) != 3 {
-			return DiffSize{}, fmt.Errorf("numstat line %q has no counts", line)
+			return fabriclayout.DiffSize{}, fmt.Errorf("numstat line %q has no counts", line)
 		}
 		size.FilesChanged++
 		if fields[0] == "-" && fields[1] == "-" {
@@ -86,11 +67,11 @@ func diffSizeOfNumstat(numstat string) (DiffSize, error) {
 		}
 		added, err := strconv.Atoi(fields[0])
 		if err != nil {
-			return DiffSize{}, fmt.Errorf("numstat line %q: %w", line, err)
+			return fabriclayout.DiffSize{}, fmt.Errorf("numstat line %q: %w", line, err)
 		}
 		deleted, err := strconv.Atoi(fields[1])
 		if err != nil {
-			return DiffSize{}, fmt.Errorf("numstat line %q: %w", line, err)
+			return fabriclayout.DiffSize{}, fmt.Errorf("numstat line %q: %w", line, err)
 		}
 		size.LinesAdded += added
 		size.LinesDeleted += deleted

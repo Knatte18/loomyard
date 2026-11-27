@@ -148,8 +148,8 @@ The two-sided design is documented in `internal/fabricengine`'s package doc.
 ```
 
 `_bolt` is hub geometry, and `_portals` and `_launchers` are names no verb writes, so none of them can be claimed as a worktree slug.
-The check is `fabricengine.IsReservedHubName`.
-`.lym` is slug-reserved too, but via `structuralNeverCommittedDirs` rather than as hub geometry.
+The check is `fabriclayout.IsReservedHubName`.
+`.lym` is slug-reserved too, but via `fabriclayout.StructuralNeverCommittedDirs` rather than as hub geometry.
 It has no hub-level presence of its own.
 
 ### Git ownership
@@ -203,11 +203,11 @@ Worktrees are wired at `lym fabric clone` and `lym fabric add` time, with no sep
 Each of them materializes junctions, `_lym`, and config in one call.
 
 The wired junction set is not hardcoded, and it is not purely the repo-wide `fabric.pathspec` list.
-It is `structuralCommittedDirs` ∪ `structuralNeverCommittedDirs` ∪ the hub-reserved-filtered config names, deduplicated.
+It is `fabriclayout.StructuralCommittedDirs` ∪ `fabriclayout.StructuralNeverCommittedDirs` ∪ the hub-reserved-filtered config names, deduplicated.
 The two structural sets, `_lym` and `.lym`, are injected in code and never read from `fabric.yaml`.
 The third piece comes from the **repo-wide** `fabric.pathspec` list, recorded once at `<BoltDir>/_lym/config/fabric.yaml`.
-It is read from the records main branch in the Bolt checkout, via `fabricengine.BoltDir`.
-It is filtered against `fabricengine.HubReservedNames()`.
+It is read from the records main branch in the Bolt checkout, via `fabriclayout.BoltDir`.
+It is filtered against `fabriclayout.HubReservedNames()`.
 Those are the hub-structural tokens `_bolt` (the Bolt checkout), `_portals` and `_launchers`, which can never be a per-worktree junction.
 `board.yaml` is hub-wide too: it is read and written at `<BoltDir>/_lym/config/board.yaml`, never in a worktree's `_lym/config/`.
 A hub-wide module skips the worktree file in its layer stack, which [internal/configengine](../internal/configengine/doc.go) describes.

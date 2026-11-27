@@ -1,19 +1,51 @@
-// classify_test.go is a table test for classifyPaths, a pure function.
-// It sorts paths into the warp, the weft, and the never-committed bucket, and spawns no git process.
+// classify_test.go table-tests ScopedPathspec and ClassifyPaths.
+// ClassifyPaths sorts paths into the warp, the weft and the never-committed bucket.
 
-package fabricengine
+package fabriclayout
 
-import "testing"
+import (
+	"path/filepath"
+	"slices"
+	"testing"
 
-import "github.com/Knatte18/loomyard/internal/testkit/tiergate"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
+)
+
+// TestScopedPathspec covers a root relPath, which joins nothing, and a nested relPath, which prefixes each entry.
+//
+//testtiming:keep ScopedPathspec returning the entries unchanged at the root and prefixed by a nested relPath; coverage of its blocks by other tests does not show an assertion of this
+func TestScopedPathspec(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	tests := []struct {
+		name    string
+		relPath string
+		dirs    []string
+		want    []string
+	}{
+		{"root", ".", []string{"_lym"}, []string{"_lym"}},
+		{"nested", "sub", []string{"_lym"}, []string{filepath.Join("sub", "_lym")}},
+		{"nested_multiple_dirs", "sub", []string{"_lym", "_extra"}, []string{filepath.Join("sub", "_lym"), filepath.Join("sub", "_extra")}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := ScopedPathspec(tt.relPath, tt.dirs); !slices.Equal(got, tt.want) {
+				t.Errorf("ScopedPathspec(%q, %v) = %v; want %v", tt.relPath, tt.dirs, got, tt.want)
+			}
+		})
+	}
+}
 
 // TestClassifyPaths covers relPath "." and "sub" scoping and the _lymfoo/.lymfoo segment-boundary cases.
 // It also covers empty input, all-warp and all-weft inputs, and a routingNames set with more than two entries;
 // the never-committed bucket must place a path in neither weft nor warp.
 //
-//testtiming:keep classifyPaths' routing buckets, including segment-boundary names and the never-committed bucket landing in neither side; coverage of its blocks by other tests does not show an assertion of this
+//testtiming:keep ClassifyPaths' routing buckets, including segment-boundary names and the never-committed bucket landing in neither side; coverage of its blocks by other tests does not show an assertion of this
 func TestClassifyPaths(t *testing.T) {
 	tiergate.Require(t, 0)
+	t.Parallel()
 	tests := []struct {
 		name                string
 		relPath             string
@@ -101,10 +133,10 @@ func TestClassifyPaths(t *testing.T) {
 		{
 			name:         "routingNames_with_more_than_two_entries",
 			relPath:      ".",
-			routingNames: []string{"_lym", "_extra", BoltDirName, "_launchers"},
-			files:        []string{BoltDirName + "/entry.md", "_launchers/run.sh", "cmd/lym/main.go", "_extra/notes.md"},
+			routingNames: []string{"_lym", "_extra", lymdirs.BoltDirName, "_launchers"},
+			files:        []string{lymdirs.BoltDirName + "/entry.md", "_launchers/run.sh", "cmd/lym/main.go", "_extra/notes.md"},
 			wantWarp:     []string{"cmd/lym/main.go"},
-			wantWeft:     []string{BoltDirName + "/entry.md", "_launchers/run.sh", "_extra/notes.md"},
+			wantWeft:     []string{lymdirs.BoltDirName + "/entry.md", "_launchers/run.sh", "_extra/notes.md"},
 		},
 		{
 			name:                "dotlym_path_lands_in_neither_weft_nor_warp",
@@ -153,76 +185,17 @@ func TestClassifyPaths(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotWarp, gotWeft, gotNeverCommitted := classifyPaths(tt.relPath, tt.routingNames, tt.neverCommittedNames, tt.files)
-			if !stringSlicesEqual(gotWarp, tt.wantWarp) {
-				t.Errorf("classifyPaths(%q, %v, %v, %v) warp = %v; want %v", tt.relPath, tt.routingNames, tt.neverCommittedNames, tt.files, gotWarp, tt.wantWarp)
+			t.Parallel()
+			gotWarp, gotWeft, gotNeverCommitted := ClassifyPaths(tt.relPath, tt.routingNames, tt.neverCommittedNames, tt.files)
+			if !slices.Equal(gotWarp, tt.wantWarp) {
+				t.Errorf("ClassifyPaths(%q, %v, %v, %v) warp = %v; want %v", tt.relPath, tt.routingNames, tt.neverCommittedNames, tt.files, gotWarp, tt.wantWarp)
 			}
-			if !stringSlicesEqual(gotWeft, tt.wantWeft) {
-				t.Errorf("classifyPaths(%q, %v, %v, %v) weft = %v; want %v", tt.relPath, tt.routingNames, tt.neverCommittedNames, tt.files, gotWeft, tt.wantWeft)
+			if !slices.Equal(gotWeft, tt.wantWeft) {
+				t.Errorf("ClassifyPaths(%q, %v, %v, %v) weft = %v; want %v", tt.relPath, tt.routingNames, tt.neverCommittedNames, tt.files, gotWeft, tt.wantWeft)
 			}
-			if !stringSlicesEqual(gotNeverCommitted, tt.wantNeverCommitted) {
-				t.Errorf("classifyPaths(%q, %v, %v, %v) neverCommitted = %v; want %v", tt.relPath, tt.routingNames, tt.neverCommittedNames, tt.files, gotNeverCommitted, tt.wantNeverCommitted)
+			if !slices.Equal(gotNeverCommitted, tt.wantNeverCommitted) {
+				t.Errorf("ClassifyPaths(%q, %v, %v, %v) neverCommitted = %v; want %v", tt.relPath, tt.routingNames, tt.neverCommittedNames, tt.files, gotNeverCommitted, tt.wantNeverCommitted)
 			}
 		})
 	}
-}
-
-// TestClassifyPaths_PartitionsInputWithNothingLostOrDuplicated asserts each input path lands in one output slice.
-// Each path keeps its input order, and no path is lost or duplicated.
-//
-//testtiming:keep every input path landing in exactly one output slice in input order; coverage of its blocks by other tests does not show an assertion of this
-func TestClassifyPaths_PartitionsInputWithNothingLostOrDuplicated(t *testing.T) {
-	tiergate.Require(t, 0)
-	relPath := "."
-	routingNames := []string{"_lym", "_extra"}
-	neverCommittedNames := []string{".lym"}
-	files := []string{
-		"cmd/lym/main.go",
-		"_lym/module/state.json",
-		"go.mod",
-		"_extra/notes.md",
-		"_lymfoo/notweft.json",
-		".lym/webster/state.json.lock",
-		".lymfoo/notnevercommitted.json",
-	}
-
-	warp, weft, neverCommitted := classifyPaths(relPath, routingNames, neverCommittedNames, files)
-
-	// Reassemble warp, weft and neverCommitted into input order and compare against files.
-	// A match proves nothing was lost or duplicated, and that each slice keeps the relative order of its paths.
-	reconstructed := make([]string, 0, len(files))
-	wi, fi, ni := 0, 0, 0
-	for _, want := range files {
-		switch {
-		case wi < len(warp) && warp[wi] == want:
-			reconstructed = append(reconstructed, warp[wi])
-			wi++
-		case fi < len(weft) && weft[fi] == want:
-			reconstructed = append(reconstructed, weft[fi])
-			fi++
-		case ni < len(neverCommitted) && neverCommitted[ni] == want:
-			reconstructed = append(reconstructed, neverCommitted[ni])
-			ni++
-		}
-	}
-	if !stringSlicesEqual(reconstructed, files) {
-		t.Errorf("classifyPaths(%q, %v, %v, %v) warp=%v weft=%v neverCommitted=%v did not partition input in order; reconstructed=%v", relPath, routingNames, neverCommittedNames, files, warp, weft, neverCommitted, reconstructed)
-	}
-	if len(warp)+len(weft)+len(neverCommitted) != len(files) {
-		t.Errorf("classifyPaths(%q, %v, %v, %v) len(warp)+len(weft)+len(neverCommitted) = %d; want %d (input length)", relPath, routingNames, neverCommittedNames, files, len(warp)+len(weft)+len(neverCommitted), len(files))
-	}
-}
-
-// stringSlicesEqual reports whether a and b contain the same strings in the same order.
-// A nil slice and an empty slice compare equal.
-func stringSlicesEqual(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
 }

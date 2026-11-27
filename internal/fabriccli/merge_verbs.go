@@ -11,6 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -72,7 +73,7 @@ func websterInFlightWarnings(l *lymcwd.Location) []string {
 //
 // warnings is added to the ok and conflict envelopes only, under a "warnings" key present only when non-empty;
 // a hard failure never carries it.
-func setMergeExit(cmd *cobra.Command, out io.Writer, res fabricengine.MergeResult, err error, warnings []string) {
+func setMergeExit(cmd *cobra.Command, out io.Writer, res fabriclayout.MergeResult, err error, warnings []string) {
 	if err != nil {
 		// A failing verb that still knows its conflicted paths reports them under "unresolved", never under "conflicts".
 		// Only a conflict result carries "conflicts", which is how a script tells a conflict from a hard failure.
@@ -234,7 +235,7 @@ Example:
 				setMergeExit(cmd, out, res, err, nil)
 				return nil
 			default:
-				res, err := fabric().Merge(args[0], fabricengine.MergeOptions{Squash: squash, Message: message})
+				res, err := fabric().Merge(args[0], fabriclayout.MergeOptions{Squash: squash, Message: message})
 				setMergeExit(cmd, out, res, err, nil)
 				return nil
 			}

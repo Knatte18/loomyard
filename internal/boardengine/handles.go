@@ -14,6 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/consoletitle"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
@@ -168,7 +169,7 @@ func TitleWithHandle(boardDir, slug, name string) string {
 // An entry with no project, or whose project the board does not hold with a handle, is left out.
 // An unreadable board is logged at Warn and names no entry, since a folder name never fails its caller.
 func WorkspaceFolderNames(hubPath string) map[string]string {
-	tasks, err := ReadTasks(fabricengine.BoardDir(hubPath))
+	tasks, err := ReadTasks(fabriclayout.BoardDir(hubPath))
 	if err != nil {
 		logger.Warn("board: could not read the board for the workspace folders' project handles; naming them by slug", "cause", err)
 		return nil
@@ -215,11 +216,11 @@ func RecipeWindowTitle(hubPath, slug, recipe string) string {
 // worktreeWindowTitle returns the console title of the worktree slug, with name where the slug stands.
 // It opens the prime's and a beam's title with orchLead, and it names the prime by the root project.
 func worktreeWindowTitle(hubPath, primeName, slug, name, orchLead string) string {
-	shortname, _ := fabricengine.ReadShortname(fabricengine.BoltDir(hubPath))
+	shortname, _ := fabricengine.ReadShortname(fabriclayout.BoltDir(hubPath))
 	if primeName != "" && slug == primeName {
 		return consoletitle.Title(orchLead, shortname, rootProject.Handle, RootSubject)
 	}
-	tasks, err := ReadTasks(fabricengine.BoardDir(hubPath))
+	tasks, err := ReadTasks(fabriclayout.BoardDir(hubPath))
 	if err != nil {
 		logger.Warn("board: could not read the board for a window title's handles; titling without them", "slug", slug, "cause", err)
 		return consoletitle.Title("", shortname, "", name)

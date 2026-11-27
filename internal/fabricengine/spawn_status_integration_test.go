@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/parentlock"
@@ -28,7 +29,7 @@ func TestSpawnStatusPush(t *testing.T) {
 	pairSlug := hubforge.TemplatePairSlug
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: ".", Pairs: []string{pairSlug}})
-	boardDir := fabricengine.BoardDir(h.Location.HubPath)
+	boardDir := fabriclayout.BoardDir(h.Location.HubPath)
 	recorder := fabricengine.SwapPushRecorderForTest(t)
 
 	resolve := func(t *testing.T, worktree string) *lymcwd.Location {

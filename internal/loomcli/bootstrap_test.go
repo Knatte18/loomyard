@@ -15,6 +15,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
@@ -686,7 +687,7 @@ func TestStatusStrandSpec_TitlesTheWindowWithTheRunsHandleAndRecipe(t *testing.T
 	tiergate.Require(t, 0)
 	t.Parallel()
 	location := locationkit.Location(t.TempDir(), "run", "")
-	boardkit.WriteBoard(t, fabricengine.BoardDir(location.HubPath), `{"id":1,"slug":"run","kind":"task","labels":["bug"],"handle":"T4"}`)
+	boardkit.WriteBoard(t, fabriclayout.BoardDir(location.HubPath), `{"id":1,"slug":"run","kind":"task","labels":["bug"],"handle":"T4"}`)
 	c := &loomCLI{location: location, recipe: "darn"}
 
 	got := c.statusStrandSpec("/fixed/lym")
@@ -725,10 +726,10 @@ func TestStatusWindowTitle(t *testing.T) {
 			t.Parallel()
 			location := locationkit.Location(t.TempDir(), "run", "")
 			if len(tt.entries) > 0 {
-				boardkit.WriteBoard(t, fabricengine.BoardDir(location.HubPath), tt.entries...)
+				boardkit.WriteBoard(t, fabriclayout.BoardDir(location.HubPath), tt.entries...)
 			}
 			if tt.shortname != "" {
-				if err := fabricengine.WriteShortname(fabricengine.BoardDir(location.HubPath), tt.shortname); err != nil {
+				if err := fabricengine.WriteShortname(fabriclayout.BoardDir(location.HubPath), tt.shortname); err != nil {
 					t.Fatalf("record the shortname: %v", err)
 				}
 			}

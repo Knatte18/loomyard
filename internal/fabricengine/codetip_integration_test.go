@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -33,7 +34,7 @@ func plantRunTransition(t *testing.T, p *pairFixture, slug, codeTip, machine str
 	if err != nil {
 		t.Fatalf("marshal the child record: %v", err)
 	}
-	message := "transition\n\n" + fabricengine.TransitionTrailerKey + ": " + slug + "\n" + fabricengine.WarpSHATrailerKey + ": " + codeTip
+	message := "transition\n\n" + fabriclayout.TransitionTrailerKey + ": " + slug + "\n" + fabriclayout.WarpSHATrailerKey + ": " + codeTip
 	p.originCommit(p.weftBranch, statusRel, string(record), message)
 	gitkit.Git(t, p.weftPath, "fetch")
 	gitkit.Git(t, p.weftPath, "merge", "--ff-only", "origin/"+p.weftBranch)
@@ -48,42 +49,42 @@ func TestOriginCodeTip(t *testing.T) {
 	tests := []struct {
 		name string
 		// plant makes origin's records branch hold transitions and returns the reading wanted, its time aside.
-		plant func(t *testing.T, p *pairFixture) fabricengine.CodeTipReading
+		plant func(t *testing.T, p *pairFixture) fabriclayout.CodeTipReading
 		slug  string
 	}{
 		{
 			"ATipOriginsCodeBranchHoldsIsNotMissing",
-			func(t *testing.T, p *pairFixture) fabricengine.CodeTipReading {
+			func(t *testing.T, p *pairFixture) fabriclayout.CodeTipReading {
 				held := bareBranchTip(t, p.hub.CodeBare, p.warpBranch)
 				plantRunTransition(t, p, slug, held, "oslo")
-				return fabricengine.CodeTipReading{Tip: held, Machine: "oslo"}
+				return fabriclayout.CodeTipReading{Tip: held, Machine: "oslo"}
 			},
 			slug,
 		},
 		{
 			"ATipOriginsCodeBranchLacksIsMissingWithItsMachine",
-			func(t *testing.T, p *pairFixture) fabricengine.CodeTipReading {
+			func(t *testing.T, p *pairFixture) fabriclayout.CodeTipReading {
 				lacked := gitkit.CommitFile(t, p.warpPath, "warp-file.txt", "warp\n", "unpushed code")
 				plantRunTransition(t, p, slug, lacked, "oslo")
-				return fabricengine.CodeTipReading{Tip: lacked, Missing: true, Machine: "oslo"}
+				return fabriclayout.CodeTipReading{Tip: lacked, Missing: true, Machine: "oslo"}
 			},
 			slug,
 		},
 		{
 			"ALaterFabricCommitWithoutTheTransitionTrailerDoesNotMoveTheTip",
-			func(t *testing.T, p *pairFixture) fabricengine.CodeTipReading {
+			func(t *testing.T, p *pairFixture) fabriclayout.CodeTipReading {
 				lacked := gitkit.CommitFile(t, p.warpPath, "warp-file.txt", "warp\n", "unpushed code")
 				plantRunTransition(t, p, slug, lacked, "oslo")
 				held := bareBranchTip(t, p.hub.CodeBare, p.warpBranch)
-				p.originCommit(p.weftBranch, "fabric-note.txt", "note\n", "fabric commit\n\n"+fabricengine.WarpSHATrailerKey+": "+held)
-				return fabricengine.CodeTipReading{Tip: lacked, Missing: true, Machine: "oslo"}
+				p.originCommit(p.weftBranch, "fabric-note.txt", "note\n", "fabric commit\n\n"+fabriclayout.WarpSHATrailerKey+": "+held)
+				return fabriclayout.CodeTipReading{Tip: lacked, Missing: true, Machine: "oslo"}
 			},
 			slug,
 		},
 		{
 			"ASlugWithNoRecordsBranchOnOriginReadsNotMissing",
-			func(t *testing.T, p *pairFixture) fabricengine.CodeTipReading {
-				return fabricengine.CodeTipReading{}
+			func(t *testing.T, p *pairFixture) fabriclayout.CodeTipReading {
+				return fabriclayout.CodeTipReading{}
 			},
 			"ghost",
 		},

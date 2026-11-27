@@ -14,6 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/landingshed"
@@ -48,7 +49,7 @@ func newMergeInDepsAt(t *testing.T, taskWorktree string) landingshed.Deps {
 	scratch := t.TempDir()
 	deps.PushSkipped = true
 	deps.OpenParentFabric = func() (*fabricengine.Fabric, error) { return fabricHandle, nil }
-	deps.ReadParentTips = func(fetch bool) (fabricengine.ParentTips, error) { return fabricHandle.ReadParentTips("main", fetch) }
+	deps.ReadParentTips = func(fetch bool) (fabriclayout.ParentTips, error) { return fabricHandle.ReadParentTips("main", fetch) }
 	deps.ChangedPaths = fabricHandle.ChangedPaths
 	deps.MergeBase = fabricHandle.MergeBase
 	deps.TaskHead = fabricHandle.HeadSHA

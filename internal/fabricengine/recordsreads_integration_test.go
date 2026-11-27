@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -40,7 +41,7 @@ func TestSlugRecordsTags(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	originRecord := fabricengine.OriginRecordRel()
+	originRecord := fabriclayout.OriginRecordRel()
 
 	t.Run("an archive tag on origin lists with its origin record", func(t *testing.T) {
 		t.Parallel()
@@ -54,7 +55,7 @@ func TestSlugRecordsTags(t *testing.T) {
 			t.Fatalf("SlugRecordsTags: %v", err)
 		}
 
-		if len(tags) != 1 || !strings.HasPrefix(tags[0].Name, fabricengine.ArchiveTagPrefix+slug+"/") {
+		if len(tags) != 1 || !strings.HasPrefix(tags[0].Name, fabriclayout.ArchiveTagPrefix+slug+"/") {
 			t.Fatalf("SlugRecordsTags = %+v; want the one archive tag of %q", tags, slug)
 		}
 		if !tags[0].OnOrigin || tags[0].OriginOnly {
@@ -146,7 +147,7 @@ func TestSlugRecordsTags(t *testing.T) {
 		t.Parallel()
 
 		const slug = "records-branch"
-		weftBranch := fabricengine.RecordsBranchName(slug)
+		weftBranch := fabriclayout.RecordsBranchName(slug)
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		hubforge.AddPair(t, h, slug)
 		root := recordsRootOf(t, h)
@@ -177,7 +178,7 @@ func TestSlugRecordsTags(t *testing.T) {
 		t.Parallel()
 
 		const slug = "records-upstream"
-		weftBranch := fabricengine.RecordsBranchName(slug)
+		weftBranch := fabriclayout.RecordsBranchName(slug)
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		hubforge.AddPair(t, h, slug)
 		root := recordsRootOf(t, h)

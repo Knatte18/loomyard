@@ -1,4 +1,4 @@
-// livestate_mutationoracle_test.go judges a call's fabricengine.Mutations record against the unfiltered manifest diff.
+// livestate_mutationoracle_test.go judges a call's fabriclayout.Mutations record against the unfiltered manifest diff.
 // AssertRecordMatchesDiff checks the record in two directions.
 // Omission: every diff change is accounted for by some record entry.
 // Commission: every manifest-observable record entry is backed by a real diff change.
@@ -11,11 +11,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
-// manifestObservableKind classifies each fabricengine.Kind, except KindFileWritten, for the commission direction.
+// manifestObservableKind classifies each fabriclayout.Kind, except KindFileWritten, for the commission direction.
 // A true entry means every entry of that kind is manifest-observable and must be backed by a real diff change.
 // A false entry marks a git-state kind: it is exempt from commission.
 // It is asserted instead through the per-verb Expectation.Effect assertions, which read git directly.
@@ -24,30 +24,30 @@ import (
 // whether one of its entries participates depends on its Target, not on its kind alone.
 // Declaring every other kind here, rather than testing membership in one list, makes a new Kind fail loud.
 // Otherwise a newly added Kind would fall through unclassified without a failure.
-var manifestObservableKind = map[fabricengine.Kind]bool{
-	fabricengine.KindPathRemoved:     true,
-	fabricengine.KindWorktreeRemoved: true,
-	fabricengine.KindWorktreeCreated: true,
-	fabricengine.KindDirCreated:      true,
-	fabricengine.KindPathRenamed:     true,
-	fabricengine.KindLinkRemoved:     true,
-	fabricengine.KindLinkCreated:     true,
+var manifestObservableKind = map[fabriclayout.Kind]bool{
+	fabriclayout.KindPathRemoved:     true,
+	fabriclayout.KindWorktreeRemoved: true,
+	fabriclayout.KindWorktreeCreated: true,
+	fabriclayout.KindDirCreated:      true,
+	fabriclayout.KindPathRenamed:     true,
+	fabriclayout.KindLinkRemoved:     true,
+	fabriclayout.KindLinkCreated:     true,
 
-	fabricengine.KindBranchCreated:       false,
-	fabricengine.KindBranchDeleted:       false,
-	fabricengine.KindRemoteBranchDeleted: false,
-	fabricengine.KindRemoteBranchUpdated: false,
-	fabricengine.KindBranchPushed:        false,
-	fabricengine.KindCommitCreated:       false,
-	fabricengine.KindWorktreeReset:       false,
-	fabricengine.KindWorktreeSwitched:    false,
-	fabricengine.KindPushSpawned:         false,
-	fabricengine.KindRepoAdvanced:        false,
-	fabricengine.KindMergeStaged:         false,
-	fabricengine.KindMergeCommitted:      false,
-	fabricengine.KindTagPushed:           false,
-	fabricengine.KindCommitsDropped:      false,
-	fabricengine.KindTagCreated:          false,
+	fabriclayout.KindBranchCreated:       false,
+	fabriclayout.KindBranchDeleted:       false,
+	fabriclayout.KindRemoteBranchDeleted: false,
+	fabriclayout.KindRemoteBranchUpdated: false,
+	fabriclayout.KindBranchPushed:        false,
+	fabriclayout.KindCommitCreated:       false,
+	fabriclayout.KindWorktreeReset:       false,
+	fabriclayout.KindWorktreeSwitched:    false,
+	fabriclayout.KindPushSpawned:         false,
+	fabriclayout.KindRepoAdvanced:        false,
+	fabriclayout.KindMergeStaged:         false,
+	fabriclayout.KindMergeCommitted:      false,
+	fabriclayout.KindTagPushed:           false,
+	fabriclayout.KindCommitsDropped:      false,
+	fabriclayout.KindTagCreated:          false,
 }
 
 // invertedBy maps a constructive kind to the kinds of a later entry at the same Target that undo it.
@@ -57,22 +57,22 @@ var manifestObservableKind = map[fabricengine.Kind]bool{
 // A rollback may tear a freshly minted worktree down through the os.RemoveAll fallback, not only through git.
 // A link_created is undone only by a link_removed, including a dangling link repointed during reconcile.
 // A file_written is undone by a path_removed at the same Target.
-var invertedBy = map[fabricengine.Kind][]fabricengine.Kind{
-	fabricengine.KindDirCreated:      {fabricengine.KindPathRemoved, fabricengine.KindWorktreeRemoved},
-	fabricengine.KindWorktreeCreated: {fabricengine.KindPathRemoved, fabricengine.KindWorktreeRemoved},
-	fabricengine.KindLinkCreated:     {fabricengine.KindLinkRemoved},
-	fabricengine.KindFileWritten:     {fabricengine.KindPathRemoved},
+var invertedBy = map[fabriclayout.Kind][]fabriclayout.Kind{
+	fabriclayout.KindDirCreated:      {fabriclayout.KindPathRemoved, fabriclayout.KindWorktreeRemoved},
+	fabriclayout.KindWorktreeCreated: {fabriclayout.KindPathRemoved, fabriclayout.KindWorktreeRemoved},
+	fabriclayout.KindLinkCreated:     {fabriclayout.KindLinkRemoved},
+	fabriclayout.KindFileWritten:     {fabriclayout.KindPathRemoved},
 }
 
 // subtreeDestroyingKind reports whether e's primitive removed everything beneath its own Target.
 // The Target path itself is not enough; the removal must reach its contents.
 // A worktree_removed always does, since `git worktree remove` deletes the whole checkout.
 // A path_removed does only when its Detail is "recursive" (os.RemoveAll), not "single" (os.Remove of a leaf file).
-func subtreeDestroyingKind(e fabricengine.Mutation) bool {
+func subtreeDestroyingKind(e fabriclayout.Mutation) bool {
 	switch e.Kind {
-	case fabricengine.KindWorktreeRemoved:
+	case fabriclayout.KindWorktreeRemoved:
 		return true
-	case fabricengine.KindPathRemoved:
+	case fabriclayout.KindPathRemoved:
 		return e.Detail == "recursive"
 	default:
 		return false
@@ -81,7 +81,7 @@ func subtreeDestroyingKind(e fabricengine.Mutation) bool {
 
 // constructiveKind reports whether kind is a key of invertedBy.
 // A later entry that destroys the whole containing subtree of such a kind can exempt it without an exact-Target undo.
-func constructiveKind(kind fabricengine.Kind) bool {
+func constructiveKind(kind fabriclayout.Kind) bool {
 	_, ok := invertedBy[kind]
 	return ok
 }
@@ -96,7 +96,7 @@ func constructiveKind(kind fabricengine.Kind) bool {
 // The commission direction checks rec's net effect.
 // Net effect drops every mint-then-undo pair first.
 // Each surviving manifest-observable entry must then be backed by at least one diff change at or beneath its Target.
-func AssertRecordMatchesDiff(tb testing.TB, rec fabricengine.Mutations, unfiltered []Change) {
+func AssertRecordMatchesDiff(tb testing.TB, rec fabriclayout.Mutations, unfiltered []Change) {
 	tb.Helper()
 
 	entries := rec.Entries()
@@ -124,7 +124,7 @@ func AssertRecordMatchesDiff(tb testing.TB, rec fabricengine.Mutations, unfilter
 //
 // Without these passes, a mutation performed and undone inside one call would report a false commission.
 // The before/after manifest nets to zero for a path or subtree the record still names.
-func netCommissionEffect(entries []fabricengine.Mutation) []fabricengine.Mutation {
+func netCommissionEffect(entries []fabriclayout.Mutation) []fabriclayout.Mutation {
 	consumed := make([]bool, len(entries))
 
 	for i, e := range entries {
@@ -158,7 +158,7 @@ func netCommissionEffect(entries []fabricengine.Mutation) []fabricengine.Mutatio
 		}
 	}
 
-	var net []fabricengine.Mutation
+	var net []fabriclayout.Mutation
 	for i, e := range entries {
 		if !consumed[i] {
 			net = append(net, e)
@@ -167,7 +167,7 @@ func netCommissionEffect(entries []fabricengine.Mutation) []fabricengine.Mutatio
 	return net
 }
 
-func containsKind(kinds []fabricengine.Kind, want fabricengine.Kind) bool {
+func containsKind(kinds []fabriclayout.Kind, want fabriclayout.Kind) bool {
 	for _, k := range kinds {
 		if k == want {
 			return true
@@ -185,7 +185,7 @@ func containsKind(kinds []fabricengine.Kind, want fabricengine.Kind) bool {
 // A content-hash diff then cannot tell it from a no-op, even though every recorded primitive ran.
 // CloneHub with Reset against an unchanged upstream is one such reconstruction.
 // Nothing recorded before a whole-hub teardown loses this exemption.
-func assertCommission(tb testing.TB, entries []fabricengine.Mutation, unfiltered []Change) {
+func assertCommission(tb testing.TB, entries []fabriclayout.Mutation, unfiltered []Change) {
 	tb.Helper()
 
 	wholeHubTornDown := false
@@ -194,7 +194,7 @@ func assertCommission(tb testing.TB, entries []fabricengine.Mutation, unfiltered
 			// A "." target is always exempt from commission.
 			// The manifest capture never emits a "." key (it returns early at the hub root),
 			// so no "."-targeted entry can find a matching change, whatever it claims.
-			if e.Kind == fabricengine.KindPathRemoved {
+			if e.Kind == fabriclayout.KindPathRemoved {
 				wholeHubTornDown = true
 			}
 			continue
@@ -232,8 +232,8 @@ func assertCommission(tb testing.TB, entries []fabricengine.Mutation, unfiltered
 // KindFileWritten is decided by its Target rather than by the kind alone.
 // A file_written under the ".git" directory records git-state bookkeeping the manifest capture excludes wholesale.
 // So only a file_written outside ".git" participates.
-func participatesInCommission(e fabricengine.Mutation) (participates, known bool) {
-	if e.Kind == fabricengine.KindFileWritten {
+func participatesInCommission(e fabriclayout.Mutation) (participates, known bool) {
+	if e.Kind == fabriclayout.KindFileWritten {
 		return !underGitMetadataDir(e.Target), true
 	}
 	participates, known = manifestObservableKind[e.Kind]
@@ -267,7 +267,7 @@ func anyChangeAtOrBelow(unfiltered []Change, root string) bool {
 // This direction is not folded to net effect.
 // A path the diff shows as changed must be accounted for by something in the record.
 // That holds even when a later entry undid the change.
-func assertOmission(tb testing.TB, entries []fabricengine.Mutation, unfiltered []Change) {
+func assertOmission(tb testing.TB, entries []fabriclayout.Mutation, unfiltered []Change) {
 	tb.Helper()
 
 	for _, c := range unfiltered {
@@ -287,14 +287,14 @@ func assertOmission(tb testing.TB, entries []fabricengine.Mutation, unfiltered [
 // worktreeRootedKind is the closed set of kinds whose Target names a worktree root:
 // worktree_created, worktree_removed, worktree_reset, worktree_switched, repo_advanced,
 // merge_staged, merge_committed.
-var worktreeRootedKind = map[fabricengine.Kind]bool{
-	fabricengine.KindWorktreeCreated:  true,
-	fabricengine.KindWorktreeRemoved:  true,
-	fabricengine.KindWorktreeReset:    true,
-	fabricengine.KindWorktreeSwitched: true,
-	fabricengine.KindRepoAdvanced:     true,
-	fabricengine.KindMergeStaged:      true,
-	fabricengine.KindMergeCommitted:   true,
+var worktreeRootedKind = map[fabriclayout.Kind]bool{
+	fabriclayout.KindWorktreeCreated:  true,
+	fabriclayout.KindWorktreeRemoved:  true,
+	fabriclayout.KindWorktreeReset:    true,
+	fabriclayout.KindWorktreeSwitched: true,
+	fabriclayout.KindRepoAdvanced:     true,
+	fabriclayout.KindMergeStaged:      true,
+	fabriclayout.KindMergeCommitted:   true,
 }
 
 // entryCovers reports whether e's coverage set includes diff change c.
@@ -305,9 +305,9 @@ var worktreeRootedKind = map[fabricengine.Kind]bool{
 // A "." Target is exempt except for path_removed.
 // A whole-hub teardown is the one "."-targeted entry that covers everything.
 // Nothing survives it for a finer entry to name.
-func entryCovers(e fabricengine.Mutation, c Change) bool {
+func entryCovers(e fabriclayout.Mutation, c Change) bool {
 	if e.Target == "." {
-		return e.Kind == fabricengine.KindPathRemoved
+		return e.Kind == fabriclayout.KindPathRemoved
 	}
 
 	if pathAtOrBelowRoot(c.Path, e.Target) {
@@ -316,7 +316,7 @@ func entryCovers(e fabricengine.Mutation, c Change) bool {
 
 	// A rename's source subtree is gone from its old path.
 	// A change at or below that source, which e.Detail holds relative to the hub, is the rename's own doing.
-	if e.Kind == fabricengine.KindPathRenamed && pathAtOrBelowRoot(c.Path, e.Detail) {
+	if e.Kind == fabriclayout.KindPathRenamed && pathAtOrBelowRoot(c.Path, e.Detail) {
 		return true
 	}
 

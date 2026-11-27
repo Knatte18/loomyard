@@ -15,7 +15,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -55,7 +55,7 @@ func TestCleanup_ProtectsPrimaryWeftBranchAfterCheckout(t *testing.T) {
 				// Exactly as `lym fabric checkout` does.
 				// The Bolt checkout worktree stays on "main", which records the repo's primary warp branch.
 				gitkit.MustRun(t, h.Location.WorktreePath(), "git", "checkout", "-b", "alt")
-				gitkit.MustRun(t, h.PrimeRecords(), "git", "checkout", "-b", fabricengine.RecordsBranchName("alt"))
+				gitkit.MustRun(t, h.PrimeRecords(), "git", "checkout", "-b", fabriclayout.RecordsBranchName("alt"))
 			},
 		},
 		{
@@ -73,7 +73,7 @@ func TestCleanup_ProtectsPrimaryWeftBranchAfterCheckout(t *testing.T) {
 
 			h := tt.build(t)
 			l := h.Location
-			primaryWeftBranch := fabricengine.RecordsBranchName(tt.defaultBranch)
+			primaryWeftBranch := fabriclayout.RecordsBranchName(tt.defaultBranch)
 
 			tt.moveOffDefault(t, h)
 
@@ -127,7 +127,7 @@ func TestCleanup_RefusesWhenPrimaryWeftBranchIsUndeterminable(t *testing.T) {
 			name:  "TwoRepositoryBoardGone",
 			build: func(t *testing.T) *hubforge.Hub { return hubforge.CopyHub(t, hubforge.Shape{Anchor: "."}) },
 			spoil: func(t *testing.T, h *hubforge.Hub, recordsDir string) {
-				if err := os.RemoveAll(fabricengine.BoardDir(h.Location.HubPath)); err != nil {
+				if err := os.RemoveAll(fabriclayout.BoardDir(h.Location.HubPath)); err != nil {
 					t.Fatalf("remove board worktree: %v", err)
 				}
 			},
@@ -136,9 +136,9 @@ func TestCleanup_RefusesWhenPrimaryWeftBranchIsUndeterminable(t *testing.T) {
 			name:  "OneRepositoryKeyUnset",
 			build: func(t *testing.T) *hubforge.Hub { return hubforge.NewOneRepoHub(t, hubforge.OneRepoOptions{}) },
 			spoil: func(t *testing.T, h *hubforge.Hub, recordsDir string) {
-				gitkit.Git(t, recordsDir, "config", "--unset", fabricengine.PrimeRecordsBranchKey)
+				gitkit.Git(t, recordsDir, "config", "--unset", fabriclayout.PrimeRecordsBranchKey)
 			},
-			wantErrorFormats: []string{"git -C %s config " + fabricengine.PrimeRecordsBranchKey},
+			wantErrorFormats: []string{"git -C %s config " + fabriclayout.PrimeRecordsBranchKey},
 		},
 		{
 			name:  "OneRepositoryKeyNamesNoBranch",
@@ -146,11 +146,11 @@ func TestCleanup_RefusesWhenPrimaryWeftBranchIsUndeterminable(t *testing.T) {
 			spoil: func(t *testing.T, h *hubforge.Hub, recordsDir string) {
 				// With the prime pair off main, the key is the prime records branch's only protection.
 				checkoutPrimePairOnAlt(t, h)
-				gitkit.Git(t, recordsDir, "config", fabricengine.PrimeRecordsBranchKey, "nosuch-weft")
+				gitkit.Git(t, recordsDir, "config", fabriclayout.PrimeRecordsBranchKey, "nosuch-weft")
 			},
 			wantErrorFormats: []string{
 				`the records store at %s names "nosuch-weft"`,
-				"git -C %s config " + fabricengine.PrimeRecordsBranchKey,
+				"git -C %s config " + fabriclayout.PrimeRecordsBranchKey,
 			},
 		},
 		{
@@ -159,11 +159,11 @@ func TestCleanup_RefusesWhenPrimaryWeftBranchIsUndeterminable(t *testing.T) {
 			spoil: func(t *testing.T, h *hubforge.Hub, recordsDir string) {
 				// The board's branch exists in the records store, and no records branch can carry its name.
 				checkoutPrimePairOnAlt(t, h)
-				gitkit.Git(t, recordsDir, "config", fabricengine.PrimeRecordsBranchKey, fabricengine.OneRepositoryBoardBranch)
+				gitkit.Git(t, recordsDir, "config", fabriclayout.PrimeRecordsBranchKey, fabriclayout.OneRepositoryBoardBranch)
 			},
 			wantErrorFormats: []string{
-				`the records store at %s names "main" in ` + fabricengine.PrimeRecordsBranchKey + ", which is not a records branch name",
-				"git -C %s config " + fabricengine.PrimeRecordsBranchKey,
+				`the records store at %s names "main" in ` + fabriclayout.PrimeRecordsBranchKey + ", which is not a records branch name",
+				"git -C %s config " + fabriclayout.PrimeRecordsBranchKey,
 			},
 		},
 		{

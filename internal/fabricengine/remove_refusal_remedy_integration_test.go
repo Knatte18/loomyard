@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -120,7 +121,7 @@ func assertPairIntact(t *testing.T, l *lymcwd.Location, slug string) {
 	if !gitkit.BranchExists(t, l.WorktreePath(), slug) {
 		t.Errorf("warp branch gone after a refused Remove")
 	}
-	if !gitkit.BranchExists(t, mustRecordsRepoRoot(t, l), fabricengine.RecordsBranchName(slug)) {
+	if !gitkit.BranchExists(t, mustRecordsRepoRoot(t, l), fabriclayout.RecordsBranchName(slug)) {
 		t.Errorf("weft branch gone after a refused Remove")
 	}
 }

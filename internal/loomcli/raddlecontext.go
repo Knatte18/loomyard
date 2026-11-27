@@ -15,6 +15,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -40,7 +41,7 @@ func raddleBoardContext(location *lymcwd.Location, filing bool) (raddleparser.Bo
 	if err != nil {
 		return raddleparser.BoardContext{}, fmt.Errorf("read the raddle run's state: %w", err)
 	}
-	boardDir := fabricengine.BoardDir(location.HubPath)
+	boardDir := fabriclayout.BoardDir(location.HubPath)
 	tasks, err := boardengine.ReadTasks(boardDir)
 	if err != nil {
 		return raddleparser.BoardContext{}, fmt.Errorf("read the board: %w", err)

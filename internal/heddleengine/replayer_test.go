@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -53,12 +54,12 @@ func seedOrigin(t *testing.T, origin Store) string {
 
 // applyReplay seeds origin into a fresh directory and replays one commit onto it.
 // It returns the result and the store afterwards.
-func applyReplay(t *testing.T, origin Store, base, parent, commit []byte) (fabricengine.ReplayResult, Store) {
+func applyReplay(t *testing.T, origin Store, base, parent, commit []byte) (fabriclayout.ReplayResult, Store) {
 	t.Helper()
 	dir := seedOrigin(t, origin)
-	result, err := Replayer{}.Apply(fabricengine.ReplayRequest{
+	result, err := Replayer{}.Apply(fabriclayout.ReplayRequest{
 		Dir:   dir,
-		Files: []fabricengine.ReplayFile{{Path: FileName, Base: base, Before: parent, After: commit}},
+		Files: []fabriclayout.ReplayFile{{Path: FileName, Base: base, Before: parent, After: commit}},
 	})
 	if err != nil {
 		t.Fatalf("Apply() = %v", err)
@@ -149,9 +150,9 @@ func TestReplayer(t *testing.T) {
 	t.Run("CommitWithNoEntryChangeWritesNoStoreAndIsEmptyOnceTheOverviewStands", func(t *testing.T) {
 		t.Parallel()
 		dir := t.TempDir()
-		request := fabricengine.ReplayRequest{
+		request := fabriclayout.ReplayRequest{
 			Dir:   dir,
-			Files: []fabricengine.ReplayFile{{Path: FileName, Base: storeBytes(t, a), Before: storeBytes(t, a), After: storeBytes(t, a)}},
+			Files: []fabriclayout.ReplayFile{{Path: FileName, Base: storeBytes(t, a), Before: storeBytes(t, a), After: storeBytes(t, a)}},
 		}
 		for _, wantEmpty := range []bool{false, true} {
 			result, err := Replayer{}.Apply(request)
@@ -168,9 +169,9 @@ func TestReplayer(t *testing.T) {
 		t.Parallel()
 		c := replayEntry("c", "C", 3)
 		dir := seedOrigin(t, Store{Entries: []Entry{a, b}})
-		result, err := Replayer{}.Apply(fabricengine.ReplayRequest{
+		result, err := Replayer{}.Apply(fabriclayout.ReplayRequest{
 			Dir:   dir,
-			Files: []fabricengine.ReplayFile{{Path: FileName, Base: storeBytes(t, a, b), Before: storeBytes(t, a, b), After: storeBytes(t, a, b, c)}},
+			Files: []fabriclayout.ReplayFile{{Path: FileName, Base: storeBytes(t, a, b), Before: storeBytes(t, a, b), After: storeBytes(t, a, b, c)}},
 		})
 		if err != nil || result.Empty {
 			t.Fatalf("Apply() = %+v, %v; want a non-empty result", result, err)
@@ -189,9 +190,9 @@ func TestReplayer(t *testing.T) {
 		c := replayEntry("c", "C", 3)
 		dir := seedOrigin(t, Store{Entries: []Entry{a, b}})
 		stale := []byte("stale overview\n")
-		_, err := Replayer{}.Apply(fabricengine.ReplayRequest{
+		_, err := Replayer{}.Apply(fabriclayout.ReplayRequest{
 			Dir: dir,
-			Files: []fabricengine.ReplayFile{
+			Files: []fabriclayout.ReplayFile{
 				{Path: FileName, Base: storeBytes(t, a, b), Before: storeBytes(t, a, b), After: storeBytes(t, a, b, c)},
 				{Path: OverviewFileName, Base: stale, Before: stale, After: []byte("local overview\n")},
 			},

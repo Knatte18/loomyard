@@ -29,7 +29,7 @@ Paths in the tables are relative to the package named in the heading, or to `int
 |---|---|---|---|---|
 | `anchorFake` seams for hub, anchor, owner, lock and move-record reads, and `fakeChange` | `anchor_test.go` | `fabricengine`, `lymcwd`, `boardengine`, `parentlock` | `real` | `anchorDeps` over a `hubforge` hub and the real `AnchorChange`; tier1 |
 | `anchorFake` seams for reed, dobbies, hibernation, relay and gates | `anchor_test.go` | `reedengine`, `dobbyengine`, `hibernatecli`, `gateslot`, Slack relay | `goes` | Live-session answers cannot be produced below tier2; those cases move to the owners or go to tier2 |
-| `fabricengine.RemoveResult` and `pairteardown.SessionResult` literals | `removefields_test.go` | Removal results | `real` | Results of a real removal; tier1, tier2 for ended sessions |
+| `fabriclayout.RemoveResult` and `pairteardown.SessionResult` literals | `removefields_test.go` | Removal results | `real` | Results of a real removal; tier1, tier2 for ended sessions |
 | Hand-written webster `state.json` and `outcome.yaml` | `mergescenario_integration_test.go` | Webster state (`websterengine`) | `real` | `websterengine.SaveState` and the outcome writer; already tier1 |
 | Marshalled `hibernateengine.Request` file | `hibernatedaemon_test.go` | Hibernate request (`hibernateengine`) | `real` | The request writer, exported; the file stays tier0 |
 | Hand-written `board.yaml` and `tapestry.yaml` seeds through `hubforge.SeedConfig` | `hubmutation_`, `reconcile_anchor_`, `mergescenario_integration_test.go` | Config of `boardengine` and `loomengine` | `real` | The owner's template or config writer; already tier1 |
@@ -111,7 +111,7 @@ Paths in the tables are relative to the package named in the heading, or to `int
 | Hand-written turn-end event lines | `wire_seams_test.go` | LLM session hook events | `external` | Cut from `claudeengine`'s recorded corpus |
 | `battenshed` memory record literals | `dobbynotice_test.go` | Inner-run memory (`battenshed`) | `real` | Produce it by driving `battenshed.NewInnerRun`, or move the cap reading there |
 | Edited config templates and hand-written `shed`, `profiles`, autonomy, claude account and fabric YAML | `wire_seams_`, `childdriverkind_`, `runsettings_`, `startguard_test.go`, `lifecycle_`, `noticestamp_`, `accountpick_`, `readopt_integration_test.go` | Config of the owning modules | `real` | The owner's config writer; editing a template's lines is editing its bytes |
-| Marshalled `fabricengine.PendingTeardown` | `cancel_integration_test.go` | Teardown record (`fabricengine`) | `real` | Leave it by ending a real teardown child early |
+| Marshalled `fabriclayout.PendingTeardown` | `cancel_integration_test.go` | Teardown record (`fabricengine`) | `real` | Leave it by ending a real teardown child early |
 | `dobbyengine.View` and `statuspane.StatusPoll` literals | `overviewdobby_test.go`, `overview_test.go` | Dobby view and status poll | `real` | Build the view from real state through `dobbyengine`; see Hard cases |
 | `shedengine.Status` and `OriginReport` literals passed to pure readings | `land_`, `cancel_`, `wire_`, `wire_seams_test.go` | `shedengine`, `fabricengine` | `real` | Values the owner produced; see Hard cases |
 | `lymcwd.Location` literals and `locationkit.Location` | most tier0 files | Resolved location (`lymcwd`) | `real` | `lymcwd.Resolve`; tier1 |
@@ -184,7 +184,7 @@ Paths in the tables are relative to the package named in the heading, or to `int
 
 | Stand-in | Test files | Simulates (owner) | Verdict | What replaces it |
 |---|---|---|---|---|
-| `fabricengine.OriginReport` literals | `reconcile_test.go` | Origin reconcile report (`fabricengine`) | `real` | Reports of a real reconcile over a hub; tier1 |
+| `fabriclayout.OriginReport` literals | `reconcile_test.go` | Origin reconcile report (`fabricengine`) | `real` | Reports of a real reconcile over a hub; tier1 |
 | Hand-written `hibernate.yaml` | `cli_test.go` | Config (`hibernateconfig`) | `real` | `hibernateconfig`'s template or writer; unparsable text moves to its parser |
 
 ## hibernateengine

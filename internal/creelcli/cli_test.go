@@ -30,6 +30,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -352,7 +353,7 @@ func newRig(t *testing.T) *rig {
 func (r *rig) addHub(t *testing.T, shortname string) *rig {
 	t.Helper()
 	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	if err := fabricengine.WriteShortname(fabricengine.BoltDir(hub.Path), shortname); err != nil {
+	if err := fabricengine.WriteShortname(fabriclayout.BoltDir(hub.Path), shortname); err != nil {
 		t.Fatalf("WriteShortname(%q) = %v", shortname, err)
 	}
 	root, err := lymtemp.ProcessRoot()
@@ -523,7 +524,7 @@ func TestCreelCLI(t *testing.T) {
 			r := newRig(t)
 			gone, kept := r.addHub(t, xx), r.addHub(t, yy)
 			recordHubs(t, gone, kept)
-			if err := os.Remove(filepath.Join(fabricengine.BoltDir(gone.hub.Path), fabricengine.ShortnameFileName)); err != nil {
+			if err := os.Remove(filepath.Join(fabriclayout.BoltDir(gone.hub.Path), fabriclayout.ShortnameFileName)); err != nil {
 				t.Fatalf("Remove(shortname record) = %v", err)
 			}
 			byName := listed(t, runCreel(r.cwd, "hubs"))

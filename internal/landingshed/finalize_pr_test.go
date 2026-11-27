@@ -18,6 +18,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/githubclient"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
@@ -325,7 +326,7 @@ func TestFinalize_PullRequest(t *testing.T) {
 		},
 		{
 			name: "AMergeInRequiredErrorAfterTheGitHubMergeRetriesTheLocalMergeWithNoSecondGitHubMerge", mode: "review", record: recorded(), scripts: mergeScript(open, scriptedCall{}),
-			merges:      []mergeCallResult{{err: &fabricengine.ErrMergeInRequired{}}, {result: fabricengine.MergeResult{Committed: true}}},
+			merges:      []mergeCallResult{{err: &fabricengine.ErrMergeInRequired{}}, {result: fabriclayout.MergeResult{Committed: true}}},
 			wantOutcome: shedengine.Done, wantMerges: 2, wantOrder: "task-push,fast-forward,merge,merge,push,mark", wantCalls: []string{"Status 7", "Status 7", wantGitHubMerge},
 		},
 		{
@@ -585,9 +586,9 @@ func TestFinalize_PullRequest(t *testing.T) {
 			deps.Config.Squash = !tt.squashOff
 			if tt.tipsErr != nil {
 				readTips := deps.ReadParentTips
-				deps.ReadParentTips = func(fetch bool) (fabricengine.ParentTips, error) {
+				deps.ReadParentTips = func(fetch bool) (fabriclayout.ParentTips, error) {
 					if merged {
-						return fabricengine.ParentTips{}, tt.tipsErr
+						return fabriclayout.ParentTips{}, tt.tipsErr
 					}
 					return readTips(fetch)
 				}
@@ -656,7 +657,7 @@ func TestFinalize_PullRequest(t *testing.T) {
 			}
 			merges := tt.merges
 			if merges == nil {
-				merges = []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}}
+				merges = []mergeCallResult{{result: fabriclayout.MergeResult{Committed: true}}}
 			}
 			merger := &recordingParentMerger{results: merges, order: &order, ffErr: tt.ffErr, pushErr: tt.parentPushErr}
 			res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}

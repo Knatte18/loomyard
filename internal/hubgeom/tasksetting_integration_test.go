@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -51,7 +52,7 @@ func TestTaskSettingChain(t *testing.T) {
 		t.Fatalf("write board.json: %v", err)
 	}
 
-	wantBoard := fabricengine.BoltDir(l.HubPath)
+	wantBoard := fabriclayout.BoltDir(l.HubPath)
 	tests := []struct {
 		name string
 		slug string

@@ -16,6 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -178,9 +179,9 @@ Example:
 
 			// The run's last transition names the code tip a resume and a hand-over check against origin;
 			// left naming a tip the reset dropped, it would refuse the resume and send the run back to that transition.
-			var transition []fabricengine.Trailer
+			var transition []fabriclayout.Trailer
 			if c.runID != "" {
-				transition = append(transition, fabricengine.Trailer{Key: fabricengine.TransitionTrailerKey, Value: c.runID})
+				transition = append(transition, fabriclayout.Trailer{Key: fabriclayout.TransitionTrailerKey, Value: c.runID})
 			}
 			if _, syncErr := fabricSync(c.openFabric, c.anchorRel, "reset", transition...); syncErr != nil {
 				return fail(fmt.Sprintf("webster: the branch was reset but the fabric sync failed: %v; %s", syncErr, fabricSyncWayForward))
@@ -223,7 +224,7 @@ Example:
 // Once that update is recorded, a failed reset is no longer a pre-flight refusal.
 func remoteBranchMoved(rec *fabricengine.Mutations) bool {
 	for _, entry := range rec.Entries() {
-		if entry.Kind == fabricengine.KindRemoteBranchUpdated {
+		if entry.Kind == fabriclayout.KindRemoteBranchUpdated {
 			return true
 		}
 	}

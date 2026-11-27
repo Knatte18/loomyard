@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -195,13 +196,13 @@ func (f *fakeSubstrates) teardown() *Teardown {
 			return f.clearErr == nil, f.clearErr
 		},
 		closePR: func(string) { f.closePRs = append(f.closePRs, strings.Join(f.calls, ",")) },
-		remove: func(req Request) (fabricengine.RemoveResult, error) {
+		remove: func(req Request) (fabriclayout.RemoveResult, error) {
 			if req.Local {
 				f.calls = append(f.calls, "remove-local")
 			} else {
 				f.calls = append(f.calls, "remove")
 			}
-			return fabricengine.RemoveResult{StrayPath: f.removeStrayPath}, f.removeErr
+			return fabriclayout.RemoveResult{StrayPath: f.removeStrayPath}, f.removeErr
 		},
 		dropRunMail: func(slug string) {
 			f.calls = append(f.calls, "dropRunMail")
@@ -629,7 +630,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			name:         "ClaimReadFailureAfterTheRemovalWritesNothing",
 			run:          true,
 			quiets:       []quietState{{quiet: true}},
-			request:      Request{Slug: "slug", Verdict: fabricengine.EntryEnded},
+			request:      Request{Slug: "slug", Verdict: fabriclayout.EntryEnded},
 			claimReadErr: errors.New("board unreadable"),
 			wantCalls:    skippedEnd + ",landed,archive,remove,dropRunMail,readClaim",
 		},
@@ -822,7 +823,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			name:       "LeaveClaimReadsNoLandedAnswerAndSettlesNoClaim",
 			run:        true,
 			quiets:     []quietState{{quiet: true}},
-			request:    Request{Slug: "slug", Verdict: fabricengine.EntryEnded, LeaveClaim: true},
+			request:    Request{Slug: "slug", Verdict: fabriclayout.EntryEnded, LeaveClaim: true},
 			claim:      runClaim,
 			claimFound: true,
 			wantCalls:  skippedEnd + ",archive,remove,dropRunMail",
@@ -858,7 +859,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			name:      "LeaveClaimGivesNoWarning",
 			run:       true,
 			quiets:    []quietState{{quiet: true}},
-			request:   Request{Slug: "slug", Verdict: fabricengine.EntryEnded, LeaveClaim: true},
+			request:   Request{Slug: "slug", Verdict: fabriclayout.EntryEnded, LeaveClaim: true},
 			runRecord: runShed,
 			wantCalls: skippedEnd + ",archive,remove,dropRunMail",
 		},
@@ -914,14 +915,14 @@ func TestTeardown_CallSequence(t *testing.T) {
 		{
 			name:      "EndedVerdictSkipsTheQuietWaitAndWaitsForTheRunLockFirst",
 			quiets:    []quietState{busy},
-			request:   Request{Slug: "slug", Verdict: fabricengine.EntryEnded, RefuseWhenBusy: true},
+			request:   Request{Slug: "slug", Verdict: fabriclayout.EntryEnded, RefuseWhenBusy: true},
 			wantCalls: skippedEnd,
 			wantAwait: &awaitCall{retry: "the removal"},
 		},
 		{
 			name:      "OwnedElsewhereVerdictSkipsTheQuietWait",
 			quiets:    []quietState{busy},
-			request:   Request{Slug: "slug", Verdict: fabricengine.EntryOwnedElsewhere, RefuseWhenBusy: true},
+			request:   Request{Slug: "slug", Verdict: fabriclayout.EntryOwnedElsewhere, RefuseWhenBusy: true},
 			wantCalls: skippedEnd,
 			wantAwait: &awaitCall{retry: "the removal"},
 		},
@@ -953,7 +954,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			name:           "RunLockRefusalFromTheWaitIsReturnedWithNothingEnded",
 			quiets:         []quietState{busy},
 			awaitOrPassErr: fmt.Errorf("%w: the run lock is held", ErrDriverBusy),
-			request:        Request{Slug: "slug", Verdict: fabricengine.EntryEnded, RefuseWhenBusy: true},
+			request:        Request{Slug: "slug", Verdict: fabriclayout.EntryEnded, RefuseWhenBusy: true},
 			wantErrIs:      ErrDriverBusy,
 			wantCalls:      "awaitOrPass",
 		},
@@ -961,7 +962,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			name:       "RefusalProbeInTheSkippedOrderEndsNoOwnedProcess",
 			quiets:     []quietState{busy},
 			refusalErr: refusal,
-			request:    Request{Slug: "slug", Verdict: fabricengine.EntryEnded},
+			request:    Request{Slug: "slug", Verdict: fabriclayout.EntryEnded},
 			wantErrIs:  refusal,
 			wantCalls:  "awaitOrPass,refusal",
 		},
@@ -978,7 +979,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			quiets:      []quietState{busy},
 			gone:        true,
 			pausedErr:   errors.New("pause record unreadable"),
-			request:     Request{Slug: "slug", Verdict: fabricengine.EntryEnded, RefuseWhenBusy: true},
+			request:     Request{Slug: "slug", Verdict: fabriclayout.EntryEnded, RefuseWhenBusy: true},
 			wantCalls:   "refusal,endOwned,killCapture,end",
 			wantSawGone: true,
 		},
@@ -1018,7 +1019,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 
 			var session SessionResult
 			var err error
-			var removal fabricengine.RemoveResult
+			var removal fabriclayout.RemoveResult
 			var warning string
 			if tt.run {
 				var result Result

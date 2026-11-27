@@ -15,7 +15,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
@@ -192,7 +192,7 @@ func TestBootstrapCommitPaths(t *testing.T) {
 	base := []string{
 		shedrun.StatusRel(shapeLoc, shedrun.SelfRunID),
 		shedrun.SeedRel(shapeLoc, shedrun.SelfRunID),
-		fabricengine.OriginRecordRel(),
+		fabriclayout.OriginRecordRel(),
 	}
 	friction := loomengine.LoomFrictionDirRel()
 	pins := shedrun.StencilPinsRel(shapeLoc, shedrun.SelfRunID)

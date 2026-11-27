@@ -216,7 +216,7 @@ No test records Claude's pane screens as fixtures, and none records anything fro
 
 | Stand-in | Test files | Simulates (owner) | Verdict | What replaces it |
 |---|---|---|---|---|
-| Hand-built `fabricengine.WorktreeEvent` with its `Excluded` list | `seam_test.go` | `fabricengine` | `real` | Events fabric raises, as `seam_integration_test.go` does (tier1) |
+| Hand-built `fabriclayout.WorktreeEvent` with its `Excluded` list | `seam_test.go` | `fabricengine` | `real` | Events fabric raises, as `seam_integration_test.go` does (tier1) |
 | `spawnSync` closure | `cli_integration_test.go` (`recorder`) | `boardengine.SpawnSync` | `real` | Wrap the real spawn and record; the spawn error case needs a provoked failure |
 | Claude settings JSON and repository instruction files | `settings_test.go`, `render_test.go` | Claude's and the operator's files | `external` | Shapes recorded from Claude Code |
 | `recorder.save`, temp directories as the Bolt checkout, `heddle.json` and `heddle.yaml` | `cli_integration_test.go`, `render_test.go`, `store_test.go` | A pass-through wrapper and own files | `own` | Stays |

@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
@@ -23,18 +24,18 @@ import (
 // and a Finalize halted then resumed meets both checks again.
 func TestFinalize_OwnerChecks(t *testing.T) {
 	tiergate.Require(t, 0)
-	ownedElsewhere := func(owner string) *fabricengine.OriginReport {
-		return &fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: "me", State: fabricengine.EntryOwnedElsewhere, Owner: owner}}}
+	ownedElsewhere := func(owner string) *fabriclayout.OriginReport {
+		return &fabriclayout.OriginReport{Entries: []fabriclayout.EntryOutcome{{Slug: "me", State: fabriclayout.EntryOwnedElsewhere, Owner: owner}}}
 	}
-	active := &fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: "me", State: fabricengine.EntryActive}}}
-	unreachable := &fabricengine.OriginReport{Unreachable: true}
+	active := &fabriclayout.OriginReport{Entries: []fabriclayout.EntryOutcome{{Slug: "me", State: fabriclayout.EntryActive}}}
+	unreachable := &fabriclayout.OriginReport{Unreachable: true}
 	here := &ParentOwnership{Here: true}
 	primeElsewhere := &ParentOwnership{Owner: "laptop"}
 	pairElsewhere := &ParentOwnership{Slug: "base", Owner: "laptop"}
 
 	tests := []struct {
 		name      string
-		report    *fabricengine.OriginReport
+		report    *fabriclayout.OriginReport
 		holds     bool
 		holdsErr  error
 		parent    *ParentOwnership
@@ -100,7 +101,7 @@ func TestFinalize_OwnerChecks(t *testing.T) {
 			if tt.subject != "" {
 				deps.AdoptSubject = func() (string, error) { return tt.subject, nil }
 			}
-			deps.Reconcile = func() (fabricengine.OriginReport, error) { return *tt.report, nil }
+			deps.Reconcile = func() (fabriclayout.OriginReport, error) { return *tt.report, nil }
 			deps.ParentHoldsTaskWork = func() (bool, error) { return tt.holds, tt.holdsErr }
 			deps.ParentOwner = func() (ParentOwnership, error) {
 				if tt.parent == nil {
@@ -108,7 +109,7 @@ func TestFinalize_OwnerChecks(t *testing.T) {
 				}
 				return *tt.parent, tt.parentErr
 			}
-			merger := &recordingParentMerger{results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}}}
+			merger := &recordingParentMerger{results: []mergeCallResult{{result: fabriclayout.MergeResult{Committed: true}}}}
 			fz := &Finalize{deps: deps, resolver: &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}, parentOpener: func() (parentMerger, error) { return merger, nil }}
 
 			ptr := shedfake.RequireOutcome(t, fz, tt.wantOutcome)
@@ -141,13 +142,13 @@ func TestFinalize_OwnerChecks(t *testing.T) {
 		merger    *recordingParentMerger
 		handOvers []string
 	}
-	newHandOverRun := func(t *testing.T, report *fabricengine.OriginReport, configure func(*Deps)) *handOverRun {
+	newHandOverRun := func(t *testing.T, report *fabriclayout.OriginReport, configure func(*Deps)) *handOverRun {
 		t.Helper()
-		run := &handOverRun{merger: &recordingParentMerger{results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}}}}
+		run := &handOverRun{merger: &recordingParentMerger{results: []mergeCallResult{{result: fabriclayout.MergeResult{Committed: true}}}}}
 		deps := newTestDeps(t)
 		deps.Slug = "me"
 		deps.AdoptSubject = func() (string, error) { return "beam", nil }
-		deps.Reconcile = func() (fabricengine.OriginReport, error) { return *report, nil }
+		deps.Reconcile = func() (fabriclayout.OriginReport, error) { return *report, nil }
 		deps.ParentOwner = func() (ParentOwnership, error) { return *here, nil }
 		deps.HandOver = func(owner, subject string) error {
 			run.handOvers = append(run.handOvers, owner+"/"+subject)
@@ -218,10 +219,10 @@ func TestFinalize_OwnerChecks(t *testing.T) {
 		report, parent := *ownedElsewhere("desk"), *pairElsewhere
 		deps := newTestDeps(t)
 		deps.Slug = "me"
-		deps.Reconcile = func() (fabricengine.OriginReport, error) { return report, nil }
+		deps.Reconcile = func() (fabriclayout.OriginReport, error) { return report, nil }
 		deps.ParentHoldsTaskWork = func() (bool, error) { return false, nil }
 		deps.ParentOwner = func() (ParentOwnership, error) { return parent, nil }
-		merger := &recordingParentMerger{results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}}}
+		merger := &recordingParentMerger{results: []mergeCallResult{{result: fabriclayout.MergeResult{Committed: true}}}}
 		fz := &Finalize{deps: deps, resolver: &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}, parentOpener: func() (parentMerger, error) { return merger, nil }}
 
 		shedfake.RequireOutcome(t, fz, shedengine.Stuck)

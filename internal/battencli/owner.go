@@ -12,7 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -46,8 +46,8 @@ type ownerSeams struct {
 // hubOwnerSeams builds the owner seams over the Bolt of the hub location sits in.
 // A hub with no Bolt checkout has no owners, so it gets the zero seams.
 func hubOwnerSeams(location *lymcwd.Location) ownerSeams {
-	boltDir := fabricengine.BoltDir(location.HubPath)
-	boardDir := fabricengine.BoardDir(location.HubPath)
+	boltDir := fabriclayout.BoltDir(location.HubPath)
+	boardDir := fabriclayout.BoardDir(location.HubPath)
 	if _, err := os.Stat(boltDir); errors.Is(err, fs.ErrNotExist) {
 		return ownerSeams{}
 	}

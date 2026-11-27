@@ -17,6 +17,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
@@ -105,7 +106,7 @@ func seedScratchLinkExclude(rec *Mutations, worktreeDir, anchorRel string) (excl
 		return excludePath, err
 	}
 	if changed {
-		rec.Append(KindFileWritten, excludePath, "")
+		rec.Append(fabriclayout.KindFileWritten, excludePath, "")
 	}
 	return excludePath, nil
 }
@@ -138,7 +139,7 @@ func unseedScratchExclude(rec *Mutations, l *lymcwd.Location, slug, anchorRel st
 		return err
 	}
 	if changed {
-		rec.Append(KindFileWritten, excludePath, "")
+		rec.Append(fabriclayout.KindFileWritten, excludePath, "")
 	}
 	return nil
 }
@@ -330,7 +331,7 @@ func adoptScratchDirectory(rec *Mutations, l *lymcwd.Location, slug, link, targe
 			"scratch left as found at %s: a real directory whose move to %s failed: %v; stop reed (an open handle inside %s is the expected cause on Windows), move its content into the target %s and remove %s, %s",
 			link, target, err, scratchDirName, target, link, scratchReconcileHint)}
 	}
-	rec.Append(KindPathRenamed, target, hubRelativeTarget(l.HubPath, link))
+	rec.Append(fabriclayout.KindPathRenamed, target, hubRelativeTarget(l.HubPath, link))
 
 	if scratchBeforeLinkHook != nil {
 		scratchBeforeLinkHook()
@@ -340,7 +341,7 @@ func adoptScratchDirectory(rec *Mutations, l *lymcwd.Location, slug, link, targe
 			"scratch link not created at %s after its content moved to %s: %v; move the recreated %s's content into %s, remove %s, %s",
 			link, target, err, scratchDirName, target, link, scratchReconcileHint)}
 	}
-	rec.Append(KindLinkCreated, link, "")
+	rec.Append(fabriclayout.KindLinkCreated, link, "")
 	return scratchOutcome{changed: fmt.Sprintf("moved %s into %s and linked it", link, target)}
 }
 
@@ -352,7 +353,7 @@ func createScratchLink(rec *Mutations, link, target string, success scratchOutco
 	if err := fslink.CreateDirLink(link, target); err != nil {
 		return scratchFailure(link, target, link, err)
 	}
-	rec.Append(KindLinkCreated, link, "")
+	rec.Append(fabriclayout.KindLinkCreated, link, "")
 	return success
 }
 
@@ -367,7 +368,7 @@ func mkdirScratchTarget(rec *Mutations, target string) (failedPath string, err e
 		return target, err
 	}
 	if !exists {
-		rec.Append(KindDirCreated, target, "")
+		rec.Append(fabriclayout.KindDirCreated, target, "")
 	}
 	return "", nil
 }

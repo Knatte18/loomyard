@@ -12,6 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -48,7 +49,7 @@ func readoptRecordRels(slug string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	return []string{statusRel, fabricengine.OriginRecordRel()}, nil
+	return []string{statusRel, fabriclayout.OriginRecordRel()}, nil
 }
 
 // failReadopt records the permanent failure addErr as the stop of a run whose status is status.
@@ -165,10 +166,10 @@ func leftoverArchiveWayForward(c *battenCLI, leftover *fabricengine.ErrRemoteLef
 		return "", err
 	}
 	tip := leftover.RemoteTip
-	if len(tip) < fabricengine.ArchiveTagSHALen {
+	if len(tip) < fabriclayout.ArchiveTagSHALen {
 		return "", fmt.Errorf("the leftover tip %q of %s is too short to name an archive tag", tip, leftover.Branch)
 	}
-	tag := fabricengine.ArchiveTagName(c.slug, tip)
+	tag := fabriclayout.ArchiveTagName(c.slug, tip)
 	branchRef, tagRef, err := fabricengine.OriginRefNamesAt(recordsRoot, leftover.Branch, tag)
 	if err != nil {
 		return "", err
@@ -216,7 +217,7 @@ func landRestoreWayForward(c *battenCLI, notLive *fabricengine.ErrNotLive) (stri
 	if err != nil {
 		return "", err
 	}
-	recordsBranch := fabricengine.RecordsBranchName(taskBranch)
+	recordsBranch := fabriclayout.RecordsBranchName(taskBranch)
 
 	var steps []string
 	var parentRecord []byte
@@ -236,7 +237,7 @@ func landRestoreWayForward(c *battenCLI, notLive *fabricengine.ErrNotLive) (stri
 			steps = append(steps, fmt.Sprintf("`git -C %s fetch origin tag %s`", recordsRoot, best.Name))
 		}
 		steps = append(steps, fmt.Sprintf("`git -C %s branch %s %s`", recordsRoot, recordsBranch, best.Name))
-		parentRecord = best.Files[fabricengine.OriginRecordRel()]
+		parentRecord = best.Files[fabriclayout.OriginRecordRel()]
 	}
 
 	gone, err := c.readopt.TaskBranchGone(c.slug)
@@ -245,7 +246,7 @@ func landRestoreWayForward(c *battenCLI, notLive *fabricengine.ErrNotLive) (stri
 	}
 	if gone {
 		if !notLive.Records {
-			content, found, err := c.readopt.BranchFile(recordsBranch, fabricengine.OriginRecordRel())
+			content, found, err := c.readopt.BranchFile(recordsBranch, fabriclayout.OriginRecordRel())
 			if err != nil {
 				return "", err
 			}
@@ -254,7 +255,7 @@ func landRestoreWayForward(c *battenCLI, notLive *fabricengine.ErrNotLive) (stri
 			}
 			parentRecord = content
 		}
-		var origin fabricengine.Origin
+		var origin fabriclayout.Origin
 		if err := json.Unmarshal(parentRecord, &origin); err != nil || origin.ParentBranch == "" {
 			return "", fmt.Errorf("the origin record of %s names no parent branch for the task branch (%v)", c.slug, err)
 		}
@@ -270,12 +271,12 @@ func landRestoreWayForward(c *battenCLI, notLive *fabricengine.ErrNotLive) (stri
 // newestFinishedTag returns the tag with the latest committer time whose child run status reads done.
 // It returns nil when no tag does.
 // A tag whose status is absent or does not decode is skipped.
-func newestFinishedTag(slug string, tags []fabricengine.RecordsTag) (*fabricengine.RecordsTag, error) {
+func newestFinishedTag(slug string, tags []fabriclayout.RecordsTag) (*fabriclayout.RecordsTag, error) {
 	statusRel, err := childStatusRel(slug)
 	if err != nil {
 		return nil, err
 	}
-	var best *fabricengine.RecordsTag
+	var best *fabriclayout.RecordsTag
 	for i := range tags {
 		if !childRunDone(tags[i], statusRel) {
 			continue
@@ -288,7 +289,7 @@ func newestFinishedTag(slug string, tags []fabricengine.RecordsTag) (*fabricengi
 }
 
 // childRunDone reports whether the child run status held by tag at statusRel decodes with state done.
-func childRunDone(tag fabricengine.RecordsTag, statusRel string) bool {
+func childRunDone(tag fabriclayout.RecordsTag, statusRel string) bool {
 	data, present := tag.Files[statusRel]
 	if !present {
 		return false

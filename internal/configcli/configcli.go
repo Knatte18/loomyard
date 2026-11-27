@@ -24,7 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/configsync"
 	"github.com/Knatte18/loomyard/internal/fabriccli"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/shellguard"
@@ -494,7 +494,7 @@ func buildConfigLong() string {
 	}
 	return "config edits a module's configuration in _lym/config/ and syncs fabric on\n" +
 		"success. A hub-wide module (" + strings.Join(hubWide, ", ") + ") is edited instead at the\n" +
-		"hub's board dir and committed in " + fabricengine.BoltDirName + ". With no argument it lists the known\n" +
+		"hub's board dir and committed in " + fabriclayout.BoltDirName + ". With no argument it lists the known\n" +
 		"modules and verbs; with a module\n" +
 		"name it edits that module; `lym config menu` is the interactive\n" +
 		"picker. The editor is $VISUAL, then $EDITOR, then `code --wait` when code is\n" +
@@ -574,7 +574,7 @@ func runReconcile(ctx context.Context, out io.Writer, apply bool, layer string) 
 		return output.Err(out, err.Error())
 	}
 
-	boltDir := fabricengine.BoltDir(l.HubPath)
+	boltDir := fabriclayout.BoltDir(l.HubPath)
 	if filepath.Clean(l.WorktreePath()) == filepath.Clean(boltDir) {
 		return output.Err(out, fmt.Sprintf("reconcile is refused in the board dir %s, whose files are the hub's, not a worktree's; way forward: run \"lym config reconcile --layer default\" from the hub's prime worktree", boltDir))
 	}
@@ -712,7 +712,7 @@ override files are reconciled here.
 hub-wide modules' files and each per-worktree module's repo default, seeding
 an absent one from the prime. Keys the template lacks are removed.
 --apply with it runs only from the hub's prime worktree,
-outside a task session, and commits the files in ` + fabricengine.BoltDirName + ` and pushes.
+outside a task session, and commits the files in ` + fabriclayout.BoltDirName + ` and pushes.
 Reconcile is refused in the board dir itself.
 
 Beside "lym config <module> --unset <key>", this verb is the one way to remove
@@ -806,5 +806,5 @@ func resolveReal(ctx context.Context) (*lymcwd.Location, syncFunc, hubCommitFunc
 	realSync := func(w io.Writer) int {
 		return clihelp.ExecuteIn(fabriccli.Command(), cwd, w, []string{"sync"})
 	}
-	return l, realSync, newHubCommit(fabricengine.BoltDir(l.HubPath)), nil
+	return l, realSync, newHubCommit(fabriclayout.BoltDir(l.HubPath)), nil
 }

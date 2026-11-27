@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
@@ -59,7 +60,7 @@ func newFinalizeVerifyFixture(t *testing.T, res resolver, results ...mergeCallRe
 	deps := newTestDeps(t)
 	deps.MarkTaskDone = func() error { fx.markedDone++; return nil }
 	if len(results) == 0 {
-		results = []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}}
+		results = []mergeCallResult{{result: fabriclayout.MergeResult{Committed: true}}}
 	}
 	fx.merger = &recordingParentMerger{results: results}
 	fx.fz = &Finalize{

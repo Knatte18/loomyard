@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -70,7 +71,7 @@ func diffHeader(path string) string {
 	return "diff --git a/" + path + " b/" + path
 }
 
-func readTaskPatch(t *testing.T, fx taskPatchFixture, base string, skip []string) fabricengine.TaskPatch {
+func readTaskPatch(t *testing.T, fx taskPatchFixture, base string, skip []string) fabriclayout.TaskPatch {
 	t.Helper()
 
 	patch, err := fx.fabric.ReadTaskPatch(base, skip)
@@ -84,7 +85,7 @@ func readTaskPatch(t *testing.T, fx taskPatchFixture, base string, skip []string
 // and it reads the patch before and after a file is written under it.
 // With linked, `.scratch` is a link into a directory outside the warp excluded as `/.scratch`;
 // otherwise it is a real directory excluded as `/.scratch/`.
-func readPatchAroundScratchWrite(t *testing.T, fx taskPatchFixture, linked bool) (before, after fabricengine.TaskPatch) {
+func readPatchAroundScratchWrite(t *testing.T, fx taskPatchFixture, linked bool) (before, after fabriclayout.TaskPatch) {
 	t.Helper()
 
 	writeTaskPatchFile(t, fx.warpDir, "lib.txt", strings.Replace(fx.baseFile, "line 15\n", "line 15 changed\n", 1))

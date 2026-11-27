@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -80,11 +80,11 @@ func TestFinalize_GatesWithNoLockAndLocksToLand(t *testing.T) {
 				fx.merger.onFastForward = func() { parent = "u1" }
 			}
 			fx.fz.deps.Config.FinalizeLostRaces = tt.lostRaces
-			fx.fz.deps.ReadParentTips = func(bool) (fabricengine.ParentTips, error) {
+			fx.fz.deps.ReadParentTips = func(bool) (fabriclayout.ParentTips, error) {
 				if tt.behind {
-					return fabricengine.ParentTips{Local: parent, Upstream: "u1", Relation: fabricengine.ParentBehind}, nil
+					return fabriclayout.ParentTips{Local: parent, Upstream: "u1", Relation: fabriclayout.ParentBehind}, nil
 				}
-				return fabricengine.ParentTips{Local: parent, Upstream: parent, Relation: fabricengine.ParentEqual}, nil
+				return fabriclayout.ParentTips{Local: parent, Upstream: parent, Relation: fabriclayout.ParentEqual}, nil
 			}
 			fx.fz.deps.ParentHoldsTaskWork = func() (bool, error) { return tt.held, nil }
 			fx.merger.preMergeHeadSHA = &parent
@@ -160,8 +160,8 @@ func TestFinalize_QueuesAtTheFrontAfterALostRace(t *testing.T) {
 			parent := "p1"
 			fx.fz.deps.PushSkipped = tt.pushSkipped
 			fx.fz.deps.Config.FinalizeLostRaces = 2
-			fx.fz.deps.ReadParentTips = func(bool) (fabricengine.ParentTips, error) {
-				return fabricengine.ParentTips{Local: parent, Upstream: parent, Relation: fabricengine.ParentEqual}, nil
+			fx.fz.deps.ReadParentTips = func(bool) (fabriclayout.ParentTips, error) {
+				return fabriclayout.ParentTips{Local: parent, Upstream: parent, Relation: fabriclayout.ParentEqual}, nil
 			}
 			fx.merger.preMergeHeadSHA = &parent
 			fx.fz.resolver = &tipRecordingResolver{}
@@ -216,10 +216,10 @@ func TestFinalize_LockFreePassStops(t *testing.T) {
 	t.Parallel()
 
 	injected := errors.New("injected failure")
-	reconciles := func(entry fabricengine.EntryOutcome) func(*testing.T, *finalizeGateFixture) {
+	reconciles := func(entry fabriclayout.EntryOutcome) func(*testing.T, *finalizeGateFixture) {
 		return func(_ *testing.T, fx *finalizeGateFixture) {
-			fx.fz.deps.Reconcile = func() (fabricengine.OriginReport, error) {
-				return fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{entry}}, nil
+			fx.fz.deps.Reconcile = func() (fabriclayout.OriginReport, error) {
+				return fabriclayout.OriginReport{Entries: []fabriclayout.EntryOutcome{entry}}, nil
 			}
 		}
 	}
@@ -235,12 +235,12 @@ func TestFinalize_LockFreePassStops(t *testing.T) {
 	}{
 		{
 			name:      "a run owned elsewhere",
-			configure: reconciles(fabricengine.EntryOutcome{Slug: "me", State: fabricengine.EntryOwnedElsewhere, Owner: "desk"}),
+			configure: reconciles(fabriclayout.EntryOutcome{Slug: "me", State: fabriclayout.EntryOwnedElsewhere, Owner: "desk"}),
 			wantHalt:  []string{OwnerHaltPrefix, `machine "desk"`},
 		},
 		{
 			name:      "a run origin ended",
-			configure: reconciles(fabricengine.EntryOutcome{Slug: "me", State: fabricengine.EntryEnded, How: "removed"}),
+			configure: reconciles(fabriclayout.EntryOutcome{Slug: "me", State: fabriclayout.EntryEnded, How: "removed"}),
 			wantHalt:  []string{"origin ended this run"},
 		},
 		{
@@ -265,7 +265,7 @@ func TestFinalize_LockFreePassStops(t *testing.T) {
 		{
 			name: "a failed read of the parent's tips",
 			configure: func(_ *testing.T, fx *finalizeGateFixture) {
-				fx.fz.deps.ReadParentTips = func(bool) (fabricengine.ParentTips, error) { return fabricengine.ParentTips{}, injected }
+				fx.fz.deps.ReadParentTips = func(bool) (fabriclayout.ParentTips, error) { return fabriclayout.ParentTips{}, injected }
 			},
 			wantError: "Finalize: read the tips of parent branch",
 		},
@@ -318,12 +318,12 @@ func TestFinalize_FixerInTheLockFreePass(t *testing.T) {
 
 	fx := newFinalizeGateFixture(t)
 	fx.fz.deps.Config.FinalizeLostRaces = 2
-	fx.fz.deps.ReadParentTips = func(bool) (fabricengine.ParentTips, error) {
-		return fabricengine.ParentTips{Local: "p1", Upstream: "p1", Relation: fabricengine.ParentEqual}, nil
+	fx.fz.deps.ReadParentTips = func(bool) (fabriclayout.ParentTips, error) {
+		return fabriclayout.ParentTips{Local: "p1", Upstream: "p1", Relation: fabriclayout.ParentEqual}, nil
 	}
 	fx.merger.preMergeHeadSHA = stringPointer("p1")
 	fx.fz.guard = newParentGuard(fx.deps)
-	fx.lineChange = fabricengine.LineChange{Lines: 3, Paths: []string{"a/a.go"}}
+	fx.lineChange = fabriclayout.LineChange{Lines: 3, Paths: []string{"a/a.go"}}
 	fx.scriptGate(verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1}, verifytree.Result{Status: verifytree.StatusPassed})
 	sessions := 0
 	fx.seats.turns = []func(){func() {

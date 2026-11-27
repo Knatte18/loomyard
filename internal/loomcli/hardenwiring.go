@@ -27,6 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hardenshed"
 	"github.com/Knatte18/loomyard/internal/impactset"
@@ -220,10 +221,10 @@ func HardenReapDeps(location *lymcwd.Location, row string, point hardenshed.Reap
 		Row:   row,
 		Point: point,
 		Owners: func(hubPath string) (map[string][]runproc.Record, error) {
-			return runproc.Owners(fabricengine.RunProcDir(hubPath))
+			return runproc.Owners(fabriclayout.RunProcDir(hubPath))
 		},
 		End: func(hubPath, owner string, callerPID int) ([]runproc.Ended, error) {
-			return runproc.End(fabricengine.RunProcDir(hubPath), owner, callerPID)
+			return runproc.End(fabriclayout.RunProcDir(hubPath), owner, callerPID)
 		},
 		EndProcess: runproc.EndProcess,
 		StopServer: func(hubPath string) (bool, error) {

@@ -8,7 +8,7 @@ import (
 	"slices"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -23,11 +23,11 @@ import (
 // a caller whose dobby hands the subject over itself leaves it unset.
 // The calling process and its ancestors are never ended.
 func EndSubjectProcesses(prime *lymcwd.Location, owner string, endDobby bool) error {
-	owners, err := boardengine.ReadOwners(fabricengine.BoardDir(prime.HubPath))
+	owners, err := boardengine.ReadOwners(fabriclayout.BoardDir(prime.HubPath))
 	if err != nil {
 		return fmt.Errorf("pairteardown: read the board's owners: %w", err)
 	}
-	runProcDir := fabricengine.RunProcDir(prime.HubPath)
+	runProcDir := fabriclayout.RunProcDir(prime.HubPath)
 	registered, err := runproc.Owners(runProcDir)
 	if err != nil {
 		return err

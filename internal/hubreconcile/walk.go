@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configsync"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/heddleengine"
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -203,13 +204,13 @@ func reconcilePair(geom Geometry, pairPath, revision string, hooks walkHooks) er
 }
 
 // findPrime returns the main code worktree of a listing.
-func findPrime(worktrees []fabricengine.CodeWorktree) (fabricengine.CodeWorktree, bool) {
+func findPrime(worktrees []fabriclayout.CodeWorktree) (fabriclayout.CodeWorktree, bool) {
 	for _, w := range worktrees {
 		if w.Main {
 			return w, true
 		}
 	}
-	return fabricengine.CodeWorktree{}, false
+	return fabriclayout.CodeWorktree{}, false
 }
 
 // spawnBoardSync starts the detached board sync of a board dir.
@@ -231,7 +232,7 @@ var spawnBoardSync = boardengine.SpawnSync
 // The walk never waits on that push.
 // A refusal of it reaches the orch as a failed-push record; a spawn failure is only logged.
 // Once the commit lands, moved lists the lines of the old keys the board's files moved; a skipped write moves none.
-func reconcileHubWide(boardDir string, prime fabricengine.CodeWorktree, worktrees []fabricengine.CodeWorktree, label string, hooks walkHooks) (skipped bool, moved []string, err error) {
+func reconcileHubWide(boardDir string, prime fabriclayout.CodeWorktree, worktrees []fabriclayout.CodeWorktree, label string, hooks walkHooks) (skipped bool, moved []string, err error) {
 	bolt := fabricengine.NewBolt(boardDir)
 	var prior map[string][]byte
 	var notices, followed, movedKeys []string
@@ -320,7 +321,7 @@ func renderHeddleOverview(boardDir string) bool {
 // A failure after the write restores the config files to their prior bytes, so nothing written is left uncommitted;
 // a commit that landed before a later step of it failed keeps them.
 // moved lists the lines of the old keys moved in files that keep their new bytes, so none after a restore.
-func reconcileWorktree(boardDir string, w fabricengine.CodeWorktree, revision string, hooks walkHooks) (skipped bool, moved []string, err error) {
+func reconcileWorktree(boardDir string, w fabriclayout.CodeWorktree, revision string, hooks walkHooks) (skipped bool, moved []string, err error) {
 	if !w.Main {
 		complete, reason, err := fabricengine.PairCompleteAt(w.Path)
 		if err != nil {

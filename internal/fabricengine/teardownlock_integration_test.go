@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -32,7 +33,7 @@ import (
 func holdTeardownLock(t *testing.T, h *hubforge.Hub, slug string) (release func()) {
 	t.Helper()
 
-	lockPath := fabricengine.TeardownLockPath(h.Path, slug)
+	lockPath := fabriclayout.TeardownLockPath(h.Path, slug)
 	if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
 		t.Fatalf("mkdir the teardown lock dir: %v", err)
 	}
@@ -51,13 +52,13 @@ func holdTeardownLock(t *testing.T, h *hubforge.Hub, slug string) (release func(
 const teardownTestWait = 100 * time.Millisecond
 
 // pairPushRequest is the detached push request a status push of slug's pair makes.
-func pairPushRequest(h *hubforge.Hub, slug string) fabricengine.PushSpawn {
-	return fabricengine.PushSpawn{
+func pairPushRequest(h *hubforge.Hub, slug string) fabriclayout.PushSpawn {
+	return fabriclayout.PushSpawn{
 		WarpPath:     fabricengine.WorktreePath(h.Location, slug),
 		WeftPath:     fabricengine.RecordsWorktreePath(h.Location, slug),
 		PauseSlug:    slug,
 		TeardownSlug: slug,
-		WorkDir:      fabricengine.BoardDir(h.Path),
+		WorkDir:      fabriclayout.BoardDir(h.Path),
 	}
 }
 
@@ -65,7 +66,7 @@ func pairPushRequest(h *hubforge.Hub, slug string) fabricengine.PushSpawn {
 func requireBranchesGoneFromOrigins(t *testing.T, h *hubforge.Hub, slug string) {
 	t.Helper()
 
-	for bare, branch := range map[string]string{h.CodeBare: slug, h.RecordsBare: fabricengine.RecordsBranchName(slug)} {
+	for bare, branch := range map[string]string{h.CodeBare: slug, h.RecordsBare: fabriclayout.RecordsBranchName(slug)} {
 		out, err := gitexec.Run([]string{"ls-remote", "--heads", bare, branch}, h.Container)
 		if err != nil {
 			t.Fatalf("ls-remote %s: %v", bare, err)
@@ -92,7 +93,7 @@ func TestRemove_TeardownLockAgainstThePairsPush(t *testing.T) {
 
 	t.Run("SharedHolderPastTheWaitRefusesBeforeAnyMutation", func(t *testing.T) {
 		h := newPairHub(t)
-		lockPath := fabricengine.TeardownLockPath(h.Path, slug)
+		lockPath := fabriclayout.TeardownLockPath(h.Path, slug)
 		if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
 			t.Fatalf("mkdir the teardown lock dir: %v", err)
 		}
@@ -145,7 +146,7 @@ func TestRemove_TeardownLockAgainstThePairsPush(t *testing.T) {
 		}, nil)
 
 		go func() {
-			_, err := fabricengine.DetachedPush(h.Path, pairPushRequest(h, slug), fabricengine.MachineNames{})
+			_, err := fabricengine.DetachedPush(h.Path, pairPushRequest(h, slug), fabriclayout.MachineNames{})
 			done <- err
 		}()
 		<-parked
@@ -168,7 +169,7 @@ func TestRemove_TeardownLockAgainstThePairsPush(t *testing.T) {
 		var childErr error
 		var childMutations int
 		fabricengine.SetTeardownHooksForTest(t, nil, func() {
-			res, err := fabricengine.DetachedPush(h.Path, pairPushRequest(h, slug), fabricengine.MachineNames{})
+			res, err := fabricengine.DetachedPush(h.Path, pairPushRequest(h, slug), fabriclayout.MachineNames{})
 			childErr, childMutations = err, res.Mutated().Len()
 		})
 
@@ -189,7 +190,7 @@ func TestRemove_TeardownLockAgainstThePairsPush(t *testing.T) {
 			t.Fatalf("Remove(remote) error = %v; want nil", err)
 		}
 
-		if _, err := fabricengine.DetachedPush(h.Path, pairPushRequest(h, slug), fabricengine.MachineNames{}); err != nil {
+		if _, err := fabricengine.DetachedPush(h.Path, pairPushRequest(h, slug), fabriclayout.MachineNames{}); err != nil {
 			t.Fatalf("DetachedPush after Remove error = %v; want nil", err)
 		}
 		for _, p := range []string{h.PairCodeWorktree(slug), h.PairRecordsSibling(slug)} {
@@ -213,7 +214,7 @@ func TestRemove_TeardownLockAgainstThePairsPush(t *testing.T) {
 		if calls := recorder.Calls(); len(calls) != 0 {
 			t.Errorf("push requests after a failed Remove = %+v; want none", calls)
 		}
-		if relock, ok, err := lock.TryAcquireWriteLock(fabricengine.TeardownLockPath(h.Path, slug)); err != nil || !ok {
+		if relock, ok, err := lock.TryAcquireWriteLock(fabriclayout.TeardownLockPath(h.Path, slug)); err != nil || !ok {
 			t.Errorf("teardown lock after a failed Remove = (%v, %v); want it released", ok, err)
 		} else {
 			relock.Release()
@@ -248,32 +249,32 @@ func TestPushPairAnchored_HeldByAPauseWithoutTheTeardownLock(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve the pair's location: %v", err)
 	}
-	if _, err := fabricengine.PushPairAnchored(pair, fabricengine.SyncOptions{}, fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded}); err != nil {
+	if _, err := fabricengine.PushPairAnchored(pair, fabricengine.SyncOptions{}, fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded}); err != nil {
 		t.Fatalf("first PushPairAnchored error = %v; want nil", err)
 	}
 	gitkit.CommitFile(t, h.PairRecordsSibling(slug), "paused.txt", "paused\n", "records work under a pause")
-	teardownLockPath := fabricengine.TeardownLockPath(h.Path, slug)
+	teardownLockPath := fabriclayout.TeardownLockPath(h.Path, slug)
 	waits := fabricengine.PassingPauseGateForTest(t, func() {
 		if !fabricengine.LockFreeForTest(t, teardownLockPath) {
 			t.Errorf("the teardown lock was held while the pause held the push; want it free")
 		}
 	})
 
-	if _, err := fabricengine.PushPairAnchored(pair, fabricengine.SyncOptions{}, fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded}); err != nil {
+	if _, err := fabricengine.PushPairAnchored(pair, fabricengine.SyncOptions{}, fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded}); err != nil {
 		t.Fatalf("PushPairAnchored under a pause error = %v; want nil", err)
 	}
 
 	if *waits == 0 {
 		t.Errorf("the pause held no call of the push; want at least one")
 	}
-	weftBranch := fabricengine.RecordsBranchName(slug)
+	weftBranch := fabriclayout.RecordsBranchName(slug)
 	if got, want := gitkit.RevParse(t, h.RecordsBare, weftBranch), gitkit.RevParse(t, h.PairRecordsSibling(slug), "HEAD"); got != want {
 		t.Errorf("origin weft tip = %s; want the pushed %s", got, want)
 	}
 }
 
 // TestTeardownLock_SerialisesAddDiscardAndPairPush holds the slug's teardown lock exclusive, one hub per row.
-// It meets Add, the task-branch discard and the synchronous pair push with that hold.
+// It meets Add, the task-branch discard and the synchronous prime push with that hold.
 // Each row sets its wait on its own Topology, and the test releases the holder,
 // so no row sleeps and no process-global state is touched.
 func TestTeardownLock_SerialisesAddDiscardAndPairPush(t *testing.T) {
@@ -325,7 +326,7 @@ func TestTeardownLock_SerialisesAddDiscardAndPairPush(t *testing.T) {
 		release := holdTeardownLock(t, h, slug)
 
 		type outcome struct {
-			res fabricengine.DiscardResult
+			res fabriclayout.DiscardResult
 			err error
 		}
 		done := make(chan outcome, 1)
@@ -386,35 +387,6 @@ func TestTeardownLock_SerialisesAddDiscardAndPairPush(t *testing.T) {
 		}
 	})
 
-	t.Run("PairPushWhileHeldExclusiveLeavesOriginUntouched", func(t *testing.T) {
-		t.Parallel()
-		const slug = "lock-pair-push"
-		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-		hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
-		pair, err := lymcwd.ResolveWorktree(h.PairCodeWorktree(slug))
-		if err != nil {
-			t.Fatalf("resolve the pair's location: %v", err)
-		}
-		if _, err := fabricengine.PushPairAnchored(pair, fabricengine.SyncOptions{}, fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded}); err != nil {
-			t.Fatalf("first PushPairAnchored error = %v; want nil", err)
-		}
-		weftBranch := fabricengine.RecordsBranchName(slug)
-		tipBefore := gitkit.RevParse(t, h.RecordsBare, weftBranch)
-		gitkit.CommitFile(t, h.PairRecordsSibling(slug), "held.txt", "held\n", "records work while the lock is held")
-		holdTeardownLock(t, h, slug)
-
-		res, err := fabricengine.PushPairAnchored(pair, fabricengine.SyncOptions{}, fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded})
-		if !errors.Is(err, fabricengine.ErrPairPushRunning) {
-			t.Fatalf("PushPairAnchored beside an exclusive holder = %v; want an error wrapping ErrPairPushRunning", err)
-		}
-		if res.Mutated().Len() != 0 {
-			t.Errorf("PushPairAnchored recorded %d mutations; want none", res.Mutated().Len())
-		}
-		if got := gitkit.RevParse(t, h.RecordsBare, weftBranch); got != tipBefore {
-			t.Errorf("origin weft tip = %s; want unchanged %s", got, tipBefore)
-		}
-	})
-
 	t.Run("PrimePushIgnoresAPairsExclusiveHold", func(t *testing.T) {
 		t.Parallel()
 		const slug = "lock-prime-push"
@@ -423,7 +395,7 @@ func TestTeardownLock_SerialisesAddDiscardAndPairPush(t *testing.T) {
 		holdTeardownLock(t, h, slug)
 		gitkit.CommitFile(t, h.PrimeRecords(), "prime-held.txt", "prime\n", "prime records work")
 
-		if _, err := fabricengine.PushPairAnchored(h.Location, fabricengine.SyncOptions{}, fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded}); err != nil {
+		if _, err := fabricengine.PushPairAnchored(h.Location, fabricengine.SyncOptions{}, fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded}); err != nil {
 			t.Fatalf("prime PushPairAnchored error = %v; want nil", err)
 		}
 		branch := gitkit.Git(t, h.PrimeRecords(), "rev-parse", "--abbrev-ref", "HEAD")

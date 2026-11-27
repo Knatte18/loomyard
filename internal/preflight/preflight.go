@@ -8,6 +8,7 @@ import (
 	"errors"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -110,7 +111,7 @@ func CheckResolved(l *lymcwd.Location) (Report, error) {
 			// and every other cause is CheckJunction.
 			var check CheckID
 			switch reason.Cause {
-			case fabricengine.CauseBranchMismatch:
+			case fabriclayout.CauseBranchMismatch:
 				check = CheckFabricSync
 			default:
 				check = CheckJunction

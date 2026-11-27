@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -36,18 +37,18 @@ func TestDetachedPush_CoveredChildExitsBeforeItsFlags(t *testing.T) {
 			HoldHubPauseForTest(t, slug)
 			logged := logcapture.CaptureVerbose(t)
 
-			_, err := DetachedPush(hub, PushSpawn{
+			_, err := DetachedPush(hub, fabriclayout.PushSpawn{
 				WarpPath:     filepath.Join(hub, slug),
 				WeftPath:     filepath.Join(hub, slug+"-weft"),
 				PauseSlug:    slug,
 				TeardownSlug: slug,
 				ParentLocked: tt.parentLocked,
-			}, MachineNames{})
+			}, fabriclayout.MachineNames{})
 			if err != nil {
 				t.Fatalf("DetachedPush() error = %v; want nil", err)
 			}
 
-			if _, err := os.Stat(TeardownLockPath(hub, slug)); (err == nil) != tt.wantLockFile {
+			if _, err := os.Stat(fabriclayout.TeardownLockPath(hub, slug)); (err == nil) != tt.wantLockFile {
 				t.Errorf("teardown lock file present = %v; want %v", err == nil, tt.wantLockFile)
 			}
 			failed, err := ListFailedPushes(hub)

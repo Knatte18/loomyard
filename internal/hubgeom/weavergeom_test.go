@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -57,8 +57,8 @@ func TestWeaverGeometry(t *testing.T) {
 				{"ReportsDir", got.ReportsDir, weaverengine.ReportsDir(anchorPath)},
 				{"ScratchDir", got.ScratchDir, weaverengine.ScratchDir(anchorPath)},
 				{"PromptsDir", got.PromptsDir, weaverengine.PromptsDir(anchorPath)},
-				{"StencilsDir", got.StencilsDir, fabricengine.StencilsDir(hub)},
-				{"SpecsDir", got.SpecsDir, fabricengine.SpecsDir(hub)},
+				{"StencilsDir", got.StencilsDir, fabriclayout.StencilsDir(hub)},
+				{"SpecsDir", got.SpecsDir, fabriclayout.SpecsDir(hub)},
 				{"PlanDir", got.PlanDir, planparser.PlanDir(anchorPath)},
 				{"VerifyDir", got.VerifyDir, verifytree.Dir(anchorPath)},
 				{"GateWaitDir", got.GateWaitDir, gateslot.WaitDir(anchorPath)},
@@ -72,7 +72,7 @@ func TestWeaverGeometry(t *testing.T) {
 			if got.GateSlots == nil {
 				t.Fatal("WeaverGeometry(l).GateSlots = nil; want the hub's pool")
 			}
-			if want := gateslot.Dir(fabricengine.BoardDir(hub)); got.GateSlots.Dir != want {
+			if want := gateslot.Dir(fabriclayout.BoardDir(hub)); got.GateSlots.Dir != want {
 				t.Errorf("WeaverGeometry(l).GateSlots.Dir = %q; want %q", got.GateSlots.Dir, want)
 			}
 			if got.GateConfig == nil {

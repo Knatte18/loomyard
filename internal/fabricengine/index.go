@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/state"
 )
@@ -173,8 +174,8 @@ type warpSHATrailerCommit struct {
 // Commits without a Warp-SHA trailer are omitted.
 func (f *Fabric) scanWarpSHATrailers() ([]warpSHATrailerCommit, error) {
 	format := "%H" + warpSHATrailerFormatUnitSep +
-		"%(trailers:key=" + WarpSHATrailerKey + ",valueonly)" + warpSHATrailerFormatUnitSep +
-		"%(trailers:key=" + SnapshotTrailerKey + ",valueonly)" +
+		"%(trailers:key=" + fabriclayout.WarpSHATrailerKey + ",valueonly)" + warpSHATrailerFormatUnitSep +
+		"%(trailers:key=" + fabriclayout.SnapshotTrailerKey + ",valueonly)" +
 		warpSHATrailerFormatRecordSep
 
 	stdout, err := gitexec.Run([]string{"log", "--topo-order", "--format=" + format}, f.weftPath)

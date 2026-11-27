@@ -9,35 +9,19 @@ import (
 	"path/filepath"
 	"sync/atomic"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
-// WorktreeEvent is what the worktree seam is told about one worktree.
-// Root is the worktree's root.
-// Anchor is its anchor directory, where the repository's own files sit; it equals Root in a worktree with no anchor.
-// ScratchDir is the pair's never-tracked `.lym` directory.
-// BoltDir is the hub's Bolt checkout.
-// Excluded holds the anchor-relative paths the warp exclude list names;
-// they are already seeded into the repository's exclude file.
-// Paths holds the root-relative paths that differ between the old and the new head, empty for "made".
-type WorktreeEvent struct {
-	Root       string
-	Anchor     string
-	ScratchDir string
-	BoltDir    string
-	Excluded   []string
-	Paths      []string
-}
-
 // WorktreeSeam is told when a worktree is made and when it takes in commits.
 // An error from either is a warning for the verb that fired it and never fails that verb.
 type WorktreeSeam interface {
 	// Made reports a worktree that is wired, with its exclude lines seeded and its hub's Bolt checkout present.
-	Made(event WorktreeEvent) error
+	Made(event fabriclayout.WorktreeEvent) error
 	// TookIn reports a worktree whose checked-out branch moved to commits that change event.Paths.
-	TookIn(event WorktreeEvent) error
+	TookIn(event fabriclayout.WorktreeEvent) error
 }
 
 // seamWayForward is the repair step every seam warning names.
@@ -55,16 +39,16 @@ func InstallWorktreeSeam(s WorktreeSeam) (restore func()) {
 // EventFor seeds the warp exclude list of l's worktree and returns the event for it carrying paths.
 // The seeding runs under the exclude file's lock and comes first,
 // so a caller that writes the files the list names writes only after their lines are in place.
-func EventFor(l *lymcwd.Location, paths []string) (WorktreeEvent, error) {
+func EventFor(l *lymcwd.Location, paths []string) (fabriclayout.WorktreeEvent, error) {
 	excluded, err := SeedWarpExclude(l)
 	if err != nil {
-		return WorktreeEvent{}, err
+		return fabriclayout.WorktreeEvent{}, err
 	}
-	return WorktreeEvent{
+	return fabriclayout.WorktreeEvent{
 		Root:       l.WorktreePath(),
 		Anchor:     l.AnchorPath(),
 		ScratchDir: filepath.Join(RecordsWorktreePath(l, l.WorktreeName), l.AnchorRel, lymdirs.DotLymDirName),
-		BoltDir:    BoltDir(l.HubPath),
+		BoltDir:    fabriclayout.BoltDir(l.HubPath),
 		Excluded:   excluded,
 		Paths:      paths,
 	}, nil

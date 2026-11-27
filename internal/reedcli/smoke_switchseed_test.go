@@ -15,7 +15,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/contracts/stencils"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
@@ -52,7 +52,7 @@ func TestSmokeSwitchDeclinesStencilSeedPass(t *testing.T) {
 		t.Fatalf("registry has no default for its own first name %q", name)
 	}
 	driftedBody := append(append([]byte{}, shipped...), []byte("\nsmoke-drift-line\n")...)
-	boardPath := stencilstore.Path(fabricengine.StencilsDir(h.Path), name)
+	boardPath := stencilstore.Path(fabriclayout.StencilsDir(h.Path), name)
 	if err := os.MkdirAll(filepath.Dir(boardPath), 0o755); err != nil {
 		t.Fatalf("create board stencil parent dir: %v", err)
 	}

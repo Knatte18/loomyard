@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
@@ -124,7 +125,7 @@ func RunCommitsAhead(l *lymcwd.Location) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("fabricengine: read the records tip %s: %w", records.tip, err)
 	}
-	namedTip := trailerValue(detail.Message, WarpSHATrailerKey)
+	namedTip := trailerValue(detail.Message, fabriclayout.WarpSHATrailerKey)
 	if namedTip == "" {
 		return false, nil
 	}
@@ -173,8 +174,8 @@ func RefusedPushStands(l *lymcwd.Location) (bool, error) {
 		if isOwedClass(record.Class) {
 			continue
 		}
-		if (record.Repo == failedPushSideRecords && record.Branch == recordsBranch) ||
-			(codeBranch != "" && record.Repo == failedPushSideCode && record.Branch == codeBranch) {
+		if (record.Repo == fabriclayout.RepoRecords && record.Branch == recordsBranch) ||
+			(codeBranch != "" && record.Repo == fabriclayout.RepoCode && record.Branch == codeBranch) {
 			return true, nil
 		}
 	}

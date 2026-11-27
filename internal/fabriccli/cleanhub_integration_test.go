@@ -23,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configsync"
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
@@ -75,8 +76,8 @@ func runShortnameVerb(t *testing.T, h *hubforge.Hub, args ...string) (exit int, 
 func removeShortnameRecord(t *testing.T, h *hubforge.Hub) {
 	t.Helper()
 	board := h.BoardDir()
-	if err := os.Remove(filepath.Join(board, fabricengine.ShortnameFileName)); err != nil {
-		t.Fatalf("remove %s: %v", fabricengine.ShortnameFileName, err)
+	if err := os.Remove(filepath.Join(board, fabriclayout.ShortnameFileName)); err != nil {
+		t.Fatalf("remove %s: %v", fabriclayout.ShortnameFileName, err)
 	}
 	if _, _, err := fabricengine.NewBolt(board).Commit("test: remove the shortname record", fabricengine.SyncOptions{}); err != nil {
 		t.Fatalf("commit the removal: %v", err)
@@ -158,7 +159,7 @@ func TestCommand_CleanHubScenario(t *testing.T) {
 				wantTarget := boardPrefix + configengine.ConfigFileRel(name)
 				written := 0
 				for _, e := range entries {
-					if e.Kind == fabricengine.KindFileWritten && e.Target == wantTarget {
+					if e.Kind == fabriclayout.KindFileWritten && e.Target == wantTarget {
 						written++
 					}
 				}
@@ -169,7 +170,7 @@ func TestCommand_CleanHubScenario(t *testing.T) {
 			weftTarget := hubRelativeWeftTarget(t, h)
 			weftCommits := 0
 			for _, e := range entries {
-				if e.Kind == fabricengine.KindCommitCreated && e.Target == weftTarget {
+				if e.Kind == fabriclayout.KindCommitCreated && e.Target == weftTarget {
 					weftCommits++
 				}
 			}
@@ -435,8 +436,8 @@ func TestCommand_CleanHubScenario(t *testing.T) {
 			if exit != 0 || env["shortname"] != "zz" || env["partial"] != false {
 				t.Fatalf("record = %d, %v; want exit 0 with shortname zz", exit, env)
 			}
-			if got := boardGit(t, h, "show", "HEAD:"+fabricengine.ShortnameFileName); got != "zz" {
-				t.Errorf("%s at weft:main's tip = %q; want zz", fabricengine.ShortnameFileName, got)
+			if got := boardGit(t, h, "show", "HEAD:"+fabriclayout.ShortnameFileName); got != "zz" {
+				t.Errorf("%s at weft:main's tip = %q; want zz", fabriclayout.ShortnameFileName, got)
 			}
 		}},
 		{"ShortnameVerb_CommitsTheRecordAlone", func(t *testing.T) {
@@ -451,8 +452,8 @@ func TestCommand_CleanHubScenario(t *testing.T) {
 			if exit, env := runShortnameVerb(t, h, "zz"); exit != 0 {
 				t.Fatalf("record = %d, %v; want exit 0", exit, env)
 			}
-			if got := boardGit(t, h, "show", "--name-only", "--format=", "HEAD"); got != fabricengine.ShortnameFileName {
-				t.Errorf("files in the shortname commit = %q; want only %s", got, fabricengine.ShortnameFileName)
+			if got := boardGit(t, h, "show", "--name-only", "--format=", "HEAD"); got != fabriclayout.ShortnameFileName {
+				t.Errorf("files in the shortname commit = %q; want only %s", got, fabriclayout.ShortnameFileName)
 			}
 			if got := boardGit(t, h, "status", "--porcelain", "--", "pending-board-write.md"); got == "" {
 				t.Errorf("the pending board file was committed; want it left uncommitted")

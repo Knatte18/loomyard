@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -49,7 +50,7 @@ func TestReadParentTips(t *testing.T) {
 		branch       string
 		fetch        bool
 		setup        func(t *testing.T, e env) (wantLocal, wantUpstream string)
-		wantRelation fabricengine.ParentRelation
+		wantRelation fabriclayout.ParentRelation
 	}{
 		{
 			name:   "equal",
@@ -58,7 +59,7 @@ func TestReadParentTips(t *testing.T) {
 				head := fabricengine.CurrentSHAForTest(t, e.warpPath)
 				return head, head
 			},
-			wantRelation: fabricengine.ParentEqual,
+			wantRelation: fabriclayout.ParentEqual,
 		},
 		{
 			name:   "an upstream push is unseen without a fetch",
@@ -68,7 +69,7 @@ func TestReadParentTips(t *testing.T) {
 				pushFromSecondClone(t, e.fixturesDir, e.bareDir, "other")
 				return head, head
 			},
-			wantRelation: fabricengine.ParentEqual,
+			wantRelation: fabriclayout.ParentEqual,
 		},
 		{
 			name:   "behind after an upstream push",
@@ -78,7 +79,7 @@ func TestReadParentTips(t *testing.T) {
 				head := fabricengine.CurrentSHAForTest(t, e.warpPath)
 				return head, pushFromSecondClone(t, e.fixturesDir, e.bareDir, "other")
 			},
-			wantRelation: fabricengine.ParentBehind,
+			wantRelation: fabriclayout.ParentBehind,
 		},
 		{
 			name:   "ahead after a local commit",
@@ -88,7 +89,7 @@ func TestReadParentTips(t *testing.T) {
 				upstream := fabricengine.CurrentSHAForTest(t, e.warpPath)
 				return gitkit.CommitFile(t, e.warpPath, "local.txt", "local", "local"), upstream
 			},
-			wantRelation: fabricengine.ParentAhead,
+			wantRelation: fabriclayout.ParentAhead,
 		},
 		{
 			name:   "diverged after a commit on each side",
@@ -98,7 +99,7 @@ func TestReadParentTips(t *testing.T) {
 				upstream := pushFromSecondClone(t, e.fixturesDir, e.bareDir, "other")
 				return gitkit.CommitFile(t, e.warpPath, "local.txt", "local", "local"), upstream
 			},
-			wantRelation: fabricengine.ParentDiverged,
+			wantRelation: fabriclayout.ParentDiverged,
 		},
 		{
 			name:   "no upstream for a local-only branch",
@@ -108,7 +109,7 @@ func TestReadParentTips(t *testing.T) {
 				gitkit.Git(t, e.warpPath, "branch", "local-only")
 				return fabricengine.CurrentSHAForTest(t, e.warpPath), ""
 			},
-			wantRelation: fabricengine.ParentNoUpstream,
+			wantRelation: fabriclayout.ParentNoUpstream,
 		},
 	}
 	for _, tc := range tests {
@@ -123,7 +124,7 @@ func TestReadParentTips(t *testing.T) {
 			if err != nil {
 				t.Fatalf("ReadParentTips(%q, %v) error = %v", tc.branch, tc.fetch, err)
 			}
-			want := fabricengine.ParentTips{Local: wantLocal, Upstream: wantUpstream, Relation: tc.wantRelation}
+			want := fabriclayout.ParentTips{Local: wantLocal, Upstream: wantUpstream, Relation: tc.wantRelation}
 			if got != want {
 				t.Errorf("ReadParentTips(%q, %v) = %+v; want %+v", tc.branch, tc.fetch, got, want)
 			}
@@ -328,7 +329,7 @@ func TestFabric_DiffSize(t *testing.T) {
 	tests := []struct {
 		name    string
 		setup   func(t *testing.T, warpPath string) (from, to string)
-		want    fabricengine.DiffSize
+		want    fabriclayout.DiffSize
 		wantErr string
 	}{
 		{
@@ -340,7 +341,7 @@ func TestFabric_DiffSize(t *testing.T) {
 				write(t, warpPath, "b.txt", []byte("b1\nb2\nb3\n"))
 				return from, commitAll(t, warpPath, "change")
 			},
-			want: fabricengine.DiffSize{LinesAdded: 3, LinesDeleted: 2, FilesChanged: 2},
+			want: fabriclayout.DiffSize{LinesAdded: 3, LinesDeleted: 2, FilesChanged: 2},
 		},
 		{
 			name: "BinaryFile",
@@ -349,7 +350,7 @@ func TestFabric_DiffSize(t *testing.T) {
 				write(t, warpPath, "blob.bin", []byte{0, 1, 2, 0, 3})
 				return from, commitAll(t, warpPath, "binary")
 			},
-			want: fabricengine.DiffSize{FilesChanged: 1},
+			want: fabriclayout.DiffSize{FilesChanged: 1},
 		},
 		{
 			name: "PureRename",
@@ -358,7 +359,7 @@ func TestFabric_DiffSize(t *testing.T) {
 				gitkit.Git(t, warpPath, "mv", "keep.txt", "moved.txt")
 				return from, commitAll(t, warpPath, "rename")
 			},
-			want: fabricengine.DiffSize{FilesChanged: 1},
+			want: fabriclayout.DiffSize{FilesChanged: 1},
 		},
 		{
 			name: "UnknownRef",
@@ -590,7 +591,7 @@ func TestFastForwardPair_MovesBehindPairToUpstream(t *testing.T) {
 			f, warpPath, bareDir, weftFixture, _, _, _ := buildReconcileFixture(t, fixturesDir, 1)
 			weftWas := fabricengine.CurrentSHAForTest(t, weftFixture.PrimeRecords())
 
-			weftBranch := fabricengine.RecordsBranchName("main")
+			weftBranch := fabriclayout.RecordsBranchName("main")
 			gitkit.MustRun(t, weftFixture.PrimeRecords(), "git", "push", "-u", "origin", weftBranch)
 			cloneB := filepath.Join(fixturesDir, "weft-cloneB")
 			gitkit.MustRun(t, fixturesDir, "git", "clone", "-q", "-b", weftBranch, weftFixture.RecordsBare, cloneB)
@@ -601,7 +602,7 @@ func TestFastForwardPair_MovesBehindPairToUpstream(t *testing.T) {
 
 			upstream := pushFromSecondClone(t, fixturesDir, bareDir, "other")
 			if tt.moveRecord {
-				writeMoveRecord(t, weftFixture.PrimeRecords(), fabricengine.MoveRecord{A: ".", B: "x", Kind: fabricengine.MoveKindMove, PID: 4242})
+				writeMoveRecord(t, weftFixture.PrimeRecords(), fabriclayout.MoveRecord{A: ".", B: "x", Kind: fabriclayout.MoveKindMove, PID: 4242})
 			}
 
 			res, err := f.FastForwardPair(fabricengine.SyncOptions{})
@@ -622,13 +623,13 @@ func TestFastForwardPair_MovesBehindPairToUpstream(t *testing.T) {
 				t.Errorf("weft HEAD = %q; want %q", got, wantWeft)
 			}
 
-			var kinds []fabricengine.Kind
+			var kinds []fabriclayout.Kind
 			var details []string
 			for _, entry := range res.Mutated().Entries() {
 				kinds = append(kinds, entry.Kind)
 				details = append(details, entry.Detail)
 			}
-			if !slices.Contains(kinds, fabricengine.KindWorktreeReset) {
+			if !slices.Contains(kinds, fabriclayout.KindWorktreeReset) {
 				t.Errorf("record kinds = %v; want the reset entry", kinds)
 			}
 			if !slices.Contains(details, upstream) {
@@ -680,7 +681,7 @@ func TestFastForwardPair_RefusalsLeavePairUnmovedWithNilError(t *testing.T) {
 		name string
 		// arrange leaves the pair in the refused state; the upstream is already ahead of the pair when it runs.
 		arrange func(t *testing.T, f *fabricengine.Fabric, warpPath, fixturesDir, bareDir string)
-		want    fabricengine.FastForwardRefusal
+		want    fabriclayout.FastForwardRefusal
 	}{
 		{
 			name: "a modified tracked file",
@@ -689,7 +690,7 @@ func TestFastForwardPair_RefusalsLeavePairUnmovedWithNilError(t *testing.T) {
 					t.Fatalf("dirty tracked file: %v", err)
 				}
 			},
-			want: fabricengine.FastForwardDirty,
+			want: fabriclayout.FastForwardDirty,
 		},
 		{
 			name: "a fabric merge record on the pair",
@@ -705,7 +706,7 @@ func TestFastForwardPair_RefusalsLeavePairUnmovedWithNilError(t *testing.T) {
 					t.Fatalf("SaveMergeStateForTest() error = %v", err)
 				}
 			},
-			want: fabricengine.FastForwardMergeInProgress,
+			want: fabriclayout.FastForwardMergeInProgress,
 		},
 		{
 			name: "an upstream force-pushed after the caller's read",
@@ -715,7 +716,7 @@ func TestFastForwardPair_RefusalsLeavePairUnmovedWithNilError(t *testing.T) {
 				}
 				rewriteWarpRemoteHistory(t, fixturesDir, bareDir, fabricengine.CurrentSHAForTest(t, warpPath)+"~1")
 			},
-			want: fabricengine.FastForwardNotFastForward,
+			want: fabriclayout.FastForwardNotFastForward,
 		},
 	}
 	for _, tc := range tests {

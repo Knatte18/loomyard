@@ -7,9 +7,11 @@
 
 package fabricengine
 
-import "testing"
+import (
+	"testing"
 
-import "github.com/Knatte18/loomyard/internal/testkit/tiergate"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
+)
 
 //testtiming:keep the landed-conclude predicate over every landed combination; coverage of its blocks by other tests does not show an assertion of this
 func TestMergeState_LandedConcludeCommit(t *testing.T) {

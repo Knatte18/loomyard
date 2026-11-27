@@ -24,6 +24,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fswatch"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -456,7 +457,7 @@ func TestRun(t *testing.T) {
 		st := waitForServer(t, fixture.opts.Paths)
 		fixture.clock.waitRegistrations(t, 1)
 
-		boardLockPath, err := fabricengine.BoltLockPath(fixture.boardPath, fabricengine.BoardWriteLockFile)
+		boardLockPath, err := fabricengine.BoltLockPath(fixture.boardPath, fabriclayout.BoardWriteLockFile)
 		if err != nil {
 			t.Fatalf("BoltLockPath: %v", err)
 		}

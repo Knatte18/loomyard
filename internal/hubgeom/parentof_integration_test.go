@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -59,7 +60,7 @@ func TestParentOf(t *testing.T) {
 	if err != nil || !found {
 		t.Fatalf("ReadOriginFor(%q) = found %v, error %v; want a record", fromPrime, found, err)
 	}
-	rewrites := map[string]fabricengine.Origin{
+	rewrites := map[string]fabriclayout.Origin{
 		goneParent: {ParentBranch: "gone-branch", ParentWorktree: "po-removed"},
 		noParent:   {ParentBranch: "gone-branch"},
 		otherName:  {ParentBranch: primeRecord.ParentBranch, ParentWorktree: "po-renamed-prime"},
