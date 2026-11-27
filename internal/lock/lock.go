@@ -57,17 +57,22 @@ func TryAcquireWriteLock(lockPath string) (*FileLock, bool, error) {
 }
 
 // AcquireWriteLockWithin acquires an exclusive lock, waiting at most wait for it.
+// It tries at least once, however short wait is, so a free lock is never reported as held.
 // It reports (lock, true, nil) on success.
 // It reports (nil, false, nil) when the lock is still held once wait runs out, and that is not an error.
 func AcquireWriteLockWithin(lockPath string, wait time.Duration) (*FileLock, bool, error) {
 	if err := refuseTrackedTree(lockPath); err != nil {
 		return nil, false, err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), wait)
-	defer cancel()
 
 	fl := flock.New(lockPath)
-	_, err := fl.TryLockContext(ctx, boundedWaitRetryDelay)
+	// The first try is outside the deadline, which can run out before a loaded machine reaches any try under it.
+	locked, err := fl.TryLock()
+	if err == nil && !locked {
+		ctx, cancel := context.WithTimeout(context.Background(), wait)
+		defer cancel()
+		_, err = fl.TryLockContext(ctx, boundedWaitRetryDelay)
+	}
 	if errors.Is(err, context.DeadlineExceeded) {
 		return nil, false, nil
 	}
