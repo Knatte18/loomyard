@@ -41,7 +41,7 @@ How webster groups cards into batches is no card property; `internal/batcher`'s 
 A valid plan is executable strictly in card-number order: a card never depends on anything a later card does.
 Webster runs the cards in that order and never sorts them,
 so a card that needs a symbol, file or fixture a later card creates is a defect of the plan.
-`uses-later-target` and `delete-before-reference` refuse the cases a card's own refs show;
+`uses-later-target`, `delete-before-reference` and `create-caller-later` refuse the cases a card's own refs show;
 every other dependency on a later card is the writer's to avoid and the plan reviewer's to flag.
 
 ## On-disk layout
@@ -360,7 +360,8 @@ A private supporting type or a constructor inseparable from its type goes on the
 and so does a helper serving one surface.
 A symbol of a module's public surface, or one reused across packages, gets its own card.
 A new function is the exception: it goes on the card that adds its first production caller,
-since a card that adds it alone fails its gate on the guard that every production function is reachable from a `main`.
+since a card that adds it alone fails its gate on the guard that every production function is reachable from a `main`
+(`create-caller-later`).
 
 A card whose `**Intent:**` covers every instance of one kind across the repository lists every file holding one.
 Its Intent names the repository search that found them, so a reviewer can re-run it to prove the list complete.
