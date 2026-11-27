@@ -103,16 +103,6 @@ type MapFailure struct {
 	Error string `json:"error"`
 }
 
-// FailedAt reports whether m records a failed coverage build at commit:
-// its Failure names commit, or it holds no test entry and its BuildFailure is set and its Commit is commit.
-// A map build queues no build of such a package while commit is the HEAD it plans at.
-func (m Map) FailedAt(commit string) bool {
-	if m.Failure != nil && m.Failure.Commit == commit {
-		return true
-	}
-	return m.BuildFailure != "" && len(m.Tests) == 0 && m.Commit == commit
-}
-
 // TestOutcome is why a coverage map's entry for a test holds no coverage: its run alone did not pass covering something.
 type TestOutcome string
 
@@ -171,25 +161,6 @@ func StampModuleFiles(stamp EnvironmentStamp, moduleRel string, read func(rel st
 		}
 	}
 	return stamp, nil
-}
-
-// stampDifferences returns the JSON names of the fields in which the stamps a and b differ, in field order.
-func stampDifferences(a, b EnvironmentStamp) []string {
-	var differing []string
-	for _, field := range []struct{ name, a, b string }{
-		{"go_version", a.GoVersion, b.GoVersion},
-		{"goos", a.GOOS, b.GOOS},
-		{"goarch", a.GOARCH, b.GOARCH},
-		{"go_mod_hash", a.GoModHash, b.GoModHash},
-		{"go_sum_hash", a.GoSumHash, b.GoSumHash},
-		{"tiers_digest", a.TiersDigest, b.TiersDigest},
-		{"hub_env_digest", a.HubEnvDigest, b.HubEnvDigest},
-	} {
-		if field.a != field.b {
-			differing = append(differing, field.name)
-		}
-	}
-	return differing
 }
 
 // MapPath returns the path of the coverage map of the package pkg under the maps directory dir.
