@@ -25,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomcli"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
+	"github.com/Knatte18/loomyard/internal/operatoragent"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/samplerengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
@@ -101,6 +102,7 @@ func producers(t *testing.T, fx parityFixture) []producer {
 		{"internal/websterengine#recoverSpawn", buildRecovery},
 		{"internal/websterengine#Run", buildMerriam},
 		{"internal/samplerengine#SessionSpec", buildSampler},
+		{"internal/operatoragent#SessionSpec", buildOperatorAgent},
 		{"internal/landingshed#PRReview.sessionSpec", buildPRReview},
 		{"internal/loomcli#driverSpec", buildDriver},
 		{"internal/dobbyengine#TidySpec", buildBoardTidy},
@@ -256,6 +258,24 @@ func buildSampler(fx parityFixture, engine string) (shuttleengine.Spec, error) {
 		Skills:      skills,
 		Role:        samplerengine.Role,
 	}), nil
+}
+
+func buildOperatorAgent(fx parityFixture, engine string) (shuttleengine.Spec, error) {
+	env := fx.env
+	skills, err := languageSkillsOf(env)
+	if err != nil {
+		return shuttleengine.Spec{}, err
+	}
+	return operatoragent.SessionSpec(operatoragent.Inputs{
+		StencilsDir:    env.StencilsDir,
+		Name:           string(agentconfig.RoleAgent),
+		HubShortname:   env.Shortname,
+		HubPath:        env.Location.HubPath,
+		WorktreeRoot:   env.Location.WorktreePath(),
+		Slug:           env.Slug,
+		ParentName:     env.ParentName,
+		LanguageSkills: skills,
+	}, shuttleengine.ModelChoice{Engine: engine}, engine)
 }
 
 func buildPRReview(fx parityFixture, engine string) (shuttleengine.Spec, error) {

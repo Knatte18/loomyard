@@ -108,6 +108,38 @@ func TestValidationRejections(t *testing.T) {
 	}
 }
 
+func TestRoleFromText(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		text      string
+		want      string
+		wantValid bool
+	}{
+		{"SpacesBecomeDashes", "my agent", "my-agent", true},
+		{"UpperCaseIsLowered", "Review Helper", "review-helper", true},
+		{"SurroundingAndRepeatedSpaceCollapse", "  board \t tidy  ", "board-tidy", true},
+		{"ValidRoleIsKept", "agent-2", "agent-2", true},
+		{"RefusedCharacterStays", "my_agent", "my_agent", false},
+		{"LeadingDigitStays", "2 agents", "2-agents", false},
+		{"Empty", "   ", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := RoleFromText(tt.text)
+			if got != tt.want {
+				t.Errorf("RoleFromText(%q) = %q; want %q", tt.text, got, tt.want)
+			}
+			if err := ValidateRole(got); (err == nil) != tt.wantValid {
+				t.Errorf("ValidateRole(%q) = %v; want valid %v", got, err, tt.wantValid)
+			}
+		})
+	}
+}
+
 func TestNumberRole(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

@@ -86,6 +86,8 @@ and an attach probe or a Wait then reads a strand that is gone.
   a selector in either is a finding until an entry with a reason is added.
 - `internal/loomcli` removes the loom driver's strand and `internal/orchcli` the orch strand.
   Both are exempt because no attach probe or Wait reads their records.
+- A pane line may remove its own strand when its provider exits, for an unawaited run whose spec sets `EndsWithSession`.
+  No attach probe or Wait reads such a run's record.
 - `cmd/lym/removestrand_test.go` enforces it.
   It fails on a selector expression selecting `RemoveStrand` in a package outside that list.
   So a method value handed to a wrapper is caught as well as a call.
@@ -117,7 +119,8 @@ It consults `allOutputFilesExist` over the run's `OutputFiles` first.
 ### The done-when list
 
 A reed strand's done-when list is the one place reed learns a strand finished.
-Only `shuttleengine` fills it, from an ungated run's `OutputFiles`;
+Only `shuttleengine` fills it, from an ungated run's `OutputFiles`,
+or with the exit marker of a session whose pane line ends its own strand;
 a gated run's strand carries none, since its outputs existing does not mean its gate passed.
 Only `reedengine`'s resume reads it.
 It drops a non-live strand whose list is non-empty and fully present instead of relaunching it.

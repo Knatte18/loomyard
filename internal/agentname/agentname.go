@@ -116,6 +116,16 @@ func ValidateSlug(slug string) error { return validateDashed("slug", slug) }
 // the set of roles is open.
 func ValidateRole(role string) error { return validateDashed("role", role) }
 
+// RoleRule states the role grammar in words, for a message that asks a person for a role or refuses one.
+const RoleRule = "lowercase letters, digits and dashes, starting with a letter"
+
+// RoleFromText turns a role a person typed into the role grammar's shape where the text allows it:
+// it lowercases the text and joins its words with a dash, so "My Agent" becomes "my-agent".
+// Text holding a character the grammar refuses keeps it, so the result still needs ValidateRole.
+func RoleFromText(text string) string {
+	return strings.ToLower(strings.Join(strings.Fields(text), "-"))
+}
+
 // Format validates each segment and joins them;
 // an empty slug gives the two-segment form.
 func Format(shortname, slug, role string) (string, error) {

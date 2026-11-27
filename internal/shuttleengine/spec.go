@@ -36,6 +36,16 @@ type Spec struct {
 	// Unawaited marks a session nobody waits on, with no output file: its run record reads running until a stop ends it.
 	// Only Runner.StartSession accepts such a spec, and validation refuses one that also names output files.
 	Unawaited bool
+	// EndsWithSession, set on an Unawaited spec, gives the session an end of life no caller has to drive.
+	// When the provider exits, the pane line writes an exit marker in the run directory.
+	// It then asks reed to remove the strand and exits the shell, so the session's window closes.
+	// The strand carries the marker as its done-when list, so a resume drops a closed session.
+	// The run record reads running until the orphan sweep removes the run directory.
+	EndsWithSession bool
+	// NoCarryOver marks a session whose role names no predecessor and which is no later run's predecessor.
+	// Its start appends no earlier run's operator instructions to the prompt,
+	// and its record holds no role key, so no later start reads the instructions typed into it.
+	NoCarryOver bool
 	// ModelChoice is the engine and the model, effort and version the run uses.
 	ModelChoice
 	// PromptEngine names the engine Prompt was rendered for.

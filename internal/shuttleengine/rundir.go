@@ -165,6 +165,7 @@ type RunState struct {
 	// An empty value reads as the engine set's default engine.
 	Engine string `json:"engine,omitempty"`
 	// RoleKey is the spawning Spec's name override, else its role, which a later run start matches its predecessor by.
+	// It is empty for a Spec with NoCarryOver set.
 	// A record without it is never a predecessor.
 	RoleKey string `json:"roleKey,omitempty"`
 	// CarriedInstructions are the operator instructions a predecessor run carried over, so a re-spawn carries them again.

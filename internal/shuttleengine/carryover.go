@@ -108,7 +108,11 @@ func operatorInstructions(runDir string, rs RunState, engine Engine) []string {
 }
 
 // roleKey returns the key a run start matches its predecessor by: the spec's name override, else its role.
+// A spec with NoCarryOver set has the empty key, which matches no run.
 func roleKey(spec Spec) string {
+	if spec.NoCarryOver {
+		return ""
+	}
 	if spec.NameOverride != "" {
 		return spec.NameOverride
 	}

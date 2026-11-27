@@ -2,6 +2,7 @@ efforts:  # the Claude Code reasoning effort of every Claude session lym launche
   default: medium
   fable: high
 skills:  # the skills each role lym starts loads in its first turn, in order, keyed by role; the hub's language.skills follow for a role that writes or reviews code; every role lym starts must hold a list, so a role set to null is refused at load, and [] loads none; a role this file leaves out takes the template's list
+  agent: [scribe:prose, scribe:conversation, ly:cli, ly:board]
   arbiter: []
   board-tidy: [ly:board]
   bouncer-judge: [scribe:prose]

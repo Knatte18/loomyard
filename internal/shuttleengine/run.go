@@ -580,6 +580,7 @@ func (r *Runner) StartGated(spec Spec, gate GateSpec) (*Run, error) {
 // The session gets a run directory and a run record reading running.
 // It also gets settings, shell guards, its skills, and its startup gates.
 // The caller owns stopping it, through StopStrand, which records the stop.
+// A spec that sets EndsWithSession needs no such stop: its strand removes itself when the provider exits.
 // A spec with ResumeSessionID set resumes that session through the engine's resume capability.
 // A spec without Unawaited is refused before anything is created.
 // Each call starts one session in the caller's worktree.
@@ -718,6 +719,7 @@ func (r *Runner) launch(spec Spec, gate GateSpec, engine Engine, engineName, res
 		_ = os.RemoveAll(runDir)
 		return nil, Result{}, fmt.Errorf("shuttle: prepare run: %w", err)
 	}
+	launch = withSessionEnd(spec, runDir, launch)
 
 	if err := recordEngineRun(root, engineName); err != nil {
 		_ = os.RemoveAll(runDir)
@@ -727,9 +729,13 @@ func (r *Runner) launch(spec Spec, gate GateSpec, engine Engine, engineName, res
 	// An ungated run's output files are its finished signal, so reed's resume drops a finished strand;
 	// a gated run's outputs existing does not mean the gate passed,
 	// so it carries no list and is relaunched.
+	// A session that ends its own strand has no output files: its exit marker says it finished.
 	var doneWhen []string
 	if len(gate) == 0 {
 		doneWhen = spec.OutputFiles
+	}
+	if spec.EndsWithSession {
+		doneWhen = []string{sessionExitMarkerPath(runDir)}
 	}
 
 	strand, err := r.reed.AddStrand(strandAddSpec(spec, engineName, launch, doneWhen))

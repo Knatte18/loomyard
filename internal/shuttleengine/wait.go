@@ -911,10 +911,14 @@ const (
 // removeStartupStrand removes the run's strand.
 // While the removal fails it tries again after a doubling wait on the run clock, up to startupRemoveAttempts tries.
 // It returns nil once a removal succeeds, and the last removal's error otherwise.
+// A strand reed no longer knows counts as removed, since a pane line that ends its own strand may get there first.
 func (run *Run) removeStartupStrand() error {
 	delay := startupRemoveFirstDelay
 	for attempt := 1; ; attempt++ {
 		_, err := run.runner.reed.RemoveStrand(run.state.StrandGUID, false)
+		if errors.Is(err, reedengine.ErrUnknownStrand) {
+			return nil
+		}
 		if err == nil || attempt == startupRemoveAttempts {
 			return err
 		}

@@ -18,6 +18,7 @@ type Role string
 
 // The roles lym starts, one per skill list.
 const (
+	RoleAgent             Role = "agent"
 	RoleArbiter           Role = "arbiter"
 	RoleBoardTidy         Role = "board-tidy"
 	RoleBouncerJudge      Role = "bouncer-judge"
@@ -46,7 +47,7 @@ const (
 
 // roles is every Role, in sort order.
 var roles = []Role{
-	RoleArbiter, RoleBoardTidy, RoleBouncerJudge, RoleBouncerSeed, RoleBurler, RoleConflictResolver,
+	RoleAgent, RoleArbiter, RoleBoardTidy, RoleBouncerJudge, RoleBouncerSeed, RoleBurler, RoleConflictResolver,
 	RoleDarn, RoleDescriber, RoleDiscussion, RoleDiscussionAdvisor, RoleDriftExpect, RoleDriftJudge,
 	RoleDriver, RoleFixReview, RoleFriction, RoleGateFixer, RoleMergeFixer, RoleOrch, RolePlan,
 	RolePRReviewer, RoleRaddle, RoleSampler, RoleTackler, RoleWebster,

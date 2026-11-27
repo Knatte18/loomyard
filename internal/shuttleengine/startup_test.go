@@ -15,9 +15,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -864,6 +866,9 @@ func TestStartup_ChecksAfterStartup(t *testing.T) {
 // A ready start returns the strand, session id and engine with a run record reading running.
 // A spec without Unawaited is refused before any strand is added, and a ResumeSessionID reaches the engine's launch.
 // StopStrand on the started run records it stopped and removes its strand.
+// A spec with EndsWithSession registers a strand that removes itself and that a resume drops.
+// A strand already gone at the startup teardown counts as removed.
+// A spec with NoCarryOver takes no operator instructions over and records no role key.
 func TestRunner_StartSession(t *testing.T) {
 	tiergate.Require(t, 0)
 	newReed := func() *fakeReed {
@@ -922,6 +927,101 @@ func TestRunner_StartSession(t *testing.T) {
 		}
 		if len(engine.PrepareCalls) != 1 || engine.PrepareCalls[0].Spec.ResumeSessionID != spec.ResumeSessionID {
 			t.Errorf("Prepare calls = %+v; want one carrying ResumeSessionID %q", engine.PrepareCalls, spec.ResumeSessionID)
+		}
+	})
+
+	for _, tt := range []struct {
+		name   string
+		resume string
+		// wantResumed is the statement the resume line opens with, empty for a resume line that only exits.
+		wantResumed string
+	}{
+		{"EndsWithSession chains the self-removal and marks the strand done on exit", "resume", "resume"},
+		{"EndsWithSession removes the strand of a resume that revives no session", "exit", ""},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			reed := newReed()
+			engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd", ResumeCmd: tt.resume, SessionID: "session-1"}}
+			readyStart(reed, engine)
+			fx := newFixture(t, reed, engine, withConfig(fastConfig))
+
+			spec := unawaited
+			spec.EndsWithSession = true
+			if _, err := fx.Runner.StartSession(spec); err != nil {
+				t.Fatalf("StartSession() error = %v; want nil", err)
+			}
+
+			if len(reed.AddStrandCalls) != 1 {
+				t.Fatalf("AddStrandCalls = %+v; want one", reed.AddStrandCalls)
+			}
+			add := reed.AddStrandCalls[0]
+			marker := filepath.Join(soleStartupRunDir(t, fastConfig, fx.Anchor), "session.exited")
+			if !reflect.DeepEqual(add.DoneWhen, []string{marker}) {
+				t.Errorf("DoneWhen = %v; want [%s]", add.DoneWhen, marker)
+			}
+			sh := shell.ForGOOS()
+			selfRemove := sh.Invoke("lym") + " reed remove --name " + sh.EnvRef(agentname.StrandNameEnv) + " --detach"
+			if want := sh.Chain("cmd", sh.Touch(marker), selfRemove, "exit"); add.Cmd != want {
+				t.Errorf("Cmd = %q; want %q", add.Cmd, want)
+			}
+			if want := sh.Chain(tt.wantResumed, sh.Touch(marker), selfRemove, "exit"); add.ResumeCmd != want {
+				t.Errorf("ResumeCmd = %q; want %q", add.ResumeCmd, want)
+			}
+		})
+	}
+
+	t.Run("a strand that removed itself before the startup teardown counts as removed", func(t *testing.T) {
+		reed := newReed()
+		reed.RemoveStrandErr = fmt.Errorf("%w %q", reedengine.ErrUnknownStrand, "strand-1")
+		engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd", SessionID: "session-1"}, StartupScript: []StartupState{StartupPending}}
+		readyStart(reed, engine)
+		fx := newFixture(t, reed, engine, withConfig(shortStartupConfig))
+
+		_, err := fx.Runner.StartSession(unawaited)
+
+		if err == nil || !strings.Contains(err.Error(), "the strand was removed") {
+			t.Fatalf("StartSession() error = %v; want one saying the strand was removed", err)
+		}
+		if len(reed.RemoveStrandCalls) != 1 {
+			t.Errorf("RemoveStrandCalls = %+v; want one, with no retry", reed.RemoveStrandCalls)
+		}
+	})
+
+	t.Run("NoCarryOver takes no instructions from an unfinished run of the role", func(t *testing.T) {
+		reed := newReed()
+		engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd", SessionID: "session-1"}}
+		readyStart(reed, engine)
+		fx := newFixture(t, reed, instructionEngine{engine}, withConfig(fastConfig))
+		var notices []string
+		fx.Runner.SetNotifier(func(line string) error {
+			notices = append(notices, line)
+			return nil
+		})
+		seedPredecessor(t, fx, RunState{RunID: "run-old", CreatedAt: "2026-10-28T08:00:00Z", Outcome: runOutcomeRunning, PID: -1, RoleKey: "pr-review"}, predecessorEvents)
+
+		spec := unawaited
+		spec.NoCarryOver = true
+		if _, err := fx.Runner.StartSession(spec); err != nil {
+			t.Fatalf("StartSession() error = %v; want nil", err)
+		}
+
+		if len(engine.PrepareCalls) != 1 || engine.PrepareCalls[0].Spec.Prompt != "x" {
+			t.Errorf("Prepare calls = %+v; want one with the prompt %q alone", engine.PrepareCalls, "x")
+		}
+		if len(notices) != 0 {
+			t.Errorf("notices = %q; want none", notices)
+		}
+		for _, runDir := range runDirsUnder(t, fx.RunRoot) {
+			if filepath.Base(runDir) == "run-old" {
+				continue
+			}
+			rs, found, err := loadRunState(runDir)
+			if err != nil || !found {
+				t.Fatalf("loadRunState: found=%v err=%v", found, err)
+			}
+			if rs.RoleKey != "" || rs.CarriedInstructions != nil {
+				t.Errorf("new record RoleKey, CarriedInstructions = %q, %q; want both empty", rs.RoleKey, rs.CarriedInstructions)
+			}
 		}
 	})
 

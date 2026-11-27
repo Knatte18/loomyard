@@ -109,6 +109,8 @@
 // Runner.StartSession starts a session that carries the rendered prompt and is never awaited.
 // The Spec sets Unawaited and names no output file, and the caller stops it through StopStrand.
 // The run record reads running until a stop ends it.
+// A Spec that also sets EndsWithSession needs no stop:
+// as an opened session does, its strand removes itself when the provider exits, and a resume drops it.
 // A Spec with ResumeSessionID resumes that session through the engine's resume capability.
 //
 // # Stop verb
@@ -156,6 +158,7 @@
 // An ungated run's strand is registered with its output files as reed's done-when list,
 // so reed's resume drops a finished agent strand instead of reviving it.
 // A gated run's strand carries none, since its outputs existing does not mean its gate passed.
+// An opened session and a run whose Spec sets EndsWithSession carry the exit marker their pane line writes.
 //
 // # Skill loading
 //
@@ -254,4 +257,5 @@
 // Before its orphan sweep, a start finds the newest unfinished run with the same role key.
 // It appends that run's carried and operator instructions to the new prompt as one block.
 // A done or live predecessor and an empty role key carry nothing.
+// A Spec with NoCarryOver set has no role key, so it neither takes instructions over nor leaves any to a later start.
 package shuttleengine

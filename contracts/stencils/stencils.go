@@ -70,6 +70,12 @@ var DarnFragmentMakeChangeGated []byte
 //go:embed darn/darn-fragment-report.md
 var DarnFragmentReport []byte
 
+// OperatoragentTemplateStart is the shipped-default opening prompt of the agent a status-bar agent button starts.
+// It tells the interactive session what it is, which hub and worktree it sits in, and what the worktree serves.
+//
+//go:embed operatoragent/operatoragent-template-start.md
+var OperatoragentTemplateStart []byte
+
 // SamplerTemplateAgent is the sampler agent's shipped-default prompt.
 // It is the whole instruction set of the interactive session the operator works a change out with.
 //
@@ -944,6 +950,7 @@ var entries = []registryEntry{
 	{"darn-fragment-make-change", &DarnFragmentMakeChange},
 	{"darn-fragment-make-change-gated", &DarnFragmentMakeChangeGated},
 	{"darn-fragment-report", &DarnFragmentReport},
+	{"operatoragent-template-start", &OperatoragentTemplateStart},
 	{"sampler-template-agent", &SamplerTemplateAgent},
 	{"raddle-template-agent", &RaddleTemplateAgent},
 	{"drift-template-expect", &DriftTemplateExpect},
@@ -1124,6 +1131,7 @@ var roleOpeningStencils = map[string][]string{
 	"friction":             {"friction-template-reflection"},
 	"describe":             {"landing-template-describe"},
 	"darn":                 {"darn-template-write"},
+	"agent":                {"operatoragent-template-start"},
 	"sampler":              {"sampler-template-agent"},
 	"raddle":               {"raddle-template-agent"},
 	"drift-expect":         {"drift-template-expect"},

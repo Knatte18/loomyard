@@ -3,7 +3,8 @@
 // config -> reed config -> reed engine -> claude engine -> shuttleengine.Runner exactly once per
 // invocation, into a receiver every verb (run.go, open.go, state.go) closes over, so no
 // subcommand re-resolves geometry, config, or engine construction itself.
-// The verbs are run, open, manifest and the read-only state, which lists the session state of each running run.
+// The verbs are run, open, agent, manifest and the read-only state, which lists the session state of each running run.
+// agent, implemented in agent.go, starts the operator's agent session from the worktree's reed geometry.
 // The read-only manifest, which prints what each engine gives one seat's session, is implemented in manifest.go.
 // The read-only await, the capped wait on one or more files, is implemented in await.go.
 // The read-only await-forks, the capped wait until the calling session's forks have finished, is implemented in awaitforks.go.
@@ -47,6 +48,8 @@ type shuttleCLI struct {
 	cfg        shuttleengine.Config
 	anchorPath string
 	engines    shuttleengine.EngineSet
+	// reedGeometry is the worktree's reed geometry, whose hub, worktree, entry and parent agent renders into its prompt.
+	reedGeometry reedengine.Geometry
 	// configDirs are the config layers both configs load from, set by PersistentPreRunE; open resolves its model registry through them.
 	configDirs configengine.Dirs
 	// manifestReport prepares the named seat on each engine for the current worktree and compares the manifests.
@@ -136,7 +139,7 @@ provider specifics.`,
 				clihelp.Abort(ctx, 1)
 				return nil
 			}
-			c.cfg, c.anchorPath, c.engines, c.reed = shuttleCfg, reedGeom.AnchorPath, engines, reedEngine
+			c.cfg, c.anchorPath, c.engines, c.reed, c.reedGeometry = shuttleCfg, reedGeom.AnchorPath, engines, reedEngine, reedGeom
 			c.runner = shuttleengine.NewRunner(reedEngine, c.engines, c.anchorPath, reedGeom.WorktreeRoot, c.cfg)
 			pauseGeom, err := hubgeom.PauseGeometry(layout)
 			if err != nil {
@@ -153,7 +156,7 @@ provider specifics.`,
 		},
 	}
 
-	parent.AddCommand(c.runCmd(), c.openCmd(), c.manifestCmd(), c.stateCmd(), c.awaitCmd(), c.awaitForksCmd(), hookBatchingCmd(), hookEditCmd(), hookPythonAllowedCmd())
+	parent.AddCommand(c.runCmd(), c.openCmd(), c.agentCmd(), c.manifestCmd(), c.stateCmd(), c.awaitCmd(), c.awaitForksCmd(), hookBatchingCmd(), hookEditCmd(), hookPythonAllowedCmd())
 
 	return parent
 }
