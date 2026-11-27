@@ -118,12 +118,11 @@ func TestHaltNoticeSeams_CarryTheRunsAutonomy(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Setenv(agentname.StrandNameEnv, "")
 
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	hubforge.AddPair(t, h, "halt-task")
+	h := hubforge.CopyHub(t, pairHubShape)
 	startNoticeOrch(t, h)
-	pair, err := lymcwd.ResolveWorktree(h.PairCodeWorktree("halt-task"))
+	pair, err := lymcwd.ResolveWorktree(h.PairCodeWorktree(hubforge.TemplatePairSlug))
 	if err != nil {
-		t.Fatalf("lymcwd.ResolveWorktree(halt-task) = %v; want nil", err)
+		t.Fatalf("lymcwd.ResolveWorktree(%s) = %v; want nil", hubforge.TemplatePairSlug, err)
 	}
 	c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeTapestry}
 	if err := c.wire(pair, pair.AnchorPath()); err != nil {
@@ -167,13 +166,12 @@ func TestVerifyBudgetNotice_NamesTheRun(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Setenv(agentname.StrandNameEnv, "")
 
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	hubforge.AddPair(t, h, "budget-task")
+	h := hubforge.CopyHub(t, pairHubShape)
 	startNoticeOrch(t, h)
 	seedDarnHubConfig(t, h.Path, "3")
-	pair, err := lymcwd.ResolveWorktree(h.PairCodeWorktree("budget-task"))
+	pair, err := lymcwd.ResolveWorktree(h.PairCodeWorktree(hubforge.TemplatePairSlug))
 	if err != nil {
-		t.Fatalf("lymcwd.ResolveWorktree(budget-task) = %v; want nil", err)
+		t.Fatalf("lymcwd.ResolveWorktree(%s) = %v; want nil", hubforge.TemplatePairSlug, err)
 	}
 	c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeDarn}
 	_, budget, err := c.treeScopeSettings(pair)
@@ -185,7 +183,7 @@ func TestVerifyBudgetNotice_NamesTheRun(t *testing.T) {
 		t.Fatalf("Notify() = %v; want nil", err)
 	}
 
-	want := []string{"loom budget-task: Darn-Write gate: the verify gate has run past its 30m0s budget"}
+	want := []string{"loom " + hubforge.TemplatePairSlug + ": Darn-Write gate: the verify gate has run past its 30m0s budget"}
 	if got := postedSubjects(t, h); !slices.Equal(got, want) {
 		t.Errorf("posted subjects = %q; want %q", got, want)
 	}

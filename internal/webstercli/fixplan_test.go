@@ -15,6 +15,7 @@ import (
 // TestFixPlanCmd drives the verb's first call, which spawns the plan fixer and returns a running snapshot, then the second call that attaches to it and reaches a terminal result.
 func TestFixPlanCmd(t *testing.T) {
 	tiergate.Require(t, 1)
+	t.Parallel()
 	// spawnWait makes the spawn call return its running snapshot at once.
 	const spawnWait = "1ns"
 
@@ -51,8 +52,8 @@ func TestFixPlanCmd(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Setenv("FABRIC_SKIP_GIT", "1")
-			fx := newVerbsFixture(t)
+			t.Parallel()
+			fx := newSkipGitVerbsFixture(t)
 			fx.initState(t)
 			if err := os.MkdirAll(fx.CLI.geom.ScratchDir, 0o755); err != nil {
 				t.Fatalf("mkdir scratch dir: %v", err)
@@ -101,8 +102,8 @@ func TestFixPlanCmd(t *testing.T) {
 	}
 
 	t.Run("no plan-conflict record refuses with its way forward and spawns nothing", func(t *testing.T) {
-		t.Setenv("FABRIC_SKIP_GIT", "1")
-		fx := newVerbsFixture(t)
+		t.Parallel()
+		fx := newSkipGitVerbsFixture(t)
 		fx.initState(t)
 		var out strings.Builder
 		exitCode := clihelp.Execute(fx.CLI.fixPlanCmd(), &out, nil)

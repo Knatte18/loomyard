@@ -226,7 +226,7 @@ Example:
 
 			// The sync commits the scoped _lym pathspec, which holds the reports directory,
 			// so an archived report's rename is committed with the state.
-			if _, syncErr := fabricSync(c.openFabric, c.anchorRel, fmt.Sprintf("begin-batch %s", result.BatchName)); syncErr != nil {
+			if _, syncErr := fabricSync(c.openFabric, c.anchorRel, c.syncOptions, fmt.Sprintf("begin-batch %s", result.BatchName)); syncErr != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: batch %s begun but the fabric sync failed: %v; %s", result.BatchName, syncErr, fabricSyncWayForward)))
 				return nil
 			}

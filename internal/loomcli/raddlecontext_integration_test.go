@@ -26,15 +26,15 @@ func TestRaddleBoardContext(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	hubforge.AddPair(t, hub, "the-sketch")
+	hub := hubforge.CopyHub(t, pairHubShape)
+	const sketch = hubforge.TemplatePairSlug
 	// "docs" is no structural reservation, so only the hub's configured junction names refuse it.
 	hubforge.SeedFabricConfig(t, hub, "pathspec: docs\n")
 
 	// A board write cannot file an entry with a label the config lacks,
 	// so the entries are written to the board file directly.
 	board := `{"version":1,"entries":[` +
-		`{"id":1,"slug":"the-sketch","title":"Sketch","kind":"task","recipe":"raddle","labels":["sketch","mod-a"],"revised":"2026-11-01T09:00:00Z"},` +
+		`{"id":1,"slug":"` + sketch + `","title":"Sketch","kind":"task","recipe":"raddle","labels":["sketch","mod-a"],"revised":"2026-11-01T09:00:00Z"},` +
 		`{"id":2,"slug":"open-other","title":"Open","kind":"task","labels":["bug"],"revised":"2026-11-01T10:00:00Z"},` +
 		`{"id":3,"slug":"done-one","title":"Done","kind":"task","labels":["bug"],"status":"done"}]}`
 	if err := os.WriteFile(filepath.Join(hub.BoardDir(), "board.json"), []byte(board), 0o644); err != nil {
@@ -50,7 +50,7 @@ func TestRaddleBoardContext(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(storeDir, "store.json"), []byte(`{"hash":"h","filed":["old-part"]}`), 0o644); err != nil {
 		t.Fatalf("write store.json: %v", err)
 	}
-	location, err := lymcwd.ResolveWorktree(hub.PairCodeWorktree("the-sketch"))
+	location, err := lymcwd.ResolveWorktree(hub.PairCodeWorktree(sketch))
 	if err != nil {
 		t.Fatalf("ResolveWorktree() error = %v; want nil", err)
 	}
@@ -63,7 +63,7 @@ func TestRaddleBoardContext(t *testing.T) {
 		t.Fatalf("raddleBoardContext() error = %v; want nil", err)
 	}
 
-	if got.Sketch != "the-sketch" || got.Entry != "the-sketch" || !got.Filing {
+	if got.Sketch != sketch || got.Entry != sketch || !got.Filing {
 		t.Errorf("context = sketch %q, entry %q, filing %v; want the run's own entry and filing", got.Sketch, got.Entry, got.Filing)
 	}
 	if !got.LivePattern("PATTERN-live") || got.LivePattern("PATTERN-gone") {
@@ -87,7 +87,7 @@ func TestRaddleBoardContext(t *testing.T) {
 	for _, entry := range got.Entries {
 		open[entry.Slug] = entry.Open
 	}
-	if want := map[string]bool{"the-sketch": true, "open-other": true, "done-one": false}; !equalOpenness(open, want) {
+	if want := map[string]bool{sketch: true, "open-other": true, "done-one": false}; !equalOpenness(open, want) {
 		t.Errorf("entries open = %v; want %v", open, want)
 	}
 	for _, entry := range got.Entries {
@@ -128,12 +128,13 @@ func TestRaddleBoardContext(t *testing.T) {
 	}
 }
 
-// forgeRaddleRun forges a hub with a pair worktree for slug and writes board as its board.json.
+// forgeRaddleRun forges a hub with a pair worktree for the slug hubforge.TemplatePairSlug.
+// It writes board as the hub's board.json.
 // It returns the pair's location.
-func forgeRaddleRun(t *testing.T, slug, board string) *lymcwd.Location {
+func forgeRaddleRun(t *testing.T, board string) *lymcwd.Location {
 	t.Helper()
-	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	hubforge.AddPair(t, hub, slug)
+	const slug = hubforge.TemplatePairSlug
+	hub := hubforge.CopyHub(t, pairHubShape)
 	if err := os.WriteFile(filepath.Join(hub.BoardDir(), "board.json"), []byte(board), 0o644); err != nil {
 		t.Fatalf("write board.json: %v", err)
 	}
@@ -148,7 +149,7 @@ func TestRaddleBoardContextPerch(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	const board = `{"version":1,"entries":[{"id":1,"slug":"the-sketch","title":"Sketch","kind":"task","labels":["sketch"]}]}`
+	const board = `{"version":1,"entries":[{"id":1,"slug":"` + hubforge.TemplatePairSlug + `","title":"Sketch","kind":"task","labels":["sketch"]}]}`
 	tests := []struct {
 		name string
 		// mode is the mode the run's state records, empty for a run with no state file.
@@ -166,7 +167,7 @@ func TestRaddleBoardContextPerch(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			location := forgeRaddleRun(t, "the-sketch", board)
+			location := forgeRaddleRun(t, board)
 			statePath := loomengine.RaddleStatePath(location)
 			switch {
 			case tt.rawState != "":

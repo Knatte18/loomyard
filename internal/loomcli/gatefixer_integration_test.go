@@ -15,9 +15,8 @@ func TestPairSlugOf(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	const slug = "fixerpair"
-	hubforge.AddPair(t, hub, slug)
+	hub := hubforge.CopyHub(t, pairHubShape)
+	const slug = hubforge.TemplatePairSlug
 
 	for _, tt := range []struct {
 		name     string

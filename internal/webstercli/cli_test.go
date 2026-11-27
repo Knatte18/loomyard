@@ -38,6 +38,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// Serial: t.Chdir moves the process working directory.
 func TestCommand_GroupGuard_OutsideGitRepo(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Chdir(t.TempDir())
@@ -53,6 +54,7 @@ func TestCommand_GroupGuard_OutsideGitRepo(t *testing.T) {
 
 func TestCommand_LongStringsHaveNoStaleBatchLanguage(t *testing.T) {
 	tiergate.Require(t, 0)
+	t.Parallel()
 	forbidden := []string{"--restart-chain", "restart-chain", "chain", "oversized"}
 
 	var walk func(cmd *cobra.Command)
@@ -70,29 +72,28 @@ func TestCommand_LongStringsHaveNoStaleBatchLanguage(t *testing.T) {
 	walk(Command())
 }
 
-// TestFabricSync_GuardOrdering verifies that the FABRIC_SKIP_GIT bypass short-circuits before path validation.
-// Without the bypass, fabricSync validates the pair's paths before any git work.
-// It sets FABRIC_SKIP_GIT and FABRIC_SKIP_PUSH, so it is not parallel.
+// TestFabricSync_GuardOrdering verifies that the SkipGit option short-circuits before path validation.
+// Without the option, fabricSync validates the pair's paths before any git work.
 func TestFabricSync_GuardOrdering(t *testing.T) {
 	tiergate.Require(t, 0)
+	t.Parallel()
 	cases := []struct {
 		name     string
-		skipGit  string
+		skipGit  bool
 		wantMiss bool
 	}{
-		{"skip-git bypass needs no fabric worktree", "1", false},
-		{"non-bypass validates the pair paths", "", true},
+		{"skip-git bypass needs no fabric worktree", true, false},
+		{"non-bypass validates the pair paths", false, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv("FABRIC_SKIP_GIT", tc.skipGit)
-			t.Setenv("FABRIC_SKIP_PUSH", "")
+			t.Parallel()
 
 			hub := t.TempDir()
 			layout := &lymcwd.Location{HubPath: hub, WorktreeName: filepath.Base(filepath.Join(hub, "pair")), AnchorRel: "."}
 			open := func() (*fabricengine.Fabric, error) { return fabricengine.Open(layout) }
 
-			committed, err := fabricSync(open, layout.AnchorRel, "guard probe")
+			committed, err := fabricSync(open, layout.AnchorRel, fabricengine.SyncOptions{SkipGit: tc.skipGit}, "guard probe")
 			if committed {
 				t.Error("fabricSync() committed = true; want false, nothing can be committed")
 			}
@@ -520,9 +521,11 @@ func seedTwoCardGlyphPlanDir(t *testing.T, planDir, worktreeRoot string) {
 // Both whole-plan branches, no run and a run with no batch begun, answer through the wired index, whose type load a hub slots.
 func TestValidateCmd_ScopeFollowsRunProgress(t *testing.T) {
 	tiergate.Require(t, 0)
+	t.Parallel()
 	identity := batcher.Identity()
 
 	t.Run("NoRunRecordedGetsWholePlanAnswer", func(t *testing.T) {
+		t.Parallel()
 		c, _ := newTestCLI(t)
 		c.batcher = identity
 		seedTwoCardGlyphPlanDir(t, c.geom.PlanDir, c.geom.WorktreeRoot)
@@ -553,6 +556,7 @@ func TestValidateCmd_ScopeFollowsRunProgress(t *testing.T) {
 		{"RunWithNoBatchBegunValidatesThroughTheWiredIndex", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			c, _ := newTestCLI(t)
 			c.batcher = identity
 			seedTwoCardGlyphPlanDir(t, c.geom.PlanDir, c.geom.WorktreeRoot)
@@ -586,6 +590,7 @@ func TestValidateCmd_ScopeFollowsRunProgress(t *testing.T) {
 		{"BegunBatchScopesToPendingCards", &websterengine.BatchState{Slug: "first"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			c, _ := newTestCLI(t)
 			c.batcher = identity
 			// A run with a state never prices a partition, so the lister that fails is never called.
@@ -632,6 +637,7 @@ func TestValidateCmd_ScopeFollowsRunProgress(t *testing.T) {
 // The refusal names the batch order and the way forward, as the first init does.
 func TestValidateCmd_RefusesBackwardPlanWithNoRun(t *testing.T) {
 	tiergate.Require(t, 0)
+	t.Parallel()
 	c, _ := newTestCLI(t)
 	c.batcher = batcher.Identity()
 	plankit.Write(t, c.geom.PlanDir, plankit.Plan{
@@ -684,6 +690,7 @@ func TestValidateCmd_RefusesBackwardPlanWithNoRun(t *testing.T) {
 //testtiming:keep pins that validate restamps a stale plan fingerprint and leaves the run's other state fields untouched, which its covering tests do not assert
 func TestValidateCmd_RebaselinesStalePlanFingerprint(t *testing.T) {
 	tiergate.Require(t, 0)
+	t.Parallel()
 	identity := batcher.Identity()
 
 	c, _ := newTestCLI(t)
@@ -1123,11 +1130,11 @@ func TestPersistPlanFingerprintRebaseline(t *testing.T) {
 // TestValidateCmd_RefusesOverviewEditWithoutRestamp proves validate refuses an unrestamped overview edit.
 // It exits non-zero naming rebaseline and leaves PlanFileHashes and PlanFingerprint untouched in state.json.
 // The next run entry's fingerprint check still refuses the edit.
-// It sets FABRIC_SKIP_GIT, so it is not parallel.
 func TestValidateCmd_RefusesOverviewEditWithoutRestamp(t *testing.T) {
 	tiergate.Require(t, 0)
-	t.Setenv("FABRIC_SKIP_GIT", "1")
+	t.Parallel()
 	c := newRunTestCLI(t)
+	c.syncOptions.SkipGit = true
 	before := seedRunState(t, c)
 
 	overviewPath := filepath.Join(c.geom.PlanDir, "00-overview.md")
@@ -1237,11 +1244,11 @@ func TestValidateCmd_Regression329_ForthcomingCreateTargetPassesPending(t *testi
 
 // TestRebaselineCmd_AcceptsForeignEditAndKeepsRecords proves a plan edit to a later card is accepted:
 // the verb exits 0 with batches_kept 1, restamps the fingerprint and leaves batch 1's record intact.
-// It sets FABRIC_SKIP_GIT, so it is not parallel.
 func TestRebaselineCmd_AcceptsForeignEditAndKeepsRecords(t *testing.T) {
 	tiergate.Require(t, 0)
-	t.Setenv("FABRIC_SKIP_GIT", "1")
+	t.Parallel()
 	c := newRunTestCLI(t)
+	c.syncOptions.SkipGit = true
 	seedTwoCardPlan(t, c.geom.PlanDir, "second card.")
 	st := seedRunState(t, c)
 	st.Batches[1] = &websterengine.BatchState{Slug: "only", Cards: []string{"01-only"}, StartSHA: "abc123", Kind: "fork", Digest: &websterengine.Digest{Batch: "01-only", Status: websterengine.DigestStatusDone, HeadSHA: "def456"}}
@@ -1284,10 +1291,9 @@ func TestRebaselineCmd_AcceptsForeignEditAndKeepsRecords(t *testing.T) {
 // a --card value that is not a positive integer, a usage error naming the value;
 // a removed card whose batch was begun, which names --fresh;
 // and a named card of a done batch, which names that its work has landed and --fresh.
-// It sets FABRIC_SKIP_GIT, so it is not parallel.
 func TestRebaselineCmd_Refusals(t *testing.T) {
 	tiergate.Require(t, 0)
-	t.Setenv("FABRIC_SKIP_GIT", "1")
+	t.Parallel()
 
 	cases := []struct {
 		name string
@@ -1383,7 +1389,9 @@ func TestRebaselineCmd_Refusals(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			c := newRunTestCLI(t)
+			c.syncOptions.SkipGit = true
 			// The state is recorded against the two-card plan so the "edited card" row has an unnamed edit to refuse.
 			seedTwoCardPlan(t, c.geom.PlanDir, "second card.")
 			seedRunState(t, c)
@@ -1422,10 +1430,9 @@ func TestRebaselineCmd_Refusals(t *testing.T) {
 // TestRebaselineCmd_FabricSyncFailureWayForward proves rebaseline's fabric-sync refusal names a way forward.
 // It names the same way forward as the bracket verbs' sync refusals.
 // The restamped state is saved locally before the sync, which is what that way forward commits.
-// It sets FABRIC_SKIP_GIT, so it is not parallel.
 func TestRebaselineCmd_FabricSyncFailureWayForward(t *testing.T) {
 	tiergate.Require(t, 0)
-	t.Setenv("FABRIC_SKIP_GIT", "")
+	t.Parallel()
 	c := newRunTestCLI(t)
 	seedTwoCardPlan(t, c.geom.PlanDir, "second card.")
 	seedRunState(t, c)
@@ -1447,11 +1454,11 @@ func TestRebaselineCmd_FabricSyncFailureWayForward(t *testing.T) {
 }
 
 // TestRestorePlanCmd_RestoresEditedCard proves an edited card is reported and written back, with state.json byte-identical.
-// It sets FABRIC_SKIP_GIT, so it is not parallel.
 func TestRestorePlanCmd_RestoresEditedCard(t *testing.T) {
 	tiergate.Require(t, 0)
-	t.Setenv("FABRIC_SKIP_GIT", "1")
+	t.Parallel()
 	c := newRunTestCLI(t)
+	c.syncOptions.SkipGit = true
 	seedRunState(t, c)
 	cardPath := filepath.Join(c.geom.PlanDir, "01-only.md")
 	recorded, err := os.ReadFile(cardPath)

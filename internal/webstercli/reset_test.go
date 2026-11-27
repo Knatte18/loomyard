@@ -1,7 +1,7 @@
-// reset_test.go covers the reset verb through its cobra.Command over one hubforge hub, each step on its own task pair.
+// reset_test.go covers the reset verb through its cobra.Command, each case over its own copied hub and task pair.
 // Each success path checks the branch, the files and the mutation record;
 // each refusal checks its way forward and that nothing moved.
-// FABRIC_SKIP_GIT=1 is set for the whole scenario,
+// TestResetCmd builds every fixture with the CLI's SkipGit option set,
 // so the closing fabric sync commits nothing and needs no records sibling beyond the pair's own.
 // The reset's remote update ignores SkipGit, so the remote-branch steps run it under that setting.
 
@@ -40,13 +40,14 @@ type resetFixture struct {
 	base     string
 }
 
-// newResetFixture adds a pair for slug to h and commits own.txt (the base) and later.txt on its branch.
-// The CLI carries a fake engine whose parent transcript records a successful write of own.txt.
-func newResetFixture(t *testing.T, h *hubforge.Hub, slug string) *resetFixture {
+// newResetFixture copies a hub holding one pair and commits own.txt (the base) and later.txt on the pair's branch.
+// The CLI carries a fake engine whose parent transcript records a successful write of own.txt,
+// and its fabric syncs and resets run under syncOptions.
+func newResetFixture(t *testing.T, syncOptions fabricengine.SyncOptions) *resetFixture {
 	t.Helper()
 
-	hubforge.AddPair(t, h, slug)
-	checkout := h.PairCodeWorktree(slug)
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: ".", Pairs: []string{hubforge.TemplatePairSlug}})
+	checkout := h.PairCodeWorktree(hubforge.TemplatePairSlug)
 	loc, err := lymcwd.ResolveWorktree(checkout)
 	if err != nil {
 		t.Fatalf("ResolveWorktree(%s): %v", checkout, err)
@@ -63,13 +64,14 @@ func newResetFixture(t *testing.T, h *hubforge.Hub, slug string) *resetFixture {
 	reed := &shuttlefake.Reed{}
 	runner := shuttleengine.NewRunner(reed, shuttlefake.EngineSet(engine), loc.AnchorPath(), checkout, shuttleengine.Config{RunDir: t.TempDir(), RunTimeoutMin: 60, StartupTimeoutS: 30, Agents: shuttlefake.Agents(t)})
 	c := &websterCLI{
-		engines:    shuttlefake.EngineSet(engine),
-		reed:       reed,
-		runner:     runner,
-		anchorRel:  loc.AnchorRel,
-		runID:      loc.WorktreeName,
-		geom:       hubgeom.WebsterGeometry(loc),
-		openFabric: func() (*fabricengine.Fabric, error) { return fabricengine.Open(loc) },
+		engines:     shuttlefake.EngineSet(engine),
+		reed:        reed,
+		runner:      runner,
+		anchorRel:   loc.AnchorRel,
+		runID:       loc.WorktreeName,
+		geom:        hubgeom.WebsterGeometry(loc),
+		openFabric:  func() (*fabricengine.Fabric, error) { return fabricengine.Open(loc) },
+		syncOptions: syncOptions,
 		// Reset runs on a recorded state and prices no partition, so a lister that fails proves it is never called.
 		instructionFiles: failingInstructionFiles,
 		parentBranch: func() (string, error) {
@@ -179,8 +181,7 @@ func TestResetCmd_RecordsTheRunTransitionAtTheNewTip(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-			fx := newResetFixture(t, h, "rst-transition")
+			fx := newResetFixture(t, fabricengine.SyncOptions{})
 			st := startedAt(fx.base)
 			st.Batches[1].Terminal, st.Batches[1].Status, st.Batches[1].Digest = true, "done", &websterengine.Digest{HeadSHA: fx.base}
 			fx.saveState(t, st)
@@ -214,16 +215,16 @@ func TestResetCmd_RecordsTheRunTransitionAtTheNewTip(t *testing.T) {
 	}
 }
 
-// TestResetCmd runs every reset case as a step over one hub.
-// Each step adds its own pair, so no step relies on another's state.
-// It sets FABRIC_SKIP_GIT, so it is not parallel.
+// TestResetCmd runs every reset case as a parallel subtest.
+// Each subtest copies its own hub with its own pair, so no subtest relies on another's state.
 func TestResetCmd(t *testing.T) {
 	tiergate.Require(t, 1)
-	t.Setenv("FABRIC_SKIP_GIT", "1")
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	t.Parallel()
+	skipGit := fabricengine.SyncOptions{SkipGit: true}
 
-	if !t.Run("start resets head and own dirt and keeps untracked", func(t *testing.T) {
-		fx := newResetFixture(t, h, "rst-start")
+	t.Run("start resets head and own dirt and keeps untracked", func(t *testing.T) {
+		t.Parallel()
+		fx := newResetFixture(t, skipGit)
 		fx.saveState(t, startedAt(fx.base))
 		// The pair's task branch was never pushed, so the remote update is skipped and the record holds only worktree_reset.
 		if err := os.WriteFile(filepath.Join(fx.checkout, "own.txt"), []byte("dirty"), 0o644); err != nil {
@@ -272,12 +273,11 @@ func TestResetCmd(t *testing.T) {
 		if got, ok := envelope["warnings"].([]any); !ok || len(got) != 0 {
 			t.Errorf("warnings = %v; want an empty list", envelope["warnings"])
 		}
-	}) {
-		return
-	}
+	})
 
-	if !t.Run("start archives without moving when the recorded start was rewritten away", func(t *testing.T) {
-		fx := newResetFixture(t, h, "rst-archive-only")
+	t.Run("start archives without moving when the recorded start was rewritten away", func(t *testing.T) {
+		t.Parallel()
+		fx := newResetFixture(t, skipGit)
 		gitkit.Git(t, fx.checkout, "checkout", "-b", "rst-archive-only-side", fx.base)
 		side := gitkit.CommitFile(t, fx.checkout, "side.txt", "side", "side")
 		gitkit.Git(t, fx.checkout, "checkout", fx.branch)
@@ -309,12 +309,11 @@ func TestResetCmd(t *testing.T) {
 		if loaded, err := websterengine.LoadState(fx.cli.geom.WebsterDir, fx.cli.geom.ScratchDir); loaded != nil || err != nil {
 			t.Errorf("LoadState after the reset = %+v, %v; want the run record archived", loaded, err)
 		}
-	}) {
-		return
-	}
+	})
 
-	if !t.Run("start moves the remote task branch after the pair's commits were pushed", func(t *testing.T) {
-		fx := newResetFixture(t, h, "rst-remote")
+	t.Run("start moves the remote task branch after the pair's commits were pushed", func(t *testing.T) {
+		t.Parallel()
+		fx := newResetFixture(t, skipGit)
 		fx.saveState(t, startedAt(fx.base))
 		gitkit.Git(t, fx.checkout, "push", "origin", "HEAD")
 
@@ -328,12 +327,11 @@ func TestResetCmd(t *testing.T) {
 		if got := mutationKinds(envelope["mutations"]); !slices.Equal(got, []string{string(fabriclayout.KindRemoteBranchUpdated), string(fabriclayout.KindWorktreeReset)}) {
 			t.Errorf("mutation kinds = %v; want remote_branch_updated then worktree_reset", got)
 		}
-	}) {
-		return
-	}
+	})
 
-	if !t.Run("a checkout rewrite failing after the remote moved is a partial envelope and a re-run converges", func(t *testing.T) {
-		fx := newResetFixture(t, h, "rst-partial")
+	t.Run("a checkout rewrite failing after the remote moved is a partial envelope and a re-run converges", func(t *testing.T) {
+		t.Parallel()
+		fx := newResetFixture(t, skipGit)
 		fx.saveState(t, startedAt(fx.base))
 		gitkit.Git(t, fx.checkout, "push", "origin", "HEAD")
 		lock := gitkit.Git(t, fx.checkout, "rev-parse", "--path-format=absolute", "--git-path", "index.lock")
@@ -365,12 +363,11 @@ func TestResetCmd(t *testing.T) {
 		if got := gitkit.RevParse(t, fx.checkout, "HEAD"); got != fx.base {
 			t.Errorf("HEAD = %s; want %s", got, fx.base)
 		}
-	}) {
-		return
-	}
+	})
 
-	if !t.Run("pre-fix resets and clears the pre-fix head", func(t *testing.T) {
-		fx := newResetFixture(t, h, "rst-prefix")
+	t.Run("pre-fix resets and clears the pre-fix head", func(t *testing.T) {
+		t.Parallel()
+		fx := newResetFixture(t, skipGit)
 		st := startedAt(fx.base)
 		st.PreFixHead = fx.base
 		st.FixedBase = fx.base
@@ -396,11 +393,10 @@ func TestResetCmd(t *testing.T) {
 		if loaded.PreFixHead != "" || loaded.FixedBase != "" || loaded.FixedHead != "" {
 			t.Errorf("PreFixHead, FixedBase, FixedHead = %q, %q, %q after the reset; want them cleared", loaded.PreFixHead, loaded.FixedBase, loaded.FixedHead)
 		}
-	}) {
-		return
-	}
+	})
 
-	if !t.Run("last-batch-head and batch-start reset to the commit they name", func(t *testing.T) {
+	t.Run("last-batch-head and batch-start reset to the commit they name", func(t *testing.T) {
+		t.Parallel()
 		for _, tc := range []struct {
 			target string
 			args   []string
@@ -408,7 +404,7 @@ func TestResetCmd(t *testing.T) {
 			{"last-batch-head", []string{"--to", "last-batch-head"}},
 			{"batch-start", []string{"--to", "batch-start", "--batch", "1"}},
 		} {
-			fx := newResetFixture(t, h, "rst-"+tc.target)
+			fx := newResetFixture(t, skipGit)
 			st := startedAt(fx.base)
 			st.Batches[1].Terminal, st.Batches[1].Status, st.Batches[1].Digest = true, "done", &websterengine.Digest{HeadSHA: fx.base}
 			st.Batches[1].Recoveries, st.Batches[1].RecoveryStartSHA = 2, fx.base
@@ -440,12 +436,11 @@ func TestResetCmd(t *testing.T) {
 				t.Errorf("after reset --to %s Recoveries, RecoveryStartSHA = %d, %q; want %d, %q", tc.target, bs.Recoveries, bs.RecoveryStartSHA, wantRecoveries, wantStart)
 			}
 		}
-	}) {
-		return
-	}
+	})
 
-	if !t.Run("report-head moves HEAD while the run lock is held and start is refused under it", func(t *testing.T) {
-		fx := newResetFixture(t, h, "rst-report-head")
+	t.Run("report-head moves HEAD while the run lock is held and start is refused under it", func(t *testing.T) {
+		t.Parallel()
+		fx := newResetFixture(t, skipGit)
 		fx.saveState(t, startedAt(fx.base))
 		if err := os.MkdirAll(fx.cli.geom.ReportsDir, 0o755); err != nil {
 			t.Fatal(err)
@@ -469,12 +464,11 @@ func TestResetCmd(t *testing.T) {
 		if got := gitkit.RevParse(t, fx.checkout, "HEAD"); got != fx.base {
 			t.Errorf("HEAD = %s; want the report head %s", got, fx.base)
 		}
-	}) {
-		return
-	}
+	})
 
-	if !t.Run("standalone resets move HEAD with git's keep form and list what they left", func(t *testing.T) {
-		fx := newResetFixture(t, h, "rst-standalone")
+	t.Run("standalone resets move HEAD with git's keep form and list what they left", func(t *testing.T) {
+		t.Parallel()
+		fx := newResetFixture(t, skipGit)
 		preFix := gitkit.RevParse(t, fx.checkout, "HEAD")
 		gitkit.CommitFile(t, fx.checkout, "fix.txt", "fix", "fix commit")
 		st := startedAt(fx.base)
@@ -511,12 +505,11 @@ func TestResetCmd(t *testing.T) {
 		if got := mutationKinds(envelope["mutations"]); len(got) != 0 {
 			t.Errorf("mutation kinds = %v; want none, the keep-reset touches no pair", got)
 		}
-	}) {
-		return
-	}
+	})
 
-	if !t.Run("standalone archive-only start reports the archive when the uncommitted paths cannot be read", func(t *testing.T) {
-		fx := newResetFixture(t, h, "rst-status-fails")
+	t.Run("standalone archive-only start reports the archive when the uncommitted paths cannot be read", func(t *testing.T) {
+		t.Parallel()
+		fx := newResetFixture(t, skipGit)
 		fx.saveState(t, &websterengine.State{MasterSessionID: "master-session"})
 		fx.cli.openFabric = nil
 		fx.cli.parentBranch = nil
@@ -536,12 +529,11 @@ func TestResetCmd(t *testing.T) {
 		if loaded, err := websterengine.LoadState(fx.cli.geom.WebsterDir, fx.cli.geom.ScratchDir); loaded != nil || err != nil {
 			t.Errorf("LoadState after the reset = %+v, %v; want the run record archived", loaded, err)
 		}
-	}) {
-		return
-	}
+	})
 
-	if !t.Run("start resolves the octopus merge base of diverging starts", func(t *testing.T) {
-		fx := newResetFixture(t, h, "rst-octopus")
+	t.Run("start resolves the octopus merge base of diverging starts", func(t *testing.T) {
+		t.Parallel()
+		fx := newResetFixture(t, skipGit)
 		gitkit.Git(t, fx.checkout, "checkout", "-b", "rst-octopus-s1", fx.base)
 		s1 := gitkit.CommitFile(t, fx.checkout, "s1.txt", "1", "s1")
 		gitkit.Git(t, fx.checkout, "checkout", "-b", "rst-octopus-s2", fx.base)
@@ -562,12 +554,11 @@ func TestResetCmd(t *testing.T) {
 		if got := gitkit.RevParse(t, fx.checkout, "HEAD"); got != fx.base {
 			t.Errorf("HEAD = %s; want %s", got, fx.base)
 		}
-	}) {
-		return
-	}
+	})
 
-	if !t.Run("start removes exactly the live recovery strands", func(t *testing.T) {
-		fx := newResetFixture(t, h, "rst-recovery")
+	t.Run("start removes exactly the live recovery strands", func(t *testing.T) {
+		t.Parallel()
+		fx := newResetFixture(t, skipGit)
 		st := startedAt(fx.base)
 		fx.withRecoveryStrands(st, map[string]bool{"strand-live": true, "strand-dead": false})
 		fx.saveState(t, st)
@@ -582,12 +573,11 @@ func TestResetCmd(t *testing.T) {
 		if got := gitkit.RevParse(t, fx.checkout, "HEAD"); got != fx.base {
 			t.Errorf("HEAD = %s; want %s", got, fx.base)
 		}
-	}) {
-		return
-	}
+	})
 
-	if !t.Run("start refuses when a recovery strand cannot be removed and changes nothing", func(t *testing.T) {
-		fx := newResetFixture(t, h, "rst-recovery-fail")
+	t.Run("start refuses when a recovery strand cannot be removed and changes nothing", func(t *testing.T) {
+		t.Parallel()
+		fx := newResetFixture(t, skipGit)
 		st := startedAt(fx.base)
 		st.PreFixHead = fx.base
 		fx.withRecoveryStrands(st, map[string]bool{"strand-live": true})
@@ -601,9 +591,7 @@ func TestResetCmd(t *testing.T) {
 		if err != nil || loaded == nil || loaded.PreFixHead != fx.base {
 			t.Errorf("state after the refusal = %+v, %v; want it unsaved with PreFixHead %s", loaded, err, fx.base)
 		}
-	}) {
-		return
-	}
+	})
 
 	refusals := []struct {
 		name string
@@ -761,9 +749,10 @@ func TestResetCmd(t *testing.T) {
 			}}},
 		},
 	}
-	for i, tc := range refusals {
-		if !t.Run("refuses "+tc.name, func(t *testing.T) {
-			fx := newResetFixture(t, h, "rst-refuse-"+string(rune('a'+i)))
+	for _, tc := range refusals {
+		t.Run("refuses "+tc.name, func(t *testing.T) {
+			t.Parallel()
+			fx := newResetFixture(t, skipGit)
 			tc.arrange(t, fx)
 			for _, attempt := range tc.attempts {
 				parts := make([]string, len(attempt.wantIn))
@@ -772,9 +761,7 @@ func TestResetCmd(t *testing.T) {
 				}
 				fx.wantRefusal(t, attempt.args, parts...)
 			}
-		}) {
-			return
-		}
+		})
 	}
 }
 

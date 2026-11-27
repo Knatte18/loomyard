@@ -47,6 +47,7 @@ func stubRefusal(c *websterCLI) *cobra.Command {
 
 func TestNoteRefusals_ArgumentRefusals_WriteOneNoteEach(t *testing.T) {
 	tiergate.Require(t, 0)
+	t.Parallel()
 	cases := []struct {
 		name string
 		args []string
@@ -59,6 +60,7 @@ func TestNoteRefusals_ArgumentRefusals_WriteOneNoteEach(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			dir := t.TempDir()
 			c, _ := newTestCLI(t)
 			c.frictionDir = dir
@@ -155,6 +157,7 @@ func TestNoteRefusals_VerbEnvelopes(t *testing.T) {
 //testtiming:keep pins that a validate refusal writes no friction note, which its covering tests do not assert
 func TestAddVerbs_ValidateRefusal_WritesNoNote(t *testing.T) {
 	tiergate.Require(t, 0)
+	t.Parallel()
 	dir := t.TempDir()
 	c, _ := newTestCLI(t)
 	c.frictionDir = dir

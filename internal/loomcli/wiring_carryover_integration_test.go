@@ -24,9 +24,10 @@ import (
 // Writing the same entry again commits nothing.
 func TestWriteCarryOver_Real_CommitsTheRecordAlone(t *testing.T) {
 	tiergate.Require(t, 1)
-	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	const slug = "carryoverrecord"
-	hubforge.AddPair(t, hub, slug)
+	t.Parallel()
+
+	hub := hubforge.CopyHub(t, pairHubShape)
+	const slug = hubforge.TemplatePairSlug
 	location, err := lymcwd.ResolveWorktree(hub.PairCodeWorktree(slug))
 	if err != nil {
 		t.Fatalf("ResolveWorktree error = %v; want nil", err)

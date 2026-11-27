@@ -33,8 +33,8 @@ func (fx *verbsFixture) seedPendingFinding(t *testing.T) {
 // It records no disposition, and a second call reports nothing.
 func TestAcceptAuditCmd_AcceptsPendingThenIsIdempotent(t *testing.T) {
 	tiergate.Require(t, 1)
-	t.Setenv("FABRIC_SKIP_GIT", "1")
-	fx := newVerbsFixture(t)
+	t.Parallel()
+	fx := newSkipGitVerbsFixture(t)
 	fx.seedPendingFinding(t)
 
 	var out strings.Builder
@@ -73,11 +73,10 @@ func TestAcceptAuditCmd_AcceptsPendingThenIsIdempotent(t *testing.T) {
 // TestAcceptAuditCmd_BatchClearsFabricReference proves --batch clears a failed batch's pathless finding.
 // It does so when the batch made no commit, and the envelope names recover-batch as next.
 // A second call refuses because nothing is left to accept.
-// It sets FABRIC_SKIP_GIT, so it is not parallel.
 func TestAcceptAuditCmd_BatchClearsFabricReference(t *testing.T) {
 	tiergate.Require(t, 1)
-	t.Setenv("FABRIC_SKIP_GIT", "1")
-	fx := newVerbsFixture(t)
+	t.Parallel()
+	fx := newSkipGitVerbsFixture(t)
 	st := fx.initState(t)
 	head := gitkit.RevParse(t, fx.Worktree, "HEAD")
 	st.Batches[2] = &websterengine.BatchState{
@@ -159,10 +158,9 @@ func TestAcceptAuditCmd_BatchClearsFabricReference(t *testing.T) {
 // It names the way forward and leaves state.json byte-identical.
 // An edited path refuses with the git way forward.
 // A commit on top of the recorded head refuses even when a second commit restores the file's content.
-// It sets FABRIC_SKIP_GIT, so it is not parallel.
 func TestAcceptAuditCmd_Refusals(t *testing.T) {
 	tiergate.Require(t, 1)
-	t.Setenv("FABRIC_SKIP_GIT", "1")
+	t.Parallel()
 
 	cases := []struct {
 		name string
@@ -201,7 +199,8 @@ func TestAcceptAuditCmd_Refusals(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			fx := newVerbsFixture(t)
+			t.Parallel()
+			fx := newSkipGitVerbsFixture(t)
 			fx.seedPendingFinding(t)
 			tc.move(t, fx)
 			statePath := filepath.Join(fx.CLI.geom.WebsterDir, "state.json")
@@ -234,7 +233,7 @@ func TestAcceptAuditCmd_Refusals(t *testing.T) {
 // The output names the sentinel and `lym fabric commit`.
 func TestAcceptAuditCmd_FabricSyncFailureNamesWayForward(t *testing.T) {
 	tiergate.Require(t, 1)
-	t.Setenv("FABRIC_SKIP_GIT", "")
+	t.Parallel()
 	fx := newVerbsFixture(t)
 	fx.seedPendingFinding(t)
 	syncErr := errors.New("probe: fabric unreachable")
@@ -262,8 +261,8 @@ func TestAcceptAuditCmd_FabricSyncFailureNamesWayForward(t *testing.T) {
 // The envelope's next field names the re-run that has Master write them again.
 func TestAcceptAuditCmd_AbsentContractFilesCarryNext(t *testing.T) {
 	tiergate.Require(t, 1)
-	t.Setenv("FABRIC_SKIP_GIT", "1")
-	fx := newVerbsFixture(t)
+	t.Parallel()
+	fx := newSkipGitVerbsFixture(t)
 	fx.seedPendingFinding(t)
 	st, err := websterengine.LoadState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir)
 	if err != nil || st == nil {

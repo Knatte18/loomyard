@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
@@ -22,9 +21,10 @@ import (
 // The verb never runs.
 // A Master strand under a held run.lock, another strand and an unnamed shell reach the verb.
 // The verb tree built by addVerbs wraps each bracket verb and no other verb.
-// It is not parallel: it sets the strand name variable with t.Setenv.
+// The CLI under test carries the caller's strand name, so no case touches the environment.
 func TestRefuseOrphanedMaster_RefusesAMasterWhoseRunEnded(t *testing.T) {
 	tiergate.Require(t, 0)
+	t.Parallel()
 
 	const masterCaller = "hub:task-a:" + websterengine.MerriamStrandRole
 	tests := []struct {
@@ -53,6 +53,7 @@ func TestRefuseOrphanedMaster_RefusesAMasterWhoseRunEnded(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			scratchDir := t.TempDir()
 			if tt.runLive {
 				held, locked, err := lock.TryAcquireWriteLock(filepath.Join(scratchDir, "run.lock"))
@@ -66,9 +67,8 @@ func TestRefuseOrphanedMaster_RefusesAMasterWhoseRunEnded(t *testing.T) {
 					t.Fatalf("make run.lock a directory: %v", err)
 				}
 			}
-			t.Setenv(agentname.StrandNameEnv, tt.caller)
 			ran := false
-			c := &websterCLI{geom: websterengine.Geometry{ScratchDir: scratchDir}}
+			c := &websterCLI{geom: websterengine.Geometry{ScratchDir: scratchDir}, strandName: tt.caller}
 			cmd := c.refuseOrphanedMaster(&cobra.Command{
 				Use: "record-batch",
 				RunE: func(*cobra.Command, []string) error {
@@ -98,8 +98,8 @@ func TestRefuseOrphanedMaster_RefusesAMasterWhoseRunEnded(t *testing.T) {
 	}
 
 	t.Run("addVerbs wraps each bracket verb and no other", func(t *testing.T) {
-		t.Setenv(agentname.StrandNameEnv, masterCaller)
-		c := &websterCLI{geom: websterengine.Geometry{ScratchDir: t.TempDir(), WebsterDir: t.TempDir()}}
+		t.Parallel()
+		c := &websterCLI{geom: websterengine.Geometry{ScratchDir: t.TempDir(), WebsterDir: t.TempDir()}, strandName: masterCaller}
 		verbs := []struct {
 			name        string
 			args        []string

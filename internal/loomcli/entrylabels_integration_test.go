@@ -17,10 +17,9 @@ import (
 func TestEntryLabels_ReadsTheRunsBoardEntryAtEachCall(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Setenv("BOARD_SKIP_GIT", "1")
-	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	hub := hubforge.CopyHub(t, pairHubShape)
 
-	const slug = "labelled"
-	hubforge.AddPair(t, hub, slug)
+	const slug = hubforge.TemplatePairSlug
 	location, err := lymcwd.ResolveWorktree(hub.PairCodeWorktree(slug))
 	if err != nil {
 		t.Fatalf("ResolveWorktree() error = %v; want nil", err)

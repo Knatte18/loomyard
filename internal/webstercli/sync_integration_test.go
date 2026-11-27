@@ -145,8 +145,7 @@ func newPairFixtureAt(t *testing.T, relPath string) (*lymcwd.Location, string) {
 // Fabric.Commit's contract is that the caller learns that alongside the error.
 func TestFabricSync_ReportsCommittedWhenCorrespondenceRecordFails(t *testing.T) {
 	tiergate.Require(t, 1)
-	t.Setenv("FABRIC_SKIP_GIT", "")
-	t.Setenv("FABRIC_SKIP_PUSH", "")
+	t.Parallel()
 	layout, records := newPairFixture(t)
 
 	// A directory where RecordCorrespondence expects its index file makes the record step fail after the commit has landed.
@@ -155,7 +154,7 @@ func TestFabricSync_ReportsCommittedWhenCorrespondenceRecordFails(t *testing.T) 
 	}
 
 	open := func() (*fabricengine.Fabric, error) { return fabricengine.Open(layout) }
-	committed, err := fabricSync(open, layout.AnchorRel, "corr-fail probe")
+	committed, err := fabricSync(open, layout.AnchorRel, fabricengine.SyncOptions{}, "corr-fail probe")
 
 	if err == nil {
 		t.Fatal("fabricSync() error = nil; want the RecordCorrespondence failure propagated")
@@ -179,9 +178,10 @@ func TestFabricSync_ReportsCommittedWhenCorrespondenceRecordFails(t *testing.T) 
 // It also guards across modules: a webster commit must hold back the sibling loom module's run lock too.
 // Each excluded artifact is asserted both absent from the commit and still untracked via `git ls-files`.
 // Untracked status proves it never reached the pathspec, not merely that this one commit omitted it.
-// FABRIC_SKIP_PUSH is set because the scratch records repo has no remote; the commit half is what is under test.
+// The sync runs with SkipPush because the scratch records repo has no remote; the commit half is what is under test.
 func TestFabricSync_CommitsAtEveryRelPathDepth(t *testing.T) {
 	tiergate.Require(t, 1)
+	t.Parallel()
 	tests := []struct {
 		name    string
 		relPath string
@@ -194,12 +194,11 @@ func TestFabricSync_CommitsAtEveryRelPathDepth(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Setenv("FABRIC_SKIP_GIT", "")
-			t.Setenv("FABRIC_SKIP_PUSH", "1")
+			t.Parallel()
 			layout, records := newPairFixtureAt(t, tt.relPath)
 			open := func() (*fabricengine.Fabric, error) { return fabricengine.Open(layout) }
 
-			committed, err := fabricSync(open, layout.AnchorRel, "depth probe")
+			committed, err := fabricSync(open, layout.AnchorRel, fabricengine.SyncOptions{SkipPush: true}, "depth probe")
 			if err != nil {
 				t.Fatalf("fabricSync() error = %v; want nil", err)
 			}

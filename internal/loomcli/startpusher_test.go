@@ -17,11 +17,10 @@ func TestWiredStartPusher_AsksForThePairsPusher(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	hubforge.AddPair(t, h, "task1")
-	pair, err := lymcwd.ResolveWorktree(h.PairCodeWorktree("task1"))
+	h := hubforge.CopyHub(t, pairHubShape)
+	pair, err := lymcwd.ResolveWorktree(h.PairCodeWorktree(hubforge.TemplatePairSlug))
 	if err != nil {
-		t.Fatalf("ResolveWorktree(task1) = %v; want nil", err)
+		t.Fatalf("ResolveWorktree(%s) = %v; want nil", hubforge.TemplatePairSlug, err)
 	}
 	var started []string
 	c := &loomCLI{runID: shedrun.SelfRunID, pusherStart: func(target runpusher.Target) (bool, error) {
@@ -37,7 +36,7 @@ func TestWiredStartPusher_AsksForThePairsPusher(t *testing.T) {
 
 	c.startPusher()
 
-	if want := []string{"task1/task1"}; !slices.Equal(started, want) {
+	if want := []string{"pair/pair"}; !slices.Equal(started, want) {
 		t.Errorf("pushers asked for = %q; want %q", started, want)
 	}
 }

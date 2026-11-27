@@ -41,17 +41,17 @@ func TestLandingDeps_ConfigNoticeSeamsOverRealHub(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	hubforge.AddPair(t, h, "task")
-	taskRecords := h.PairRecordsSibling("task")
+	h := hubforge.CopyHub(t, pairHubShape)
+	const slug = hubforge.TemplatePairSlug
+	taskRecords := h.PairRecordsSibling(slug)
 	gitkit.CommitFile(t, taskRecords, configengine.ConfigFileRel("loom"), "task_setting: changed\n", "task: change loom config")
 	gitkit.CommitFile(t, taskRecords, configengine.ConfigFileRel("board"), "task_setting: changed\n", "task: change board config")
 
-	taskLocation, err := lymcwd.ResolveWorktree(h.PairCodeWorktree("task"))
+	taskLocation, err := lymcwd.ResolveWorktree(h.PairCodeWorktree(slug))
 	if err != nil {
-		t.Fatalf("lymcwd.ResolveWorktree(task) error = %v; want nil", err)
+		t.Fatalf("lymcwd.ResolveWorktree(%s) error = %v; want nil", slug, err)
 	}
-	deps := landingDeps(taskLocation, shedrun.RecipeTapestry, websterengine.Geometry{}, "task", "main",
+	deps := landingDeps(taskLocation, shedrun.RecipeTapestry, websterengine.Geometry{}, slug, "main",
 		true, modelspec.Registry{}, &shuttleengine.Runner{}, landingshed.Config{}, "", nil, nil, nil, planVerifySource(taskLocation), parentLockDeps(taskLocation, shedrun.SelfRunID, "", ""))
 
 	t.Run("ConfigChanges reports the per-worktree file and not the hub-wide one", func(t *testing.T) {
@@ -240,15 +240,15 @@ func TestLandingDeps_TaskHasCommitsReadsTheTaskHeadAgainstTheParent(t *testing.T
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	hubforge.AddPair(t, h, "task")
-	taskWorktree := h.PairCodeWorktree("task")
+	h := hubforge.CopyHub(t, pairHubShape)
+	const slug = hubforge.TemplatePairSlug
+	taskWorktree := h.PairCodeWorktree(slug)
 	taskLocation, err := lymcwd.ResolveWorktree(taskWorktree)
 	if err != nil {
-		t.Fatalf("lymcwd.ResolveWorktree(task) error = %v; want nil", err)
+		t.Fatalf("lymcwd.ResolveWorktree(%s) error = %v; want nil", slug, err)
 	}
 	taskHasCommits := func(parentBranch string) (bool, error) {
-		deps := landingDeps(taskLocation, shedrun.RecipeTapestry, websterengine.Geometry{}, "task", parentBranch,
+		deps := landingDeps(taskLocation, shedrun.RecipeTapestry, websterengine.Geometry{}, slug, parentBranch,
 			true, modelspec.Registry{}, &shuttleengine.Runner{}, landingshed.Config{}, "", nil, nil, nil, planVerifySource(taskLocation), parentLockDeps(taskLocation, shedrun.SelfRunID, "", ""))
 		return deps.PullRequest.TaskHasCommits()
 	}
@@ -285,20 +285,20 @@ func TestLandingDeps_RecordLandingWritesWhereTheDobbyReads(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	hubforge.AddPair(t, h, "task")
-	taskLocation, err := lymcwd.ResolveWorktree(h.PairCodeWorktree("task"))
+	h := hubforge.CopyHub(t, pairHubShape)
+	const slug = hubforge.TemplatePairSlug
+	taskLocation, err := lymcwd.ResolveWorktree(h.PairCodeWorktree(slug))
 	if err != nil {
-		t.Fatalf("lymcwd.ResolveWorktree(task) error = %v; want nil", err)
+		t.Fatalf("lymcwd.ResolveWorktree(%s) error = %v; want nil", slug, err)
 	}
-	deps := landingDeps(taskLocation, shedrun.RecipeTapestry, websterengine.Geometry{}, "task", "main",
+	deps := landingDeps(taskLocation, shedrun.RecipeTapestry, websterengine.Geometry{}, slug, "main",
 		true, modelspec.Registry{}, &shuttleengine.Runner{}, landingshed.Config{}, "", nil, nil, nil, planVerifySource(taskLocation), parentLockDeps(taskLocation, shedrun.SelfRunID, "", ""))
 
 	if err := deps.RecordLanding("abc123", true); err != nil {
 		t.Fatalf("RecordLanding() error = %v; want nil", err)
 	}
 
-	got, err := shedrun.ReadLandedCommit(h.Location, "task")
+	got, err := shedrun.ReadLandedCommit(h.Location, slug)
 	if want := (shedrun.LandedCommit{Commit: "abc123", EmptyDiff: true}); err != nil || got != want {
 		t.Errorf("ReadLandedCommit(prime, task) = %+v, %v; want %+v, nil", got, err, want)
 	}
@@ -312,13 +312,13 @@ func TestPullRequestDeps_CommitsTheRecord(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	hubforge.AddPair(t, h, "task")
-	location, err := lymcwd.ResolveWorktree(h.PairCodeWorktree("task"))
+	h := hubforge.CopyHub(t, pairHubShape)
+	const slug = hubforge.TemplatePairSlug
+	location, err := lymcwd.ResolveWorktree(h.PairCodeWorktree(slug))
 	if err != nil {
-		t.Fatalf("lymcwd.ResolveWorktree(task) error = %v; want nil", err)
+		t.Fatalf("lymcwd.ResolveWorktree(%s) error = %v; want nil", slug, err)
 	}
-	records := h.PairRecordsSibling("task")
+	records := h.PairRecordsSibling(slug)
 
 	recordsBranch := gitkit.Git(t, records, "rev-parse", "--abbrev-ref", "HEAD")
 	requireOriginAtHead := func(when string) {
@@ -329,7 +329,7 @@ func TestPullRequestDeps_CommitsTheRecord(t *testing.T) {
 		}
 	}
 
-	deps := pullRequestDepsGuardedBy(prePushCheck{slug: "task", skip: func() (bool, error) { return true, nil }}, location, "main", true, &shuttleengine.Runner{})
+	deps := pullRequestDepsGuardedBy(prePushCheck{slug: slug, skip: func() (bool, error) { return true, nil }}, location, "main", true, &shuttleengine.Runner{})
 	rel := filepath.ToSlash(shedrun.PullRequestRecordRel(location, shedrun.SelfRunID))
 	headFiles := func(format string) string {
 		t.Helper()

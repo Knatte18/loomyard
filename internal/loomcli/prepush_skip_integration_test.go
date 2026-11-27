@@ -19,13 +19,12 @@ import (
 // It is serial because it sets environment variables.
 func TestNewPrePushCheckSkip(t *testing.T) {
 	tiergate.Require(t, 1)
-	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	hubforge.AddPair(t, hub, "task")
+	hub := hubforge.CopyHub(t, pairHubShape)
 	prime, err := lymcwd.ResolveWorktree(hub.PrimeWorktree())
 	if err != nil {
 		t.Fatalf("ResolveWorktree(prime) error = %v; want nil", err)
 	}
-	pair, err := lymcwd.ResolveWorktree(hub.PairCodeWorktree("task"))
+	pair, err := lymcwd.ResolveWorktree(hub.PairCodeWorktree(hubforge.TemplatePairSlug))
 	if err != nil {
 		t.Fatalf("ResolveWorktree(pair) error = %v; want nil", err)
 	}

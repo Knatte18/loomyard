@@ -31,6 +31,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/cliwire"
 	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -97,8 +98,13 @@ func seedStandalonePlanDir(t *testing.T, dir string) {
 // Another is an unpaired sibling, and the last is a worktree whose paired sibling has been removed.
 // Keying mode on whether a location is wired would send every one of these to standalone mode.
 // None of them may be refused, and none of them may land in standalone.
+// Each wired CLI also holds the sync skips and the strand name of the environment it was wired in.
+// It sets those variables, so it is not parallel.
 func TestWire_ModeHubSelectsHubMode(t *testing.T) {
 	tiergate.Require(t, 0)
+	t.Setenv("FABRIC_SKIP_GIT", "1")
+	t.Setenv("FABRIC_SKIP_PUSH", "1")
+	t.Setenv(agentname.StrandNameEnv, "wired-strand")
 	tests := []struct {
 		name         string
 		worktreeName string
@@ -116,6 +122,13 @@ func TestWire_ModeHubSelectsHubMode(t *testing.T) {
 			c := &websterCLI{}
 			if err := c.wire(loc, preflight.ModeHub, "", "", "", ""); err != nil {
 				t.Fatalf("wire() = %v; want nil -- a healthy-but-unwired hub location must never be refused", err)
+			}
+
+			if !c.syncOptions.SkipGit || !c.syncOptions.SkipPush {
+				t.Errorf("syncOptions = %+v; want SkipGit and SkipPush read from the environment", c.syncOptions)
+			}
+			if c.strandName != "wired-strand" {
+				t.Errorf("strandName = %q; want %q", c.strandName, "wired-strand")
 			}
 
 			if c.geom.AnchorRoot != loc.AnchorPath() {
@@ -199,9 +212,13 @@ func hash8For(t *testing.T, target string) string {
 // the in-process reed bring-up is armed, and the friction directory is empty.
 // The default plan directory has its run-refusal mark clear.
 // A runner's public entry points return their ordinary verdict, not a told-path refusal.
-// It sets XDG_STATE_HOME and LOCALAPPDATA, so it is not parallel.
+// The CLI holds the sync skips and the strand name of the environment it was wired in.
+// It sets environment variables, so it is not parallel.
 func TestWire_StandaloneMode(t *testing.T) {
 	tiergate.Require(t, 0)
+	t.Setenv("FABRIC_SKIP_GIT", "1")
+	t.Setenv("FABRIC_SKIP_PUSH", "1")
+	t.Setenv(agentname.StrandNameEnv, "wired-strand")
 	target := t.TempDir()
 	stateHome := t.TempDir()
 	t.Setenv("XDG_STATE_HOME", stateHome)
@@ -227,6 +244,12 @@ func TestWire_StandaloneMode(t *testing.T) {
 		t.Fatalf("wire() = %v; want nil", err)
 	}
 
+	if !c.syncOptions.SkipGit || !c.syncOptions.SkipPush {
+		t.Errorf("syncOptions = %+v; want SkipGit and SkipPush read from the environment", c.syncOptions)
+	}
+	if c.strandName != "wired-strand" {
+		t.Errorf("strandName = %q; want %q", c.strandName, "wired-strand")
+	}
 	if c.geom.WorktreeRoot != target {
 		t.Errorf("geom.WorktreeRoot = %q; want the target %q", c.geom.WorktreeRoot, target)
 	}

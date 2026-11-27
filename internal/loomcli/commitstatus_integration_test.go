@@ -20,28 +20,26 @@ import (
 // It does so whether or not another entry depends on it.
 // A recipe with a Finalize row leaves the task with the status of the last running transition.
 // It is serial because it sets the board skip variable, which is process-global.
+// Its rows run in parallel under it, each over a hub copy of its own.
 func TestWiredCommitStatus_FinishedRunEntry(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Setenv("BOARD_SKIP_GIT", "1")
-	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 
+	const slug = hubforge.TemplatePairSlug
 	running := boardengine.RunStatus("running", "Discussion-Bouncer")
 	wirings := []struct {
 		name string
-		// slugSuffix keeps the pairs of the two entry points apart on the shared hub.
-		slugSuffix string
-		wire       func(c *loomCLI, location *lymcwd.Location) error
+		wire func(c *loomCLI, location *lymcwd.Location) error
 	}{
-		{"WireLightweight", "light", func(c *loomCLI, location *lymcwd.Location) error {
+		{"WireLightweight", func(c *loomCLI, location *lymcwd.Location) error {
 			return c.wireLightweight(location, location.AnchorPath())
 		}},
-		{"Wire", "full", func(c *loomCLI, location *lymcwd.Location) error {
+		{"Wire", func(c *loomCLI, location *lymcwd.Location) error {
 			return c.wire(location, location.AnchorPath())
 		}},
 	}
 	tests := []struct {
 		name   string
-		slug   string
 		recipe string
 		// wantKind and wantLabels are the entry's kind and labels after the finish, and wantStatus its status, "" for none.
 		wantKind   string
@@ -50,15 +48,15 @@ func TestWiredCommitStatus_FinishedRunEntry(t *testing.T) {
 		// dependedOn makes another entry depend on the run's entry.
 		dependedOn bool
 	}{
-		{"FinalizeLessRunMakesTheEntryASketch", "motifrun", shedrun.RecipeMotif, boardengine.KindNote, []string{boardengine.SketchType}, "", false},
-		{"FinalizingRunLeavesTheLastRunningStatus", "tapestryrun", shedrun.RecipeTapestry, boardengine.KindTask, []string{"bug"}, running, false},
-		{"DependedOnEntryStillBecomesASketch", "dependedrun", shedrun.RecipeMotif, boardengine.KindNote, []string{boardengine.SketchType}, "", true},
+		{"FinalizeLessRunMakesTheEntryASketch", shedrun.RecipeMotif, boardengine.KindNote, []string{boardengine.SketchType}, "", false},
+		{"FinalizingRunLeavesTheLastRunningStatus", shedrun.RecipeTapestry, boardengine.KindTask, []string{"bug"}, running, false},
+		{"DependedOnEntryStillBecomesASketch", shedrun.RecipeMotif, boardengine.KindNote, []string{boardengine.SketchType}, "", true},
 	}
 	for _, w := range wirings {
 		for _, tt := range tests {
 			t.Run(w.name+"_"+tt.name, func(t *testing.T) {
-				slug := tt.slug + w.slugSuffix
-				hubforge.AddPair(t, hub, slug)
+				t.Parallel()
+				hub := hubforge.CopyHub(t, pairHubShape)
 				location, err := lymcwd.ResolveWorktree(hub.PairCodeWorktree(slug))
 				if err != nil {
 					t.Fatalf("ResolveWorktree() error = %v; want nil", err)
@@ -110,28 +108,29 @@ func TestWiredCommitStatus_FinishedRunEntry(t *testing.T) {
 // A recipe with a Raddle-File row writes nothing once the run's filing mark stands in the prime.
 // A recipe with no such row writes whether or not a mark stands.
 // It is serial because it sets the board skip variable, which is process-global.
+// Its rows run in parallel under it, each over a hub copy of its own.
 func TestCommitStatusDeps_SkipsTheBoardStatusAfterAFilingMark(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Setenv("BOARD_SKIP_GIT", "1")
-	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 
+	const slug = hubforge.TemplatePairSlug
 	before := boardengine.RunStatus("running", "Raddle-Write")
 	written := boardengine.RunStatus("running", "Raddle-File")
 	tests := []struct {
 		name       string
-		slug       string
 		recipe     string
 		marked     bool
 		wantStatus string
 	}{
-		{"ARaddleFileRecipeWithoutTheMarkWrites", "arrasopen", shedrun.RecipeArras, false, written},
-		{"ARaddleFileRecipeWithTheMarkWritesNothing", "arrasmarked", shedrun.RecipeArras, true, before},
-		{"ARecipeWithNoRaddleFileRowWritesDespiteTheMark", "tapestrymarked", shedrun.RecipeTapestry, true, written},
+		{"ARaddleFileRecipeWithoutTheMarkWrites", shedrun.RecipeArras, false, written},
+		{"ARaddleFileRecipeWithTheMarkWritesNothing", shedrun.RecipeArras, true, before},
+		{"ARecipeWithNoRaddleFileRowWritesDespiteTheMark", shedrun.RecipeTapestry, true, written},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			hubforge.AddPair(t, hub, tt.slug)
-			location, err := lymcwd.ResolveWorktree(hub.PairCodeWorktree(tt.slug))
+			t.Parallel()
+			hub := hubforge.CopyHub(t, pairHubShape)
+			location, err := lymcwd.ResolveWorktree(hub.PairCodeWorktree(slug))
 			if err != nil {
 				t.Fatalf("ResolveWorktree() error = %v; want nil", err)
 			}
@@ -139,10 +138,10 @@ func TestCommitStatusDeps_SkipsTheBoardStatusAfterAFilingMark(t *testing.T) {
 			if err != nil {
 				t.Fatalf("OpenHub() error = %v; want nil", err)
 			}
-			if _, err := board.UpsertTask(map[string]any{"slug": tt.slug, "title": "Run", "kind": "task", "labels": []string{"bug"}}); err != nil {
+			if _, err := board.UpsertTask(map[string]any{"slug": slug, "title": "Run", "kind": "task", "labels": []string{"bug"}}); err != nil {
 				t.Fatalf("UpsertTask() error = %v; want nil", err)
 			}
-			if err := board.SetRunStatus(tt.slug, before); err != nil {
+			if err := board.SetRunStatus(slug, before); err != nil {
 				t.Fatalf("SetRunStatus() error = %v; want nil", err)
 			}
 			if tt.marked {
@@ -150,7 +149,7 @@ func TestCommitStatusDeps_SkipsTheBoardStatusAfterAFilingMark(t *testing.T) {
 				if err != nil {
 					t.Fatalf("primeOfHub() error = %v; want nil", err)
 				}
-				if err := shedrun.WriteFilingMark(prime, tt.slug); err != nil {
+				if err := shedrun.WriteFilingMark(prime, slug); err != nil {
 					t.Fatalf("WriteFilingMark() error = %v; want nil", err)
 				}
 			}
@@ -160,7 +159,7 @@ func TestCommitStatusDeps_SkipsTheBoardStatusAfterAFilingMark(t *testing.T) {
 				t.Fatalf("SetBoardStatus() error = %v; want nil", err)
 			}
 
-			task, found, err := board.GetTask(tt.slug)
+			task, found, err := board.GetTask(slug)
 			if err != nil || !found || task.Status == nil || *task.Status != tt.wantStatus {
 				t.Errorf("board entry = %+v, found %t, error %v; want status %q", task, found, err, tt.wantStatus)
 			}

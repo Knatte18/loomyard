@@ -120,7 +120,7 @@ Example:
 			_ = mutateLock.Release()
 			mutateHeld = false
 
-			if _, syncErr := fabricSync(c.openFabric, c.anchorRel, "rebaseline"); syncErr != nil {
+			if _, syncErr := fabricSync(c.openFabric, c.anchorRel, c.syncOptions, "rebaseline"); syncErr != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: plan rebaselined but the fabric sync failed: %v; %s", syncErr, fabricSyncWayForward)))
 				return nil
 			}

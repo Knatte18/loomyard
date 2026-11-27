@@ -9,7 +9,9 @@ package webstercli
 import (
 	"errors"
 	"fmt"
+	"os"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/cliwire"
 	"github.com/Knatte18/loomyard/internal/configengine"
@@ -213,7 +215,9 @@ func (c *websterCLI) wireHub(loc *lymcwd.Location, stencilsDir, planDir, targetD
 	c.roles = roles
 	c.instructionFiles = websterengine.MasterInstructionFiles(engines, roles[websterengine.RoleMaster])
 	c.pause = pauseGeom
-	c.masterStrand = envMasterStrand(reedEngine.ResolveStrandGUID)
+	c.strandName = os.Getenv(agentname.StrandNameEnv)
+	c.masterStrand = masterStrandLookup(c.strandName, reedEngine.ResolveStrandGUID)
+	c.syncOptions = fabricengine.EnvSyncOptions()
 	geom.VerifyHold = verifytree.NewPauseHold(pauseGeom, nil)
 	c.geom = geom
 	c.anchorRel = loc.AnchorRel
@@ -350,7 +354,9 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDir, planDir, targetDirFlag str
 	c.roles = roles
 	c.instructionFiles = websterengine.MasterInstructionFiles(engines, roles[websterengine.RoleMaster])
 	c.pause = pauseGeom
-	c.masterStrand = envMasterStrand(reedEngine.ResolveStrandGUID)
+	c.strandName = os.Getenv(agentname.StrandNameEnv)
+	c.masterStrand = masterStrandLookup(c.strandName, reedEngine.ResolveStrandGUID)
+	c.syncOptions = fabricengine.EnvSyncOptions()
 	geom.VerifyHold = verifytree.NewPauseHold(pauseGeom, nil)
 	c.geom = geom
 	c.anchorRel = ""

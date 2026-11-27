@@ -36,9 +36,8 @@ func TestLoomVerbs_StaleStampReconcilesBeforeACirclingVerbLoads(t *testing.T) {
 	cobra.EnableTraverseRunHooks = true
 	t.Cleanup(func() { cobra.EnableTraverseRunHooks = traverse })
 
-	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	const slug = "stale"
-	hubforge.AddPair(t, hub, slug)
+	hub := hubforge.CopyHub(t, pairHubShape)
+	const slug = hubforge.TemplatePairSlug
 	pair, err := lymcwd.ResolveWorktree(hub.PairCodeWorktree(slug))
 	if err != nil {
 		t.Fatalf("resolve the pair: %v", err)
@@ -86,11 +85,13 @@ func TestLoomVerbs_StaleStampReconcilesBeforeACirclingVerbLoads(t *testing.T) {
 	}
 }
 
+// The rows share one hub copy and run in order, since each runs a CLI verb over it.
 func TestCirclingCLI_PreRunResolvesTarget(t *testing.T) {
 	tiergate.Require(t, 1)
-	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	const slug = "circling"
-	hubforge.AddPair(t, hub, slug)
+	t.Parallel()
+
+	hub := hubforge.CopyHub(t, pairHubShape)
+	const slug = hubforge.TemplatePairSlug
 
 	run := func(cwd string, args ...string) (int, string) {
 		t.Helper()

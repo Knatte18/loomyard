@@ -142,7 +142,7 @@ Example:
 			}
 
 			if spawned {
-				if _, syncErr := fabricSync(c.openFabric, c.anchorRel, "fix-plan spawn"); syncErr != nil {
+				if _, syncErr := fabricSync(c.openFabric, c.anchorRel, c.syncOptions, "fix-plan spawn"); syncErr != nil {
 					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: the plan fixer spawned but the fabric sync failed: %v; %s", syncErr, fabricSyncWayForward)))
 					return nil
 				}
@@ -165,7 +165,7 @@ Example:
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
-			if _, syncErr := fabricSync(c.openFabric, c.anchorRel, "fix-plan "+result.Status); syncErr != nil {
+			if _, syncErr := fabricSync(c.openFabric, c.anchorRel, c.syncOptions, "fix-plan "+result.Status); syncErr != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: the plan fixer ended %s but the fabric sync failed: %v; %s", result.Status, syncErr, fabricSyncWayForward)))
 				return nil
 			}

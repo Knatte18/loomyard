@@ -177,7 +177,7 @@ Example:
 					return nil
 				}
 				msg := err.Error()
-				if _, syncErr := fabricSync(c.openFabric, c.anchorRel, fmt.Sprintf("record-batch %s failed", batchName)); syncErr != nil {
+				if _, syncErr := fabricSync(c.openFabric, c.anchorRel, c.syncOptions, fmt.Sprintf("record-batch %s failed", batchName)); syncErr != nil {
 					msg = fmt.Sprintf("%s; additionally, the fabric sync failed: %v; %s", msg, syncErr, fabricSyncWayForward)
 				}
 				var resultWarnings []string
@@ -198,7 +198,7 @@ Example:
 					return nil
 				}
 				msg := err.Error()
-				if _, syncErr := fabricSync(c.openFabric, c.anchorRel, fmt.Sprintf("record-batch %s handed back", batchName)); syncErr != nil {
+				if _, syncErr := fabricSync(c.openFabric, c.anchorRel, c.syncOptions, fmt.Sprintf("record-batch %s handed back", batchName)); syncErr != nil {
 					msg = fmt.Sprintf("%s; additionally, the fabric sync failed: %v; %s", msg, syncErr, fabricSyncWayForward)
 				}
 				clihelp.SetExit(cmd.Context(), output.ErrFields(out, msg, map[string]any{
@@ -219,7 +219,7 @@ Example:
 				_ = mutateLock.Release()
 				mutateHeld = false
 				msg := err.Error()
-				if _, syncErr := fabricSync(c.openFabric, c.anchorRel, fmt.Sprintf("record-batch %s report-archived", batchName)); syncErr != nil {
+				if _, syncErr := fabricSync(c.openFabric, c.anchorRel, c.syncOptions, fmt.Sprintf("record-batch %s report-archived", batchName)); syncErr != nil {
 					msg = fmt.Sprintf("%s; additionally, the fabric sync failed: %v; %s", msg, syncErr, fabricSyncWayForward)
 				}
 				clihelp.SetExit(cmd.Context(), output.ErrFields(out, msg, map[string]any{
@@ -261,7 +261,7 @@ Example:
 			if result.Digest != nil {
 				label = result.Digest.Status
 			}
-			if _, syncErr := fabricSync(c.openFabric, c.anchorRel, fmt.Sprintf("record-batch %s %s", batchName, label)); syncErr != nil {
+			if _, syncErr := fabricSync(c.openFabric, c.anchorRel, c.syncOptions, fmt.Sprintf("record-batch %s %s", batchName, label)); syncErr != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: batch %s recorded but the fabric sync failed: %v; %s", batchName, syncErr, fabricSyncWayForward)))
 				return nil
 			}

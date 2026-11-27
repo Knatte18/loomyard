@@ -29,9 +29,8 @@ func TestCodeSubject_Real(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	const slug = "codesubject"
-	hubforge.AddPair(t, hub, slug)
+	hub := hubforge.CopyHub(t, pairHubShape)
+	const slug = hubforge.TemplatePairSlug
 	location, err := lymcwd.ResolveWorktree(hub.PairCodeWorktree(slug))
 	if err != nil {
 		t.Fatalf("ResolveWorktree error = %v; want nil", err)
@@ -130,9 +129,8 @@ func TestTaskMergeBase_FollowsTheMergedTip(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	const slug = "taskmergebase"
-	hubforge.AddPair(t, hub, slug)
+	hub := hubforge.CopyHub(t, pairHubShape)
+	const slug = hubforge.TemplatePairSlug
 	location, err := lymcwd.ResolveWorktree(hub.PairCodeWorktree(slug))
 	if err != nil {
 		t.Fatalf("ResolveWorktree error = %v; want nil", err)
@@ -174,9 +172,8 @@ func TestDarnDeps_BranchWorkSeams(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	const slug = "darnbranchwork"
-	hubforge.AddPair(t, hub, slug)
+	hub := hubforge.CopyHub(t, pairHubShape)
+	const slug = hubforge.TemplatePairSlug
 	location, err := lymcwd.ResolveWorktree(hub.PairCodeWorktree(slug))
 	if err != nil {
 		t.Fatalf("ResolveWorktree error = %v; want nil", err)

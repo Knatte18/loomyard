@@ -20,10 +20,9 @@ import (
 
 // fabricSync stages and commits the _lym pathspec under anchorRel through the fabric repo that open returns.
 // The records commit's message ends with trailers, one line each, after the trailer fabric always writes.
+// opts.SkipGit makes it report (false, nil) without opening the fabric, and opts reaches the commit as is.
 // A nil open means standalone mode: fabricSync then reports (false, nil) without touching git.
-func fabricSync(open func() (*fabricengine.Fabric, error), anchorRel, label string, trailers ...fabriclayout.Trailer) (bool, error) {
-	opts := fabricengine.EnvSyncOptions()
-
+func fabricSync(open func() (*fabricengine.Fabric, error), anchorRel string, opts fabricengine.SyncOptions, label string, trailers ...fabriclayout.Trailer) (bool, error) {
 	if open == nil {
 		return false, nil
 	}

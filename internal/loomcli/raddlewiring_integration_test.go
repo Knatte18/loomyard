@@ -24,9 +24,8 @@ func TestCreateBeamFromParent(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	hubforge.AddPair(t, hub, "the-sketch")
-	location, err := lymcwd.ResolveWorktree(hub.PairCodeWorktree("the-sketch"))
+	hub := hubforge.CopyHub(t, pairHubShape)
+	location, err := lymcwd.ResolveWorktree(hub.PairCodeWorktree(hubforge.TemplatePairSlug))
 	if err != nil {
 		t.Fatalf("ResolveWorktree() error = %v; want nil", err)
 	}
@@ -60,7 +59,8 @@ func TestRaddleRunFiling(t *testing.T) {
 
 	created := time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC)
 	const (
-		boardWithEntry = `{"version":1,"entries":[{"id":1,"slug":"plan","title":"Plan","kind":"task","created":"2026-11-01T09:00:00Z"}]}`
+		slug           = hubforge.TemplatePairSlug
+		boardWithEntry = `{"version":1,"entries":[{"id":1,"slug":"` + slug + `","title":"Plan","kind":"task","created":"2026-11-01T09:00:00Z"}]}`
 		boardWithout   = `{"version":1,"entries":[]}`
 		boardBroken    = `{not json`
 	)
@@ -76,18 +76,18 @@ func TestRaddleRunFiling(t *testing.T) {
 	}{
 		{name: "NoStoreEntry", board: boardWithEntry},
 		{name: "StoreEntryOfAnotherSketch", board: boardWithEntry, storeSketch: "other", storeCreated: created},
-		{name: "StoreEntryOfAnEarlierEntryWithTheSlug", board: boardWithEntry, storeSketch: "plan", storeCreated: created.Add(-time.Hour)},
-		{name: "MatchingStoreEntry", board: boardWithEntry, storeSketch: "plan", storeCreated: created, wantFiled: []string{"plan", "part-a"}, wantFound: true},
-		{name: "MatchingStoreEntryWithItsBoardEntryGone", board: boardWithout, storeSketch: "plan", storeCreated: created, wantFiled: []string{"plan", "part-a"}, wantFound: true},
-		{name: "BoardReadFailure", board: boardBroken, storeSketch: "plan", storeCreated: created, wantErr: true},
+		{name: "StoreEntryOfAnEarlierEntryWithTheSlug", board: boardWithEntry, storeSketch: slug, storeCreated: created.Add(-time.Hour)},
+		{name: "MatchingStoreEntry", board: boardWithEntry, storeSketch: slug, storeCreated: created, wantFiled: []string{slug, "part-a"}, wantFound: true},
+		{name: "MatchingStoreEntryWithItsBoardEntryGone", board: boardWithout, storeSketch: slug, storeCreated: created, wantFiled: []string{slug, "part-a"}, wantFound: true},
+		{name: "BoardReadFailure", board: boardBroken, storeSketch: slug, storeCreated: created, wantErr: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			location := forgeRaddleRun(t, "plan", tt.board)
+			location := forgeRaddleRun(t, tt.board)
 			if tt.storeSketch != "" {
 				// Filed names the run's slug too, so a store entry of another Sketch still holds it.
-				data, err := json.Marshal(boardengine.RaddleStoreEntry{Created: tt.storeCreated, Hash: "h", Filed: []string{"plan", "part-a"}})
+				data, err := json.Marshal(boardengine.RaddleStoreEntry{Created: tt.storeCreated, Hash: "h", Filed: []string{slug, "part-a"}})
 				if err != nil {
 					t.Fatalf("marshal the store record: %v", err)
 				}
@@ -100,7 +100,7 @@ func TestRaddleRunFiling(t *testing.T) {
 				}
 			}
 
-			filed, found, err := raddleRunFiling(location, "plan")
+			filed, found, err := raddleRunFiling(location, slug)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("raddleRunFiling() error = %v; want error %v", err, tt.wantErr)
 			}

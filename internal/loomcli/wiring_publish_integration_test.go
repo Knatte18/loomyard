@@ -25,15 +25,19 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// TestWireLanding_TellsLanguageSkills asserts wireLanding hands the landing deps the language skills that wire loaded.
-// It also asserts wireLanding fills the PR-Review session's liveness and registration seams.
+// TestWireLanding_FillsTheLandingSeamsPerRecipe asserts wireLanding fills the landing deps from what wire loaded.
 // The test runs over a real hub and pair.
-func TestWireLanding_TellsLanguageSkills(t *testing.T) {
+// Each row hands the landing deps the language skills that wire loaded.
+// It also fills the PR-Review session's liveness and registration seams.
+// A sampler seed fills the Sampler-Session row's seams: the session, liveness, registration and record watch ones.
+// A darn seed leaves them nil.
+// The rows share one hub copy and run in order, since wire and wireLanding only read the hub.
+func TestWireLanding_FillsTheLandingSeamsPerRecipe(t *testing.T) {
 	tiergate.Require(t, 1)
-	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	const slug = "languagelanding"
-	hubforge.AddPair(t, hub, slug)
-	location, err := lymcwd.ResolveWorktree(hub.PairCodeWorktree(slug))
+	t.Parallel()
+
+	hub := hubforge.CopyHub(t, pairHubShape)
+	location, err := lymcwd.ResolveWorktree(hub.PairCodeWorktree(hubforge.TemplatePairSlug))
 	if err != nil {
 		t.Fatalf("ResolveWorktree error = %v; want nil", err)
 	}
@@ -41,30 +45,16 @@ func TestWireLanding_TellsLanguageSkills(t *testing.T) {
 	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
 		t.Fatalf("MkdirAll error = %v; want nil", err)
 	}
-	if err := os.WriteFile(configengine.ConfigFile(boardDir, "language"), []byte("skills:\n  - scribe:golang-testing\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile(language.yaml) error = %v; want nil", err)
+	for module, contents := range map[string]string{
+		"language": "skills:\n  - scribe:golang-testing\n",
+		"darn":     darnengine.ConfigTemplate(),
+		"sampler":  samplerengine.ConfigTemplate(),
+	} {
+		if err := os.WriteFile(configengine.ConfigFile(boardDir, module), []byte(contents), 0o644); err != nil {
+			t.Fatalf("WriteFile(%s.yaml) error = %v; want nil", module, err)
+		}
 	}
 
-	c := &loomCLI{runID: shedrun.SelfRunID}
-	if err := c.wire(location, location.AnchorPath()); err != nil {
-		t.Fatalf("wire() = %v; want nil", err)
-	}
-	if err := c.wireLanding(); err != nil {
-		t.Fatalf("wireLanding() = %v; want nil", err)
-	}
-
-	if want := []string{"scribe:golang-testing"}; !slices.Equal(c.env.Landing.LanguageSkills, want) {
-		t.Errorf("env.Landing.LanguageSkills = %v; want %v", c.env.Landing.LanguageSkills, want)
-	}
-	if pr := c.env.Landing.PullRequest; pr.SessionLive == nil || pr.RegisterSession == nil {
-		t.Errorf("after wireLanding: PullRequest.SessionLive nil = %v, RegisterSession nil = %v; want both filled", pr.SessionLive == nil, pr.RegisterSession == nil)
-	}
-}
-
-// TestWireLanding_FillsSamplerSessionSeams asserts wireLanding fills the Sampler-Session row's seams for a sampler seed.
-// The seams are the session, liveness, registration and record watch ones, and a darn seed leaves them nil.
-func TestWireLanding_FillsSamplerSessionSeams(t *testing.T) {
-	tiergate.Require(t, 1)
 	tests := []struct {
 		name    string
 		recipe  string
@@ -75,23 +65,6 @@ func TestWireLanding_FillsSamplerSessionSeams(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-			const slug = "samplerlanding"
-			hubforge.AddPair(t, hub, slug)
-			location, err := lymcwd.ResolveWorktree(hub.PairCodeWorktree(slug))
-			if err != nil {
-				t.Fatalf("ResolveWorktree error = %v; want nil", err)
-			}
-			configDir := configengine.ConfigDir(fabriclayout.BoardDir(location.HubPath))
-			if err := os.MkdirAll(configDir, 0o755); err != nil {
-				t.Fatalf("MkdirAll error = %v; want nil", err)
-			}
-			for module, template := range map[string]string{"darn": darnengine.ConfigTemplate(), "sampler": samplerengine.ConfigTemplate()} {
-				if err := os.WriteFile(configengine.ConfigFile(fabriclayout.BoardDir(location.HubPath), module), []byte(template), 0o644); err != nil {
-					t.Fatalf("WriteFile(%s.yaml) error = %v; want nil", module, err)
-				}
-			}
-
 			c := &loomCLI{runID: shedrun.SelfRunID, recipe: tt.recipe}
 			if err := c.wire(location, location.AnchorPath()); err != nil {
 				t.Fatalf("wire() = %v; want nil", err)
@@ -100,6 +73,12 @@ func TestWireLanding_FillsSamplerSessionSeams(t *testing.T) {
 				t.Fatalf("wireLanding() = %v; want nil", err)
 			}
 
+			if want := []string{"scribe:golang-testing"}; !slices.Equal(c.env.Landing.LanguageSkills, want) {
+				t.Errorf("env.Landing.LanguageSkills = %v; want %v", c.env.Landing.LanguageSkills, want)
+			}
+			if pr := c.env.Landing.PullRequest; pr.SessionLive == nil || pr.RegisterSession == nil {
+				t.Errorf("after wireLanding: PullRequest.SessionLive nil = %v, RegisterSession nil = %v; want both filled", pr.SessionLive == nil, pr.RegisterSession == nil)
+			}
 			sampler := c.env.Sampler
 			set := sampler.Sessions != nil && sampler.SessionLive != nil && sampler.RegisterSession != nil && sampler.Watch != nil
 			unset := sampler.Sessions == nil && sampler.SessionLive == nil && sampler.RegisterSession == nil && sampler.Watch == nil
@@ -114,10 +93,10 @@ func TestWireLanding_FillsSamplerSessionSeams(t *testing.T) {
 // The value is the regression check that wire renders from the run's scope record.
 func TestWire_DescribeTableCarriesTheDriftVerdict(t *testing.T) {
 	tiergate.Require(t, 1)
-	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	const slug = "describeverdict"
-	hubforge.AddPair(t, hub, slug)
-	location, err := lymcwd.ResolveWorktree(hub.PairCodeWorktree(slug))
+	t.Parallel()
+
+	hub := hubforge.CopyHub(t, pairHubShape)
+	location, err := lymcwd.ResolveWorktree(hub.PairCodeWorktree(hubforge.TemplatePairSlug))
 	if err != nil {
 		t.Fatalf("ResolveWorktree error = %v; want nil", err)
 	}
@@ -148,10 +127,10 @@ func TestWire_DescribeTableCarriesTheDriftVerdict(t *testing.T) {
 // Once a records commit exists, the seam renders the records of the newest one at call time.
 func TestLandingDeps_DriftVerdict_RendersTheScopeRecord(t *testing.T) {
 	tiergate.Require(t, 1)
-	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	const slug = "landingverdict"
-	hubforge.AddPair(t, hub, slug)
-	location, err := lymcwd.ResolveWorktree(hub.PairCodeWorktree(slug))
+	t.Parallel()
+
+	hub := hubforge.CopyHub(t, pairHubShape)
+	location, err := lymcwd.ResolveWorktree(hub.PairCodeWorktree(hubforge.TemplatePairSlug))
 	if err != nil {
 		t.Fatalf("ResolveWorktree error = %v; want nil", err)
 	}

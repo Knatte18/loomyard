@@ -1,4 +1,4 @@
-// export_test.go re-exports the run owner verdict for the loomcli_test files that drive it over a forged hub.
+// export_test.go re-exports unexported seams and the one-pair hub shape for the loomcli_test files over a forged hub.
 
 package loomcli
 
@@ -31,3 +31,6 @@ type OwnerVerdict = ownerVerdict
 
 // RunOwnerVerdict judges whether another machine owns the run of a slug.
 var RunOwnerVerdict = runOwnerVerdict
+
+// PairHubShape describes a hub holding one pair, slug hubforge.TemplatePairSlug.
+var PairHubShape = pairHubShape

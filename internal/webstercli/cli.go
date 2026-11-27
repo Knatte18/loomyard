@@ -111,6 +111,9 @@ type websterCLI struct {
 	// Opening it there would fail the pre-run in healthy but unwired locations.
 	// Those are the locations that validate and status run in, and neither verb commits to the fabric.
 	openFabric func() (*fabricengine.Fabric, error)
+	// syncOptions are the skip switches every fabric sync and reset of the pair's code runs under.
+	// wireHub and wireStandalone read them from the environment once per process; the zero value skips nothing.
+	syncOptions fabricengine.SyncOptions
 	// parentBranch lazily reads the pair's recorded parent branch from fabric's origin record.
 	// The clean-parent-merge rule needs it; standalone leaves it nil, since no merge commit is accepted.
 	parentBranch websterengine.ParentBranchFunc
@@ -153,6 +156,10 @@ type websterCLI struct {
 	// masterStrand returns the calling Master strand's name and guid.
 	// begin-batch and recover-batch claim them into a pause covering the pair; wireHub and wireStandalone set it.
 	masterStrand func() (name, guid string, err error)
+	// strandName is the calling strand's name, empty for an unnamed shell.
+	// wireHub and wireStandalone read it from the strand-name environment variable;
+	// the bracket verbs' orphaned-Master guard and masterStrand read it from here.
+	strandName string
 
 	// stencilsDirFlag, planDirFlag, and targetDirFlag hold the raw values of the three standalone-entry persistent flags.
 	// Command() binds each one.

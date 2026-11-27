@@ -65,7 +65,7 @@ Example:
 			_ = mutateLock.Release()
 			mutateHeld = false
 
-			if _, syncErr := fabricSync(c.openFabric, c.anchorRel, "restore-plan"); syncErr != nil {
+			if _, syncErr := fabricSync(c.openFabric, c.anchorRel, c.syncOptions, "restore-plan"); syncErr != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: plan restored but the fabric sync failed: %v; %s", syncErr, fabricSyncWayForward)))
 				return nil
 			}

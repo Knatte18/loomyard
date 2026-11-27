@@ -13,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -20,6 +21,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
+
+// pairHubShape describes a hub holding one pair, slug hubforge.TemplatePairSlug.
+// A test copies it with hubforge.CopyHub.
+// The pair is built once per test binary, so a copy of it replaces a per-test hubforge.AddPair.
+var pairHubShape = hubforge.Shape{Anchor: ".", Pairs: []string{hubforge.TemplatePairSlug}}
 
 // seedLoomConfig creates <anchorPath>/_lym/config/loom.yaml with the embedded template's contents.
 // It seeds the one config file the loom config loader reads strictly.

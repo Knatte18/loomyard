@@ -23,15 +23,15 @@ import (
 // TestApproveDiscussion_Real drives approveDiscussion over one real pair per row, each with its own board entry.
 // It asserts what the seam stores and when it fails.
 // It is serial because it sets the board skip variable, which is process-global.
+// Its rows run in parallel under it, each over a hub copy of its own.
 func TestApproveDiscussion_Real(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Setenv("BOARD_SKIP_GIT", "1")
-	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 
+	const slug = hubforge.TemplatePairSlug
 	const record = "# Decision record\n\nThe approved decisions.\n"
 	tests := []struct {
 		name         string
-		slug         string
 		withEntry    bool
 		markDone     bool
 		withRecord   bool
@@ -39,15 +39,16 @@ func TestApproveDiscussion_Real(t *testing.T) {
 		wantStored   bool
 		wantFileKept bool
 	}{
-		{"StoresTheWorkingCopyAndFlagsTheEntry", "stores", true, false, true, "", true, true},
-		{"DoneEntryPassesWithoutStoring", "landed", true, true, true, "", false, false},
-		{"AbsentEntryFailsTheSettle", "noentry", false, false, true, "lym board upsert", false, false},
-		{"MissingWorkingCopyFailsTheSettle", "norecord", true, false, false, "read the decision record", false, false},
+		{"StoresTheWorkingCopyAndFlagsTheEntry", true, false, true, "", true, true},
+		{"DoneEntryPassesWithoutStoring", true, true, true, "", false, false},
+		{"AbsentEntryFailsTheSettle", false, false, true, "lym board upsert", false, false},
+		{"MissingWorkingCopyFailsTheSettle", true, false, false, "read the decision record", false, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			hubforge.AddPair(t, hub, tt.slug)
-			location, err := lymcwd.ResolveWorktree(hub.PairCodeWorktree(tt.slug))
+			t.Parallel()
+			hub := hubforge.CopyHub(t, pairHubShape)
+			location, err := lymcwd.ResolveWorktree(hub.PairCodeWorktree(slug))
 			if err != nil {
 				t.Fatalf("ResolveWorktree() error = %v; want nil", err)
 			}
@@ -56,13 +57,13 @@ func TestApproveDiscussion_Real(t *testing.T) {
 				t.Fatalf("OpenHub() error = %v; want nil", err)
 			}
 			if tt.withEntry {
-				if _, err := board.UpsertTask(map[string]any{"slug": tt.slug, "title": "Approve", "kind": "task", "labels": []string{"bug"}}); err != nil {
+				if _, err := board.UpsertTask(map[string]any{"slug": slug, "title": "Approve", "kind": "task", "labels": []string{"bug"}}); err != nil {
 					t.Fatalf("UpsertTask() error = %v; want nil", err)
 				}
 			}
 			if tt.markDone {
 				done := "done"
-				if err := board.SetStatus(tt.slug, &done); err != nil {
+				if err := board.SetStatus(slug, &done); err != nil {
 					t.Fatalf("SetStatus(done) error = %v; want nil", err)
 				}
 			}
@@ -84,14 +85,14 @@ func TestApproveDiscussion_Real(t *testing.T) {
 				t.Fatalf("approveDiscussion() error = %v; want it to contain %q", err, tt.wantErr)
 			}
 
-			got, found, err := board.DecisionRecord(tt.slug)
+			got, found, err := board.DecisionRecord(slug)
 			if err != nil {
 				t.Fatalf("DecisionRecord() error = %v; want nil", err)
 			}
 			if found != tt.wantStored || (found && string(got) != record) {
 				t.Errorf("DecisionRecord() = %q, %v; want stored = %v with the working copy's bytes", got, found, tt.wantStored)
 			}
-			_, statErr := os.Stat(filepath.Join(fabriclayout.BoardDir(location.HubPath), "decision-"+tt.slug+".md"))
+			_, statErr := os.Stat(filepath.Join(fabriclayout.BoardDir(location.HubPath), "decision-"+slug+".md"))
 			if (statErr == nil) != tt.wantFileKept {
 				t.Errorf("record file present = %v; want %v", statErr == nil, tt.wantFileKept)
 			}
@@ -102,16 +103,16 @@ func TestApproveDiscussion_Real(t *testing.T) {
 // TestSeedDiscussedRecord_Real drives seedDiscussedRecord over one real pair per row, each with its own board entry.
 // It asserts what the seam seeds into the run and commits.
 // It is serial because it sets the board skip variable, which is process-global.
+// Its rows run in parallel under it, each over a hub copy of its own.
 func TestSeedDiscussedRecord_Real(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Setenv("BOARD_SKIP_GIT", "1")
-	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 
+	const slug = hubforge.TemplatePairSlug
 	stored := loomshed.BoardRecord("The approved goal.")
 	const existingLog = "# Support log\n\nWritten by the run.\n"
 	tests := []struct {
 		name      string
-		slug      string
 		withEntry bool
 		discussed bool
 		// dropStoredFile removes the flagged entry's record file from the board directory.
@@ -133,20 +134,21 @@ func TestSeedDiscussedRecord_Real(t *testing.T) {
 		// wantNoSupportLog asserts no support log was written before the failure.
 		wantNoSupportLog bool
 	}{
-		{name: "DiscussedEntrySeedsAndCommitsItsRecord", slug: "discussed", withEntry: true, discussed: true, wantSeeded: true},
-		{name: "UndiscussedEntrySeedsNothing", slug: "undiscussed", withEntry: true},
-		{name: "AbsentEntrySeedsNothing", slug: "absent"},
-		{name: "FlaggedEntryWithMissingRecordFileSeedsNothing", slug: "nofile", withEntry: true, discussed: true, dropStoredFile: true},
-		{name: "ExistingRecordIsOverwrittenAndExistingSupportLogKept", slug: "existing", withEntry: true, discussed: true, existingRecord: "# Old record\n", existingLog: existingLog, wantSeeded: true},
-		{name: "UnwritableDiscussionDirectoryFails", slug: "blocked", withEntry: true, discussed: true, blockDir: true, errContains: "create the discussion directory", wantNoSupportLog: true},
-		{name: "UnwritableRecordFileFails", slug: "recordblocked", withEntry: true, discussed: true, blockRecordWrite: true, errContains: "write the stored decision record", wantNoSupportLog: true},
-		{name: "UnreadableStoredRecordFails", slug: "boardfail", withEntry: true, discussed: true, blockStoredFile: true, errContains: "read decision record", wantNoSupportLog: true},
-		{name: "LockedIndexFailsTheCommit", slug: "commitfail", withEntry: true, discussed: true, lockIndex: true, errContains: "commit the stored decision record"},
+		{name: "DiscussedEntrySeedsAndCommitsItsRecord", withEntry: true, discussed: true, wantSeeded: true},
+		{name: "UndiscussedEntrySeedsNothing", withEntry: true},
+		{name: "AbsentEntrySeedsNothing"},
+		{name: "FlaggedEntryWithMissingRecordFileSeedsNothing", withEntry: true, discussed: true, dropStoredFile: true},
+		{name: "ExistingRecordIsOverwrittenAndExistingSupportLogKept", withEntry: true, discussed: true, existingRecord: "# Old record\n", existingLog: existingLog, wantSeeded: true},
+		{name: "UnwritableDiscussionDirectoryFails", withEntry: true, discussed: true, blockDir: true, errContains: "create the discussion directory", wantNoSupportLog: true},
+		{name: "UnwritableRecordFileFails", withEntry: true, discussed: true, blockRecordWrite: true, errContains: "write the stored decision record", wantNoSupportLog: true},
+		{name: "UnreadableStoredRecordFails", withEntry: true, discussed: true, blockStoredFile: true, errContains: "read decision record", wantNoSupportLog: true},
+		{name: "LockedIndexFailsTheCommit", withEntry: true, discussed: true, lockIndex: true, errContains: "commit the stored decision record"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			hubforge.AddPair(t, hub, tt.slug)
-			location, err := lymcwd.ResolveWorktree(hub.PairCodeWorktree(tt.slug))
+			t.Parallel()
+			hub := hubforge.CopyHub(t, pairHubShape)
+			location, err := lymcwd.ResolveWorktree(hub.PairCodeWorktree(slug))
 			if err != nil {
 				t.Fatalf("ResolveWorktree() error = %v; want nil", err)
 			}
@@ -155,22 +157,22 @@ func TestSeedDiscussedRecord_Real(t *testing.T) {
 				t.Fatalf("OpenHub() error = %v; want nil", err)
 			}
 			if tt.withEntry {
-				if _, err := board.UpsertTask(map[string]any{"slug": tt.slug, "title": "Seed", "kind": "task", "labels": []string{"bug"}}); err != nil {
+				if _, err := board.UpsertTask(map[string]any{"slug": slug, "title": "Seed", "kind": "task", "labels": []string{"bug"}}); err != nil {
 					t.Fatalf("UpsertTask() error = %v; want nil", err)
 				}
 			}
 			if tt.discussed {
-				if err := board.StoreDecisionRecord(tt.slug, stored); err != nil {
+				if err := board.StoreDecisionRecord(slug, stored); err != nil {
 					t.Fatalf("StoreDecisionRecord() error = %v; want nil", err)
 				}
 			}
 			if tt.dropStoredFile || tt.blockStoredFile {
-				if err := os.Remove(filepath.Join(fabriclayout.BoardDir(location.HubPath), "decision-"+tt.slug+".md")); err != nil {
+				if err := os.Remove(filepath.Join(fabriclayout.BoardDir(location.HubPath), "decision-"+slug+".md")); err != nil {
 					t.Fatalf("Remove(stored record file) error = %v; want nil", err)
 				}
 			}
 			if tt.blockStoredFile {
-				if err := os.Mkdir(filepath.Join(fabriclayout.BoardDir(location.HubPath), "decision-"+tt.slug+".md"), 0o755); err != nil {
+				if err := os.Mkdir(filepath.Join(fabriclayout.BoardDir(location.HubPath), "decision-"+slug+".md"), 0o755); err != nil {
 					t.Fatalf("Mkdir(stored record path) error = %v; want nil", err)
 				}
 			}

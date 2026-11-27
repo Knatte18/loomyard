@@ -20,9 +20,8 @@ func TestWire_HardenerRecipe(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	const slug = "hardened"
-	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	hubforge.AddPair(t, hub, slug)
+	const slug = hubforge.TemplatePairSlug
+	hub := hubforge.CopyHub(t, pairHubShape)
 	writeHubGateConfig(t, hub.Path, gateConfigWithTwoTiers())
 	reviewers := []string{"opus[medium]", "opus[high]", "sonnet[medium]"}
 	seedHardenerConfig(t, hub.Path, `reviewer:

@@ -105,7 +105,7 @@ Example:
 			_ = mutateLock.Release()
 			mutateHeld = false
 
-			if _, syncErr := fabricSync(c.openFabric, c.anchorRel, "accept-audit"); syncErr != nil {
+			if _, syncErr := fabricSync(c.openFabric, c.anchorRel, c.syncOptions, "accept-audit"); syncErr != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: audit findings accepted but the fabric sync failed: %v; %s", syncErr, fabricSyncWayForward)))
 				return nil
 			}
@@ -145,7 +145,7 @@ func (c *websterCLI) acceptBatch(cmd *cobra.Command, st *websterengine.State, n 
 	_ = release()
 	*held = false
 
-	if _, syncErr := fabricSync(c.openFabric, c.anchorRel, "accept-audit"); syncErr != nil {
+	if _, syncErr := fabricSync(c.openFabric, c.anchorRel, c.syncOptions, "accept-audit"); syncErr != nil {
 		clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: batch findings accepted but the fabric sync failed: %v; %s", syncErr, fabricSyncWayForward)))
 		return
 	}

@@ -33,7 +33,7 @@ func TestRunOwnerVerdict(t *testing.T) {
 	t.Parallel()
 	boardkit.InstallReplay(t)
 
-	const slug = "owned-task"
+	const slug = hubforge.TemplatePairSlug
 	const here = "here"
 	tests := []struct {
 		name string
@@ -51,8 +51,7 @@ func TestRunOwnerVerdict(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-			hubforge.AddPair(t, h, slug)
+			h := hubforge.CopyHub(t, loomcli.PairHubShape)
 			running := shedengine.Status{CurrentProducer: "Run-Shed", State: shedengine.StateRunning}
 			statusPath, statusLockPath := shedrun.StatusFile(h.Location, slug), shedrun.StatusLock(h.Location, slug)
 			for _, dir := range []string{filepath.Dir(statusPath), filepath.Dir(statusLockPath)} {

@@ -8,8 +8,10 @@
 // They drive one verb's cobra.Command through clihelp.Execute, the package's injection point for these tests.
 // seedPersistentPreRunFixture and its tests are the exception.
 // They drive Command()'s real PersistentPreRunE through clihelp.ExecuteIn.
-// FABRIC_SKIP_GIT=1 is set on every test that reaches a fabricSync call, so no real records sibling worktree is needed.
-// The one test proving fabricSync was never reached (ErrRunBusy) leaves FABRIC_SKIP_GIT unset.
+// A test whose verb reaches a working fabricSync builds its fixture with newSkipGitVerbsFixture.
+// That fixture's CLI skips the sync's git work through its syncOptions, so no real records sibling worktree is needed.
+// The tests of a verb's fabric-sync refusal reach fabricSync through a failing opener instead.
+// The one test proving fabricSync was never reached (ErrRunBusy) keeps the zero syncOptions.
 // It asserts the envelope carries no fabric-sync or fabricengine error text:
 // that is the failure a reached fabricSync would stamp in this records-less geometry.
 
@@ -155,6 +157,15 @@ func newVerbsFixture(t *testing.T) *verbsFixture {
 	return &verbsFixture{CLI: c, Reed: reed, Engine: engine, Runner: runner, Worktree: worktree}
 }
 
+// newSkipGitVerbsFixture is newVerbsFixture with the CLI's fabric syncs skipping their git work.
+// A verb that reaches a sync therefore needs no real records sibling worktree.
+func newSkipGitVerbsFixture(t *testing.T) *verbsFixture {
+	t.Helper()
+	fx := newVerbsFixture(t)
+	fx.CLI.syncOptions = fabricengine.SyncOptions{SkipGit: true}
+	return fx
+}
+
 // TestPersistentPreRun_OpenFabricWiredButUninvoked proves that pre-run wiring builds the fabric-handle opener.
 // The opener is a closure stored on c, and wiring never calls it.
 // The fixture carries a hub-level board directory, so preflight.HubPresent selects hub mode.
@@ -163,6 +174,7 @@ func newVerbsFixture(t *testing.T) *verbsFixture {
 // Reaching exit 0 is therefore the behavioural half of the proof, and c.openFabric != nil is the structural half.
 func TestPersistentPreRun_OpenFabricWiredButUninvoked(t *testing.T) {
 	tiergate.Require(t, 1)
+	t.Parallel()
 	container := t.TempDir()
 	worktree := filepath.Join(container, "pair")
 	if err := os.MkdirAll(worktree, 0o755); err != nil {
@@ -227,6 +239,7 @@ func (b *sizeProbeBatcher) Name() string { return "size-probe" }
 // A source rooted at the pane's cwd would not find it.
 func TestExecutionBatches_SizesReadFromWorktreeRoot(t *testing.T) {
 	tiergate.Require(t, 1)
+	t.Parallel()
 	fx := newVerbsFixture(t)
 	probe := &sizeProbeBatcher{path: "backend/README.md"}
 	fx.CLI.batcher = probe
@@ -248,8 +261,8 @@ func TestExecutionBatches_SizesReadFromWorktreeRoot(t *testing.T) {
 // It applies when rebaseline re-forms the unbegun tail of a recorded partition.
 func TestRebaselineCmd_SizesReadFromWorktreeRoot(t *testing.T) {
 	tiergate.Require(t, 1)
-	t.Setenv("FABRIC_SKIP_GIT", "1")
-	fx := newVerbsFixture(t)
+	t.Parallel()
+	fx := newSkipGitVerbsFixture(t)
 	plan := onlyCreatePlan("", "internal/only/new.go")
 	plan.Root = fx.CLI.anchorRel
 	plan.Cards = append(plan.Cards, plankit.Card{Number: 2, Slug: "second", Summary: "edits the README", Groups: []plankit.Group{{Label: "Edit", Targets: []string{"README.md"}}}, Intent: "edit it.", ImpactSummary: "Edits the README."})
@@ -277,8 +290,8 @@ func TestRebaselineCmd_SizesReadFromWorktreeRoot(t *testing.T) {
 // It also proves that begin-batch types nothing into Master's pane and persists state.json with the new BatchState.
 func TestBeginBatchCmd_HappyPath(t *testing.T) {
 	tiergate.Require(t, 1)
-	t.Setenv("FABRIC_SKIP_GIT", "1")
-	fx := newVerbsFixture(t)
+	t.Parallel()
+	fx := newSkipGitVerbsFixture(t)
 	fx.initState(t)
 
 	var out strings.Builder
@@ -319,8 +332,8 @@ func TestBeginBatchCmd_HappyPath(t *testing.T) {
 // so a prompt worded for Recovery's engine or the default one fails it.
 func TestBeginBatchCmd_PromptFollowsMasterEngine(t *testing.T) {
 	tiergate.Require(t, 1)
-	t.Setenv("FABRIC_SKIP_GIT", "1")
-	fx := newVerbsFixture(t)
+	t.Parallel()
+	fx := newSkipGitVerbsFixture(t)
 	fx.CLI.roles[websterengine.RoleMaster] = shuttleengine.ModelChoice{Engine: "codex", Model: "master-model"}
 	fx.initState(t)
 
@@ -349,6 +362,7 @@ func TestBeginBatchCmd_PromptFollowsMasterEngine(t *testing.T) {
 // A report over a recorded batch is refused, with the record's state and its one remedy named.
 func TestBeginBatchCmd_ReportOnDisk(t *testing.T) {
 	tiergate.Require(t, 1)
+	t.Parallel()
 	tests := []struct {
 		name         string
 		record       *websterengine.BatchState
@@ -381,8 +395,8 @@ func TestBeginBatchCmd_ReportOnDisk(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Setenv("FABRIC_SKIP_GIT", "1")
-			fx := newVerbsFixture(t)
+			t.Parallel()
+			fx := newSkipGitVerbsFixture(t)
 			st := fx.initState(t)
 			if tt.record != nil {
 				st.Batches[1] = tt.record
@@ -424,8 +438,8 @@ func TestBeginBatchCmd_ReportOnDisk(t *testing.T) {
 // An earlier recorded batch deleted the target, and the envelope's advisories name it as already deleted.
 func TestBeginBatchCmd_DeleteTargetAlreadyGone(t *testing.T) {
 	tiergate.Require(t, 1)
-	t.Setenv("FABRIC_SKIP_GIT", "1")
-	fx := newVerbsFixture(t)
+	t.Parallel()
+	fx := newSkipGitVerbsFixture(t)
 	const target = "internal/gone/x.txt"
 	gitkit.CommitFile(t, fx.CLI.geom.WorktreeRoot, target, "x", "add the target")
 	// The fixture's own single-card plan is replaced, so its card file goes too.
@@ -469,6 +483,7 @@ func TestBeginBatchCmd_DeleteTargetAlreadyGone(t *testing.T) {
 // The engine's own test covers it.
 func TestBeginBatchCmd_PlanConflict(t *testing.T) {
 	tiergate.Require(t, 1)
+	t.Parallel()
 	// Every row starts with a stale conflict record and a routed file in the scratch directory.
 	// A row with a blocked path occupies it with a non-empty directory instead.
 	const (
@@ -561,8 +576,8 @@ func TestBeginBatchCmd_PlanConflict(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Setenv("FABRIC_SKIP_GIT", "1")
-			fx := newVerbsFixture(t)
+			t.Parallel()
+			fx := newSkipGitVerbsFixture(t)
 			fx.CLI.frictionDir = t.TempDir()
 			if tt.shapePlan != nil {
 				tt.shapePlan(t, fx)
@@ -662,6 +677,7 @@ func TestBeginBatchCmd_PlanConflict(t *testing.T) {
 // Each refusal carries the plan_drifted flag.
 func TestFingerprintRefusals_CarryPlanDrifted(t *testing.T) {
 	tiergate.Require(t, 1)
+	t.Parallel()
 	tests := []struct {
 		name string
 		// seed brings the fixture to the state the verb refuses from, before the card file is edited.
@@ -702,8 +718,8 @@ func TestFingerprintRefusals_CarryPlanDrifted(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Setenv("FABRIC_SKIP_GIT", "1")
-			fx := newVerbsFixture(t)
+			t.Parallel()
+			fx := newSkipGitVerbsFixture(t)
 			tt.seed(t, fx, fx.initState(t))
 			plankit.Write(t, fx.CLI.geom.PlanDir, onlyCreatePlan("", "internal/edited/new.go"))
 
@@ -724,6 +740,7 @@ func TestFingerprintRefusals_CarryPlanDrifted(t *testing.T) {
 // Until then, it returns the {"no_report": true} ladder signal, which is not an error.
 func TestRecordBatchCmd_Envelope(t *testing.T) {
 	tiergate.Require(t, 1)
+	t.Parallel()
 	tests := []struct {
 		name        string
 		writeReport bool
@@ -759,8 +776,8 @@ func TestRecordBatchCmd_Envelope(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Setenv("FABRIC_SKIP_GIT", "1")
-			fx := newVerbsFixture(t)
+			t.Parallel()
+			fx := newSkipGitVerbsFixture(t)
 			// record-batch runs on a recorded state and prices no partition, so a lister that fails proves it is never called.
 			fx.CLI.instructionFiles = failingInstructionFiles
 			st := fx.initState(t)
@@ -823,8 +840,8 @@ func TestRecordBatchCmd_Envelope(t *testing.T) {
 // The call exits non-zero with batch_failed and names recover-batch; state.json leaves the batch terminal and failed.
 func TestRecordBatchCmd_FailedBatchEnvelope(t *testing.T) {
 	tiergate.Require(t, 1)
-	t.Setenv("FABRIC_SKIP_GIT", "1")
-	fx := newVerbsFixture(t)
+	t.Parallel()
+	fx := newSkipGitVerbsFixture(t)
 	st := fx.initState(t)
 	startSHA := gitkit.CommitFile(t, fx.CLI.geom.WorktreeRoot, "backend/internal/only/new.go", "package only\n", "01.1: add impl")
 	st.Batches[1] = &websterengine.BatchState{Slug: "only", StartSHA: startSHA, Kind: "fork", AmendedCards: []websterengine.AmendedCard{{Card: "01-only"}}}
@@ -869,8 +886,8 @@ func TestRecordBatchCmd_FailedBatchEnvelope(t *testing.T) {
 // recover-batch over the same batch then refuses before spawning, with the same flag and way forward.
 func TestRecordBatchCmd_DeleteReferencedByLaterCard(t *testing.T) {
 	tiergate.Require(t, 1)
-	t.Setenv("FABRIC_SKIP_GIT", "1")
-	fx := newVerbsFixture(t)
+	t.Parallel()
+	fx := newSkipGitVerbsFixture(t)
 	root := fx.CLI.geom.WorktreeRoot
 	// The fixture's own single-card plan is replaced, so its card file goes too.
 	if err := os.Remove(filepath.Join(fx.CLI.geom.PlanDir, "01-only.md")); err != nil {
@@ -935,8 +952,8 @@ func TestRecordBatchCmd_DeleteReferencedByLaterCard(t *testing.T) {
 // The open batch is saved marked handed back.
 func TestRecordBatchCmd_LaterTargetRemovedEnvelope(t *testing.T) {
 	tiergate.Require(t, 1)
-	t.Setenv("FABRIC_SKIP_GIT", "1")
-	fx := newVerbsFixture(t)
+	t.Parallel()
+	fx := newSkipGitVerbsFixture(t)
 	root := fx.CLI.geom.WorktreeRoot
 	// The fixture's own single-card plan is replaced, so its card file goes too.
 	if err := os.Remove(filepath.Join(fx.CLI.geom.PlanDir, "01-only.md")); err != nil {
@@ -990,8 +1007,8 @@ func TestRecordBatchCmd_LaterTargetRemovedEnvelope(t *testing.T) {
 // The call exits non-zero with report_archived, and the report is gone from its live path.
 func TestRecordBatchCmd_ReportArchivedEnvelope(t *testing.T) {
 	tiergate.Require(t, 1)
-	t.Setenv("FABRIC_SKIP_GIT", "1")
-	fx := newVerbsFixture(t)
+	t.Parallel()
+	fx := newSkipGitVerbsFixture(t)
 	fx.initState(t)
 	startSHA := gitkit.CommitFile(t, fx.CLI.geom.WorktreeRoot, "backend/internal/only/new.go", "package only\n", "01.1: add impl")
 	writeBatchReport(t, fx.CLI.geom.ReportsDir, startSHA)
@@ -1019,8 +1036,8 @@ func TestRecordBatchCmd_ReportArchivedEnvelope(t *testing.T) {
 // The envelope names the reset-to-start route, and recover-batch spawns nothing.
 func TestRecoverBatchCmd_NeedsFreshEnvelope(t *testing.T) {
 	tiergate.Require(t, 1)
-	t.Setenv("FABRIC_SKIP_GIT", "1")
-	fx := newVerbsFixture(t)
+	t.Parallel()
+	fx := newSkipGitVerbsFixture(t)
 	st := fx.initState(t)
 	st.Batches[1] = &websterengine.BatchState{
 		Slug: "only", Kind: "fork", Terminal: true, Status: websterengine.DigestStatusFailed,
@@ -1071,10 +1088,11 @@ func TestRecoverBatchCmd_NeedsFreshEnvelope(t *testing.T) {
 // Both verbs name the way forward and spawn nothing.
 func TestRenameToolMissingEnvelope(t *testing.T) {
 	tiergate.Require(t, 1)
-	t.Setenv("FABRIC_SKIP_GIT", "1")
+	t.Parallel()
 	for _, verb := range []string{"begin-batch", "recover-batch"} {
 		t.Run(verb, func(t *testing.T) {
-			fx := newVerbsFixture(t)
+			t.Parallel()
+			fx := newSkipGitVerbsFixture(t)
 			plan := onlyCreatePlan("", "internal/only/new.go")
 			plan.Cards[0].Groups = []plankit.Group{{Label: "Rename", Targets: []string{"`sub#Foo` -> `plan:sub#Bar`"}}}
 			plankit.Write(t, fx.CLI.geom.PlanDir, plan)
@@ -1112,8 +1130,8 @@ func TestRenameToolMissingEnvelope(t *testing.T) {
 // `recover-batch 1` then spawns with the edited card's gate in its prompt.
 func TestRebaselineCmd_EditedCardOfFailedBatchThenRecover(t *testing.T) {
 	tiergate.Require(t, 1)
-	t.Setenv("FABRIC_SKIP_GIT", "1")
-	fx := newVerbsFixture(t)
+	t.Parallel()
+	fx := newSkipGitVerbsFixture(t)
 	fx.initState(t)
 
 	var out strings.Builder
@@ -1185,8 +1203,8 @@ func TestRebaselineCmd_EditedCardOfFailedBatchThenRecover(t *testing.T) {
 // A dead recovery that committed offers its retry; a third counted spawn is refused, and a new amendment spawns anyway.
 func TestRecoverBatchCmd_RunningThenTerminal(t *testing.T) {
 	tiergate.Require(t, 1)
-	t.Setenv("FABRIC_SKIP_GIT", "1")
-	fx := newVerbsFixture(t)
+	t.Parallel()
+	fx := newSkipGitVerbsFixture(t)
 	// recover-batch runs on a recorded state and prices no partition, so a lister that fails proves it is never called.
 	fx.CLI.instructionFiles = failingInstructionFiles
 	fx.initState(t)
@@ -1407,12 +1425,13 @@ func TestRecoverBatchCmd_RunningThenTerminal(t *testing.T) {
 
 // TestRunCmd_ErrRunBusySkipsRecordsBackstop proves the ErrRunBusy refusal never reaches Master's own spawn.
 // It also proves the refusal never runs the exit-time fabric backstop.
-// FABRIC_SKIP_GIT stays unset, so an accidental fabricSync call fails loudly.
+// The CLI keeps its zero syncOptions, so an accidental fabricSync call fails loudly.
 // With no records sibling on disk, the stat validation in fabricengine.Open fails,
 // and the run envelope would carry "fabric sync failed" plus fabricengine's missing-path text.
 // The output text is the signal that fabricSync was reached, so both strings are asserted absent below.
 func TestRunCmd_ErrRunBusySkipsRecordsBackstop(t *testing.T) {
 	tiergate.Require(t, 1)
+	t.Parallel()
 	fx := newVerbsFixture(t)
 	starter := &verbsFakeMasterStarter{}
 	fx.CLI.masterStarter = starter
@@ -1474,8 +1493,8 @@ var (
 // The test asserts that the friction note on disk states the error outcome and that the next run reclaims the strand.
 func TestRunCmd_DiedMasterNotesExpiredShellOutcome(t *testing.T) {
 	tiergate.Require(t, 1)
-	t.Setenv("FABRIC_SKIP_GIT", "1")
-	fx := newVerbsFixture(t)
+	t.Parallel()
+	fx := newSkipGitVerbsFixture(t)
 	fx.CLI.frictionDir = t.TempDir()
 	fx.CLI.cfg.VerifyGateAttempts = 3
 	master := &verbsDiedMaster{strandGUID: "master-strand-died", sessionID: "master-session-died"}
@@ -1777,9 +1796,9 @@ func unmakeConfigUnreadable(t *testing.T, h *hubforge.Hub, module string) {
 // It asserts on planparser's own error text, which only a wrong-root c.planDir can produce.
 // The plan's `root:` names the anchor's own directory and its Edit target is a file there,
 // so a card path checked against the anchor instead of the worktree root doubles the prefix and reads as missing.
-// The test does not call t.Parallel().
 func TestPersistentPreRunE_PlanDirAnchoredAtSubpath(t *testing.T) {
 	tiergate.Require(t, 1)
+	t.Parallel()
 	h := seedPersistentPreRunFixture(t, "backend", batcher.ConfigTemplate())
 
 	if err := os.WriteFile(filepath.Join(h.PrimeWorktree(), "backend", "README.md"), []byte("# backend\n"), 0o644); err != nil {
@@ -1828,7 +1847,7 @@ func TestPersistentPreRunE_PlanDirAnchoredAtSubpath(t *testing.T) {
 // The per-verb tests below reach each refusal through a failing opener, which needs no hub.
 func TestFabricSyncWayForward_NextSyncCommitsSavedState(t *testing.T) {
 	tiergate.Require(t, 1)
-	t.Setenv("FABRIC_SKIP_GIT", "")
+	t.Parallel()
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	geom := hubgeom.WebsterGeometry(h.Location)
 	st := &websterengine.State{State: runplan.State{PlanFingerprint: "fp", Batches: map[int]*websterengine.BatchState{1: {Slug: "only", Kind: "fork"}}}}
@@ -1836,12 +1855,12 @@ func TestFabricSyncWayForward_NextSyncCommitsSavedState(t *testing.T) {
 		t.Fatalf("SaveState() error = %v", err)
 	}
 
-	if _, err := fabricSync(failingFabricOpen, h.Location.AnchorRel, "begin-batch 01-only"); err == nil {
+	if _, err := fabricSync(failingFabricOpen, h.Location.AnchorRel, fabricengine.SyncOptions{}, "begin-batch 01-only"); err == nil {
 		t.Fatal("fabricSync with a failing opener = nil error; want the refusal's cause")
 	}
 
 	open := func() (*fabricengine.Fabric, error) { return fabricengine.Open(h.Location) }
-	committed, err := fabricSync(open, h.Location.AnchorRel, "record-batch 01-only done")
+	committed, err := fabricSync(open, h.Location.AnchorRel, fabricengine.SyncOptions{}, "record-batch 01-only done")
 	if err != nil || !committed {
 		t.Fatalf("fabricSync after the failure = %v, %v; want the saved state committed", committed, err)
 	}
@@ -1860,7 +1879,7 @@ func TestFabricSyncWayForward_NextSyncCommitsSavedState(t *testing.T) {
 // TestFabricSyncWayForward_NextSyncCommitsSavedState is the proof that a working sync commits it.
 func TestBeginBatchCmd_FabricSyncFailureWayForward(t *testing.T) {
 	tiergate.Require(t, 1)
-	t.Setenv("FABRIC_SKIP_GIT", "")
+	t.Parallel()
 	fx := newVerbsFixture(t)
 	fx.initState(t)
 	fx.CLI.openFabric = failingFabricOpen
@@ -1886,7 +1905,7 @@ func TestBeginBatchCmd_FabricSyncFailureWayForward(t *testing.T) {
 // The batch is terminal on disk despite the sync failure, which is the state the way forward commits.
 func TestRecordBatchCmd_FabricSyncFailureWayForward(t *testing.T) {
 	tiergate.Require(t, 1)
-	t.Setenv("FABRIC_SKIP_GIT", "")
+	t.Parallel()
 	fx := newVerbsFixture(t)
 	st := fx.initState(t)
 	startSHA := gitkit.CommitFile(t, fx.CLI.geom.WorktreeRoot, "backend/internal/only/new.go", "package only\n", "01.1: add impl")
@@ -1918,7 +1937,7 @@ func TestRecordBatchCmd_FabricSyncFailureWayForward(t *testing.T) {
 // TestFabricSyncWayForward_NextSyncCommitsSavedState is the proof that a working sync commits the saved state.
 func TestRecoverBatchCmd_FabricSyncAndReedBootWayForward(t *testing.T) {
 	tiergate.Require(t, 1)
-	t.Setenv("FABRIC_SKIP_GIT", "")
+	t.Parallel()
 	fx := newVerbsFixture(t)
 	fx.initState(t)
 
@@ -1949,8 +1968,8 @@ func TestRecoverBatchCmd_FabricSyncAndReedBootWayForward(t *testing.T) {
 // Once the run's state exists, the same verb proceeds.
 func TestBracketVerbs_NoRunInProgressWayForward(t *testing.T) {
 	tiergate.Require(t, 1)
-	t.Setenv("FABRIC_SKIP_GIT", "1")
-	fx := newVerbsFixture(t)
+	t.Parallel()
+	fx := newSkipGitVerbsFixture(t)
 	verbs := map[string]*cobra.Command{
 		"begin-batch":   fx.CLI.beginBatchCmd(),
 		"record-batch":  fx.CLI.recordBatchCmd(),

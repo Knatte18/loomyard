@@ -18,9 +18,9 @@ import (
 
 // TestRecordBatchCmd_SecretPaths proves record-batch fails a batch whose commit adds a path the loaded matcher matches.
 // A loader that fails with an invalid config refuses the verb with the fabric.yaml way forward instead.
-// Serial: each subtest sets FABRIC_SKIP_GIT through t.Setenv, so none calls t.Parallel.
 func TestRecordBatchCmd_SecretPaths(t *testing.T) {
 	tiergate.Require(t, 1)
+	t.Parallel()
 	tests := []struct {
 		name        string
 		secretPaths func() (secretpath.Matcher, error)
@@ -41,8 +41,8 @@ func TestRecordBatchCmd_SecretPaths(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Setenv("FABRIC_SKIP_GIT", "1")
-			fx := newVerbsFixture(t)
+			t.Parallel()
+			fx := newSkipGitVerbsFixture(t)
 			fx.CLI.secretPaths = tt.secretPaths
 			st := fx.initState(t)
 			startSHA := gitkit.RevParse(t, fx.CLI.geom.WorktreeRoot, "HEAD")

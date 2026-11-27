@@ -138,7 +138,7 @@ Example:
 					if err := c.standaloneKeepReset(plan); err != nil {
 						return fail(err.Error())
 					}
-				} else if err := fab.ResetPairCode(rec, plan.SHA, parent, plan.OwnPaths, fabricengine.EnvSyncOptions()); err != nil {
+				} else if err := fab.ResetPairCode(rec, plan.SHA, parent, plan.OwnPaths, c.syncOptions); err != nil {
 					if remoteBranchMoved(rec) {
 						clihelp.SetExit(cmd.Context(), output.ErrFields(out, fmt.Sprintf("webster: reset --to %s moved the remote task branch but not the checkout: %v", target, err), map[string]any{
 							"mutations": rec.Entries(),
@@ -183,7 +183,7 @@ Example:
 			if c.runID != "" {
 				transition = append(transition, fabriclayout.Trailer{Key: fabriclayout.TransitionTrailerKey, Value: c.runID})
 			}
-			if _, syncErr := fabricSync(c.openFabric, c.anchorRel, "reset", transition...); syncErr != nil {
+			if _, syncErr := fabricSync(c.openFabric, c.anchorRel, c.syncOptions, "reset", transition...); syncErr != nil {
 				return fail(fmt.Sprintf("webster: the branch was reset but the fabric sync failed: %v; %s", syncErr, fabricSyncWayForward))
 			}
 

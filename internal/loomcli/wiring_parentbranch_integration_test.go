@@ -20,6 +20,8 @@ import (
 // Once the pair has one, it returns the parent branch the record names.
 func TestWire_WebsterParentBranchReadsPairOrigin(t *testing.T) {
 	tiergate.Require(t, 1)
+	t.Parallel()
+
 	loc := hubLocation(t, "pair", ".")
 
 	c := &loomCLI{runID: shedrun.SelfRunID}

@@ -38,6 +38,7 @@ func TestWebsterCLI_PairSlug(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			if got := tt.cli.pairSlug(); got != tt.want {
 				t.Errorf("pairSlug() = %q; want %q", got, tt.want)
 			}
@@ -48,6 +49,7 @@ func TestWebsterCLI_PairSlug(t *testing.T) {
 // TestFixVerifyCmd drives the verb's first call, which spawns the cold fixer and returns a running snapshot, then the second call that attaches to it and reaches a terminal result.
 func TestFixVerifyCmd(t *testing.T) {
 	tiergate.Require(t, 1)
+	t.Parallel()
 	// spawnWait makes the spawn call return its running snapshot at once.
 	const spawnWait = "1ns"
 
@@ -86,8 +88,8 @@ func TestFixVerifyCmd(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Setenv("FABRIC_SKIP_GIT", "1")
-			fx := newVerbsFixture(t)
+			t.Parallel()
+			fx := newSkipGitVerbsFixture(t)
 			fx.initState(t)
 			report := websterengine.VerifyGateReport{Attempt: 2, Cap: 2, Fixer: websterengine.FixerCold}
 			if err := os.MkdirAll(fx.CLI.geom.ReportsDir, 0o755); err != nil {
@@ -133,8 +135,8 @@ func TestFixVerifyCmd(t *testing.T) {
 	}
 
 	t.Run("no state.json refuses with the run-first way forward", func(t *testing.T) {
-		t.Setenv("FABRIC_SKIP_GIT", "1")
-		fx := newVerbsFixture(t)
+		t.Parallel()
+		fx := newSkipGitVerbsFixture(t)
 		var out strings.Builder
 		exitCode := clihelp.Execute(fx.CLI.fixVerifyCmd(), &out, nil)
 		if exitCode != 1 || !strings.Contains(out.String(), `run \"lym webster run\" first`) {

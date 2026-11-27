@@ -178,7 +178,7 @@ Example:
 			}
 
 			if spawned {
-				if _, syncErr := fabricSync(c.openFabric, c.anchorRel, "fix-verify spawn"); syncErr != nil {
+				if _, syncErr := fabricSync(c.openFabric, c.anchorRel, c.syncOptions, "fix-verify spawn"); syncErr != nil {
 					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: the cold verify-gate fixer spawned but the fabric sync failed: %v; %s", syncErr, fabricSyncWayForward)))
 					return nil
 				}
@@ -201,7 +201,7 @@ Example:
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
-			if _, syncErr := fabricSync(c.openFabric, c.anchorRel, "fix-verify "+result.Status); syncErr != nil {
+			if _, syncErr := fabricSync(c.openFabric, c.anchorRel, c.syncOptions, "fix-verify "+result.Status); syncErr != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: the cold verify-gate fixer ended %s but the fabric sync failed: %v; %s", result.Status, syncErr, fabricSyncWayForward)))
 				return nil
 			}

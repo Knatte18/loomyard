@@ -292,7 +292,7 @@ Example:
 			mutateHeld = false
 
 			if spawned {
-				if _, syncErr := fabricSync(c.openFabric, c.anchorRel, fmt.Sprintf("recover-batch %s spawn", batchName)); syncErr != nil {
+				if _, syncErr := fabricSync(c.openFabric, c.anchorRel, c.syncOptions, fmt.Sprintf("recover-batch %s spawn", batchName)); syncErr != nil {
 					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: batch %s recovery spawned but the fabric sync failed: %v; %s", batchName, syncErr, fabricSyncWayForward)))
 					return nil
 				}
@@ -352,7 +352,7 @@ Example:
 				if batchFailed {
 					// The failed record's digest replaces the strand's, so the message is quoted here.
 					msg := batchFailedMessage(err.Error(), result.Digest.LastMessage)
-					if _, syncErr := fabricSync(c.openFabric, c.anchorRel, fmt.Sprintf("recover-batch %s failed", batchName)); syncErr != nil {
+					if _, syncErr := fabricSync(c.openFabric, c.anchorRel, c.syncOptions, fmt.Sprintf("recover-batch %s failed", batchName)); syncErr != nil {
 						msg = fmt.Sprintf("%s; additionally, the fabric sync failed: %v; %s", msg, syncErr, fabricSyncWayForward)
 					}
 					clihelp.SetExit(cmd.Context(), output.ErrFields(out, msg, c.batchFailedFields(batchName, result.Warnings, err)))
@@ -367,7 +367,7 @@ Example:
 					return nil
 				}
 
-				if _, syncErr := fabricSync(c.openFabric, c.anchorRel, fmt.Sprintf("recover-batch %s %s", batchName, result.Digest.Status)); syncErr != nil {
+				if _, syncErr := fabricSync(c.openFabric, c.anchorRel, c.syncOptions, fmt.Sprintf("recover-batch %s %s", batchName, result.Digest.Status)); syncErr != nil {
 					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: batch %s recovery classified %s but the fabric sync failed: %v; %s", batchName, result.Digest.Status, syncErr, fabricSyncWayForward)))
 					return nil
 				}

@@ -24,15 +24,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// realSeamFixture builds a hub, adds one pair, and seeds a status file at loom's own status path.
+// realSeamFixture copies a hub that holds one pair, and seeds a status file at loom's own status path.
 // It returns the seam wired to that pair through loomCommitStatusDeps, the same call wire() makes.
 // It also returns the pair's records sibling path, for direct git inspection.
 func realSeamFixture(t *testing.T) (seam func(producer, state string) error, location *lymcwd.Location, recordsSibling string) {
 	t.Helper()
 
-	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	const slug = "commitstatus"
-	hubforge.AddPair(t, hub, slug)
+	hub := hubforge.CopyHub(t, pairHubShape)
+	const slug = hubforge.TemplatePairSlug
 	codeWorktree := hub.PairCodeWorktree(slug)
 
 	location, err := lymcwd.ResolveWorktree(codeWorktree)
@@ -130,6 +129,8 @@ func mergeHeadPresent(t *testing.T, dir string) bool {
 // Each step changes the status file first, so every seam call has something of its own to commit.
 func TestCommitStatusSeam_Real(t *testing.T) {
 	tiergate.Require(t, 1)
+	t.Parallel()
+
 	seam, location, recordsSibling := realSeamFixture(t)
 
 	statusRel := realSeamStatusRel(location)
