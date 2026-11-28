@@ -320,9 +320,11 @@ func TestMergeIn_MergeTip(t *testing.T) {
 		tips        fabriclayout.ParentTips
 		pushSkipped bool
 		otherHolds  bool
-		wantTip     string
-		wantReads   []tipsRead
-		wantHeld    bool
+		// owedAhead wires the read of owed landings to answer that the parent is ahead by them alone.
+		owedAhead bool
+		wantTip   string
+		wantReads []tipsRead
+		wantHeld  bool
 	}{
 		{
 			name:       "an upstream tip is merged while another run holds the lock, and no lock is taken",
@@ -334,6 +336,12 @@ func TestMergeIn_MergeTip(t *testing.T) {
 			name:    "a local parent ahead of its upstream merges the upstream tip, never the local-only commit",
 			tips:    fabriclayout.ParentTips{Local: "p2", Upstream: "p1", Relation: fabriclayout.ParentAhead},
 			wantTip: "p1", wantReads: []tipsRead{{fetch: true}},
+		},
+		{
+			name:      "a local parent ahead by owed landing tips alone still merges the upstream tip",
+			tips:      fabriclayout.ParentTips{Local: "p2", Upstream: "p1", Relation: fabriclayout.ParentAhead},
+			owedAhead: true,
+			wantTip:   "p1", wantReads: []tipsRead{{fetch: true}},
 		},
 		{
 			name:    "a diverged local parent merges the upstream tip",
@@ -358,6 +366,9 @@ func TestMergeIn_MergeTip(t *testing.T) {
 			fx := newMergeInFixture(t)
 			fx.tips = tt.tips
 			fx.m.deps.PushSkipped = tt.pushSkipped
+			if tt.owedAhead {
+				fx.m.deps.ParentAheadByOwed = func() (bool, error) { return true, nil }
+			}
 			if tt.otherHolds {
 				if _, err := fx.store.TryAcquire("main", parentlock.Owner{Slug: "other", Pair: "/p/other", RunID: "r9", PID: 111, StartTime: "t1"}); err != nil {
 					t.Fatal(err)

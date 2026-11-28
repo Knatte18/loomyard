@@ -144,7 +144,7 @@ func (m *ParentAlign) Call(ctx context.Context) (shedengine.Outcome, shedengine.
 		return end.result()
 	}
 
-	tip, lockReason, err := parentMergeTip(ctx, m.deps, m.guard, parentAlignName, false)
+	tip, lockReason, err := parentMergeTip(ctx, m.deps, m.guard, parentAlignName, false, false)
 	if err != nil {
 		return fail(ctx, parentAlignName, err).result()
 	}
@@ -226,14 +226,28 @@ func (m *ParentAlign) Call(ctx context.Context) (shedengine.Outcome, shedengine.
 
 // parentMergeTip picks the parent tip producer merges with no parent lock held across the merge.
 // It returns that tip, or a Stuck reason of the parent lock wait.
-// With an upstream and no push skip, it fetches and takes the upstream tip, never the local tip,
-// so a landing another run made locally and has not pushed is never merged in.
+// With an upstream and no push skip, it fetches and takes the upstream tip,
+// so a commit on the local parent that origin lacks is not merged in, except the owed landing tips below.
 // With the push skipped (Deps.PushSkipped) or no upstream, it takes the local tip.
-// It holds the parent lock through guard only for that read, so the merge itself runs unlocked.
+// When takeOwedLocal is set, it also takes the local tip of a parent ahead of its upstream by owed landing tips alone.
+// Deps.ParentAheadByOwed reports that state.
+// A landing lands on top of those tips, so the local tip is the head it compares with.
+// It holds the parent lock through guard only to read the local tip, so the merge itself runs unlocked.
+// Under that lock it asks again about an owed-ahead parent.
+// It takes the upstream tip when a commit that is no owed landing has arrived since.
 // When front is set, the read waits for the lock at the front of the queue.
 // A paused lock wait and an unreadable lock record come back as the reason, for a halting Stuck.
-func parentMergeTip(ctx context.Context, deps Deps, guard parentGuard, producer string, front bool) (string, string, error) {
+func parentMergeTip(ctx context.Context, deps Deps, guard parentGuard, producer string, front, takeOwedLocal bool) (string, string, error) {
 	branch := deps.ParentBranch
+	readAheadByOwed := func() (bool, error) {
+		owed, err := deps.ParentAheadByOwed()
+		if err != nil {
+			return false, fmt.Errorf("landingshed: %s: read whether parent branch %q is ahead by owed landings alone: %w", producer, branch, err)
+		}
+		return owed, nil
+	}
+	// owedUpstream is the upstream tip of a parent first read as ahead by owed landing tips alone, else empty.
+	owedUpstream := ""
 	if !deps.PushSkipped {
 		tips, err := deps.ReadParentTips(true)
 		if err != nil {
@@ -241,7 +255,19 @@ func parentMergeTip(ctx context.Context, deps Deps, guard parentGuard, producer 
 		}
 		switch tips.Relation {
 		case fabriclayout.ParentNoUpstream:
-		case fabriclayout.ParentEqual, fabriclayout.ParentAhead, fabriclayout.ParentBehind, fabriclayout.ParentDiverged:
+		case fabriclayout.ParentAhead:
+			if !takeOwedLocal || deps.ParentAheadByOwed == nil {
+				return tips.Upstream, "", nil
+			}
+			owed, err := readAheadByOwed()
+			if err != nil {
+				return "", "", err
+			}
+			if !owed {
+				return tips.Upstream, "", nil
+			}
+			owedUpstream = tips.Upstream
+		case fabriclayout.ParentEqual, fabriclayout.ParentBehind, fabriclayout.ParentDiverged:
 			return tips.Upstream, "", nil
 		default:
 			return "", "", fmt.Errorf("landingshed: %s: unknown relation %q of parent branch %q to its upstream", producer, tips.Relation, branch)
@@ -256,6 +282,16 @@ func parentMergeTip(ctx context.Context, deps Deps, guard parentGuard, producer 
 	tips, err := deps.ReadParentTips(false)
 	if err != nil {
 		return "", "", fmt.Errorf("landingshed: %s: read the tips of parent branch %q: %w", producer, branch, err)
+	}
+	// The first answer was read with no lock, and a commit may have reached the parent before the tip just read.
+	if owedUpstream != "" {
+		owed, err := readAheadByOwed()
+		if err != nil {
+			return "", "", err
+		}
+		if !owed {
+			return owedUpstream, "", nil
+		}
 	}
 	return tips.Local, "", nil
 }

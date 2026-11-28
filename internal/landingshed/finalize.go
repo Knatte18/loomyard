@@ -357,6 +357,12 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 // gateUnlocked is step 1b1: with no lock held, it merges the parent's tip into the task worktree and gates the result.
 // It runs the owner checks first, so a run this machine may not land ends before anything is merged into its worktree.
 // It keeps the tip it merged as gatedTip, which the locked pass compares with the parent it lands on.
+// A parent ahead of its upstream by owed landing tips alone is merged at its local tip.
+// That tip is the head the locked pass lands on, so its pass wins the race unless another landing moves the parent.
+// A landing known to need GitHub cannot land until origin holds the owed tips.
+// Such a landing is the exception and merges the upstream tip.
+// A failed read of whether it needs GitHub merges the upstream tip too.
+// A need that only GitHub's repository rules set is not known there, since reading them is a GitHub call.
 // A parent already holding the task's work runs no such pass and keeps no tip.
 // A failed read of whether it holds the work halts as an owner check.
 // When front is set, a lock taken to read the local parent tip is waited for at the front of the queue.
@@ -375,7 +381,10 @@ func (fz *Finalize) gateUnlocked(ctx context.Context, front bool) *ending {
 		return end
 	}
 	fz.readConfigBeforeMerge()
-	tip, lockReason, err := parentMergeTip(ctx, fz.deps, fz.guard, finalizeName, front)
+	needsGitHub, readErr := fz.needsGitHubOnDisk()
+	// The decision under the lock ends the call on a failed read, so the read's error only keeps the owed tips out here.
+	takeOwedLocal := readErr == nil && !needsGitHub
+	tip, lockReason, err := parentMergeTip(ctx, fz.deps, fz.guard, finalizeName, front, takeOwedLocal)
 	if err != nil {
 		return fail(ctx, finalizeName, err)
 	}
@@ -418,9 +427,12 @@ func (fz *Finalize) landUnderLock(ctx context.Context, front bool, summary summa
 	fz.lockFreed, fz.parentMoved = false, false
 
 	// A landing already known to need GitHub waits for the parent's push without holding the lock.
-	if fz.deps.ParentPushState != nil && fz.needsGitHubOnDisk() {
-		if end := fz.parentPushBlocks(ctx); end != nil {
-			return end
+	if fz.deps.ParentPushState != nil {
+		// A failed read answers false here, since the decision under the lock makes the same read and ends the call on it.
+		if needsGitHub, _ := fz.needsGitHubOnDisk(); needsGitHub {
+			if end := fz.parentPushBlocks(ctx); end != nil {
+				return end
+			}
 		}
 	}
 
@@ -603,41 +615,49 @@ func (fz *Finalize) parentPushBlocks(ctx context.Context) *ending {
 // needsGitHubOnDisk reports whether the landing needs GitHub, as read with no parent lock and no GitHub call.
 // A recorded pull request needs it, and so does a trail mode.
 // A review mode needs it when its origin and task branch let a pull request open.
-// A failed read answers false, since the decision under the lock makes the same read and ends the call on it.
-func (fz *Finalize) needsGitHubOnDisk() bool {
+// A failed read is returned as the error, with false.
+func (fz *Finalize) needsGitHubOnDisk() (bool, error) {
 	pr := fz.deps.PullRequest
 	if pr.Mode == nil {
-		return false
+		return false, nil
 	}
-	if _, found, err := pullrequest.ReadRecord(pr.RecordPath, pr.RecordLockPath); err == nil && found {
-		return true
+	_, found, err := pullrequest.ReadRecord(pr.RecordPath, pr.RecordLockPath)
+	if err != nil {
+		return false, err
+	}
+	if found {
+		return true, nil
 	}
 	beam := NotABeam
 	if pr.BeamRecord != nil {
-		if _, recorded, err := pr.BeamRecord(); err == nil && recorded {
-			return true
+		_, recorded, err := pr.BeamRecord()
+		if err != nil {
+			return false, err
+		}
+		if recorded {
+			return true, nil
 		}
 		beam = BeamWithoutPullRequest
 	}
 	mode, err := pr.Mode()
 	if err != nil {
-		return false
+		return false, err
 	}
 	switch mode {
 	case beamsetting.PullRequestTrail:
-		return true
+		return true, nil
 	case beamsetting.PullRequestReview:
 		origin, err := pr.Origin()
 		if err != nil {
-			return false
+			return false, err
 		}
 		hasCommits, err := pr.TaskHasCommits()
 		if err != nil {
-			return false
+			return false, err
 		}
-		return ResolvePullRequest(mode, beam, false, origin, hasCommits).Open
+		return ResolvePullRequest(mode, beam, false, origin, hasCommits).Open, nil
 	}
-	return false
+	return false, nil
 }
 
 // parentHoldsWork reports whether the parent branch already holds the task's work; with no seam wired it does not.

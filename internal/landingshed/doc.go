@@ -39,6 +39,8 @@
 // It then takes the parent lock through the shared guard.
 // It runs the owner checks before that lock-free merge, and again under the lock.
 // It lands only while the parent's head is the tip that pass merged.
+// That pass merges the upstream tip, or the local tip of a parent ahead of its upstream by owed landing tips alone.
+// A landing known to need GitHub merges the upstream tip of an owed-ahead parent too.
 // A parent that moved frees the lock, and the merge and the gate run again with no lock held.
 // Finalize merges and gates under the lock after `landing.finalize_lost_races` lost races.
 // It does so too for a parent that already holds the task's work.
