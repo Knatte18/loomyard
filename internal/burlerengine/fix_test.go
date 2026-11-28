@@ -351,7 +351,7 @@ func TestEngine_Fix_Outcomes(t *testing.T) {
 			if got.Forks != tt.wantForks || !slices.Equal(got.Warnings, tt.wantWarnings) {
 				t.Errorf("forks %d warnings %v; want %d and %v", got.Forks, got.Warnings, tt.wantForks, tt.wantWarnings)
 			}
-			if tt.fixFan && tt.wantErrText != "" && !strings.Contains(err.Error(), "; way forward: inspect the target's working-tree changes") {
+			if tt.fixFan && tt.wantErrText != "" && !strings.Contains(err.Error(), "; way forward: inspect the target's working tree, HEAD, branches, tags and remotes") {
 				t.Errorf("Fix() error = %q; want the twill fixer violation's way forward", err)
 			}
 			if gotGate := got.Gate != nil && !got.Gate.Passed; gotGate != tt.wantGate {

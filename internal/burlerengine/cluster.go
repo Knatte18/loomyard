@@ -111,18 +111,34 @@ var gitPushRedirectKeyPrefixes = []string{"remote.", "url.", "branch.", "include
 // gitRemoteChangingVerbs holds the git remote verbs that add, re-point, rename or remove a remote.
 var gitRemoteChangingVerbs = map[string]bool{"add": true, "set-url": true, "rename": true, "remove": true, "rm": true}
 
+// The fork-audit rules a state-changing git invocation can break, each worded as the violation message names it.
+const (
+	ruleOutsideCreated               = "a state-changing git command outside every repository the fork created"
+	rulePushAfterLink                = "a push after ln, since a link may lead out of every repository the fork created"
+	rulePushAfterRedirectKey         = "a push under or after a git config key that may redirect it"
+	rulePushAfterUnknownRemoteChange = "a push after a git remote change in a directory the audit cannot resolve"
+	rulePushWithRepo                 = "a push with --repo"
+	rulePushSetsUpstreamOutside      = "a push with -u, --set-upstream or --recurse-submodules from outside every repository the fork created"
+	rulePushNoDestination            = "a push with no destination"
+	rulePushToRemoteOutside          = "a push to a remote the fork did not point into a repository it created"
+	rulePushToPathOutside            = "a push to a URL or path outside every repository the fork created"
+)
+
 // mutatingGitCommand is a fork's Bash command that runs a state-mutating git invocation.
-// The invocation runs outside the repositories the fork created.
+// The invocation may change state in a repository the fork did not create.
 type mutatingGitCommand struct {
 	// command is the Bash command as the transcript holds it.
 	command string
+	// rule names the audit rule the command's first counted invocation broke.
+	rule string
 	// pushFrom is the fork-created repository the command pushed from, when every such invocation of it is a push from one;
 	// it is "" otherwise.
 	pushFrom string
 }
 
 // mutatingGitCommands scans commands, one fork's Bash commands in transcript order.
-// It returns, in order, each command that runs a state-mutating git subcommand on a repository the fork did not create.
+// It returns, in order, each command that may change state through git in a repository the fork did not create.
+// Each result names the rule the command's first counted invocation broke.
 // A command is split into segments at ;, &, | and newlines,
 // and a segment is a git invocation when its first word is git, bare or path-prefixed.
 // Only the subcommand word decides: a mutating verb named as an argument, as in git help cherry-pick, never counts.
@@ -162,8 +178,8 @@ func mutatingGitCommands(commands []string) []mutatingGitCommand {
 	var repos forkRepositories
 	var found []mutatingGitCommand
 	for _, cmd := range commands {
-		if pushFrom, mutates := repos.runsMutatingGit(cmd); mutates {
-			found = append(found, mutatingGitCommand{command: cmd, pushFrom: pushFrom})
+		if pushFrom, rule := repos.runsMutatingGit(cmd); rule != "" {
+			found = append(found, mutatingGitCommand{command: cmd, rule: rule, pushFrom: pushFrom})
 		}
 	}
 	return found
@@ -181,14 +197,23 @@ type forkRepositories struct {
 	// remotes maps a created repository's root to its remote names.
 	// A name maps to true when the remote leads into a created repository.
 	remotes map[string]map[string]bool
-	// pushRedirected reports whether a call named a config key or made a link that can redirect a push.
-	pushRedirected bool
+	// pushRedirect names the rule that makes every later push count; it is "" while no call has set one.
+	// The first call that can redirect a push sets it, by naming a config key, changing a remote or making a link.
+	pushRedirect string
 }
 
-// runsMutatingGit reports whether cmd invokes git with a state-mutating subcommand outside repos.
+// redirectPushes makes every later push count under rule, unless an earlier call already did under its own.
+func (repos *forkRepositories) redirectPushes(rule string) {
+	if repos.pushRedirect == "" {
+		repos.pushRedirect = rule
+	}
+}
+
+// runsMutatingGit reports the rule broken by the first counted git invocation of cmd, "" when none counts.
+// An invocation counts when it may change state outside repos.
 // It also returns the created repository cmd pushed from, when every such invocation of cmd is a push from one.
-// It records each repository and remote cmd creates, and marks every push redirected after an ln.
-func (repos *forkRepositories) runsMutatingGit(cmd string) (pushFrom string, mutates bool) {
+// It records each repository and remote cmd creates, and makes every later push count after an ln.
+func (repos *forkRepositories) runsMutatingGit(cmd string) (pushFrom, rule string) {
 	onlyOwnPushes := true
 	dir, dirKnown := ".", true
 	for _, words := range splitShellSegments(cmd) {
@@ -201,31 +226,30 @@ func (repos *forkRepositories) runsMutatingGit(cmd string) (pushFrom string, mut
 				dir, dirKnown = resolveShellPath(dir, words[1]), true
 			}
 		case isLinkExecutable(words[0]):
-			repos.pushRedirected = true
+			repos.redirectPushes(rulePushAfterLink)
 		case isGitExecutable(words[0]):
-			from, violates := repos.gitInvocationMutates(parseGitInvocation(words[1:], dir, dirKnown))
-			if !violates {
+			from, broken := repos.gitInvocationMutates(parseGitInvocation(words[1:], dir, dirKnown))
+			if broken == "" {
 				continue
 			}
-			if !mutates {
-				pushFrom = from
+			if rule == "" {
+				pushFrom, rule = from, broken
 			}
-			mutates = true
 			onlyOwnPushes = onlyOwnPushes && from != ""
 		}
 	}
 	if !onlyOwnPushes {
 		pushFrom = ""
 	}
-	return pushFrom, mutates
+	return pushFrom, rule
 }
 
-// gitInvocationMutates reports whether invocation changes state outside repos.
+// gitInvocationMutates reports the rule invocation breaks by changing state outside repos, "" when it breaks none.
 // For a push it also returns the created repository it ran from, "" when it ran from none.
 // It records the repository and the remote that invocation creates.
-func (repos *forkRepositories) gitInvocationMutates(invocation gitInvocation) (pushFrom string, mutates bool) {
+func (repos *forkRepositories) gitInvocationMutates(invocation gitInvocation) (pushFrom, rule string) {
 	if invocation.helpRequested || len(invocation.args) > 0 && isHelpFlag(invocation.args[0]) {
-		return "", false
+		return "", ""
 	}
 	defer repos.enter(invocation)
 	redirects := invocation.redirectsPush
@@ -236,7 +260,7 @@ func (repos *forkRepositories) gitInvocationMutates(invocation gitInvocation) (p
 		redirects = redirects || namesPushRedirectKey(cloneConfigValues(invocation.args))
 	}
 	if redirects {
-		repos.pushRedirected = true
+		repos.redirectPushes(rulePushAfterRedirectKey)
 	}
 	switch invocation.subcommand {
 	case "init":
@@ -262,50 +286,65 @@ func (repos *forkRepositories) gitInvocationMutates(invocation gitInvocation) (p
 		repos.recordRemote(invocation)
 	case "tag":
 		if gitTagListsOnly(invocation.args) {
-			return "", false
+			return "", ""
 		}
 	case "branch":
 		if gitBranchReadsOnly(invocation.args) {
-			return "", false
+			return "", ""
 		}
 	case "push":
 		return repos.pushMutates(invocation)
 	}
 	if !mutatingGitSubcommands[invocation.subcommand] {
-		return "", false
+		return "", ""
 	}
-	_, inside := repos.rootOf(invocation)
-	return "", !inside
+	if _, inside := repos.rootOf(invocation); inside {
+		return "", ""
+	}
+	return "", ruleOutsideCreated
 }
 
-// pushMutates reports whether invocation, a git push, may change a repository the fork did not create.
+// pushMutates reports the rule invocation, a git push, breaks, "" when it breaks none.
+// A push breaks a rule when it may change a repository the fork did not create.
 // It also returns the created repository the push ran from, "" when it ran from none.
-func (repos *forkRepositories) pushMutates(invocation gitInvocation) (pushFrom string, mutates bool) {
+func (repos *forkRepositories) pushMutates(invocation gitInvocation) (pushFrom, rule string) {
 	from, _ := repos.rootOf(invocation)
-	if repos.pushRedirected {
-		return from, true
+	if repos.pushRedirect != "" {
+		return from, repos.pushRedirect
 	}
 	for _, arg := range invocation.args {
 		if arg == "--repo" || strings.HasPrefix(arg, "--repo=") {
-			return from, true
+			return from, rulePushWithRepo
 		}
 		// Outside every created repository, -u and --recurse-submodules write into the repository the push runs from.
 		if from == "" && (arg == "-u" || arg == "--set-upstream" || arg == "--recurse-submodules" || strings.HasPrefix(arg, "--recurse-submodules=")) {
-			return from, true
+			return from, rulePushSetsUpstreamOutside
 		}
 	}
 	destinations := gitOperands(invocation.args, gitPushValuedOptions)
 	if len(destinations) == 0 {
-		return from, true
+		return from, rulePushNoDestination
 	}
 	destination := destinations[0]
 	if leadsIn, named := repos.remotes[repos.configRoot(from)][destination]; named {
-		return from, !leadsIn
+		if leadsIn {
+			return from, ""
+		}
+		return from, rulePushToRemoteOutside
+	}
+	if isGitURL(destination) {
+		return from, rulePushToPathOutside
 	}
 	// A destination that names no remote the fork pointed counts unless it is written as a path:
 	// a bare word may name a remote the transcript never shows being set.
 	looksLikePath := isAnchoredShellPath(destination) || strings.HasPrefix(destination, ".") || strings.Contains(destination, "/")
-	return from, !looksLikePath || isGitURL(destination) || !repos.leadsInto(invocation, destination)
+	if !looksLikePath {
+		return from, rulePushToRemoteOutside
+	}
+	if !repos.leadsInto(invocation, destination) {
+		return from, rulePushToPathOutside
+	}
+	return from, ""
 }
 
 // recordClone records the repository a git clone creates.
@@ -350,13 +389,13 @@ func cloneDirectoryName(source string) string {
 // A set-url --delete never keeps it, since the URLs left are unknown.
 // git remote rename and git remote remove forget every name they touch.
 // A call whose directory is unknown may change the remotes of any created repository.
-// It marks every push redirected.
+// It makes every later push count.
 func (repos *forkRepositories) recordRemote(invocation gitInvocation) {
 	if len(invocation.args) == 0 || !gitRemoteChangingVerbs[invocation.args[0]] {
 		return
 	}
 	if !invocation.dirKnown {
-		repos.pushRedirected = true
+		repos.redirectPushes(rulePushAfterUnknownRemoteChange)
 		return
 	}
 	root, inside := repos.rootOf(invocation)
@@ -830,6 +869,7 @@ func isGitExecutable(word string) bool {
 
 // auditClusterRound enforces the cluster-round fail-loud policy.
 // Checks run in a fixed order; the first violation is returned as a hard error.
+// The error is wrapped with its way forward, which says when the audit found no target change.
 func auditClusterRound(audit *shuttleengine.ForkAudit, wantN int) ([]string, error) {
 	gotN := 0
 	if audit != nil {
@@ -840,7 +880,7 @@ func auditClusterRound(audit *shuttleengine.ForkAudit, wantN int) ([]string, err
 	}
 
 	if violation := forkViolation(audit); violation != nil {
-		return nil, fmt.Errorf("burler: %w", violation)
+		return nil, fmt.Errorf("burler: %w; %s", violation, violationWayForward(violation))
 	}
 	return unreturnedForkWarnings(audit), nil
 }
@@ -848,8 +888,9 @@ func auditClusterRound(audit *shuttleengine.ForkAudit, wantN int) ([]string, err
 // forkViolationError is the first fork rule an audit found broken.
 type forkViolationError struct {
 	message string
-	// targetUntouched reports whether no fork of the audit wrote a file or ran a git invocation that may change the target:
-	// every state-changing git invocation a fork ran was a push from a repository it created.
+	// targetUntouched reports whether the audit found no target change.
+	// It holds when no fork made a write or edit call.
+	// Every counted git invocation must also be a push from a repository its fork created.
 	targetUntouched bool
 	// pushFrom is the fork-created repository the audit's first push-only command pushed from, "" when there is none.
 	pushFrom string
@@ -887,7 +928,7 @@ func forkViolation(audit *shuttleengine.ForkAudit) *forkViolationError {
 	}
 	for _, fork := range audit.Forks {
 		if found := mutatingGitCommands(fork.BashCommands); len(found) > 0 {
-			return violation("fork %q ran a git-mutating command (%q) — a fork must never run a state-mutating git command outside a repository it created", fork.TranscriptPath, found[0].command)
+			return violation("fork %q ran a git-mutating command (%q), counted as %s — a fork must never run a state-mutating git command that may change a repository it did not create", fork.TranscriptPath, found[0].command, found[0].rule)
 		}
 	}
 	if audit.NamedSpawns > 0 {
@@ -896,16 +937,16 @@ func forkViolation(audit *shuttleengine.ForkAudit) *forkViolationError {
 	return nil
 }
 
-// fixViolationWayForward words what the target holds after violation and the way forward from it.
-// It says when the audit found no target change, so the operator is never sent to revert what no fork wrote.
-func fixViolationWayForward(violation *forkViolationError) string {
+// violationWayForward words what the target holds after violation and the way forward from it.
+// It says when the audit found no target change, so the operator is never sent to undo a change the audit did not find.
+func violationWayForward(violation *forkViolationError) string {
 	switch {
 	case violation.targetUntouched && violation.pushFrom != "":
-		return fmt.Sprintf("no target change was found: no fork wrote a file or ran a state-changing git command in the target's working tree, and the push from %s went to a destination the audit could not place; way forward: check that destination is neither the target's repository nor one of its remotes, and resume the run", violation.pushFrom)
+		return fmt.Sprintf("no target change was found: the audit found no write or edit call and no state-changing git command outside a repository a fork created, and the push from %s went to a destination the audit could not place; way forward: check that destination is neither the target's repository nor one of its remotes, and resume the run", violation.pushFrom)
 	case violation.targetUntouched:
-		return "no target change was found: no fork wrote a file or ran a state-changing git command outside a repository it created; way forward: resume the run"
+		return "no target change was found: the audit found no write or edit call and no state-changing git command outside a repository a fork created; way forward: resume the run"
 	}
-	return "way forward: inspect the target's working-tree changes, revert what the fork wrote, and resume the run"
+	return "way forward: inspect the target's working tree, HEAD, branches, tags and remotes for what the fork changed, undo it, and resume the run"
 }
 
 // unreturnedForkWarnings returns one warning per fork of audit that never returned a final report.
@@ -953,7 +994,7 @@ func auditFixRound(audit *shuttleengine.ForkAudit, wantN int) (warnings []string
 		}
 	}
 	if violation := forkViolation(&selfCheck); violation != nil {
-		return nil, len(selfCheck.Forks), fmt.Errorf("burler: twill fixer %w; %s", violation, fixViolationWayForward(violation))
+		return nil, len(selfCheck.Forks), fmt.Errorf("burler: twill fixer %w; %s", violation, violationWayForward(violation))
 	}
 	forks = len(selfCheck.Forks)
 	if forks != wantN {

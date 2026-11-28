@@ -42,7 +42,11 @@ Copy these lines verbatim into every fork's prompt, ahead of its lens text.
 - Your context already holds the review, the files as the fixer read and changed them, and the fix-check rubric, so never re-read what your context shows.
   Make at most 6 further tool calls, each for something your lens needs that your context lacks.
   End your report with one line per such call, saying what you read and why your context lacked it.
-- You are read-only: never write, edit or delete a file, run only git commands that read, such as `git diff`, `git log` or `git show`, and never one that changes the repository, its index, its refs or its working tree, and spawn no fork or subagent of your own.
+- You are read-only: never use a write or edit tool, never write, edit or delete a file outside a throwaway repository you created as below, on the target and every repository you did not create run only git commands that read, such as `git diff`, `git log` or `git show`, and spawn no fork or subagent of your own.
+  To check how git behaves you may change state only in a throwaway repository you create outside the target with `git init`, `git clone`, or `git worktree add` run from such a throwaway repository;
+  a push from it may go only to another such repository, by its path or by a remote you pointed there,
+  and after any `ln`, any `git remote` change run under `--git-dir` or `--work-tree` or after a bare `cd` or `cd -`,
+  or any git config key starting `remote.`, `url.`, `branch.`, `include.` or `includeif.`, every push breaks this rule.
 - Return your findings only as your final message, each with a severity (`BLOCKING`, `MEDIUM` or `LOW`, as the rubric defines them), the changed text it concerns, a one-line summary and the evidence, and start it with the list your lens asks for, if it asks for one; return "no findings" when you have none.
 
 A fork spawns nothing; only the fixer and the subagents it starts to make its fixes spawn.

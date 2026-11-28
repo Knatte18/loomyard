@@ -105,7 +105,8 @@
 // A done twill fixer is audited by `auditFixRound` before its gate is looked at.
 // A fork that wrote, ran a mutating git command, called the Agent tool or was spawned with a name is a hard error,
 // whether or not the gate passed.
-// Its way forward says when the audit found no target change: no fork wrote a file or changed the target's repository.
+// Its way forward says when the audit found no target change:
+// no write or edit call, and no state-changing git command outside a repository a fork created.
 // A wrong fork count or a fork that returned no report is a warning only, since the fix is on disk.
 // Subagents the fixer starts to make its fixes are not audited.
 // Such a subagent may spawn forks of its own: they are part of its work, so the audit neither checks nor counts them.
@@ -252,13 +253,16 @@
 // The consolidated review is accepted before the fix half spawns, so review-before-fix holds as in a solo round.
 //
 // Fork discipline is read-only evidence gathering:
-// no write of any file;
-// no git command that changes the repository, index, refs or working tree;
+// no write or edit tool call, and no write to a file outside a repository the fork created;
+// no git command that may change a repository the fork did not create;
 // no touching the round's ReviewPath or FixerReportPath, and no nested Agent calls.
 // `auditClusterRound` enforces it once the run reaches shuttleengine.OutcomeDone, rather than trusting the prompt.
 // It fails loud: a fork transcript count other than len(clusterLenses) is ErrClusterForksMissing;
 // that is never a degrade-to-solo.
 // Any fork with Agent calls, writes, a git-mutating Bash command or a name is a hard error.
+// A git-mutating command's error names the rule it broke, such as a push after ln.
+// The error of a review round and of a fixer's self-check alike ends with its way forward.
+// The way forward says when the audit found no change to the target.
 // A fork that ran clean but returned no report is a ReviewResult.ClusterWarnings entry and never fails the round.
 //
 // A Bash command is git-mutating when the subcommand word of one of its git invocations mutates.
@@ -269,7 +273,11 @@
 // --git-dir, --work-tree and an unresolvable directory never pass that way.
 // A `git push` passes when its destination leads into such a repository:
 // a remote that git remote add, git remote set-url or git clone pointed into one, or a path into one.
-// A push with no destination or after a config key that may redirect it, a remote., url. or branch. key, never passes.
+// A push with no destination never passes.
+// Nor does one after a config key that may redirect it.
+// Such a key starts with remote., url., branch., include. or includeif.
+// Nor does a push after any ln, since the link may lead out.
+// Nor does a push after a git remote change in a directory the audit cannot resolve.
 //
 // Forks run in the handler's own session under the handler's own model; there is no model-per-fork axis.
 // Named forks silently lose their inherited context in Claude Code releases up to and including 2.1.206.

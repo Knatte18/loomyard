@@ -4,6 +4,7 @@
 // and a twill fixer's fresh subagent, which the fix-round audit neither checks nor counts.
 // It matrixes mutatingGitCommands against mutating and non-mutating Bash command strings.
 // It also runs it on fork command sequences that create their own repositories and push between them.
+// It pins the rule each counted command names.
 
 package burlerengine
 
@@ -25,11 +26,11 @@ func cleanFork(path string) shuttleengine.ForkReport {
 	}
 }
 
-// revertWayForward is the fix-round halt's way forward when a fork may have changed the target.
-const revertWayForward = "way forward: inspect the target's working-tree changes, revert what the fork wrote, and resume the run"
+// revertWayForward is a fork-audit halt's way forward when a fork may have changed the target.
+const revertWayForward = "way forward: inspect the target's working tree, HEAD, branches, tags and remotes for what the fork changed, undo it, and resume the run"
 
-// untouchedPushWayForward is the fix-round halt's way forward when no fork changed the target and one pushed from /tmp/r.
-const untouchedPushWayForward = "no target change was found: no fork wrote a file or ran a state-changing git command in the target's working tree, and the push from /tmp/r went to a destination the audit could not place; way forward: check that destination is neither the target's repository nor one of its remotes, and resume the run"
+// untouchedPushWayForward is a fork-audit halt's way forward when no fork changed the target and one pushed from /tmp/r.
+const untouchedPushWayForward = "no target change was found: the audit found no write or edit call and no state-changing git command outside a repository a fork created, and the push from /tmp/r went to a destination the audit could not place; way forward: check that destination is neither the target's repository nor one of its remotes, and resume the run"
 
 func TestAuditClusterRound(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -44,7 +45,7 @@ func TestAuditClusterRound(t *testing.T) {
 		// fix runs the case through the fix-round audit, and wantForks is the fork count that audit must report.
 		fix       bool
 		wantForks int
-		// wantWayForward is the text a fix-round violation's error ends with.
+		// wantWayForward is the text a violation's error ends with.
 		wantWayForward string
 	}{
 		{
@@ -225,7 +226,7 @@ func TestAuditClusterRound(t *testing.T) {
 			wantErr:        true,
 			errSubstr:      "twill fixer 1 fork(s) were spawned with a name",
 			fix:            true,
-			wantWayForward: "no target change was found: no fork wrote a file or ran a state-changing git command outside a repository it created; way forward: resume the run",
+			wantWayForward: "no target change was found: the audit found no write or edit call and no state-changing git command outside a repository a fork created; way forward: resume the run",
 		},
 		{
 			name: "exact N passes clean",
@@ -303,9 +304,25 @@ func TestAuditClusterRound(t *testing.T) {
 					{TranscriptPath: "b", ReportReturned: true, BashCommands: []string{"git status", "git commit -am wip"}},
 				},
 			},
-			wantN:     2,
-			wantErr:   true,
-			errSubstr: "git-mutating command",
+			wantN:          2,
+			wantErr:        true,
+			errSubstr:      `ran a git-mutating command ("git commit -am wip"), counted as a state-changing git command outside every repository the fork created`,
+			wantWayForward: revertWayForward,
+		},
+		{
+			name: "a push after ln from a fork-made repository names the ln rule and finds no target change",
+			audit: &shuttleengine.ForkAudit{
+				Forks: []shuttleengine.ForkReport{
+					cleanFork("a"),
+					{TranscriptPath: "b", ReportReturned: true, BashCommands: []string{
+						"S=/wt/.scratch/exp2; mkdir -p $S; git init -q $S/r; git -C $S/r commit -q --allow-empty -m c; ln -s /nonexistent-mount/x.git $S/link.git; git -C $S/r remote add origin $S/link.git; git -C $S/r push origin HEAD 2>&1 | head -1",
+					}},
+				},
+			},
+			wantN:          2,
+			wantErr:        true,
+			errSubstr:      "counted as a push after ln, since a link may lead out of every repository the fork created",
+			wantWayForward: "no target change was found: the audit found no write or edit call and no state-changing git command outside a repository a fork created, and the push from $S/r went to a destination the audit could not place; way forward: check that destination is neither the target's repository nor one of its remotes, and resume the run",
 		},
 		{
 			name: "named spawns",
@@ -341,11 +358,11 @@ func TestAuditClusterRound(t *testing.T) {
 				if !tt.wantErr && forks != tt.wantForks {
 					t.Errorf("auditFixRound() forks = %d; want %d", forks, tt.wantForks)
 				}
-				if tt.wantErr && (err == nil || !strings.HasSuffix(err.Error(), "; "+tt.wantWayForward)) {
-					t.Errorf("auditFixRound() error = %v; want it to end with %q", err, tt.wantWayForward)
-				}
 			} else {
 				warnings, err = auditClusterRound(tt.audit, tt.wantN)
+			}
+			if tt.wantWayForward != "" && (err == nil || !strings.HasSuffix(err.Error(), "; "+tt.wantWayForward)) {
+				t.Errorf("audit error = %v; want it to end with %q", err, tt.wantWayForward)
 			}
 
 			if tt.wantErr {
@@ -715,6 +732,46 @@ func TestFirstMutatingGitCommandScopesToForkRepositories(t *testing.T) {
 			}
 			if got != tt.want {
 				t.Errorf("mutatingGitCommands(%q) first command = %q; want %q", tt.commands, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestMutatingGitCommandsNameTheBrokenRule pins the rule each counted command names, with a row for every rule.
+// A push after a call that makes every later push count names that call's rule, the first such call winning.
+// A command with several counted invocations names the first one's rule.
+func TestMutatingGitCommandsNameTheBrokenRule(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	tests := []struct {
+		name     string
+		commands []string
+		want     string
+	}{
+		{"commit outside every created repository", []string{"git commit -am x"}, ruleOutsideCreated},
+		{"push after ln", []string{"git init /tmp/r", "ln -s /srv/t.git /tmp/l.git", "git -C /tmp/r push /tmp/r main"}, rulePushAfterLink},
+		{"push after a config key and a later ln", []string{"git init /tmp/r && git -C /tmp/r config url.x.insteadOf y && ln -s a b && git -C /tmp/r push /tmp/r main"}, rulePushAfterRedirectKey},
+		{"push after a remote change in an unknown directory", []string{"git init /tmp/r", "git --git-dir=/tmp/x remote add o /x", "git -C /tmp/r push /tmp/r main"}, rulePushAfterUnknownRemoteChange},
+		{"push with --repo", []string{"git init /tmp/r", "git -C /tmp/r push --repo=/tmp/r"}, rulePushWithRepo},
+		{"push with -u from outside", []string{"git init --bare /tmp/b.git", "git push -u /tmp/b.git main"}, rulePushSetsUpstreamOutside},
+		{"push with no destination", []string{"git init /tmp/r", "git -C /tmp/r push"}, rulePushNoDestination},
+		{"push to a remote never pointed", []string{"git init /tmp/r", "git -C /tmp/r push origin main"}, rulePushToRemoteOutside},
+		{"push to a remote pointed outside", []string{"git init /tmp/r && git -C /tmp/r remote add origin /srv/t.git && git -C /tmp/r push origin main"}, rulePushToRemoteOutside},
+		{"push to a path outside", []string{"git init /tmp/r", "git -C /tmp/r push /srv/t.git main"}, rulePushToPathOutside},
+		{"push to a URL", []string{"git init /tmp/r", "git -C /tmp/r push file:///tmp/r main"}, rulePushToPathOutside},
+		{"push to an scp-style location", []string{"git init /tmp/r", "git -C /tmp/r push host:repo main"}, rulePushToPathOutside},
+		{"the first counted invocation names the rule", []string{"git commit -am x && git init /tmp/r && git -C /tmp/r push"}, ruleOutsideCreated},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			found := mutatingGitCommands(tt.commands)
+			if len(found) == 0 {
+				t.Fatalf("mutatingGitCommands(%q) found none; want one naming %q", tt.commands, tt.want)
+			}
+			if got := found[0].rule; got != tt.want {
+				t.Errorf("mutatingGitCommands(%q) first rule = %q; want %q", tt.commands, got, tt.want)
 			}
 		})
 	}
