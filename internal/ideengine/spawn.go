@@ -31,7 +31,7 @@ var CodeLauncher = vscode.Launch
 // It is exported so that tests in other packages can point it at a temporary file.
 var KeybindingsPath = vscode.UserKeybindingsPath
 
-// LymBinary resolves the absolute lym path that Spawn and Seed stamp into a worktree's .vscode/ config.
+// LymBinary resolves the absolute lym path stamped into the VS Code tasks lym writes.
 // It defaults to `selfexec.LymBinary`, which refuses a test binary.
 // It is exported so that tests can point it at a stand-in lym path.
 var LymBinary = selfexec.LymBinary

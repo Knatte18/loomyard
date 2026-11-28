@@ -80,6 +80,38 @@ func BuildWorkspace(folders []WorkspaceFolder, settings []byte, members map[stri
 	return out.Bytes(), nil
 }
 
+// WorkspaceTasks returns the top-level member of a workspace file that holds its tasks: the key and its value.
+// The value holds one on-demand "beam start" task, which runs "beam start <beam>" in cwd.
+// It is a process task, since a workspace file admits only shell and process tasks.
+// An empty lymPath becomes "lym".
+func WorkspaceTasks(lymPath, beam, cwd string) (string, json.RawMessage) {
+	if lymPath == "" {
+		lymPath = "lym"
+	}
+	value, err := json.Marshal(map[string]any{
+		"version": "2.0.0",
+		"tasks": []map[string]any{
+			{
+				"label":   beamStartTaskLabel,
+				"type":    "process",
+				"command": lymPath,
+				"args":    []string{"beam", "start", beam},
+				"options": map[string]any{"cwd": cwd},
+				"presentation": map[string]any{
+					"reveal": "always",
+					"panel":  "new",
+					"echo":   true,
+					"focus":  true,
+				},
+			},
+		},
+	})
+	if err != nil {
+		panic(fmt.Sprintf("vscode: encode the workspace tasks: %v", err))
+	}
+	return "tasks", value
+}
+
 // WorkspaceSettings returns settings with the keys lym owns set to the look of a workspace window titled title,
 // so a workspace window is told apart from the worktree windows whose settings it splices.
 // The title bar keeps the project colour that settings hold, or the prime's green when they hold none.

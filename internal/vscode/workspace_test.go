@@ -1,5 +1,5 @@
 // workspace_test.go covers BuildWorkspace's exact output shape and its settings and member splicing.
-// It also covers the workspace look WorkspaceSettings sets.
+// It also covers the workspace look WorkspaceSettings sets and the task WorkspaceTasks holds.
 
 package vscode
 
@@ -73,6 +73,44 @@ func TestBuildWorkspace(t *testing.T) {
 			want := `workspace member "` + key + `" is a key the workspace builder writes itself`
 			if err == nil || err.Error() != want || got != nil {
 				t.Errorf("BuildWorkspace(member %q) = %q, %v; want no bytes and error %q", key, got, err, want)
+			}
+		})
+	}
+}
+
+func TestWorkspaceTasks(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name, lymPath, wantCommand string
+	}{
+		{"GivenPath", "/opt/lym/bin/lym", "/opt/lym/bin/lym"},
+		{"EmptyPathBecomesBareName", "", "lym"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			name, value := WorkspaceTasks(tt.lymPath, "b", "/hub/b")
+
+			var got map[string]any
+			if err := json.Unmarshal(value, &got); err != nil {
+				t.Fatalf("WorkspaceTasks value is not JSON: %v\n%s", err, value)
+			}
+			want := map[string]any{
+				"version": "2.0.0",
+				"tasks": []any{map[string]any{
+					"label":        "beam start",
+					"type":         "process",
+					"command":      tt.wantCommand,
+					"args":         []any{"beam", "start", "b"},
+					"options":      map[string]any{"cwd": "/hub/b"},
+					"presentation": map[string]any{"reveal": "always", "panel": "new", "echo": true, "focus": true},
+				}},
+			}
+			if name != "tasks" || !reflect.DeepEqual(got, want) {
+				t.Errorf("WorkspaceTasks(%q) = %q, %v; want \"tasks\", %v", tt.lymPath, name, got, want)
 			}
 		})
 	}
