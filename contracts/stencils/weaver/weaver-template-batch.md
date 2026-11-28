@@ -89,6 +89,7 @@ The hub's tiers and gate lists follow:
 {{.batch_gate}}
 
 Run it once after the last card's commit, as a foreground Bash call, and fix what it reports.
+It runs the packages that depend on the cards' packages and the repository's `//lym:guard` tests, which the card gates leave out, so a failure there may name a file no card lists.
 A call that ends with `--main-packages` also runs the module's main packages, which the plan-level verify runs next.
 A failure in them is yours to fix even when an earlier batch caused it.
 A gate call that exits with code `75` and answers `done: false` is not a failure: run the same command again.

@@ -123,6 +123,7 @@ Bound: a forged value misleads only an ungated raw run, since `lym gate test` se
 
 - A test that reads repository files outside its own package directory carries `//lym:guard`.
   The marker sits directly above the test's `func Test…` line, the way `//testtiming:keep` sits above a kept test.
+- The `card` gate key's call plans no guard step: the `batch` key's call after the batch's last card runs it.
 - A narrowed gate's guard step runs every marked test by name under its file's tier, whatever the impacted set.
   A guard's result depends on files no import edge names.
   It runs a marked test inside the impacted set too when no listed tier is or covers that test's tier.

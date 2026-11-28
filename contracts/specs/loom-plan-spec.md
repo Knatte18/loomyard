@@ -328,7 +328,7 @@ The hub's tests run through `lym gate test`.
 It runs the numbered tiers `gate.yaml` declares over a scope lym computes.
 A gate key names a site's tiers and scope, `card`, `diff` or `all`.
 A Go site runs `lym gate test --wait --gate <key>`; an agent's card, batch and `webster-fix` calls carry no `--wait`.
-The `card` key runs per card over the cards' packages and the packages that depend on them,
+The `card` key runs per card over the cards' packages alone,
 and the `batch` key per batch, scoped as its bullet below states;
 `webster-fix` in Webster's verify fixers;
 `webster` once for the whole plan;
@@ -337,8 +337,8 @@ The plan writer and reviewer get the hub's tiers and gate keys in their prompts,
 so a plan names no gate, tier list or target list.
 
 - **Per card.** The fork runs `lym gate test --gate card --card <card id>`.
-  The call computes the card's packages from the plan and adds every package whose build or tests reach one of them.
-  It runs the `//lym:guard` tests and the lints the key lists.
+  The call computes the card's packages from the plan and runs every tier the key lists over them alone.
+  It runs the lints the key lists, and no `//lym:guard` test outside those packages.
   It does not test the rest of the module or the tiers the key leaves out,
   and a passing call names the declared tiers it did not run.
 - **Per batch.** The fork runs `lym gate test --gate batch` after its last card.
@@ -346,6 +346,7 @@ so a plan names no gate, tier list or target list.
   Its tier0 run holds the packages that depend on the cards' packages;
   each tier above tier0 that does not cover tier0 runs the cards' packages alone.
   A tier that runs whole is not narrowed.
+  It then runs the `//lym:guard` tests its listed runs leave out.
 - **Per plan.** The `webster` gate runs once, a must-pass gate on Merriam that sends a failure back to Merriam.
 - Tier 3 tests drive a real LLM; no gate runs them.
 

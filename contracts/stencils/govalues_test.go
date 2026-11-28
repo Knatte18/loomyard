@@ -1,7 +1,7 @@
 // govalues_test.go pins the Go-declared values the stencils name and the host-neutral ban on the twill stencils.
 // It also pins the ban on Go verify-tier commands in the planning and implementer stencils.
 // The tests carry the `//lym:guard` marker,
-// so a card that renames a value outside this package still fails its own card gate.
+// so a card that renames a value outside this package still fails its batch's gate.
 
 package stencils
 

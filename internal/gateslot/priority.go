@@ -33,9 +33,6 @@ const (
 	PriorityLockHolder
 )
 
-// batchGateKey is the name of the gate.yaml key that runs a batch's gate.
-const batchGateKey = "batch"
-
 // SlotPriority returns the priority a call of the gate key key takes its slots with.
 // A call whose run holds a parent lock comes first, whatever its key.
 // A call of the card or batch key comes next, and every other call, one with no key included, comes last.
@@ -43,7 +40,7 @@ func SlotPriority(key string, holdsParentLock bool) Priority {
 	switch {
 	case holdsParentLock:
 		return PriorityLockHolder
-	case key == cardGateKey || key == batchGateKey:
+	case key == CardGateKey || key == BatchGateKey:
 		return PriorityImplementer
 	default:
 		return PriorityOther

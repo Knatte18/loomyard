@@ -21,9 +21,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
-// gateKeyCard is the gate key a batch attempt's per-card gates render their calls from.
-const gateKeyCard = "card"
-
 // batchGateAttempts is the re-prompt budget of each of a batch attempt's own gate entries.
 const batchGateAttempts = 3
 
@@ -110,7 +107,7 @@ func batchGateCalls(geom Geometry, cards []planparser.Card, last bool) ([]string
 	calls := make([]string, 0, len(cards)+1)
 	ids := make([]string, 0, len(cards))
 	for _, card := range cards {
-		call, err := cfg.GateCall(gateKeyCard, card.ID())
+		call, err := cfg.GateCall(gateslot.CardGateKey, card.ID())
 		if err != nil {
 			return nil, err
 		}
@@ -139,7 +136,7 @@ func batchGateSpec(geom Geometry, cards []planparser.Card, last bool, rowGates s
 	for i, call := range calls {
 		name := gateslot.BatchGateKey
 		if i < len(cards) {
-			name = gateKeyCard + " " + cards[i].ID()
+			name = gateslot.CardGateKey + " " + cards[i].ID()
 		}
 		spec = append(spec, shuttleengine.GateEntry{Name: name, Gate: batchGateClosure(geom, name, call), Attempts: batchGateAttempts})
 	}

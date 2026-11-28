@@ -61,7 +61,7 @@ func (c *websterCLI) beginDeps(plan *planparser.Plan, batches []batcher.Batch, s
 // cardFixerOn reports whether a failed card gate call goes through a cold fixer first:
 // the pair has a slug and the gate config's `card` key carries a non-empty `fixer`.
 func cardFixerOn(gate gateslot.Config, slug string) bool {
-	key, found := gate.Gates["card"]
+	key, found := gate.Gates[gateslot.CardGateKey]
 	return slug != "" && found && key.Fixer != ""
 }
 
@@ -73,7 +73,7 @@ func (c *websterCLI) loadGateConfig() (gateslot.Config, error) {
 	if err != nil {
 		return gateslot.Config{}, err
 	}
-	for _, name := range []string{"card", gateslot.BatchGateKey} {
+	for _, name := range []string{gateslot.CardGateKey, gateslot.BatchGateKey} {
 		if _, err := gate.TierList(name); err != nil {
 			return gateslot.Config{}, err
 		}

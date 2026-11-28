@@ -530,7 +530,7 @@ func TestGateTest_Scopes(t *testing.T) {
 		f.wantArgs(t, f.gate(t, f.pair, nil, "--card", "1", "--tier", "1"), scoped, []string{"."}, guardInvocation)
 	})
 
-	t.Run("--gate batch runs tier1 over the cards' and main packages alone, with their own watch skip, and its guard step takes a dependent's tier1 guard, unless tier1 covers tier0", func(t *testing.T) {
+	t.Run("--gate batch runs tier1 over the cards' and main packages alone, with their own watch skip, and its guard step takes a dependent's tier1 guard, unless tier1 covers tier0; --gate card runs every tier over the cards' packages alone and no guard step", func(t *testing.T) {
 		t.Parallel()
 		f := newScopesHub(t)
 		// A watched test runs when its own file changed, so this file sits at the merge base.
@@ -569,7 +569,7 @@ func TestGateTest_Scopes(t *testing.T) {
 		if want := "gate test: --gate batch runs tier1 over the cards' packages alone, not the packages that depend on them"; !strings.Contains(batch.stdout.String(), want) {
 			t.Errorf("stdout = %q; want it to hold %q", batch.stdout.String(), want)
 		}
-		f.wantArgs(t, f.gate(t, f.pair, nil, "--gate", "card", "--card", "1"), scoped, nested, scoped, nested, guardInvocation)
+		f.wantArgs(t, f.gate(t, f.pair, nil, "--gate", "card", "--card", "1"), []string{"./lib"}, []string{"."}, []string{"./lib"}, []string{"."})
 
 		writeCardKeys(true)
 		f.wantArgs(t, f.gate(t, f.pair, nil, "--gate", "batch", "--card", "1"), scoped, nested, guardInvocation)
@@ -617,7 +617,7 @@ func TestGateTest_Scopes(t *testing.T) {
 
 		// The card scope leaves heldpkg out, so only the guard step could run its held guard.
 		skip := "^(TestHeld|TestLandingGuard)$"
-		f.wantArgs(t, f.gate(t, f.pair, nil, "--gate", "card", "--card", "1"),
+		f.wantArgs(t, f.gate(t, f.pair, nil, "--gate", "batch", "--card", "1"),
 			[]string{"./lib", "./user", "-skip", skip}, []string{".", "-skip", skip}, guardInvocation)
 
 		f.wantArgs(t, f.gate(t, f.pair, nil, "--gate", "upkeep", "./heldpkg"), []string{"./heldpkg", "-skip", "^(TestLandingGuard)$"})
@@ -738,7 +738,7 @@ func TestGateTest_Scopes(t *testing.T) {
 		f.wantArgs(t, f.gate(t, f.prime, nil, "--card", "1"), []string{"./watched"}, guardInvocation)
 	})
 
-	t.Run("--card vets a card's packages per module under the tag of a tier that adds a file to one, between the listed tier and the guard step", func(t *testing.T) {
+	t.Run("--card vets a card's packages per module under the tag of a tier that adds a file to one, between the listed tier and the guard step, and under --gate card too", func(t *testing.T) {
 		t.Parallel()
 		f := newScopesHub(t)
 		f.edit(t, "lib/use_test.go", fmt.Sprintf(tier1File, "One"))
@@ -750,6 +750,7 @@ func TestGateTest_Scopes(t *testing.T) {
 		if want := "gate test: tier1, tier2, tier3, tier5, tier6, tier7" + notRunSuffix + "\n"; !strings.Contains(g.stdout.String(), want) {
 			t.Errorf("stdout = %q; want the line %q, which names tier1 since its vet run does not run the tier", g.stdout.String(), want)
 		}
+		f.wantArgs(t, f.gate(t, f.pair, nil, "--gate", "card", "--card", "1"), []string{"./lib"}, []string{"."}, []string{"vet", "-tags", "tier1", "./lib"}, []string{"vet", "-tags", "tier1", "."})
 		f.requireFree(t)
 	})
 
@@ -826,18 +827,24 @@ func TestGateTest_Scopes(t *testing.T) {
 		f.wantRefusal(t, f.gate(t, f.pair, nil, "--gate", "card"), `"card"`, "--card <id>", "way forward")
 	})
 
-	t.Run("--gate with scope card runs the --card packages and records the key", func(t *testing.T) {
+	t.Run("--gate card runs the cards' packages alone with no guard step, says so and records the key", func(t *testing.T) {
 		t.Parallel()
 		f := newScopesHub(t)
 		f.edit(t, "docs/note.md", "a dirtying note\n")
 		g := f.gate(t, f.pair, nil, "--gate", "card", "--card", "1")
-		f.wantArgs(t, g, []string{"./lib", "./user"}, []string{"."}, guardInvocation)
+		f.wantArgs(t, g, []string{"./lib"}, []string{"."})
 		if run, _ := runRecordOf(t, g.stdout.String(), 0); run.ScopeForm != "card" || run.GateKey != "card" {
 			t.Errorf("tier0 run record = %+v; want the card scope form and gate key card", run)
+		}
+		if want := "gate test: --gate card runs the cards' packages alone and no guard step; --gate batch runs the packages that depend on them and the guard step\n"; !strings.Contains(g.stdout.String(), want) {
+			t.Errorf("stdout = %q; want the line %q", g.stdout.String(), want)
 		}
 		if want := "gate test: tier1, tier2, tier3, tier5, tier6, tier7" + notRunSuffix + "\n"; !strings.Contains(g.stdout.String(), want) {
 			t.Errorf("stdout = %q; want the line naming every declared tier the pass did not run, %q", g.stdout.String(), want)
 		}
+		// A tree of its own, so the previous green run is not carried over it.
+		f.edit(t, "lib/lib.go", "package lib\n\nfunc One() int { return 4 }\n")
+		f.wantArgs(t, f.gate(t, f.pair, nil, "--gate", "card", "--card", "1", "--guards"), []string{"./lib"}, []string{"."}, guardInvocation)
 	})
 
 	t.Run("--card with --main-packages adds the module's main packages to the card's packages", func(t *testing.T) {

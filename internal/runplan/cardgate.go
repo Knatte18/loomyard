@@ -25,7 +25,7 @@ func CardPointerPath(c planparser.Card, planDirDisplay string) string {
 // The call also runs the lint steps that the `card` key lists.
 // It refuses, with the config's way forward, a hub whose `card` list the config does not hold.
 func CardGateCommand(card planparser.Card, gate gateslot.Config) ([]string, error) {
-	call, err := gate.AgentGateCall("card", card.ID())
+	call, err := gate.AgentGateCall(gateslot.CardGateKey, card.ID())
 	if err != nil {
 		return nil, err
 	}

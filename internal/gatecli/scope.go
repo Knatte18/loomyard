@@ -74,6 +74,7 @@ type scope struct {
 	// A tier it does not name takes whole and modules.
 	tiers map[int]tierScope
 	// guardStep means the scope form plans a guard step: a computed, --base or --card scope under the go scoper.
+	// A --card scope under the card key plans none.
 	guardStep bool
 	// guardDir is the run directory of that guard step, relative to the worktree root.
 	// Empty means the directory of each guard group's own tier.
@@ -169,7 +170,8 @@ func skippedInside(cfg gateslot.Config, numbers []int, inside map[string][]impac
 // It leaves the guard tests to the module scan, as a whole tier does.
 // A set that cannot be narrowed falls back to whole, naming the reason on request.stderr.
 // A --card scope is the cards' packages per module.
-// It holds every package of that module whose build or tests reach one of them too.
+// Under the card key it holds them alone at every tier, plans no guard step and says so on request.stderr.
+// Otherwise it holds every package of that module whose build or tests reach one of them too.
 // With request.mainPackages it also holds every package main of tier0's module, listed once.
 // Under the batch key, each listed tier above tier0 that does not cover tier0 runs the cards' packages alone.
 // A tier that runs whole is not narrowed.
@@ -239,15 +241,24 @@ func computeScope(ctx context.Context, cfg gateslot.Config, location *lymcwd.Loc
 				return scope{}, fmt.Errorf("gate test: --%s cannot list the main packages of the module at %s: %w; way forward: fix the module until \"go list ./...\" succeeds there, then re-run the same command", gateslot.MainPackagesFlag, mainsDir, err)
 			}
 		}
+		// The batch key's call after the batch's last card runs the dependent packages and the guard step,
+		// so the card key's call leaves both to it.
+		ownOnly := request.gate == gateslot.CardGateKey
 		modules := make([]moduleTargets, len(cardModules))
 		own := make([]moduleTargets, len(cardModules))
 		for i, module := range cardModules {
-			modules[i] = moduleTargets{dir: module.Dir, targets: cardDependents(ctx, root, module, request.stderr)}
+			modules[i] = moduleTargets{dir: module.Dir, targets: slices.Clone(module.Packages)}
+			if !ownOnly {
+				modules[i].targets = cardDependents(ctx, root, module, request.stderr)
+			}
 			own[i] = moduleTargets{dir: module.Dir, targets: slices.Clone(module.Packages)}
 		}
 		modules = withMainPackages(modules, mainsDir, mains)
 		own = withMainPackages(own, mainsDir, mains)
-		sc := scope{form: form, modules: modules, guardStep: true, guardDir: tier0.Dir, tagTiers: tagTiers(cfg, root, modules)}
+		sc := scope{form: form, modules: modules, guardStep: !ownOnly, guardDir: tier0.Dir, tagTiers: tagTiers(cfg, root, modules)}
+		if ownOnly {
+			printLine(request.stderr, fmt.Sprintf("gate test: --gate %s runs the cards' packages alone and no guard step; --gate %s runs the packages that depend on them and the guard step", request.gate, gateslot.BatchGateKey))
+		}
 		ownTiers := ownPackageTiers(cfg, request)
 		var ownSkip []string
 		sc.changed, sc.changesRead = cardChanges(ctx, location, root)
@@ -325,7 +336,7 @@ func computeScope(ctx context.Context, cfg gateslot.Config, location *lymcwd.Loc
 }
 
 // cardDependents returns module's packages and every package of that module whose build or tests reach one of them.
-// A test outside the cards' packages that asserts on what a card changes then runs at the card's own gate.
+// A test outside the cards' packages that asserts on what a card changes then runs in the same call.
 // When the module's packages cannot be listed it returns the cards' packages alone.
 // It then names the narrowing and its cause in the log and on stderr.
 func cardDependents(ctx context.Context, root string, module planparser.ModulePackages, stderr io.Writer) []string {

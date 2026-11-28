@@ -42,7 +42,7 @@ For EACH card file listed above, in the order listed:
 Make exactly the changes the card describes, in exactly the targets its type labels name.
    A deviation is a change outside the batch's card targets as the scope guard counts them: a member target covers that member, a file target every member of that file, a package target every member of the files directly in its directory, and a rename is inside when either its old or its new name is a target.
    `**Uses:**` entries add no coverage, so a change to a member a card only reads is a deviation unless a target of some card in the batch covers it.
-   Three deviations are sanctioned, each within its bound: the guard-test fix in step 3, only in a file a `//lym:guard` test's failure names; a fix to a failure the card caused, under the bounded self-fix section's two-pronged test and its attempt cap; and the retired-name sweep edit below, only to a hit that references a name the card retires.
+   Three deviations are sanctioned, each within its bound: the guard-test fix in the batch gate section below, only in a file a `//lym:guard` test's failure names; a fix to a failure the card caused, under the bounded self-fix section's two-pronged test and its attempt cap; and the retired-name sweep edit below, only to a hit that references a name the card retires.
    No other change outside the targets is made.
    The scope guard records every deviation, sanctioned ones included; you list, compare and report none, and a deviation alone never makes the report `FAILED`.
    The plan's glyph names are the contract: keep every name a card gives a symbol, and rename nothing the plan does not declare.
@@ -70,11 +70,8 @@ Make exactly the changes the card describes, in exactly the targets its type lab
 {{.card_gates}}{{.card_gate_fixer}}
 
    A failing gate call closes with a failure report that lists every failure at once, its lint findings included, with each failure's `file:line` and the log path; fix every failure it lists before you run the gate again.
-   The gate call computes the card's packages from the plan, with every package that depends on them, and runs the guard step itself, the step over the repository's `//lym:guard` tests.
-   The gate call's runs, the listed tiers over the dependent packages as well as the guard step, can fail on a file the card does not list, such as the pinned set in a `cmd/lym` test.
-   When a `//lym:guard` test fails so, in either, fix it under the card's commit.
-   Fix the code that broke the guard where that is the right fix, and change a pinned set or an allowlist only when the pin itself must move.
-   Change only a file that guard test's failure names this way, the first sanctioned deviation in step 2's rule.
+   The gate call computes the card's packages from the plan and runs its tiers over them alone.
+   The batch gate below runs the packages that depend on them and the guard step, the step over the repository's `//lym:guard` tests.
 
 4. Commit the card to the repo — normal dev git, run from your working directory — never any `_lym` path.
    One commit per card is the norm.
@@ -118,6 +115,10 @@ The sandbox ban covers mutating `lym fabric` verbs only.
 
 After the last card's commit and its `lym gate card-verify` call, and before writing the report, run the batch gate once, as a foreground Bash call under the gate rule.
 A failure counts as a gate failure under the self-fix bound below and makes the report `FAILED` once the bound runs out.
+The batch gate's runs, its tier0 run over the packages that depend on the cards' packages as well as its guard step, can fail on a file no card lists, such as the pinned set in a `cmd/lym` test.
+When a `//lym:guard` test fails so, in either, fix it in a ` (fix)` commit of the card that caused it, as step 6 names.
+Fix the code that broke the guard where that is the right fix, and change a pinned set or an allowlist only when the pin itself must move.
+Change only a file that guard test's failure names this way, the first sanctioned deviation in step 2's rule.
 A batch gate call that ends with `--main-packages` belongs to the plan's last batch, and it also runs the packages that flag adds, which the plan-level `webster` gate runs next.
 A failure in those packages is yours to fix under the self-fix bound even when an earlier batch caused it: the one exception to the rules below, in the self-fix bound and in the report's `status`, that leave such a failure to that gate.
 

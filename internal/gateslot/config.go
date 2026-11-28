@@ -518,7 +518,7 @@ func decodeGates(entries map[string]yaml.Node) (map[string]GateKey, error) {
 		}
 		switch key.Scope {
 		case scopeCard:
-			if name != cardGateKey && name != BatchGateKey {
+			if name != CardGateKey && name != BatchGateKey {
 				return nil, guidedError{fmt.Errorf("config key %q: scope card is only for the card and batch keys; fix it with \"lym config gate\" from the prime%s", path, roleClause)}
 			}
 		case scopeDiff, scopeAll, ScopeMarked:
@@ -533,7 +533,7 @@ func decodeGates(entries map[string]yaml.Node) (map[string]GateKey, error) {
 			}
 		}
 		if key.Fixer != "" {
-			if name != cardGateKey {
+			if name != CardGateKey {
 				return nil, guidedError{fmt.Errorf("config key %q: a fixer is only for the card key, since only its agent call hands a red verdict to a fixer; remove fixer from that key with \"lym config gate\" from the prime%s", path+".fixer", roleClause)}
 			}
 			if _, err := modelspec.Parse(key.Fixer); err != nil {

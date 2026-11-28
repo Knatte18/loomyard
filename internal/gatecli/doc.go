@@ -148,9 +148,11 @@
 // Under the `go` scoper a computed or `--base` scope is `impactset.DeriveTargets` of the base-to-working-tree diff.
 // It falls back to whole wherever the derivation does, naming the reason on stderr.
 // A `--card` scope is the cards' packages and, per module, every package whose build or tests reach one of them.
-// So a test outside the cards that asserts on what they change runs at the card's gate;
+// So a test outside the cards that asserts on what they change runs in the same call;
 // a module `go list` cannot list keeps the cards' packages alone, which the call names on stderr.
 // With `--main-packages` it also holds every `package main` package of tier0's module.
+// Under `--gate card` every listed tier runs the cards' packages alone, and the call plans no guard step.
+// It says so on stderr, since a `--gate batch` call over the cards runs the dependent packages and the guard step.
 // Under `--gate batch` only tier0, and a listed tier that covers it, run that scope.
 // Each other listed tier runs the cards' packages alone, with the main packages when asked,
 // and the call names it on stderr.
@@ -235,7 +237,7 @@
 // # Guard step
 //
 // The verb runs the guard step after the listed tiers when given `--guards`.
-// Under the `go` scoper it also runs after any computed, `--base` or `--card` scope.
+// Under the `go` scoper it also runs after any computed, `--base` or `--card` scope, bar a `--gate card` call's.
 // It covers the module's `//lym:guard` tests outside the scope, so a narrower gate keeps full guard coverage.
 // It also covers a scope package's guard test whose tier no listed tier is or covers, which the listed runs skip:
 // under `--card` for the cards' scope, and under a computed or `--base` scope for each base's impacted set and tiers.

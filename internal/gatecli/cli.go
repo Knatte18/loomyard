@@ -86,7 +86,7 @@ Each tier's stderr summary line shows its slot wait as wait and its run time wit
 Without --gate the scope is the explicit <targets>, --all, --card <id>, --base <rev>, or the diff from the merge base with the pair's parent branch.
 Arguments after "--" fill each tier's {args}.
 A --filter among them is ANDed with the tier's filter where the tier's command holds {filter}.
---guards, and a narrower scope while ` + keyName(scoperKey) + ` is go, also run the //lym:guard tests outside the scope; --card adds tier-skipped ones.
+--guards, and a narrower scope while ` + keyName(scoperKey) + ` is go bar a --gate card call's, also run the //lym:guard tests outside the scope.
 
 Examples:
 
@@ -122,7 +122,7 @@ Examples:
 	testCmd.Flags().StringVar(&gate, "gate", "", "key of "+keyName(gatesKey)+" whose tiers and scope the call runs; goes with none of --tier, --upto, --all and --base")
 	testCmd.Flags().IntSliceVar(&tiers, "tier", nil, "tier number to run; repeatable, default 0")
 	testCmd.Flags().IntVar(&upto, "upto", 0, "run every declared tier numbered 0 through N but the manual ones")
-	testCmd.Flags().StringArrayVar(&cards, "card", nil, "plan card id whose packages, and the packages that depend on them, are the scope; under --gate batch a tier above tier0 that does not cover tier0 runs the cards' packages alone; repeatable")
+	testCmd.Flags().StringArrayVar(&cards, "card", nil, "plan card id whose packages, and the packages that depend on them, are the scope; under --gate card every tier runs the cards' packages alone with no guard step; under --gate batch a tier above tier0 that does not cover tier0 runs the cards' packages alone; repeatable")
 	testCmd.Flags().BoolVar(&mainPackages, gateslot.MainPackagesFlag, false, "with --card under the go scoper, add every package main of tier0's module to the scope")
 	testCmd.Flags().StringVar(&base, "base", "", "revision whose diff to the working tree is the scope")
 	testCmd.Flags().BoolVar(&all, "all", false, "run every tier over its all_targets")
