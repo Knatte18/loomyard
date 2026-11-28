@@ -1,5 +1,5 @@
-// reinterpret.go carries a hub across the move of pull_request and land_notice onto the per-task lookup.
-// It also carries a hub across the renaming of pull_request's on to review and merge to trail.
+// reinterpret.go carries a hub across the move of beam.pull_request and beam.land_notice onto the per-task lookup.
+// It also carries a hub across the renaming of beam.pull_request's on to review and merge to trail.
 // Each rewrites the hub's beam.yaml and flags each beam.yaml in the hub that still holds a retired value.
 // The move also carries the beam settings the board's entries hold into the live worktrees that need them.
 // The renaming also renames the values the board's entries and the hub's run profiles hold in their run settings.
@@ -22,7 +22,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
 
-// PerTaskSettingsReinterpretationID names the change that moved pull_request and land_notice onto the per-task lookup.
+// PerTaskSettingsReinterpretationID names the per-task lookup change.
+// That change moved beam.pull_request and beam.land_notice onto the lookup.
 const PerTaskSettingsReinterpretationID = "beam-per-task-settings"
 
 // The values the per-task lookup retired, which no layer may hold now.
@@ -49,26 +50,26 @@ func retiredReplacements() map[string]map[string]string {
 	}
 }
 
-// PullRequestModesReinterpretationID names the change that renamed pull_request's on to review and merge to trail.
+// PullRequestModesReinterpretationID names the change that renamed beam.pull_request's on to review and merge to trail.
 const PullRequestModesReinterpretationID = "beam-pull-request-modes"
 
-// The pull_request values the mode names replaced.
+// The beam.pull_request values the mode names replaced.
 const (
 	renamedPullRequestOn    = "on"
 	renamedPullRequestMerge = "merge"
 )
 
-// renamedModes maps each renamed pull_request value to the value that now means the same.
+// renamedModes maps each renamed beam.pull_request value to the value that now means the same.
 func renamedModes() map[string]map[string]string {
 	return map[string]map[string]string{
 		PullRequestKey: {renamedPullRequestOn: PullRequestReview, renamedPullRequestMerge: PullRequestTrail},
 	}
 }
 
-// ReinterpretPullRequestModes carries a hub's beam config across the renamed values of pull_request.
+// ReinterpretPullRequestModes carries a hub's beam config across the renamed values of beam.pull_request.
 // An on in the hub file becomes review and a merge becomes trail.
 // A merge keeps what it meant.
-// An on does too, except that its review now ends only on the operator's word whatever the autonomy.
+// An on does too, except that its review now ends only on the operator's word whatever the beam.autonomy.
 // The own beam.yaml files of each worktree it is told are read too.
 // A renamed value in one is flagged with the way forward, since only the hub file is rewritten.
 // A read that fails is flagged and never fails the reinterpretation.
@@ -82,10 +83,11 @@ func ReinterpretPullRequestModes(existing []byte, worktrees []configengine.HubWo
 	return rewritten, rewrote, append(flagged, worktreeFlags...), nil
 }
 
-// ProfilePullRequestModesReinterpretationID names the rename of pull_request's on and merge in the hub's run profiles.
+// ProfilePullRequestModesReinterpretationID names the rename of beam.pull_request's on and merge.
+// It applies to the hub's run profiles.
 const ProfilePullRequestModesReinterpretationID = "profiles-pull-request-modes"
 
-// ReinterpretProfilePullRequestModes renames pull_request's on and merge in the bytes of a hub profiles.yaml.
+// ReinterpretProfilePullRequestModes renames beam.pull_request's on and merge in the bytes of a hub profiles.yaml.
 // The values sit in the beam settings of each `<profile>.<recipe>` block, and no seed admits the renamed ones.
 // It keeps comments and every other key, and returns one rewrote line per replaced value, naming its block.
 // A file with no renamed value is returned unchanged.
@@ -160,7 +162,7 @@ func encodeDocument(document *yaml.Node) ([]byte, error) {
 	return out.Bytes(), nil
 }
 
-// RenameRunSettingsModes replaces a renamed pull_request value in the beam settings of a board entry's run_settings.
+// RenameRunSettingsModes replaces a renamed beam.pull_request value in the beam settings of a board entry's run_settings.
 // The replacement is the value that now means the same, and no layer admits the renamed one.
 // It returns the settings and one line per replaced value; settings with none come back as they were, with no line.
 func RenameRunSettingsModes(settings map[string]any) (map[string]any, []string) {
@@ -177,14 +179,15 @@ func RenameRunSettingsModes(settings map[string]any) (map[string]any, []string) 
 	return settings, []string{rewriteLine(PullRequestKey, value, replacement)}
 }
 
-// ReinterpretPerTaskSettings carries a hub's beam config across the retired values of pull_request and land_notice.
-// Those are pull_request's required and land_notice's all and per-task.
-// A required pull_request in the hub file becomes review only so that beam.yaml loads.
+// ReinterpretPerTaskSettings carries a hub's beam config across its retired values.
+// Those are beam.pull_request's required and beam.land_notice's all and per-task.
+// A required beam.pull_request in the hub file becomes review only so that beam.yaml loads.
 // It is flagged, since review does not keep what required meant.
-// An all land_notice becomes on, and a per-task one becomes off.
+// An all beam.land_notice becomes on, and a per-task one becomes off.
 // The own beam.yaml files of each worktree it is told are read too.
 // A retired value in one is flagged with the way forward, since only the hub file is rewritten.
-// A worktree file's pull_request now decides that worktree's own landing, and a last line says so when any sets one.
+// A worktree file's beam.pull_request now decides that worktree's own landing,
+// and a last line says so when any sets one.
 // A read that fails is flagged and never fails the reinterpretation.
 // A file with no retired value is returned unchanged.
 func ReinterpretPerTaskSettings(existing []byte, worktrees []configengine.HubWorktree) (rewritten []byte, rewrote, flagged []string, err error) {
@@ -246,7 +249,7 @@ func worktreeLabel(worktree configengine.HubWorktree) string {
 
 // flagRetiredValues returns one line for each value replacements maps that the own beam.yaml files of the worktrees set.
 // A worktree whose files cannot be read gives one line naming the failure, and the rest are still read.
-// It also returns the path of each worktree file that sets pull_request.
+// It also returns the path of each worktree file that sets beam.pull_request.
 func flagRetiredValues(worktrees []configengine.HubWorktree, replacements map[string]map[string]string) (flagged, pullRequestFiles []string) {
 	for _, worktree := range worktrees {
 		label := worktreeLabel(worktree)
@@ -307,14 +310,14 @@ func retiredMeaning(key, retired string) string {
 }
 
 // CarryBeamTaskSettings writes the beam settings that the board's entries hold into the local layer of their worktrees.
-// An entry's settings are the pull_request and land_notice of its beam run settings,
-// and its retired pull_request and notify_on_land keys while a save has not dropped them.
-// A renamed pull_request value is carried as the value that now means the same.
+// An entry's settings are the beam.pull_request and beam.land_notice of its beam run settings,
+// and its retired pull_request and notify_on_land entry keys while a save has not dropped them.
+// A renamed beam.pull_request value is carried as the value that now means the same.
 // They go into the worktree named after the entry, among worktrees, and a project's into its own worktree.
 // A setting the worktree's own files already set is left as it is.
 // It returns one line per setting written.
 // A failed read of a worktree's files and a failed write are flagged lines.
-// So is an entry whose retired pull_request is off, which is not carried.
+// So is an entry whose retired pull_request entry key is off, which is not carried.
 // The error is set only when the board cannot be read, so a caller may try again.
 func CarryBeamTaskSettings(boardDir string, worktrees []configengine.HubWorktree) (carried, flagged []string, err error) {
 	entries, err := boardengine.BeamSettingsByEntry(boardDir)

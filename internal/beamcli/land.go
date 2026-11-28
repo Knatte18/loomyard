@@ -55,7 +55,7 @@ import (
 // A commit over an unchanged directory is a no-op.
 // Description reads the title and body of the written change description.
 // BeamHead reads the beam pair's HEAD.
-// PullRequestMode reads beam.yaml's pull_request for the beam through the per-task lookup.
+// PullRequestMode reads beam.pull_request for the beam through the per-task lookup.
 // The lookup starts at the beam's own worktree.
 // It also reports whether GitHub's rules for the parent branch require a pull request.
 // A hub with no GitHub origin or no usable token reports that no rule requires one.
@@ -269,7 +269,7 @@ func judgeDescribed(deps landDeps, verb, slug string) (pawlengine.LandingRecord,
 // judgeNoPullRequest refuses a beam with no pull request recorded when its landing needs one.
 // GitHub's rules for the parent branch demand a pull request;
 // an origin that lacks a fact the demand needs refuses the beam too.
-// A beam whose pull_request is trail passes, since its landing opens its own pull request.
+// A beam whose beam.pull_request is trail passes, since its landing opens its own pull request.
 // A beam with no commits beyond its parent passes too.
 func judgeNoPullRequest(deps landDeps, verb, slug string) error {
 	mode, rulesRequired, err := deps.PullRequestMode(slug)

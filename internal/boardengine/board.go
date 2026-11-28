@@ -57,7 +57,7 @@ func New(cfg Config) *Board {
 	}
 }
 
-// RecipeOf returns the recipe task runs: its own recipe field, or the board's default_recipe when the field is empty.
+// RecipeOf returns the recipe task runs: its own recipe field, or board.default_recipe when the field is empty.
 func (b *Board) RecipeOf(task Task) string {
 	return b.out.recipeOf(task)
 }

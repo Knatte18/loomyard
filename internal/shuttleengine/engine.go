@@ -318,7 +318,7 @@ const EditHookVerb = "hook-edit"
 // PythonAllowedHookVerb is the name of a hidden `lym shuttle` verb.
 // An engine's python guard hook runs it on a matching call.
 // It exits 0 only when the shuttle config the launch read allows Python at that moment,
-// so a running session follows a change of `deny_python` without a restart.
+// so a running session follows a change of `shuttle.deny_python` without a restart.
 const PythonAllowedHookVerb = "hook-python-allowed"
 
 // EditRecorder is an optional capability of an engine:

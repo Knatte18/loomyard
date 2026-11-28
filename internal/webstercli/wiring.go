@@ -117,7 +117,7 @@ func (c *websterCLI) wireHub(loc *lymcwd.Location, stencilsDir, planDir, targetD
 	// Master runs `lym webster begin-batch <NN>` and `lym webster recover-batch <NN>` as separate processes,
 	// so their prompts are composed here.
 	// See the webstercli-resolves-the-friction-directory-in-hub-mode Shared Decision.
-	// A load error or an empty friction.model leaves it empty.
+	// A load error or an empty loom.friction.model leaves it empty.
 	// A `lym webster` verb must never fail over an unrelated module's config, since the value is optional bookkeeping.
 	c.frictionDir = ""
 	hubgeom.ReconcileBeforeLoad(loc)

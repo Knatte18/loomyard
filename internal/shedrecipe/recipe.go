@@ -46,7 +46,7 @@ type Config map[string]any
 // SegmentSettings holds one review segment's resolved values, shared by every row of that segment.
 type SegmentSettings struct {
 	// Models holds the segment's reviewer and fixer round models.
-	// The fallback to review.reviewer_model and review.fixer_model is already applied.
+	// The fallback to loom.review.reviewer_model and loom.review.fixer_model is already applied.
 	Models burlerengine.RoundModels
 	// ReviewKey is the config key the reviewer models came from.
 	ReviewKey shuttleengine.ModelKey
@@ -64,7 +64,7 @@ type SegmentSettings struct {
 	HardMaxBouncesKey string
 	// ConfigFile is the file both keys live in, loom.yaml, tapestry.yaml or darn.yaml.
 	ConfigFile string
-	// AmendMaxBounces is the resolved review.amend_max_bounces; 0 settles an amendment without a review.
+	// AmendMaxBounces is the resolved loom.review.amend_max_bounces; 0 settles an amendment without a review.
 	AmendMaxBounces int
 	// Assist is the segment's assistant reviewer settings; the zero value runs no assistant.
 	Assist shedadapters.AssistSettings
@@ -121,7 +121,7 @@ type Env struct {
 	// Nil holds nothing.
 	VerifyHold *verifytree.PauseHold
 	// VerifyBudget is the told time budget of the "verify" gate; its zero value turns the budget off.
-	// A darn run tells darn.yaml's verify_budget_min and a notice to the run's parent.
+	// A darn run tells darn.verify_budget_min and a notice to the run's parent.
 	VerifyBudget loomshed.VerifyBudget
 	// EntryLabels is the told reader of the run's board entry labels, read by the "red-first" gate at each arrival.
 	EntryLabels func() ([]string, error)
@@ -143,7 +143,7 @@ type Env struct {
 	StatusLockPath string
 	// StencilsDir is the told stencils directory, read by Bouncer.
 	StencilsDir string
-	// DefaultEngine names shuttle's default engine, which a MultiLLM seat with no engine in its model spec runs on.
+	// DefaultEngine holds shuttle.engine, which a MultiLLM seat with no engine in its model spec runs on.
 	DefaultEngine string
 	// SpecsDir is the told deployed-specs directory, read by the Bouncer and BurlerReview entries.
 	// It is a run-wide root, the class Env carries,
@@ -158,9 +158,9 @@ type Env struct {
 	// PatternRecordPath is the told decision record whose declared PATTERN the Bouncer renders in its review rows.
 	// Empty on a darn run, which takes no PATTERN declaration.
 	PatternRecordPath string
-	// RenameTools is the hub's language.yaml rename_tools list, read by the plan gates' rename-tool-missing check.
+	// RenameTools is the hub's language.rename_tools list, read by the plan gates' rename-tool-missing check.
 	RenameTools []string
-	// RefuseRaw is the hub's gate.yaml refuse_raw list for the plan gates' verify-raw-command check; empty refuses nothing.
+	// RefuseRaw is the hub's gate.refuse_raw list for the plan gates' verify-raw-command check; empty refuses nothing.
 	RefuseRaw []string
 	// TierTags is the hub's gate.yaml tier keys, read by the plan gates' test-tier-unstated check; nil skips the check.
 	TierTags []string
@@ -340,7 +340,7 @@ type Env struct {
 	// Building the table needs a *lymcwd.Location, which this package may not import, so internal/loomcli supplies it.
 	DarnTable func(loomshed.DarnTold) (seatengine.Table, error)
 	// DarnVerifyAttempts is the verify gate's attempt budget of the darn recipe.
-	// The `darn.yaml` file's verify_attempts supplies it.
+	// The `darn.verify_attempts` key supplies it.
 	// internal/loomrecipe alone reads it.
 	// It stamps it onto the verify gates of the darn recipe's Darn-Write and Code-Burler-Fix rows at every build.
 	DarnVerifyAttempts int

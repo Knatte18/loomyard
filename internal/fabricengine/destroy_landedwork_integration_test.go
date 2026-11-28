@@ -1,7 +1,7 @@
 // destroy_landedwork_integration_test.go drives the pair-warp ownership kind.
 // It also drives the untracked-tracked-at ownership kind and the unlanded-work dirtiness kind.
 // It runs them against real throwaway git repositories, with hermetic git from testmain_test.go.
-// It uses an empty branch_prefix, so the warp branch is the bare slug.
+// It uses an empty fabric.branch_prefix, so the warp branch is the bare slug.
 // No hub is involved: the gate reads only the repository named by repoDir.
 
 package fabricengine

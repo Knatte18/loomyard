@@ -105,7 +105,7 @@ func providerlessShuttleConfig() string {
 // providerlessBinary is a provider path that cannot exist, which keeps a fixture from starting a real session.
 const providerlessBinary = "/nonexistent/lym-smoke-has-no-provider"
 
-// claudeConfigWithBinary returns claude.yaml's shipped template with its binary value set to binary.
+// claudeConfigWithBinary returns claude.yaml's shipped template with its claude.binary value set to binary.
 // A fixture seeding this config then launches that executable rather than the real claude on PATH.
 // It panics when the template no longer holds the line it rewrites, so drift fails loudly.
 func claudeConfigWithBinary(binary string) string {
@@ -121,7 +121,7 @@ func claudeConfigWithBinary(binary string) string {
 // The deadline override must be applied together with the provider override, and neither is sufficient alone.
 // Removing the provider stops a real session from starting but not the wait:
 // a launch that fails still leaves reed holding the pane, so shuttle's wait loop polls until the SPEC's own deadline.
-// The discussion deadline comes from loom.yaml's discussion.timeout_min, which ships at 480 minutes.
+// The discussion deadline comes from loom.discussion.timeout_min, which ships at 480 minutes.
 // That default is set high so an autonomous agent exploring a codebase is never cut off.
 // In a fixture with no agent at all, the wait would be an eight-hour block on a thirty-second test.
 func fastDeadlineLoomConfig() string {

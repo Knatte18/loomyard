@@ -201,7 +201,7 @@ func TestConfig_CreditBlock(t *testing.T) {
 }
 
 // TestLoadConfig_InvalidKeys verifies that LoadConfig fails loud at load time on a hand-edited landing.yaml:
-// an ungrammatical model spec, or a credit_engines key naming no engine.
+// an ungrammatical model spec, or a landing.credit_engines key naming no engine.
 // The error names the key, rather than the value being silently carried into the site that reads it.
 func TestLoadConfig_InvalidKeys(t *testing.T) {
 	tiergate.Require(t, 0)

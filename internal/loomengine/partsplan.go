@@ -45,8 +45,8 @@ const partsPlanLiveStrandsNote = "a resumed row whose chair or writers are still
 // The chair writes the join record `partsparser.JoinRecord`.
 // It reads the decision record, the parts file and every part's overview.
 // Each writer writes its part's overview and reads the decision record, the relevant list and the parts file.
-// runTimeout is shuttle's run_timeout_min as a duration, told by the caller.
-// The caller tells it so that a plan.timeout_min of 0 resolves to the effective plan timeout.
+// runTimeout is shuttle.run_timeout_min as a duration, told by the caller.
+// The caller tells it so that a tapestry.plan.timeout_min of 0 resolves to the effective plan timeout.
 // It bounds every writer.
 // The chair's seat timeout is cfg.PartsChairTimeout(runTimeout), and an error from it fails the table.
 // gates, accept and findingsPath build each writer's gate, Accept and failed-gate findings path from its part's name.

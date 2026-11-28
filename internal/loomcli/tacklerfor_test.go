@@ -14,7 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestTacklerFor pins that a darn, a tapestry, a pawl and a sampler run all take shed.yaml's tackler_max_spawns.
+// TestTacklerFor pins that a darn, a tapestry, a pawl and a sampler run all take shed.tackler_max_spawns.
 // Each run gets the recipe line its rows select.
 // A Sampler-Session row takes the interactive line and a Plan-Write row the phased line.
 // A row selecting none takes the one-writer line, and pawl takes its own.

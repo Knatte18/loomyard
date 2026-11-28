@@ -176,7 +176,7 @@ func TestPRReview_Call(t *testing.T) {
 
 	tests := []struct {
 		name string
-		// mode is beam.yaml's pull_request for the landing run, as the Mode seam reads it.
+		// mode is beam.pull_request for the landing run, as the Mode seam reads it.
 		mode string
 		// modeErr makes the Mode seam fail.
 		modeErr error
@@ -674,7 +674,7 @@ const testVerdict = "## Regression check\n\n- Scope: full.\n- Compare: passed at
 // The sessions run in a fresh session world.
 // The PR-Review model-spec is claude:fixture-model.
 // A mail to the session fails the test: the mail goes through creel, which this package cannot reach.
-// The origin is a GitHub one, beam.yaml's pull_request is review, the task head is "head-new", and the worktree is clean.
+// The origin is a GitHub one, beam.pull_request is review, the task head is "head-new", and the worktree is clean.
 // No pause covers the run, and the clock moves only when the wait sleeps.
 // A test replaces the seams it scripts.
 func prReviewTestDeps(t *testing.T, api *fakePullRequestAPI) Deps {

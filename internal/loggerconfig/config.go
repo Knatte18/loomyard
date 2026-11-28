@@ -25,7 +25,7 @@ const (
 
 const day = 24 * time.Hour
 
-// maxRetentionDays is the largest trace_retention_days a time.Duration can hold.
+// maxRetentionDays is the largest logger.trace_retention_days a time.Duration can hold.
 // A larger value would overflow MaxAge into a negative duration,
 // and the sweep would then delete every non-live trace.
 const maxRetentionDays = int(math.MaxInt64 / int64(day))
@@ -58,7 +58,7 @@ func ConfigSpec() configengine.Spec {
 // Load resolves the trace-retention bounds from logger.yaml through the layer stack under dirs.
 // An absent logger.yaml in every layer resolves to the embedded default template instead of erroring;
 // a file that exists but is invalid, or carries a non-positive or non-integer value, errors naming the key.
-// A trace_retention_days value too large for a time.Duration also errors naming the key.
+// A logger.trace_retention_days value too large for a time.Duration also errors naming the key.
 func Load(dirs configengine.Dirs) (logger.RetentionBounds, error) {
 	resolved, err := configengine.LoadOrTemplate(dirs, ConfigSpec())
 	if err != nil {

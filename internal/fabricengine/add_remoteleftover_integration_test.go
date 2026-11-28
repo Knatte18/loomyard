@@ -4,7 +4,7 @@
 // A provably replaceable leftover does not block the add.
 // A probe that fails in transit is retried, so an origin that answers again within the backoff does not fail the add.
 //
-// Every hub here is built through hubforge.CopyHub with an empty branch_prefix,
+// Every hub here is built through hubforge.CopyHub with an empty fabric.branch_prefix,
 // so a slug's warp branch is the bare slug and its weft branch is <slug>-weft.
 // pushCommitToOrigin plants the leftover's divergence from a throwaway clone of the fixture's bare.
 //

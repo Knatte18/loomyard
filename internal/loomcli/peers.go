@@ -247,7 +247,7 @@ func recordExists(path string) (bool, error) {
 // peerRecipe returns the name of the recipe a peer's run follows, the tapestry recipe's for an empty name.
 // A peer whose worktree is on this machine and holds a self-run seed follows the seed's recipe.
 // Otherwise it follows the recipe Seed-Child seeds for a board entry, and pawl for a project entry.
-// Any other entry follows its recipe field, which the board's default_recipe fills where the entry names none.
+// Any other entry follows its recipe field, which board.default_recipe fills where the entry names none.
 // A cli package never imports another, so this rule is restated here rather than shared.
 // A nil peer is a worktree that is not on this machine.
 func peerRecipe(peer *lymcwd.Location, task boardengine.Task) string {

@@ -46,8 +46,8 @@ const driverRole = "driver"
 // True would take focus back on each agent pane the run spawns.
 //
 // Timeout and KeepPane stay zero, a statement about this path rather than a retention choice.
-// A zero Timeout defaults to run_timeout_min and, on this path, bounds only the startup step.
-// The startup window is startup_timeout_s.
+// A zero Timeout defaults to shuttle.run_timeout_min and, on this path, bounds only the startup step.
+// The startup window is shuttle.startup_timeout_s.
 // The session is never waited on to completion, so no other timeout covers it.
 // KeepPane is read only when the session is waited on, so zero says nothing about pane retention.
 func driverSpec(prompt, promptEngine, reportPath string, choice shuttleengine.ModelChoice) shuttleengine.Spec {

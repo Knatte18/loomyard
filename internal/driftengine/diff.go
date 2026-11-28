@@ -97,7 +97,8 @@ type CaseListing struct {
 
 // Volatile names what a capture writes that differs between captures whatever the code does, such as provenance,
 // so it is no drift.
-// It holds a hub's `volatile_files` and `volatile_keys` lists, and the metadata marks an agent sets on a run's capture.
+// It holds a hub's `drift.volatile_files` and `drift.volatile_keys` lists.
+// It also holds the metadata marks an agent sets on a run's capture.
 // The zero Volatile names nothing.
 type Volatile struct {
 	// Files are the glob patterns of the cases left out whole:

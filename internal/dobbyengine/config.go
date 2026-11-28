@@ -35,7 +35,7 @@ const (
 	AutonomyKey = beamsetting.AutonomyKey
 )
 
-// The values of beam.yaml's pull_request, declared once in beamsetting.
+// The values of beam.pull_request, declared once in beamsetting.
 const (
 	// PullRequestReview lands through a pull request whose review ends on the operator's word.
 	// The word is given on GitHub or through `lym loom pr-continue`, with a PR-Review session in the task's window.
@@ -48,7 +48,7 @@ const (
 	PullRequestMergeIn = beamsetting.PullRequestMergeIn
 )
 
-// The values of beam.yaml's land_notice, declared once in beamsetting.
+// The values of beam.land_notice, declared once in beamsetting.
 const (
 	// LandNoticeOn sends the landing notice.
 	LandNoticeOn = beamsetting.LandNoticeOn
@@ -91,7 +91,8 @@ type Config struct {
 }
 
 // ConfigSpec returns beam's layered-load spec: a per-worktree module whose keys are all open to every layer.
-// pull_request decides how a task lands, never what lands, so a task's run settings may set it like land_notice.
+// beam.pull_request decides how a task lands, never what lands,
+// so a task's run settings may set it like beam.land_notice.
 // test_map_upkeep, test_map_every and test_map_batch are retired: a layer that still holds one loads as if it did not,
 // and a reconcile prunes it.
 func ConfigSpec() configengine.Spec {
@@ -191,7 +192,7 @@ func CheckLocalValues(document []byte) error {
 // checkTaskSetting returns the per-task key's value as text, or refuses a value its key does not take.
 // where names the file or layer the value was read from, for the refusal.
 // A refusal is marked [configengine.ErrInvalid] and names the key, the values it takes and the way forward.
-// autonomy takes a YAML boolean and answers "true" or "false".
+// beam.autonomy takes a YAML boolean and answers "true" or "false".
 func checkTaskSetting(key string, value any, where string) (string, error) {
 	if key == AutonomyKey {
 		if flag, isBool := value.(bool); isBool {

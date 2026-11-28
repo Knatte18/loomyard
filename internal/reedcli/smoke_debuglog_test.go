@@ -1,4 +1,4 @@
-// smoke_debuglog_test.go runs the debug_log opt-in against a real tmux server.
+// smoke_debuglog_test.go runs the reed.debug_log opt-in against a real tmux server.
 // A boot with LYM_REED_DEBUG set writes a verbose tmux server log into the hub's logs dir.
 // The boot-time prune trims older logs there to the newest 2.
 // Repeated crash boots keep every debug log shape bounded.
@@ -23,7 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
-// TestSmokeDebugLog arms debug_log through LYM_REED_DEBUG on one hub's prime worktree, one step per verbosity.
+// TestSmokeDebugLog arms reed.debug_log through LYM_REED_DEBUG on one hub's prime worktree, one step per verbosity.
 // The steps run serially in a fixed order.
 // The second step starts from the logs the first left behind, which only tightens its bound.
 // The scenario does not call t.Parallel, because each step sets LYM_REED_DEBUG, which every boot in the process reads.

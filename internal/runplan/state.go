@@ -28,7 +28,7 @@ const stateMutateLockName = "mutate.lock"
 // Every holder's critical section is bounded, so the wait is short and never a deadlock risk.
 // Callers hold the lease across their whole load-mutate-save sequence.
 // A caller that spawns a strand under the lease holds it through that strand's startup window.
-// Shuttle returns a *Run handle only past the provider's startup gates, which startup_timeout_s bounds.
+// Shuttle returns a *Run handle only past the provider's startup gates, which shuttle.startup_timeout_s bounds.
 // A concurrent verb blocks on the lease for that time rather than failing.
 // This serializes two concurrent recoveries of one batch:
 // the second reads the first's recorded guid and attaches instead of spawning a duplicate.

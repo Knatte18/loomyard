@@ -4,7 +4,8 @@
 // the refusal of dirt outside the own paths precedes any fetch; the ownership refusals;
 // and the remote half's refusals, skips, stale lease and failed checkout rewrite.
 //
-// Every hub is built through hubforge.NewHub with an empty branch_prefix, so the pair's warp branch is the bare slug.
+// Every hub is built through hubforge.NewHub with an empty fabric.branch_prefix,
+// so the pair's warp branch is the bare slug.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 

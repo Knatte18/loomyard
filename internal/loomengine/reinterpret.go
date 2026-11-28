@@ -1,4 +1,4 @@
-// reinterpret.go carries a hub's loom.yaml across the change of what code.auto_accept: true does at a spent budget.
+// reinterpret.go carries a hub's loom.yaml across the change of what loom.code.auto_accept: true does at a spent budget.
 
 package loomengine
 
@@ -10,14 +10,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 )
 
-// CodeAutoAcceptBlockingReinterpretationID names the change to code.auto_accept.
+// CodeAutoAcceptBlockingReinterpretationID names the change to loom.code.auto_accept.
 // The setting stopped accepting a round with an open BLOCKING finding at a spent budget.
 const CodeAutoAcceptBlockingReinterpretationID = "loom-code-auto-accept-escalates-blocking"
 
-// FlagCodeAutoAccept carries a hub loom.yaml across a change to what code.auto_accept: true does.
+// FlagCodeAutoAccept carries a hub loom.yaml across a change to what loom.code.auto_accept: true does.
 // It no longer accepts a round with an open BLOCKING finding at a spent budget.
 // Such a round now escalates to the run's parent, which accepts it or orders another round.
-// A file that sets code.auto_accept to true is flagged with that way forward, and left unchanged.
+// A file that sets loom.code.auto_accept to true is flagged with that way forward, and left unchanged.
 // So is a file that sets none, and an absent file (nil existing), since both take the template's default of true.
 // A file that sets it to false is neither changed nor flagged.
 // The worktrees argument is unused, as the check judges the file alone.

@@ -31,7 +31,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// escapeFabricConfigYAML returns a repo-wide fabric.yaml override with an empty branch_prefix and pathspec escapeName.
+// escapeFabricConfigYAML returns a repo-wide fabric.yaml override.
+// It sets an empty fabric.branch_prefix and a fabric.pathspec of escapeName.
 func escapeFabricConfigYAML(escapeName string) string {
 	return "branch_prefix: \"\"\npathspec: " + escapeName + "\n"
 }

@@ -32,14 +32,14 @@ func ConfigTemplate() string {
 	return configTemplate
 }
 
-// ConfigOpenMaps returns the weaver.yaml keys a layer replaces whole, the ladder list.
+// ConfigOpenMaps returns the weaver.yaml keys a layer replaces whole, the weaver.ladder list.
 func ConfigOpenMaps() []string {
 	return []string{"ladder"}
 }
 
 // ConfigSpec returns weaver's layered-load spec.
 // It carries the template and the per-key classification that decides which keys a local override may hold.
-// verify_gate is a guard key: a narrower gate key would hollow the plan-level verify Weaver's Done rests on.
+// weaver.verify_gate is a guard key: a narrower gate key would hollow the plan-level verify Weaver's Done rests on.
 func ConfigSpec() configengine.Spec {
 	return configengine.Spec{
 		Name:     "weaver",
@@ -54,7 +54,8 @@ func ConfigSpec() configengine.Spec {
 }
 
 // LoadConfig loads configuration from the weaver module's layer stack under dirs.
-// It refuses a ladder spec modelspec.Parse rejects, a non-positive fixer_timeout_min and an empty verify_gate.
+// It refuses a ladder spec modelspec.Parse rejects.
+// It also refuses a non-positive weaver.fixer_timeout_min and an empty weaver.verify_gate.
 // Each refusal names the key and is marked configengine.MarkInvalid.
 // module names the config file to read.
 func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {

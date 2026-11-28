@@ -90,7 +90,7 @@ type Spec struct {
 	// Autonomous runs add the AskUserQuestion PreToolUse deny.
 	// Interactive runs do not.
 	// The Agent tool deny and the python deny are included in both modes.
-	// The python deny is toggleable via the shuttle config's deny_python key.
+	// The python deny is toggleable via the shuttle.deny_python key.
 	// The Agent tool and AskUserQuestion denies are toggleable via the claude engine's own config.
 	// Whether the launch carries --dangerously-skip-permissions follows the resolved PermissionMode.
 	// An empty PermissionMode skips in both modes.

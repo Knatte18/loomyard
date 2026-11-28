@@ -10,7 +10,7 @@ import (
 )
 
 // TestAutonomySettingLookup pins what the wrapper answers for a forced key, an unforced key and a failed lookup.
-// The stub lookup answers raddle.auto_approve false, as a profile's raddle block leaves it.
+// The stub lookup answers loom.raddle.auto_approve false, as a profile's raddle block leaves it.
 // It also pins that autonomy is read on each forced key's call.
 func TestAutonomySettingLookup(t *testing.T) {
 	tiergate.Require(t, 0)

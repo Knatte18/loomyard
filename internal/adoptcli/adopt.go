@@ -123,7 +123,7 @@ type outcome struct {
 // CatchUp runs the hub-wide catch-up from origin.
 // MoveInProgress reports whether an anchor change stands in the given worktree, "" naming the prime.
 // It returns the way forward the change names; nil reads as no record standing.
-// DeployState reads the landing deploy command for the prime's branch.
+// DeployState reads the `landing.deploy` command for the prime's branch.
 // It also reads the running lym's build and whether the prime's head is ahead of it;
 // nil reads as nothing to deploy.
 // RunDeploy runs the deploy command in the prime and returns its log's path.

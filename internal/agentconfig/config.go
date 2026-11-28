@@ -61,9 +61,9 @@ const (
 	skillsKey = "skills"
 	// effortsKey holds the effort table.
 	effortsKey = "efforts"
-	// defaultEffortKey is the efforts entry for a session or subagent no other entry names.
+	// defaultEffortKey is the agents.efforts entry for a session or subagent no other entry names.
 	defaultEffortKey = "default"
-	// roleModelSeparator joins a role and a model in an efforts key.
+	// roleModelSeparator joins a role and a model in an agents.efforts key.
 	roleModelSeparator = "/"
 )
 
@@ -282,7 +282,7 @@ func (c Config) Effort(role Role, model string) string {
 	return ""
 }
 
-// ModelEfforts returns the effort a subagent of role takes on each model an efforts key names, sorted by model,
+// ModelEfforts returns the effort a subagent of role takes on each model an agents.efforts key names, sorted by model,
 // and the effort it takes on any other model.
 // A model is named by a key that is neither default nor a role, or by a `<role>/<model>` key of this role.
 func (c Config) ModelEfforts(role Role) ([]ModelEffort, string) {

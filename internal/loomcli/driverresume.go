@@ -19,7 +19,7 @@ import (
 
 // driverResumeSendAttempts and driverResumeSendInterval bound the wait for a parked driver's pane to be ready for input.
 // The bound applies when the engine has no idle reading.
-// Against Claude, the send's own send_ready_timeout_s window bounds that wait instead.
+// Against Claude, the send's own shuttle.send_ready_timeout_s window bounds that wait instead.
 // The attempt count is the cap rather than elapsed time, so a fake wait in a test cannot loop forever.
 const (
 	driverResumeSendAttempts = 20

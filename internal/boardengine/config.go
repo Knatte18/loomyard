@@ -208,7 +208,7 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	return cfg, nil
 }
 
-// checkDesignPrefix refuses a design_prefix that would render a design file onto a decision record's name.
+// checkDesignPrefix refuses a board.design_prefix that would render a design file onto a decision record's name.
 // A decision record is named decision-<slug>.md, so a prefix of "decision-" is refused, the empty one included.
 // A prefix that starts with "decision-" is refused too.
 func checkDesignPrefix(prefix string) error {

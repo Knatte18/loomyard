@@ -17,7 +17,7 @@ import (
 )
 
 // TestLoadConfig_ScalarKeysAndTemplateDefaults checks two things: that LoadConfig reads the scalar keys,
-// and that it resolves absent types and labels keys to the template defaults.
+// and that it resolves absent board.types and board.labels keys to the template defaults.
 // A path: key of any shape is ignored, because Config.Path is tagged yaml:"-".
 // The board data dir is owned by fabriclayout.BoltDir, with no relative-path resolution and no env override.
 // It sets an environment variable, so it runs serially.
@@ -121,7 +121,7 @@ func writeBoardConfig(t *testing.T, content string) string {
 	return tmpDir
 }
 
-// TestLoadConfig_DefaultRecipe asserts default_recipe resolves to the template's darn when absent;
+// TestLoadConfig_DefaultRecipe asserts board.default_recipe resolves to the template's darn when absent;
 // when set, it resolves to the hub's own value.
 func TestLoadConfig_DefaultRecipe(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -151,7 +151,7 @@ func TestLoadConfig_DefaultRecipe(t *testing.T) {
 	}
 }
 
-// TestLoadConfig_DesignPrefixRefused asserts a design_prefix naming a design file decision-<slug>.md is refused.
+// TestLoadConfig_DesignPrefixRefused asserts a board.design_prefix naming a design file decision-<slug>.md is refused.
 // The error gives the way forward, and an ordinary prefix loads.
 func TestLoadConfig_DesignPrefixRefused(t *testing.T) {
 	tiergate.Require(t, 0)

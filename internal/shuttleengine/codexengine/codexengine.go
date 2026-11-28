@@ -29,7 +29,7 @@ var LymBinary = selfexec.LymBinary
 const engineName = "codex"
 
 // defaultSubmitRedrawSettleMS is the redraw settle of an engine built without config.
-// It matches submit_redraw_settle_ms in internal/shuttleengine/template.yaml.
+// It matches shuttle.submit_redraw_settle_ms in internal/shuttleengine/template.yaml.
 const defaultSubmitRedrawSettleMS = 300
 
 // Codex implements shuttleengine.Engine for the Codex CLI's interactive TUI.
@@ -123,12 +123,13 @@ func validateChoice(choice shuttleengine.ModelChoice, permissionMode string, cod
 
 // Prepare readies a Codex launch for the run in runDir and returns it.
 // It first refuses a spec whose prompt was not rendered for Codex, unless the prompt is marked hand-written.
-// Before anything is written, it validates the spec and reads the hub gate config's refuse_raw list.
+// Before anything is written, it validates the spec and reads the hub gate config's gate.refuse_raw list.
 // A gate key the launch does not read never refuses it.
-// A gate config that does not merge or holds an invalid refuse_raw refuses the launch.
+// A gate config that does not merge or holds an invalid gate.refuse_raw refuses the launch.
 // So does a checkout that Codex rules refuse.
 // It readies the lym home, settles the sandbox and writes prompt.md into runDir.
-// Under codex.yaml's workspace-write, a sandbox that cannot start on the machine refuses the launch, naming the cause.
+// Under a codex.sandbox_mode of workspace-write, a sandbox that cannot start on the machine refuses the launch.
+// The refusal names the cause.
 // The prompt file holds the spec's prompt alone.
 // The launch line carries the standing items as the developer instructions:
 // the deny notice with the creel trust sentence.
@@ -144,7 +145,7 @@ func validateChoice(choice shuttleengine.ModelChoice, permissionMode string, cod
 // Items whose setting reaches the argument cap refuse the launch before anything is written.
 // The launch line carries a PreToolUse hook per installed shell guard.
 // An autonomous spec's question-tool deny comes before them, and the deny notice announces both.
-// With codex.yaml's batching nudge on, Prepare seeds the nudge's state file in runDir.
+// With the codex.batching_nudge block on, Prepare seeds the nudge's state file in runDir.
 // The line then carries the nudge's PostToolUse hook.
 // While cfg's EditLoopEdits is above 0, an autonomous spec's line carries the edit hook.
 // The hook writes to the edit records file in runDir.
@@ -359,13 +360,13 @@ func (c *Codex) OpenLaunch(_ string, spec shuttleengine.OpenSpec, _ shuttleengin
 
 // readyHome readies the lym home that codex.yaml names for a launch in the checkout the engine's anchor sits in.
 // Before anything is written, it refuses an anchor that is not absolute or sits in no git checkout.
-// It also refuses a checkout that Codex rules refuse, and an empty or relative writable_roots value.
+// It also refuses a checkout that Codex rules refuse, and an empty or relative codex.writable_roots value.
 // Then it trusts the checkout's roots in the home.
 // It returns the home, the launch's writable roots and the checkout it read.
 // The roots are each symlink-resolved, in this order:
 // the records checkout the engine is told, or none outside a hub;
 // the checkout's git dir and the common git dir it links to;
-// then codex.yaml's writable_roots that exist.
+// then codex.writable_roots that exist.
 // A records checkout that cannot be resolved is kept as told, with a warning logged.
 // The git dirs are listed because a linked worktree's git dirs lie under the main checkout, outside the workspace,
 // and a commit writes its index lock, objects and refs there.

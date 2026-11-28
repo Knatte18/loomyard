@@ -37,8 +37,8 @@ func guids(strands []Strand) []string {
 
 // TestUp_BootValidation pins the eager boot validation of Up.
 // An over-long socket path and an unresolvable shell each fail with an error naming it before any tmux round trip.
-// So do a segment color outside the palette and an invalid watchdog value.
-// So do an invalid window_split and a negative window_share_max.
+// So do a segment color outside the palette and an invalid reed.watchdog value.
+// So do an invalid reed.window_split and a negative reed.window_share_max.
 // The error comes before any tmux round trip, so the test pins validation order, not only existence.
 // "on" and "off" do not trip the watchdog check.
 // The fixture's tmux binary does not exist, so Up fails past that point;

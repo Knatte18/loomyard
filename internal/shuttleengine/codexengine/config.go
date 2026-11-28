@@ -52,7 +52,7 @@ type Config struct {
 	BatchingNudge BatchingNudgeConfig `yaml:"batching_nudge"`
 }
 
-// The modes codex.yaml's sandbox_mode may name.
+// The modes codex.sandbox_mode may name.
 // A launch runs one of the two Codex sandbox modes, workspace-write or danger-full-access;
 // auto is lym's own and resolves to one of them at each launch.
 const (
@@ -95,10 +95,10 @@ func ConfigSpec() configengine.Spec {
 
 // LoadConfig resolves codex.yaml from the layer stack under dirs.
 // An absent file in every layer resolves the template; a layer file that exists but is invalid is an error.
-// A sandbox_mode other than auto, workspace-write or danger-full-access is invalid.
-// So is a max_subagent_threads below 1.
-// So is a plugin_hook_timeout that is not a positive Go duration.
-// While the batching nudge is on, a negative batching_nudge.context_tokens is invalid.
+// A codex.sandbox_mode other than auto, workspace-write or danger-full-access is invalid.
+// So is a codex.max_subagent_threads below 1.
+// So is a codex.plugin_hook_timeout that is not a positive Go duration.
+// While the batching nudge is on, a negative codex.batching_nudge.context_tokens is invalid.
 // So is any other threshold of the block below 1.
 func LoadConfig(dirs configengine.Dirs) (Config, error) {
 	resolved, err := configengine.LoadOrTemplate(dirs, ConfigSpec())
@@ -149,7 +149,7 @@ type homeDirs struct {
 	operator string
 }
 
-// resolveHomes resolves codex.yaml's home and operator_home keys into absolute paths.
+// resolveHomes resolves the codex.home and codex.operator_home keys into absolute paths.
 // It refuses an empty or relative value by its key.
 func resolveHomes(codex Config) (homeDirs, error) {
 	lym, err := expandHomePath("home", codex.Home)
@@ -180,7 +180,7 @@ func expandHomePath(key, value string) (string, error) {
 	return filepath.Clean(value), nil
 }
 
-// configuredWritableRoots returns codex.yaml's writable_roots as absolute, symlink-resolved folders.
+// configuredWritableRoots returns codex.writable_roots as absolute, symlink-resolved folders.
 // It refuses an empty or relative value by its key.
 // A folder that does not exist is left out,
 // so a root the machine has not made, such as a cache of a toolchain it lacks, adds nothing to the launch.
@@ -203,7 +203,7 @@ func configuredWritableRoots(codex Config) ([]string, error) {
 	return roots, nil
 }
 
-// validateEffort refuses a non-empty effort that codex.yaml's efforts does not list, naming the key.
+// validateEffort refuses a non-empty effort that codex.efforts does not list, naming the key.
 func validateEffort(effort string, codex Config) error {
 	if effort == "" || slices.Contains(codex.Efforts, effort) {
 		return nil

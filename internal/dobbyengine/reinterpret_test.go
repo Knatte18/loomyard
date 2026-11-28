@@ -1,5 +1,5 @@
-// reinterpret_test.go pins the rewrite of a hub beam.yaml's retired pull_request and land_notice values.
-// It pins the rewrite of pull_request's renamed on and merge too.
+// reinterpret_test.go pins the rewrite of a hub's retired beam.pull_request and beam.land_notice values.
+// It pins the rewrite of beam.pull_request's renamed on and merge too.
 // It also pins the flags raised for a retired value in the worktrees' own files it is told,
 // and the carry of the board entries' beam settings into the worktrees that need them.
 

@@ -1,5 +1,5 @@
 // Package reviewbudget declares the review budget key family that loom and darn config are built on:
-// the run-wide keys `review.max_bounces`, `review.hard_max_bounces` and `review.amend_max_bounces`;
+// the run-wide keys `loom.review.max_bounces`, `loom.review.hard_max_bounces` and `loom.review.amend_max_bounces`;
 // the per-perch keys `<perch>.max_bounces`, `<perch>.hard_max_bounces` and `<perch>.auto_accept`.
 //
 // A soft cap of 0 means zero rounds in every layer; a null per-perch soft cap takes the run-wide one.

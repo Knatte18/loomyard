@@ -44,7 +44,7 @@ type ModelKey struct {
 	Key string
 	// Entry names one entry of a {name, model} list under Key, empty for a scalar model spec.
 	Entry string
-	// DefaultEngine marks a model that named no engine and resolved no key, so the engine came from shuttle.yaml's default.
+	// DefaultEngine marks a model that named no engine and resolved no key, so the engine came from shuttle.engine.
 	DefaultEngine bool
 }
 

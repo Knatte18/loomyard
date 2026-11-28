@@ -30,7 +30,7 @@
 // `--tags` stays a registered flag only to be refused, naming `--tier`; a tier's own command sets its build tags.
 // The words after `--` fill each tier's `{args}`.
 //
-// `--gate <key>` runs the tiers and the scope the `gates` key of that name holds.
+// `--gate <key>` runs the tiers and the scope the `gate.gates` key of that name holds.
 // It goes with none of `--tier`, `--upto`, `--all` and `--base`.
 // A key the config does not hold, an empty tier list and an undeclared tier are refused, naming `lym config gate`.
 // In a hub that declares no tier at all, a `--gate` call runs the key's lints and no tier.
@@ -85,7 +85,7 @@
 // The reason is that `dotnet test` refuses a second `--filter`.
 // A command without `{filter}` renders no filter whatever terms it is given, and keeps a `--filter` in its `{args}`.
 // Planning refuses a `--filter` after `--` for a command that holds a `--filter` of its own.
-// That refusal names the tier's `filter` key.
+// That refusal names the tier's `gate.tiers.<tier>.filter` key.
 // It also refuses words after `--` that end in `--filter`, which has no expression to take.
 // `{test_targets}` stands where the targets reach `go test`.
 // It renders each invocation's targets narrowed to the packages that hold a test function the tier runs,
@@ -133,7 +133,7 @@
 //
 // # Scoper
 //
-// `gate.yaml`'s `scoper` decides what the computed, `--base` and `--card` forms mean.
+// `gate.scoper` decides what the computed, `--base` and `--card` forms mean.
 // The computed form takes its base per listed tier:
 // the newest ancestor of HEAD the green record holds whole-green for the tier under its current fingerprint;
 // else the merge base of HEAD with the parent branch.
@@ -152,7 +152,7 @@
 // a module `go list` cannot list keeps the cards' packages alone, which the call names on stderr.
 // With `--main-packages` it also holds every `package main` package of tier0's module.
 // A narrower scope runs each listed tier once per module, in that module's directory.
-// One slot hold and one `timeout_min` cover every invocation.
+// One slot hold and one `gate.tiers.<tier>.timeout_min` cover every invocation.
 // An empty scope, such as a diff of Markdown files only, runs no listed tier's command, bar a tier with `carry: false`:
 // each other listed tier passes with zero discovered and takes no slot, and only the guard step runs.
 // A tier with `carry: false` runs whole over its `all_targets` under every scope form but explicit targets.
@@ -183,14 +183,14 @@
 //
 // # Inert paths
 //
-// A hub's `inert_paths` lists the patterns of files no test reads, and `gateslot.Config.Inert` is the one matcher.
+// A hub's `gate.inert_paths` lists the patterns of files no test reads, and `gateslot.Config.Inert` is the one matcher.
 // Under the `go` and `none` scopers a computed or `--base` scope gets the empty scope when its diff is inert-only.
 // A diff is inert-only when it matches only inert paths, untracked files included;
 // an empty diff is not inert-only, and a read error holds the diff not inert.
 // Under `dotnet` the derivation drops inert paths itself.
 // Under every scoper a `--gate` key of scope `all` checks the diff from the merge base with the parent branch,
 // so the Finalize gate of an inert-only change runs no tier.
-// A `--card` scope is not narrowed by `inert_paths`.
+// A `--card` scope is not narrowed by `gate.inert_paths`.
 // A whole invocation of a tier that carries is carried over inert-only history.
 // This holds when the newest whole entry of an ancestor has an inert-only diff to the working tree;
 // the entry is taken under the tier's fingerprint and module, and a whole entry is written for the current tree.
@@ -199,14 +199,14 @@
 //
 // # Build step
 //
-// A hub's `build` declares a shell command, run once per call, that the tiers with `shared_build: true` depend on.
+// A hub's `gate.build` declares a shell command, run once per call, that the tiers with `shared_build: true` depend on.
 // The first such tier in plan order whose run takes slots runs it inside its slots, before its own command.
 // A call whose opted-in tiers are all carried or empty runs no build; a `carry: false` tier runs it before its command.
 // A `shared_build` tier with no invocation takes its slots only to run the build,
 // so a compile break still fails the gate.
 // The command runs in the build's `dir` with the call's environment plus the build's `env`.
 // The words after `--` never reach it.
-// The build's own `timeout_min` counts from the hold.
+// The build's own `gate.build.timeout_min` counts from the hold.
 // A timeout kills the tree, exits 1 and prints `gateslot.BuildTimeoutLine`.
 // The build writes a run record with `build` true and scope form `build`, and prints `gateslot.BuildSummaryLine`.
 // A failed build is a failed run counted before its tier, and every tier that opted in from there on runs no command:
@@ -301,7 +301,8 @@
 // The wait of a call that runs in this process has no cap and ends when the slots free.
 // An interrupt cancels the wait and exits 128 plus the signal number.
 // A tier with `slots: all` holds every slot and waits behind the pool's drain.
-// Bound: a gate tier or the build step holds its slots for at most its `timeout_min`.
+// Bound: a gate tier holds its slots for at most its `gate.tiers.<tier>.timeout_min`.
+// The build step holds its slots for at most `gate.build.timeout_min`.
 // Outside a hub the tiers run unslotted.
 //
 // `lym gate status` reads the pool of the hub that contains the working directory and changes nothing.
@@ -325,8 +326,10 @@
 //
 // `lym gate test` carries a green tier forward over an unchanged tree, at every site and manual run alike.
 // The record is `green.json` in the worktree's never-tracked gate directory, and an unreadable file reads as empty.
-// A tier's fingerprint hashes its declaration without `parallel`, `timeout_min`, `test_timeout_min` and `slots`.
-// It adds the hub's `build` declaration for a `shared_build` tier and the hub's `inert_paths` when non-empty.
+// A tier's fingerprint hashes its declaration without `gate.tiers.<tier>.parallel` and `gate.tiers.<tier>.slots`.
+// It leaves out `gate.tiers.<tier>.timeout_min` and `gate.tiers.<tier>.test_timeout_min` too.
+// It adds the hub's `gate.build` declaration for a `shared_build` tier.
+// It adds the hub's `gate.inert_paths` when non-empty.
 // A changed command, env, targets, counter, filter, build or inert list therefore never carries.
 //
 // A dirty worktree, judged by `verifytree.DirtyPaths`, neither reads nor writes the record.
@@ -356,11 +359,13 @@
 //
 // # Timeouts
 //
-// The tier's `timeout_min`, counted once its slots are held, bounds the prebuild and every invocation of its command.
+// The tier's `gate.tiers.<tier>.timeout_min` bounds the prebuild and every invocation of its command.
+// It counts once the tier's slots are held.
 // A tier that outlives it has its process tree killed, fails with exit code 1 and prints `gateslot.TierTimeoutLine`.
 // The tree is the shell's process group and every process that carries the shell's marker in its environment.
 // The bound counts wall-clock time as well as awake time, whichever has run further,
-// so a tier the host slept through ends within seconds of the host waking; the build's `timeout_min` counts the same way.
+// so a tier the host slept through ends within seconds of the host waking;
+// the build's `gate.build.timeout_min` counts the same way.
 // The work before the first tier is bounded by a ceiling;
 // a step that outlives it fails naming the step, and the way forward is to run the same command again.
 //
@@ -529,19 +534,19 @@
 // # CPU watchdog
 //
 // While a tier's command runs, the verb samples its child tree through `proc.TreeSample`.
-// A `.test` process that keeps at least 90 percent of one core busy for `busy_quit_sec` gets one SIGQUIT,
+// A `.test` process that keeps at least 90 percent of one core busy for `gate.busy_quit_sec` gets one SIGQUIT,
 // so the Go runtime prints every goroutine's stack and the run reports the package failed long before the tier's timeout.
 // The verb prints `gateslot.WatchdogLine` after the quit, and a halt names `gateslot.BusyQuitWayForward`.
-// The watchdog is off when `busy_quit_sec` is 0 or when the words after `--` carry `-bench` or `-fuzz`.
+// The watchdog is off when `gate.busy_quit_sec` is 0 or when the words after `--` carry `-bench` or `-fuzz`.
 // It is also off when `LYM_GATE_TEST_PID` in the tier's environment names a live ancestor.
 // That ancestor's own watchdog sees these binaries.
 // It is off where `proc.TreeSample` is unsupported.
-// It watches `.test` processes only, so a `vstest` tier is bounded by its `timeout_min` alone.
+// It watches `.test` processes only, so a `vstest` tier is bounded by its `gate.tiers.<tier>.timeout_min` alone.
 //
 // # Memory guard
 //
 // While a tier's command runs, a memory guard samples its child tree through `proc.TreeSample`.
-// A `.test` process whose tree holds more than `memory_quit_mb` resident is killed whole with SIGKILL;
+// A `.test` process whose tree holds more than `gate.memory_quit_mb` resident is killed whole with SIGKILL;
 // a tree that holds another tree over the cap is spared, and the inner binary is killed.
 // When no tree passes the cap and the memory limit the verb sits under is nearly spent,
 // the largest tree of 1024 MB or more is killed whole.
@@ -554,7 +559,7 @@
 // the tier's log and failure report carry it.
 // A tier whose only stops were slice-pressure kills, and that failed nothing else, is rerun once;
 // after any other guard kill the tier is never rerun.
-// The guard is off when `memory_quit_mb` is 0 or when `LYM_GATE_TEST_PID` names a live ancestor.
+// The guard is off when `gate.memory_quit_mb` is 0 or when `LYM_GATE_TEST_PID` names a live ancestor.
 // It is also off where `proc.TreeSample` is unsupported.
 //
 // A tier's `memory_mb` runs its command under `proc.RunMemoryCappedVia`.

@@ -22,7 +22,7 @@
 // `--format` is `json` (the default) or `markdown`.
 // `--fresh-days` is an integer of at least 1 and defaults to 3.
 // `--by` is `day` (the default) or `week`, the bucket width.
-// `cost` reads `cost_min_runs` from the hub's `report.yaml` through `internal/reportconfig`.
+// `cost` reads `report.cost_min_runs` from the hub's `report.yaml` through `internal/reportconfig`.
 // `raddle` takes no date.
 //
 // `replies` takes no flags.

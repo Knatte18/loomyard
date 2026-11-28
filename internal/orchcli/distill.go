@@ -1,5 +1,5 @@
 // distill.go implements the `distill` orch verb:
-// an operator's request that the watcher write a note and compact the session, whatever cycle_mode says.
+// an operator's request that the watcher write a note and compact the session, whatever orch.cycle_mode says.
 
 package orchcli
 

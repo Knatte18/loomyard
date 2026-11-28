@@ -1,4 +1,4 @@
-// repository.go reads the repository name a hub works on, the identity creel's trusted_hubs lists a hub by.
+// repository.go reads the repository name a hub works on, the identity creel.trusted_hubs lists a hub by.
 
 package hubregistry
 

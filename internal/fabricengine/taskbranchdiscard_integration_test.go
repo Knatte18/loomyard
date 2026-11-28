@@ -1,5 +1,5 @@
 // taskbranchdiscard_integration_test.go covers Topology.DiscardTaskBranch and its deletion half.
-// The tests run over hubforge hubs, which have an empty branch_prefix.
+// The tests run over hubforge hubs, which have an empty fabric.branch_prefix.
 // A pair's task branch is therefore the bare slug, and h.CodeBare is the warp origin.
 //
 // The package is fabricengine_test and shares the single TestMain in testmain_test.go.

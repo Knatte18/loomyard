@@ -23,7 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// remoteControlTemplate is orch.yaml's template value of remote_control_name.
+// remoteControlTemplate is the template value of orch.remote_control_name.
 const remoteControlTemplate = "{machine}::{name}"
 
 // TestStart_LaunchPassesAndMarksRemoteControl pins the name a relaunch passes on the orch spec.
@@ -208,7 +208,7 @@ func TestRemoteControlOnVerb_QueuesForTheClientsPaneWithoutMarkingIt(t *testing.
 }
 
 // TestTurnOnRemoteControl pins the RC click:
-// it queues the command under the name remote_control_name forms for the clicked agent,
+// it queues the command under the name orch.remote_control_name forms for the clicked agent,
 // and every refusal queues nothing.
 func TestTurnOnRemoteControl(t *testing.T) {
 	tiergate.Require(t, 0)

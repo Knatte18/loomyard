@@ -1,4 +1,4 @@
-// tmuxconf.go validates the `tmux_conf` key and runs the boot guard that sources the operator's tmux config.
+// tmuxconf.go validates the `reed.tmux_conf` key and runs the boot guard that sources the operator's tmux config.
 
 package reedengine
 
@@ -14,7 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
-// tmuxConfEnv is the environment variable the `tmux_conf` template line reads.
+// tmuxConfEnv is the environment variable the `reed.tmux_conf` template line reads.
 const tmuxConfEnv = "LYM_REED_TMUX_CONF"
 
 // tmuxConfForbiddenChars are the non-whitespace characters a tmux config path may not hold.
@@ -22,13 +22,13 @@ const tmuxConfEnv = "LYM_REED_TMUX_CONF"
 // and the boot nests the path in a command string that tmux parses a second time.
 const tmuxConfForbiddenChars = `*?[\'";#{}$`
 
-// tmuxConfPath validates the `tmux_conf` value and returns the path to source.
+// tmuxConfPath validates the `reed.tmux_conf` value and returns the path to source.
 // An empty raw returns the empty string.
 // A leading `~/` expands to home when home is non-empty.
 // With an empty home, the `~/` stays unexpanded and is refused as not absolute.
 // The result is an absolute path to an existing regular file.
 // It holds no whitespace and none of the characters tmux would reinterpret.
-// Every error names the key `tmux_conf`, the variable tmuxConfEnv and the path.
+// Every error names the key `reed.tmux_conf`, the variable tmuxConfEnv and the path.
 func tmuxConfPath(raw, home string) (string, error) {
 	if raw == "" {
 		return "", nil

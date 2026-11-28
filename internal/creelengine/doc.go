@@ -34,7 +34,7 @@
 // A read's response is acknowledged on the same connection,
 // and the daemon answers the acknowledgement with one confirming line once it is journaled.
 // A replaced binary ends the daemon after its sends in flight settle, and the next verb starts the new binary.
-// The one config is the hub-wide creel.yaml's trusted_hubs, which `internal/creelconfig` loads.
+// The one config is the hub-wide creel.trusted_hubs, which `internal/creelconfig` loads.
 // It lists repository names, owner/repo, never shortnames.
 //
 // # Sender identity

@@ -2126,7 +2126,7 @@ func TestDriftVerify(t *testing.T) {
 	})
 }
 
-// autonomyWait is the judge_parent_timeout_min of the autonomy rows' config.
+// autonomyWait is the drift.judge_parent_timeout_min of the autonomy rows' config.
 const autonomyWait = 30 * time.Minute
 
 // autonomousJudge is a verifyFixture whose judge asks the run's parent orch under autonomy, over a clock the rows move.

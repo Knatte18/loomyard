@@ -52,7 +52,7 @@ func ConfigSpec() configengine.Spec {
 // LoadConfig loads and unmarshals the desktop module's configuration through the hub-wide layer stack under dirs.
 // A hub whose base file is absent resolves the template under the machine and local layers present.
 // Opening a window therefore never fails on a hub not yet reconciled.
-// It refuses a negative window_wait_ms, naming the key.
+// It refuses a negative desktop.window_wait_ms, naming the key.
 func LoadConfig(dirs configengine.Dirs) (Config, error) {
 	resolved, err := configengine.LoadOrTemplate(dirs, ConfigSpec())
 	if err != nil {

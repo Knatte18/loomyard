@@ -53,7 +53,7 @@
 // The gate runs no flake rerun, and the key lists the tiers it runs.
 // Publish reruns both verifies in full regardless, and stays the guard.
 // A watchdog quit of a healthy package has no code fix:
-// the way forward is raising `busy_quit_sec` through `lym config gate` from the prime, then re-stepping the row.
+// the way forward is raising `gate.busy_quit_sec` through `lym config gate` from the prime, then re-stepping the row.
 // The darn form requires the merge base reader and has no skip path.
 // A tree-scoped diff is one wholly under the hub's configured non-production trees.
 // For one, an empty tree-scoped command runs nothing and passes, so an empty tree scope never falls back.
@@ -68,7 +68,7 @@
 // An entry without the `bug` label (gateslot.BugLabel) passes at once and runs nothing.
 // So does a decision record holding an added entry whose title opens gateslot.NoTestSeamTitle.
 // So does one whose title opens gateslot.NoBugFixedTitle, for a change that only adds tests pinning existing behaviour.
-// A hub whose scoper is neither go nor dotnet passes too, since no check can show the test red there.
+// A hub whose gate.scoper is neither go nor dotnet passes too, since no check can show the test red there.
 // So does a C# change whose tests the check cannot select or run.
 // A diff that adds or changes no test holds the run without spending an attempt.
 // The hold lasts until a new commit or the parent's record.

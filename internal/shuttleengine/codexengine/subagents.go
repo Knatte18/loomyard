@@ -12,7 +12,7 @@ import (
 
 // subagentEffort returns the effort a subagent of role takes on a model agents does not list.
 // A Codex model is none of the Claude models agents.yaml keys efforts by, so the fallback effort applies to every one.
-// It returns "" when agents names no effort, and when codex.yaml's efforts does not list the effort,
+// It returns "" when agents names no effort, and when codex.efforts does not list the effort,
 // so the session's subagents take Codex's default rather than a value Codex rejects.
 // An unlisted effort logs a warning naming it.
 func (c *Codex) subagentEffort(agents agentconfig.Config, role agentconfig.Role, codex Config) string {

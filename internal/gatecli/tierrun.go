@@ -116,7 +116,7 @@ func runTierChecked(ctx context.Context, out io.Writer, run tierRun, env []strin
 // It prebuilds `lym` when the tier asks and a test the run executes may use it.
 // Each invocation's command then runs through the platform shell as a tied child.
 // The run stops at the first non-zero exit.
-// The tier's timeout_min bounds the prebuild and every invocation together, counted from the call;
+// The tier's gate.tiers.<tier>.timeout_min bounds the prebuild and every invocation together, counted from the call;
 // a tier that outlives it has its process tree killed, exits 1 and prints and logs gateslot.TierTimeoutLine.
 // env is the environment every command gets, before the tier's own env is added.
 // When the resulting GOFLAGS carries `-trimpath`, it logs a line saying so before the first command,
@@ -237,10 +237,10 @@ func runTierCommands(ctx context.Context, out io.Writer, run tierRun, env []stri
 	}
 }
 
-// timeoutMinPoll is the longest a timeout_min bound goes without reading the clock.
+// timeoutMinPoll is the longest a gate.tiers.<tier>.timeout_min bound goes without reading the clock.
 const timeoutMinPoll = 10 * time.Second
 
-// errTimeoutMinPassed is the cause of a context its timeout_min bound ended.
+// errTimeoutMinPassed is the cause of a context its gate.tiers.<tier>.timeout_min bound ended.
 var errTimeoutMinPassed = errors.New("the timeout_min bound passed")
 
 // withTimeoutMin returns a context under ctx that ends with the cause errTimeoutMinPassed once timeout has passed.
@@ -692,7 +692,7 @@ func removeResultsDir(dir string) {
 // so the line names the project, the class filter the scope gave it, and how to run its tests by hand.
 // The line reads only the invocation's total, so it names no MSBuild property.
 // It sees no skip inside an invocation that ran some test.
-// The hand run is offered only while the hub's `refuse_raw` does not list `dotnet test`.
+// The hand run is offered only while the hub's `gate.refuse_raw` does not list `dotnet test`.
 // A run whose args carry a test filter gets the line of filteredNoTestNotice instead.
 func noTestNotice(run tierRun, inv invocation, dir string, discovered int) string {
 	if run.tier.Counter != counterVSTest || discovered > 0 {

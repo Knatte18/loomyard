@@ -495,7 +495,7 @@ func TestWire_WriteSeedRefusesANonLoomChildBeforeTouchingTheWorktree(t *testing.
 }
 
 // TestBoardRecipe asserts the recipe Seed-Child seeds:
-// pawl for a project entry; the entry's own recipe field otherwise or the board's default_recipe when it is empty;
+// pawl for a project entry; the entry's own recipe field otherwise or board.default_recipe when it is empty;
 // and boardengine's project recipe is the shedrun one.
 func TestBoardRecipe(t *testing.T) {
 	tiergate.Require(t, 0)

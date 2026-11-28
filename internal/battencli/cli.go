@@ -53,7 +53,7 @@
 // each run shows once, in the dobby section.
 // The dobby section lists the dobby's lines for the worktree the pane runs in (overviewdobby.go).
 // `DobbyLines` renders them from the `dobbyengine.View` that a `DobbyViewReader` reads.
-// Its first line is a header that says whether the dobby is alive, with its `max_runs`;
+// Its first line is a header that says whether the dobby is alive, with its `beam.max_runs`;
 // or, when it is not running, `lym beam start` as the way forward.
 // It then has one line per run it drives that is not done, in slug order.
 // Each run line carries the run's cells that `DobbyRunCells` reads, then its pass cell.
@@ -63,7 +63,7 @@
 // That line reads `ready to start`, with the last refused start's text when one is recorded;
 // or it reads `waits on`, followed by each of these:
 // open dependencies; another machine's ownership; a pause; a start batten refuses, with its text;
-// a refused start, with its text and the minutes to its retry; and `max_runs`.
+// a refused start, with its text and the minutes to its retry; and `beam.max_runs`.
 // A run that asks for a landing notice ends its line with `beam.land_notice`.
 // A dobby view that does not read shows `dobby <label>: unreadable`.
 // A run's cells are batten's state, the stage and the time in that stage.
@@ -233,7 +233,7 @@ type battenCLI struct {
 	driverFlag string
 	// childDriverFlag carries the --child-driver value.
 	// The auto-seeded seed records it as params.child_driver, and only when childDriverFlagSet is true.
-	// Empty means "unset": the child then takes its recipe's driver_kind, then shed.yaml's.
+	// Empty means "unset": the child then takes its recipe's driver_kind, then shed.driver_kind.
 	childDriverFlag string
 	// driverFlagSet records whether the operator typed --driver, rather than cobra filling in the default.
 	// The value alone cannot carry that distinction, since the default is itself a legal driver name.

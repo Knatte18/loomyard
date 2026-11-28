@@ -132,13 +132,13 @@
 //
 // The one exception is a pair of retired entry keys.
 // A load folds a task's `pull_request` and `notify_on_land` into the task's `beam` run settings.
-// They become `pull_request` and `land_notice` there, and both keys are dropped.
+// They become `beam.pull_request` and `beam.land_notice` there, and both keys are dropped.
 // A `pull_request` of `off` carries no value.
 // The old resolver still opened a pull request for it under a required or merge parent.
 // A value the run settings already hold wins, and the next save writes the fold.
 // A project has no run settings, so its two keys stay among its kept keys and every save writes them back.
 // `BeamSettingsByEntry` reads each entry's beam settings from the file as it is:
-// the run settings' `pull_request` and `land_notice`, and the retired keys while they remain.
+// the run settings' `beam.pull_request` and `beam.land_notice`, and the retired keys while they remain.
 // The hub reconcile uses it to carry them into the worktrees of runs already past their seeding, a project's included.
 // It also reports a retired `pull_request` of `off`, which the reconcile flags with its way forward instead of carrying.
 //
@@ -269,7 +269,7 @@
 // A run of a discussed entry reads its stored record and never its body,
 // so Board.UpsertTaskReporting warns when it changes the body of an open entry whose record file exists.
 // The write still lands, and the warning is silent when the new body is the one the stamp records.
-// LoadConfig refuses a design_prefix that would render a design file onto a record file's name.
+// LoadConfig refuses a board.design_prefix that would render a design file onto a record file's name.
 //
 // Board.UpsertTaskWithRecord, behind `lym board upsert --record-file`, replaces an existing entry's stored record.
 // It refuses a run agent's session, a new entry, an entry with no stored record, a done entry and an entry a run holds.

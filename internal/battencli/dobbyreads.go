@@ -354,7 +354,7 @@ func keptSince(reading runfsm.Reading, batten shedengine.Status) time.Time {
 	return at
 }
 
-// runTakesNoSlot reports whether the run behind task takes no slot under its dobby's max_runs:
+// runTakesNoSlot reports whether the run behind task takes no slot under its dobby's beam.max_runs:
 // a beam project whose status is a run status and whose run does not hold the beam.
 // A pawl run stands at Worktree-Create, Preflight, Record-Write, Beam-Up or Beam-Await with no hold.
 // It waits on its members there, and takes a slot from Finalize on.

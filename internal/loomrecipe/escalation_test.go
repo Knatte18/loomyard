@@ -84,7 +84,7 @@ func (p *haltingProducer) Call(context.Context) (shedengine.Outcome, shedengine.
 }
 
 // TestEscalation_DarnPerchRuleContinuesThenHardCapAcceptReachesDescribe covers a darn run's Code-Review perch.
-// It drives the perch past a budget of 1 under a hard cap of 2, with code.auto_accept off.
+// It drives the perch past a budget of 1 under a hard cap of 2, with loom.code.auto_accept off.
 // The soft-cap rule continues round 1 automatically.
 // At the hard cap the Bouncer escalates to the parent with a rendered brief instead of blocking.
 // An accept settles the perch onto Describe and files the open finding under Code-Review.

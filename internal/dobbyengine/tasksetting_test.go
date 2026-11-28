@@ -27,7 +27,7 @@ func writeBeamLocalLayer(t *testing.T, anchor, document string) {
 }
 
 // lookupAsText runs the lookup of key and returns its answer as on or off text where the key is a switch.
-// pull_request's review reads as on, so one set of rows runs under every key.
+// beam.pull_request's review reads as on, so one set of rows runs under every key.
 func lookupAsText(key string, chain TaskSettingChain) (string, error) {
 	if key == LandNoticeKey || key == AutonomyKey {
 		lookup := LookupLandNotice
@@ -54,8 +54,8 @@ func lookupAsText(key string, chain TaskSettingChain) (string, error) {
 }
 
 // settingDocument returns a beam document setting key to value, or "" when value is empty.
-// autonomy's value is written unquoted, on as true and off as false, any other value as given.
-// pull_request's on is written as review.
+// beam.autonomy's value is written unquoted, on as true and off as false, any other value as given.
+// beam.pull_request's on is written as review.
 func settingDocument(key, value string) string {
 	if value == "" {
 		return ""

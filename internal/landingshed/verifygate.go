@@ -425,7 +425,7 @@ func watchdogClause(logPath string) string {
 // It returns a non-empty Stuck reason for a dirty tree or a failed command.
 // It returns an error for an unknown status, and ("", nil) when the producer may proceed.
 // A failed command with an exit code ends its reason with the clause asking to fix forward on the task branch.
-// After a CPU watchdog quit the reason names the window and the `busy_quit_sec` way forward before that clause.
+// After a CPU watchdog quit the reason names the window and the `gate.busy_quit_sec` way forward before that clause.
 // An unjudged run is a halt reason opening with `LandingStopPrefix`.
 // The reason names its runs and the way forward of resuming, which runs the gate again.
 func (g verifyGate) verdict(result verifytree.Result, what, producer, parentBranch string) (string, error) {

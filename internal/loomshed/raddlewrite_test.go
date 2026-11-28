@@ -108,7 +108,7 @@ func TestRaddleWrite(t *testing.T) {
 			perch bool
 			auto  bool
 			want  loomengine.RaddleMode
-			// keyReads is how many times the raddle.auto_approve key is read across the calls.
+			// keyReads is how many times the loom.raddle.auto_approve key is read across the calls.
 			keyReads int
 		}{
 			{"KeyOffIsInteractive", false, false, loomengine.RaddleModeInteractive, 1},

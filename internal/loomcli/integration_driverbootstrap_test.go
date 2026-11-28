@@ -81,7 +81,7 @@ exit 0
 }
 
 // integrationDriverShuttleConfig returns shuttle's shipped config template with startup probed on every poll.
-// The shipped template probes every tenth poll; this sets liveness_every_n_polls: 1.
+// The shipped template probes every tenth poll; this sets shuttle.liveness_every_n_polls: 1.
 // Shuttle's startup step probes once immediately, before the stub prints its ready marker;
 // it then sleeps a whole probe interval,
 // so at the shipped cadence Start waits ten polls however fast the provider is ready.

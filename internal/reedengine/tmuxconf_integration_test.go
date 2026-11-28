@@ -1,6 +1,6 @@
 //go:build linux
 
-// tmuxconf_integration_test.go checks what a `tmux_conf` operator config can and cannot change on reed's server.
+// tmuxconf_integration_test.go checks what a `reed.tmux_conf` operator config can and cannot change on reed's server.
 // It is linux-only because the status bar's session row is expanded for a client attached through the pty harness.
 
 package reedengine
@@ -28,7 +28,8 @@ func writeTmuxConf(t *testing.T, lines ...string) string {
 	return path
 }
 
-// tmuxConfEngine builds the engine of worktree under hubDir with tmux_conf set to confPath and its warnings captured.
+// tmuxConfEngine builds the engine of worktree under hubDir with reed.tmux_conf set to confPath.
+// It captures the engine's warnings.
 func tmuxConfEngine(t *testing.T, hubDir, worktree, confPath string) (*Engine, *bytes.Buffer) {
 	t.Helper()
 	e := newHubEngine(t, hubDir, worktree, func(cfg *Config) { cfg.TmuxConf = confPath })
@@ -70,7 +71,7 @@ func bootConcurrently(t *testing.T, engines ...*Engine) []error {
 	return errs
 }
 
-// TestBoot_TmuxConf boots reed with an operator file named by tmux_conf, each time into a server reed starts itself.
+// TestBoot_TmuxConf boots reed with an operator file named by reed.tmux_conf, each time into a server reed starts itself.
 func TestBoot_TmuxConf(t *testing.T) {
 	tiergate.Require(t, 2)
 	t.Parallel()

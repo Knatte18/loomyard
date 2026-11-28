@@ -444,7 +444,7 @@ func checkBeamOpensBeamWorkspace(t *testing.T, h *hubforge.Hub, slug string) {
 // and that it launches the pair's bare anchor folder and no workspace file.
 // It covers a marked beam whose origin record cannot be read: its records worktree's lock directory is missing.
 // It also covers a marked beam whose record is absent.
-// It also asserts a {beam} entry of ide.yaml's task list opens nothing for such a pair.
+// It also asserts a {beam} entry of ide.open_files.task opens nothing for such a pair.
 // Its parent cannot be read, so the entry opens nothing, even beside a file named ".md".
 // It restores the lock directory before returning, so later steps regenerate the hub workspace over a readable pair.
 func checkBeamWithoutReadableOriginOpensBareFolder(t *testing.T, h *hubforge.Hub, slug string) {

@@ -2136,7 +2136,8 @@ func waiting(msg string) shuttleengine.Event {
 	return shuttleengine.Event{Kind: shuttleengine.EventWaiting, Message: msg}
 }
 
-// injectSoft reads one turn end ev at a soft-range reading and ticks past soft_idle_s, requiring a soft handoff request.
+// injectSoft reads one turn end ev at a soft-range reading and ticks past orch.soft_idle_s.
+// It requires a soft handoff request.
 func (e *watchEnv) injectSoft(ev shuttleengine.Event) {
 	e.t.Helper()
 	e.s.usage[ev.Message] = 600

@@ -1,4 +1,4 @@
-// accountconfig.go declares claude.yaml's account keys, `accounts` and `account_pins`.
+// accountconfig.go declares claude.yaml's account keys, `claude.accounts` and `claude.account_pins`.
 // It also holds the checks that keep them machine-local and valid.
 
 package claudeengine

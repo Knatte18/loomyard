@@ -26,7 +26,7 @@
 // # Engines
 //
 // An engine is a per-LLM adapter that launches and drives its provider as a tmux session.
-// A Runner takes an EngineSet, which internal/shuttleengines builds from shuttle.yaml's `engine:` key.
+// A Runner takes an EngineSet, which internal/shuttleengines builds from the `shuttle.engine` key.
 // Start and Open resolve the choice's Engine, an empty one meaning the set's default, and record the name in run.json.
 // Every other engine-consulting operation resolves the engine its run's record names;
 // an unregistered name is refused, except in stop and teardown, which resolve no engine.
@@ -48,7 +48,8 @@
 // The pure, hermetic half derives nothing and spawns nothing:
 // the config module (shuttle.yaml), the run Spec and its validation;
 // the run directory and run.json state, and the age-guarded orphan sweep.
-// shuttle.yaml carries no provider key but the neutral `deny_python`; each engine's own config module holds the rest.
+// shuttle.yaml carries no provider key but the neutral `shuttle.deny_python`;
+// each engine's own config module holds the rest.
 // The run-loop half drives a live agent through the ReedOps seam.
 // It is Runner/Run in run.go, Wait in wait.go, and Attach in attach.go.
 //
@@ -246,7 +247,7 @@
 // No caller outside this package probes readiness or plays gate keys.
 // A not-ready provider is torn down and reported as ErrNotStarted from StartGated.
 // A start that died with its strand removed is launched again in a fresh run directory.
-// This repeats up to shuttle.yaml's start_retries times.
+// This repeats up to shuttle.start_retries times.
 // A timed-out start and any failure before the strand registered are never launched again.
 // Runner.AcceptStartupGate dismisses the gate of a strand already live, such as one added by hand.
 // `TestProviderSeamImportRule` pins that no production file outside this package calls it.

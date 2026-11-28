@@ -57,12 +57,12 @@
 // An orch keeps its place on the chain whether or not it reads as live.
 // OrchChainAbove is that list without the told worktree's own orch.
 //
-// Autonomy is the reader of beam.yaml's `autonomy` for runs and orchs.
+// Autonomy is the reader of `beam.autonomy` for runs and orchs.
 // It answers for the worktree it is named, through TaskSettingChain and the per-task lookup, at the moment of the call.
 // A failed read answers false and warns once per episode.
 //
 // BeamModes is the board's beam mode reader.
-// It reads autonomy and pull_request for the root and each beam the way their runs read them.
+// It reads beam.autonomy and beam.pull_request for the root and each beam the way their runs read them.
 // The read goes through TaskSettingChain and the per-task lookup, and each value carries the worktree that set it.
 // It adds a beam's parent branch from its origin record and its pull request from its landing record.
 // A beam whose worktree is not on this machine is left out,

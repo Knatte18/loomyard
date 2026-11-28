@@ -30,7 +30,7 @@ const (
 )
 
 // PRReview is the ShedProducer that lands a run through a GitHub pull request when the landing goes through one.
-// That is decided from beam.yaml's pull_request for the landing and GitHub's rules for the parent.
+// That is decided from beam.pull_request for the landing and GitHub's rules for the parent.
 // When the landing does not go through one, the row closes any recorded pull request GitHub reports open, and passes.
 // With a pull request recorded, a failed read of GitHub's rules is Stuck and closes nothing.
 // A transient failure is an error the driver re-steps; a token failure falls back to beam.yaml.

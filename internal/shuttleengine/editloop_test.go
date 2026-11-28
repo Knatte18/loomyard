@@ -49,7 +49,7 @@ func TestWait_EditLoopNotice(t *testing.T) {
 		events string
 		// markEvents makes the fake engine read "@<time>" lines as the stamp of the edit after them.
 		markEvents bool
-		// off sets edit_loop_edits to 0.
+		// off sets shuttle.edit_loop_edits to 0.
 		off         bool
 		interactive bool
 		noNotifier  bool

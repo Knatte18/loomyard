@@ -2,7 +2,8 @@
 
 // Package reportconfig owns the hub-wide report.yaml: the thresholds of `lym report` figures that a hub tunes.
 //
-// The module's one key, cost_min_runs, is the run count a cell of `lym report cost` needs before it shows its figures.
+// The module's one key is report.cost_min_runs.
+// It is the run count a cell of `lym report cost` needs before it shows its figures.
 // A cell with fewer runs reads "too few runs" instead.
 // The raddle agent prices every pair's proposals from those figures.
 // So the key is classified cross-pair, and a worktree's local override cannot set it.

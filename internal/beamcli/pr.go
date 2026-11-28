@@ -387,7 +387,7 @@ func prStatus(ctx context.Context, deps landDeps, slug string) (map[string]any, 
 // The landing decision for a beam with no pull request chooses the comment.
 // When it is no, the comment says the operator chose to land without a pull request;
 // otherwise it is the close-only comment.
-// A failed read of the beam's pull_request or of the beam's commits still closes and drops, with the close-only comment.
+// A failed read of beam.pull_request or of the beam's commits still closes and drops, with the close-only comment.
 // The read's error is named in the way forward.
 func prClose(ctx context.Context, deps landDeps, slug string) (map[string]any, error) {
 	const verb = "lym beam pr close"
@@ -456,7 +456,7 @@ func prClose(ctx context.Context, deps landDeps, slug string) (map[string]any, e
 
 // closeFollowUp names what follows a dropped pull request.
 // The caller passes whether the beam's landing decision, with no pull request recorded, still wants one.
-// It also passes the beam's pull_request.
+// It also passes beam.pull_request.
 // When that is trail, Finalize opens its own pull request.
 // Any other wanted pull request comes from GitHub's rules,
 // and `lym beam ready` refuses until one is recorded again.
@@ -476,7 +476,7 @@ func closeFollowUp(slug, mode string, wantsPullRequest bool) string {
 // An origin missing a fact that a pull request needs reads as no rule, with no call made.
 // A cancelled context and a transient failure are returned.
 // An unusable token and any other failure read as no rule, with one warning,
-// so every pull_request value is then decided by beam.yaml alone.
+// so every beam.pull_request value is then decided by beam.yaml alone.
 func parentRuleRequired(ctx context.Context, origin landingshed.Origin, parentBranch string, open func(originURL string) (pullrequest.API, error)) (bool, error) {
 	if landingshed.OriginMissing(origin) != "" {
 		return false, nil

@@ -81,7 +81,8 @@ type Config struct {
 }
 
 // StartAllowance returns the longest a start may take:
-// every launch's startup_timeout_s, the first and each of start_retries retries, with the wait between attempts.
+// every launch's shuttle.startup_timeout_s, the first and each of shuttle.start_retries retries.
+// It also counts the wait between attempts.
 func (c Config) StartAllowance() time.Duration {
 	launches := time.Duration(1+c.StartRetries) * time.Duration(c.StartupTimeoutS) * time.Second
 	return launches + time.Duration(c.StartRetries)*startRetryDelay

@@ -29,7 +29,7 @@ var dobbyLandNotice = configengine.KeyName(beamsetting.Module, dobbyengine.LandN
 
 // DobbyLines renders the dobby labeled label as lines at now.
 // It takes the dobby's state from view and the cells of its runs from runCells.
-// The header gives max_runs while the dobby is alive, else says it is not running and how to start it.
+// The header gives beam.max_runs while the dobby is alive, else says it is not running and how to start it.
 // Each run it drives takes one line, with its cells and its last pass.
 // What a run's cells say it owes ends its pass cell.
 // Each released task it has not started takes one line, naming everything that holds it back.

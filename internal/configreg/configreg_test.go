@@ -21,7 +21,7 @@ import (
 )
 
 // TestLookup_BeamCarriesThePullRequestModesReinterpretationAfterThePerTaskOne pins a registration of the beam module.
-// The reinterpretation of pull_request's renamed on and merge comes after the per-task one.
+// The reinterpretation of beam.pull_request's renamed on and merge comes after the per-task one.
 // Dropping it leaves a hub's beam.yaml holding on or merge unloadable.
 //
 //testtiming:keep pins the order and shape of the beam module's two Reinterpretations entries, which no walk test reads
@@ -127,8 +127,8 @@ func TestModules_OrchRegistersRemoteControlReinterpretation(t *testing.T) {
 	}
 }
 
-// TestModules_LoomRegistersCodeAutoAcceptReinterpretation pins the loom module's code.auto_accept reinterpretation.
-// A hub that sets code.auto_accept: true gets the notice that an open BLOCKING finding now escalates.
+// TestModules_LoomRegistersCodeAutoAcceptReinterpretation pins the loom module's loom.code.auto_accept reinterpretation.
+// A hub that sets loom.code.auto_accept: true gets the notice that an open BLOCKING finding now escalates.
 // It does so only while the row declares the reinterpretation.
 //
 //testtiming:keep pins the loom row's Reinterpretations entry, which no walk test reads

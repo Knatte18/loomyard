@@ -81,7 +81,7 @@ func Spawn(l *lymcwd.Location, slug string) (vscode.KeybindingsResult, error) {
 // It launches nothing.
 // It keeps .vscode/ out of git through info/exclude and never writes a .gitignore;
 // a tracked .vscode/tasks.json is left alone with a warning.
-// The settings make a markdown file open rendered while ide.yaml's render_markdown is on;
+// The settings make a markdown file open rendered while ide.render_markdown is on;
 // an ide.yaml that fails to load fails the seed.
 // When slug names the prime or a beam, Seed then regenerates the hub workspace file and every beam's file.
 // Each file carries the workspace look in its settings, and any error on that path is returned.

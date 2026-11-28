@@ -34,7 +34,7 @@ const partsRole = "parts"
 // partsStencil is the stencil that opens the Parts-Write lead seat.
 const partsStencil = "loom-template-parts"
 
-// partsDepthFragments maps each parts.depth value to the stencil holding that reading depth's text.
+// partsDepthFragments maps each tapestry.parts.depth value to the stencil holding that reading depth's text.
 var partsDepthFragments = map[string]string{
 	"light":  "loom-fragment-parts-light",
 	"medium": "loom-fragment-parts-medium",

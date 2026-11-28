@@ -1,5 +1,6 @@
 // hookpython_standalone_test.go pins the hidden hook-python-allowed verb in a standalone run.
-// No hub holds the target, so its exit code follows the deny_python of the config in the target's state directory.
+// No hub holds the target,
+// so its exit code follows the shuttle.deny_python of the config in the target's state directory.
 
 package shuttlecli
 
@@ -19,7 +20,7 @@ import (
 
 // TestHookPythonAllowedVerb_FollowsAStandaloneRunsStateDirConfig runs the verb from below a git repository.
 // No hub holds that repository.
-// The verb answers the deny_python of the config in the state directory derived for the repository root.
+// The verb answers the shuttle.deny_python of the config in the state directory derived for the repository root.
 // A standalone launch loads its shuttle config from that directory.
 // A sibling Bolt directory with no `_lym` is a damaged hub, which a launch also runs as standalone.
 // With no shuttle file in the state directory, the verb answers the template default, which denies.

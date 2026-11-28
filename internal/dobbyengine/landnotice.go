@@ -1,7 +1,7 @@
 // landnotice.go implements the landing notice: one creel line to the nearest live orch.
 // It goes out once a run seen ahead of its Land row lands or ends without landing.
-// It goes only when the run's land_notice setting read on, as read ahead of Land or, when that never read, after it.
-// A landed motif run's line goes whatever land_notice reads, since nothing else follows up the Sketch it leaves.
+// It goes only when the run's beam.land_notice setting read on, as read ahead of Land or, when that never read, after it.
+// A landed motif run's line goes whatever beam.land_notice reads, since nothing else follows up the Sketch it leaves.
 
 package dobbyengine
 
@@ -21,9 +21,9 @@ const landingCommitWidth = 12
 // LandNoticeState is dobby's memory of one run for its landing notice, kept until the notice is settled.
 // Dobby first sees the run ahead of its Land row.
 type LandNoticeState struct {
-	// Requested reports whether land_notice read on for the run at the last tick that read it.
+	// Requested reports whether beam.land_notice read on for the run at the last tick that read it.
 	Requested bool `json:"requested,omitempty"`
-	// Read reports whether land_notice was read for the run at least once.
+	// Read reports whether beam.land_notice was read for the run at least once.
 	// A run past Land that was never read is read again at each tick, and its notice stays undecided until a read succeeds.
 	Read bool `json:"read,omitempty"`
 	// Line is the notice decided and not yet posted, posted again at each tick until a post succeeds.
@@ -38,16 +38,16 @@ func (s LandNoticeState) owed() bool {
 	return s.Line != ""
 }
 
-// read reports whether land_notice was read for the run.
+// read reports whether beam.land_notice was read for the run.
 // This binary sets Read with each reading, and a memory an older binary wrote holds a reading once it holds a request.
 func (s LandNoticeState) read() bool {
 	return s.Read || s.Requested
 }
 
-// landNotices remembers each listed run ahead of its Land row with whether land_notice reads on for it.
+// landNotices remembers each listed run ahead of its Land row with whether beam.land_notice reads on for it.
 // It decides the notice of each remembered run now past its Land row, then posts every owed line.
 // What fails to post is kept for the next tick.
-// The reading of land_notice comes from Deps.LandNotice.
+// The reading of beam.land_notice comes from Deps.LandNotice.
 // A failed read keeps the run's last reading and is logged once per episode.
 // A run past Land that was never read is read again at each tick, and its notice waits for a read to succeed.
 func (d *daemon) landNotices(ctx context.Context, now time.Time, runs []RunView) {
@@ -66,7 +66,7 @@ func (d *daemon) landNotices(ctx context.Context, now time.Time, runs []RunView)
 	d.settleLandNotices(ctx, now)
 }
 
-// readLandNoticeRequests reads land_notice through Deps.LandNotice for each run listed ahead of its Land row.
+// readLandNoticeRequests reads beam.land_notice through Deps.LandNotice for each run listed ahead of its Land row.
 // It reads it too for each run past that row which unread names.
 // It returns the readings that succeeded, by slug.
 // A nil seam reads every such run as off.
@@ -92,7 +92,7 @@ func (d *daemon) readLandNoticeRequests(runs []RunView, unread map[string]bool) 
 }
 
 // unreadLandNoticeRuns returns the slugs of the listed runs past their Land row that dobby remembers.
-// Each has never had its land_notice read, and no older binary had already posted a line for it.
+// Each has never had its beam.land_notice read, and no older binary had already posted a line for it.
 // An unreadable memory names none; settleLandNotices logs it.
 func (d *daemon) unreadLandNoticeRuns(runs []RunView) map[string]bool {
 	record, _, err := ReadState(d.geom.StatePath)
@@ -110,7 +110,7 @@ func (d *daemon) unreadLandNoticeRuns(runs []RunView) map[string]bool {
 }
 
 // rememberRuns refreshes memory from the runs listed this tick.
-// A run is remembered with the land_notice reading in requests, when it has one.
+// A run is remembered with the beam.land_notice reading in requests, when it has one.
 // A remembered motif run that landed owes the Sketch line, whatever its reading.
 // Any other remembered run past its Land row that was read at least once gets its notice decided:
 // a line when its remembered reading is on, and none when it is off.

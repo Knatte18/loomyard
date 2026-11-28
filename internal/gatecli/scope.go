@@ -157,14 +157,14 @@ func skippedInside(cfg gateslot.Config, numbers []int, inside map[string][]impac
 // green is nil for a dirty worktree, which takes the merge base.
 // A --card is read from the plan first, under either scoper.
 // An unknown id, or a worktree with no plan, is refused before any slot.
-// Under the none scoper each of the three forms is whole, except for a hub with inert_paths.
+// Under the none scoper each of the three forms is whole, except for a hub with gate.inert_paths.
 // There, the tiers of a computed or --base group whose diff is inert-only get the empty share.
 // That share plans no guard step.
 // Under the dotnet scoper dotnetScope derives them.
 // Under the go scoper a computed or --base scope is the impacted set of the diff from its base.
 // The set is derived once per base and shared by the tiers that land on it.
 // Each derivation is named on request.stderr.
-// A base group whose diff is inert-only under inert_paths gets the empty share and is not derived.
+// A base group whose diff is inert-only under gate.inert_paths gets the empty share and is not derived.
 // It leaves the guard tests to the module scan, as a whole tier does.
 // A set that cannot be narrowed falls back to whole, naming the reason on request.stderr.
 // A --card scope is the cards' packages per module.
@@ -346,7 +346,7 @@ func withMainPackages(modules []moduleTargets, dir string, mains []string) []mod
 	return modules
 }
 
-// noneScope returns the computed or --base scope under the none scoper for a hub with inert_paths:
+// noneScope returns the computed or --base scope under the none scoper for a hub with gate.inert_paths:
 // the tiers of a base group whose diff is inert-only get the empty share, and every other tier runs whole.
 // A call with no inert-only group is the whole scope, and no scope of this scoper plans a guard step.
 // A diff that cannot be read leaves its group whole, since allInertSince then reports false.
@@ -396,8 +396,9 @@ func allScope(ctx context.Context, cfg gateslot.Config, location *lymcwd.Locatio
 	return scope{form: scopeAll}
 }
 
-// allInertSince reports whether every file that differs between base and the working tree, untracked files included, matches the hub's inert_paths.
-// A hub with no inert_paths, an empty diff and a diff that cannot be read report false.
+// allInertSince reports whether every changed file matches the hub's gate.inert_paths.
+// The changed files are those that differ between base and the working tree, untracked files included.
+// A hub with no gate.inert_paths, an empty diff and a diff that cannot be read report false.
 // A diff that cannot be read is logged at Warn, and the scope stays as it is.
 func allInertSince(ctx context.Context, cfg gateslot.Config, root, base string) bool {
 	if len(cfg.InertPaths) == 0 {

@@ -42,7 +42,7 @@ func writeLocalConfig(t *testing.T, anchor, contents string) {
 }
 
 // TestLoadConfig covers the template's defaults for a hub with no file;
-// a hub file and a local layer setting code_review; an agent failing the model-spec grammar;
+// a hub file and a local layer setting sampler.code_review; a sampler.agent failing the model-spec grammar;
 // and a base directory with no config.
 func TestLoadConfig(t *testing.T) {
 	tiergate.Require(t, 0)

@@ -1,4 +1,4 @@
-// serverlog_test.go tests the pure debug_log parsing helper.
+// serverlog_test.go tests the pure reed.debug_log parsing helper.
 // It is untagged because it does no filesystem or process I/O, per Test Tier Purity.
 
 package reedengine

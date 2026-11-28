@@ -51,7 +51,7 @@
 // The hidden `lym adopt check <subject>` runs the hub's `adopt` gate in each subject's worktree.
 // The adopt's `check` step does the same.
 // With no hold of this machine standing, it ends `no_hold`.
-// All subjects green clears the hold; a failed subject files a fix task, bounded by `adopt_fix_tries` per subject.
+// All subjects green clears the hold; a failed subject files a fix task, bounded by `beam.adopt_fix_tries` per subject.
 //
 // # The envelope
 //

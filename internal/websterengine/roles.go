@@ -29,7 +29,7 @@ const (
 
 // MerriamStrandRole is the reed strand role the Master session runs under,
 // so reed names the strand `<shortname>:<slug>:webster`.
-// The webster.yaml model key of the Master session is `master`, a separate name.
+// The model key of the Master session is `webster.master`, a separate name.
 // Its spec names the webster segment.
 const MerriamStrandRole = "webster"
 

@@ -228,7 +228,7 @@ func TestWithTimeoutMin(t *testing.T) {
 	}
 }
 
-// TestRunBuildTimeout pins the build step's timeout_min.
+// TestRunBuildTimeout pins gate.build.timeout_min.
 // A build that outlives it fails as timed out, prints the build's timeout line and blocks the tiers that opt into it.
 // A build that ends in time lets its tier run.
 func TestRunBuildTimeout(t *testing.T) {

@@ -233,7 +233,7 @@ func lockFree(t *testing.T, path string) bool {
 // so an assertion about the row it was on races.
 //
 // The poll interval is short relative to that window.
-// The fixture's startup_timeout_s is 2.
+// The fixture's shuttle.startup_timeout_s is 2.
 // Discussion-Write is the current producer for roughly two seconds before its providerless launch is classified.
 // A 25ms poll cannot miss that window.
 func waitForCurrentProducer(t *testing.T, loc *lymcwd.Location, want string, timeout time.Duration) {

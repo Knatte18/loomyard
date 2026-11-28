@@ -44,7 +44,7 @@ func seedLoomAndTapestry(t *testing.T, baseDir string, loomValues, tapestryValue
 
 // TestLoadTapestryConfig verifies that the plan perch's values load from tapestry.yaml.
 // They resolve against loom.yaml's run-wide keys, and Config.WithTapestry applies them.
-// A null plan.max_bounces and a zero plan.hard_max_bounces take loom.yaml's budget and hard cap.
+// A null tapestry.plan.max_bounces and a zero tapestry.plan.hard_max_bounces take loom.yaml's budget and hard cap.
 // An empty model list, judge and seed take the shared ones.
 // Every malformed or out-of-bound value is refused, and the error names the tapestry key.
 func TestLoadTapestryConfig(t *testing.T) {

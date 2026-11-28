@@ -192,7 +192,7 @@ func TestDobbyTasks_ReadsTheStartRefusalOfAFinishedRunRecord(t *testing.T) {
 		childRecipe string
 		// childRecipeUnreadable makes the child-recipe record a directory, so reading it fails.
 		childRecipeUnreadable bool
-		// defaultRecipe is the board's `default_recipe`; an empty value leaves the template's recipe in place.
+		// defaultRecipe is `board.default_recipe`; an empty value leaves the template's recipe in place.
 		defaultRecipe string
 		wantRefused   bool
 		// wantCancelled expects the cancelled-record refusal in place of the done-slug one.

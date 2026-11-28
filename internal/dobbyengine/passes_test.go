@@ -140,7 +140,7 @@ type passFake struct {
 	settles         int
 	spawnedAtSettle []int
 
-	// taskHeadroom is beam.yaml's task_headroom, and limit and limitFound what the task-limit seam reads.
+	// taskHeadroom is beam.task_headroom, and limit and limitFound what the task-limit seam reads.
 	taskHeadroom int
 	limit        proc.TaskLimit
 	limitFound   bool

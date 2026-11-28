@@ -597,7 +597,7 @@ func childRefusalKind(childOutput string) string {
 
 // boardRecipe returns the recipe that Seed-Child seeds for task.
 // A project entry gets pawl.
-// Any other entry gets its own recipe field, or board's default_recipe when that field is empty.
+// Any other entry gets its own recipe field, or board.default_recipe when that field is empty.
 func boardRecipe(board *boardengine.Board, task boardengine.Task) string {
 	if task.Kind == boardengine.KindProject {
 		return shedrun.RecipePawl
@@ -797,9 +797,9 @@ func gateProcessLive(taskLocation *lymcwd.Location, now time.Time) (bool, error)
 	return false, nil
 }
 
-// fixerTimeout returns how long a fixer under role may run:
-// for a verify fixer the active implementer's bound, weaver.yaml's fixer timeout or webster's recovery timeout,
-// and the gate config's fixer timeout for any other.
+// fixerTimeout returns how long a fixer under role may run.
+// A verify fixer takes the active implementer's bound: weaver.fixer_timeout_min or webster.recovery_timeout_min.
+// Any other fixer takes gate.fixer_timeout_min.
 // The active implementer is read through the advisory form of the implementer seam,
 // so a seam refusal falls back to the `tapestry.implementer` setting and is logged.
 // It reports bounded == false when the gate config is absent, which leaves a gate fixer with no known bound.
@@ -1559,7 +1559,7 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 		SeedChild: battenshed.SeedChildDeps{
 			// ReadBoardType opens the hub's Board with its board.yaml fresh on every call and returns the recipe that boardRecipe gives the entry.
 			// It never returns a value captured at wiring time,
-			// so a recipe or default_recipe corrected after prime was seeded is still honoured.
+			// so a recipe or board.default_recipe corrected after prime was seeded is still honoured.
 			ReadBoardType: func(ctx context.Context) (string, error) {
 				b, err := boardengine.OpenHub(location.HubPath)
 				if err != nil {
@@ -1577,7 +1577,8 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 			// ChildDriver returns the "child_driver" param of prime's own seed when the operator typed one.
 			// Otherwise it returns the child recipe's resolved driver_kind.
 			// The kind is read from the task worktree's config layers.
-			// The seeding step calls this after it writes that worktree's local layer, so a driver_kind from the run settings is seen.
+			// The seeding step calls this after it writes that worktree's local layer,
+			// so a shed.driver_kind from the run settings is seen.
 			ChildDriver: func(recipe string) (string, error) {
 				seed, found, err := shedrun.ReadSeed(location, slug)
 				if err != nil {
@@ -1711,7 +1712,8 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 		}
 		return configreg.SettingLookup(fabricengine.ConfigDirs(taskLocation))(module, key)
 	}
-	// A Command row's command is read from the template and the board default layer only, unlike deploy and darn's verify.
+	// A Command row's command is read from the template and the board default layer only.
+	// That is unlike `landing.deploy` and darn's verify.
 	env.ExecutableSetting = configreg.SettingLookup(configengine.Dirs{Board: fabricengine.ConfigDirs(location).Board})
 	// A recipe row's entry gate checks its setting operands at build.
 	// Build needs no task worktree, and the gate's evaluation errors name the resume command.

@@ -82,7 +82,8 @@ const (
 	gatedNoGateStep     = "3. Run no `lym gate test` yourself."
 )
 
-// The values the report passage fills for a report_dir of reportDir, and the heading of the step the passage follows.
+// The values the report passage fills for a darn.report_dir of reportDir,
+// and the heading of the step the passage follows.
 const (
 	reportDir   = "docs/research"
 	reportPath  = reportDir + "/fix-the-thing.md"
@@ -100,7 +101,7 @@ func TestDarnSpec(t *testing.T) {
 	tests := []struct {
 		name      string
 		configure func(in *DarnInputs)
-		// reportDir is the Config's report_dir for the row; empty asks for no report file.
+		// reportDir is the Config's darn.report_dir for the row; empty asks for no report file.
 		reportDir    string
 		parentName   string
 		wantInPrompt func(in DarnInputs) []string

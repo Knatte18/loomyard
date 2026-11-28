@@ -1,4 +1,4 @@
-// autonomy.go is the one reader of beam.yaml's `autonomy` for a run or an orch.
+// autonomy.go is the one reader of `beam.autonomy` for a run or an orch.
 // It also places the hub's prime from the git files, with no git process.
 
 package hubgeom

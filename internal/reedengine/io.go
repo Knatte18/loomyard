@@ -226,7 +226,7 @@ func activeClientOnPane(clients, paneID string, now time.Time, quiet time.Durati
 	return false
 }
 
-// defaultOperatorQuietS is the quiet window, in seconds, a Config without a positive operator_quiet_s takes.
+// defaultOperatorQuietS is the quiet window, in seconds, a Config without a positive reed.operator_quiet_s takes.
 const defaultOperatorQuietS = 5
 
 // operatorQuiet returns cfg's operator quiet window, floored to the default for a zero or negative value.

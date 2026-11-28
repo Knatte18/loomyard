@@ -410,7 +410,7 @@ type Run struct {
 	countedTasks []BackgroundTask
 	// shellFirstSeen records when each shell id was first seen outstanding.
 	shellFirstSeen map[string]time.Time
-	// payloadShellLogged holds shell ids, from either signal, logged past background_shell_wait_min, once each.
+	// payloadShellLogged holds shell ids, from either signal, logged past shuttle.background_shell_wait_min, once each.
 	payloadShellLogged map[string]bool
 	// shellNudge is the queued line that tells the agent to read the shells left running, empty when none is queued.
 	shellNudge string

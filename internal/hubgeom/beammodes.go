@@ -22,7 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pawlengine"
 )
 
-// The autonomy values the board files show, for beam.yaml's true and false.
+// The autonomy values the board files show, for beam.autonomy's true and false.
 const (
 	autonomyOnText  = "on"
 	autonomyOffText = "off"
@@ -129,7 +129,7 @@ func readBeamMode(prime *lymcwd.Location, slug string) (boardengine.BeamMode, er
 	return mode, nil
 }
 
-// readBeamSettings reads autonomy and pull_request over chain, each with the worktree whose own files set it.
+// readBeamSettings reads beam.autonomy and beam.pull_request over chain, each with the worktree whose own files set it.
 // Autonomy reads as on or off.
 func readBeamSettings(chain dobbyengine.TaskSettingChain) (boardengine.BeamMode, error) {
 	autonomy, err := readBeamSetting(chain, dobbyengine.AutonomyKey)

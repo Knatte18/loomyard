@@ -44,7 +44,7 @@ const (
 	stepCompare = "compare"
 )
 
-// The values of the `diff` key.
+// The values of the `drift.diff` key.
 const (
 	// DiffLines compares the two capture directories line by line in Go, against the expectation the expect agent writes.
 	DiffLines = "lines"
@@ -80,7 +80,7 @@ type Config struct {
 	Diff string
 	// KeyPatterns are regular expressions, tried in order, that key a captured line; each has the groups `key` and `value`.
 	KeyPatterns []string
-	// Volatile is what the diff ignores under DiffLines, from the keys `volatile_files` and `volatile_keys`.
+	// Volatile is what the diff ignores under DiffLines, from the keys `drift.volatile_files` and `drift.volatile_keys`.
 	Volatile Volatile
 	// ExpectModel is the model-spec of the expect agent.
 	ExpectModel string
@@ -118,7 +118,7 @@ func ApplyAutonomy(cfg Config, autonomous bool) Config {
 }
 
 // AutonomyForcedSetting answers the value the run's autonomy forces on the drift key, and whether it forces one.
-// Every key but judge_ask_parent and judge_interactive is not forced.
+// Every key but drift.judge_ask_parent and drift.judge_interactive is not forced.
 func AutonomyForcedSetting(key string) (value bool, forced bool) {
 	switch key {
 	case keyJudgeAskParent:
@@ -142,7 +142,7 @@ type configFile struct {
 	JudgeModel       string   `yaml:"judge_model"`
 	JudgeInteractive bool     `yaml:"judge_interactive"`
 	JudgeAskParent   bool     `yaml:"judge_ask_parent"`
-	// JudgeParentTimeoutMin is judge_parent_timeout_min.
+	// JudgeParentTimeoutMin is drift.judge_parent_timeout_min.
 	JudgeParentTimeoutMin int    `yaml:"judge_parent_timeout_min"`
 	Scope                 string `yaml:"scope"`
 }
@@ -162,8 +162,9 @@ func ConfigOpenMaps() []string {
 }
 
 // ConfigSpec returns drift's layered-load spec.
-// capture and compare run commands, so they are executable keys and closed to the local layer.
-// diff, key_patterns, volatile_files and volatile_keys decide what counts as drift, so they are guard keys.
+// drift.capture and drift.compare run commands, so they are executable keys and closed to the local layer.
+// drift.diff, drift.key_patterns, drift.volatile_files and drift.volatile_keys decide what counts as drift,
+// so they are guard keys.
 // A task's run settings that set one are refused, with the hub's drift.yaml as the way forward.
 // Both steps carry the shape their decode gives them.
 // `--set` writes a step whole, such as `capture={command: ..., timeout_min: 30}`.
@@ -212,11 +213,12 @@ func ConfigSpec() configengine.Spec {
 // LoadConfig loads and validates the drift module's configuration strictly through the hub-wide layer stack under dirs.
 // A declared step needs a command holding {baseline_dir} and a timeout_min of at least 1;
 // an all-empty step is undeclared and loads as the zero CommandStep.
-// A scope must be empty, off or full; a stored partial is refused.
-// A diff must be lines or command, and diff command needs a declared compare.
-// Every key_patterns entry must compile with the named groups key and value.
-// Every volatile_files entry must be a valid glob and no volatile_files or volatile_keys entry may be blank.
-// judge_parent_timeout_min must be at least 1.
+// A drift.scope must be empty, off or full; a stored partial is refused.
+// A drift.diff must be lines or command, and diff command needs a declared compare.
+// Every drift.key_patterns entry must compile with the named groups key and value.
+// Every drift.volatile_files entry must be a valid glob,
+// and no drift.volatile_files or drift.volatile_keys entry may be blank.
+// drift.judge_parent_timeout_min must be at least 1.
 // Every refusal names the key and lym config drift as the way forward.
 func LoadConfig(dirs configengine.Dirs) (Config, error) {
 	resolved, err := configengine.Load(dirs, ConfigSpec())

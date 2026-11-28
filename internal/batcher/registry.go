@@ -8,7 +8,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 )
 
-// DefaultName is the profile name that an empty active key resolves to.
+// DefaultName is the profile name that an empty batcher.active key resolves to.
 const DefaultName = "identity"
 
 // constructors maps a profile's batchifier kind to the constructor that builds it, given the profile's name and settings.

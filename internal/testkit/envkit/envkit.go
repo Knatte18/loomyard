@@ -824,7 +824,7 @@ func darnRowNames() []string {
 }
 
 // fullEnvSegment returns a review segment's settings with empty models and the given bounce budget.
-// MaxBouncesKey names review.max_bounces in configFile.
+// MaxBouncesKey names loom.review.max_bounces in configFile.
 func fullEnvSegment(maxBounces int, configFile string) shedrecipe.SegmentSettings {
 	return shedrecipe.SegmentSettings{
 		MaxBounces:      maxBounces,

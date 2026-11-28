@@ -26,7 +26,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// stepIdleTimeoutFloorMin is the smallest step_idle_timeout_min value, in minutes.
+// stepIdleTimeoutFloorMin is the smallest loom.step_idle_timeout_min value, in minutes.
 // A lower configured value is raised to it with one warning.
 const stepIdleTimeoutFloorMin = 1
 
@@ -501,7 +501,7 @@ type CodeConfig struct {
 	// It is open to the local layer, so a task's run_settings turns it on or off for one run.
 	ReviewAskParent bool `yaml:"review_ask_parent"`
 	// ReviewParentTimeoutMin is the minutes from a Code-Review parent-review ask to its deadline, before the cap.
-	// The cap is the one run_timeout_min sets on the Bouncer's judge, which waits for the parent.
+	// The cap is the one shuttle.run_timeout_min sets on the Bouncer's judge, which waits for the parent.
 	// It is a positive integer.
 	ReviewParentTimeoutMin int `yaml:"review_parent_timeout_min"`
 }
@@ -597,16 +597,16 @@ type DiscussionAdvisor struct {
 	Model string `yaml:"model"`
 }
 
-// DiscussionAdvisorList is the discussion.advisors value: a sequence of {name, model} mappings.
+// DiscussionAdvisorList is the loom.discussion.advisors value: a sequence of {name, model} mappings.
 type DiscussionAdvisorList []DiscussionAdvisor
 
-// advisorWayForward is the way forward every discussion.advisors refusal about its entries ends with.
+// advisorWayForward is the way forward every loom.discussion.advisors refusal about its entries ends with.
 const advisorWayForward = "set the key to a list of {name, model} entries, each with a distinct seat name and a model-spec the registry defines, or to an empty list for no advisors"
 
 // advisorEntryWayForward is the way forward of an entry that is not a {name, model} mapping.
 const advisorEntryWayForward = "rewrite the entry as {name: <seat name>, model: <model-spec>}"
 
-// advisorShapeError is the error for a discussion.advisors value that is not a sequence of {name, model} mappings.
+// advisorShapeError is the error for a loom.discussion.advisors value that is not a sequence of {name, model} mappings.
 // Its text names the entry or the line and gives the way forward.
 type advisorShapeError struct {
 	text string
@@ -653,12 +653,12 @@ func ConfigOpenMaps() []string {
 // Only the keys that can switch off or hollow a review or approval gate are barred from the local layer.
 // The budget, hard-cap and auto-accept keys come from reviewbudget.
 // A budget of 0 is the per-run off switch and no guard; the auto-accept keys are guards.
-// discussion.advisors and discussion.lenses are barred too.
+// loom.discussion.advisors and loom.discussion.lenses are barred too.
 // No local override or task run_settings can start advisors, turn the lens forks off or change their fan.
-// code.reviewer_fan is the one reviewer fan key open to the local layer.
+// loom.code.reviewer_fan is the one reviewer fan key open to the local layer.
 // It is open because its value names only a fan the guarded lenses.yaml defines, or "" for a solo round.
 // The perch's round count, rubric and whole-diff read stay barred.
-// raddle.auto_approve is the one approval key open to the local layer.
+// loom.raddle.auto_approve is the one approval key open to the local layer.
 // A run profile's raddle block sets it, and batten writes that block into the pair's local config.
 // The key is the sanctioned way to file a raddle proposal with no operator approval.
 // It is read once, at Raddle-Write's first spawn in a run, and never in a run whose recipe rows hold a split perch.
@@ -759,7 +759,7 @@ var shedOnlyKeys = []string{
 // shedOnlyKeyWayForward is the way forward a refusal of a shedOnlyKeys key ends with.
 const shedOnlyKeyWayForward = "remove the key from the refused local file, profile block or run_settings object, and set it under the shed module instead: in a local file, in the pair's local shed.yaml; in a profile block or run_settings, in the shed object"
 
-// tapestryPlanKeys are the plan perch keys and the implementer key that live in tapestry.yaml alone.
+// tapestryPlanKeys are the plan perch keys and the tapestry.implementer key that live in tapestry.yaml alone.
 // loom.yaml does not read them, and a local file, profile block or run_settings object that sets one is refused.
 var tapestryPlanKeys = []string{
 	"plan", "plan_timeout_min", "implementer", "plan_lenses",
@@ -859,8 +859,8 @@ func ValidateLocalValues(document []byte) error {
 
 // LoadConfig loads and unmarshals configuration for the loom module strictly through the layer stack under dirs.
 // It validates model-spec grammar at load time, and reads lenses.yaml and models.yaml through the same dirs.
-// review.max_bounces and the per-perch budgets are refused below 0:
-// null taking review.max_bounces and 0 giving zero rounds,
+// loom.review.max_bounces and the per-perch budgets are refused below 0:
+// null taking loom.review.max_bounces and 0 giving zero rounds,
 // and each refusal names the command for the layer its value comes from.
 func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	spec := ConfigSpec()
@@ -966,14 +966,14 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 		}
 	}
 
-	// An empty discussion.gate_fixer turns the fixer off and must load cleanly.
+	// An empty loom.discussion.gate_fixer turns the fixer off and must load cleanly.
 	if cfg.Discussion.GateFixer != "" {
 		if _, err := modelspec.Parse(cfg.Discussion.GateFixer); err != nil {
 			return Config{}, fmt.Errorf("config key %q: %w; set a model-spec with \"lym config loom\", or \"\" to turn the fixer off", FullKeyName(discussionGateFixerKey), err)
 		}
 	}
 
-	// friction.model is validated only when non-empty: a present-but-empty value means Tier 2 is off.
+	// loom.friction.model is validated only when non-empty: a present-but-empty value means Tier 2 is off.
 	// It must load cleanly, unlike the four role keys above, which are always required.
 	if cfg.Friction.Model != "" {
 		if _, err := modelspec.Parse(cfg.Friction.Model); err != nil {
@@ -981,7 +981,7 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 		}
 	}
 
-	// driver is validated only when non-empty, like friction.model above: an empty value means
+	// loom.driver is validated only when non-empty, like loom.friction.model above: an empty value means
 	// "defer to the engine default", the meaning an empty shuttleengine.Spec.Model already carries.
 	// It must load cleanly, not be forced to name a literal alias.
 	if cfg.Driver != "" {
@@ -994,8 +994,8 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	// A negative minute count flows into time.Duration(n) * time.Minute on a shuttleengine.Spec:
 	// it is caught only when the producer it governs first spawns or resumes.
 	// Zero is accepted and means something per key.
-	// For three of them Spec.Timeout treats 0 as "defer to shuttle's own run_timeout_min".
-	// For review.assist_reviewer_timeout_min, 0 takes the whole room left before review.timeout_min.
+	// For three of them Spec.Timeout treats 0 as "defer to shuttle.run_timeout_min".
+	// For loom.review.assist_reviewer_timeout_min, 0 takes the whole room left before loom.review.timeout_min.
 	deferToShuttle := "defer to " + shuttleRunTimeoutName()
 	for _, knob := range []struct {
 		key       string
@@ -1012,7 +1012,8 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 		}
 	}
 
-	// step_idle_timeout_min is a wake interval's cousin: a value below the floor is raised to it with one Warn and never refused.
+	// loom.step_idle_timeout_min is a wake interval's cousin:
+	// a value below the floor is raised to it with one Warn and never refused.
 	if cfg.StepIdleTimeoutMin < stepIdleTimeoutFloorMin {
 		logger.Warn("loom config key is below its floor and is raised to it", "key", FullKeyName(stepIdleTimeoutMinKey), "value", cfg.StepIdleTimeoutMin, "floor", stepIdleTimeoutFloorMin)
 		cfg.StepIdleTimeoutMin = stepIdleTimeoutFloorMin

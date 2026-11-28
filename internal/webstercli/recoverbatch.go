@@ -3,9 +3,9 @@
 // It runs when a fork reports stuck or never reports.
 // The verb drives three lease-scoped phases of websterengine with a wall-clock Clock.
 // `RecoverSpawnOrAttach` runs under the state-mutation lease.
-// It includes the provider's startup window, which startup_timeout_s bounds.
+// It includes the provider's startup window, which shuttle.startup_timeout_s bounds.
 // When the call performs the spawn, it saves the state and commits it to fabric as "... spawn".
-// `RecoverAwait` blocks for up to recovery_timeout_min with the lease released.
+// `RecoverAwait` blocks for up to webster.recovery_timeout_min with the lease released.
 // Holding the lease across that wait would stall every concurrent verb and run entry.
 // On a terminal digest, `PersistRecoveryTerminal` runs on a freshly reloaded state under a re-acquired lease,
 // and the verb then commits it to fabric as "... <status>".

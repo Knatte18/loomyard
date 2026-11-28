@@ -271,7 +271,7 @@ func recordJudgeAsk(t *testing.T, files burlerengine.ParentReviewFiles, prior bu
 }
 
 // TestDriftVerify_ParentAgreementCarriedWhileAsking pins when the judge's table carries the parent agreement entry.
-// It does under judge_ask_parent, and with the key off once the spawn holds an ask;
+// It does under drift.judge_ask_parent, and with the key off once the spawn holds an ask;
 // it does not with the key off and no ask, nor with no parent seat told.
 // The agreement entry follows the judgement entry in the table.
 func TestDriftVerify_ParentAgreementCarriedWhileAsking(t *testing.T) {
@@ -381,7 +381,7 @@ func (s tableCapturingSeats) Run(table seatengine.Table) (seatengine.Result, err
 // TestDriftVerify_RunAgentCapsTheParentAskByTheRunsStart runs the judge through runAgent, which both diff modes take.
 // The parent ask that the table's agreement entry sends is capped by the run's start.
 // Its deadline is that start plus the judge's timeout less the margin.
-// judge_parent_timeout_min alone would run past it.
+// drift.judge_parent_timeout_min alone would run past it.
 func TestDriftVerify_RunAgentCapsTheParentAskByTheRunsStart(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

@@ -1365,7 +1365,7 @@ func TestStartup_RunGatedMappings(t *testing.T) {
 }
 
 // TestStartup_RunDeadlineShorterThanWindow_NeverReady pins the run-deadline anchoring:
-// a Spec.Timeout far shorter than startup_timeout_s still expires the run on its own schedule,
+// a Spec.Timeout far shorter than shuttle.startup_timeout_s still expires the run on its own schedule,
 // classified OutcomeTimeout rather than OutcomeDied from the longer startup window.
 func TestStartup_RunDeadlineShorterThanWindow_NeverReady(t *testing.T) {
 	tiergate.Require(t, 0)

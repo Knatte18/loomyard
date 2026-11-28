@@ -428,7 +428,7 @@ type PullRequestDeps struct {
 	// CommitRecord commits the record's file, or its removal, to the pair's records and starts their push.
 	// The row calls it after every successful write or removal of the record, and returns its error.
 	CommitRecord func() error
-	// Mode reads beam.yaml's `pull_request` for the landing run through the per-task lookup.
+	// Mode reads `beam.pull_request` for the landing run through the per-task lookup.
 	// The run's own worktree's files apply first, then the nearest parent worktree's value.
 	// After those come the hub's default layer and the template.
 	// A returned error is a lookup that failed, and it names the file to fix.

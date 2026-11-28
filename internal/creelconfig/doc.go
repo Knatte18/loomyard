@@ -2,7 +2,7 @@
 
 // Package creelconfig owns the hub-wide creel.yaml: which other hubs' orch this hub obeys.
 //
-// The module's one key, trusted_hubs, lists the trusted hubs by repository name, owner/repo.
+// The module's one key, creel.trusted_hubs, lists the trusted hubs by repository name, owner/repo.
 // Each name is read from the hub's origin remote.
 // The key is classified guard, since it grants authority over this hub's agents.
 // A worktree's local override therefore cannot set it.

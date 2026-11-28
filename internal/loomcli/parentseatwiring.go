@@ -37,7 +37,7 @@ const (
 type parentSeatInputs struct {
 	location *lymcwd.Location
 	cfg      loomengine.Config
-	// runTimeout is shuttle's run_timeout_min and startAllowance its launch allowance.
+	// runTimeout is shuttle.run_timeout_min and startAllowance its launch allowance.
 	runTimeout     time.Duration
 	startAllowance time.Duration
 	// awaitCap returns the keep-warm cap of a perch's review chair.
@@ -77,7 +77,7 @@ func codeParentSeat(in parentSeatInputs) *shedadapters.ParentReviewSeat {
 	seat.Tag = shedadapters.CodeParentAskLineTag
 	seat.Subject = "the task's code change in the task worktree " + in.location.WorktreePath()
 	seat.AskBeforeJudge = true
-	// The Bouncer's judge waits for the parent inside its own session, which shuttle bounds by run_timeout_min.
+	// The Bouncer's judge waits for the parent inside its own session, which shuttle bounds by shuttle.run_timeout_min.
 	// The review chair's keep-warm cap stands in for the judge's await cap.
 	awaitCap := in.awaitCap(loomengine.PerchCode)
 	seat.Wait = func() (time.Duration, string) {

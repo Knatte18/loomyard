@@ -140,7 +140,7 @@ func newStrandRig(location *lymcwd.Location) (strandRig, error) {
 // It resolves the worktree from the request's Cwd and loads the gate config.
 // It reads the slug from the fabric origin record.
 // The kit's fixer is a strand over the worktree's reed geometry, registered under the slug with the gate fixer role.
-// Its model is the one the key's `fixer` names, and its timeout is the gate config's fixer timeout.
+// Its model is the one the key's `fixer` names, and its timeout is gate.fixer_timeout_min.
 // Its stencils and language skills come from the hub.
 // A call outside a hub, or one whose verdict stands, returns false.
 // A config or model that cannot be loaded or resolved is an error.

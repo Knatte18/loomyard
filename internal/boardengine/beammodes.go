@@ -28,7 +28,7 @@ type BeamModes struct {
 type BeamMode struct {
 	// Autonomy is on when the orch settles every halt of the members' runs, and off otherwise.
 	Autonomy SettingValue
-	// PullRequest is beam.yaml's pull_request as it resolves for the members.
+	// PullRequest is beam.pull_request as it resolves for the members.
 	PullRequest SettingValue
 	// ParentBranch is the branch the beam lands on, empty when its origin record is not on this machine.
 	ParentBranch string

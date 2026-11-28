@@ -27,7 +27,7 @@
 // When this machine holds no transcript of the session it launches fresh from the last note, else the start stencil;
 // the internal/orchengine package documentation's `Continuing after a reboot` section has the detail.
 // A context cycle asks the session for an orch note, following `.lym/orch/note-template.md`.
-// `lym orch refresh` requests a clear cycle and `lym orch distill` a compact cycle, whatever `cycle_mode` says.
+// `lym orch refresh` requests a clear cycle and `lym orch distill` a compact cycle, whatever `orch.cycle_mode` says.
 //
 // # The orch's provider process
 //

@@ -49,7 +49,7 @@ func roleAuditEngine(engines AuditEngines, role Role, choice shuttleengine.Model
 
 // MasterInstructionFiles returns a function that lists the instruction files the master role's engine loads.
 // The lookup is lazy: it runs when the lister is called.
-// A verb that never calls it is never refused for the master key.
+// A verb that never calls it is never refused for the webster.master key.
 // An engine without the shuttleengine.InstructionFileLister capability lists none.
 // An engine engines does not hold is refused, wrapping the lookup's error.
 // The way forward is to set master in webster.yaml.

@@ -3,7 +3,7 @@
 // Package hibernateconfig owns the hub-wide hibernate.yaml:
 // whether the wake from a `lym hibernate request` lifts the hub pause that request added.
 //
-// The module's one key, resume_on_wake, is off in the template.
+// The module's one key, hibernate.resume_on_wake, is off in the template.
 // The operator often works on another machine while this one sleeps, and does not want runs to go on after the wake.
 // The key is classified cross-pair: lifting a hub pause lets every pair's run go on.
 // A worktree's local override therefore cannot set it.

@@ -62,7 +62,7 @@ type Deps struct {
 	// Told by the caller.
 	TaskSlug string
 	// Timeout bounds one Reflect call's wall-clock budget, attach wait and spawn together.
-	// Zero defers to shuttle's own run_timeout_min for each spec, with no budget across them.
+	// Zero defers to shuttle.run_timeout_min for each spec, with no budget across them.
 	// Told by the caller.
 	Timeout time.Duration
 	// Clock is the archive timestamp's seam.

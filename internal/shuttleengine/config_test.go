@@ -484,7 +484,7 @@ func TestLoadConfig_ModuleArgIsThreadedThrough(t *testing.T) {
 	tiergate.Require(t, 0)
 	tmpDir := t.TempDir()
 	// Seed under a module name other than "shuttle", with a config whose
-	// poll_interval_ms differs from the template default.
+	// shuttle.poll_interval_ms differs from the template default.
 	// A hardcoded module name would be caught either way:
 	// this module reads back its seeded value, and the never-seeded "shuttle" module reads back the template default.
 	seeded := strings.Replace(shuttleengine.ConfigTemplate(), "poll_interval_ms: 1000", "poll_interval_ms: 1500", 1)
@@ -526,7 +526,7 @@ func TestLoadConfig_ModuleArgIsThreadedThrough(t *testing.T) {
 	}
 }
 
-// TestConfig_StartAllowance verifies the start allowance, which covers startup_timeout_s for every launch.
+// TestConfig_StartAllowance verifies the start allowance, which covers shuttle.startup_timeout_s for every launch.
 // The first launch and each retry count, and the retry delay is added once per retry.
 func TestConfig_StartAllowance(t *testing.T) {
 	tiergate.Require(t, 0)

@@ -18,7 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// writeAutonomy writes beam.yaml's autonomy under anchor as value, or removes the file when value is empty.
+// writeAutonomy writes beam.autonomy under anchor as value, or removes the file when value is empty.
 func writeAutonomy(t *testing.T, anchor, value string) {
 	t.Helper()
 	path := configengine.ConfigFile(anchor, "beam")

@@ -119,7 +119,7 @@ func TestLoomSeedFor_WriteSeedIsIdempotent(t *testing.T) {
 	}
 }
 
-// TestResolveSeedDriver covers resolveSeedDriver: an unseeded worktree takes the resolved driver_kind,
+// TestResolveSeedDriver covers resolveSeedDriver: an unseeded worktree takes the resolved shed.driver_kind,
 // and a recorded seed's driver wins over it.
 func TestResolveSeedDriver(t *testing.T) {
 	tiergate.Require(t, 0)

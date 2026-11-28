@@ -39,7 +39,7 @@ func planTableLayout(t *testing.T, anchorRel string) *lymcwd.Location {
 	return layout
 }
 
-// planTableConfig returns a config whose plan.lenses key is lenses.
+// planTableConfig returns a config whose tapestry.plan.lenses key is lenses.
 func planTableConfig(lenses string) Config {
 	return Config{Plan: PlanConfig{Model: "opus[effort=high]", TimeoutMin: 120, Lenses: lenses}, SubagentModel: "haiku"}
 }
@@ -48,7 +48,7 @@ func planTableConfig(lenses string) Config {
 const templatePlanFan = "twill-plan"
 
 // TestPlanTable verifies PlanTable builds the lead the Plan-Write row needs:
-// at an unanchored location and at a subpath-anchored one, with and without the plan.lenses key.
+// at an unanchored location and at a subpath-anchored one, with and without the tapestry.plan.lenses key.
 // Its lead carries the plan role and the fields it needs:
 // model, effort, version, outputs, skills, segment, timeout, interactivity and fork flag.
 // Its prompt, composed by seatengine.Prompts, names the told paths.
@@ -492,7 +492,7 @@ func TestPlanTable(t *testing.T) {
 		tests := []struct {
 			name string
 			plan string
-			// lenses is the plan.lenses value.
+			// lenses is the tapestry.plan.lenses value.
 			lenses        string
 			removeStencil bool
 			// lensesYAML, when non-empty, is planted as the anchor's lenses.yaml.

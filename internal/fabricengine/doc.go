@@ -172,9 +172,10 @@
 // `Open(l)` is the only constructor other packages call.
 // It derives both paths from l, stat-validates them and performs no wiring; wiring is `Topology`'s job.
 // The wired junction set is repo-wide.
-// It is the pair's `pathspec` from `fabric.yaml` plus the structural `_lym` and `.lym` directories injected in code.
+// It is the pair's `fabric.pathspec` from `fabric.yaml` plus the structural directories.
+// Those are `_lym` and `.lym`, injected in code.
 // `HubReservedNames()` is subtracted from it.
-// `configsync` never rewrites a `pathspec:` key already present, so a template change governs new clones only.
+// `configsync` never rewrites a `fabric.pathspec` key already present, so a template change governs new clones only.
 // `Reconcile` converges every pair to that set: add what is missing, re-point what is broken, remove what is stale.
 // It is fail-closed: an unreadable repo-wide `fabric.yaml` aborts stale removal for that pair.
 // A pair that lacks a junction is reported unhealthy on purpose (`fabriclayout.CauseJunctionMissing`) until a reconcile.
@@ -185,7 +186,7 @@
 // Every junction is excluded through the warp's `.git/info/exclude`, never a committed `.gitignore`.
 // The entry is the junction's anchored path, because a slash-free pattern would untrack same-named directories.
 // Every mutation goes through `mutateGitExclude`, which holds a repo-wide flock and replaces the file by rename.
-// `fabric.yaml`'s `warp_exclude` key lists paths lym's rendered files occupy; wiring seeds them and never removes one.
+// The `fabric.warp_exclude` key lists paths lym's rendered files occupy; wiring seeds them and never removes one.
 //
 // The lym-anchor subpath is recorded per worktree as the plain `.lym-anchor` marker at the root of its weft branch.
 // `lymcwd.Resolve` is the reader and treats a present record as truth.
@@ -256,7 +257,8 @@
 // It keeps a branch whose tip's work only another local branch holds.
 // The sweep never takes the primary weft branch.
 // `Prune` reports a hub directory no registration covers as `Unowned` and never removes it.
-// `PairTaskBranch` reads a pair's warp branch from the pair itself, so `branch_prefix` can change while pairs are live.
+// `PairTaskBranch` reads a pair's warp branch from the pair itself,
+// so `fabric.branch_prefix` can change while pairs are live.
 //
 // The hub's shared stores would otherwise start a detached repack under live steps,
 // so `Add` sets `gc.auto=0` and `maintenance.auto=false` in both stores and `Remove` runs a foreground `git gc --auto`.

@@ -1,5 +1,5 @@
 // hookpython_test.go pins the hidden hook-python-allowed verb over a real hub:
-// its exit code follows the hub's deny_python at the default layer,
+// its exit code follows the hub's shuttle.deny_python at the default layer,
 // and a cwd outside any worktree exits 1 with a JSON error.
 
 package shuttlecli
@@ -19,7 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// withDenyPython returns the shuttle config template with deny_python set to value.
+// withDenyPython returns the shuttle config template with shuttle.deny_python set to value.
 func withDenyPython(value string) []byte {
 	return []byte(strings.Replace(shuttleengine.ConfigTemplate(), "deny_python: true", "deny_python: "+value, 1))
 }
@@ -42,7 +42,7 @@ func assertJSONError(t *testing.T, output string) {
 
 // TestHookPythonAllowedVerb_FollowsTheHubsDenyPython runs the verb through the shuttle command tree.
 // It runs from a hub's prime worktree, or from a directory below its anchor.
-// It sets deny_python at the hub's default layer before each row, and the verb answers the value then set:
+// It sets shuttle.deny_python at the hub's default layer before each row, and the verb answers the value then set:
 // exit 0 with nothing printed for false, exit 1 with nothing printed for true.
 // A config that does not parse exits 1 with a JSON error, so a broken config never allows Python.
 // From a directory outside any worktree it exits 1 and reports why as a JSON error.

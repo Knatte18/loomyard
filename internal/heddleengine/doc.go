@@ -42,7 +42,7 @@
 // A passage's Engine is empty when its entry reaches the session through a shared or engine-neutral target,
 // so a comparison across engines asks for it, and names the engine when only a target aimed at that engine reaches it.
 //
-// A hub whose heddle.yaml sets lym_override renders a shipped entry with the text of its override.
+// A hub that sets heddle.lym_override renders a shipped entry with the text of its override.
 // The override lives in heddle-lym-override.json beside heddle.json, so lym's own text is tuned there with no build.
 // With the setting off every override is ignored.
 // The override file is not claimed by heddle's Bolt replayer, so fabric replays a commit of it as a plain cherry-pick.

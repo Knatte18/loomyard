@@ -13,7 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestChildDriverKind verifies that shed.yaml's driver_kind sets the driver of darn, tapestry and pawl children.
+// TestChildDriverKind verifies that shed.driver_kind sets the driver of darn, tapestry and pawl children.
 func TestChildDriverKind(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

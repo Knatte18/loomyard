@@ -102,7 +102,7 @@ func TestLoad(t *testing.T) {
 // Each profile's motif block holds its tapestry block's Discussion perch and nothing else.
 // No profile holds an arras block, since the arras recipe is not offered.
 //
-//testtiming:keep pins the template's per-block code.reviewer_model values, which the lookup tests over a fixture file cannot see
+//testtiming:keep pins the template's per-block loom.code.reviewer_model values, which the lookup tests over a fixture file cannot see
 func TestTemplateLadder(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -221,7 +221,7 @@ func areaRounds(settings any, area string) map[string]int {
 // It has one solo Code round with its hard cap and an Opus medium reviewer, and drift scope off.
 // Drift scope is off since a docs task changes no captured value.
 //
-//testtiming:keep pins the docs darn block's full settings map, including its code.reviewer_model, which the lookup tests over a fixture file cannot see
+//testtiming:keep pins the docs darn block's full settings map, including its loom.code.reviewer_model, which the lookup tests over a fixture file cannot see
 func TestTemplateDocsProfile(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

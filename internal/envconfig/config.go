@@ -53,7 +53,7 @@ func ConfigPerNameMaps() []string {
 }
 
 // ConfigSpec returns the env module's layered-load spec.
-// The module is hub-wide and `vars` is a machine key,
+// The module is hub-wide and `env.vars` is a machine key,
 // so the machine layer may set a variable and the local layer may not.
 func ConfigSpec() configengine.Spec {
 	return configengine.Spec{

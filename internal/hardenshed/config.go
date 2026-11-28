@@ -40,9 +40,9 @@ type Config struct {
 	Reviewer []string `yaml:"reviewer"`
 	// Fixer lists the model-specs of the fix rounds, taken in turn.
 	Fixer []string `yaml:"fixer"`
-	// Judge is the model-spec of the Bouncer's judge; empty takes loom.yaml's judge.
+	// Judge is the model-spec of the Bouncer's judge; empty takes loom.code.judge as loom resolves it.
 	Judge string `yaml:"judge"`
-	// Seed is the model-spec of the campaign's seed round; empty takes loom.yaml's seed.
+	// Seed is the model-spec of the campaign's seed round; empty takes loom.code.seed as loom resolves it.
 	Seed string `yaml:"seed"`
 	// ReviewerFan names the reviewer fan the review rounds run; empty runs a solo round.
 	ReviewerFan string `yaml:"reviewer_fan"`
@@ -161,9 +161,10 @@ func checkValues(document []byte) (string, error) {
 }
 
 // CheckValues checks the values of one hardener.yaml document, as a task's run_settings or a local layer holds it.
-// It refuses a concurrency, live_attempts, verify_attempts or hard_max_bounces below 1.
-// It refuses a negative max_bounces.
-// It refuses a reviewer, fixer, judge or seed entry whose model-spec does not parse.
+// It refuses a hardener.concurrency, hardener.live_attempts or hardener.verify_attempts below 1.
+// It refuses a hardener.hard_max_bounces below 1.
+// It refuses a negative hardener.max_bounces.
+// It refuses a hardener.reviewer, hardener.fixer, hardener.judge or hardener.seed entry whose model-spec does not parse.
 // Each refusal names the key.
 // The refusal is marked configengine.ErrInvalid and names the task's run_settings as the place to correct.
 func CheckValues(document []byte) error {
@@ -174,7 +175,7 @@ func CheckValues(document []byte) error {
 }
 
 // LoadConfig loads the module's configuration strictly through the hub-wide layer stack under dirs.
-// It runs CheckValues over the resolved document, and keeps tree_scope keyed by trimmed tree path.
+// It runs CheckValues over the resolved document, and keeps hardener.tree_scope keyed by trimmed tree path.
 // A refusal names the write for the layer the value comes from, then `lym loom resume`.
 // A malformed or repeated tree key wraps darnengine.ErrTreeScopeKey.
 func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {

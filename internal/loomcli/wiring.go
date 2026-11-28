@@ -706,7 +706,7 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 	websterGeom.VerifyHold = verifytree.NewPauseHold(pauseGeom, nil)
 
 	// frictionDir is the single resolved value every told-friction consumer below reads.
-	// It is non-empty only when loom.yaml sets friction.model: Tier 2 off is an empty path string, never a boolean.
+	// It is non-empty only when loom.friction.model is set: Tier 2 off is an empty path string, never a boolean.
 	// Resolving it once here keeps every consumer from re-checking loomCfg.Friction.Model and disagreeing about Tier 2.
 	frictionDir := ""
 	if loomCfg.Friction.Model != "" {
@@ -758,7 +758,7 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		},
 		LanguageSkills: languageSkills,
 		// InstructionFiles looks Master's engine up lazily.
-		// The lazy lookup keeps loom's status and pause, which only wire, from being refused by the master key.
+		// The lazy lookup keeps loom's status and pause, which only wire, from being refused by the webster.master key.
 		InstructionFiles: websterengine.MasterInstructionFiles(engines, roles[websterengine.RoleMaster]),
 	}
 
@@ -1124,7 +1124,8 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 			return err
 		},
 		// PartsTable and PartsPlanTable are evaluated per Call, so the stencils and the parts file are read at call time.
-		// PartsPlanTable receives shuttle's run_timeout_min as a duration; a plan.timeout_min of 0 resolves to that value.
+		// PartsPlanTable receives shuttle.run_timeout_min as a duration;
+		// a tapestry.plan.timeout_min of 0 resolves to that value.
 		// Only the producer entry can build the per-part hooks.
 		PartsTable: func() (seatengine.Table, error) {
 			return loomengine.PartsTable(location, websterGeom.StencilsDir, websterGeom.SpecsDir, loomCfg, registry)
@@ -1425,7 +1426,7 @@ func autonomySettingLookup(lookup func(module, key string) (any, error), autonom
 	}
 }
 
-// planReviewSegment is the name of the recipe segment whose rows read tapestry.yaml's plan perch keys.
+// planReviewSegment is the name of the recipe segment whose rows read the tapestry.plan perch keys.
 const planReviewSegment = "Plan-Review"
 
 // recipeHoldsPlanReview reports whether the named recipe has a row of the Plan-Review segment;
@@ -1446,7 +1447,7 @@ func recipeHoldsPlanReview(recipe string) (bool, error) {
 	return false, nil
 }
 
-// withTapestry returns cfg with tapestry.yaml's plan values applied when the run's recipe holds a Plan-Review row.
+// withTapestry returns cfg with the tapestry.plan values applied when the run's recipe holds a Plan-Review row.
 // Otherwise it returns cfg unchanged.
 // A recipe without that segment never reads tapestry.yaml, so a fault in the file refuses none of its runs.
 func (c *loomCLI) withTapestry(dirs configengine.Dirs, cfg loomengine.Config) (loomengine.Config, error) {

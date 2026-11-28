@@ -1,4 +1,4 @@
-// pullrequestmode_test.go covers ResolvePullRequest: each beam.yaml pull_request mode;
+// pullrequestmode_test.go covers ResolvePullRequest: each beam.pull_request mode;
 // a parent branch GitHub's rules guard;
 // each origin fact that blocks a pull request; a beam's landing record; and an empty task branch.
 

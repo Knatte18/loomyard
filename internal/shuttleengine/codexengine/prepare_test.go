@@ -162,7 +162,7 @@ func TestPrepare_Launch(t *testing.T) {
 	}
 }
 
-// TestPrepare_SandboxMode pins the sandbox a launch runs in for each sandbox_mode and probe result.
+// TestPrepare_SandboxMode pins the sandbox a launch runs in for each codex.sandbox_mode and probe result.
 // auto and workspace-write probe the sandbox once, with the Codex executable, under the lym home, in the anchor;
 // a sandbox that starts runs workspace-write.
 // One that cannot start runs danger-full-access under auto, with a warning naming the cause.
@@ -269,7 +269,7 @@ func TestPrepare_SandboxMode(t *testing.T) {
 	}
 }
 
-// TestPrepare_ExpandsHomeInWritableRoots pins that a leading ~/ in writable_roots expands to the user's home.
+// TestPrepare_ExpandsHomeInWritableRoots pins that a leading ~/ in codex.writable_roots expands to the user's home.
 // It sets the home environment variables, so it does not run in parallel.
 //
 //testtiming:keep pins the leading tilde expansion in the launch line, the only test that sets a tilde writable root
@@ -313,7 +313,7 @@ func TestPrepare_ExpandsHomeInWritableRoots(t *testing.T) {
 // TestPrepare_InstallsGuardsFromItsInputs pins which inputs reach the installed guard rows.
 // The python switch decides only whether the deny notice names the python row, which every launch installs;
 // the publish guard installs its own row alone;
-// a seeded refuse_raw list of the hub's gate config reaches the hook and the developer instructions' deny notice.
+// a seeded gate.refuse_raw list of the hub's gate config reaches the hook and the developer instructions' deny notice.
 // It does so also when a gate key the launch does not read fails to load;
 // and a gate config that does not parse refuses the launch before the prompt file is written.
 func TestPrepare_InstallsGuardsFromItsInputs(t *testing.T) {
@@ -514,7 +514,7 @@ func TestPrepare_CreelHooksInAHub(t *testing.T) {
 
 // TestPrepare_SwitchedToolHooks pins the three tool hooks a launch's spec, codex.yaml and shuttle.yaml switch.
 // An autonomous spec carries the question-tool deny and its notice, and an interactive one carries neither.
-// With the batching nudge on, Prepare seeds the state file with codex.yaml's block.
+// With the batching nudge on, Prepare seeds the state file with the codex.batching_nudge block.
 // The line then runs the batching hook over it.
 // With the nudge off, Prepare writes no state file and the line carries no batching hook.
 // An autonomous spec carries the edit hook over the run's edit records file while the edit-loop watch is on.
@@ -977,7 +977,7 @@ func TestLoadConfig_Template(t *testing.T) {
 	}
 }
 
-// TestLoadConfig_SandboxModeLayers pins which layers set sandbox_mode in a hub.
+// TestLoadConfig_SandboxModeLayers pins which layers set codex.sandbox_mode in a hub.
 // The machine override wins over the worktree file.
 // So one machine runs unsandboxed while the tracked files keep the sandbox.
 // A local override that sets it refuses the load.
@@ -1071,8 +1071,8 @@ func TestLoadConfig_RefusesInvalidValues(t *testing.T) {
 	}
 }
 
-// TestLoadConfig_AcceptsBatchingNudgeEdges pins the batching_nudge values the validation lets through:
-// an off block is not validated, and a context_tokens of 0 is allowed while the block is on.
+// TestLoadConfig_AcceptsBatchingNudgeEdges pins the codex.batching_nudge values the validation lets through:
+// an off block is not validated, and a codex.batching_nudge.context_tokens of 0 is allowed while the block is on.
 func TestLoadConfig_AcceptsBatchingNudgeEdges(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1112,8 +1112,8 @@ func TestLoadConfig_AcceptsBatchingNudgeEdges(t *testing.T) {
 // TestPrepare_SubagentTerms pins what a launch gives the session's subagents.
 // The effort agents.yaml gives the role rides an agents setting.
 // The passage of the developer instructions names it and the skills;
-// an effort codex.yaml's efforts does not list, or no effort at all, gives neither.
-// The thread cap rides every launch and follows max_subagent_threads.
+// an effort codex.efforts does not list, or no effort at all, gives neither.
+// The thread cap rides every launch and follows codex.max_subagent_threads.
 func TestPrepare_SubagentTerms(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

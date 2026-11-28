@@ -315,7 +315,7 @@ func scopeInvocations(tier gateslot.Tier, request testRequest, sc scope) (invoca
 
 // vetStepRun returns the vet run of the tier numbered number over modules.
 // It runs `<goBinary> vet -tags tierN` over each module's packages in that module's directory:
-// the run takes the tier's env, parallel and timeout_min, and holds one slot.
+// the run takes the tier's env, parallel and gate.tiers.<tier>.timeout_min, and holds one slot.
 // A goBinary the platform shell cannot quote is refused.
 func vetStepRun(cfg gateslot.Config, number int, goBinary string, modules []moduleTargets) (tierRun, error) {
 	tier, err := cfg.Tier(number)

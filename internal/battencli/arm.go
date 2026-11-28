@@ -97,7 +97,7 @@ func battenDriver(flagVal string) string {
 // A driver the operator typed cannot take effect on a seeded run, so it is refused rather than dropped.
 // A driver left at its cobra default carries no intent to contradict, so it is ignored.
 // A typed --child-driver is refused against a seed that records a different child driver or none.
-// An untyped one passes a seed that records none: the child then takes its recipe's driver_kind, then shed.yaml's.
+// An untyped one passes a seed that records none: the child then takes its recipe's driver_kind, then shed.driver_kind.
 func refuseAdoptedSeed(seed shedrun.Seed, runID string, driverFlag string, driverSet bool, childDriverFlag string, childDriverSet bool) error {
 	if seed.Recipe != shedrun.RecipeBatten {
 		return fmt.Errorf(
@@ -152,7 +152,7 @@ func childDriverFrom(seed shedrun.Seed, found bool, resolveKind func() (string, 
 }
 
 // childDriverKind resolves the driver of a child run from the config layers under dirs.
-// It reads shed.yaml's driver_kind, else llm, regardless of the child's recipe.
+// It reads shed.driver_kind, else llm, regardless of the child's recipe.
 func childDriverKind(dirs configengine.Dirs, _ string) (string, error) {
 	shed, err := sheddriver.LoadConfig(dirs)
 	if err != nil {
@@ -233,7 +233,7 @@ func (c *battenCLI) armSeed(location *lymcwd.Location, runID, verb string) error
 
 	// The run-id is the slug; no param repeats it.
 	// child_driver is recorded only when the operator typed it;
-	// Seed-Child resolves the rest from the child recipe's driver_kind, then shed.yaml's.
+	// Seed-Child resolves the rest from the child recipe's driver_kind, then shed.driver_kind.
 	// anchor is recorded only by a first pass that names one, and Worktree-Create reads it back.
 	var params map[string]string
 	if c.childDriverFlagSet {
@@ -879,7 +879,7 @@ const openWindowTimeout = 30 * time.Second
 // It does so only when no client is attached to the task worktree's reed session:
 // the window the first run opened is gone with that client.
 // It opens nothing when batten.open_window is off, read through Env.Setting as the row's entry gate reads it;
-// a forced run and a task's open_window: false apply as in the row.
+// a forced run and a task's batten.open_window: false apply as in the row.
 // Otherwise it runs the batten.open_window_command command through a command producer.
 // A status whose history holds no Open-Window entry opens nothing;
 // so does one whose current producer is still at or before the row, and so does an attached client.

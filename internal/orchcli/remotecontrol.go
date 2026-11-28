@@ -30,7 +30,7 @@ const (
 	remoteControlProgram = "REMOTECONTROL"
 )
 
-// orchEngine is the engine the orch session runs on, whatever shuttle.yaml's default engine is:
+// orchEngine is the engine the orch session runs on, whatever shuttle.engine is:
 // the orch role is worded for it.
 const orchEngine = "claude"
 
@@ -50,7 +50,7 @@ func (c *orchCLI) orchHasRemoteControl() bool {
 }
 
 // remoteControlSessionName returns the remote session's name of the strand strandName on this machine.
-// It fills orch.yaml's remote_control_name.
+// It fills orch.remote_control_name.
 func (c *orchCLI) remoteControlSessionName(strandName string) (string, error) {
 	parsed, err := agentname.Parse(strandName)
 	if err != nil {
@@ -131,7 +131,7 @@ func (c *orchCLI) markLaunchedRemoteControl(started startedSession, resumed stri
 }
 
 // turnOnRemoteControl queues the remote-control command into the agent pane runs, through creel.
-// The name is the one remote_control_name forms for the agent, whatever orch.yaml's switch says.
+// The name is the one orch.remote_control_name forms for the agent, whatever orch.remote_control says.
 // It marks nothing: creel marks the pane once the session records its remote control connecting.
 // It refuses a pane that runs no agent and a pane whose mark already reads on; both send nothing.
 // An agent whose engine has no remote control gets nothing typed.

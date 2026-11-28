@@ -21,7 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// partsTableConfig returns a config whose parts keys are depth, max and the model-spec parts.
+// partsTableConfig returns a config whose tapestry.parts keys are depth, max and the model-spec parts.
 func partsTableConfig(depth string, max int, parts string) Config {
 	return Config{Parts: PartsConfig{Model: parts, Depth: depth, Max: max}, Plan: PlanConfig{TimeoutMin: 120}}
 }

@@ -162,7 +162,7 @@ func TestWatchRows_NoticeNeverStopsTheCall(t *testing.T) {
 	}
 }
 
-// TestNewShed_WrapsTheRowsNotifyParentOnNames covers the activation from loom.yaml's notify_parent_on:
+// TestNewShed_WrapsTheRowsNotifyParentOnNames covers the activation from loom.notify_parent_on:
 // an empty list wraps nothing, a recipe row's producer is wrapped over the run's status and row-notice paths,
 // and a name that is no row of the recipe is refused with no shed.
 func TestNewShed_WrapsTheRowsNotifyParentOnNames(t *testing.T) {

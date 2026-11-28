@@ -76,7 +76,7 @@ func readyToStart(task TaskView, here string, covered bool) bool {
 	return released(task, here) && !heldByEntry(task, covered)
 }
 
-// startReady starts each ready task of the local board while fewer than max_runs runs it drives are in flight.
+// startReady starts each ready task of the local board while fewer than beam.max_runs runs it drives are in flight.
 // Starting runs the task's first pass, a full pass that claims it as batten does.
 // A slug with a pass in flight is never started twice.
 // The count covers the runs listed for this tick, halted and done ones included.
@@ -85,9 +85,9 @@ func readyToStart(task TaskView, here string, covered bool) bool {
 // It leaves out runs whose board entry is done or gone.
 // It adds first passes that have not yet left a status file.
 // A task whose backoff has not run out waits, unless its entry changed since the refusal.
-// While the cgroup task limit leaves fewer than task_headroom tasks free, the step starts no task.
+// While the cgroup task limit leaves fewer than beam.task_headroom tasks free, the step starts no task.
 // While an open front task of the worktree stands, the step starts no other task.
-// It starts the front task itself once it is released, even when the runs in flight fill max_runs.
+// It starts the front task itself once it is released, even when the runs in flight fill beam.max_runs.
 // While the beam is flagged ready, the step starts no task at all.
 // Nor does it while the catch-up from origin is owed, which a first pass read earlier in the tick can owe.
 func (d *daemon) startReady(ctx context.Context, now time.Time) error {
@@ -314,7 +314,7 @@ func (d *daemon) runsInFlight(current State) int {
 	return count
 }
 
-// slotsTaken counts the runs that take a slot under max_runs:
+// slotsTaken counts the runs that take a slot under beam.max_runs:
 // a run takes one unless the record marks it owned elsewhere, it is a pawl run without its landing hold,
 // or its board entry is done or gone.
 // A run whose entry ended has nothing left to start, so batten stopping it short of its teardown holds no slot.

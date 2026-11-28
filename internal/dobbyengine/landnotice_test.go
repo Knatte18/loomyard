@@ -1,6 +1,6 @@
 // landnotice_test.go pins the landing notice over a pass harness.
-// It covers which runs get a line under each reading of land_notice and the line's text.
-// It covers a landed motif run, whose Sketch line goes whatever land_notice reads.
+// It covers which runs get a line under each reading of beam.land_notice and the line's text.
+// It covers a landed motif run, whose Sketch line goes whatever beam.land_notice reads.
 // It covers a member landing under a recorded pull request, whose line carries no follow-up.
 // It covers the owed line's posts until one succeeds, and the memory's upkeep.
 
@@ -37,13 +37,13 @@ func TestLandNotices(t *testing.T) {
 
 	tests := []struct {
 		name string
-		// requested is what the land_notice lookup reads for the run while it is ahead of Land.
+		// requested is what the beam.land_notice lookup reads for the run while it is ahead of Land.
 		requested bool
 		// requestedByTick, when set, replaces requested with the lookup's reading at each tick.
 		requestedByTick []bool
-		// failLookupOnTick is the one-based tick whose land_notice lookup fails; zero fails none.
+		// failLookupOnTick is the one-based tick whose beam.land_notice lookup fails; zero fails none.
 		failLookupOnTick int
-		// failLookupThroughTick is the one-based tick through which every land_notice lookup fails; zero fails none.
+		// failLookupThroughTick is the one-based tick through which every beam.land_notice lookup fails; zero fails none.
 		failLookupThroughTick int
 		// seed is the memory the state record holds for the run before the first tick, nil leaving none.
 		seed *LandNoticeState

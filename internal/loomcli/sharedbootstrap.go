@@ -70,7 +70,7 @@ const (
 //
 // The effective driver is read from any already-recorded seed.
 // It is never taken from a flag, since the verbs declare no driver flag of their own.
-// It falls back to the driver_kind the loaded config resolves to (llm by default) only when no seed exists yet.
+// It falls back to the shed.driver_kind the loaded config resolves to (llm by default) only when no seed exists yet.
 // An operator who wants a driver on one run pre-seeds it with "lym shed seed self --recipe tapestry --driver go".
 // Without this read-through, a run already seeded for the llm driver would be refused here.
 // WriteSeed rejects a disagreeing existing seed.
@@ -258,7 +258,8 @@ func disagreeingSeedRefusal(seedPath string, existing shedrun.Seed, parent strin
 
 // resolveSeedDriver returns the driver a run records when it is seeded.
 // It is the already-recorded seed's own Driver when one exists.
-// It is kind, the driver_kind the loaded config resolves to (llm by default), only when no seed has been written yet.
+// It is kind only when no seed has been written yet.
+// Kind is the shed.driver_kind the loaded config resolves to, llm by default.
 // It is a pure function, so a Tier 1 test can pin its cases with no real fabric behind it.
 //
 // A recorded driver always wins over kind: editing the config after seeding has no effect on that run.

@@ -348,7 +348,7 @@ func TestWireHub_AbsentStencilsDirIsRefused(t *testing.T) {
 // The test points its configured multiplexer binary at a path that is never created.
 // A first wire call resolves the standalone state directory onto the receiver and spawns nothing.
 // wireStandalone only assigns its boot closure and never executes it.
-// A reed config is then seeded under that state directory with the tmux key set to the missing path.
+// A reed config is then seeded under that state directory with the reed.tmux key set to the missing path.
 // The session probe of sessionSubstrateLocked then fails at process lookup, so nothing is spawned.
 // A fresh CLI receiver wires again to pick up the seeded config and drives the same entry point.
 // This keeps the tier0 test inside the Test Tier Purity Invariant.

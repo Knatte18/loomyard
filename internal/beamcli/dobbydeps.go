@@ -663,7 +663,7 @@ func liveCatchUpWait(prime *lymcwd.Location, slug string) (*dobbyengine.CatchUpW
 
 // beamDescribeDeps fills the description rewrite's seams for the beam slug over the hub of prime.
 // beam is the beam's worktree.
-// The describer agent runs on landing.yaml's describe model for its describe_timeout_min.
+// The describer agent runs on the landing.describe model for its landing.describe_timeout_min.
 // Its shuttle run is gated on its draft passing as a change description, so a draft with a finding re-prompts it.
 func beamDescribeDeps(prime, beam *lymcwd.Location, slug string, dirs configengine.Dirs) (dobbyengine.BeamDescribeDeps, error) {
 	cfg, err := landingshed.LoadConfig(dirs, "landing")

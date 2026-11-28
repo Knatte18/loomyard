@@ -21,7 +21,7 @@
 //     The engine compares no machine name: the hub wiring judges each owner and hands over the answer as a flag.
 //     It refuses a worktree with an anchor change standing, and a beam whose landing hold stands.
 //   - Config is beam.yaml, loaded strictly because dobby only ever runs inside a hub.
-//     Its `adopt_fix_tries` key is never read by dobby itself.
+//     Its `beam.adopt_fix_tries` key is never read by dobby itself.
 //   - Run is the daemon loop, with every seam it reads in Deps.
 //   - `dobby.log` holds the dobby's own lines only, and only the holder of the dobby lock rotates it.
 //   - BuildView is the View of one dobby a reader outside its process sees, built from what it is told.
@@ -53,7 +53,7 @@
 //   - A run gets a pass only while batten's state is running and its Verdict is act.
 //     A run never gets a pass while one of its passes is in flight, and a held driver lock reads as in flight.
 //     A halted or paused run gets no pass until the orch or the operator resumes it with a hand pass.
-//   - A done batten run is driven no further and takes no slot under `max_runs`.
+//   - A done batten run is driven no further and takes no slot under `beam.max_runs`.
 //   - A continue pass needs the run at Run-Shed with no full pass owed and no lift to answer.
 //     Every other pass is full.
 //     The state record keeps a full pass owed until one exits 0.
@@ -65,10 +65,10 @@
 //   - A task waits on the board as `draft` until released, and dobby starts it from an empty status.
 //     A task starts only when its dependencies are done, its parent is this dobby's worktree,
 //     no other machine owns it, no refusal awaits every start of its slug and no pause covers the hub or the slug.
-//     Starts stop while `max_runs` runs the dobby drives are in flight; `max_runs: 0` starts nothing.
-//   - While fewer than beam.yaml's `task_headroom` cgroup tasks are free, the tick starts no task.
+//     Starts stop while `beam.max_runs` runs the dobby drives are in flight; `beam.max_runs: 0` starts nothing.
+//   - While fewer than `beam.task_headroom` cgroup tasks are free, the tick starts no task.
 //     The hold only delays starts, never a pass of a run already started.
-//     `task_headroom: 0`, a nil seam and a limit that does not read hold nothing.
+//     `beam.task_headroom: 0`, a nil seam and a limit that does not read hold nothing.
 //   - A first pass refused for a covering pause is no refused start and waits for the lift.
 //     A first pass whose catch-up could not reach origin is no refused start either:
 //     it owes the catch-up from origin, and the task starts once the catch-up succeeds.
@@ -85,7 +85,7 @@
 //
 // The slot rule:
 //
-//   - A run whose RunView carries NoSlot takes no slot under `max_runs`.
+//   - A run whose RunView carries NoSlot takes no slot under `beam.max_runs`.
 //     NoSlot marks a pawl run whose landing hold does not stand, while it only waits on its members.
 //   - A run whose RunView carries EntryEnded takes no slot either, whatever batten's state says.
 //
@@ -150,11 +150,12 @@
 //     else the hub's default layer's, else the template's.
 //   - Each tick reads Deps.LandNotice for each listed run ahead of its Land row and remembers the reading.
 //     A failed read keeps the last reading and is logged once per episode; a nil LandNotice reads every run as off.
-//   - A run seen past its Land row that dobby remembered ahead of it with `land_notice` on owes one line
+//   - A run seen past its Land row that dobby remembered ahead of it with `beam.land_notice` on owes one line
 //     through Deps.Notice to the nearest live orch.
-//     A run whose `land_notice` read off owes none.
-//   - A remembered motif run that landed owes one line saying its entry is now a Sketch, whatever `land_notice` reads,
-//     since a Sketch runs only once it is promoted; its line replaces the landed line.
+//     A run whose `beam.land_notice` read off owes none.
+//   - A remembered motif run that landed owes one line saying its entry is now a Sketch,
+//     whatever `beam.land_notice` reads, since a Sketch runs only once it is promoted;
+//     its line replaces the landed line.
 //   - A landed line asks the orch for nothing:
 //     a member landing under a recorded pull request gets the description rewrite.
 //   - An owed line stays in the state record and is posted every tick until a post succeeds.
@@ -212,9 +213,10 @@
 //   - Each tick records every Land Done that names this machine as counted in the state record,
 //     so a restart counts none twice and a record read for the first time counts every earlier landing as seen.
 //     While a tidy agent is in flight nothing is counted.
-//   - At every `board_tidy_every` landings, 0 meaning never, dobby spawns the board-tidy agent unless one is in flight.
+//   - At every `beam.board_tidy_every` landings, 0 meaning never,
+//     dobby spawns the board-tidy agent unless one is in flight.
 //     The agent's one output is the report `.lym/beam/tidy/<UTC timestamp>.md`, which dobby posts to the nearest live orch.
-//     Past `board_tidy_timeout_min` dobby ends the agent and posts a no-report line.
+//     Past `beam.board_tidy_timeout_min` dobby ends the agent and posts a no-report line.
 //   - On the prime's dobby, whose worktree is on the main branch, the agent also runs the upkeep checks before its report.
 //     Deps.UpkeepCall renders their gate call, and the agent files a board note for each failure they report.
 //     With no call the agent runs no upkeep checks: the hub's wiring renders none under a scoper other than go,
@@ -300,7 +302,7 @@
 //
 // The view:
 //
-//   - BuildView carries beam.yaml's `max_runs` and the tasks waiting with the reason each waits.
+//   - BuildView carries `beam.max_runs` and the tasks waiting with the reason each waits.
 //     It also carries the kept pairs of cancelled runs and the listed runs that are not done.
 //     Each listed run says whether it asks for a landing notice.
 //   - The view does not read the task-limit hold, and the dobby log records it.

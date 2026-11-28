@@ -56,7 +56,7 @@
 // So a runaway process it starts is killed inside that scope before the host runs out of memory.
 // The same chokepoint moves the fresh pane's shell into a scope named `lym-pane-<pid>.scope`.
 // It does so before it types anything, through `proc.CapProcessMemory`.
-// The scope is capped at `pane_memory_max_mib` with no swap.
+// The scope is capped at `reed.pane_memory_max_mib` with no swap.
 // A kill at the cap ends the process the kernel picks, and the pane lives on.
 // A pane the cap cannot reach launches uncapped with a Warn naming the cause.
 // Such a pane runs on a host whose user manager holds no memory controller, or on Windows.
@@ -115,12 +115,13 @@
 // No op uses the session's current window (windowtarget.go's TmuxCmd.strandWindowTarget).
 //
 // Strands declaring a window group (Display.Window, Display.WindowSize) share one window.
-// That holds while the declared size is at most window_share_max.
+// That holds while the declared size is at most reed.window_share_max.
 // ReedState.WindowGroups records the choice until the group's last strand goes,
-// so a later window_share_max edit never splits a group.
+// so a later reed.window_share_max edit never splits a group.
 // A strand declaring another size than the record's is refused.
 // UpdateStrand refuses a move into or out of the anchor, and a change of an overview strand's order.
-// An invalid window_split or window_share_max never refuses a removal; it is reported in Removed.ConfigWarning.
+// An invalid reed.window_split or reed.window_share_max never refuses a removal;
+// it is reported in Removed.ConfigWarning.
 //
 // OpenWindow opens a detached, hidden, named window running a `lym` command in the worktree's reed session.
 // It never adopts, kills or replaces an own window or a window the operator opened by hand.
@@ -159,7 +160,7 @@
 //
 // # Daemon
 //
-// The hub watchdog daemon runs a name-repair tick (namerepair.go), gated by the reed.yaml key `watchdog`.
+// The hub watchdog daemon runs a name-repair tick (namerepair.go), gated by the `reed.watchdog` key.
 // It types a session-name rename only into an idle pane with no active operator.
 // The discover signal DiscoverSignalFileName, at Geometry.DiscoverSignalPath, is touched by every cold session boot.
 // `Down` writes DiscoverStopMarker into it before kill-server to ask the daemon to stop.
@@ -174,7 +175,7 @@
 // A below-floor tmux returns `*toolfloor.FloorError`.
 //
 // Operator config: a server reed starts reads no `~/.tmux.conf` (`-f /dev/null`), except on Windows.
-// The reed.yaml key `tmux_conf` names a file sourced once per server start;
+// The `reed.tmux_conf` key names a file sourced once per server start;
 // the boot fails when that file ends the session or unpins `destroy-unattached` or `exit-unattached`.
 //
 // Session targeting: every -t argument that names a session is passed in an exact-match form.

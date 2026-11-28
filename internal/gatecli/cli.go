@@ -46,7 +46,7 @@ func Command() *cobra.Command {
 // goBinary is the go command a prebuilding tier builds `lym` with;
 // samplePeriod is how often the CPU watchdog samples a tier's process tree;
 // preTierCeiling bounds the work before the first tier;
-// timeoutUnit is the length of one `timeout_min` minute;
+// timeoutUnit is the length of one `gate.tiers.<tier>.timeout_min` minute;
 // rerunDelay is how long a tier waits before its one rerun after a resource shortage or a crashed test runner;
 // pipeWaitDelay is how long a tier's or the build's output is still read after its shell exits;
 // seams holds the bounds and launcher of a capped call's front.
@@ -151,7 +151,7 @@ type testRequest struct {
 	samplePeriod time.Duration
 	// preTierCeiling bounds the work before the first tier.
 	preTierCeiling time.Duration
-	// timeoutUnit is the length of one `timeout_min` minute.
+	// timeoutUnit is the length of one `gate.tiers.<tier>.timeout_min` minute.
 	timeoutUnit time.Duration
 	// rerunDelay is how long a tier waits before its one rerun after a resource shortage or a crashed test runner.
 	rerunDelay time.Duration

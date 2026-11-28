@@ -11,7 +11,7 @@ import (
 )
 
 // TestFlagRemoteControlDefault pins the outcomes of the check.
-// A file that sets no remote_control is flagged with the step that turns it on and left unchanged.
+// A file that sets no orch.remote_control is flagged with the step that turns it on and left unchanged.
 // A file that sets it, on or off, is neither changed nor flagged.
 // A file that is no mapping fails to parse.
 func TestFlagRemoteControlDefault(t *testing.T) {

@@ -47,7 +47,7 @@ type CaptureRequest struct {
 	// Check is the precondition a main capture runs under its lock; its error is returned untouched.
 	// It returns the commit the capture runs on, which the capture record names.
 	Check func() (head string, err error)
-	// Timeout bounds the command from its start; production passes the step's timeout_min.
+	// Timeout bounds the command from its start; production passes `drift.capture.timeout_min`.
 	Timeout time.Duration
 	// Now is the clock the records' times come from.
 	Now func() time.Time

@@ -9,13 +9,13 @@ import (
 	"time"
 )
 
-// View is one reading of a dobby: whether it is alive and its max_runs.
+// View is one reading of a dobby: whether it is alive and its beam.max_runs.
 // It also lists the runs it drives and the released tasks it has not started.
 // Each run says whether it asks for a landing notice.
 type View struct {
 	// Alive reports whether the dobby's lock is held.
 	Alive bool `json:"alive"`
-	// MaxRuns is beam.yaml's cap on the runs in flight.
+	// MaxRuns is beam.max_runs, the cap on the runs in flight.
 	MaxRuns int `json:"max_runs"`
 	// Runs are the runs the dobby drives that are not done, by slug.
 	Runs []ViewRun `json:"runs"`
@@ -47,7 +47,7 @@ type ViewRun struct {
 	OwnedElsewhere   bool      `json:"owned_elsewhere,omitempty"`
 	FailingPassError string    `json:"failing_pass_error,omitempty"`
 	FailingPassCount int       `json:"failing_pass_count,omitempty"`
-	// LandNotice reports whether land_notice read on for the run while the dobby saw it ahead of its Land row.
+	// LandNotice reports whether beam.land_notice read on for the run while the dobby saw it ahead of its Land row.
 	LandNotice bool `json:"land_notice,omitempty"`
 }
 
@@ -68,7 +68,7 @@ type WaitingTask struct {
 	Refusal string `json:"refusal,omitempty"`
 	// NextTry is when the refused start's backoff runs out; zero once it has.
 	NextTry time.Time `json:"next_try,omitzero"`
-	// AtMaxRuns reports whether the runs in flight fill max_runs before this task's turn.
+	// AtMaxRuns reports whether the runs in flight fill beam.max_runs before this task's turn.
 	AtMaxRuns bool `json:"at_max_runs,omitempty"`
 	// FrontFirst is the slug of the worktree's open front task; while it stands, no other task starts.
 	FrontFirst string `json:"front_first,omitempty"`
@@ -101,8 +101,8 @@ type ViewInput struct {
 // The runs are the listed ones that are not done; a done run takes a slot only while its driver lock is held.
 // The kept pairs are those of the listed cancelled runs whose cancel kept a pair that still stands.
 // A task waits while it is released to the worktree and not started.
-// Its reasons are the conditions the dobby's start step checks, in the start step's own order for max_runs.
-// An open front task of the worktree holds every other waiting task back and takes no slot under max_runs.
+// Its reasons are the conditions the dobby's start step checks, in the start step's own order for beam.max_runs.
+// An open front task of the worktree holds every other waiting task back and takes no slot under beam.max_runs.
 // While the record carries the ready hold, every waiting task is held and none takes a slot.
 func BuildView(in ViewInput) View {
 	view := View{Alive: in.Alive, MaxRuns: in.Config.MaxRuns, Runs: []ViewRun{}, Waiting: []WaitingTask{}, CatchUp: in.Record.CatchUp}

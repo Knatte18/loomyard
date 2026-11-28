@@ -26,7 +26,7 @@ type ReviewSettings struct {
 	Models burlerengine.RoundModels
 	// Discussion, Plan, Code and Split hold each loom review segment's resolved models.
 	// A segment uses its own list where loom.yaml sets one, else the shared list in Models.
-	// The split perch's fixer falls back to the raddle key's model instead.
+	// The split perch's fixer falls back to the loom.raddle.model model instead.
 	Discussion burlerengine.RoundModels
 	Plan       burlerengine.RoundModels
 	Code       burlerengine.RoundModels
@@ -204,8 +204,8 @@ type JudgeSettings struct {
 
 // ResolveJudge resolves each review segment's judge and seed models from cfg.
 // The caller threads the returned JudgeSettings onto shedrecipe.Env.
-// A segment's judge is its own judge key when non-empty, else review.judge.
-// A segment's seed is the first non-empty of its own seed key, review.seed and the segment's resolved judge.
+// A segment's judge is its own judge key when non-empty, else loom.review.judge.
+// A segment's seed is the first non-empty of its own seed key, loom.review.seed and the segment's resolved judge.
 // The split perch has no seed key of its own.
 // An error names the key the failing value came from.
 func ResolveJudge(cfg Config, reg modelspec.Registry) (JudgeSettings, error) {
@@ -269,12 +269,12 @@ func resolveKeyedModelChoice(key, raw string, reg modelspec.Registry) (shuttleen
 	return shuttleengine.NewModelChoice(resolved), nil
 }
 
-// splitFixerFallbackKey is the loom.yaml key whose model an empty split.fixer_model takes: the raddle agent's.
+// splitFixerFallbackKey is the loom.yaml key whose model an empty loom.split.fixer_model takes: the raddle agent's.
 const splitFixerFallbackKey = raddleModelKey
 
 // ResolveReview resolves every entry of the shared reviewer and fixer model-spec lists through reg.
 // It also resolves the list each loom segment sets, and pairs the result with the review round timeout.
-// The split perch's fixer list, when unset, is the raddle.model model while that key is set.
+// The split perch's fixer list, when unset, is the loom.raddle.model model while that key is set.
 // It returns the ReviewSettings the caller threads onto shedrecipe.Env.
 // Every entry is resolved at run start, so a bad later-round entry fails before round 1.
 func ResolveReview(cfg Config, reg modelspec.Registry) (ReviewSettings, error) {

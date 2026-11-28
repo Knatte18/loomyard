@@ -27,7 +27,7 @@ const tapestryModule = "tapestry"
 
 // TapestryConfig is the resolved plan-perch configuration from tapestry.yaml.
 // It holds the model-specs, timeout, lens fans and review settings.
-// The implementer key is read where the recipe builds the Webster row, never here.
+// The tapestry.implementer key is read where the recipe builds the Webster row, never here.
 type TapestryConfig struct {
 	Plan  PlanConfig  `yaml:"plan"`
 	Parts PartsConfig `yaml:"parts"`
@@ -57,12 +57,12 @@ type PlanConfig struct {
 	AssistReviewerModel burlerengine.ModelSpecList `yaml:"assist_reviewer_model"`
 	AssistReviewerFan   lenses.FanList             `yaml:"assist_reviewer_fan"`
 
-	// Judge and Seed override loom.yaml's shared judge and seed for the plan segment when non-empty.
+	// Judge and Seed override loom.review.judge and loom.review.seed for the plan segment when non-empty.
 	Judge string `yaml:"judge"`
 	Seed  string `yaml:"seed"`
 
 	// MaxBounces, HardMaxBounces and AutoAccept are the plan perch's bounce budget, hard cap and auto-accept flag.
-	// A nil budget takes loom.yaml's review.max_bounces and a hard cap of 0 takes its review.hard_max_bounces.
+	// A nil budget takes loom.review.max_bounces and a hard cap of 0 takes loom.review.hard_max_bounces.
 	MaxBounces     *int `yaml:"max_bounces"`
 	HardMaxBounces int  `yaml:"hard_max_bounces"`
 	AutoAccept     bool `yaml:"auto_accept"`
@@ -95,8 +95,8 @@ func (c Config) WithTapestry(t TapestryConfig) Config {
 	return c
 }
 
-// PlanTimeout returns the run's effective plan timeout: plan.timeout_min minutes, or runTimeout when it is 0.
-// runTimeout is shuttle's run_timeout_min as a duration, which tapestry.yaml's load cannot read.
+// PlanTimeout returns the run's effective plan timeout: tapestry.plan.timeout_min minutes, or runTimeout when it is 0.
+// runTimeout is shuttle.run_timeout_min as a duration, which tapestry.yaml's load cannot read.
 func (c Config) PlanTimeout(runTimeout time.Duration) time.Duration {
 	if c.Plan.TimeoutMin == 0 {
 		return runTimeout
@@ -105,7 +105,7 @@ func (c Config) PlanTimeout(runTimeout time.Duration) time.Duration {
 }
 
 // PartsChairTimeout returns the Parts-Plan-Write chair's timeout.
-// It is parts.chair_timeout_min minutes when set, or twice PlanTimeout(runTimeout) when null.
+// It is tapestry.parts.chair_timeout_min minutes when set, or twice PlanTimeout(runTimeout) when null.
 // A set value not above PlanTimeout(runTimeout) is an error naming the key.
 // The chair spans every part writer, which is why the set value must sit above the plan timeout.
 func (c Config) PartsChairTimeout(runTimeout time.Duration) (time.Duration, error) {
@@ -133,7 +133,7 @@ func TapestryConfigOpenMaps() []string {
 
 // TapestryConfigSpec returns tapestry's layered-load spec.
 // The module is per-worktree.
-// plan.lenses, the two plan fan keys and plan.auto_accept can hollow a review or approval gate.
+// tapestry.plan.lenses, the two plan fan keys and tapestry.plan.auto_accept can hollow a review or approval gate.
 // They are barred from the local layer; every other key may be overridden there.
 // The plan perch's budget keys come from reviewbudget, without the three run-wide keys, which loom.yaml owns.
 func TapestryConfigSpec() configengine.Spec {
@@ -187,11 +187,13 @@ func ValidateTapestryLocalValues(document []byte) error {
 
 // LoadTapestryConfig loads the tapestry module's configuration strictly through the layer stack under dirs.
 // It validates model-spec grammar at load time and reads lenses.yaml through the same dirs.
-// It refuses a negative plan.timeout_min and a plan perch budget or hard cap below its bound.
-// It also refuses an unparseable parts model, a parts.depth other than light or medium, and a parts.max below 1.
-// It refuses a parts.chair_timeout_min not above a non-zero plan.timeout_min.
-// The run-wide review.max_bounces, review.hard_max_bounces and review.amend_max_bounces come from loom.yaml.
-// They load through the same dirs, so a plan.max_bounces of null and a plan.hard_max_bounces of 0 resolve against them.
+// It refuses a negative tapestry.plan.timeout_min and a plan perch budget or hard cap below its bound.
+// It also refuses an unparseable parts model and a tapestry.parts.depth other than light or medium.
+// It refuses a tapestry.parts.max below 1.
+// It refuses a tapestry.parts.chair_timeout_min not above a non-zero tapestry.plan.timeout_min.
+// It reads the run-wide loom.review.max_bounces, loom.review.hard_max_bounces and loom.review.amend_max_bounces.
+// They come from loom.yaml and load through the same dirs,
+// so a tapestry.plan.max_bounces of null and a tapestry.plan.hard_max_bounces of 0 resolve against them.
 // Each refusal names the module that owns the key it reports.
 func LoadTapestryConfig(dirs configengine.Dirs, module string) (TapestryConfig, error) {
 	spec := TapestryConfigSpec()
@@ -218,7 +220,7 @@ func LoadTapestryConfig(dirs configengine.Dirs, module string) (TapestryConfig, 
 		return TapestryConfig{}, fmt.Errorf("config key %q: %w", FullKeyName(planModelKey), err)
 	}
 
-	// An empty plan.gate_fixer turns the fixer off and must load cleanly.
+	// An empty tapestry.plan.gate_fixer turns the fixer off and must load cleanly.
 	if cfg.Plan.GateFixer != "" {
 		if _, err := modelspec.Parse(cfg.Plan.GateFixer); err != nil {
 			return TapestryConfig{}, fmt.Errorf("config key %q: %w; set a model-spec with \"lym config tapestry\", or \"\" to turn the fixer off", FullKeyName(planGateFixerKey), err)
@@ -269,7 +271,7 @@ func LoadTapestryConfig(dirs configengine.Dirs, module string) (TapestryConfig, 
 		}
 	}
 
-	// Zero is accepted: a zero timeout defers to shuttle's run_timeout_min.
+	// Zero is accepted: a zero timeout defers to shuttle.run_timeout_min.
 	if cfg.Plan.TimeoutMin < 0 {
 		return TapestryConfig{}, fmt.Errorf("config key %q: must not be negative, got %d; use 0 to defer to %s", FullKeyName(planTimeoutMinKey), cfg.Plan.TimeoutMin, shuttleRunTimeoutName())
 	}
@@ -292,7 +294,7 @@ func LoadTapestryConfig(dirs configengine.Dirs, module string) (TapestryConfig, 
 	if cfg.Parts.Max < 1 {
 		return TapestryConfig{}, fmt.Errorf("config key %q: must be at least 1, got %d; set it to 1 or more", FullKeyName(partsMaxKey), cfg.Parts.Max)
 	}
-	// With plan.timeout_min 0 the effective plan timeout is shuttle's run_timeout_min, which the table builder checks.
+	// With tapestry.plan.timeout_min 0 the effective plan timeout is shuttle.run_timeout_min, which the table builder checks.
 	if cfg.Parts.ChairTimeoutMin != nil && cfg.Plan.TimeoutMin > 0 && *cfg.Parts.ChairTimeoutMin <= cfg.Plan.TimeoutMin {
 		return TapestryConfig{}, fmt.Errorf("config key %q: %d is not above %s %d; set it above that key or to null for twice it", FullKeyName(partsChairTimeoutMinKey), *cfg.Parts.ChairTimeoutMin, FullKeyName(planTimeoutMinKey), cfg.Plan.TimeoutMin)
 	}

@@ -1,4 +1,7 @@
-// refusal_integration_test.go proves the orch refusals end to end over one hub: the prime-or-beam rule (`status`, `resume-context`, `rules` and `BeamUp` from a task worktree that is no beam or the prime's records sibling) and the config refusal (a non-bypass permission_mode makes `status` and the watcher start fail with the fix named), each landing before any .lym/orch is created.
+// refusal_integration_test.go proves the orch refusals end to end over one hub, each before any .lym/orch is created.
+// Under the prime-or-beam rule, `status`, `resume-context`, `rules` and `BeamUp` refuse in two places.
+// Those are a task worktree that is no beam and the prime's records sibling.
+// The config refusal makes `status` and the watcher start fail on a non-bypass orch.permission_mode, naming the fix.
 
 package orchcli
 

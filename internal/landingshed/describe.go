@@ -1,6 +1,6 @@
 // describe.go implements the Describe row's two halves.
 // DescribeTable builds the seatengine.Table from the row's told values:
-// the stencil, the model resolved from landing.yaml's describe key, and the one description file the session writes.
+// the stencil, the model resolved from landing.describe, and the one description file the session writes.
 // NewDescriptionGate is the mechanical gate over that file; neither derives a path of its own.
 
 package landingshed

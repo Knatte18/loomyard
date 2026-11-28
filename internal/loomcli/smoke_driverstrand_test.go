@@ -98,7 +98,7 @@ sleep 3600
 	return path
 }
 
-// driverShuttleConfig returns shuttle's shipped config template with startup_timeout_s lowered from 90 to 10.
+// driverShuttleConfig returns shuttle's shipped config template with shuttle.startup_timeout_s lowered from 90 to 10.
 // A readiness regression is shuttle's startup step never observing the ready marker.
 // The lowered window makes that regression surface as a refusal, not as a timeout.
 // The refusal lands inside the per-invocation timeout runLoomCLINoFatal enforces, so that timeout does not mask it.

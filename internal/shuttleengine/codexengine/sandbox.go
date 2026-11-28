@@ -1,5 +1,5 @@
 // sandbox.go settles the sandbox a Codex launch runs in.
-// It probes whether Codex's sandbox can start on this machine and resolves codex.yaml's sandbox_mode against the result.
+// It probes whether Codex's sandbox can start on this machine and resolves codex.sandbox_mode against the result.
 
 package codexengine
 
@@ -57,7 +57,7 @@ func runSandboxProbe(bin, home, dir string) error {
 	return nil
 }
 
-// launchSandboxMode returns the sandbox a launch runs in, from codex.yaml's sandbox_mode and the probe.
+// launchSandboxMode returns the sandbox a launch runs in, from codex.sandbox_mode and the probe.
 // danger-full-access runs no probe and no sandbox.
 // Under auto and workspace-write the probe runs once, under the lym home at home, in the engine's anchor;
 // a sandbox that starts gives workspace-write.

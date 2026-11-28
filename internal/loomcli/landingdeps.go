@@ -550,7 +550,7 @@ func watchFileChanges(path, waiter string) (<-chan struct{}, func()) {
 	return changed, stop
 }
 
-// pullRequestModeSeam returns the seam that reads beam.yaml's pull_request for the run of l, at call time.
+// pullRequestModeSeam returns the seam that reads beam.pull_request for the run of l, at call time.
 // The lookup starts at the run's own worktree, whose beam.yaml files and run_settings apply first.
 // Then come the nearest parent worktree's own value up to the prime, the hub's default layer and the template.
 // A failed lookup's error names the file to fix.

@@ -46,7 +46,7 @@ func ConfigSpec() configengine.Spec {
 
 // LoadConfig loads and unmarshals the slack module's configuration through the hub-wide layer stack under dirs.
 // A hub whose base file is absent resolves the template.
-// It refuses a remind_after_min under 1, naming the key and the way forward.
+// It refuses a slack.remind_after_min under 1, naming the key and the way forward.
 func LoadConfig(dirs configengine.Dirs) (Config, error) {
 	resolved, err := configengine.LoadOrTemplate(dirs, ConfigSpec())
 	if err != nil {

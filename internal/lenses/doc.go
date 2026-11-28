@@ -12,21 +12,22 @@
 //
 // # Language layers
 //
-// The embedded files under `sets/` are language layers, picked by the base file's `lens_set` key; `""` picks none.
+// The embedded files under `sets/` are language layers, picked by the base file's `lenses.lens_set` key; `""` picks none.
 // A layer entry replaces the base entry of the same name, and a name the repo's own file defines still beats the layer.
 // A layer fan holds the base fan's entries first, so a layer only appends.
-// Only the base file may hold `lens_set`; set it with `lym config lenses --layer default --set lens_set=<name>`.
+// Only the base file may hold `lenses.lens_set`; set it with `lym config lenses --layer default --set lens_set=<name>`.
 //
 // # Remove
 //
-// The key `remove` lists lens names.
+// The key `lenses.remove` lists lens names.
 // Load deletes each from the lenses and every fan; a fan it empties is recorded in `Config.EmptiedFans`.
 // A name matching no lens is skipped with one Warn, so a template edit or layer switch is harmless.
-// A worktree file's `remove` list replaces the hub's whole.
+// A worktree file's `lenses.remove` list replaces the hub's whole.
 //
 // # Guard keys
 //
-// `lenses`, `fans`, `lens_set` and `remove` are guard keys, since they decide what every review fork is given.
+// `lenses.lenses`, `lenses.fans`, `lenses.lens_set` and `lenses.remove` are guard keys.
+// They decide what every review fork is given.
 // No local override layer and no run setting holds them.
 // The module is per-worktree, not hub-wide.
 //

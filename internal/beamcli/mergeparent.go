@@ -27,7 +27,7 @@ const mergeParentMinRounds = 1
 // so the beam's dobby starts it as any member.
 // Its run settings set the Code-Review budget to the hub's, or to one round when the hub's is lower.
 // A hard cap sits above it.
-// Its run settings also set beam's pull_request to merge-in, which lands it with no pull request, by a true merge,
+// Its run settings also set beam.pull_request to merge-in, which lands it with no pull request, by a true merge,
 // so the beam keeps the parent's commit as an ancestor.
 func mergeParent(deps landDeps, slug string) (map[string]any, error) {
 	const verb = "lym beam merge-parent"

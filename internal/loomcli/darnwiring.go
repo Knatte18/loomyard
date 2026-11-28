@@ -217,14 +217,14 @@ func darnDeps(l *lymcwd.Location, runID, recipe string) loomshed.DarnDeps {
 // Those are in addition to the fields filled for every recipe.
 // It loads the hub-wide darn.yaml strictly.
 // The start, run, step and resume verbs therefore refuse an absent or malformed file before any row builds.
-// A malformed tree_scope key gets the editor way forward instead of the hub reconcile one.
+// A malformed darn.tree_scope key gets the editor way forward instead of the hub reconcile one.
 // The reason is that `--set` cannot remove a key the hub file holds.
 // The Darn-Write key's told and tree-scoped commands carry `--stop-on-fail`.
 // Its verify therefore stops at its first failed tier.
 // Every other key keeps its whole call, the landing call included.
-// The verify budget is darn.yaml's verify_budget_min, and its notice goes to the run's parent orch.
+// The verify budget is darn.verify_budget_min, and its notice goes to the run's parent orch.
 // A hardener run loads hardener.yaml in place of darn.yaml.
-// It takes hardener.yaml's verify_attempts and sets no verify budget.
+// It takes hardener.verify_attempts and sets no verify budget.
 // Changing darn.yaml therefore leaves a hardener run's verify scope and attempts unchanged.
 func (c *loomCLI) wireTreeScope(location *lymcwd.Location) error {
 	dirs := fabricengine.ConfigDirs(location)
@@ -262,8 +262,8 @@ func (c *loomCLI) wireTreeScope(location *lymcwd.Location) error {
 }
 
 // treeScopeSettings returns the verify attempts and verify budget of a run whose verify source is tree_scope.
-// A hardener run reads hardener.yaml's verify_attempts and has no verify budget.
-// Any other run reads darn.yaml's verify_attempts and verify_budget_min, its notice going to the run's parent orch.
+// A hardener run reads hardener.verify_attempts and has no verify budget.
+// Any other run reads darn.verify_attempts and darn.verify_budget_min, its notice going to the run's parent orch.
 // The notice opens with the run's slug, since the orch reads the notices of every run of the hub.
 // A load error carries its way forward.
 // That is the editor's for a malformed tree key, and the hub reconcile's for darn.yaml otherwise.

@@ -35,14 +35,14 @@
 //
 // Between Seed-Child and Run-Shed, the Command rows run one shell command each:
 // Open-Window, Seed-IDE and Open-IDE.
-// Each runs only when its batten.yaml setting (open_window, seed_ide, open_ide) is on, and is Done either way;
+// Each runs only when its setting (batten.open_window, batten.seed_ide, batten.open_ide) is on, and is Done either way;
 // a failed command only warns.
 // The settings are read from the pair's own config stack, so a task's run_settings sets them per task.
-// The open_window_command, seed_ide_command and open_ide_command keys are read from two layers only:
+// The batten.open_window_command, batten.seed_ide_command and batten.open_ide_command keys are read from two layers only:
 // the template and the board default layer.
 // Another layer's value is ignored with a warning.
 // A command may hold the placeholders {lym}, {slug}, {task_dir} and {title}.
-// A run resumed past Open-Window runs that command again when open_window is on and no client is attached.
+// A run resumed past Open-Window runs that command again when batten.open_window is on and no client is attached.
 //
 // The InnerRun row checks its child once per Call and never waits inside one:
 // a Call is one pass, which the scheduling dobby runs again and again.
@@ -127,7 +127,7 @@
 // The Land row lands a child whose Run-Shed returned Done.
 // Each step is idempotent, so a resume re-runs the row from the top.
 // It takes the hub-level land lock for its whole body and pulls the prime.
-// It runs the landing config's hub-wide `deploy` command for a parent branch in `deploy_branches`.
+// It runs the hub-wide `landing.deploy` command for a parent branch in `landing.deploy_branches`.
 // It then prunes the board.
 // Batten never pushes the prime.
 // A clean landing posts no notice; a stop on the pull's records side posts one.

@@ -82,11 +82,13 @@ type Config struct {
 	FinalizeLostRaces int `yaml:"finalize_lost_races"`
 }
 
-// defaultIdleReleaseMin is the idle bound in minutes that a missing or non-positive parent_lock_idle_release_min reads as.
+// defaultIdleReleaseMin is the idle bound in minutes.
+// A missing or non-positive landing.parent_lock_idle_release_min reads as it.
 const defaultIdleReleaseMin = 10
 
 // IdleRelease returns the parent lock's idle bound.
-// A parent_lock_idle_release_min below 1, an absent key included, returns the default and logs one Warn naming the key.
+// A landing.parent_lock_idle_release_min below 1, an absent key included, returns the default.
+// It logs one Warn naming the key.
 func (c Config) IdleRelease() time.Duration {
 	if c.ParentLockIdleReleaseMin < 1 {
 		name := keyName("parent_lock_idle_release_min")
@@ -128,13 +130,14 @@ func (c Config) CreditBlock(enginesRun []string) string {
 	return strings.Join(lines, "\n")
 }
 
-// ForbiddenTerms returns the compiled describe_forbidden_terms, which a change description's check refuses a line for.
+// ForbiddenTerms returns the compiled landing.describe_forbidden_terms.
+// A change description's check refuses a line for them.
 // It is empty for a Config LoadConfig did not return.
 func (c Config) ForbiddenTerms() []*regexp.Regexp {
 	return c.forbiddenTerms
 }
 
-// creditEnginesKey is the landing.yaml key whose entries map engine names to credit block items.
+// creditEnginesKey is the landing.credit_engines key whose entries map engine names to credit block items.
 const creditEnginesKey = "credit_engines"
 
 // ConfigOpenMaps returns the landing.yaml keys whose entries belong to the operator.
@@ -202,8 +205,8 @@ func ConfigSpec() configengine.Spec {
 // A typo in one of them fails at load, not when its session spawns.
 // It refuses a fixer timeout, fixer attempt cap, fixer line cap or fix review round cap below 1.
 // It refuses a describe review timeout below 1 and a lost-race bound below 0.
-// It also refuses a credit_engines entry whose key names no engine,
-// and a describe_forbidden_terms entry that does not compile as a regular expression or matches the empty string.
+// It also refuses a landing.credit_engines entry whose key names no engine,
+// and a landing.describe_forbidden_terms entry that does not compile as a regular expression or matches the empty string.
 func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	spec := ConfigSpec()
 	spec.Name = module

@@ -18,7 +18,7 @@
 // PrepareRunSettings validates a task's run settings against the module's local layer.
 // A key the module's Spec lists in `RetiredWayForward` or `HubOnlyWayForward` is refused,
 // and the refusal carries that text as its way forward.
-// The hub-only keys are set only in the hub's file, such as drift's `diff` and `key_patterns`.
+// The hub-only keys are set only in the hub's file, such as `drift.diff` and `drift.key_patterns`.
 // They still load from the hub layers.
 // PrepareRunSettings refuses a moved key by both its old and its new full name.
 // MoveSettings moves the old keys of such an object, and MoveRunSettings those of one decoded from JSON.

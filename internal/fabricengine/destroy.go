@@ -391,7 +391,7 @@ type branchOwnership struct {
 
 // ownedCreatedBranch declares branch as owned when it is exactly the branch tok proves this call created.
 // It consults no naming scheme,
-// so a bare-slug warp branch under the default empty branch_prefix is as deletable as a prefixed one.
+// so a bare-slug warp branch under the default empty fabric.branch_prefix is as deletable as a prefixed one.
 // l serves the checked-out dirtiness probe.
 // An empty proof matches nothing.
 func ownedCreatedBranch(l *lymcwd.Location, tok createdBranchToken) branchOwnership {

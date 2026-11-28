@@ -29,7 +29,7 @@ type Tier struct {
 	Env map[string]string
 	// AllTargets is the targets of a whole-scope run, which {targets} and {test_targets} take.
 	AllTargets string
-	// Parallel is the tier's parallelism, this machine's tier_parallel entry when one is set.
+	// Parallel is the tier's parallelism, this machine's gate.tier_parallel entry when one is set.
 	Parallel int
 	// TimeoutMin is the minutes the tier may run once its slots are held.
 	TimeoutMin int
@@ -290,7 +290,7 @@ func decodeTier(key string, number int, file tierFile) (Tier, error) {
 	return tier, nil
 }
 
-// decodeRefuseRaw checks that every refuse_raw entry is one or more plain words separated by single spaces.
+// decodeRefuseRaw checks that every gate.refuse_raw entry is one or more plain words separated by single spaces.
 func decodeRefuseRaw(entries []string) error {
 	for _, entry := range entries {
 		if !refuseRawPattern.MatchString(entry) {
@@ -300,7 +300,8 @@ func decodeRefuseRaw(entries []string) error {
 	return nil
 }
 
-// applyTierParallel reads the tier_parallel entries, which a scalar --set writes as strings, and lays them over the declared tiers' parallel.
+// applyTierParallel reads the gate.tier_parallel entries and lays them over the declared tiers' parallel.
+// A scalar --set writes the entries as strings.
 // An entry for a tier the config does not declare is dropped with a warning that names the steps removing it.
 // It returns the entries kept.
 func applyTierParallel(entries map[string]yaml.Node, tiers map[string]Tier, machineLayerApplies bool) (map[string]int, error) {
@@ -323,7 +324,7 @@ func applyTierParallel(entries map[string]yaml.Node, tiers map[string]Tier, mach
 	return kept, nil
 }
 
-// undeclaredTierParallelWayForward returns the steps that remove a tier_parallel entry for an undeclared tier.
+// undeclaredTierParallelWayForward returns the steps that remove a gate.tier_parallel entry for an undeclared tier.
 // With a machine layer the stacked document cannot tell which layer holds the entry, so both steps are named.
 func undeclaredTierParallelWayForward(name string, machineLayerApplies bool) string {
 	if !machineLayerApplies {

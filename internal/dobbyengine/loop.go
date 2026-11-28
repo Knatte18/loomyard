@@ -180,7 +180,7 @@ type Deps struct {
 	PullRequestRecorded func() (bool, error)
 	// BeamDescribe are the seams of the beam's description rewrite after a member landing; a nil Record rewrites nothing.
 	BeamDescribe BeamDescribeDeps
-	// LandNotice reports whether land_notice is on for the run slug.
+	// LandNotice reports whether beam.land_notice is on for the run slug.
 	// It reads through the per-task lookup from the run's worktree up.
 	// A nil LandNotice reads every run as off.
 	LandNotice func(slug string) (bool, error)
@@ -393,7 +393,7 @@ type daemon struct {
 	describePullRequest logger.Episode
 	// describeFailures is the failure episode of the description step, whose error never holds the steps after it.
 	describeFailures logger.Episode
-	// landNoticeLookup guards each run's land_notice lookup by its slug.
+	// landNoticeLookup guards each run's beam.land_notice lookup by its slug.
 	landNoticeLookup logger.EpisodeSet
 	// landNoticePosts guards each owed landing notice's post by its slug.
 	landNoticePosts logger.EpisodeSet

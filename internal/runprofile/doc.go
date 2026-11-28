@@ -4,7 +4,7 @@
 // A profile maps a recipe name, such as `tapestry` or `darn`, to that recipe's settings.
 // The settings take the shape of a board task's `run_settings`: module name to that module's config keys.
 // One profile name serves every recipe, and each recipe's block may set the same key to its own value:
-// darn's and pawl's Code-Review perch read loom's `code` area,
+// darn's and pawl's Code-Review perch read the `loom.code` area,
 // so each recipe's block sets `loom.code.max_bounces` for its own runs.
 // The reserved top-level `defaults` entry maps a recipe name to the profile a task of that recipe takes.
 // A task takes it when it names no profile.

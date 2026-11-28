@@ -49,7 +49,7 @@ func TestRunDispatchesToBoard(t *testing.T) {
 	}
 	configPath := configengine.ConfigFile(boardDir, "board")
 	// Write a template-complete board config.
-	// The board data dir is paths-owned, so the template keys are readme and design_prefix.
+	// The board data dir is paths-owned, so the template keys are board.readme and board.design_prefix.
 	boardConfig := "readme: Home.md\ndesign_prefix: proposal-\n"
 	if err := os.WriteFile(configPath, []byte(boardConfig), 0o644); err != nil {
 		t.Fatalf("failed to write hub board.yaml: %v", err)

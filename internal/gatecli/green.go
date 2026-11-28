@@ -268,7 +268,7 @@ type greenRun struct {
 	scoperGo bool
 	goBinary string
 	// cfg is the call's gate config.
-	// Its build step and inert_paths join a tier's fingerprint, and its inert_paths decide an inert carry.
+	// Its build step and gate.inert_paths join a tier's fingerprint, and its gate.inert_paths decide an inert carry.
 	cfg gateslot.Config
 }
 
@@ -338,7 +338,7 @@ type greenPlan struct {
 // A command whose targets render to more than greenCommandBudget bytes keeps the whole invocation.
 // A command whose packages cannot be listed also keeps the whole invocation.
 // A tier with carry: false keeps every invocation.
-// Under inert_paths, a whole invocation the record holds nothing for can still be carried.
+// Under gate.inert_paths, a whole invocation the record holds nothing for can still be carried.
 // That happens when an ancestor's whole entry stands for it over an inert-only diff,
 // and its module key then joins the plan's inertCarried.
 func (g *greenRun) subtract(ctx context.Context, run tierRun, env []string) greenPlan {
@@ -390,7 +390,7 @@ func (g *greenRun) subtract(ctx context.Context, run tierRun, env []string) gree
 // That ancestor's diff to the working tree must be inert.
 // Only a whole invocation of a tier's own run qualifies:
 // not the guard or vet step, not a run with args, not a partial invocation.
-// A hub with no inert_paths carries nothing this way.
+// A hub with no gate.inert_paths carries nothing this way.
 func (g *greenRun) carriesOverInert(ctx context.Context, run tierRun, inv invocation, key, fingerprint string) bool {
 	if len(g.cfg.InertPaths) == 0 || len(run.greenArgs()) > 0 || run.guardStep || run.vetStep || inv.partial {
 		return false

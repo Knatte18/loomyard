@@ -225,7 +225,7 @@ func TestStartLLMDriverArm(t *testing.T) {
 	})
 
 	// The refusal comes from shuttle's Start over an engine that meets no requirement, before any pane exists.
-	// The message names the driver key in place of the generic way forward.
+	// The message names the loom.driver key in place of the generic way forward.
 	t.Run("a requirements refusal names the driver key and adds no strand", func(t *testing.T) {
 		reed := &shuttlefake.Reed{}
 		root := t.TempDir()

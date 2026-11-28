@@ -275,7 +275,7 @@ func (s *fixerStore) Save(rec *gatefixer.Record) error {
 
 // fixerSpec renders the launch of one plan-level verify fixer.
 // Its prompt is the verify fixer body behind gatefixer's cold frame, told the findings and the journal path.
-// It runs on its rung's choice under fixer_timeout_min and carries no shuttle gates:
+// It runs on its rung's choice under weaver.fixer_timeout_min and carries no shuttle gates:
 // Weaver's re-run of the verify judges it.
 func fixerSpec(deps RunDeps, st *State, fixer *FixerState, findings string) (gatefixer.Spec, error) {
 	if fixer.Rung < 0 || fixer.Rung >= len(deps.Ladder) {

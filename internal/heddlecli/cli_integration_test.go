@@ -203,7 +203,7 @@ func listedEntry(t *testing.T, env envelope.Envelope, slug string) map[string]an
 	return nil
 }
 
-// setHubOverride writes the hub's heddle.yaml with lym_override set to on.
+// setHubOverride writes the hub's heddle.yaml with heddle.lym_override set to on.
 func setHubOverride(t *testing.T, h *hubforge.Hub, on bool) {
 	t.Helper()
 	path := configengine.ConfigFile(fabriclayout.BoltDir(h.Path), "heddle")

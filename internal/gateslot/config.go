@@ -101,8 +101,8 @@ type buildFile struct {
 }
 
 // configFile is gate.yaml as it is spelled, before defaults and validation.
-// A tier_parallel entry is a node because a scalar --set writes it as a string.
-// A gates entry is a node so decodeGates names the key a bad entry sits under.
+// A gate.tier_parallel entry is a node because a scalar --set writes it as a string.
+// A gate.gates entry is a node so decodeGates names the key a bad entry sits under.
 type configFile struct {
 	Slots              int                  `yaml:"slots"`
 	BusyQuitSec        int                  `yaml:"busy_quit_sec"`
@@ -136,14 +136,14 @@ func ConfigPerNameMaps() []string {
 }
 
 // ConfigSpec returns gate's layered-load spec.
-// `slots` and `tier_parallel` take a machine override, and every key stays closed to the local layer.
-// `fixer_timeout_min` and `memory_quit_mb` are cross-pair like `busy_quit_sec`;
-// a gate key's `fixer` sits inside `gates`, a guard key.
-// `tiers` and `build` run any shell command in a task worktree, so they are executable.
+// `gate.slots` and `gate.tier_parallel` take a machine override, and every key stays closed to the local layer.
+// `gate.fixer_timeout_min` and `gate.memory_quit_mb` are cross-pair like `gate.busy_quit_sec`;
+// a gate key's `fixer` sits inside `gate.gates`, a guard key.
+// `gate.tiers` and `gate.build` run any shell command in a task worktree, so they are executable.
 // The gate lists, the scoper, the refused commands and the inert paths switch off or hollow a guard.
 // `cli_wait_sec`, `go_parallel`, `guard_tier` and `test_map_max_age_days` are retired;
 // a file that still sets one is refused, naming the key.
-// `tiers` and `build` carry the shape their decode gives them.
+// `gate.tiers` and `gate.build` carry the shape their decode gives them.
 // So `--set` reaches one key inside a tier or the build step, such as `tiers.tier0.env.LYM_TEST_TIER`;
 // it refuses a key neither holds.
 func ConfigSpec() configengine.Spec {
@@ -238,13 +238,13 @@ func LoadConfig(dirs configengine.Dirs) (Config, error) {
 	return cfg, nil
 }
 
-// LoadRefuseRaw returns the refuse_raw list of the gate config under dirs, for a session launch's shell guard.
+// LoadRefuseRaw returns the gate.refuse_raw list of the gate config under dirs, for a session launch's shell guard.
 // A launch runs no gate, so a key it does not read never refuses it:
 // when the full load fails past the layer merge, the list is read from the merged stack alone,
 // and the failure is logged as a warning naming its way forward.
 // An absent hub file yields an empty list.
 // A stack that does not merge returns the full load's error.
-// A refuse_raw list that is itself invalid returns that list's error with the gate config's way forward.
+// A gate.refuse_raw list that is itself invalid returns that list's error with the gate config's way forward.
 func LoadRefuseRaw(dirs configengine.Dirs) ([]string, error) {
 	cfg, loadErr := LoadConfig(dirs)
 	if loadErr == nil {
@@ -305,7 +305,7 @@ func withConfigWayForward(err error, files []string, local string) error {
 
 // decodeConfig decodes and validates a stacked gate document.
 // machineLayerApplies tells whether the load stacked a machine layer;
-// it decides the steps the dropped-tier_parallel warning names.
+// it decides the steps the dropped-gate.tier_parallel warning names.
 // Cross-references between gate lists and tiers are never checked here.
 func decodeConfig(data []byte, machineLayerApplies bool) (Config, error) {
 	var file configFile
@@ -441,7 +441,7 @@ func CheckDirs(dirs configengine.Dirs, worktreeRoot, anchorDir string) error {
 	return nil
 }
 
-// Inert reports whether the worktree-relative slash path rel matches an inert_paths pattern:
+// Inert reports whether the worktree-relative slash path rel matches a gate.inert_paths pattern:
 // a pattern without a slash matches the path's base name, a pattern with one matches the whole path.
 // A pattern path.Match rejects matches nothing.
 func (c Config) Inert(rel string) bool {
@@ -500,7 +500,7 @@ func (c Config) FixerTimeout() time.Duration {
 	return time.Duration(c.FixerTimeoutMin) * time.Minute
 }
 
-// MemoryQuit returns the memory a test binary may hold before the memory guard kills it, `memory_quit_mb` in bytes.
+// MemoryQuit returns the memory a test binary may hold before the memory guard kills it, `gate.memory_quit_mb` in bytes.
 // It is 0 when the guard is off.
 func (c Config) MemoryQuit() int64 {
 	return int64(c.MemoryQuitMB) << 20
@@ -545,7 +545,7 @@ func decodeGates(entries map[string]yaml.Node) (map[string]GateKey, error) {
 	return gates, nil
 }
 
-// Limits converts the config to the pool limits, busy_quit_sec as a duration.
+// Limits converts the config to the pool limits, gate.busy_quit_sec as a duration.
 // Tier0Parallel is tier0's effective parallel, or 0 when the config declares no tier0.
 func (c Config) Limits() Limits {
 	return Limits{

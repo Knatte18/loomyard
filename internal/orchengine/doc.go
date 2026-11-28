@@ -17,8 +17,8 @@
 // It never attaches a tmux client; `lym reed attach` is the only way into the session.
 //
 //   - status: reports the strand, the watcher and the persisted cycle state.
-//   - refresh: writes a clear-cycle request, whatever the token count and `cycle_mode`.
-//   - distill: writes a compact-cycle request, whatever `cycle_mode` says.
+//   - refresh: writes a clear-cycle request, whatever the token count and `orch.cycle_mode`.
+//   - distill: writes a compact-cycle request, whatever `orch.cycle_mode` says.
 //     With no watcher live, both request verbs withdraw the marker again.
 //   - stop: removes the orchestrator strand; the watcher notices and exits on its own.
 //   - watch and resume-context: hidden verbs, not operator verbs.
@@ -56,21 +56,21 @@
 //
 // # Cycle mode
 //
-// `cycle_mode` in orch.yaml is `compact` or `clear`, and an absent or empty value is `compact`.
+// `orch.cycle_mode` is `compact` or `clear`, and an absent or empty value is `compact`.
 // `compact` keeps the session id and the Remote Control link; `clear` runs the handoff, `/clear` and resume cycle.
-// `cycle_mode` picks the mode of an automatic cycle;
+// `orch.cycle_mode` picks the mode of an automatic cycle;
 // an operator request carries its own mode, recorded in State.CycleMode.
 // Both modes write the note first, and neither clears or compacts before the note gate has passed.
 //
 // # Remote control
 //
-// While `remote_control` in orch.yaml is on, every orch session starts with the provider's remote control on.
+// While `orch.remote_control` is on, every orch session starts with the provider's remote control on.
 // This covers every launch and resume lym makes.
 // It is off unless the operator sets it, so lym never turns remote control on by itself;
 // the RC button of a pane turns it on for one agent.
 // The reinterpretation FlagRemoteControlDefault flags a hub file that set no value before the default turned off.
 // The hub's orch hears of it once.
-// Config.RemoteControlSessionName fills the `remote_control_name` template;
+// Config.RemoteControlSessionName fills the `orch.remote_control_name` template;
 // `{machine}::{name}` is the cross-machine address creel uses.
 // orchengine records no remote-control state.
 //
@@ -98,9 +98,9 @@
 //
 // In phase idle the watcher picks the trigger of a cycle in a fixed order:
 //
-//   - hard: a known context reading at or over `threshold_tokens`, the hard cap.
+//   - hard: a known context reading at or over `orch.threshold_tokens`, the hard cap.
 //   - requested: a pending cycle request.
-//   - soft: a known reading at or over `soft_threshold_tokens` and below the hard cap.
+//   - soft: a known reading at or over `orch.soft_threshold_tokens` and below the hard cap.
 //     The soft trigger posts its own handoff stencil, which offers the session a `defer` reply.
 //
 // The trigger is recorded in State.CycleTrigger before the cycle's first phase is entered.
@@ -124,8 +124,8 @@
 //   - Creel grants the watcher's hold on the orch strand.
 //     A refusal starts no cycle on that tick and is recorded in State.Stuck.
 //
-// A soft cycle holds the same gates with `soft_idle_s` in place of the idle grace;
-// State.LastDeferral must be zero or at least `soft_idle_s` before now.
+// A soft cycle holds the same gates with `orch.soft_idle_s` in place of the idle grace;
+// State.LastDeferral must be zero or at least `orch.soft_idle_s` before now.
 // A hard or soft cycle first re-reads the context through the newest turn end.
 // It fires only if the reading still meets the threshold.
 // A requested cycle is not re-read.

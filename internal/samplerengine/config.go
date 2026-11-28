@@ -35,7 +35,7 @@ type Config struct {
 }
 
 // ConfigSpec returns the sampler module's layered-load spec.
-// Both keys are open to the local layer, so a task's run_settings or a profile block may set code_review.
+// Both keys are open to the local layer, so a task's run_settings or a profile block may set sampler.code_review.
 func ConfigSpec() configengine.Spec {
 	return configengine.Spec{
 		Name:     configModule,
@@ -50,7 +50,7 @@ func ConfigSpec() configengine.Spec {
 
 // LoadConfig loads and unmarshals the sampler module's configuration strictly.
 // The configuration is resolved through the hub-wide layer stack under dirs.
-// It refuses an agent value that fails the model-spec grammar, naming the key.
+// It refuses a sampler.agent value that fails the model-spec grammar, naming the key.
 func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	spec := ConfigSpec()
 	spec.Name = module

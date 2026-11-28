@@ -354,7 +354,7 @@ func TestWire_DarnRecipe(t *testing.T) {
 		tests := []struct {
 			name       string
 			gateConfig string
-			// fixerOff turns darn.yaml's gate_fixer off, so the writer is ungated and names no measuring call.
+			// fixerOff turns darn.gate_fixer off, so the writer is ungated and names no measuring call.
 			fixerOff bool
 			// omitGateConfig leaves the hub with no gate.yaml.
 			omitGateConfig bool

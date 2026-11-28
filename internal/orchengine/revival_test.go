@@ -36,7 +36,7 @@ func TestStripRemoteControlArgument(t *testing.T) {
 	}
 }
 
-// TestRevivalFilter pins that a revived line keeps remote control only while orch.yaml sets remote_control on.
+// TestRevivalFilter pins that a revived line keeps remote control only while orch.yaml sets orch.remote_control on.
 // An orch.yaml that does not load cannot ask for it, so the argument is dropped.
 func TestRevivalFilter(t *testing.T) {
 	tiergate.Require(t, 0)

@@ -15,7 +15,7 @@ const moduleName = "language"
 // skillsKey is the key holding the skills every code role loads.
 const skillsKey = "skills"
 
-// retiredVerifyTiersKey is the retired language.yaml key for verify tiers; gate.yaml's tiers replace it.
+// retiredVerifyTiersKey is the retired language.yaml key for verify tiers; gate.tiers replaces it.
 const retiredVerifyTiersKey = "verify_tiers"
 
 // renameToolsKey is the key holding the hub's structure-aware rename tools.

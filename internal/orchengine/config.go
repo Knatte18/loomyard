@@ -35,7 +35,7 @@ const pollFloor = time.Second
 // The template would otherwise load with a warning.
 const _ = uint(defaultPollIntervalMS*time.Millisecond - pollFloor)
 
-// The accepted cycle_mode values.
+// The accepted orch.cycle_mode values.
 const (
 	// CycleClear runs the handoff, /clear and resume cycle.
 	CycleClear = "clear"
@@ -43,7 +43,7 @@ const (
 	CycleCompact = "compact"
 )
 
-// permissionBypass is the only accepted permission_mode.
+// permissionBypass is the only accepted orch.permission_mode.
 const permissionBypass = "bypass"
 
 // Config represents the resolved orch.yaml configuration.
@@ -68,7 +68,7 @@ type Config struct {
 	RemoteControlName string `yaml:"remote_control_name"`
 }
 
-// The placeholders remote_control_name fills.
+// The placeholders orch.remote_control_name fills.
 const (
 	remoteControlMachinePlaceholder = "{machine}"
 	remoteControlHubPlaceholder     = "{hub}"
@@ -143,7 +143,7 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 }
 
 // RemoteControlSessionName returns the remote session's name of the orch strand named name on machine.
-// It fills remote_control_name in one pass.
+// It fills orch.remote_control_name in one pass.
 // {machine} takes machine and {hub} the hub's shortname.
 // {role} takes the strand's role and {name} its full name.
 // Other brace text stays literal.
@@ -175,7 +175,7 @@ func (c Config) Threshold() int {
 
 // SoftThreshold returns the context-token count at which the watcher may cycle at a natural break.
 // A non-positive value is floored to the template default.
-// A value at or above the hard cap (threshold_tokens) never fires.
+// A value at or above the hard cap (orch.threshold_tokens) never fires.
 func (c Config) SoftThreshold() int {
 	if c.SoftThresholdTokens <= 0 {
 		return defaultSoftThresholdTokens

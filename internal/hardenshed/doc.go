@@ -13,9 +13,9 @@
 // Every other key is open to a task's `run_settings`.
 // The template runs every review and fix round on `sonnet[high]`, with no rotation;
 // a rotation over several models is the operator's choice per run, set as lists in `run_settings` under `hardener`.
-// `tree_scope` is an open map, which ConfigOpenMaps names.
+// `hardener.tree_scope` is an open map, which ConfigOpenMaps names.
 // LoadConfig loads the unit strictly through `configengine`, then runs CheckValues over the resolved document.
-// It normalizes `tree_scope` through the one tree-key rule darn's `tree_scope` takes.
+// It normalizes `hardener.tree_scope` through the one tree-key rule `darn.tree_scope` takes.
 // A refusal of LoadConfig names the write for the layer the value comes from, then `lym loom resume`.
 //
 // # Campaign check

@@ -1,7 +1,8 @@
 // config_test.go — unit tests for fabricengine.LoadConfig.
 //
-// Covers: happy-path with template keys present, branch_prefix/pathspec parsing, and environment variable resolution;
-// the not-initialized error path; the secret-file matcher a hub's secret_paths yields; and the push timing.
+// Covers: happy-path with template keys present;
+// fabric.branch_prefix and fabric.pathspec parsing; environment variable resolution;
+// the not-initialized error path; the secret-file matcher a hub's fabric.secret_paths yields; and the push timing.
 
 package fabricengine_test
 
@@ -19,11 +20,11 @@ import (
 
 // TestLoadConfig covers LoadConfig over a hand-written fabric config:
 // a valid config with all template keys parses both fields and Dirs();
-// an empty branch_prefix stays the empty string;
-// an environment variable in branch_prefix is resolved;
+// an empty fabric.branch_prefix stays the empty string;
+// an environment variable in fabric.branch_prefix is resolved;
 // a missing `_lym/` returns the fabric-specific not-initialized error, naming the reconcile verb that fixes it;
-// a machine override's branch_prefix wins over the hub file's;
-// and a local pathspec or warp exclude list is refused.
+// a machine override's fabric.branch_prefix wins over the hub file's;
+// and a local fabric.pathspec or fabric.warp_exclude is refused.
 //
 //testtiming:keep LoadConfig parsing both fields and Dirs(), keeping an empty prefix, resolving env references and naming the reconcile verb when uninitialized; coverage of its blocks by other tests does not show an assertion of this
 func TestLoadConfig(t *testing.T) {
@@ -236,7 +237,7 @@ func TestConfig_PushTiming(t *testing.T) {
 }
 
 // TestLoadSecretPathMatcher covers the matcher a hub's fabric.yaml yields:
-// each pattern secret_paths adds refuses its paths, the shipped patterns still apply beside them,
+// each pattern fabric.secret_paths adds refuses its paths, the shipped patterns still apply beside them,
 // and a malformed added pattern fails as invalid config naming the key.
 func TestLoadSecretPathMatcher(t *testing.T) {
 	tiergate.Require(t, 0)

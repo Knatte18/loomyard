@@ -369,7 +369,7 @@ func FindRun(cfg Config, anchorPath, guid string) (RunState, string, error) {
 // A directory younger than minAge is never removed, live guid or not.
 // The age guard exists because a starting run creates its directory and run.json before its strand is persisted.
 // An unguarded sweep could delete a run that is still starting up.
-// strandGUIDs comes from one worktree's reed.json, so the configured run_dir must stay worktree-local:
+// strandGUIDs comes from one worktree's reed.json, so the configured shuttle.run_dir must stay worktree-local:
 // under a root shared across worktrees, every other worktree's runs look like orphans,
 // and their kept diagnosis directories would be swept once past the age guard.
 // A directory whose run.json is missing or unreadable counts as an orphan: no strand can be confirmed live for it.

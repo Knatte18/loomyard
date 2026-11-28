@@ -80,7 +80,7 @@ func TestFinalize_PullRequest(t *testing.T) {
 
 	tests := []struct {
 		name string
-		// mode is beam.yaml's pull_request for the landing run, as the Mode seam reads it.
+		// mode is beam.pull_request for the landing run, as the Mode seam reads it.
 		mode string
 		// modeErr makes the Mode seam fail.
 		modeErr   error

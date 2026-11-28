@@ -95,7 +95,7 @@ func postedSubjects(t *testing.T, h *hubforge.Hub) []string {
 	return subjects
 }
 
-// writeRunAutonomy writes beam.yaml's autonomy under anchor as value.
+// writeRunAutonomy writes beam.autonomy under anchor as value.
 func writeRunAutonomy(t *testing.T, anchor, value string) {
 	t.Helper()
 	path := configengine.ConfigFile(anchor, "beam")

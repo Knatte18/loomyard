@@ -67,7 +67,8 @@ func newCodexLaunchFixture(t *testing.T) (engine shuttleengine.Engine, anchor, c
 }
 
 // TestNewWithSeams_CodexTakesTheGivenSeams pins that a set built with seams runs the given hook runner and sandbox probe.
-// Codex's Prepare calls the probe once under sandbox_mode auto, and the runner once for the installed plugin's hook.
+// Codex's Prepare calls the probe once under codex.sandbox_mode auto,
+// and the runner once for the installed plugin's hook.
 // The runner's context rides the launch line.
 // The nil-seam fallbacks run `sh` and `codex`, so no tier0 test reaches them.
 // It sets CLAUDE_CONFIG_DIR and HOME, so it does not run in parallel.

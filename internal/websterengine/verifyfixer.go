@@ -245,7 +245,7 @@ func FixVerifySpawnOrAttach(deps FixVerifyDeps, st *State, clk Clock) (*VerifyFi
 // The fixer is done once its reply file exists.
 // It is dead, checked in this order, when its newest turn ended without one (DeadReasonAsking);
 // when its strand is gone (DeadReasonDied, or gatefixer.DeadReasonInterrupted for a run recorded as interrupted);
-// or when recovery_timeout_min has passed since the spawn (DeadReasonTimeout).
+// or when webster.recovery_timeout_min has passed since the spawn (DeadReasonTimeout).
 // Every terminal result stops the strand; only done also reads the reply and removes the run dir.
 // A failed stop, reply read or removal is a warning.
 // The caller holds no state-mutation lease across it.

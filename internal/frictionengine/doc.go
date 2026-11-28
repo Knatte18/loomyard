@@ -15,7 +15,7 @@
 // A probe error, an attached run that does not finish and a spawn that does not finish are failures:
 // the notes, the record and the report stay in place, and the next trigger settles or reflects again.
 // One call spends at most one positive Deps.Timeout, attach wait and spawn together, measured through Deps.Clock;
-// a zero Timeout defers each spec to shuttle's own run_timeout_min.
+// a zero Timeout defers each spec to shuttle.run_timeout_min.
 //
 // A successful reflection archives only covered files into a timestamped sibling directory.
 // The friction directory itself is never renamed or removed,

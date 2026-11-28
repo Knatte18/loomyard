@@ -1,7 +1,7 @@
 // Package envconfig owns the hub-wide env.yaml:
 // the environment variables lym exports to every process it starts for the hub.
 //
-// The module's one key, `vars`, maps a variable name to its value.
+// The module's one key, `env.vars`, maps a variable name to its value.
 // It is a per-name map classified machine.
 // The hub file in the board dir holds the values every machine shares.
 // The never-tracked machine file `<BoltDir>/.lym/config/env.machine.yaml` holds this machine's own.

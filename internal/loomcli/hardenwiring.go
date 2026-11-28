@@ -393,7 +393,7 @@ func (c *loomCLI) wireHarden(location *lymcwd.Location, loomCfg loomengine.Confi
 }
 
 // withHardenBudget returns budgets with the Harden-Review budget added when recipe holds a HardenFix row.
-// That budget is hardener.yaml's max_bounces.
+// That budget is hardener.max_bounces.
 // A file that does not load falls back to the template's value with a warning.
 // A status or pause verb is therefore not refused over it, as with the loom review budget and loom.yaml.
 // Any other recipe's budgets come back unchanged.
@@ -416,7 +416,7 @@ func withHardenBudget(budgets map[string]int, recipe string, dirs configengine.D
 }
 
 // hardenHardCap returns the hard cap of the Harden-Bouncer row and the way forward that raises it.
-// The cap is hardener.yaml's hard_max_bounces, and its raise is routed through the hardener module.
+// The cap is hardener.hard_max_bounces, and its raise is routed through the hardener module.
 func hardenHardCap(location *lymcwd.Location) (int, string, error) {
 	dirs := fabricengine.ConfigDirs(location)
 	cfg, err := hardenshed.LoadConfig(dirs, hardenshed.ConfigModule)
@@ -431,7 +431,7 @@ func hardenHardCap(location *lymcwd.Location) (int, string, error) {
 }
 
 // recipeTrees returns the reader of the tree map the run's verify scope classifies a diff by.
-// A recipe holding a HardenFix row reads hardener.yaml's tree_scope, and any other reads darn.yaml's.
+// A recipe holding a HardenFix row reads hardener.tree_scope, and any other reads darn.tree_scope.
 // Each call reads the file afresh, so an edit between steps is seen.
 // A load error carries its way forward.
 // That is the editor's for a malformed tree key, and the hub reconcile's for darn.yaml otherwise.

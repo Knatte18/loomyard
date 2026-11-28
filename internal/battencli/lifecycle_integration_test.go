@@ -657,7 +657,7 @@ func fourRowRunForRecipe(t *testing.T, h *hubforge.Hub, recipe string) {
 		}
 	}
 
-	// open_ide is off by default, so the Open-IDE entry gate skips that row and the same step runs Run-Shed.
+	// batten.open_ide is off by default, so the Open-IDE entry gate skips that row and the same step runs Run-Shed.
 	step, err := shed.Step(ctx)
 	if err != nil || step.Producer != battenrecipe.NameRunShed {
 		t.Fatalf("Step (Open-IDE gated off) = producer %q, %v; want %q", step.Producer, err, battenrecipe.NameRunShed)
@@ -1447,7 +1447,7 @@ func stepGatedOffCommandRow(t *testing.T, c *battenCLI, row, next string) {
 	}
 }
 
-// stepCommandRows_FollowTheTasksLocalSwitch asserts Open-IDE runs its command with open_ide on.
+// stepCommandRows_FollowTheTasksLocalSwitch asserts Open-IDE runs its command with batten.open_ide on.
 // The switches are read from the task worktree's local layer.
 // With them off, Open-IDE and Open-Window are each skipped by their entry gates.
 func stepCommandRows_FollowTheTasksLocalSwitch(t *testing.T, h *hubforge.Hub) {

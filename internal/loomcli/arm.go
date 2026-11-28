@@ -297,7 +297,7 @@ func (c *loomCLI) recipeRouting() (shedengine.Routing, error) {
 }
 
 // newShed builds the shed of the run's recipe over c.env and c.shedPaths.
-// The rows loom.yaml's notify_parent_on names mail the run's parent when the run reaches them,
+// The rows loom.notify_parent_on names mail the run's parent when the run reaches them,
 // and a name that is no row of the recipe is refused.
 func (c *loomCLI) newShed() (*shedengine.Shed, error) {
 	shed, err := loomrecipe.New(c.recipe, c.env, c.shedPaths)
@@ -368,7 +368,7 @@ func (c *loomCLI) verifySource() verifySource {
 // The lightweight wiring loads no config, so this method reads both files itself.
 // An unreadable loom.yaml or tapestry.yaml degrades to the templates' defaults with a warning;
 // the lightweight verbs (status, pause) must not refuse over a config they otherwise never read.
-// A hardener run's map also holds the Harden-Review budget, hardener.yaml's max_bounces.
+// A hardener run's map also holds the Harden-Review budget, hardener.max_bounces.
 func (c *loomCLI) reviewBudget() (map[string]int, error) {
 	budgets, err := c.loomReviewBudget()
 	if err != nil || !recipeHasEngine(c.recipe, hardenFixEngine) {

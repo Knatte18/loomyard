@@ -704,7 +704,7 @@ func TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker(t *testing.T) {
 		}
 	}
 
-	// A Weaver run's verify fixer is bounded by weaver.yaml's fixer_timeout_min, 10 minutes here, below Webster's 60.
+	// A Weaver run's verify fixer is bounded by weaver.fixer_timeout_min, 10 minutes here, below Webster's 60.
 	// A fixer 30 minutes old is past Weaver's bound and within Webster's, so it tells the two bounds apart.
 	writeConfigLayer := func(baseDir, module, content string) {
 		path := configengine.ConfigFile(baseDir, module)

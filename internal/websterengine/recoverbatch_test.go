@@ -465,7 +465,7 @@ func TestRecoverBatch_SecondCall(t *testing.T) {
 			},
 		},
 		{
-			// The default wait budget outlasts recovery_timeout_min.
+			// The default wait budget outlasts webster.recovery_timeout_min.
 			// A strand that never reports classifies dead/timeout inside one call,
 			// and it never returns a running snapshot.
 			name:       "the default wait budget ends a silent strand dead inside one call",
@@ -523,8 +523,8 @@ func TestRecoverBatch_SecondCall(t *testing.T) {
 			check: checkRecoveryRunning,
 		},
 		{
-			// A shell only the transcript reports keeps the strand running past background_shell_wait_min.
-			// As with a payload-reported shell, no shell expires; recovery_timeout_min bounds the strand.
+			// A shell only the transcript reports keeps the strand running past shuttle.background_shell_wait_min.
+			// As with a payload-reported shell, no shell expires; webster.recovery_timeout_min bounds the strand.
 			name: "a turn end waiting on a transcript-reported shell keeps the strand running past background_shell_wait_min",
 			afterFirst: func(t *testing.T, fx *recoverFixture, clk *recoverFakeClock) secondCall {
 				fx.Deps.Engines = namedEngines(shuttlefake.EngineName, claudeengine.New())

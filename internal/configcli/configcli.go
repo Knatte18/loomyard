@@ -513,7 +513,7 @@ func buildConfigLong() string {
 		"  lym config gate --unset gates.harden-live-copies\n\n" +
 		"--layer default|worktree|machine|local picks the file; default is committed from the prime,\n" +
 		"local is untracked.\n\n" +
-		"deny_python=false lets Python through and drops the notice at launch, from the prime:\n" +
+		configengine.KeyName("shuttle", string(shellguard.SwitchDenyPython)) + "=false lets Python through and drops the notice at launch, from the prime:\n" +
 		"  lym config shuttle --layer default --set " + string(shellguard.SwitchDenyPython) + "=false\n\n" +
 		"--resolved <module> prints the merged result, each unit annotated with its\n" +
 		"layer: template, default, worktree, machine or local.\n\n" +

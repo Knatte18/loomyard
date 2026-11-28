@@ -1391,7 +1391,8 @@ func TestWait_RetypesAPromptLineThatStartedNoTurn(t *testing.T) {
 
 // TestAttach_StartedSeededTrue pins the started seed.
 // Once the persisted Started is true, the startup probe must never run, whatever else is true of the run.
-// Attaching to a strand whose run.json carries Started: true must not classify OutcomeDied after startup_timeout_s.
+// The case is an attach to a strand whose run.json carries Started: true.
+// It must not classify OutcomeDied after shuttle.startup_timeout_s.
 // That holds when CapturePane returns a mid-turn capture with no ready markers.
 // The attach must also not play the trust-dismiss key sequence, even when the capture holds a trust-dialog phrase.
 // Without the seeded started: true, this run.json would decode with Started at its zero value (false),

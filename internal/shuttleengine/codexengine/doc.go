@@ -1,14 +1,14 @@
 // Package codexengine implements shuttleengine.Engine for the Codex CLI, driving its interactive TUI in a reed pane.
 // Only internal/shuttleengines constructs it; it registers there as codex, with its config module codex.yaml.
 //
-// Every launch runs under one shared lym Codex home, codex.yaml's home, set as CODEX_HOME on the launch line;
+// Every launch runs under one shared lym Codex home, codex.home, set as CODEX_HOME on the launch line;
 // the operator's own Codex home is never written.
 // The lym home links auth.json and sessions to the operator home's,
 // so one login and its token refresh serve both and rollouts land where the operator's tools read them.
 // Codex keys folder trust on a git root and a `-c` flag cannot set it;
 // so Prepare renders the lym home's config.toml from lym's own record of trusted roots on every launch.
 //
-// The launch line runs `-a never`, so no approval prompt shows, and `-s` with the mode settled from sandbox_mode.
+// The launch line runs `-a never`, so no approval prompt shows, and `-s` with the mode settled from codex.sandbox_mode.
 // danger-full-access runs the session with no sandbox, as a Claude seat runs.
 // Under auto, the template's value, and under workspace-write, each launch first probes Codex's sandbox.
 // A machine's bubblewrap may not be able to create a user namespace.
@@ -19,7 +19,7 @@
 // The key is a machine key: the hub's machine override sets it for one machine, and a local override may not.
 //
 // The workspace-write line adds writable roots: the records checkout and the checkout's git dirs.
-// It adds codex.yaml's writable_roots that exist, which a local override may not set.
+// It adds codex.writable_roots that exist, which a local override may not set.
 // It also sets `sandbox_workspace_write.network_access`.
 // Codex's Linux sandbox refuses every socket connect without it, a Unix socket's included.
 // Codex has no setting that opens Unix sockets alone.
@@ -54,7 +54,7 @@
 // That lets shuttle's edit-loop watch cover Codex runs as it covers Claude runs.
 //
 // A skill `<plugin>:<name>` is a file the model reads:
-// the load line names its SKILL.md under codex.yaml's skill_roots, and a skill under no root is reported unknown.
+// the load line names its SKILL.md under codex.skill_roots, and a skill under no root is reported unknown.
 //
 // A run whose engine is told a hub board directory carries creel's hook delivery and is marked CreelHooks:
 // creel hands its mail over at the session's boundaries and wakes it when idle.

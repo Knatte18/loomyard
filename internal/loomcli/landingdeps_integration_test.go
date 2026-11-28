@@ -1,7 +1,7 @@
 // landingdeps_integration_test.go drives landingDeps' seams over a real hub.
 // ConfigChanges reads a pair's committed config files through real branches.
 // Notify posts creel mail to the prime's orch.
-// The PullRequest seams read the run's beam.yaml pull_request through the per-task lookup and the task branch's commits.
+// The PullRequest seams read the run's beam.pull_request through the per-task lookup and the task branch's commits.
 // This package's own testmain_test.go arms the hermetic git test environment for the whole binary,
 // so this file adds no TestMain.
 
@@ -165,7 +165,7 @@ func TestParentRecordsCommitter_CommitsTheRecordedParent(t *testing.T) {
 	}
 }
 
-// TestLandingDeps_PullRequestModeReadsThePerTaskLookup pins the Mode seam's per-task lookup of pull_request.
+// TestLandingDeps_PullRequestModeReadsThePerTaskLookup pins the Mode seam's per-task lookup of beam.pull_request.
 // The run's own worktree's value applies first, else the nearest parent's up to the prime.
 func TestLandingDeps_PullRequestModeReadsThePerTaskLookup(t *testing.T) {
 	tiergate.Require(t, 1)

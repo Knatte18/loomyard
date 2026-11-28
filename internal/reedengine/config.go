@@ -85,7 +85,7 @@ func ConfigSpec() configengine.Spec {
 	}
 }
 
-// windowSplitLayout maps a window_split value to the tmux split flag and layout a shared window uses.
+// windowSplitLayout maps a reed.window_split value to the tmux split flag and layout a shared window uses.
 // The empty string reads as "width", the template default, so a Config built in code without the key keeps working.
 func windowSplitLayout(raw string) (splitFlag, layout string, err error) {
 	switch raw {
@@ -97,7 +97,7 @@ func windowSplitLayout(raw string) (splitFlag, layout string, err error) {
 	return "", "", fmt.Errorf("invalid %s value %q: want \"width\" or \"height\"", keyName("window_split"), raw)
 }
 
-// validateWindowConfig refuses a window_split other than "width" or "height" and a negative window_share_max.
+// validateWindowConfig refuses a reed.window_split other than "width" or "height" and a negative reed.window_share_max.
 // Each message names its key.
 func validateWindowConfig(cfg Config) error {
 	if _, _, err := windowSplitLayout(cfg.WindowSplit); err != nil {

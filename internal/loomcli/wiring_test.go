@@ -47,7 +47,7 @@ import (
 )
 
 // seedLoomConfigWithInteractive overwrites <anchorPath>/_lym/config/loom.yaml with a full literal.
-// It matches the embedded template's own values except discussion.interactive, which takes the caller-chosen value.
+// It matches the embedded template's own values except loom.discussion.interactive, which takes the caller-chosen value.
 // Every key is written explicitly, not substituted into the template.
 // The literal therefore pins every value rather than relying on template fills.
 func seedLoomConfigWithInteractive(t *testing.T, anchorPath string, discussionInteractive bool) {
@@ -74,7 +74,7 @@ driver: ""
 }
 
 // seedLoomConfigWithFriction overwrites <anchorPath>/_lym/config/loom.yaml with a full literal.
-// It matches the embedded template's own values except friction.model, which takes the caller-chosen value.
+// It matches the embedded template's own values except loom.friction.model, which takes the caller-chosen value.
 // An empty value means Tier 2 is off.
 // Every key is written explicitly, so the literal pins every value.
 func seedLoomConfigWithFriction(t *testing.T, anchorPath, friction string) {
@@ -243,7 +243,7 @@ func TestWire_DefaultConfig(t *testing.T) {
 			t.Error("runDeps.ReadOnly = nil; want the read-only classifier beside the reference matcher")
 		}
 		// wire only stores the lister and looks up no engine for it:
-		// status and pause, which run wire, are never refused by the master key.
+		// status and pause, which run wire, are never refused by the webster.master key.
 		if deps.InstructionFiles == nil {
 			t.Error("runDeps.InstructionFiles = nil; want Master's instruction file lister")
 		}
@@ -550,10 +550,11 @@ func TestWire_DefaultConfig(t *testing.T) {
 }
 
 // TestWire_DiscussionTableEvaluatesToExpectedShape evaluates c.env.DiscussionTable().
-// It runs for both discussion.interactive values.
+// It runs for both loom.discussion.interactive values.
 // It asserts the table's settings and the lead's seat.
 // It asserts that the lead prompt names the parent and carries no unrendered marker.
-// It then asserts the table's seats and fork authorization under the discussion.advisors and discussion.lenses keys.
+// It then asserts the table's seats and fork authorization.
+// It does so under the loom.discussion.advisors and loom.discussion.lenses keys.
 func TestWire_DiscussionTableEvaluatesToExpectedShape(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -639,7 +640,7 @@ func TestWire_DiscussionTableEvaluatesToExpectedShape(t *testing.T) {
 		})
 	}
 
-	// The discussion.advisors and discussion.lenses keys decide the wired table's seats.
+	// The loom.discussion.advisors and loom.discussion.lenses keys decide the wired table's seats.
 	// They also decide whether its lead may fork.
 	// The template's lens fan authorizes the lead's forks and no advisor's;
 	// each configured advisor adds a seat named by its entry, and an empty lens key keeps the lead from forking.
@@ -823,11 +824,11 @@ func TestWireLightweight_FillsThePathsWithoutLoadingAnyConfig(t *testing.T) {
 
 // TestWire_FrictionDirFillsBurlerAndWebster asserts wire fills the resolved friction directory into
 // both told engines: the burlerEngine constructor's fifth argument and c.runDeps.FrictionDir.
-// The directory is filled when loom.yaml's friction key is non-empty;
+// The directory is filled when loom.friction.model is non-empty;
 // when the key is present but empty, the empty string goes into both and into c.frictionDir.
 // Non-empty assertions compare against loomengine.LoomFrictionDir(loc)'s result, not a hand-built path literal.
 //
-//testtiming:keep pins the resolved friction directory filled into c.frictionDir, the webster run deps and its env copy when the friction key is set, and the empty string in all three when it is present but empty; the covering test wires with the default config only
+//testtiming:keep pins the resolved friction directory filled into c.frictionDir, the webster run deps and its env copy when loom.friction.model is set, and the empty string in all three when it is present but empty; the covering test wires with the default config only
 func TestWire_FrictionDirFillsBurlerAndWebster(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -922,10 +923,10 @@ func seedLoomConfigWithKeys(t *testing.T, anchorPath string, values map[string]s
 }
 
 // TestWire_ReviewKeysReachTheEnv verifies the loom.yaml and tapestry.yaml keys tuning a review round reach the Env.
-// plan.reviewer_model lands in the Plan-Review segment's models alone.
-// Discussion-Review takes the template's per-round discussion.reviewer_model with the run-wide fix models.
+// tapestry.plan.reviewer_model lands in the Plan-Review segment's models alone.
+// Discussion-Review takes the template's per-round loom.discussion.reviewer_model with the run-wide fix models.
 // Code-Review takes the template's own reviewer and fixer models, one sonnet entry of effort medium each.
-// plan.judge, review.seed and code.seed land in each segment's Bouncer pair.
+// tapestry.plan.judge, loom.review.seed and loom.code.seed land in each segment's Bouncer pair.
 // The per-perch budget and hard cap keys land in each segment's MaxBounces and HardMaxBounces,
 // and every segment's entry is pinned whole.
 func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
@@ -983,12 +984,12 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	}
 
 	// Each loom segment's entry joins the models, keys and Bouncer pair with its resolved budget and hard cap:
-	// plan.max_bounces, code.max_bounces and plan.hard_max_bounces name their own keys;
+	// tapestry.plan.max_bounces, loom.code.max_bounces and tapestry.plan.hard_max_bounces name their own keys;
 	// the rest fall back to the run-wide ones.
 	loomKey := func(key string) shuttleengine.ModelKey { return shuttleengine.ModelKey{Module: "loom", Key: key} }
 	tapestryKey := func(key string) shuttleengine.ModelKey { return shuttleengine.ModelKey{Module: "tapestry", Key: key} }
 	// With the template's empty assistant keys, every segment's assistant holds one zero choice and one solo fan entry.
-	// Its bound is the default 60-minute one, which fits inside review.timeout_min.
+	// Its bound is the default 60-minute one, which fits inside loom.review.timeout_min.
 	defaultAssist := func(module, segment string) shedadapters.AssistSettings {
 		return shedadapters.AssistSettings{
 			Models:   []shuttleengine.ModelChoice{{}},
@@ -1021,7 +1022,7 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 			HardMaxBounces: 4, HardMaxBouncesKey: "loom.review.hard_max_bounces", AmendMaxBounces: 1, ConfigFile: "loom.yaml",
 		},
 		// The split perch has no assistant: its lists and keys are empty, its bound the default one.
-		// Its empty reviewer key takes review.reviewer_model, and its empty fixer key takes raddle.model's model.
+		// Its empty reviewer key takes loom.review.reviewer_model, and its empty fixer key takes loom.raddle.model's model.
 		"Raddle-Review": {
 			Models: c.env.Segments["Raddle-Review"].Models, ReviewKey: loomKey("review.reviewer_model"), FixKey: loomKey("raddle.model"),
 			Bouncer:    shedadapters.BouncerModels{Seed: wantBouncerModels["Discussion-Review"].Seed, Judge: wantBouncerModels["Discussion-Review"].Judge},
@@ -1050,7 +1051,7 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	}
 
 	// Per-round fan lists reach each segment's Bouncer and review row, and the fixer fan lists the review rows alone.
-	// A fanned reviewer runs on its segment's own reviewer list, discussion.reviewer_model here.
+	// A fanned reviewer runs on its segment's own reviewer list, loom.discussion.reviewer_model here.
 	fannedLoc := hubLocation(t, "pair", ".")
 	seedLoomConfigWithKeys(t, fannedLoc.AnchorPath(), map[string]string{
 		"discussion.reviewer_fan":   `["", review-discussion]`,
@@ -1115,7 +1116,7 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 
 	// A keep-warm cap below the default await cap changes the room the assistant's bound is capped to,
 	// so the bound proves the resolver's cap reaches it.
-	// The bound is review.timeout_min less shuttle's start allowance less that cap.
+	// The bound is loom.review.timeout_min less shuttle's start allowance less that cap.
 	// The cap is looked up under the chair's strand name, which needs the hub's shortname record.
 	cappedLoc := hubLocation(t, "pair", ".")
 	if err := fabricengine.WriteShortname(fabriclayout.BoardDir(cappedLoc.HubPath), "tst"); err != nil {
@@ -1145,7 +1146,7 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	}
 
 	// A chair runs as its segment's prefixed role.
-	// So a keep_warm_cap_roles entry for code-burler-review caps Code-Review's assistant alone,
+	// So a claude.keep_warm_cap_roles entry for code-burler-review caps Code-Review's assistant alone,
 	// and the bare burler-review entry caps none.
 	roleLoc := hubLocation(t, "pair", ".")
 	if err := fabricengine.WriteShortname(fabriclayout.BoardDir(roleLoc.HubPath), "tst"); err != nil {

@@ -102,7 +102,7 @@ type loomCLI struct {
 	// It is zero under the lightweight wiring, whose verbs never run the loop.
 	shuttleCfg shuttleengine.Config
 	// stepIdleTimeout is the window after which a --until-stop step showing no activity is killed.
-	// It comes from loom.yaml's step_idle_timeout_min and is zero under the lightweight wiring.
+	// It comes from loom.step_idle_timeout_min and is zero under the lightweight wiring.
 	// A step at a row waiting on the operator (Beam-Await, PR-Review, Sampler-Session) reads as active and is never killed.
 	stepIdleTimeout time.Duration
 	// landingCfg is the loaded landing.yaml configuration, loaded once in wire().

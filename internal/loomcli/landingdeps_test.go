@@ -514,7 +514,7 @@ func TestPushRidingOutBusyLock(t *testing.T) {
 // TestCodeBudgetZero_ReadsTheCodePerchFromLoomYaml pins that the budget-zero seam reads the Code-Review perch at call time:
 // a budget of 0 reports the perch off and a budget above 0 reports it on.
 // A loom.yaml that fails to load is returned as the seam's error.
-// On a sampler run the perch also reads off when sampler.yaml's code_review leaves the rows out,
+// On a sampler run the perch also reads off when sampler.code_review leaves the rows out,
 // and a non-bool value is returned as the gate's error.
 func TestCodeBudgetZero_ReadsTheCodePerchFromLoomYaml(t *testing.T) {
 	tiergate.Require(t, 0)

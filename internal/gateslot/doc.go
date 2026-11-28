@@ -55,36 +55,37 @@
 // # Config
 //
 // The hub-wide `gate` config module lives at `<BoardDir>/_lym/config/gate.yaml`, seeded from template.yaml by reconcile.
-// `slots` and `tier_parallel` take a machine-local override at `<BoardDir>/.lym/config/gate.machine.yaml`.
+// `gate.slots` and `gate.tier_parallel` take a machine-local override at `<BoardDir>/.lym/config/gate.machine.yaml`.
 // The override is never reconciled and is read at every acquire; every other key stays hub-file only.
-// The machine override is a sibling map and not a path under `tiers`.
-// An open map is one unit in the layer merge, so a partial `tiers` layer would replace all of the hub's tiers.
+// The machine override is a sibling map and not a path under `gate.tiers`.
+// An open map is one unit in the layer merge, so a partial `gate.tiers` layer would replace all of the hub's tiers.
 // A standalone worktree has no machine layer and sets the key in its own file.
 // LoadConfig reads the file strictly and refuses a retired key naming it.
 // It also refuses an invalid or inconsistent tier, build, gate key or bound naming the key and `lym config gate`.
 // An absent hub file is ErrConfigAbsent with the way forward `lym fabric reconcile`.
-// LoadRefuseRaw is the session launch's read: it needs `refuse_raw` alone,
+// LoadRefuseRaw is the session launch's read: it needs `gate.refuse_raw` alone,
 // so a failure in any other key is logged as a warning and the list is read from the merged stack.
 //
-// `tiers` and `build` are executable keys, since a tier or build command runs any shell command in a task worktree.
-// `gates`, `scoper`, `refuse_raw` and `inert_paths` are guard keys.
+// `gate.tiers` and `gate.build` are executable keys.
+// A tier or build command runs any shell command in a task worktree.
+// `gate.gates`, `gate.scoper`, `gate.refuse_raw` and `gate.inert_paths` are guard keys.
 // All of them are hub-file only.
-// `tiers` is an open map keyed `tier0`, `tier1`, and so on, each a Tier.
-// `gates` is a per-name map from a gate key to a GateKey,
+// `gate.tiers` is an open map keyed `tier0`, `tier1`, and so on, each a Tier.
+// `gate.gates` is a per-name map from a gate key to a GateKey,
 // so a hub file that sets one key keeps the template's value for every other.
 // A GateKey's scope is `card`, `diff`, `all` or ScopeMarked, and only the `card` and `batch` keys take `card`.
 // UpkeepGateKey names the key of the upkeep run, whose template scope is ScopeMarked.
 // A GateKey may hold `lints`, which run after its tiers.
 // It may also hold a `fixer` on the `card` key only.
-// Config load fills a template key a tuned `gates` entry lacks into that entry.
+// Config load fills a template key a tuned `gate.gates` entry lacks into that entry.
 // It ignores a key the GateKey does not hold, such as the `reports` list of an older template.
 // A Tier's `manual: true` keeps it out of a `lym gate test --upto` range.
 // A Tier's `carry: false` keeps a green run from being carried over an unchanged tree.
 // A Tier's `memory_mb` caps the memory its command holds with every process it starts.
-// A tier's command may hold TestTimeoutPlaceholder, rendered from `test_timeout_min`.
+// A tier's command may hold TestTimeoutPlaceholder, rendered from `gate.tiers.<tier>.test_timeout_min`.
 // It may also hold TestTargetsPlaceholder, which HoldsTargets counts as taking targets.
-// `inert_paths` lists glob patterns of files no test reads; a pattern `path.Match` rejects matches nothing.
-// A `tier_parallel` entry for a tier the config does not declare is dropped with a logged warning.
+// `gate.inert_paths` lists glob patterns of files no test reads; a pattern `path.Match` rejects matches nothing.
+// A `gate.tier_parallel` entry for a tier the config does not declare is dropped with a logged warning.
 //
 // Cross-references are checked at use, never at load.
 // The template and a hub whose gate keys name an undeclared tier therefore both load.

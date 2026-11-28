@@ -66,7 +66,7 @@ func Reflect(deps Deps) (Report, error) {
 		clock = realClock{}
 	}
 	// A non-positive Timeout carries no budget: it reaches every spec unchanged,
-	// so a zero one defers to shuttle's own run_timeout_min.
+	// so a zero one defers to shuttle.run_timeout_min.
 	budgeted := deps.Timeout > 0
 	entered := clock.Now()
 	remaining := func() time.Duration {

@@ -5,12 +5,12 @@
 // `lym gate test` never runs it.
 //
 // `drift.yaml` keys:
-// `enabled` switches the Drift rows on through their entry gate;
-// `capture` and `compare` are command steps written whole as `{command, dir, env, timeout_min}`;
+// `drift.enabled` switches the Drift rows on through their entry gate;
+// `drift.capture` and `drift.compare` are command steps written whole as `{command, dir, env, timeout_min}`;
 // the compare runs only under `diff: command`;
-// `diff` is `lines` or `command`;
-// `key_patterns` are regular expressions with the named groups `key` and `value` that key a captured line;
-// `volatile_files` and `volatile_keys` name the capture files and line keys the diff ignores;
+// `drift.diff` is `lines` or `command`;
+// `drift.key_patterns` are regular expressions with the named groups `key` and `value` that key a captured line;
+// `drift.volatile_files` and `drift.volatile_keys` name the capture files and line keys the diff ignores;
 // `drift.expect_model` and `drift.judge_model` are model-specs;
 // `drift.judge_interactive` makes the judge a session with the operator in its pane;
 // `drift.judge_ask_parent` and `drift.judge_parent_timeout_min` route the judge's rulings to the run's parent orch;
@@ -115,7 +115,8 @@
 // Two durable records are guarded: `scope.json` and `judged.json`.
 // `judged.json` holds the judge's stored rulings as exact tuples, and under `command` its rulings per case and code head.
 // `scope.json` holds the recorded scope (`off` or `full`) and when the baseline was awaited or deferred.
-// It also holds what the checks record, such as the config's `diff`, `key_patterns` and volatile lists as first seen.
+// It also holds what the checks record.
+// That includes the config's `drift.diff`, `drift.key_patterns` and volatile lists as first seen.
 // Every field is optional, so a record written without it still reads.
 // WriteRecords is the one writer.
 // It commits both files at once through Deps.CommitWithTrailers with the trailer `Drift-Records: <RecordsDigest>`.
@@ -164,7 +165,7 @@
 // # Agents
 //
 // The expect agent and the judge are each one lead seat, built by ExpectTable and JudgeTable.
-// The expect seat is never interactive; the judge seat is interactive under `judge_interactive`.
+// The expect seat is never interactive; the judge seat is interactive under `drift.judge_interactive`.
 // The expect seat's only output is `expected.yaml` and the judge's is `judgement.yaml`; the records are Go-written.
 // The task's subject comes from the decision record in a tapestry run (SubjectDecisionRecord).
 // In a darn run it comes from the board entry (SubjectBoardEntry).

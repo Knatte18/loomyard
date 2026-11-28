@@ -42,9 +42,9 @@
 // ColorSequence maps every lym palette color to the same-named Claude Code `/color` name.
 //
 // The engine owns a layered config module, `claude.yaml`, declared in config.go.
-// The `accounts` list and the `account_pins` block are machine-layer keys:
+// The `claude.accounts` list and the `claude.account_pins` block are machine-layer keys:
 // `lym config claude --layer machine` writes them, and LoadConfig refuses a non-empty one in a tracked layer.
-// A local override may set every key but the binary and the tool denies.
+// A local override may set every key but `claude.binary` and the tool denies.
 // The engine is told its directories and derives none.
 // Prepare, OpenLaunch, PromptCacheLifetime and KeepWarmCaps each load claude.yaml through them before anything else,
 // so an invalid file refuses a run start, a resume and an open, naming the file, the key and `lym config claude`.
@@ -80,10 +80,11 @@
 //
 // The launch and resume lines both carry `CLAUDE_CODE_PROMPT_CACHE_TTL`,
 // so a main conversation writes its prompt cache at the TTL its role needs, not at Claude Code's subscription default.
-// Prepare and OpenLaunch resolve it from the spec's role through `prompt_cache_ttl_roles`, else `prompt_cache_ttl`.
+// Prepare and OpenLaunch resolve it from the spec's role through `claude.prompt_cache_ttl_roles`.
+// A role missing there takes `claude.prompt_cache_ttl`.
 // They refuse a configured value that is not `5m` or `1h` before any artifact is written.
 // The value is fixed for the session's life, since a resume line is never rebuilt.
-// `keep_warm_cap` and `keep_warm_cap_roles` set the longest single wait an agent of a role blocks on.
+// `claude.keep_warm_cap` and `claude.keep_warm_cap_roles` set the longest single wait an agent of a role blocks on.
 // Both lines also carry `BASH_MAX_TIMEOUT_MS` at one hour, so no Bash call stays in the foreground past that ceiling.
 // The launch, resume and open lines carry `CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL` at one hour.
 // Claude Code moves a background subagent's foreground Bash call to the background after 180 seconds.
@@ -161,7 +162,7 @@
 // so the turn ends with no Stop record when Claude Code drops the killed hook's output.
 //
 // The edit hook (EditRecorder) is a PostToolUse entry matching `Edit|Write`.
-// It is carried for a run that is not interactive while shuttle.yaml's `edit_loop_edits` is above 0.
+// It is carried for a run that is not interactive while `shuttle.edit_loop_edits` is above 0.
 // RecordEdit appends to shuttleengine.EditRecordsFileName, never to the events file.
 // Each record carries the file's content hash.
 // With it, shuttle's edit-loop watch can tell an edit that returns the file to earlier content.
@@ -169,7 +170,7 @@
 // The batching nudge (BatchingNudger) is a PostToolUse hook.
 // It adds one line to the calling chain's context when the chain's recent calls break lym's batching rules;
 // it never denies a call.
-// `claude.yaml`'s `batching_nudge` block holds `enabled`, the breach switches and the thresholds.
+// `claude.batching_nudge` block holds `claude.batching_nudge.enabled`, the breach switches and the thresholds.
 // ValidateBatchingNudge refuses invalid thresholds while the hook is on.
 // Prepare copies the block into `batching-nudge.json` beside the events file,
 // so a running session keeps the values its Prepare wrote.
@@ -257,19 +258,19 @@
 // No row denies the Agent tool: a subagent or fork runs inside the session and shows in its own pane.
 // Every row is a guardrail over static text and not a barrier.
 // The python row is installed in every run, and its hook asks `shuttle hook-python-allowed` on each matching call,
-// so a change of `shuttle.yaml`'s `deny_python` reaches running sessions with no restart;
+// so a change of `shuttle.deny_python` reaches running sessions with no restart;
 // a lym that is missing or fails keeps the deny.
 // The publish row is installed only for a run whose spec sets `DenyPublish`.
 // The tmux and script row is installed in every run whose spec does not set `AllowRawTmux`, interactive runs included.
-// The refuse-raw row denies a Bash command starting with a prefix the hub lists in `gate.yaml`'s `refuse_raw`,
+// The refuse-raw row denies a Bash command starting with a prefix the hub lists in `gate.refuse_raw`,
 // so every test run in an agent session goes through `lym gate test`.
-// Prepare reads `gate.yaml`'s `refuse_raw` over the engine's dirs through `gateslot.LoadRefuseRaw`.
+// Prepare reads `gate.refuse_raw` over the engine's dirs through `gateslot.LoadRefuseRaw`.
 // It fills `shuttleengine.Config.RefuseRaw` on its copy of the config.
 // It renders `standingDeniesFor(cfg.RefuseRaw, lymPath)`.
 // An absent file leaves the list empty and renders no row.
 // A failure in a key the launch does not read is logged as a warning and the launch goes on.
 // A file that does not merge refuses the spawn with the loader's way forward before an artifact is written.
-// So does an invalid `refuse_raw`.
+// So does an invalid `gate.refuse_raw`.
 // Settings render at spawn, so a running session keeps the list it started with.
 //
 // The open launch (Claude.OpenLaunch) starts a named interactive session with no prompt.
@@ -285,8 +286,9 @@
 // Claude Code keeps no transcript for a session that never took a turn.
 //
 // The session scope (scope.go) decides what a session loads besides lym's own text.
-// It reads `claude.yaml`'s `session_scope` block.
-// With `enabled` on, Prepare writes it into every run's settings and OpenLaunch into an opened session's in a hub;
+// It reads the `claude.session_scope` block.
+// With `claude.session_scope.enabled` on, Prepare writes it into every run's settings.
+// OpenLaunch writes it into an opened session's in a hub;
 // Claude Code's `--settings` layer outranks the user's and the repository's settings, so the scope holds.
 // A plugin is on exactly when the session preloads a skill of it; a plugin that is on lists all of its skills.
 // That is because Claude Code honours `skillOverrides` for a plugin's skill only through its claude.ai skill sync.

@@ -31,7 +31,7 @@ type CompareRequest struct {
 	Pool *gateslot.Pool
 	// WaitDir is where the compare's wait record is written while it waits for a slot.
 	WaitDir string
-	// Timeout bounds the command from its start; production passes the step's timeout_min.
+	// Timeout bounds the command from its start; production passes `drift.compare.timeout_min`.
 	Timeout time.Duration
 	// Now is the clock the log's name comes from.
 	Now func() time.Time

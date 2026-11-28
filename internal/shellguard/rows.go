@@ -19,8 +19,8 @@ const (
 	// SwitchNone marks a row installed for every run.
 	SwitchNone Switch = ""
 	// SwitchDenyPython marks the row installed for every run.
-	// Its hook asks the hub's current deny_python on each matching call.
-	// Its notice follows deny_python at launch.
+	// Its hook asks the hub's current shuttle.deny_python on each matching call.
+	// Its notice follows shuttle.deny_python at launch.
 	SwitchDenyPython Switch = "deny_python"
 	// SwitchDenyPublish marks the row a launch spec turns on to keep a session from publishing: git push and the gh calls beyond reads, comments and title and body edits.
 	SwitchDenyPublish Switch = "deny_publish"

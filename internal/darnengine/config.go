@@ -29,7 +29,8 @@ func ConfigTemplate() string {
 // configModule is the config module name darn.yaml is loaded under.
 const configModule = "darn"
 
-// ErrTreeScopeKey marks a tree_scope key that is malformed or repeats another key after its trailing slash is trimmed.
+// ErrTreeScopeKey marks a darn.tree_scope key that is malformed.
+// It also marks one that repeats another key after its trailing slash is trimmed.
 var ErrTreeScopeKey = errors.New("config key \"" + keyName(treeScopeKey) + "\" holds a malformed tree key")
 
 // Config represents the resolved darn.yaml configuration.
@@ -60,7 +61,8 @@ func ConfigOpenMaps() []string {
 }
 
 // ConfigSpec returns darn's layered-load spec.
-// tree_scope picks which diffs run the narrower targets, so it is a guard key and closed to the local layer; no task run_settings sets it.
+// darn.tree_scope picks which diffs run the narrower targets, so it is a guard key and closed to the local layer;
+// no task run_settings sets it.
 // verify, tree_scope_verify and pr_review are retired keys.
 // The driver, tackler and arbiter keys are retired too, and shed.yaml alone holds them.
 // They are closed to the local layer, so a local file that still sets one is refused with the shed way forward.
@@ -106,10 +108,11 @@ var shedOnlyKeys = []string{
 const shedOnlyKeyWayForward = "remove the key from the refused local file, profile block or run_settings object, and set it under the shed module instead: in a local file, in the pair's local shed.yaml; in a profile block or run_settings, in the shed object"
 
 // LoadConfig loads and unmarshals the darn module's configuration strictly through the hub-wide layer stack under dirs.
-// It validates the writer key's model-spec grammar at load time and leaves verify_attempts to its reader.
-// It refuses a report_dir that leaves the worktree or has a records directory in its path.
-// It returns a report_dir it keeps in clean slash form.
-// It returns tree_scope keyed by trimmed tree path and refuses a malformed or repeated tree key wrapping ErrTreeScopeKey.
+// It validates the darn.writer key's model-spec grammar at load time and leaves darn.verify_attempts to its reader.
+// It refuses a darn.report_dir that leaves the worktree or has a records directory in its path.
+// It returns a darn.report_dir it keeps in clean slash form.
+// It returns darn.tree_scope keyed by trimmed tree path.
+// It refuses a malformed or repeated tree key wrapping ErrTreeScopeKey.
 func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	spec := ConfigSpec()
 	spec.Name = module
@@ -130,7 +133,7 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 		return Config{}, fmt.Errorf("config key %q: %w", keyName(writerKey), err)
 	}
 
-	// An empty gate_fixer turns the fixer off and must load cleanly.
+	// An empty darn.gate_fixer turns the fixer off and must load cleanly.
 	if cfg.GateFixer != "" {
 		if _, err := modelspec.Parse(cfg.GateFixer); err != nil {
 			return Config{}, fmt.Errorf("config key %q: %w; set a model-spec with \"lym config darn\", or \"\" to turn the fixer off", keyName(gateFixerKey), err)
@@ -159,7 +162,8 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	return cfg, nil
 }
 
-// normalizeTreeScope returns cfg's tree_scope keyed by trimmed tree path, or the refusal of a malformed key or a repeated tree.
+// normalizeTreeScope returns cfg's darn.tree_scope keyed by trimmed tree path.
+// On a malformed key or a repeated tree it returns the refusal instead.
 func normalizeTreeScope(cfg Config) (map[string]string, error) {
 	keys := make([]string, 0, len(cfg.TreeScope))
 	for key := range cfg.TreeScope {

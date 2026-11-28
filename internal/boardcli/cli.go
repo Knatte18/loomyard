@@ -6,7 +6,8 @@
 // The intake group (list, import, close) comes from intakeCommand in intake.go, over the hub repository the hubRepo closure opens from the resolved location.
 // list and find take --text to print the compact listing from text.go instead of JSON.
 // Configuration resolution happens once in a PersistentPreRunE.
-// The config file (readme, design_prefix) is loaded from the Bolt checkout's _lym/config/board.yaml, whatever worktree the verb runs in,
+// The config file (board.readme, board.design_prefix) is loaded from the Bolt checkout's _lym/config/board.yaml.
+// It is loaded whatever worktree the verb runs in,
 // and the board data dir is resolved as fabriclayout.BoardDir(layout.HubPath) via lymcwd.Resolve.
 // The hidden --board-path persistent flag overrides the data dir for the detached sync child
 // process launched by internal/boardengine/spawn.go, bypassing both config and path resolution.

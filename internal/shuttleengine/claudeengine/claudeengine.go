@@ -134,12 +134,12 @@ func validateSessionID(id string) error {
 // A spec that names skills carries the skill-load message on the launch line instead and returns the pointer as Launch.PromptLine, for shuttle to send after the skills load.
 // A spec that sets SkipSkillLoadTurn keeps the pointer on the launch line, whatever skills it names.
 // It returns no Launch.PromptLine.
-// It loads claude.yaml and the hub gate config's refuse_raw list, which the run's shell guard installs.
+// It loads claude.yaml and the hub's gate.refuse_raw list, which the run's shell guard installs.
 // A gate key the launch does not read never refuses it.
 // It then validates spec.Effort, spec.Model, spec.PermissionMode and spec.ResumeSessionID before writing any artifacts.
 // It validates the prompt-cache TTL config, the keep-warm caps and the batching nudge before then too.
 // With the batching nudge on it also seeds the nudge's state file beside the settings.
-// The settings carry the session's scope, resolved from claude.yaml's session_scope, spec.Skills and spec.Role.
+// The settings carry the session's scope, resolved from claude.session_scope, spec.Skills and spec.Role.
 // A spec with no effort takes the one cfg.Agents gives spec.ConfigRole on spec.Model.
 // The settings set the effort a subagent of the role falls back to,
 // and the appended system prompt tells the session the effort and skills to give each subagent it spawns.

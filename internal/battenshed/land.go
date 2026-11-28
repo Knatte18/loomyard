@@ -248,7 +248,8 @@ func (p *landProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine
 }
 
 // pullAndDeploy pulls the prime under the prime lock.
-// Outside the lock it runs the deploy command, when the landing config names one and lists parent in deploy_branches.
+// Outside the lock it runs the deploy command.
+// It does so when the landing config names one and lists parent in landing.deploy_branches.
 // A non-empty reason is the Stuck reason of the failed step.
 // A non-empty recordsStop is the records side's stop message from a pull that otherwise succeeded.
 // The deploy runs regardless.

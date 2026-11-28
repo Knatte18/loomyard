@@ -1,4 +1,4 @@
-// reinterpret.go carries a hub's orch.yaml across the change of remote_control's default from on to off.
+// reinterpret.go carries a hub's orch.yaml across the change of orch.remote_control's default from on to off.
 
 package orchengine
 
@@ -10,17 +10,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 )
 
-// RemoteControlOffReinterpretationID names the change that turned remote_control's default from on to off.
+// RemoteControlOffReinterpretationID names the change that turned orch.remote_control's default from on to off.
 const RemoteControlOffReinterpretationID = "orch-remote-control-off-by-default"
 
 // remoteControlKey is the orch.yaml key whose default the change turned off.
 const remoteControlKey = "remote_control"
 
-// FlagRemoteControlDefault carries a hub orch.yaml across the change of remote_control's default from on to off.
-// A file that sets no remote_control took remote control on before the change and takes it off now.
+// FlagRemoteControlDefault carries a hub orch.yaml across the change of orch.remote_control's default from on to off.
+// A file that sets no orch.remote_control took remote control on before the change and takes it off now.
 // The operator decides when an orch session gets remote control.
 // Such a file is flagged with the way forward that turns it back on, and left unchanged.
-// A file that sets remote_control keeps its value and is neither changed nor flagged.
+// A file that sets orch.remote_control keeps its value and is neither changed nor flagged.
 // The worktrees argument is unused, as the check judges the file alone.
 func FlagRemoteControlDefault(existing []byte, _ []configengine.HubWorktree) (rewritten []byte, rewrote, flagged []string, err error) {
 	var keys map[string]yaml.Node

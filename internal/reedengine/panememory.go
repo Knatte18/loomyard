@@ -10,7 +10,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
-// defaultPaneMemoryMaxMiB is the pane memory cap, in MiB, a Config without a positive pane_memory_max_mib takes.
+// defaultPaneMemoryMaxMiB is the pane memory cap, in MiB, a Config without a positive reed.pane_memory_max_mib takes.
 const defaultPaneMemoryMaxMiB = 8192
 
 // PaneScopeUnitPrefix starts the name of the scope a strand pane runs in; the pane's shell pid and ".scope" end it.

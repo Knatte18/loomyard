@@ -485,7 +485,7 @@ func TestDiscussionTable(t *testing.T) {
 		}
 		tests := []struct {
 			name string
-			// fan is the discussion.lenses value; empty takes the template's fan.
+			// fan is the loom.discussion.lenses value; empty takes the template's fan.
 			fan        string
 			lensesYAML string
 			// defaultYAML, when non-empty, is planted as the lenses.yaml of a temp board dir,

@@ -36,7 +36,7 @@ type parityFixture struct {
 	env         SeatEnv
 	cfg         shuttleengine.Config
 	stencilsDir string
-	// claudeDir is the Claude config directory, and skillRoot the directory Codex's skill_roots names.
+	// claudeDir is the Claude config directory, and skillRoot the directory codex.skill_roots names.
 	claudeDir string
 	skillRoot string
 	// plugins maps each installed plugin's id to its install directory.
@@ -46,7 +46,8 @@ type parityFixture struct {
 // newParityFixture seeds the stencils and writes the fake machine.
 // The worktree holds a CLAUDE.md, a marked CLAUDE.local.md and a marked AGENTS.override.md with the file entry's text.
 // The Claude config directory holds a global CLAUDE.md and a plugin with a session-start hook.
-// The hub's language.yaml lists one language skill, and the codex.yaml layer sets sandbox_mode auto and the skill root.
+// The hub's language.yaml lists one language skill,
+// and the codex.yaml layer sets codex.sandbox_mode auto and the skill root.
 // It sets CLAUDE_CONFIG_DIR and HOME and installs the process passage reader,
 // so a test that calls it does not run in parallel.
 func newParityFixture(t *testing.T) parityFixture {

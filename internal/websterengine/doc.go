@@ -276,8 +276,8 @@
 //
 // Master's spawn declares its awaited shell prefixes (masterAwaitedShellPrefixes):
 // the recovery verb, the cold fixer verb and the plan fixer verb.
-// Those are bounded by recovery_timeout_min and never expire a turn end.
-// A turn end waiting only on other shells is held until `background_shell_wait_min` passes.
+// Those are bounded by webster.recovery_timeout_min and never expire a turn end.
+// A turn end waiting only on other shells is held until `shuttle.background_shell_wait_min` passes.
 // lym does not stop a shell still running when the run ends;
 // Run writes a `webster-background-shell` friction note and a `RunResult.Warnings` entry for each.
 //

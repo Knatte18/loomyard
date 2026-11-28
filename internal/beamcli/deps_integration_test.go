@@ -85,7 +85,8 @@ func TestHubLandDeps_PushBeamRefusesWhileTheBeamHoldsLandings(t *testing.T) {
 }
 
 // TestHubLandDeps_ReadyReads drives the seams that `ready` judges a beam by over a real hub pair.
-// It reads the beam's pull_request through the per-task lookup, the beam's own worktree first and its parents' after.
+// It reads beam.pull_request for the beam through the per-task lookup.
+// That lookup reads the beam's own worktree first and its parents' after.
 // It reads whether the beam holds the parent's commits and whether it conflicts with them.
 // It also reads which beam commits a merged pull request lacks and the change description's findings.
 func TestHubLandDeps_ReadyReads(t *testing.T) {

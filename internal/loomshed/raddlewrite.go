@@ -33,7 +33,7 @@ type RaddleWriteDeps struct {
 	ApprovalPath string
 	// SplitPerch reports whether the recipe's rows hold a split perch, a Bouncer row over the proposal.
 	SplitPerch func() (bool, error)
-	// AutoApprove reports the raddle.auto_approve loom key.
+	// AutoApprove reports the loom.raddle.auto_approve key.
 	// The key is read through the run's setting lookup, so a profile's raddle block may set it.
 	AutoApprove func() (bool, error)
 	// FreshEntry reports whether the row's current attempt began with a Raddle-File return or an operator goto.
@@ -135,7 +135,7 @@ func (p *raddleWrite) Call(ctx context.Context) (shedengine.Outcome, shedengine.
 }
 
 // firstMode returns the mode the run's first call records.
-// It is perch when the recipe's rows hold a split perch, and then the raddle.auto_approve setting is never read;
+// It is perch when the recipe's rows hold a split perch, and then the loom.raddle.auto_approve setting is never read;
 // otherwise it is auto or interactive by that setting.
 func (p *raddleWrite) firstMode() (loomengine.RaddleMode, error) {
 	perch, err := p.deps.SplitPerch()

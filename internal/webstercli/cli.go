@@ -88,7 +88,8 @@ type websterCLI struct {
 	roles      map[websterengine.Role]shuttleengine.ModelChoice
 
 	// instructionFiles lists the instruction files Master's engine names, which count toward the start base; nil means none.
-	// It looks the engine up when called, so a verb that never prices a partition is never refused over the master key.
+	// It looks the engine up when called.
+	// So a verb that never prices a partition is never refused over the webster.master key.
 	instructionFiles func() ([]string, error)
 
 	// anchorRel is the hub-mode Location's anchor-relative path (loc.AnchorRel), and it is empty in standalone.

@@ -1,11 +1,11 @@
 // Package weaverengine is Weaver, the `weaver` implementer of tapestry's implementer row.
 // Weaver builds a plan's batches as cold strands and climbs a model ladder when an attempt fails.
 //
-// Its `weaver.yaml` keys are `ladder`, `fixer_timeout_min` and `verify_gate`.
-// `ladder` holds the model-specs a batch attempt climbs in order.
-// `fixer_timeout_min` is the minutes a plan-level verify fixer may run.
-// `verify_gate` is the gate key of the plan-level verify its Done rests on.
-// The local override layer cannot change `verify_gate`, since a narrower key would hollow that guard.
+// Its `weaver.yaml` keys are `weaver.ladder`, `weaver.fixer_timeout_min` and `weaver.verify_gate`.
+// `weaver.ladder` holds the model-specs a batch attempt climbs in order.
+// `weaver.fixer_timeout_min` is the minutes a plan-level verify fixer may run.
+// `weaver.verify_gate` is the gate key of the plan-level verify its Done rests on.
+// The local override layer cannot change `weaver.verify_gate`, since a narrower key would hollow that guard.
 //
 // Weaver's durable run directory is `_lym/weaver/`.
 // It holds the state file, the per-attempt reports, `journal.md`, `summary.md` and `outcome.yaml`.

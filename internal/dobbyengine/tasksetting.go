@@ -30,14 +30,14 @@ type TaskSettingChain struct {
 	Board string
 }
 
-// LookupPullRequest returns the pull_request the task at the chain's head lands by:
+// LookupPullRequest returns the beam.pull_request the task at the chain's head lands by:
 // on, off, merge or merge-in.
 // A value the key does not take is refused, naming the file that set it.
 func LookupPullRequest(chain TaskSettingChain) (string, error) {
 	return lookupTaskSetting(chain, PullRequestKey)
 }
 
-// LookupLandNotice reports whether land_notice is on for the task at the chain's head.
+// LookupLandNotice reports whether beam.land_notice is on for the task at the chain's head.
 // A task with it on asks dobby for a line to the orch once its run lands or ends without landing.
 // A value the key does not take is refused, naming the file that set it.
 func LookupLandNotice(chain TaskSettingChain) (bool, error) {
@@ -45,7 +45,7 @@ func LookupLandNotice(chain TaskSettingChain) (bool, error) {
 	return value == LandNoticeOn, err
 }
 
-// LookupAutonomy reports whether autonomy is on for the task at the chain's head.
+// LookupAutonomy reports whether beam.autonomy is on for the task at the chain's head.
 // Under it the orch settles every halt of the task's runs.
 // It reaches the operator only for a severe halt, a merge-ready beam or a raddle split's approval.
 // A value the key does not take is refused, naming the file that set it.
@@ -85,7 +85,7 @@ const HubWideSource = -1
 // and the first that sets the key decides.
 // With none set, the board's default layer decides, and then the template.
 // An envsource marker in the winning value is expanded the way a load of beam.yaml expands it.
-// autonomy answers "true" or "false".
+// beam.autonomy answers "true" or "false".
 // A value the key does not take is refused, naming the file that set it.
 func LookupWithSource(chain TaskSettingChain, key string) (value string, anchor int, err error) {
 	places := make([]configengine.Dirs, 0, len(chain.Anchors)+1)

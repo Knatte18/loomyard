@@ -447,7 +447,8 @@ func TestWatchdogDaemon(t *testing.T) {
 		return
 	}
 
-	// ReEntryReReadsFlippedConfig brings the prime session back, downs it, sets its watchdog key to off, and ups it again.
+	// ReEntryReReadsFlippedConfig ups the prime session again with its reed.watchdog key set to off.
+	// It first brings the session back and downs it.
 	// It asserts two things about re-entry.
 	// The one daemon that keeps running, never restarted and with loopDone still open, rediscovers the re-upped session.
 	// enterSession is the function the daemon's discovery loop calls for each appeared name.

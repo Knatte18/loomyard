@@ -25,7 +25,7 @@
 // A permission or input dialog that an autonomous run's pane shows past a bound is reported to the parent:
 // once per dialog, through the same notifier. The rules live in dialog.go.
 // A hold never extends run.deadline.
-// A held run is bounded by its caller's own Spec.Timeout (run_timeout_min only where that is zero).
+// A held run is bounded by its caller's own Spec.Timeout (shuttle.run_timeout_min only where that is zero).
 // The liveness check still classifies a dead pane while the run is held.
 // While an output file is missing, a turn end that leaves a fork or an awaited shell outstanding is a wait.
 // It is never a held stop, and it expires into no hold or notice.
@@ -727,11 +727,12 @@ func startupTickCap(startupTimeout, interval time.Duration) int {
 // That holds only while the file contract is unsatisfied,
 // and the error then wraps ErrNotStarted beside the mechanism failure's own sentinel.
 //
-// The window is the shorter of startup_timeout_s and the time left until run.deadline, floored at 0.
-// A run.Timeout shorter than startup_timeout_s still expires on schedule, as OutcomeTimeout rather than OutcomeDied.
+// The window is the shorter of shuttle.startup_timeout_s and the time left until run.deadline, floored at 0.
+// A run.Timeout shorter than shuttle.startup_timeout_s still expires on schedule.
+// It expires as OutcomeTimeout rather than OutcomeDied.
 // A caller can then tell a working run from one that never started.
 // That holds when the run's own deadline, not the startup window, is what ran out.
-// A startup_timeout_s of 0 has no floor: the probe answers on its first tick unless the TUI is already ready.
+// A shuttle.startup_timeout_s of 0 has no floor: the probe answers on its first tick unless the TUI is already ready.
 //
 // Every negative answer honors the Completion Signal Invariant.
 // The not-ready answer comes only from checkLivenessTick and classifyStartupWindow.

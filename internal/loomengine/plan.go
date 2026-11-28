@@ -12,9 +12,10 @@
 // the plan review is the Bouncer+Burler segment's separate job.
 // The approved settle of `Plan-Bouncer` flips `approved` to `true`, immediately before its commit seam fires.
 //
-// With plan.lenses set, the lead carries the twill directive rendered into the plan template between Step 2 and Step 3.
+// With tapestry.plan.lenses set, the lead carries the twill directive.
+// The directive is rendered into the plan template between Step 2 and Step 3.
 // Fork subagents are authorized.
-// The directive's lenses come from the lenses.yaml fan plan.lenses names.
+// The directive's lenses come from the lenses.yaml fan tapestry.plan.lenses names.
 // The lead explores, spawns one fork, fork0, to write the plan, reads the finished plan in full and self-checks it;
 // then it spawns the lens forks and judges their findings as a critical fixer.
 // The forks hold the exploration and the plan but not fork0's reasoning;
@@ -24,7 +25,7 @@
 // The lead sets ForkSubagents, so the writer may spawn subagents of type fork.
 // Forks run on the writer's model, read-only and without the Agent tool by the stencil's boilerplate.
 // The plan gates and the Plan-Review segment still bound what lands in the plan.
-// With plan.lenses empty, the prompt keeps its bytes and ForkSubagents stays false.
+// With tapestry.plan.lenses empty, the prompt keeps its bytes and ForkSubagents stays false.
 //
 // PlanTable is a pure builder: it does not stat the decision record,
 // does not stat or create `_lym/plan/`, and does not spawn anything.

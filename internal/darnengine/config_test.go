@@ -41,12 +41,12 @@ func templateConfig(mutate func(*Config)) Config {
 	return cfg
 }
 
-// withTreeScope returns the template with its tree_scope replaced by the given text after the key.
+// withTreeScope returns the template with its darn.tree_scope replaced by the given text after the key.
 func withTreeScope(trees string) string {
 	return strings.Replace(ConfigTemplate(), "tree_scope: {}", "tree_scope:"+trees, 1)
 }
 
-// TestLoadConfig covers the template's defaults, the tree_scope key, and the load's refusals.
+// TestLoadConfig covers the template's defaults, the darn.tree_scope key, and the load's refusals.
 func TestLoadConfig(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

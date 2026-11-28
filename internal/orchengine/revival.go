@@ -20,7 +20,7 @@ func StripRemoteControlArgument(line string) string {
 }
 
 // RevivalFilter returns the rewrite a reed resume or relaunch applies to a stored command line.
-// The line keeps its --remote-control argument only while the orch.yaml under dirs sets remote_control on.
+// The line keeps its --remote-control argument only while the orch.yaml under dirs sets orch.remote_control on.
 // The file is read at each call, so a change to it applies to the next revival.
 // A file that cannot be loaded cannot ask for remote control, so the argument is dropped then.
 func RevivalFilter(dirs configengine.Dirs) func(line string) string {

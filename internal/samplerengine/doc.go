@@ -1,11 +1,11 @@
 // Package samplerengine owns the sampler recipe's hub-wide configuration.
 //
 // `sampler.yaml` is a hub-wide config module with two keys.
-// `agent` is the model-spec of the sampler agent's interactive session.
-// `code_review` says whether the Code-Review perch runs on a sampler run.
+// `sampler.agent` is the model-spec of the sampler agent's interactive session.
+// `sampler.code_review` says whether the Code-Review perch runs on a sampler run.
 // Neither key is a guard.
 // A task's `run_settings` or a profile block may set `sampler.code_review` in the local layer.
-// LoadConfig loads the file strictly and validates the `agent` model-spec at load time.
+// LoadConfig loads the file strictly and validates the `sampler.agent` model-spec at load time.
 // A hub with no `sampler.yaml` loads the template's values.
 //
 // Record is the Sampler-Session row's state in one never-tracked JSON file in the run's scratch directory:

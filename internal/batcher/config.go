@@ -22,7 +22,7 @@ type config struct {
 	Profiles map[string]profile `yaml:"profiles"`
 }
 
-// profile is one named entry under batcher.yaml's profiles: key.
+// profile is one named entry under the batcher.profiles key.
 // The cost parameters are pointers so a missing key is told apart from a zero.
 // AloneAbove is a retired cost parameter;
 // it is read only so a profile still carrying it is refused, not silently ignored.

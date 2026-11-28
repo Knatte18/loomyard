@@ -91,7 +91,7 @@ type ButtonContext struct {
 	Slug     string
 	Worktree string
 	Session  string
-	// MachineButtons is desktop's buttons node, appended after reed's buttons of the same place;
+	// MachineButtons is the desktop.buttons node, appended after the reed.buttons of the same place;
 	// zero when the machine adds none.
 	MachineButtons yaml.Node
 	// Beam resolves the {beam} placeholder and is called only when the render needs it.

@@ -12,7 +12,7 @@
 // A directory the package creates is private to the user, and so is each file it writes.
 //
 // The package is told its `Geometry` and derives no path of its own, and it imports no `*cli` package.
-// It also owns the hub-wide `slack` config module, whose one key is `remind_after_min`.
+// It also owns the hub-wide `slack` config module, whose one key is `slack.remind_after_min`.
 // The channels, the operator and the tokens are never config.
 //
 // `API` is the Web API client, over `net/http` alone.

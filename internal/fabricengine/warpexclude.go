@@ -1,6 +1,6 @@
 // warpexclude.go seeds the warp exclude list into the repository's `info/exclude`.
 // The list holds the paths under a warp worktree's anchor that fabric keeps out of git in every warp worktree.
-// It is the `warp_exclude` key of fabric's config, separate from the junction name-set and never wired as a junction.
+// It is the `fabric.warp_exclude` key, separate from the junction name-set and never wired as a junction.
 
 package fabricengine
 
@@ -72,7 +72,7 @@ func SeedWarpExclude(l *lymcwd.Location) ([]string, error) {
 
 // ExcludeWayForward returns the refusal text for a path the warp exclude list does not name:
 // the path cannot be written because git would show it as untracked,
-// and it joins the list through the `warp_exclude` key in `lym config fabric`.
+// and it joins the list through the `fabric.warp_exclude` key in `lym config fabric`.
 func ExcludeWayForward(path string) string {
 	return fmt.Sprintf("%s is not on fabric's warp exclude list, so it would show as untracked; way forward: add it to the %s key in \"lym config fabric\" and run again", path, configengine.KeyName("fabric", ExcludeListKey))
 }

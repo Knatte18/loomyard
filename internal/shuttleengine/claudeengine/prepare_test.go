@@ -93,8 +93,8 @@ func engineWith(t testing.TB, claude Config) *Claude {
 	return engine
 }
 
-// engineWithInvalidConfig returns an engine over a temp anchor whose claude.local.yaml sets binary.
-// The local layer refuses the binary key.
+// engineWithInvalidConfig returns an engine over a temp anchor whose claude.local.yaml sets claude.binary.
+// The local layer refuses the claude.binary key.
 func engineWithInvalidConfig(t testing.TB) *Claude {
 	t.Helper()
 	engine, anchor := engineWithAnchor(t)

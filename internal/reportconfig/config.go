@@ -48,7 +48,7 @@ func ConfigSpec() configengine.Spec {
 
 // LoadConfig loads and unmarshals the report module's configuration through the hub-wide layer stack under dirs.
 // A hub whose base file is absent resolves the template, so a report never fails on a hub not yet reconciled.
-// It refuses a cost_min_runs under 1, naming the key and the way forward.
+// It refuses a report.cost_min_runs under 1, naming the key and the way forward.
 func LoadConfig(dirs configengine.Dirs) (Config, error) {
 	resolved, err := configengine.LoadOrTemplate(dirs, ConfigSpec())
 	if err != nil {

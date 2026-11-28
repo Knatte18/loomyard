@@ -37,7 +37,7 @@ func seedLymConfig(t *testing.T, tmpDir, module, content string) {
 	}
 }
 
-//testtiming:keep pins every shipped template default through a seeded reed.yaml: tmux and shell per GOOS, width, height, debug_log off, mouse on, window_share_max 2, window_split width and pane_memory_max_mib 8192; its covering tests run this code without asserting it
+//testtiming:keep pins every shipped template default through a seeded reed.yaml: reed.tmux and reed.shell per GOOS, reed.width, reed.height, reed.debug_log off, reed.mouse on, reed.window_share_max 2, reed.window_split width and reed.pane_memory_max_mib 8192; its covering tests run this code without asserting it
 func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 	tiergate.Require(t, 0)
 	tmpDir := t.TempDir()

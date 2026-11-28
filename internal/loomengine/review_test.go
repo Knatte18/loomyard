@@ -72,7 +72,7 @@ func TestResolveReview(t *testing.T) {
 	if !reflect.DeepEqual(settings.Code, settings.Models) {
 		t.Errorf("ResolveReview(...).Code = %+v; want the run-wide %+v", settings.Code, settings.Models)
 	}
-	// With no split lists and no raddle key, the split perch keeps the run-wide fixer.
+	// With no split lists and no loom.raddle.model key, the split perch keeps the run-wide fixer.
 	if !reflect.DeepEqual(settings.Split, settings.Models) {
 		t.Errorf("ResolveReview(...).Split = %+v; want the run-wide %+v, since raddle is empty", settings.Split, settings.Models)
 	}
@@ -132,7 +132,7 @@ func TestResolveReview(t *testing.T) {
 		t.Errorf("ResolveReview(engine registry).Models.Fix = %+v; want one entry on engine other", got)
 	}
 
-	// An unset split fixer list takes the raddle key's model while that key is set.
+	// An unset split fixer list takes the loom.raddle.model key's model while that key is set.
 	raddleSettings, err := ResolveReview(Config{Review: ReviewConfig{ReviewerModel: burlerengine.ModelSpecList{"alpha"}, FixerModel: burlerengine.ModelSpecList{"alpha"}}, Raddle: RaddleConfig{Model: "beta"}}, engineReg)
 	if err != nil {
 		t.Fatalf("ResolveReview(raddle set) = _, %v; want nil error", err)
@@ -236,7 +236,7 @@ func TestResolveReview_Assist(t *testing.T) {
 }
 
 // TestCapAssistTimeout verifies the assistant's bound is kept when it fits, and capped when it does not.
-// The chair is review.timeout_min, or the run timeout when that is 0.
+// The chair is loom.review.timeout_min, or the run timeout when that is 0.
 // The room is the chair's timeout less the start allowance and one await cap;
 // with no room left the bound is zero, and the reason names both keys.
 func TestCapAssistTimeout(t *testing.T) {
@@ -283,7 +283,7 @@ func TestCapAssistTimeout(t *testing.T) {
 
 // TestCapParentReviewWait verifies the parent's wait is kept when it fits, and capped when it does not.
 // The room is the chair's timeout less the start allowance, one await cap and the consolidation margin;
-// with no room left the wait is zero, and the reason names both keys and says to raise review.timeout_min.
+// with no room left the wait is zero, and the reason names both keys and says to raise loom.review.timeout_min.
 // Each perch takes its own timeout key; a row with no perch is the discussion perch's.
 func TestCapParentReviewWait(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -383,8 +383,9 @@ func TestCapParentJudgeWait(t *testing.T) {
 }
 
 // TestResolveJudge verifies ResolveJudge resolves each segment's judge and seed through the fallback order:
-// a segment's judge key, else judge; a segment's seed key, else seed, else the segment's resolved judge.
-// The split perch has no seed key, so its seed is seed, else its resolved judge.
+// a segment's judge key, else loom.review.judge;
+// a segment's seed key, else loom.review.seed, else the segment's resolved judge.
+// The split perch has no seed key, so its seed is loom.review.seed, else its resolved judge.
 func TestResolveJudge(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

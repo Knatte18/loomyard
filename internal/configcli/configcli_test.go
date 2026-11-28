@@ -1248,7 +1248,7 @@ func TestDispatchHubWideBoard(t *testing.T) {
 	}
 }
 
-// darnWithTreeScope returns darn's template with its tree_scope replaced by the given text after the key.
+// darnWithTreeScope returns darn's template with its darn.tree_scope replaced by the given text after the key.
 func darnWithTreeScope(trees string) string {
 	return strings.Replace(darnengine.ConfigTemplate(), "tree_scope: {}", "tree_scope:"+trees, 1)
 }

@@ -66,10 +66,10 @@ type RunView struct {
 	// Held reports whether a live pause entry of the run's own scope is a bolt-hold entry.
 	// It carries pauserecord.BoltHoldCaller, and the dobby lifts it itself.
 	Held bool
-	// NoSlot reports whether the run takes no slot under max_runs: a pawl run whose landing hold does not stand.
+	// NoSlot reports whether the run takes no slot under beam.max_runs: a pawl run whose landing hold does not stand.
 	NoSlot bool
 	// EntryEnded reports whether the run's board entry is done or gone from the board, whatever batten's state says.
-	// Such a run takes no slot under max_runs.
+	// Such a run takes no slot under beam.max_runs.
 	EntryEnded bool
 	// PairPresent reports whether the run's task worktree is still on disk.
 	PairPresent bool

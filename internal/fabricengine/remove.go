@@ -546,7 +546,7 @@ func pathPresent(path string) bool {
 
 // deleteWarpBranch deletes warpBranch from the warp repository through the destructive gate.
 // It declares the branch as the pair's own warp branch.
-// Managed-branch ownership would refuse a bare slug under the default empty branch_prefix.
+// Managed-branch ownership would refuse a bare slug under the default empty fabric.branch_prefix.
 // The gate refuses unless the branch's work is on another ref or has landed on parentBranch.
 // It reports whether the branch was deleted, else the reason it was kept.
 // An already-absent branch is neither: there is nothing to delete and nothing to explain.

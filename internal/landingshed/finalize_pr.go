@@ -47,7 +47,7 @@ type prLanding struct {
 	record pullrequest.Record
 }
 
-// beamModeUnreadableReason is the Stuck reason of a failed lookup of beam.yaml's pull_request for a landing.
+// beamModeUnreadableReason is the Stuck reason of a failed lookup of beam.pull_request for a landing.
 // err is the lookup's error.
 func beamModeUnreadableReason(err error) string {
 	return fmt.Sprintf("%s for this landing could not be read: %v; way forward: fix the beam.yaml file the error names, with lym config beam --set pull_request=<review|off|trail|merge-in> run in that worktree, or for the hub's default file with lym config beam --layer default --set pull_request=<review|off|trail|merge-in> from the prime, then run lym loom resume; a run_settings change applies from the next run", beamPullRequestName(), err)
@@ -238,7 +238,7 @@ func removePRRecord(pr PullRequestDeps, producer string) error {
 }
 
 // pullRequestLanding decides, under the parent lock, how the landing relates to the run's pull request.
-// The decision reads beam.yaml's pull_request for the landing and GitHub's rules for the parent branch.
+// The decision reads beam.pull_request for the landing and GitHub's rules for the parent branch.
 // It never reads the record alone.
 // A no closes a recorded pull request that GitHub reports open, removes the record, and lands locally.
 // A yes halts without the recorded pull request, or with a closed one the operator did not end the review of.
@@ -453,7 +453,7 @@ func pullRequestCommitTitle(title string, number int) string {
 // For a recorded pull request of a run that is not a beam's, it then reads the pull request's status.
 // When GitHub holds other text, it sets the pull request's title and body to title and message.
 // It merges with the pushed head as the expected head.
-// The merge squashes when landing.yaml's squash is set;
+// The merge squashes when landing.squash is set;
 // it always squashes for a parent that takes its pull request with no review.
 // The commit title is the title with the pull request's number in parentheses;
 // the commit message is the message passed in.

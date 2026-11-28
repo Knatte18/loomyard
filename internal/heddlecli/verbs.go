@@ -98,7 +98,7 @@ func overrideLayer(layer string) (bool, error) {
 	return false, fmt.Errorf("heddle: unknown layer %q; way forward: omit --layer for a repository entry, or give --layer %s to override a shipped entry", layer, heddleengine.OverrideLayer)
 }
 
-// requireOverrideOn refuses a new override while the hub's heddle.yaml leaves lym_override off.
+// requireOverrideOn refuses a new override while the hub leaves heddle.lym_override off.
 // Every render would otherwise ignore it.
 func (c *heddleCLI) requireOverrideOn() error {
 	cfg, err := heddleengine.LoadConfig(configengine.Dirs{Board: c.boltDir})

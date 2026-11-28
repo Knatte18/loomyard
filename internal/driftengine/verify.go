@@ -820,7 +820,7 @@ func (p *DriftVerify) tableWithParent(request JudgeRequest) (seatengine.Table, e
 }
 
 // parentAgreement returns the parent agreement entry of request's spawn, and whether the judge's table carries it.
-// It does under judge_ask_parent, and once the spawn holds an ask whatever the key now reads.
+// It does under drift.judge_ask_parent, and once the spawn holds an ask whatever the key now reads.
 // A row told no parent seat carries none.
 func (p *DriftVerify) parentAgreement(request JudgeRequest) (shuttleengine.GateEntry, bool, error) {
 	seat := p.deps.JudgeParent

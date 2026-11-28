@@ -549,7 +549,7 @@ func RecoverSpawnOrAttach(deps RecoverDeps, batchNumber int, clk Clock) (bs *Bat
 	if waitsOnParent(prior) && prior.Kind == "recovery" && strings.TrimSpace(deps.Answer) == "" {
 		return nil, false, fmt.Errorf("webster: batch %02d waits on its parent (%s), so its resume needs the parent's answer; way forward: once the parent has answered, `%s`", batchNumber, waitingNeed(prior), resumeStep(prior, batchNumber))
 	}
-	// The recovery key can change mid-run, so the spawn re-checks it ahead of anything that archives or stops.
+	// The webster.recovery key can change mid-run, so the spawn re-checks it ahead of anything that archives or stops.
 	if choice, ok := deps.Roles[RoleRecovery]; ok {
 		if err := roleAuditEngine(deps.Engines, RoleRecovery, choice); err != nil {
 			return nil, false, err
@@ -647,7 +647,8 @@ func acceptAuditWayForward(deps RecoverDeps, batchNumber int) (string, error) {
 	return refusal, nil
 }
 
-// RecoveryWaitBudget is the wait one recover-batch call blocks for by default: recovery_timeout_min plus one poll tick.
+// RecoveryWaitBudget is the wait one recover-batch call blocks for by default:
+// webster.recovery_timeout_min plus one poll tick.
 // The budget always outlasts the timeout measured from spawn.
 // So a call returns at a terminal digest, or once the strand is marked dead on its timeout.
 // It never returns a running snapshot.

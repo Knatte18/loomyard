@@ -409,7 +409,7 @@ func reconcileWorktree(boardDir string, w fabriclayout.CodeWorktree, revision st
 }
 
 // carryMovedRunSettings moves the old keys of the run_settings held by the entries of the board at boardDir.
-// It also renames a renamed beam pull_request value there, which every later seed of the entry would refuse.
+// It also renames a renamed beam.pull_request value there, which every later seed of the entry would refuse.
 // It mails the hub's orch one line of what it moved and renamed.
 // A failed read or write is logged and reported as skipped, so the next walk tries again.
 func carryMovedRunSettings(boardDir, label string, hooks walkHooks) (skipped bool) {

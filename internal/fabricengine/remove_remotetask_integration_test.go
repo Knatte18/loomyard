@@ -3,7 +3,8 @@
 // Once the local step has deleted the pushed local branch, the unlanded origin copy is the only copy of the work.
 // A tip that moved after it was observed fails the lease, and without remote the origin copy is untouched.
 //
-// Every hub is built through hubforge.NewHub with an empty branch_prefix, so the pair's warp branch is the bare slug.
+// Every hub is built through hubforge.NewHub with an empty fabric.branch_prefix,
+// so the pair's warp branch is the bare slug.
 // h.CodeBare is the origin.
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 

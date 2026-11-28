@@ -795,7 +795,7 @@ func TestRecordBatch_AuditOutcomes(t *testing.T) {
 			},
 		},
 		{
-			// record-batch after the master key changed: the batch's own record decides the engine.
+			// record-batch after the webster.master key changed: the batch's own record decides the engine.
 			name:   "a batch records an engine other than the default and only that engine audits",
 			audits: oneFork,
 			prepare: func(t *testing.T, fx *recordFixture) {

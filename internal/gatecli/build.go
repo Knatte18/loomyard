@@ -27,7 +27,7 @@ const scopeBuild = "build"
 // runBuild runs the hub's build command in the build's dir, as a tied child of the platform shell.
 // It runs inside the tier holds of run, with env followed by the build's own env, and no word the call gave after `--`.
 // Its output passes to the call's stdout and into its log,
-// and the build is bounded by its own timeout_min counted from now.
+// and the build is bounded by its own gate.build.timeout_min counted from now.
 // It writes the build's run record, scope form build, for the tier it precedes, and prints its summary line.
 // It marks the build started, so no later tier runs it again.
 // ok is false when the tier must not run its command.

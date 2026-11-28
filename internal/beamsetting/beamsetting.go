@@ -30,7 +30,7 @@ const (
 	RunWatchOff = "off"
 )
 
-// The values of beam.yaml's pull_request.
+// The values of beam.pull_request.
 const (
 	// PullRequestReview lands through a pull request when the origin allows one.
 	// Its review ends on the operator's word, given on GitHub or through `lym loom pr-continue`.
@@ -46,7 +46,7 @@ const (
 	PullRequestMergeIn = "merge-in"
 )
 
-// The values of beam.yaml's land_notice.
+// The values of beam.land_notice.
 const (
 	// LandNoticeOn sends the landing notice.
 	LandNoticeOn = "on"
@@ -54,12 +54,12 @@ const (
 	LandNoticeOff = "off"
 )
 
-// PullRequestValues returns every value pull_request takes.
+// PullRequestValues returns every value beam.pull_request takes.
 func PullRequestValues() []string {
 	return []string{PullRequestReview, PullRequestOff, PullRequestTrail, PullRequestMergeIn}
 }
 
-// LandNoticeValues returns every value land_notice takes.
+// LandNoticeValues returns every value beam.land_notice takes.
 func LandNoticeValues() []string {
 	return []string{LandNoticeOn, LandNoticeOff}
 }

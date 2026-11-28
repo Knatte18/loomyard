@@ -51,7 +51,7 @@ func mustRemoveOrigin(t *testing.T, repoRoot string) {
 	gitkit.MustRun(t, repoRoot, "git", "remote", "remove", "origin")
 }
 
-// TestCleanup_PrefixSetOverBareSlugOrphan covers an orphan weft branch from before branch_prefix was set.
+// TestCleanup_PrefixSetOverBareSlugOrphan covers an orphan weft branch from before fabric.branch_prefix was set.
 // The branch is read as its bare slug, so the sweep archives and deletes it under that slug.
 //
 //testtiming:keep the archive tag of a bare-slug orphan named under archive/<slug>/ after a branch prefix was set

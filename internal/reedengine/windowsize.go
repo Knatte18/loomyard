@@ -14,7 +14,8 @@ import (
 )
 
 // ResolveShellPath is the absolute path of the configured shell, found through the executable search path.
-// An unresolvable shell is an error naming the `shell` key and its value, so the operator can set a shell that exists.
+// An unresolvable shell is an error naming the `reed.shell` key and its value,
+// so the operator can set a shell that exists.
 func ResolveShellPath(shell string) (string, error) {
 	path, err := exec.LookPath(shell)
 	if err != nil {

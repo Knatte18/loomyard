@@ -203,7 +203,7 @@ func loadTemplateConfig(t *testing.T) Config {
 // TestLoadConfig_Loads verifies each loom.yaml shape that must load.
 // Each case names only the fields its file changes, and every other field must equal the template's own load,
 // so a key added to the template leaves the table alone.
-// Zero timeouts must load as zero, since shuttleengine.Spec reads zero as "defer to shuttle's run_timeout_min",
+// Zero timeouts must load as zero, since shuttleengine.Spec reads zero as "defer to shuttle.run_timeout_min",
 // so the negative guard must not sweep them up.
 func TestLoadConfig_Loads(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -765,7 +765,7 @@ func writeLocalLoomConfig(t *testing.T, anchor, contents string) string {
 	return localPath
 }
 
-// TestSetDiscussionAdvisors_LoadsBack verifies the discussion.advisors round trip.
+// TestSetDiscussionAdvisors_LoadsBack verifies the loom.discussion.advisors round trip.
 // A list of name and model mappings written through configengine.Set must load back as the same advisors.
 func TestSetDiscussionAdvisors_LoadsBack(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -1307,7 +1307,7 @@ func TestConfigTemplate_ContainsEveryConfigYAMLTag(t *testing.T) {
 	}
 }
 
-// TestConfigTemplate_ImplementerDefaultsToWebsterAndAcceptsALocalValue pins the implementer key.
+// TestConfigTemplate_ImplementerDefaultsToWebsterAndAcceptsALocalValue pins the tapestry.implementer key.
 // No config struct carries it, since the recipe reads it where it builds the Implementer row.
 // tapestry.yaml's template defaults it to webster.
 // TapestryConfigSpec leaves it unguarded, so the local layer may set it.

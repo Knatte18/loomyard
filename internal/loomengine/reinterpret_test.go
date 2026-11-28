@@ -11,7 +11,7 @@ import (
 )
 
 // TestFlagCodeAutoAccept pins the outcomes of the check.
-// A file that sets code.auto_accept to true is flagged with the way forward and left unchanged.
+// A file that sets loom.code.auto_accept to true is flagged with the way forward and left unchanged.
 // A file that sets none, and an absent file, are flagged too, since they take the template default of true.
 // A file that sets it to false is neither changed nor flagged.
 // A file that is no mapping, or sets a value that is no bool, fails.

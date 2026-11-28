@@ -36,13 +36,13 @@ func ArbiterMaxSpawnsName() string {
 // tacklerDefaultModelSpec is the model-spec an empty tackler key takes.
 const tacklerDefaultModelSpec = "haiku"
 
-// tacklerDefaultTimeout is the timeout a zero tackler_timeout_min takes.
+// tacklerDefaultTimeout is the timeout a zero shed.tackler_timeout_min takes.
 const tacklerDefaultTimeout = 10 * time.Minute
 
 // arbiterDefaultModelSpec is the model-spec an empty arbiter key takes.
 const arbiterDefaultModelSpec = "opus[high]"
 
-// arbiterDefaultTimeout is the timeout a zero arbiter_timeout_min takes.
+// arbiterDefaultTimeout is the timeout a zero shed.arbiter_timeout_min takes.
 const arbiterDefaultTimeout = 30 * time.Minute
 
 // Config is the resolved shed.yaml: the defaults a module's Override sits over.
@@ -209,7 +209,7 @@ func CheckLocalOverride(module string, document []byte) error {
 }
 
 // ResolveDriverKind returns the driver an unseeded run is seeded with when nothing typed one:
-// the override's driver kind, else shed.yaml's, else shedrun.DriverLLM.
+// the override's driver kind, else shed.driver_kind, else shedrun.DriverLLM.
 func ResolveDriverKind(cfg Config, o Override) string {
 	if o.DriverKind != "" {
 		return o.DriverKind

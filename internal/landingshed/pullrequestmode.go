@@ -31,7 +31,7 @@ type PullRequestDecision struct {
 	// Open reports whether the landing goes through a pull request.
 	Open bool
 	// MergeAtOnce reports whether the landing opens a pull request and squash-merges it on GitHub at once, with no review.
-	// A landing whose beam.yaml pull_request is trail asks for it, and so does every beam.
+	// A landing whose beam.pull_request is trail asks for it, and so does every beam.
 	MergeAtOnce bool
 	// TrueMerge reports whether the landing keeps the task branch's history.
 	// It lands as a fast-forward or a merge commit, never a squash,
@@ -48,7 +48,7 @@ type PullRequestDecision struct {
 type BeamRecord int
 
 const (
-	// NotABeam marks a landing that is no beam's, which is decided from beam.yaml's pull_request alone.
+	// NotABeam marks a landing that is no beam's, which is decided from beam.pull_request alone.
 	NotABeam BeamRecord = iota
 	// BeamWithoutPullRequest marks a beam whose landing record holds no pull request.
 	BeamWithoutPullRequest BeamRecord = 1
@@ -65,7 +65,7 @@ type BeamPullRequest struct {
 }
 
 // ResolvePullRequest decides whether a landing goes through a pull request.
-// mode is beam.yaml's pull_request for this landing, found by the per-task lookup:
+// mode is beam.pull_request for this landing, found by the per-task lookup:
 // one of review, off, trail or merge-in.
 // A merge-in mode on a landing that is no beam's wants no pull request, whatever GitHub's rules say, and marks TrueMerge:
 // a pull request squashes away the merged commit, and the merge is reviewed again in the beam's own pull request.
@@ -86,7 +86,7 @@ type BeamPullRequest struct {
 // A task branch with no commit beyond its parent gets no pull request, even when one is wanted.
 // That is decided before any origin fact is judged, since GitHub opens no pull request on an empty branch.
 // It reads no file: the caller reads these and passes their values in.
-// These are beam.yaml's pull_request, the beam's landing record, the parent's GitHub rules and the task branch.
+// These are beam.pull_request, the beam's landing record, the parent's GitHub rules and the task branch.
 func ResolvePullRequest(mode string, beam BeamRecord, parentRuleRequired bool, origin Origin, taskHasCommits bool) PullRequestDecision {
 	isBeam := beam != NotABeam
 	modeClause := fmt.Sprintf("%s for this landing is %s", beamPullRequestName(), mode)

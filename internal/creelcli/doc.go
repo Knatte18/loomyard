@@ -48,7 +48,7 @@
 // The list comes from the machine record in the per-user state directory.
 // It starts no daemon and writes no record.
 // A hub with no GitHub repository carries `no_repository` in its place and is never trusted.
-// The `trusted_hubs` list of creel.yaml is read at each call, so a changed list applies with no daemon restart.
+// The `creel.trusted_hubs` list is read at each call, so a changed list applies with no daemon restart.
 // A corrupt record, an invalid creel.yaml and an unreadable per-user state directory each refuse with a way forward.
 //
 // GoClient is the one Go-side caller of creel, so no other module builds a creel request by hand.

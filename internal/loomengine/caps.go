@@ -35,8 +35,8 @@ func reviewPerchNames() []string {
 }
 
 // Caps resolves p's soft and hard bounce caps.
-// The soft cap is the perch's own `<perch>.max_bounces` when that is non-null, else `review.max_bounces`.
-// The hard cap is the perch's own `<perch>.hard_max_bounces` when that is above 0, else `review.hard_max_bounces`.
+// The soft cap is the perch's own `<perch>.max_bounces` when that is non-null, else `loom.review.max_bounces`.
+// The hard cap is the perch's own `<perch>.hard_max_bounces` when that is above 0, else `loom.review.hard_max_bounces`.
 func (cfg Config) Caps(p Perch) reviewbudget.Caps {
 	var ownSoft *int
 	var ownHard int

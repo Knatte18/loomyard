@@ -385,7 +385,7 @@ func (e *engineRefusalError) Unwrap() error { return shuttleengine.ErrRequiremen
 // Its text is cut at the last way-forward clause, so the message carries only one.
 // That clause is the one for the caller that supplied the keys.
 // A fixer told a fixer model key (a shed row) is moved to an engine with forks and resumed;
-// one told none (lym burler run) takes the default engine of shuttle.yaml or drops the fan from its profile.
+// one told none (lym burler run) takes shuttle.engine or drops the fan from its profile.
 func twillEngineRefusal(opts RunOpts, err error) error {
 	const wayForwardMarker = "; way forward: "
 	refusal := err.Error()

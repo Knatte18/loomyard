@@ -22,11 +22,11 @@ const (
 	// It runs between Worktree-Create and Run-Shed;
 	// the inner shed run cannot start until its seed exists.
 	NameSeedChild = "Seed-Child"
-	// NameOpenWindow is the row that opens a terminal window on the task worktree when batten.yaml's open_window is on.
+	// NameOpenWindow is the row that opens a terminal window on the task worktree when batten.open_window is on.
 	NameOpenWindow = "Open-Window"
-	// NameSeedIDE is the row that writes the task worktree's VS Code config when batten.yaml's seed_ide is on.
+	// NameSeedIDE is the row that writes the task worktree's VS Code config when batten.seed_ide is on.
 	NameSeedIDE = "Seed-IDE"
-	// NameOpenIDE is the row that opens VS Code on the task worktree when batten.yaml's open_ide is on.
+	// NameOpenIDE is the row that opens VS Code on the task worktree when batten.open_ide is on.
 	NameOpenIDE = "Open-IDE"
 	// NameRunShed is the row that runs the inner shed run inside the task worktree.
 	// Its value is durable, not its name.

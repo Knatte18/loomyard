@@ -1,9 +1,9 @@
 // Package darnengine owns the darn recipe's hub-wide configuration.
 // It also owns the tree scope classification that every darn verify site reads.
 //
-// `darn.yaml` is a hub-wide config module, so a task cannot weaken `tree_scope` through its own tree.
-// LoadConfig loads it strictly and validates the `writer` model-spec at load time.
-// It refuses a `report_dir` that leaves the worktree or has a records directory in its path.
+// `darn.yaml` is a hub-wide config module, so a task cannot weaken `darn.tree_scope` through its own tree.
+// LoadConfig loads it strictly and validates the `darn.writer` model-spec at load time.
+// It refuses a `darn.report_dir` that leaves the worktree or has a records directory in its path.
 // The Code-Review perch's settings come from `loom.yaml`.
 // The driver, tackler and arbiter keys come from `shed.yaml` alone;
 // setting one in darn.yaml is refused, naming the `shed` module.
@@ -14,7 +14,7 @@
 //
 // Tree scope applies to a diff wholly under the hub's non-production trees.
 // Each darn verify site then runs its own gate key over the touched trees' targets, in place of the key's scope.
-// `tree_scope` maps a worktree-relative tree path to its test target; an empty target means the tree has no tests.
+// `darn.tree_scope` maps a worktree-relative tree path to its test target; an empty target means the tree has no tests.
 // It is a guard key, so it is not set in the local layer or through `run_settings`.
 // LoadConfig refuses a malformed or duplicate tree key, wrapping ErrTreeScopeKey and naming the key as written.
 // TreeScopedTargets classifies a diff's changed paths; an empty path list is tree-scoped.

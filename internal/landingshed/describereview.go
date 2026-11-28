@@ -102,8 +102,8 @@ func ResetDescribeReview(table seatengine.Table) error {
 // Its budget is the sum of landing.describe_timeout_min and landing.describe_review_timeout_min.
 // The first is there because its run covers its wait for the description.
 // A writer that finishes within the first therefore leaves the review at least the second.
-// A describe_timeout_min below 1 is the budget as it stands, with nothing added.
-// An empty describe_review keeps it from starting, on the writer's model, with its end marker naming the key;
+// A landing.describe_timeout_min below 1 is the budget as it stands, with nothing added.
+// An empty landing.describe_review keeps it from starting, on the writer's model, with its end marker naming the key;
 // writer is the writer's model choice.
 // Its gate refuses a report whose first line is no verdict line.
 func describeReviewSeat(cfg Config, reg modelspec.Registry, writer shuttleengine.ModelChoice, files describeReviewFiles) (seatengine.Seat, error) {

@@ -368,7 +368,7 @@ func fixRemovalError(deps fixDeps, slug string, err error) string {
 }
 
 // hubFixDeps fills fixDeps for the failed end of the check of subject over the hub of prime.
-// The try limit is `adopt_fix_tries` of the config stack of the subject's worktree,
+// The try limit is `beam.adopt_fix_tries` of the config stack of the subject's worktree,
 // and the board's vocabulary is the prime's.
 // FixHold writes the hold of this machine with the subject's tries alone.
 // It leaves Tries and Rerun unset, which its caller sets.

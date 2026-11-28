@@ -38,7 +38,7 @@ const runLockName = "run.lock"
 // the recovery verb, the verify gate's cold fixer verb and the plan-conflict rung's plan fixer verb.
 // A prefix keeps its verb out of the background-shell wait marker, and it keeps the verb holding a gated turn end.
 // A turn waiting only on non-awaited shells is held when an output file is missing,
-// and it is not counted done inside background_shell_wait_min.
+// and it is not counted done inside shuttle.background_shell_wait_min.
 var masterAwaitedShellPrefixes = []string{"lym webster recover-batch", fixVerifyCommand, fixPlanCommand}
 
 // ErrRunBusy is returned by Run when another invocation already holds scratchDir's run.lock.
@@ -773,7 +773,7 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 		ForkSubagents: true,
 		// The Master stencil ends its turn after each backgrounded call and wakes on its completion.
 		Requires: []shuttleengine.Requirement{shuttleengine.RequirementBackgroundWake},
-		// The wait marker omits recover-batch, fix-verify and fix-plan; recovery_timeout_min bounds each.
+		// The wait marker omits recover-batch, fix-verify and fix-plan; webster.recovery_timeout_min bounds each.
 		AwaitedShellPrefixes: slices.Clone(masterAwaitedShellPrefixes),
 		Role:                 MerriamStrandRole,
 		Segment:              segmentcolor.Webster,
@@ -782,7 +782,7 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 	}
 
 	// The state-mutation lease acquired above is held across this call.
-	// It spans the provider's startup window, bounded by startup_timeout_s.
+	// It spans the provider's startup window, bounded by shuttle.startup_timeout_s.
 	// At run entry no batch forks exist yet, so the hold stalls nothing in practice.
 	verifyGate, gateNotes := NewVerifyGate(deps.Geom, deps.Config.VerifyGateAttempts, batches, deps.ParentBranch, deps.FrictionDir, verifyFixPromptPath)
 	gate := make(shuttleengine.GateSpec, 0, len(deps.Gate)+1)

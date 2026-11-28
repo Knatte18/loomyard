@@ -28,7 +28,7 @@ const (
 	renderMarkdownKey = "render_markdown"
 )
 
-// BeamPlaceholder is the text an open_files entry names to stand for the beam's slug.
+// BeamPlaceholder is the text an ide.open_files entry names to stand for the beam's slug.
 const BeamPlaceholder = "{beam}"
 
 // Config represents the resolved ide.yaml configuration.
@@ -39,7 +39,7 @@ type Config struct {
 	RenderMarkdown bool `yaml:"render_markdown"`
 }
 
-// OpenFiles holds the ordered open_files entries of each place.
+// OpenFiles holds the ordered ide.open_files entries of each place.
 // Each entry is a path relative to the worktree's anchored directory, and it may name BeamPlaceholder.
 type OpenFiles struct {
 	Prime []string `yaml:"prime"`
@@ -64,7 +64,7 @@ func ConfigSpec() configengine.Spec {
 // LoadConfig loads and unmarshals the ide module's configuration through the hub-wide layer stack under dirs.
 // A hub whose base file is absent resolves the template under the local layer present.
 // This keeps opening a window from failing on a hub not yet reconciled.
-// It refuses an open_files entry that is empty, absolute or climbs out of the worktree, naming the key.
+// It refuses an ide.open_files entry that is empty, absolute or climbs out of the worktree, naming the key.
 func LoadConfig(dirs configengine.Dirs) (Config, error) {
 	resolved, err := configengine.LoadOrTemplate(dirs, ConfigSpec())
 	if err != nil {

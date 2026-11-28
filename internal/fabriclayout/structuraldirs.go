@@ -7,7 +7,7 @@ import "github.com/Knatte18/loomyard/internal/lymdirs"
 
 // StructuralCommittedDirs returns the durable, git-tracked structural directory set: `_lym` alone.
 // Its membership is structural, never config or env-overridable (the Cwd Resolution Invariant):
-// every lym module fails without `_lym`, so an operator-editable fabric.yaml `pathspec` must not decide it.
+// every lym module fails without `_lym`, so an operator-editable `fabric.pathspec` must not decide it.
 // Injecting it in code means no config value can tear away the durable tree.
 // Each call returns a fresh slice.
 func StructuralCommittedDirs() []string {
@@ -16,7 +16,7 @@ func StructuralCommittedDirs() []string {
 
 // StructuralNeverCommittedDirs returns the machine-local, never-git-tracked structural directory set: `.lym` alone.
 // Its membership is structural, never config or env-overridable (the Cwd Resolution Invariant):
-// every lym module fails without `.lym`, so an operator-editable fabric.yaml `pathspec` must not decide it.
+// every lym module fails without `.lym`, so an operator-editable `fabric.pathspec` must not decide it.
 // Injecting it in code means no config value can leave machine-local scratch unwired.
 // Each call returns a fresh slice.
 func StructuralNeverCommittedDirs() []string {

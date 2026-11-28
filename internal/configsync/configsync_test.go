@@ -75,7 +75,7 @@ func loadLensesAt(t *testing.T, dirs configengine.Dirs) lenses.Config {
 }
 
 // lensSetFixture returns a sparse lenses.yaml document holding the given lens entries.
-// It sets lens_set to lensSet, and leaves it out when lensSet is empty.
+// It sets lenses.lens_set to lensSet, and leaves it out when lensSet is empty.
 func lensSetFixture(t *testing.T, lensSet string, entries map[string]string) string {
 	t.Helper()
 	out, err := yaml.Marshal(struct {

@@ -288,7 +288,7 @@ func ownWindowsLosingPanes(windows []windowPane, kill []string) (ending, left []
 	return ending, left
 }
 
-// relayoutSharedWindowsLocked lays out each window in windows evenly in the window_split direction.
+// relayoutSharedWindowsLocked lays out each window in windows evenly in the reed.window_split direction.
 // It also pins each window's resize hook to that layout.
 // An invalid window config skips every layout and returns the config error's text,
 // so a removal still completes.

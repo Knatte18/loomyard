@@ -122,11 +122,13 @@ type ChildArbiterStop struct {
 	// Eligible reports whether the arbiter verb would admit the stop.
 	// It is read from the arbiter eligibility rule over the status file, the escalation record and the verify record.
 	Eligible bool
-	// On reports whether the child's arbiter_max_spawns is above 0, read from the arbiter keys in shed.yaml with the recipe's module override.
+	// On reports whether the child's shed.arbiter_max_spawns is above 0.
+	// It is read from the arbiter keys in shed.yaml with the recipe's module override.
 	On bool
 	// Timeout is one arbiter spawn's resolved timeout, read from the arbiter keys in shed.yaml with the recipe's module override.
 	Timeout time.Duration
-	// SpawnsLeft reports whether the run's attempt records in its arbiter directory are fewer than arbiter_max_spawns.
+	// SpawnsLeft reports whether the run has arbiter spawns left.
+	// It holds when the attempt records in its arbiter directory are fewer than shed.arbiter_max_spawns.
 	SpawnsLeft bool
 	// Attempt reports whether an attempt exists at the stop's key; the fields below describe the newest such attempt.
 	Attempt bool
@@ -320,11 +322,12 @@ const (
 // Every field is a seam that a test replaces with a stub; the seed encoding stays behind those seams,
 // and this type never imports internal/shedrun.
 type SeedChildDeps struct {
-	// ReadBoardType returns the non-empty recipe the Board task runs: its own recipe field, else the board's default_recipe.
+	// ReadBoardType returns the non-empty recipe the Board task runs: its own recipe field, else board.default_recipe.
 	// Each call evaluates it afresh, so a recipe corrected after prime was seeded is still honoured.
 	ReadBoardType func(ctx context.Context) (string, error)
-	// ChildDriver returns the driver for the resolved recipe: prime seed's child_driver, else driver_kind, else shed.yaml.
-	// SeedChild calls it after the local overrides are written, so driver_kind is read from the layer just written.
+	// ChildDriver returns the driver for the resolved recipe.
+	// It is the prime seed's child_driver, else the recipe's driver_kind, else shed.driver_kind.
+	// SeedChild calls it after the local overrides are written, so shed.driver_kind is read from the layer just written.
 	ChildDriver func(recipe string) (string, error)
 	// ReadRunSettings returns the Board task's run profile and settings, read afresh each call; SeedChild sets the Recipe.
 	ReadRunSettings func(ctx context.Context) (RunSettings, error)

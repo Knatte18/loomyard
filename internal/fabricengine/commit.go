@@ -62,7 +62,7 @@ var spawnDetachedPushFn = SpawnDetachedPush
 //
 // Commit also refuses, before any lock, a call that would add a secret file on either side.
 // A secret file is a new path the side's file list reaches, untracked or staged as added.
-// It matches a pattern lym ships or one fabric.yaml's secret_paths adds.
+// It matches a pattern lym ships or one fabric.secret_paths adds.
 // The error names every such path with its pattern; a tracked file is never refused.
 //
 // The weft side is taken when there are weft files or snapshot tags, unless opts.SkipGit is set.

@@ -81,7 +81,7 @@
 //
 // `lym loom start` resolves the recorded parent branch, seeds the status file when absent and commits the seed.
 // A first seed clears the friction directory and pins the body hash of every installed registry stencil.
-// An unseeded run is seeded with the driver `shed.yaml`'s `driver_kind` resolves to, `llm` by default;
+// An unseeded run is seeded with the driver `shed.driver_kind` resolves to, `llm` by default;
 // a seeded run keeps its recorded driver, and no flag chooses one.
 // It brings up the worktree's tmux session, ensures the status strand and spawns the per-hub watchdog best-effort.
 // A failure of the follow-state and window selection is logged and never fails the start.
@@ -98,7 +98,7 @@
 //
 // start returns once the driver's readiness signal confirms it is up.
 // For the Go driver the signal is the driver lock being taken, which the driver holds for life.
-// For a loom driver it is the provider TUI coming up within shuttle's `startup_timeout_s`.
+// For a loom driver it is the provider TUI coming up within `shuttle.startup_timeout_s`.
 // A readiness refusal removes the driver strand, so the next start spawns a fresh one.
 //
 // # Resume
@@ -189,11 +189,12 @@
 // The driver runs it at a stop it cannot settle.
 // It spawns a cold arbiter agent through shuttle, waits for its verdict file and prints the validated verdict.
 // The arbiter's model, timeout and spawn budget come from `shed.yaml`:
-// the keys `arbiter`, `arbiter_timeout_min` and `arbiter_max_spawns`.
+// the keys `shed.arbiter`, `shed.arbiter_timeout_min` and `shed.arbiter_max_spawns`.
 // A loom recipe's own values come through its profile block's `shed` object.
 // The verb's body is `internal/shedarbiter`'s, and the eligibility rule lives in `internal/arbiterstop`.
 // The verb refuses each of these with the hand-back to the run's parent as the way forward:
-// every ineligible stop, a missing status file, an unreadable envelope, a zero `arbiter_max_spawns` and a spent budget.
+// every ineligible stop, a missing status file, an unreadable envelope and a spent budget.
+// A zero `shed.arbiter_max_spawns` is refused the same way.
 //
 // Each spawn is an attempt, and `attempt.json` is written before it,
 // so the attempt counts against the budget whatever happens next.
@@ -264,8 +265,9 @@
 // # Tackler
 //
 // The tackler is the cold agent the Go driver asks at a stop no rule settles.
-// Each call is an attempt under the run's tackler directory, counted against `tackler_max_spawns` from `attempt.json`.
-// A `tackler_max_spawns` of 0 turns the tackler off.
+// Each call is an attempt under the run's tackler directory.
+// It is counted against `shed.tackler_max_spawns` from `attempt.json`.
+// A `shed.tackler_max_spawns` of 0 turns the tackler off.
 // Its verdict is `resume`, `hand-back` or `escalate`.
 // A missing, unparseable, unsound or late verdict reads as a hand-back.
 // A tackler that changed the code worktree hands back with cause `tampered`.
@@ -312,7 +314,7 @@
 //
 // Each Bouncer row's `subject` key says what its segment judges: `document` or `code`.
 // A re-entry over an unchanged subject settles without a review,
-// and a changed one reviews only the change under `review.amend_max_bounces`.
+// and a changed one reviews only the change under `loom.review.amend_max_bounces`.
 // A code subject is the task worktree's change against the task's merge base.
 // The merge base is the merge base of HEAD with the parent tip the merge record names.
 // A run with no recorded parent branch tells no code subject, so its code segments write no records.

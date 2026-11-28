@@ -56,7 +56,7 @@ func hubLocation(t *testing.T, hub, worktreeName, anchorRel string) *lymcwd.Loca
 }
 
 // seedLoomConfigWithFriction writes <anchorPath>/_lym/config/loom.yaml with a full literal.
-// Its friction.model is the caller-chosen value; empty means Tier 2 is off.
+// Its loom.friction.model is the caller-chosen value; empty means Tier 2 is off.
 // Every key is written explicitly so the literal pins every value rather than relying on template fills.
 func seedLoomConfigWithFriction(t *testing.T, anchorPath, friction string) {
 	t.Helper()
@@ -691,7 +691,7 @@ func TestWireModule_DescriptorIsVerbatim(t *testing.T) {
 
 // TestWireHub_FrictionDirResolution covers the tolerant friction-directory resolution of wireHub.
 // It returns a non-empty directory when loom's config enables Tier 2.
-// It returns an empty directory with no error when the friction key is present but empty.
+// It returns an empty directory with no error when the loom.friction.model key is present but empty.
 // It returns an empty directory with no error when loom.yaml is absent.
 // That tolerance matters: a `lym webster` verb must never fail because an unrelated module's config could not be read.
 func TestWireHub_FrictionDirResolution(t *testing.T) {

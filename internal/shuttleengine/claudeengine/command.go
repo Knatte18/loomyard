@@ -209,7 +209,7 @@ func checkKeepWarmCap(key, value string, lifetime time.Duration) (time.Duration,
 	return capWait, nil
 }
 
-// keepWarmCapFor returns the cap string for role: its keep_warm_cap_roles entry, else keep_warm_cap.
+// keepWarmCapFor returns the cap string for role: its claude.keep_warm_cap_roles entry, else claude.keep_warm_cap.
 func keepWarmCapFor(role string, claude Config) string {
 	if value, ok := claude.KeepWarmCapRoles[role]; ok {
 		return value
@@ -222,7 +222,8 @@ func keepWarmCapFor(role string, claude Config) string {
 // It must also be below its prompt-cache lifetime.
 // The prompt-cache TTLs are resolved first, so a bad TTL is reported before a bad cap.
 // The default cap is checked against the default lifetime first.
-// Each role named in prompt_cache_ttl_roles or keep_warm_cap_roles is then checked against its own lifetime.
+// Each role named in claude.prompt_cache_ttl_roles or claude.keep_warm_cap_roles is then checked.
+// The check is against its own lifetime.
 // Roles are visited in sorted order, so the reported error is deterministic.
 func ValidateKeepWarm(claude Config) error {
 	defaultTTL, err := resolvePromptCacheTTL("", claude)
@@ -269,7 +270,7 @@ func ValidateKeepWarm(claude Config) error {
 }
 
 // KeepWarmCaps returns the cap on one keep-warm wait of a session of role, and the long cap a long gate wait uses.
-// The cap is role's keep_warm_cap_roles entry, else keep_warm_cap, from claude.yaml.
+// The cap is role's claude.keep_warm_cap_roles entry, else claude.keep_warm_cap, from claude.yaml.
 // It loads and validates claude.yaml first; a load or validation error is returned with its claude.yaml advice.
 func (c *Claude) KeepWarmCaps(role string) (time.Duration, time.Duration, error) {
 	claude, err := loadConfigOrRefuse(c.dirs)

@@ -19,13 +19,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// laterBranchPrefix is the branch_prefix the tests set after their pairs were made under the empty prefix.
+// laterBranchPrefix is the fabric.branch_prefix the tests set after their pairs were made under the empty prefix.
 const laterBranchPrefix = "hanf/"
 
-// earlierBranchPrefix is a non-empty branch_prefix a pair was made under before the prefix changed to another value.
+// earlierBranchPrefix is a non-empty fabric.branch_prefix a pair was made under before the prefix changed to another.
 const earlierBranchPrefix = "earlier/"
 
-// topologyWithPrefix returns a Topology over l's hub config with branch_prefix set to prefix.
+// topologyWithPrefix returns a Topology over l's hub config with fabric.branch_prefix set to prefix.
 // It models a prefix changed after the hub's pairs were made.
 func topologyWithPrefix(t *testing.T, l *lymcwd.Location, prefix string) *fabricengine.Topology {
 	t.Helper()
@@ -40,7 +40,7 @@ func topologyWithPrefix(t *testing.T, l *lymcwd.Location, prefix string) *fabric
 
 // pairOnOriginOnly makes slug's pair under the empty prefix and removes it locally.
 // Both its branches stay on origin.
-// It returns the hub with a Topology whose branch_prefix is laterBranchPrefix.
+// It returns the hub with a Topology whose fabric.branch_prefix is laterBranchPrefix.
 func pairOnOriginOnly(t *testing.T, slug string) (*hubforge.Hub, *fabricengine.Topology) {
 	t.Helper()
 
@@ -62,7 +62,7 @@ func pairOnOriginOnly(t *testing.T, slug string) (*hubforge.Hub, *fabricengine.T
 }
 
 // TestBranchPrefixChange_PairWithNothingLeftLocally pins that a pair left with only origin branches:
-// made under the empty prefix is still found and torn down by its bare-slug names once branch_prefix is set.
+// made under the empty prefix is still found and torn down by its bare-slug names once fabric.branch_prefix is set.
 func TestBranchPrefixChange_PairWithNothingLeftLocally(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -160,7 +160,7 @@ func TestBranchPrefixChange_PairWithNothingLeftLocally(t *testing.T) {
 }
 
 // TestPairTaskBranch_ReadsThePairItself pins PairTaskBranch's read order over one pair:
-// made under the empty prefix or an earlier one, with branch_prefix set afterwards.
+// made under the empty prefix or an earlier one, with fabric.branch_prefix set afterwards.
 func TestPairTaskBranch_ReadsThePairItself(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -255,7 +255,7 @@ func TestPairTaskBranch_ReadsThePairItself(t *testing.T) {
 
 // pairOnOriginUnderPrefixes makes slug's pair and removes it locally.
 // Origin holds its two branches under each of prefixes and not under the bare slug.
-// It returns the hub with a Topology whose branch_prefix is laterBranchPrefix, a prefix none of the pairs carries.
+// It returns the hub with a Topology whose fabric.branch_prefix is laterBranchPrefix, a prefix none of the pairs carries.
 func pairOnOriginUnderPrefixes(t *testing.T, slug string, prefixes ...string) (*hubforge.Hub, *fabricengine.Topology) {
 	t.Helper()
 

@@ -3,18 +3,18 @@
 //
 // ResolvePullRequest is the one decision of whether a landing goes through a pull request.
 // PR-Review and Finalize therefore cannot disagree.
-// It reads no file: its callers tell it the beam.yaml `pull_request` mode that the per-task lookup found for the landing.
+// It reads no file: its callers tell it the `beam.pull_request` mode that the per-task lookup found for the landing.
 // They also tell it the origin facts and whether the task branch has commits beyond its parent.
 // A yes marked MergeAtOnce is opened and squash-merged at once with no review.
 // A `merge-in` mode on a landing that is no beam's is a no marked TrueMerge.
 // So the beam keeps the parent's commit as an ancestor.
-// GitHub's rules that require a pull request count as required whatever beam.yaml says.
+// GitHub's rules that require a pull request count as required whatever beam.pull_request says.
 // A repository whose plan has no repository rules has none, so GitHub's 403 for it reads as no rule, never a failure.
 // Bound: a rule the read misses ends in a direct push GitHub refuses.
 // So does branch protection set outside repository rules.
 //
 // PR-Review takes no parent lock and never lands a run by a direct push.
-// Under beam.yaml's review the row opens the pull request and waits on it, whatever the run's autonomy.
+// Under beam.pull_request review the row opens the pull request and waits on it, whatever the run's autonomy.
 // It keeps one interactive agent session per run in the task's window, which the operator works the pull request with.
 // The session runs under the publish shell guard: it cannot push, merge, close or open a pull request.
 // The wait ends on an approval or a merge on GitHub, or on `lym loom pr-continue`.
@@ -80,7 +80,8 @@
 //
 // Landing config is hub-wide.
 // Parent-Align and Finalize read it from the board dir, never from a task worktree's `_lym/config/`.
-// A task therefore cannot weaken `deploy`, or set `deploy_branches` or `squash`, through its own tree.
+// A task therefore cannot weaken `landing.deploy`.
+// It cannot set `landing.deploy_branches` or `landing.squash` through its own tree.
 //
 // The landing commit carries the change description, the regression check and the credit block.
 // They are separated by blank lines; the credit block is plain lines, never git trailers.

@@ -91,6 +91,6 @@
 // `batten.yaml`'s keys of the same names are an `Override` of them,
 // and a loom recipe's own values come through its profile block's `shed` object.
 // In an `Override` an empty string, a zero and a null inherit.
-// A set `tackler_max_spawns` or `arbiter_max_spawns`, zero included, wins, since zero turns that role off.
+// A set `shed.tackler_max_spawns` or `shed.arbiter_max_spawns`, zero included, wins, since zero turns that role off.
 // `CheckOverride` and `CheckLocalOverride` refuse a bad value in any layer.
 package sheddriver

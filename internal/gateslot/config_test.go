@@ -113,10 +113,10 @@ const fixIt = `; fix it with "lym config gate" from the prime` + roleClause
 // baseKeys is a hub file holding the slot keys alone, so a row states only the keys it tests.
 const baseKeys = "slots: 2\n"
 
-// hubTier0 is a hub file declaring tier0, so a machine tier_parallel entry for it takes part in the load.
+// hubTier0 is a hub file declaring tier0, so a machine gate.tier_parallel entry for it takes part in the load.
 const hubTier0 = baseKeys + `tiers: {tier0: {command: x, timeout_min: 5, counter: vstest}}`
 
-// machineBadParallel is a machine file whose tier_parallel entry the load refuses.
+// machineBadParallel is a machine file whose gate.tier_parallel entry the load refuses.
 const machineBadParallel = "tier_parallel:\n  tier0: 0\n"
 
 // badParallelKey is the key a refusal of machineBadParallel names.

@@ -188,10 +188,10 @@ func (d *daemon) countLandings(now time.Time) error {
 	})
 }
 
-// tidyStep spawns the board-tidy agent at every board_tidy_every landings unless one is in flight.
+// tidyStep spawns the board-tidy agent at every beam.board_tidy_every landings unless one is in flight.
 // It also settles the agent in flight.
 // A report the agent wrote is posted to the nearest live orch by path and ends the agent;
-// an agent past board_tidy_timeout_min is ended, and its slugs carry to the next tidy.
+// an agent past beam.board_tidy_timeout_min is ended, and its slugs carry to the next tidy.
 // An agent in flight keeps the loop out of its idle backoff.
 func (d *daemon) tidyStep(ctx context.Context, now time.Time) error {
 	if d.deps.TidyShuttle == nil {

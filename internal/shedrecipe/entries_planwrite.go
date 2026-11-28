@@ -39,7 +39,7 @@ import (
 //
 // The entry adds only the lens-review closure, which shuttle evaluates in place of the "plan" closure.
 // It runs only for a run whose lead carries fork authorization.
-// The table sets that authorization exactly when tapestry.yaml's plan.lenses is set.
+// The table sets that authorization exactly when tapestry.plan.lenses is set.
 //
 // A "fixer" key on a gate element is read through splitGateFixer.
 // The fixer's Forked follows the tapestry.plan.lenses setting,
@@ -116,7 +116,7 @@ func planLensesSet(env Env) (bool, error) {
 
 // planWriteGateSpec resolves the PlanWrite row's "gates" key and sets Forked on each entry named "plan".
 // The Forked closure is loomshed.NewLensReviewPlanGate over the same roots and index.
-// Forked runs only for a run whose lead carries fork authorization, which plan.lenses in tapestry.yaml sets.
+// Forked runs only for a run whose lead carries fork authorization, which tapestry.plan.lenses sets.
 // The closure runs the plan gate's own checks plus one presence check.
 // The "plan" entry's resolution has already checked the roots and the index.
 func planWriteGateSpec(cfg Config, env Env) (shuttleengine.GateSpec, error) {

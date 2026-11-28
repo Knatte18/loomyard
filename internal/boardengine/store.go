@@ -367,15 +367,15 @@ func decodeBoardEntries(data []byte) ([]Task, error) {
 
 // EntryBeamSettings is the beam settings one board entry holds.
 type EntryBeamSettings struct {
-	// Set holds the entry's pull_request and land_notice by beam key.
+	// Set holds the entry's beam.pull_request and beam.land_notice by beam key.
 	Set map[string]string
 	// RetiredOff reports that the entry's retired pull_request is off, which carries no setting.
-	// It is false when the entry's run settings set a pull_request.
+	// It is false when the entry's run settings set a beam.pull_request.
 	RetiredOff bool
 }
 
 // BeamSettingsByEntry returns the beam settings that each board entry of boardDir's board.json holds, by entry slug.
-// An entry's settings are the pull_request and land_notice of its beam run settings,
+// An entry's settings are the beam.pull_request and beam.land_notice of its beam run settings,
 // and its retired pull_request and notify_on_land keys while they remain; a run setting wins.
 // A save drops a task's retired keys after folding them into its run settings, a pull_request of off apart,
 // and a project keeps its retired keys.

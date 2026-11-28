@@ -38,7 +38,7 @@ import (
 //
 // New refuses a recipe that does not declare `contract: loom`, naming `lym shed` as the way forward.
 //
-// A recipe whose verify_source is tree_scope also takes env.DarnVerifyAttempts, the `verify_attempts` of `darn.yaml`:
+// A recipe whose verify_source is tree_scope also takes env.DarnVerifyAttempts, the `darn.verify_attempts`:
 // New refuses a value below 1.
 // It stamps the value onto the verify gate of its build row and of the Code-Review segment's BurlerFix row.
 //

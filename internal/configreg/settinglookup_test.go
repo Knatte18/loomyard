@@ -239,7 +239,7 @@ func TestSettingLookup(t *testing.T) {
 }
 
 // writeLoomDefault returns an arranger that writes loom's default file from the template.
-// When bounces is not empty, it first sets review.max_bounces to bounces.
+// When bounces is not empty, it first sets loom.review.max_bounces to bounces.
 func writeLoomDefault(bounces string) func(t *testing.T, dirs configengine.Dirs) {
 	return func(t *testing.T, dirs configengine.Dirs) {
 		t.Helper()

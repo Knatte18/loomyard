@@ -84,10 +84,10 @@ func (c *scriptedClock) Sleep(d time.Duration) {
 
 var _ Clock = (*scriptedClock)(nil)
 
-// TestPollInterval_FloorsNonPositive pins the busy-spin guard for a poll_interval_ms below one second.
+// TestPollInterval_FloorsNonPositive pins the busy-spin guard for a shuttle.poll_interval_ms below one second.
 // Zero and negative values are floored to one second too, so Wait never ticks with a short sleep.
 //
-//testtiming:keep pins the busy-spin guard: a poll_interval_ms below one second is floored to one second, which no Wait test measures
+//testtiming:keep pins the busy-spin guard: a shuttle.poll_interval_ms below one second is floored to one second, which no Wait test measures
 func TestPollInterval_FloorsNonPositive(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {

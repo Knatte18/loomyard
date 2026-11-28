@@ -50,7 +50,8 @@ const (
 	fixerEndEscalate fixerEnd = "escalate"
 	// fixerEndSpent is a landing gate that still fails after the last turn the entry had left.
 	fixerEndSpent fixerEnd = "spent"
-	// fixerEndTimeout is a turn that outran fixer_timeout_min, or a session that outran the bound of every turn the entry had left.
+	// fixerEndTimeout is a turn that outran landing.fixer_timeout_min,
+	// or a session that outran the bound of every turn the entry had left.
 	fixerEndTimeout fixerEnd = "timeout"
 	// fixerEndNoReport is a turn that left no report, or one that does not parse.
 	fixerEndNoReport fixerEnd = "no-report"

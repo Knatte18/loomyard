@@ -619,7 +619,7 @@ func TestReflect_UnusableRecord_DiscardedAndReflectedAgain(t *testing.T) {
 // note-1 is recorded and note-2 is newer.
 // A wait that spends the whole budget archives the settled set, leaves the newer note unspawned and fails.
 // A partial spend gives the spawn the budget left as its Spec.Timeout.
-// A zero Deps.Timeout, which defers to shuttle's run_timeout_min, carries no budget:
+// A zero Deps.Timeout, which defers to shuttle.run_timeout_min, carries no budget:
 // the attach probe and the spawn both receive a zero Spec.Timeout.
 func TestReflect_AttachBudget(t *testing.T) {
 	tiergate.Require(t, 0)

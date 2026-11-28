@@ -89,7 +89,7 @@ func decodeShipped(data []byte) Store {
 
 // Layers is what a render reads besides the shipped layer.
 // Repository is the repository's store.
-// Overrides holds the lym overrides in force, and is empty while the hub's lym_override setting is off.
+// Overrides holds the lym overrides in force, and is empty while the hub's heddle.lym_override setting is off.
 // OverrideWarning is set when the setting is on but the override file did not load.
 // In that case Overrides is empty and the shipped texts stand.
 // Derived holds the entries built from the hub's config, which a render or the overview adds;
@@ -134,7 +134,7 @@ func (l Layers) Ordered() []LayeredEntry {
 }
 
 // ReadLayers loads the repository's store from the Bolt checkout boltDir.
-// It also loads the lym overrides when the hub's heddle.yaml sets lym_override.
+// It also loads the lym overrides when the hub sets heddle.lym_override.
 // An override file that does not load leaves the overrides empty and sets OverrideWarning.
 // The setting only tunes lym's own text, so a bad override file must not stop the repository's entries from reading.
 // It takes no lock; the caller does.

@@ -83,7 +83,7 @@ const failedAloneNote = "The tests that failed the last verify run were run alon
 // `StatusPassed` and `StatusSkipped` pass.
 // `StatusDirty` fails with the dirty paths.
 // `StatusFailed` fails with the exit code, the log path and the log's tail.
-// After a CPU watchdog quit, it adds the window and the `busy_quit_sec` way forward.
+// After a CPU watchdog quit, it adds the window and the `gate.busy_quit_sec` way forward.
 // The command's guard scan rejects a test file, such as one with a misplaced `//lym:guard` marker.
 // That rejection reaches the findings through the tail, with its file and line.
 // A `StatusFailed` result is unjudged when every failed run crashed its test runner with no failing test,

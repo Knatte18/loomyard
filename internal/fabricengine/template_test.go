@@ -17,16 +17,17 @@ import (
 )
 
 // TestConfigTemplate covers the generated template, resolved against an empty environment:
-// it is valid YAML carrying the branch_prefix, pathspec, warp_exclude, secret_paths and push timing keys;
-// branch_prefix and secret_paths resolve to an empty string;
-// pathspec resolves to an empty set, whatever the environment.
+// it is valid YAML carrying the push timing keys;
+// it also carries fabric.branch_prefix, fabric.pathspec, fabric.warp_exclude and fabric.secret_paths;
+// fabric.branch_prefix and fabric.secret_paths resolve to an empty string;
+// fabric.pathspec resolves to an empty set, whatever the environment.
 // _lym and .lym are structural and injected in code, so the key never supplies them;
-// an empty default leaves pathspec free to name only the optional per-repo directories the operator adds.
+// an empty default leaves fabric.pathspec free to name only the optional per-repo directories the operator adds.
 // The resolved value is whitespace-split and compared name by name, so a splitting bug cannot pass silently;
-// warp_exclude resolves to exactly CLAUDE.local.md, AGENTS.override.md, .heddle and .claude/settings.local.json;
-// and an empty pathspec leaves the routing set at its structural set alone.
+// fabric.warp_exclude resolves to exactly CLAUDE.local.md, AGENTS.override.md, .heddle and .claude/settings.local.json;
+// and an empty fabric.pathspec leaves the routing set at its structural set alone.
 //
-//testtiming:keep the config template being valid YAML with its keys, resolving to an empty branch prefix, an empty pathspec, no added secret-file pattern and the default warp exclude paths, and degrading to the structural routing set alone; coverage of its blocks by other tests does not show an assertion of this
+//testtiming:keep the config template being valid YAML with its keys, resolving to an empty branch prefix, an empty fabric.pathspec, no added secret-file pattern and the default warp exclude paths, and degrading to the structural routing set alone; coverage of its blocks by other tests does not show an assertion of this
 func TestConfigTemplate(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

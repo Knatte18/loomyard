@@ -1,4 +1,4 @@
-// denypython_integration_test.go proves the orch launch's config wiring carries the hub's deny_python into the launch.
+// denypython_integration_test.go proves the orch config wiring carries the hub's shuttle.deny_python into the launch.
 // The python hook row stays installed whatever the value.
 // The notice names Python only while the value is true.
 
@@ -18,7 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestOrchIntegration_WireCLILaunchFollowsDenyPythonAtTheDefaultLayer sets deny_python at a hub's default layer.
+// TestOrchIntegration_WireCLILaunchFollowsDenyPythonAtTheDefaultLayer sets shuttle.deny_python at a hub's default layer.
 // It wires the orch CLI over that hub, and prepares a launch on the wired engine set with the wired shuttle config.
 // The launch's system-prompt notice holds the python sentence for true and not for false.
 // The launch's settings carry the python hook's live check for both.

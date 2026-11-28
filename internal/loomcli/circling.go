@@ -269,7 +269,7 @@ func (s *circlingState) preRun(cmd *cobra.Command, args []string) error {
 // The plan perch's cap is tapestry.plan.hard_max_bounces, or loom.review.hard_max_bounces while that is 0.
 // The way forward is routed through the module that owns the key the cap resolves from,
 // and a load failure of either file is returned as is.
-// The Harden-Bouncer row's cap is hardener.yaml's hard_max_bounces, raised through the hardener module.
+// The Harden-Bouncer row's cap is hardener.hard_max_bounces, raised through the hardener module.
 func perchHardCap(location *lymcwd.Location, row string) (int, string, error) {
 	if row == loomshed.NameHardenBouncer {
 		return hardenHardCap(location)

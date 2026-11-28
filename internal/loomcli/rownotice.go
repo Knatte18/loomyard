@@ -1,4 +1,4 @@
-// rownotice.go wraps the producers of the rows loom.yaml's notify_parent_on names.
+// rownotice.go wraps the producers of the rows loom.notify_parent_on names.
 // lym mails the run's parent each time the run reaches one of them, so the parent can brief the row's agent.
 
 package loomcli

@@ -2,7 +2,7 @@
 // the skills every code-writing or code-reviewing role loads after its agents.yaml list,
 // and the hub's structure-aware rename tools.
 //
-// The module has two keys, skills and rename_tools, each an ordered list of strings.
+// The module has two keys, language.skills and language.rename_tools, each an ordered list of strings.
 // Each is classified Guard, so a worktree's local override cannot set it.
 // lym hard-codes no language: the template's lists are empty, and the operator names the hub's skills and rename tools.
 //
@@ -15,20 +15,21 @@
 // It never checks that a named skill exists.
 //
 // A content failure is an unparseable file, a local override holding any key, or a value that is not a list of strings.
-// An entry that is empty, has leading or trailing whitespace, or in rename_tools holds a line break is one too.
+// An entry that is empty, has leading or trailing whitespace, or in language.rename_tools holds a line break is one too.
 // A content failure returns an error marked configengine.ErrInvalid that wraps ErrUnusable.
 // The error names the key where there is one and ends with the way forward:
 // fix it with "lym config language" from the prime.
 // A file that is present but unreadable returns the plain read error.
 //
-// Each rename_tools entry is one rule naming the hub's structure-aware rename tool for one language and how to run it.
+// Each language.rename_tools entry is one rule.
+// It names the hub's structure-aware rename tool for one language and how to run it.
 // The empty list means no tool, so a plan with a symbol Rename pair is refused.
 //
-// A Go hub sets rename_tools to a rule built on gopls, such as:
+// A Go hub sets language.rename_tools to a rule built on gopls, such as:
 //
 //   - For a Go symbol, run `gopls rename -w <file>:#<offset> <new name>` for each symbol pair from the worktree root.
 //
-// A Python-based rename tool needs shuttle's deny_python off, since the shell guard's python row refuses it otherwise.
+// A Python-based rename tool needs shuttle.deny_python off, since the shell guard's python row refuses it otherwise.
 //
 // Load never resolves cwd itself: the caller hands it the directories (see PATTERN-cwd-resolution).
 package languageconfig

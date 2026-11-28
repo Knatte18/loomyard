@@ -40,7 +40,7 @@ func TestRenderToDisk_ShowsTheInstalledBeamModes(t *testing.T) {
 	}
 	tests := []struct {
 		name string
-		// rootPR, beamAPR and beamBPR are each place's resolved pull_request.
+		// rootPR, beamAPR and beamBPR are each place's resolved beam.pull_request.
 		rootPR, beamAPR, beamBPR boardengine.SettingValue
 		// wantLines are lines the README must hold, each whole.
 		wantLines []string

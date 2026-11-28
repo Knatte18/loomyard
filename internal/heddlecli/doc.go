@@ -17,7 +17,7 @@
 // `set <slug>` and `remove <slug>` change the repository's store, and refuse a new entry under a slug lym ships;
 // an entry the store already holds under one stays open to both.
 // With `--layer lym` they change the hub's override of a shipped entry instead, in its own file beside the store:
-// `set` takes `--text-file` alone and is refused while the hub's heddle.yaml leaves lym_override off,
+// `set` takes `--text-file` alone and is refused while the hub leaves heddle.lym_override off,
 // and `remove` drops an override whatever the setting holds.
 // `set` takes `--text-file <path>` (`-` reads stdin), `--order <n>` and `--targets <a,b>`.
 // It changes only the fields given; a new entry needs all three.

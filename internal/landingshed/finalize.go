@@ -268,7 +268,7 @@ func (fz *Finalize) flakySection() string {
 // The merge takes the pushed task head as its expected head.
 // Then the parent pair is fast-forwarded to that merge,
 // so the parent-side merge finds the parent holding the task's work.
-// A landing whose beam.yaml pull_request is trail needs no record:
+// A landing whose beam.pull_request is trail needs no record:
 // Finalize opens the pull request itself at that point and squash-merges it with no review.
 // A no marked TrueMerge never squashes the parent-side merge,
 // so the parent's history keeps the task branch's merge commits.
@@ -866,7 +866,7 @@ func (fz *Finalize) readConfigBeforeMerge() {
 // Per changed file and its module it names each key whose tip value differs from both the fork point and the parent.
 // Each named key comes with its base, tip and parent values;
 // a file that changes no key, such as a comments-only edit, and a key the parent already holds are not named.
-// beam.yaml's autonomy is never named either:
+// beam.autonomy is never named either:
 // it is the worktree's own per-task setting, so a child's value is never meant for its parent.
 // Finalize never carries those files to the parent,
 // so the notice tells the orchestrator to re-apply each change meant for the parent.
@@ -1100,7 +1100,7 @@ func (fz *Finalize) mergeAndGate(ctx context.Context, parentHandle parentMerger)
 // A passing gate removes the landing failure record and a failing one writes it.
 // The fixer and the fix review run with the parent lock freed.
 //
-// A failing gate spawns the fixer while the entry has attempts left under finalize_fix_attempts in landing.yaml.
+// A failing gate spawns the fixer while the entry has attempts left under landing.finalize_fix_attempts.
 // The attempts are read from the attempt record under the row's entry.
 // A gate whose result is a runner crash or a memory pressure stop judged no code;
 // it halts with the gate's LandingStopPrefix reason, spawning no fixer and spending no attempt.
@@ -1261,7 +1261,7 @@ func (fz *Finalize) failedGateLog(gateReason string) string {
 // A change within the caps goes on the same way.
 // So does a change a fix review approved at this HEAD, and one the operator accepted at this HEAD.
 // A change over the caps goes to the fix review, which reads only the fixer's commits,
-// and each review spends one of landing.yaml's finalize_fix_review_rounds:
+// and each review spends one of landing.finalize_fix_review_rounds:
 // an approval lets the landing go on, and the attempt record keeps the HEAD it approved,
 // so a later pass at that HEAD lands without a second review;
 // a rejection hands its findings to the fixer, on a fresh turn cap, and the fixer's fixed change is judged again;
