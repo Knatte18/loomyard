@@ -20,6 +20,14 @@
 // A multi-slot acquire first takes the drain lock, so new single-slot acquires queue behind it and cannot starve it.
 // It then takes slots in ascending order, so two multi-slot waiters never deadlock.
 // A cancelled context releases every slot and the drain lock already taken.
+//
+// A Holder's Priority ranks its wait: PriorityLockHolder, then PriorityImplementer, then PriorityOther, the zero value.
+// SlotPriority derives it from a call's gate key and whether its run holds a parent lock.
+// A waiter above PriorityOther holds an OS lock on a queue ticket at `<Dir>/queue/<priority>-<pid>-<n>.lock`.
+// While a higher ticket's lock is held, a lower acquirer takes no slot and no drain lock, even with a slot free,
+// and a lower multi-slot acquire that holds the drain lock and only part of its slots releases them all and waits again.
+// A held slot is never taken back, and a ticket file left by a crashed waiter outranks nobody.
+//
 // A `lym gate test --copies` call takes one lease of its copies' slots together through AcquireSlots.
 // It never runs BilledTier, the tier that drives a billed LLM session.
 // Every tier run prints a started line built by FormatStartedLine, which ParseStartedLines alone reads back.

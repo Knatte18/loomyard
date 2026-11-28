@@ -87,6 +87,8 @@ type Holder struct {
 	// A nested `lym gate test` run inside the slot replaces the entry for the processes it starts,
 	// so those do not carry this marker.
 	Marker string `yaml:"marker,omitempty"`
+	// Priority is the rank the holder waited with; while it waits, no acquirer of a lower one takes a slot.
+	Priority Priority `yaml:"priority,omitempty"`
 	// Slot is the number of the held slot, read from the record's file name; the record never carries it.
 	Slot int `yaml:"-"`
 }
@@ -130,9 +132,11 @@ func (p *Pool) PrebuiltDir() string {
 // While all are held, it logs the wait start, polls, and logs the wait end on acquiring.
 // While a multi-slot acquire holds the drain lock, it waits the same way.
 // The drain lock keeps a multi-slot waiter from being starved by new single-slot holders.
+// While a waiter of a priority above h.Priority waits, it waits the same way, even with a slot free.
+// From its wait's start until it returns, a holder above PriorityOther keeps a queue ticket naming its priority.
 // It imposes no deadline of its own; a caller wanting a bound passes a deadline context.
 // A cancelled context returns its error with no slot held.
-// Polling gives no FIFO order among waiters.
+// Polling gives no FIFO order among waiters of one priority.
 func (p *Pool) Acquire(ctx context.Context, h Holder) (*Lease, error) {
 	poll, err := p.prepare(&h)
 	if err != nil {
@@ -140,6 +144,8 @@ func (p *Pool) Acquire(ctx context.Context, h Holder) (*Lease, error) {
 	}
 
 	var waitStart time.Time
+	var waiting *ticket
+	defer func() { dropTicket(waiting) }()
 	for {
 		if err := ctx.Err(); err != nil {
 			return nil, fmt.Errorf("wait for gate slot: %w", err)
@@ -152,8 +158,12 @@ func (p *Pool) Acquire(ctx context.Context, h Holder) (*Lease, error) {
 		if err != nil {
 			return nil, err
 		}
+		outranked, err := p.outranked(h.Priority)
+		if err != nil {
+			return nil, err
+		}
 		var lease *Lease
-		if !draining {
+		if !draining && !outranked {
 			if lease, err = p.tryAcquireAny(limits, h); err != nil {
 				return nil, err
 			}
@@ -166,7 +176,10 @@ func (p *Pool) Acquire(ctx context.Context, h Holder) (*Lease, error) {
 		}
 		if waitStart.IsZero() {
 			waitStart = time.Now()
-			logger.Info("gate slot wait start", "site", h.Site, "worktree", h.Worktree)
+			logger.Info("gate slot wait start", "site", h.Site, "worktree", h.Worktree, "priority", int(h.Priority))
+			if waiting, err = p.queueTicket(h.Priority); err != nil {
+				return nil, err
+			}
 		}
 		sleepPoll(ctx, poll)
 	}
@@ -181,6 +194,9 @@ func (p *Pool) Acquire(ctx context.Context, h Holder) (*Lease, error) {
 // It releases the drain lock once it holds them all.
 // The drain admits one multi-slot waiter at a time.
 // Every single-slot holder finishes, so two multi-slot waiters never deadlock.
+// While a waiter of a priority above h.Priority waits, it does not take the drain lock.
+// When one starts waiting before it holds every slot, it releases the slots and the drain lock and waits again.
+// It keeps a queue ticket for its wait as Acquire does.
 // A cancelled context releases every slot and the drain lock already taken and returns its error with nothing held.
 func (p *Pool) AcquireSlots(ctx context.Context, h Holder, count int) (*Lease, error) {
 	if count == 1 {
@@ -192,27 +208,43 @@ func (p *Pool) AcquireSlots(ctx context.Context, h Holder, count int) (*Lease, e
 	}
 
 	var waitStart time.Time
-	noteWait := func() {
-		if waitStart.IsZero() {
-			waitStart = time.Now()
-			logger.Info("gate slot wait start", "site", h.Site, "worktree", h.Worktree, "slots", count)
+	var waiting *ticket
+	defer func() { dropTicket(waiting) }()
+	noteWait := func() error {
+		if !waitStart.IsZero() {
+			return nil
 		}
+		waitStart = time.Now()
+		logger.Info("gate slot wait start", "site", h.Site, "worktree", h.Worktree, "slots", count, "priority", int(h.Priority))
+		var err error
+		waiting, err = p.queueTicket(h.Priority)
+		return err
 	}
-	drain, err := p.acquireDrain(ctx, poll, noteWait)
-	if err != nil {
-		return nil, err
+	for {
+		drain, err := p.acquireDrain(ctx, h.Priority, poll, noteWait)
+		if err != nil {
+			return nil, err
+		}
+		lease, yielded, err := p.takeSlotsInOrder(ctx, h, count, poll, noteWait)
+		if err != nil {
+			return nil, errors.Join(err, drain.Release())
+		}
+		releaseErr := drain.Release()
+		if yielded {
+			if releaseErr != nil {
+				return nil, fmt.Errorf("release gate drain lock: %w", releaseErr)
+			}
+			logger.Info("gate slot wait yields to a higher priority", "site", h.Site, "worktree", h.Worktree, "slots", count)
+			continue
+		}
+		if releaseErr != nil {
+			return nil, errors.Join(fmt.Errorf("release gate drain lock: %w", releaseErr), lease.Release())
+		}
+		if !waitStart.IsZero() {
+			logger.Info("gate slot wait end", "site", h.Site, "worktree", h.Worktree, "waited", time.Since(waitStart).String())
+		}
+		return lease, nil
 	}
-	lease, err := p.takeSlotsInOrder(ctx, h, count, poll, noteWait)
-	if err != nil {
-		return nil, errors.Join(err, drain.Release())
-	}
-	if err := drain.Release(); err != nil {
-		return nil, errors.Join(fmt.Errorf("release gate drain lock: %w", err), lease.Release())
-	}
-	if !waitStart.IsZero() {
-		logger.Info("gate slot wait end", "site", h.Site, "worktree", h.Worktree, "waited", time.Since(waitStart).String())
-	}
-	return lease, nil
 }
 
 // prepare creates the slot directory, stamps h with this process and returns the poll interval.
@@ -249,20 +281,29 @@ func sleepPoll(ctx context.Context, poll time.Duration) {
 	}
 }
 
-// acquireDrain takes the drain lock, calling noteWait before each wait for another holder to release it.
-func (p *Pool) acquireDrain(ctx context.Context, poll time.Duration, noteWait func()) (*lock.FileLock, error) {
+// acquireDrain takes the drain lock, calling noteWait before each wait.
+// It waits while another holder has the drain lock or a waiter of a priority above priority waits.
+func (p *Pool) acquireDrain(ctx context.Context, priority Priority, poll time.Duration, noteWait func() error) (*lock.FileLock, error) {
 	for {
 		if err := ctx.Err(); err != nil {
 			return nil, fmt.Errorf("wait for gate drain lock: %w", err)
 		}
-		drain, acquired, err := lock.TryAcquireWriteLock(p.drainLockPath())
+		outranked, err := p.outranked(priority)
 		if err != nil {
 			return nil, err
 		}
-		if acquired {
-			return drain, nil
+		if !outranked {
+			drain, acquired, err := lock.TryAcquireWriteLock(p.drainLockPath())
+			if err != nil {
+				return nil, err
+			}
+			if acquired {
+				return drain, nil
+			}
 		}
-		noteWait()
+		if err := noteWait(); err != nil {
+			return nil, err
+		}
 		sleepPoll(ctx, poll)
 	}
 }
@@ -272,33 +313,43 @@ func (p *Pool) acquireDrain(ctx context.Context, poll time.Duration, noteWait fu
 // A count of 0, or above the current Limits().Slots, means every slot.
 // Limits are re-read at each attempt, so a lowered count takes effect.
 // It does not check the drain lock, which the caller holds.
+// Once a waiter of a priority above h.Priority waits, it releases every slot it holds and reports yielded.
 // On an error or a cancelled context it releases every slot it holds.
-func (p *Pool) takeSlotsInOrder(ctx context.Context, h Holder, count int, poll time.Duration, noteWait func()) (*Lease, error) {
-	lease := &Lease{}
+func (p *Pool) takeSlotsInOrder(ctx context.Context, h Holder, count int, poll time.Duration, noteWait func() error) (lease *Lease, yielded bool, err error) {
+	lease = &Lease{}
 	for {
 		if err := ctx.Err(); err != nil {
-			return nil, errors.Join(fmt.Errorf("wait for gate slots: %w", err), lease.Release())
+			return nil, false, errors.Join(fmt.Errorf("wait for gate slots: %w", err), lease.Release())
 		}
 		limits, err := p.readLimits()
 		if err != nil {
-			return nil, errors.Join(err, lease.Release())
+			return nil, false, errors.Join(err, lease.Release())
 		}
 		target := count
 		if target < 1 || target > limits.Slots {
 			target = limits.Slots
 		}
 		if len(lease.slots) >= target {
-			return lease, nil
+			return lease, false, nil
+		}
+		outranked, err := p.outranked(h.Priority)
+		if err != nil {
+			return nil, false, errors.Join(err, lease.Release())
+		}
+		if outranked {
+			return nil, true, lease.Release()
 		}
 		slot, acquired, err := p.tryAcquireSlot(len(lease.slots)+1, h)
 		if err != nil {
-			return nil, errors.Join(err, lease.Release())
+			return nil, false, errors.Join(err, lease.Release())
 		}
 		if acquired {
 			lease.slots = append(lease.slots, slot)
 			continue
 		}
-		noteWait()
+		if err := noteWait(); err != nil {
+			return nil, false, errors.Join(err, lease.Release())
+		}
 		sleepPoll(ctx, poll)
 	}
 }

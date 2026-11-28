@@ -23,11 +23,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/envconfig"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/proc"
 )
@@ -156,6 +158,7 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 		exe.pool = hubgeom.GateSlots(location)
 		exe.request.prebuiltStore = exe.pool.PrebuiltDir()
 		exe.slug = originSlug(location)
+		exe.priority = gateslot.SlotPriority(request.gate, holdsParentLock(location, exe.slug))
 		if inherited := os.Getenv(gateslot.InheritEnv); inherited != "" && exe.pool.Inherited(inherited) {
 			logger.Info("gate test: running inside the slot an enclosing gate run holds", "slot", inherited, "dir", dir)
 			exe.inherited = true
@@ -548,6 +551,21 @@ func originSlug(location *lymcwd.Location) string {
 	return location.WorktreeName
 }
 
+// holdsParentLock reports whether the run of slug holds a live parent lock of location's hub.
+// A slug of "" holds none, and a lock store that cannot be read is logged and reads as held by none.
+func holdsParentLock(location *lymcwd.Location, slug string) bool {
+	if slug == "" {
+		return false
+	}
+	store := &parentlock.Store{Dir: parentlock.Dir(fabriclayout.BoltDir(location.HubPath))}
+	held, err := store.HeldBy(slug)
+	if err != nil {
+		logger.Warn("gate test: could not read the parent locks; the call takes its slots as a run holding none", "cause", err)
+		return false
+	}
+	return held
+}
+
 // execution holds the state of one call's tier runs after planning.
 // It records where slots come from, the environment the tiers get, and where their records go.
 type execution struct {
@@ -563,7 +581,9 @@ type execution struct {
 	env       []string
 	runLogDir string
 	slug      string
-	tierList  []int
+	// priority is the rank every tier of the call waits for its slots with.
+	priority gateslot.Priority
+	tierList []int
 	// guards maps tier to directory to guard names, which the plan's guard runs are built over.
 	guards map[int]map[string][]string
 	// green is the green record the call uses; nil when the worktree is dirty or it cannot apply, so every tier runs.
@@ -705,7 +725,7 @@ func (e *execution) runWithSlots(run tierRun, empty bool, body func(env []string
 			}
 			count, copiesRun = copyLease(e.request.copies, run.tier.Slots, limits.Slots)
 		}
-		lease, code := acquireSlot(e.ctx, e.out, e.pool, e.location, e.request, tierName(run.number), count)
+		lease, code := acquireSlot(e.ctx, e.out, e.pool, e.location, e.request, tierName(run.number), count, e.priority)
 		if lease == nil {
 			return runEnd{code: code, halt: true}
 		}
@@ -816,11 +836,11 @@ func runMarkerEntry(pid int) string {
 	return enclosingGateEnv + "=" + strconv.Itoa(pid)
 }
 
-// acquireSlot takes count slots of pool for tier.
+// acquireSlot takes count slots of pool for tier, waiting with priority.
 // It keeps a wait record in the worktree's wait directory until the acquire returns.
 // The wait has no cap of its own: it ends when the slots free or ctx is cancelled.
 // It returns the held lease, or a nil lease and the exit code to return, 1 for any failure, a cancelled ctx included.
-func acquireSlot(ctx context.Context, out io.Writer, pool *gateslot.Pool, location *lymcwd.Location, request testRequest, tier string, count int) (*gateslot.Lease, int) {
+func acquireSlot(ctx context.Context, out io.Writer, pool *gateslot.Pool, location *lymcwd.Location, request testRequest, tier string, count int, priority gateslot.Priority) (*gateslot.Lease, int) {
 	site := strings.TrimSpace(siteLabelPrefix + " " + tier + " " + strings.Join(request.targets, " "))
 	if request.phase != nil {
 		request.phase(runPhase{State: phaseSlots, Tier: tier})
@@ -832,7 +852,7 @@ func acquireSlot(ctx context.Context, out io.Writer, pool *gateslot.Pool, locati
 		defer os.Remove(waitPath)
 	}
 
-	holder := gateslot.Holder{Worktree: location.WorktreePath(), Site: site, Tier: tier, Marker: runMarkerEntry(os.Getpid())}
+	holder := gateslot.Holder{Worktree: location.WorktreePath(), Site: site, Tier: tier, Marker: runMarkerEntry(os.Getpid()), Priority: priority}
 	lease, err := pool.AcquireSlots(ctx, holder, count)
 	switch {
 	case err == nil:

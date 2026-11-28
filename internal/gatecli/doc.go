@@ -301,6 +301,10 @@
 // The wait of a call that runs in this process has no cap and ends when the slots free.
 // An interrupt cancels the wait and exits 128 plus the signal number.
 // A tier with `slots: all` holds every slot and waits behind the pool's drain.
+// The holder carries the call's slot priority, read once before the first tier.
+// A call whose worktree's run holds a live parent lock of the hub waits first.
+// A `card` or `batch` call waits next, and every other call last.
+// A parent lock store that cannot be read is logged and reads as no lock held.
 // Bound: a gate tier holds its slots for at most its `gate.tiers.<tier>.timeout_min`.
 // The build step holds its slots for at most `gate.build.timeout_min`.
 // Outside a hub the tiers run unslotted.
