@@ -333,70 +333,107 @@ func gitShow(t *testing.T, dir, spec string) []byte {
 	return out
 }
 
-// TestBattenIntegration_Rows runs the end-to-end rows over one hubforge hub.
+// rowStep is one step of an end-to-end rows group: a name and the function that runs it over the group's hub.
+type rowStep struct {
+	name string
+	run  func(t *testing.T, h *hubforge.Hub)
+}
+
+// TestBattenIntegration_Rows runs the end-to-end rows in groups, each over a hubforge hub of its own.
+// The groups run in parallel, and the steps of one group run one after another on its hub.
 // Each step gets its own slug, so its pair, branches and records stay apart from every other step's.
-// The steps share only the hub itself: its prime worktree, records origin and board.
+// The steps of a group share only the hub itself: its prime worktree, records origin and board.
 // A step that changes the hub for the next one restores it before returning.
-// The last step is the exception: it dirties the prime worktree.
-// It therefore relies on running after every step that creates a pair.
-// The test calls t.Parallel, but no step does: the steps serialise on that one shared hub.
+// A step that leaves the hub changed in a way a later step would trip on runs last in its group.
+// The dirtied prime is one such change.
+// A failed step ends its group, and the other groups run on.
 //
 //testtiming:keep the start-cost step pins the start-cost bound on a Command row beyond its status commit and its process, a wall-clock bound no other test asserts
 func TestBattenIntegration_Rows(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	steps := []struct {
-		name string
-		run  func(t *testing.T, h *hubforge.Hub)
+	groups := []struct {
+		name  string
+		steps []rowStep
 	}{
-		{"SeedChild_WritesASeedTheChildBootstrapAgreesWith", stepSeedChild_WritesASeedTheChildBootstrapAgreesWith},
-		{"SeedChild_WriteSeedRewrapsARealDisagreeingChildSeed", stepSeedChild_WriteSeedRewrapsARealDisagreeingChildSeed},
-		{"SeedChild_WritesTheRunSettingsIntoThePairsLocalLayer", stepSeedChild_WritesTheRunSettingsIntoThePairsLocalLayer},
-		{"RealReadStatus_OnAFreshPairReportsAbsentRatherThanErroring", stepRealReadStatus_OnAFreshPairReportsAbsentRatherThanErroring},
-		{"FourRowRun_SeedsChildCommitsAndTearsDown", stepFourRowRun_SeedsChildCommitsAndTearsDown},
-		{"Teardown_AlreadyGonePairFinishesItsBranchDeletion", stepTeardown_AlreadyGonePairFinishesItsBranchDeletion},
-		{"Teardown_FailedRemoteDeletionHaltsResumably", stepTeardown_FailedRemoteDeletionHaltsResumably},
-		{"Teardown_UnreachableRemoteHaltsBeforeRemovalResumably", stepTeardown_UnreachableRemoteHaltsBeforeRemovalResumably},
-		{"Teardown_AlreadyGonePairWithNoBranchIsDone", stepTeardown_AlreadyGonePairWithNoBranchIsDone},
-		{"Teardown_ResumedRowWhosePairIsGoneFinishesDone", stepTeardown_ResumedRowWhosePairIsGoneFinishesDone},
-		{"StepDrivenRunShed_ReturnsOnTheChildsStateChange", stepStepDrivenRunShed_ReturnsOnTheChildsStateChange},
-		{"RunShedPausedChild_WaitsThenTearsDownOnceDone", stepRunShedPausedChild_WaitsThenTearsDownOnceDone},
-		{"CreateRow_IsIdempotentAgainstAnAlreadyPresentWorktree", stepCreateRow_IsIdempotentAgainstAnAlreadyPresentWorktree},
-		{"CreateRow_PairWithoutOriginRecordIsIncomplete", stepCreateRow_PairWithoutOriginRecordIsIncomplete},
-		{"CreateRow_LeftoverBranchIsRewordedForPrime", stepCreateRow_LeftoverBranchIsRewordedForPrime},
-		{"CreateRow_IncompletePairRefusesRatherThanSkippingAdd", stepCreateRow_IncompletePairRefusesRatherThanSkippingAdd},
-		{"MidListResume_SkipsTheCompletedCreateRow", stepMidListResume_SkipsTheCompletedCreateRow},
-		{"NonPrimeRefusal", stepNonPrimeRefusal},
-		{"RecordsPrimeRefusal", stepRecordsPrimeRefusal},
-		{"Teardown_ReEntryAfterCompletedRemovalIsDone", stepTeardown_ReEntryAfterCompletedRemovalIsDone},
-		{"Teardown_SiblingDirtOutsideRecordPathsRefusesShutdown", stepTeardown_SiblingDirtOutsideRecordPathsRefusesShutdown},
-		{"PairDirNamesTheTaskWorktree", stepPairDirNamesTheTaskWorktree},
-		{"AwaitingChildDoneTeardown_ArchivesTheRunRecords", stepAwaitingChildDoneTeardown_ArchivesTheRunRecords},
-		{"SeedChild_IgnoresPrimesCommittedBattenRecords", stepSeedChild_IgnoresPrimesCommittedBattenRecords},
-		{"RealReadStatus_IgnoresPrimesCommittedStatusForTheSameSlug", stepRealReadStatus_IgnoresPrimesCommittedStatusForTheSameSlug},
-		{"MarkWatched_HoldsTheMarkerOnlyWhileItsNoticesReachTheDriversParent", stepMarkWatched_HoldsTheMarkerOnlyWhileItsNoticesReachTheDriversParent},
-		{"StopReport_ReadsTheParkMarkersContentAndTime", stepStopReport_ReadsTheParkMarkersContentAndTime},
-		{"TaskWorktreeSeams_RunGitOnlyUntilTheFirstResolution", stepTaskWorktreeSeams_RunGitOnlyUntilTheFirstResolution},
-		{"Status_FlagsAHaltedBattenOverADoneChild", stepStatusFlagsAHaltedBattenOverADoneChild},
-		{"CommandRows_RunTheBoardDefaultCommandsWithEverySwitchOn", posixOnly(stepCommandRows_RunTheBoardDefaultCommandsWithEverySwitchOn)},
-		{"CommandRows_IgnoreACommandSetInTheTasksTrackedLayer", posixOnly(stepCommandRows_IgnoreACommandSetInTheTasksTrackedLayer)},
-		{"CommandRows_FollowTheTasksLocalSwitch", posixOnly(stepCommandRows_FollowTheTasksLocalSwitch)},
-		{"CommandRows_ResumeAtARowAnOlderBinaryLeftStanding", posixOnly(stepCommandRows_ResumeAtARowAnOlderBinaryLeftStanding)},
-		{"RunRowCommand_ReportsATimeoutAndAnExitCode", posixOnly(stepRunRowCommand_ReportsATimeoutAndAnExitCode)},
-		{"StartCost_CommandRowsCostUnderTheBoundBeyondTheCommitAndTheProcess", posixOnly(stepStartCost_CommandRowsCostUnderTheBoundBeyondTheCommitAndTheProcess)},
-		// It must run last: it leaves the prime dirty for every step after it.
-		{"DirtyPrime_CreateRowBlocksBeforeAnythingCreated", stepDirtyPrime_CreateRowBlocksBeforeAnythingCreated},
+		{"SeedChild", []rowStep{
+			{"SeedChild_WritesASeedTheChildBootstrapAgreesWith", stepSeedChild_WritesASeedTheChildBootstrapAgreesWith},
+			{"SeedChild_WriteSeedRewrapsARealDisagreeingChildSeed", stepSeedChild_WriteSeedRewrapsARealDisagreeingChildSeed},
+			{"SeedChild_WritesTheRunSettingsIntoThePairsLocalLayer", stepSeedChild_WritesTheRunSettingsIntoThePairsLocalLayer},
+			{"RealReadStatus_OnAFreshPairReportsAbsentRatherThanErroring", stepRealReadStatus_OnAFreshPairReportsAbsentRatherThanErroring},
+			{"SeedChild_IgnoresPrimesCommittedBattenRecords", stepSeedChild_IgnoresPrimesCommittedBattenRecords},
+			{"RealReadStatus_IgnoresPrimesCommittedStatusForTheSameSlug", stepRealReadStatus_IgnoresPrimesCommittedStatusForTheSameSlug},
+		}},
+		{"FourRowRun", []rowStep{
+			{"FourRowRun_SeedsChildCommitsAndTearsDown", stepFourRowRun_SeedsChildCommitsAndTearsDown},
+		}},
+		{"TeardownRemote", []rowStep{
+			{"Teardown_AlreadyGonePairFinishesItsBranchDeletion", stepTeardown_AlreadyGonePairFinishesItsBranchDeletion},
+			{"Teardown_FailedRemoteDeletionHaltsResumably", stepTeardown_FailedRemoteDeletionHaltsResumably},
+			{"Teardown_UnreachableRemoteHaltsBeforeRemovalResumably", stepTeardown_UnreachableRemoteHaltsBeforeRemovalResumably},
+		}},
+		{"TeardownLocal", []rowStep{
+			{"Teardown_AlreadyGonePairWithNoBranchIsDone", stepTeardown_AlreadyGonePairWithNoBranchIsDone},
+			{"Teardown_ResumedRowWhosePairIsGoneFinishesDone", stepTeardown_ResumedRowWhosePairIsGoneFinishesDone},
+			{"Teardown_ReEntryAfterCompletedRemovalIsDone", stepTeardown_ReEntryAfterCompletedRemovalIsDone},
+			{"Teardown_SiblingDirtOutsideRecordPathsRefusesShutdown", stepTeardown_SiblingDirtOutsideRecordPathsRefusesShutdown},
+			{"MidListResume_SkipsTheCompletedCreateRow", stepMidListResume_SkipsTheCompletedCreateRow},
+			{"AwaitingChildDoneTeardown_ArchivesTheRunRecords", stepAwaitingChildDoneTeardown_ArchivesTheRunRecords},
+		}},
+		{"RunShed", []rowStep{
+			{"StepDrivenRunShed_ReturnsOnTheChildsStateChange", stepStepDrivenRunShed_ReturnsOnTheChildsStateChange},
+			{"RunShedPausedChild_WaitsThenTearsDownOnceDone", stepRunShedPausedChild_WaitsThenTearsDownOnceDone},
+			{"PairDirNamesTheTaskWorktree", stepPairDirNamesTheTaskWorktree},
+			{"MarkWatched_HoldsTheMarkerOnlyWhileItsNoticesReachTheDriversParent", stepMarkWatched_HoldsTheMarkerOnlyWhileItsNoticesReachTheDriversParent},
+			{"StopReport_ReadsTheParkMarkersContentAndTime", stepStopReport_ReadsTheParkMarkersContentAndTime},
+			{"TaskWorktreeSeams_RunGitOnlyUntilTheFirstResolution", stepTaskWorktreeSeams_RunGitOnlyUntilTheFirstResolution},
+			{"Status_FlagsAHaltedBattenOverADoneChild", stepStatusFlagsAHaltedBattenOverADoneChild},
+		}},
+		{"CreateRow", []rowStep{
+			{"CreateRow_IsIdempotentAgainstAnAlreadyPresentWorktree", stepCreateRow_IsIdempotentAgainstAnAlreadyPresentWorktree},
+			{"CreateRow_PairWithoutOriginRecordIsIncomplete", stepCreateRow_PairWithoutOriginRecordIsIncomplete},
+			{"CreateRow_LeftoverBranchIsRewordedForPrime", stepCreateRow_LeftoverBranchIsRewordedForPrime},
+			{"CreateRow_IncompletePairRefusesRatherThanSkippingAdd", stepCreateRow_IncompletePairRefusesRatherThanSkippingAdd},
+			{"NonPrimeRefusal", stepNonPrimeRefusal},
+			{"RecordsPrimeRefusal", stepRecordsPrimeRefusal},
+			// It must run last in its group: it leaves the prime dirty for every step after it.
+			{"DirtyPrime_CreateRowBlocksBeforeAnythingCreated", stepDirtyPrime_CreateRowBlocksBeforeAnythingCreated},
+		}},
+		{"CommandRows", []rowStep{
+			{"CommandRows_RunTheBoardDefaultCommandsWithEverySwitchOn", posixOnly(stepCommandRows_RunTheBoardDefaultCommandsWithEverySwitchOn)},
+			{"CommandRows_FollowTheTasksLocalSwitch", posixOnly(stepCommandRows_FollowTheTasksLocalSwitch)},
+			{"CommandRows_ResumeAtARowAnOlderBinaryLeftStanding", posixOnly(stepCommandRows_ResumeAtARowAnOlderBinaryLeftStanding)},
+			{"RunRowCommand_ReportsATimeoutAndAnExitCode", posixOnly(stepRunRowCommand_ReportsATimeoutAndAnExitCode)},
+			{"StartCost_CommandRowsCostUnderTheBoundBeyondTheCommitAndTheProcess", posixOnly(stepStartCost_CommandRowsCostUnderTheBoundBeyondTheCommitAndTheProcess)},
+		}},
 	}
-	for _, step := range steps {
-		if step.run == nil {
-			continue
-		}
-		if !t.Run(step.name, func(t *testing.T) { step.run(t, h) }) {
-			return
-		}
+	for _, group := range groups {
+		t.Run(group.name, func(t *testing.T) {
+			t.Parallel()
+			h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+			for _, step := range group.steps {
+				if step.run == nil {
+					continue
+				}
+				if !t.Run(step.name, func(t *testing.T) { step.run(t, h) }) {
+					return
+				}
+			}
+		})
 	}
+}
+
+// TestBattenIntegration_CommandRowsIgnoreACommandSetInTheTasksTrackedLayer runs the tracked-layer step on its own hub.
+// It does not call t.Parallel: logcapture redirects the process-global logger.
+func TestBattenIntegration_CommandRowsIgnoreACommandSetInTheTasksTrackedLayer(t *testing.T) {
+	tiergate.Require(t, 1)
+
+	run := posixOnly(stepCommandRows_IgnoreACommandSetInTheTasksTrackedLayer)
+	if run == nil {
+		return
+	}
+	run(t, hubforge.CopyHub(t, hubforge.Shape{Anchor: "."}))
 }
 
 // stepSeedChild_WritesASeedTheChildBootstrapAgreesWith drives Worktree-Create and Seed-Child for real.
@@ -2060,7 +2097,7 @@ func stepSeedChild_WritesTheRunSettingsIntoThePairsLocalLayer(t *testing.T, h *h
 }
 
 // posixOnly returns run off Windows and nil on it.
-// On Windows the step loop generates no subtest for a step whose commands are written for sh.
+// A step whose commands are written for sh is wrapped in it, and a caller runs nothing for a nil result.
 func posixOnly(run func(*testing.T, *hubforge.Hub)) func(*testing.T, *hubforge.Hub) {
 	if runtime.GOOS == "windows" {
 		return nil

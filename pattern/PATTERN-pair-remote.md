@@ -137,7 +137,7 @@ A producer that creates or destroys a task worktree never runs from inside that 
   The weft sibling is a repository of its own whose prime is itself, so the name comparison alone admits it.
   `battencli`'s pre-run therefore calls `fabricengine.RequireDrivableWorktree` ahead of the name check;
   that function is `RequireWarpWorktree` under a name a non-owner may say at all.
-  Integration test `TestBattenIntegration_Rows/RecordsPrimeRefusal` covers it.
+  Integration test `TestBattenIntegration_Rows/CreateRow/RecordsPrimeRefusal` covers it.
 
 #### Enforcement
 
