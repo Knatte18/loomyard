@@ -60,6 +60,7 @@ var testOnlyCodeAllowed = []scankit.Entry{
 	{Key: "internal/boardengine.BoardRevision", Why: "temporary: its caller, the board server, is reached by a main only once card 6 wires lym board serve"},
 	{Key: "internal/boardengine.Board.View", Why: "temporary: its caller, the board server, is reached by a main only once card 6 wires lym board serve"},
 	{Key: "internal/boardengine.Board.Expecting", Why: "temporary: its caller, the board server, is reached by a main only once card 6 wires lym board serve"},
+	{Key: "internal/boardengine.ViewerPage", Why: "temporary: its caller, the board server, is reached by a main only once card 6 wires lym board serve"},
 }
 
 // testOnlyCodeMinFunctions is the vacuous-scan floor for the functions of production files the guard examines.

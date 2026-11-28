@@ -1034,6 +1034,9 @@ func TestFabricReplay_Ledger(t *testing.T) {
 			want bool
 		}{
 			{"Readme", "README.md", true},
+			{"ViewProjection", "board-data.js", true},
+			{"ViewerPage", "board.html", true},
+			{"ViewerPageInSubdirectory", "sub/board.html", false},
 			{"ProjectFile", "project-x.md", true},
 			{"ProjectFileWithDashedSlug", "project-a-b.md", true},
 			{"EmptySlug", "project-.md", false},

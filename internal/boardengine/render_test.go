@@ -146,7 +146,7 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 		if err := json.Unmarshal(manifest, &listed); err != nil {
 			t.Fatalf("decode manifest: %v", err)
 		}
-		for _, name := range []string{boardengine.BoardDataFile} {
+		for _, name := range []string{boardengine.BoardDataFile, boardengine.BoardPageFile} {
 			if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
 				t.Errorf("%s not written: %v", name, err)
 			}

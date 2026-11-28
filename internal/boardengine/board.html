@@ -1,0 +1,910 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Board</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff;
+  --fg: #1f2328;
+  --muted: #656d76;
+  --line: #d0d7de;
+  --panel: #f6f8fa;
+  --accent: #0969da;
+  --warn: #9a6700;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0d1117;
+    --fg: #e6edf3;
+    --muted: #8b949e;
+    --line: #30363d;
+    --panel: #161b22;
+    --accent: #4493f8;
+    --warn: #d29922;
+  }
+}
+[hidden] { display: none !important; }
+body { margin: 0 auto; padding: 1rem; max-width: 70rem; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, sans-serif; }
+a { color: var(--accent); }
+header p, .muted { color: var(--muted); }
+h1 { margin: 0; font-size: 1.4rem; }
+.notice { border: 1px solid var(--warn); border-radius: 6px; padding: .5rem .75rem; margin: .5rem 0; }
+input, select, textarea, button { font: inherit; color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: .2rem .5rem; }
+button { cursor: pointer; }
+button.on { border-color: var(--accent); color: var(--accent); }
+.filters { display: flex; flex-wrap: wrap; gap: .75rem; margin: .75rem 0; }
+.group { display: flex; flex-wrap: wrap; gap: .25rem; }
+.project { margin-top: 1rem; }
+.project .project { margin-left: 1rem; border-left: 2px solid var(--line); padding-left: .75rem; }
+.project h2 { margin: 0; font-size: 1.1rem; }
+h3 { margin: .75rem 0 .25rem; font-size: .95rem; }
+.row { border-bottom: 1px solid var(--line); }
+.rowhead { display: flex; flex-wrap: wrap; gap: .5rem; width: 100%; text-align: left; border: 0; border-radius: 0; background: none; padding: .3rem 0; }
+.handle { font-family: ui-monospace, monospace; color: var(--muted); min-width: 3rem; }
+.chip { border: 1px solid var(--line); border-radius: 999px; padding: 0 .5rem; font-size: .8rem; color: var(--muted); }
+.detail { padding: 0 0 .75rem 3.5rem; }
+.columns { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-start; }
+.columns > * { flex: 1 1 20rem; }
+.fresh { background: var(--panel); border: 1px solid var(--warn); border-radius: 6px; padding: .5rem .75rem; }
+form { display: flex; flex-direction: column; gap: .4rem; margin: .5rem 0; }
+label { display: flex; flex-direction: column; font-size: .85rem; color: var(--muted); }
+label.check { flex-direction: row; gap: .4rem; }
+textarea { min-height: 8rem; font-family: ui-monospace, monospace; }
+pre { background: var(--panel); padding: .5rem; overflow: auto; white-space: pre-wrap; }
+code { font-family: ui-monospace, monospace; }
+</style>
+</head>
+<body>
+<header>
+<h1>Board</h1>
+<p id="facts"></p>
+</header>
+<div id="notice" class="notice" hidden></div>
+<div id="filters" class="filters"></div>
+<details id="create" hidden><summary>New entry</summary></details>
+<div id="removed"></div>
+<main id="board"></main>
+<script src="board-data.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  var tokenKey = "lym-board-token";
+  var retryMillis = 60000;
+  var readOnly = location.protocol === "file:";
+  var token = "";
+  var state = {
+    board: null,
+    search: "",
+    kinds: {},
+    types: {},
+    areas: {},
+    open: {},
+    drafts: {},
+    messages: {}
+  };
+  var createForm = null;
+
+  function byId(id) {
+    return document.getElementById(id);
+  }
+
+  function el(tag, className, text) {
+    var node = document.createElement(tag);
+    if (className) {
+      node.className = className;
+    }
+    if (text !== undefined) {
+      node.textContent = text;
+    }
+    return node;
+  }
+
+  function button(text, onClick) {
+    var node = el("button", "", text);
+    node.type = "button";
+    node.addEventListener("click", onClick);
+    return node;
+  }
+
+  function showNotice(text) {
+    var notice = byId("notice");
+    notice.textContent = text;
+    notice.hidden = !text;
+  }
+
+  // Markdown subset. The whole body is escaped before any of it is turned into markup.
+
+  function escapeHTML(text) {
+    return text.replace(/\u0000/g, "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  // safeTarget returns the link target to keep, or null when the link renders as plain text.
+  function safeTarget(raw) {
+    var target = raw.replace(/^[\u0000- ]+|[\u0000- ]+$/g, "").replace(/[\t\r\n]/g, "");
+    var scheme = /^([a-z][a-z0-9+.\-]*):/i.exec(target);
+    if (scheme) {
+      var name = scheme[1].toLowerCase();
+      return name === "http" || name === "https" ? target : null;
+    }
+    return /^[\/\\]{2}/.test(target) ? null : target;
+  }
+
+  function emphasis(text) {
+    return text
+      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+      .replace(/(^|[^*\w])\*([^*\s][^*]*)\*/g, "$1<em>$2</em>")
+      .replace(/(^|[^_\w])_([^_\s][^_]*)_(?!\w)/g, "$1<em>$2</em>");
+  }
+
+  function inline(text) {
+    return text.split(/(`[^`]*`)/).map(function (part, index) {
+      if (index % 2 === 1) {
+        return "<code>" + part.slice(1, -1) + "</code>";
+      }
+      var links = [];
+      var held = part.replace(/\[([^\]]*)\]\(([^)]*)\)/g, function (whole, label, raw) {
+        var target = safeTarget(raw);
+        links.push(target === null ? whole : '<a href="' + target + '" rel="noreferrer">' + emphasis(label) + "</a>");
+        return "\u0000" + (links.length - 1) + "\u0000";
+      });
+      return emphasis(held).replace(/\u0000(\d+)\u0000/g, function (whole, at) {
+        return links[Number(at)];
+      });
+    }).join("");
+  }
+
+  function markdown(body) {
+    var html = [];
+    var paragraph = [];
+    var list = "";
+    var fence = null;
+
+    function endParagraph() {
+      if (paragraph.length) {
+        html.push("<p>" + inline(paragraph.join("\n")) + "</p>");
+        paragraph = [];
+      }
+    }
+
+    function endList() {
+      if (list) {
+        html.push("</li></" + list + ">");
+        list = "";
+      }
+    }
+
+    escapeHTML(body).split(/\r?\n/).forEach(function (line) {
+      if (fence !== null) {
+        if (/^\s*```/.test(line)) {
+          html.push("<pre><code>" + fence.join("\n") + "</code></pre>");
+          fence = null;
+        } else {
+          fence.push(line);
+        }
+        return;
+      }
+      var heading = /^(#{1,6})\s+(.*)$/.exec(line);
+      var item = /^\s*(?:([-*+])|\d+[.)])\s+(.*)$/.exec(line);
+      if (/^\s*```/.test(line)) {
+        endParagraph();
+        endList();
+        fence = [];
+      } else if (heading) {
+        endParagraph();
+        endList();
+        var level = Math.min(heading[1].length + 3, 6);
+        html.push("<h" + level + ">" + inline(heading[2]) + "</h" + level + ">");
+      } else if (item) {
+        endParagraph();
+        var kind = item[1] ? "ul" : "ol";
+        if (list === kind) {
+          html.push("</li><li>" + inline(item[2]));
+        } else {
+          endList();
+          list = kind;
+          html.push("<" + kind + "><li>" + inline(item[2]));
+        }
+      } else if (!line.trim()) {
+        endParagraph();
+        endList();
+      } else if (list && /^\s/.test(line)) {
+        html.push(" " + inline(line.trim()));
+      } else {
+        endList();
+        paragraph.push(line);
+      }
+    });
+    if (fence !== null) {
+      html.push("<pre><code>" + fence.join("\n") + "</code></pre>");
+    }
+    endParagraph();
+    endList();
+    return html.join("\n");
+  }
+
+  // Facts about an entry.
+
+  function age(stamp) {
+    if (!stamp) {
+      return "";
+    }
+    var hours = Math.max(0, (Date.now() - Date.parse(stamp)) / 3600000);
+    if (hours < 1) {
+      return Math.floor(hours * 60) + "m";
+    }
+    if (hours < 24) {
+      return Math.floor(hours) + "h";
+    }
+    var days = Math.floor(hours / 24);
+    return days < 14 ? days + "d" : Math.floor(days / 7) + "w";
+  }
+
+  function isRunStatus(status) {
+    var at = status.indexOf(" · ");
+    return at > 0 && at + 3 < status.length;
+  }
+
+  function actionsOf(entry) {
+    if (entry.kind === "note") {
+      return ["promote"];
+    }
+    if (entry.kind !== "task") {
+      return [];
+    }
+    var actions = [];
+    if (entry.status !== "" && !isRunStatus(entry.status)) {
+      actions.push("release");
+    }
+    if (entry.status === "") {
+      actions.push("draft");
+    }
+    if (entry.status === "draft") {
+      actions.push("undraft");
+    }
+    return actions;
+  }
+
+  function fileLink(label, name) {
+    var link = el("a", "", label);
+    link.href = readOnly
+      ? "./" + encodeURIComponent(name)
+      : "/file/" + encodeURIComponent(name) + "?t=" + encodeURIComponent(token);
+    return link;
+  }
+
+  function labelsOf(entry) {
+    return entry.types.concat(entry.areas);
+  }
+
+  // projectSlug is the value a form holds for a project handle: the root is the empty slug.
+  function projectSlug(handle) {
+    var found = state.board.projects.filter(function (project) {
+      return project.handle === handle;
+    })[0];
+    if (!found) {
+      return handle;
+    }
+    return found.parent === "" ? "" : found.slug;
+  }
+
+  // Filtering.
+
+  function anyChosen(group, values) {
+    var chosen = Object.keys(group).filter(function (key) {
+      return group[key];
+    });
+    return chosen.length === 0 || values.some(function (value) {
+      return chosen.indexOf(value) >= 0;
+    });
+  }
+
+  function matches(entry) {
+    if (!anyChosen(state.kinds, [entry.kind]) || !anyChosen(state.types, entry.types) || !anyChosen(state.areas, entry.areas)) {
+      return false;
+    }
+    if (!state.search) {
+      return true;
+    }
+    var text = [entry.handle, entry.slug, entry.title, entry.brief, entry.body].join("\n").toLowerCase();
+    return text.indexOf(state.search.toLowerCase()) >= 0;
+  }
+
+  function renderFilters() {
+    var filters = byId("filters");
+    var search = byId("search");
+    if (!search) {
+      search = el("input");
+      search.id = "search";
+      search.type = "search";
+      search.placeholder = "Search";
+      search.addEventListener("input", function () {
+        state.search = search.value;
+        renderBoard();
+      });
+    }
+    var nodes = [search];
+    [["kinds", ["task", "note"]], ["types", state.board.types], ["areas", state.board.areas]].forEach(function (pair) {
+      var group = el("div", "group");
+      pair[1].forEach(function (value) {
+        var toggle = button(value, function () {
+          state[pair[0]][value] = !state[pair[0]][value];
+          toggle.className = state[pair[0]][value] ? "on" : "";
+          renderBoard();
+        });
+        toggle.className = state[pair[0]][value] ? "on" : "";
+        group.appendChild(toggle);
+      });
+      nodes.push(group);
+    });
+    var focused = document.activeElement === search;
+    filters.replaceChildren.apply(filters, nodes);
+    if (focused) {
+      search.focus();
+    }
+  }
+
+  // Forms.
+
+  function field(form, labelText, control, key, values, name) {
+    var label = el("label", "", labelText);
+    control.dataset.key = key + ":" + name;
+    control.value = values[name];
+    control.addEventListener("input", function () {
+      values[name] = control.value;
+    });
+    label.appendChild(control);
+    form.appendChild(label);
+    return label;
+  }
+
+  function projectSelect(current) {
+    var select = el("select");
+    var options = state.board.projects.map(function (project) {
+      return [projectSlug(project.handle), project.handle + " " + project.title];
+    });
+    if (!options.some(function (option) { return option[0] === current; })) {
+      options.push([current, current]);
+    }
+    options.forEach(function (option) {
+      var node = el("option", "", option[1]);
+      node.value = option[0];
+      select.appendChild(node);
+    });
+    return select;
+  }
+
+  function splitList(text) {
+    return text.split(",").map(function (part) {
+      return part.trim();
+    }).filter(Boolean);
+  }
+
+  function formValues(entry) {
+    return {
+      title: entry.title,
+      labels: labelsOf(entry).join(", "),
+      brief: entry.brief,
+      body: entry.body,
+      project: projectSlug(entry.project),
+      depends_on: ""
+    };
+  }
+
+  // draftOf returns the unsent edit of an entry, which keeps the revision it was started from.
+  function draftOf(entry) {
+    var draft = state.drafts[entry.slug];
+    if (!draft) {
+      draft = {
+        kind: entry.kind,
+        revision: entry.revision,
+        base: formValues(entry),
+        values: formValues(entry),
+        replaceDepends: false,
+        fresh: null
+      };
+    }
+    return draft;
+  }
+
+  function editFields(draft) {
+    var fields = {};
+    ["title", "brief", "body", "project"].forEach(function (name) {
+      if (draft.values[name] !== draft.base[name]) {
+        fields[name] = draft.values[name];
+      }
+    });
+    if (draft.values.labels !== draft.base.labels) {
+      fields.labels = splitList(draft.values.labels);
+    }
+    if (draft.replaceDepends) {
+      fields.depends_on = splitList(draft.values.depends_on);
+    }
+    return fields;
+  }
+
+  function editForm(entry, slug, draft) {
+    var form = el("form");
+    var key = "edit:" + slug;
+    // A form the operator has not typed in is not kept, so it follows the board.
+    form.addEventListener("input", function () {
+      state.drafts[slug] = draft;
+    });
+    field(form, "Title", el("input"), key, draft.values, "title");
+    field(form, "Labels, comma separated", el("input"), key, draft.values, "labels");
+    field(form, "Brief", el("input"), key, draft.values, "brief");
+    field(form, "Body", el("textarea"), key, draft.values, "body");
+    field(form, "Project", projectSelect(draft.values.project), key, draft.values, "project");
+    if (draft.kind === "task") {
+      var check = el("label", "check");
+      var box = el("input");
+      box.type = "checkbox";
+      box.checked = draft.replaceDepends;
+      box.dataset.key = key + ":replace";
+      box.addEventListener("change", function () {
+        draft.replaceDepends = box.checked;
+      });
+      check.appendChild(box);
+      check.appendChild(el("span", "", "Replace depends_on with the slugs below" +
+        (entry && entry.waits_on.length ? " (waiting on " + entry.waits_on.join(", ") + ")" : "")));
+      form.appendChild(check);
+      field(form, "Depends on, comma separated", el("input"), key, draft.values, "depends_on");
+    }
+    var save = el("button", "", "Save");
+    save.type = "submit";
+    form.appendChild(save);
+    form.addEventListener("submit", function (event) {
+      event.preventDefault();
+      state.drafts[slug] = draft;
+      send({ op: "edit", slug: slug, revision: draft.revision, fields: editFields(draft) });
+    });
+    return form;
+  }
+
+  function entrySummary(entry) {
+    var box = el("div", "fresh");
+    box.appendChild(el("strong", "", "The board now holds"));
+    [
+      ["Title", entry.title],
+      ["Status", entry.status],
+      ["Labels", labelsOf(entry).join(", ")],
+      ["Project", entry.project],
+      ["Waiting on", entry.waits_on.join(", ")],
+      ["Brief", entry.brief]
+    ].forEach(function (pair) {
+      box.appendChild(el("div", "", pair[0] + ": " + pair[1]));
+    });
+    box.appendChild(el("pre", "", entry.body));
+    return box;
+  }
+
+  // Writes.
+
+  function removeEntry(slug) {
+    state.board.entries = state.board.entries.filter(function (entry) {
+      return entry.slug !== slug;
+    });
+  }
+
+  function putEntry(entry) {
+    var at = state.board.entries.findIndex(function (held) {
+      return held.slug === entry.slug;
+    });
+    if (at < 0) {
+      state.board.entries.push(entry);
+    } else {
+      state.board.entries[at] = entry;
+    }
+  }
+
+  function send(write) {
+    request("/api/write", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(write)
+    }).then(function (answer) {
+      var slug = write.slug;
+      var draft = state.drafts[slug];
+      if (answer.ok) {
+        delete state.messages[slug];
+        putEntry(answer.entry);
+        if (write.op === "edit") {
+          delete state.drafts[slug];
+        } else if (write.op === "create") {
+          createForm.reset();
+          state.open[slug] = true;
+        } else if (draft) {
+          draft.revision = answer.entry.revision;
+        }
+      } else if (write.op === "create") {
+        createForm.refused(answer);
+      } else {
+        state.messages[slug] = answer.error;
+        if ("entry" in answer) {
+          if (answer.entry) {
+            putEntry(answer.entry);
+            if (draft) {
+              draft.revision = answer.entry.revision;
+              draft.fresh = answer.entry;
+            }
+          } else {
+            removeEntry(slug);
+          }
+        }
+      }
+      renderBoard();
+    }, giveUp);
+  }
+
+  function buildCreateForm() {
+    var holder = byId("create");
+    var empty = { slug: "", kind: "note", title: "", labels: "", brief: "", body: "", project: "", depends_on: "" };
+    var values = Object.assign({}, empty);
+    var form = el("form");
+    var message = el("div", "notice");
+    var existing = el("div");
+    message.hidden = true;
+    field(form, "Slug", el("input"), "create", values, "slug");
+    var kind = el("select");
+    ["note", "task"].forEach(function (value) {
+      var option = el("option", "", value);
+      option.value = value;
+      kind.appendChild(option);
+    });
+    field(form, "Kind", kind, "create", values, "kind");
+    field(form, "Title", el("input"), "create", values, "title");
+    field(form, "Labels, comma separated", el("input"), "create", values, "labels");
+    field(form, "Brief", el("input"), "create", values, "brief");
+    field(form, "Body", el("textarea"), "create", values, "body");
+    var project = field(form, "Project", projectSelect(""), "create", values, "project");
+    var depends = field(form, "Depends on, comma separated", el("input"), "create", values, "depends_on");
+    depends.hidden = true;
+    kind.addEventListener("input", function () {
+      depends.hidden = kind.value !== "task";
+    });
+    var add = el("button", "", "Create");
+    add.type = "submit";
+    form.appendChild(add);
+    form.addEventListener("submit", function (event) {
+      event.preventDefault();
+      message.hidden = true;
+      existing.replaceChildren();
+      var fields = {
+        kind: values.kind,
+        title: values.title,
+        labels: splitList(values.labels),
+        brief: values.brief,
+        body: values.body,
+        project: values.project
+      };
+      if (values.kind === "task") {
+        fields.depends_on = splitList(values.depends_on);
+      }
+      send({ op: "create", slug: values.slug.trim(), fields: fields });
+    });
+    holder.appendChild(message);
+    holder.appendChild(form);
+    holder.appendChild(existing);
+    holder.hidden = false;
+    return {
+      reset: function () {
+        Object.assign(values, empty);
+        form.reset();
+        depends.hidden = true;
+        holder.open = false;
+      },
+      refused: function (answer) {
+        message.textContent = answer.error;
+        message.hidden = false;
+        if (answer.entry) {
+          existing.replaceChildren(entrySummary(answer.entry));
+        }
+      },
+      refresh: function () {
+        var select = projectSelect(values.project);
+        var held = project.querySelector("select");
+        held.replaceChildren.apply(held, Array.from(select.childNodes));
+        held.value = values.project;
+      }
+    };
+  }
+
+  // The board.
+
+  function entryRow(entry) {
+    var row = el("div", "row");
+    var head = button("", function () {
+      state.open[entry.slug] = !state.open[entry.slug];
+      renderBoard();
+    });
+    head.className = "rowhead";
+    head.dataset.key = "row:" + entry.slug;
+    head.appendChild(el("span", "handle", entry.handle));
+    head.appendChild(el("span", "", entry.title));
+    if (entry.status) {
+      head.appendChild(el("span", "chip", entry.status));
+    }
+    labelsOf(entry).forEach(function (label) {
+      head.appendChild(el("span", "chip", label));
+    });
+    row.appendChild(head);
+    if (state.open[entry.slug]) {
+      row.appendChild(entryDetail(entry));
+    }
+    return row;
+  }
+
+  function entryDetail(entry) {
+    var detail = el("div", "detail");
+    if (state.messages[entry.slug]) {
+      detail.appendChild(el("div", "notice", state.messages[entry.slug]));
+    }
+    detail.appendChild(el("p", "", entry.brief));
+    var facts = [entry.slug, entry.kind];
+    if (entry.owner) {
+      facts.push("owner " + entry.owner);
+    }
+    if (entry.recipe) {
+      facts.push("recipe " + entry.recipe);
+    }
+    if (entry.created) {
+      facts.push("age " + age(entry.created));
+    }
+    if (entry.revised) {
+      facts.push("revised " + age(entry.revised) + " ago");
+    }
+    if (entry.waits_on.length) {
+      facts.push("after " + entry.waits_on.join(", "));
+    }
+    detail.appendChild(el("p", "muted", facts.join(" · ")));
+    var links = el("p");
+    if (entry.design_file) {
+      links.appendChild(fileLink("Design", entry.design_file));
+      links.appendChild(document.createTextNode(" "));
+    }
+    if (entry.decision_file) {
+      links.appendChild(fileLink("Decision record", entry.decision_file));
+    }
+    detail.appendChild(links);
+    var body = el("div");
+    body.innerHTML = markdown(entry.body);
+    detail.appendChild(body);
+    if (readOnly) {
+      return detail;
+    }
+    var actions = el("div", "group");
+    actionsOf(entry).forEach(function (op) {
+      actions.appendChild(button(op, function () {
+        send({ op: op, slug: entry.slug, revision: entry.revision, fields: {} });
+      }));
+    });
+    detail.appendChild(actions);
+    var draft = draftOf(entry);
+    var columns = el("div", "columns");
+    columns.appendChild(editForm(entry, entry.slug, draft));
+    if (draft.fresh) {
+      columns.appendChild(entrySummary(draft.fresh));
+    }
+    detail.appendChild(columns);
+    return detail;
+  }
+
+  function projectNode(project, children, bySection) {
+    var entries = bySection[project.handle] || {};
+    var node = el("section", "project");
+    var count = 0;
+    var heading = el("h2", "", project.handle + " " + project.title);
+    node.appendChild(heading);
+    if (project.brief) {
+      node.appendChild(el("p", "muted", project.brief));
+    }
+    if (project.design_file) {
+      node.appendChild(fileLink("Design", project.design_file));
+    }
+    (children[project.handle] || []).forEach(function (child) {
+      var built = projectNode(child, children, bySection);
+      if (built) {
+        count += built.count;
+        node.appendChild(built.node);
+      }
+    });
+    var sections = state.board.sections.slice();
+    Object.keys(entries).forEach(function (name) {
+      if (sections.indexOf(name) < 0) {
+        sections.push(name);
+      }
+    });
+    sections.forEach(function (name) {
+      var held = entries[name];
+      if (!held) {
+        return;
+      }
+      count += held.length;
+      node.appendChild(el("h3", "", name + " (" + held.length + ")"));
+      held.forEach(function (entry) {
+        node.appendChild(entryRow(entry));
+      });
+    });
+    if (!count) {
+      return null;
+    }
+    heading.textContent += " (" + count + ")";
+    return { node: node, count: count };
+  }
+
+  // removedDrafts keeps the unsent text of an edit whose entry the board no longer holds.
+  function removedDrafts() {
+    var held = {};
+    state.board.entries.forEach(function (entry) {
+      held[entry.slug] = true;
+    });
+    return Object.keys(state.drafts).filter(function (slug) {
+      return !held[slug];
+    }).map(function (slug) {
+      var box = el("div", "notice");
+      box.appendChild(el("p", "", state.messages[slug] || "Entry " + slug + " is no longer on the board."));
+      box.appendChild(editForm(null, slug, state.drafts[slug]));
+      box.appendChild(button("Discard this edit", function () {
+        delete state.drafts[slug];
+        delete state.messages[slug];
+        renderBoard();
+      }));
+      return box;
+    });
+  }
+
+  function renderBoard() {
+    var active = document.activeElement;
+    var key = active && active.dataset ? active.dataset.key : "";
+    var start = key && "selectionStart" in active ? active.selectionStart : null;
+    var end = start === null ? null : active.selectionEnd;
+
+    var listed = {};
+    var children = {};
+    state.board.projects.forEach(function (project) {
+      listed[project.handle] = true;
+      if (project.parent) {
+        (children[project.parent] = children[project.parent] || []).push(project);
+      }
+    });
+    var root = state.board.projects[0];
+    var bySection = {};
+    state.board.entries.filter(matches).forEach(function (entry) {
+      var handle = listed[entry.project] ? entry.project : root.handle;
+      var sections = bySection[handle] = bySection[handle] || {};
+      (sections[entry.section] = sections[entry.section] || []).push(entry);
+    });
+
+    // The root's projects stand beside it rather than under it.
+    var top = (children[root.handle] || []).concat([root]);
+    delete children[root.handle];
+    var nodes = [];
+    top.forEach(function (project) {
+      var built = projectNode(project, children, bySection);
+      if (built) {
+        nodes.push(built.node);
+      }
+    });
+    var main = byId("board");
+    main.replaceChildren.apply(main, nodes);
+    var removed = byId("removed");
+    removed.replaceChildren.apply(removed, readOnly ? [] : removedDrafts());
+
+    if (key && !document.contains(active)) {
+      Array.from(document.querySelectorAll("[data-key]")).some(function (node) {
+        if (node.dataset.key !== key) {
+          return false;
+        }
+        node.focus();
+        if (start !== null && node.setSelectionRange) {
+          node.setSelectionRange(start, end);
+        }
+        return true;
+      });
+    }
+  }
+
+  function renderAll() {
+    byId("facts").textContent = "Rendered " + state.board.rendered +
+      (state.board.prime_owner ? " · prime owner " + state.board.prime_owner : "");
+    renderFilters();
+    if (!readOnly) {
+      if (createForm) {
+        createForm.refresh();
+      } else {
+        createForm = buildCreateForm();
+      }
+    }
+    renderBoard();
+  }
+
+  // The server.
+
+  // request retries a failed request, doubling from one second to eight, for a bounded minute.
+  // A refused write is an answer, not a failure.
+  function request(path, options) {
+    var headers = Object.assign({ Authorization: "Bearer " + token }, options.headers || {});
+    var isWrite = options.method === "POST";
+    var deadline = Date.now() + retryMillis;
+    var delay = 1000;
+
+    function attempt() {
+      return fetch(path, Object.assign({}, options, { headers: headers, cache: "no-store" }))
+        .then(function (response) {
+          if (response.status === 401 || response.status >= 500) {
+            throw new Error("request failed");
+          }
+          return response.json();
+        })
+        .then(function (answer) {
+          if (!answer.ok && !isWrite) {
+            throw new Error(answer.error);
+          }
+          return answer;
+        })
+        .catch(function (error) {
+          if (Date.now() + delay > deadline) {
+            throw error;
+          }
+          var wait = delay;
+          delay = Math.min(delay * 2, 8000);
+          return new Promise(function (resolve) {
+            setTimeout(resolve, wait);
+          }).then(attempt);
+        });
+    }
+
+    return attempt();
+  }
+
+  function giveUp() {
+    showNotice("The board server does not answer: run lym board open to start it and open the page again.");
+  }
+
+  function load(path) {
+    request(path, {}).then(function (answer) {
+      showNotice("");
+      var next = "/api/board?after=" + encodeURIComponent(answer.revision);
+      if (answer.unchanged) {
+        // A server that answers at once is not asked again at once.
+        setTimeout(load, 1000, next);
+        return;
+      }
+      state.board = answer.board;
+      renderAll();
+      load(next);
+    }, giveUp);
+  }
+
+  if (readOnly) {
+    if (window.BOARD === undefined) {
+      showNotice("No board data to show: run lym board rerender, then reload this page.");
+      return;
+    }
+    state.board = window.BOARD;
+    renderAll();
+    return;
+  }
+
+  if (location.hash.length > 1) {
+    sessionStorage.setItem(tokenKey, location.hash.slice(1));
+    history.replaceState(null, "", location.pathname);
+  }
+  token = sessionStorage.getItem(tokenKey) || "";
+  if (!token) {
+    showNotice("This tab holds no access token: run lym board open.");
+    return;
+  }
+  load("/api/board");
+}());
+</script>
+</body>
+</html>
