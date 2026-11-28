@@ -533,7 +533,7 @@ func buildSequenceFixture(t *testing.T) (anchorPath string, env shedrecipe.Env, 
 		t.Fatalf("Seed(): %v", err)
 	}
 
-	landing := envkit.LandingDeps(dir)
+	landing := envkit.LandingDeps(t, dir)
 	landing.Config.DeployBranches = []string{landing.ParentBranch}
 	// The origin reconcile reports the run's entry stopped, so Merge-In halts before it merges anything.
 	landing.Reconcile = func() (fabriclayout.OriginReport, error) {

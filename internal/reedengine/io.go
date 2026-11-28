@@ -155,13 +155,17 @@ func pasteSubmitArgv(paneID, buffer string, submit bool) []string {
 	return argv
 }
 
-// injectBufferName returns a fresh tmux buffer name, "lym-inject-" plus 8 lowercase hex characters.
+// InjectBufferPrefix starts the name of every tmux buffer a paste loads its text into.
+// Eight lowercase hex characters, fresh for each paste, follow it.
+const InjectBufferPrefix = "lym-inject-"
+
+// injectBufferName returns a fresh tmux buffer name, InjectBufferPrefix plus 8 lowercase hex characters.
 func injectBufferName() (string, error) {
 	var raw [4]byte
 	if _, err := rand.Read(raw[:]); err != nil {
 		return "", fmt.Errorf("name paste buffer: %w", err)
 	}
-	return "lym-inject-" + hex.EncodeToString(raw[:]), nil
+	return InjectBufferPrefix + hex.EncodeToString(raw[:]), nil
 }
 
 // OperatorActive reports whether an attached client has been active on guid's live pane within the quiet window.

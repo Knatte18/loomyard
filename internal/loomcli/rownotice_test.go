@@ -187,7 +187,7 @@ func TestNewShed_WrapsTheRowsNotifyParentOnNames(t *testing.T) {
 				t.Fatalf("wire() = %v; want nil", err)
 			}
 			// The landing deps are filled at arm time, after wire(); the Publish and Finalize rows refuse to build without them.
-			c.env.Landing = envkit.LandingDeps(t.TempDir())
+			c.env.Landing = envkit.LandingDeps(t, t.TempDir())
 			plain, err := c.newShed()
 			if err != nil {
 				t.Fatalf("newShed() with no notify_parent_on = %v; want nil", err)

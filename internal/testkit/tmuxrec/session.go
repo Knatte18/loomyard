@@ -14,10 +14,12 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 )
@@ -37,6 +39,24 @@ const (
 	// GUIDPrefix starts each strand guid the session's reed mints, followed by the strand's start count.
 	GUIDPrefix = "guid-"
 )
+
+// SessionSpec returns the spec the recorded sessions start under: an interactive, unawaited PR reviewer.
+// resume is the provider session id the start resumes, empty for a fresh one.
+// A start under another spec makes tmux calls the recordings hold no answer to.
+func SessionSpec(resume string) shuttleengine.Spec {
+	return shuttleengine.Spec{
+		Prompt:          "Review the pull request.",
+		PromptEngine:    EngineName,
+		ModelChoice:     shuttleengine.ModelChoice{Engine: EngineName, Model: "fixture-model"},
+		Interactive:     true,
+		Unawaited:       true,
+		DenyPublish:     true,
+		Role:            string(agentconfig.RolePRReviewer),
+		Segment:         segmentcolor.Landing,
+		ConfigRole:      agentconfig.RolePRReviewer,
+		ResumeSessionID: resume,
+	}
+}
 
 // recordings holds every recording of the package.
 //
@@ -95,9 +115,11 @@ func newSession(t testing.TB, socket string, startupTimeoutS int, outside func(b
 		t.Fatalf("tmuxrec: load the reed config template: %v", err)
 	}
 	// Reed pins the session's shell by the path the executable search finds, which differs between hosts.
+	// A host without the shell binds its configured name, so the session still builds;
+	// reed's first start there then fails, as it would in production.
 	shellPath, err := reedengine.ResolveShellPath(cfg.Shell)
 	if err != nil {
-		t.Fatalf("tmuxrec: %v", err)
+		shellPath = cfg.Shell
 	}
 	bindings["{shell}"] = shellPath
 	geom := reedengine.Geometry{
@@ -166,6 +188,27 @@ func PlaySession(t testing.TB, name string) (*Session, *Replay) {
 	if rec.Source.OS != runtime.GOOS {
 		t.Skipf("tmuxrec: no recording %s made on %s; the stored one was made on %s", name, runtime.GOOS, rec.Source.OS)
 	}
+	return replaySession(t, name, rec)
+}
+
+// IdleSession builds a session whose reed answers from the package's recording named name.
+// It serves a kit that fills session seams its tests build but do not drive.
+// It never skips.
+// On an operating system other than the recording's, each call the session makes goes unanswered and fails.
+// No replay is returned, so nothing checks what the session left unanswered.
+func IdleSession(t testing.TB, name string) *Session {
+	t.Helper()
+	rec, err := Embedded(name)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	session, _ := replaySession(t, name, rec)
+	return session
+}
+
+// replaySession builds a session whose reed answers from rec, the recording named name.
+func replaySession(t testing.TB, name string, rec Recording) (*Session, *Replay) {
+	t.Helper()
 	var replay *Replay
 	session := newSession(t, replaySocket, rec.StartupTimeoutS, func(bindings Bindings, newGUID func() (string, error)) reedengine.Outside {
 		replay = NewReplay(name, rec, bindings)

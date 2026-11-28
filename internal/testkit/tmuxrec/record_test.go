@@ -42,3 +42,30 @@ func TestPlaceholdCall_ReplacesBoundPathsAndFormatPIDs(t *testing.T) {
 		})
 	}
 }
+
+// A paste's text holds the hub directory as a placeholder, which a replay binds again.
+// It keeps its numbers and every other bound value as the code sent them.
+func TestPlaceholdCall_HoldsAPastesBufferNameAndHubAndKeepsTheRestOfItsText(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	bindings := Bindings{"{hub}": "/tmp/run/001", "{tmp}": "/tmp", "{user}": "operator"}
+	// The buffer name holds a run of digits that is also a pid the call named.
+	pids := map[int]bool{4711: true}
+	args := func(buffer string) []string {
+		return []string{"load-buffer", "-b", buffer, "-", ";", "paste-buffer", "-p", "-d", "-b", buffer, "-t", "%2"}
+	}
+	call := Call{Kind: KindTmux, Args: args("lym-inject-4711abcd"), Stdin: "see /tmp/run/001/notes, line 4711, /tmp/x, operator"}
+
+	got := placeholdCall(call, bindings, pidPlaceholder(pids))
+
+	want := Call{Kind: KindTmux, Args: args("{inject-buffer}"), Stdin: "see {hub}/notes, line 4711, /tmp/x, operator"}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("placeholdCall() mismatch (-want +got):\n%s", diff)
+	}
+
+	replay := NewReplay("held", Recording{Calls: []Call{got}}, Bindings{"{hub}": "/r/h"})
+	sent := []byte("see /r/h/notes, line 4711, /tmp/x, operator")
+	if _, err := replay.Outside(nil).Tmux(false, sent, args("lym-inject-0f0f0f0f")...); err != nil {
+		t.Errorf("Tmux() of the text under the replay's hub error = %v; want the held paste to answer it", err)
+	}
+}

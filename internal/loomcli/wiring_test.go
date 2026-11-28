@@ -504,7 +504,7 @@ func TestWire_DefaultConfig(t *testing.T) {
 		}
 
 		// The landing deps are filled at arm time, after wire(); the Publish and Finalize rows refuse to build without them.
-		c.env.Landing = envkit.LandingDeps(t.TempDir())
+		c.env.Landing = envkit.LandingDeps(t, t.TempDir())
 		shed, err := loomrecipe.New(c.recipe, c.env, c.shedPaths)
 		if err != nil {
 			t.Fatalf("loomrecipe.New(wired env) = %v; want nil", err)

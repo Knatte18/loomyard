@@ -6,8 +6,6 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/agentconfig"
-	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxrec"
 )
@@ -23,22 +21,6 @@ type world struct {
 	endProcess func(pid int)
 	// wait spaces two reads while a pane's process ends.
 	wait func()
-}
-
-// sessionSpec is the spec the recorded sessions start under: an interactive, unawaited PR reviewer.
-func sessionSpec(resume string) shuttleengine.Spec {
-	return shuttleengine.Spec{
-		Prompt:          "Review the pull request.",
-		PromptEngine:    tmuxrec.EngineName,
-		ModelChoice:     shuttleengine.ModelChoice{Engine: tmuxrec.EngineName, Model: "fixture-model"},
-		Interactive:     true,
-		Unawaited:       true,
-		DenyPublish:     true,
-		Role:            string(agentconfig.RolePRReviewer),
-		Segment:         segmentcolor.Landing,
-		ConfigRole:      agentconfig.RolePRReviewer,
-		ResumeSessionID: resume,
-	}
 }
 
 // reading reads reed's strand table as the scenario's step.
@@ -58,6 +40,9 @@ func reading(w *world, step string) tmuxrec.Reading {
 // notStarted is the error a reading records for a start whose provider never came up.
 const notStarted = "the provider did not start"
 
+// pastedText is the text the paste scenario pastes into its pane: two lines, as a mail to an agent can be.
+const pastedText = "Read the review comments.\nThen answer each one."
+
 // scenario is one recorded scenario: the runner's startup timeout it runs under, and its steps.
 // The steps return what reed read at each.
 type scenario struct {
@@ -75,7 +60,7 @@ var scenarios = map[string]scenario{
 	"session-start-stop": {startupTimeoutS: sessionStartupTimeoutS, run: func(t *testing.T, w *world) []tmuxrec.Reading {
 		runner := w.session.Runner
 		readings := []tmuxrec.Reading{reading(w, "before")}
-		first, err := runner.StartSession(sessionSpec(""))
+		first, err := runner.StartSession(tmuxrec.SessionSpec(""))
 		if err != nil {
 			t.Fatalf("StartSession() error = %v", err)
 		}
@@ -84,7 +69,7 @@ var scenarios = map[string]scenario{
 			t.Fatalf("StopStrand(%q) error = %v", first.StrandGUID, err)
 		}
 		readings = append(readings, reading(w, "stopped"))
-		second, err := runner.StartSession(sessionSpec(first.SessionID))
+		second, err := runner.StartSession(tmuxrec.SessionSpec(first.SessionID))
 		if err != nil {
 			t.Fatalf("StartSession() of the resume error = %v", err)
 		}
@@ -98,7 +83,7 @@ var scenarios = map[string]scenario{
 	"session-ends": {startupTimeoutS: sessionStartupTimeoutS, run: func(t *testing.T, w *world) []tmuxrec.Reading {
 		runner := w.session.Runner
 		readings := []tmuxrec.Reading{reading(w, "before")}
-		started, err := runner.StartSession(sessionSpec(""))
+		started, err := runner.StartSession(tmuxrec.SessionSpec(""))
 		if err != nil {
 			t.Fatalf("StartSession() error = %v", err)
 		}
@@ -131,11 +116,29 @@ var scenarios = map[string]scenario{
 	"session-not-started": {startupTimeoutS: 0, run: func(t *testing.T, w *world) []tmuxrec.Reading {
 		w.session.Engine.StartupFn = func(string) shuttleengine.StartupState { return shuttleengine.StartupPending }
 		readings := []tmuxrec.Reading{reading(w, "before")}
-		_, err := w.session.Runner.StartSession(sessionSpec(""))
+		_, err := w.session.Runner.StartSession(tmuxrec.SessionSpec(""))
 		if !errors.Is(err, shuttleengine.ErrNotStarted) {
 			t.Fatalf("StartSession() error = %v; want one wrapping ErrNotStarted", err)
 		}
 		readings = append(readings, tmuxrec.Reading{Step: "start", Err: notStarted})
 		return append(readings, reading(w, "after"))
+	}},
+	// A session starts, a text is pasted into its pane and submitted, and the strand is stopped.
+	"session-paste": {startupTimeoutS: sessionStartupTimeoutS, run: func(t *testing.T, w *world) []tmuxrec.Reading {
+		runner := w.session.Runner
+		readings := []tmuxrec.Reading{reading(w, "before")}
+		started, err := runner.StartSession(tmuxrec.SessionSpec(""))
+		if err != nil {
+			t.Fatalf("StartSession() error = %v", err)
+		}
+		readings = append(readings, reading(w, "started"))
+		if err := w.session.Reed.PasteSubmit(started.StrandGUID, pastedText, true); err != nil {
+			t.Fatalf("PasteSubmit(%q) error = %v", started.StrandGUID, err)
+		}
+		readings = append(readings, reading(w, "pasted"))
+		if err := runner.StopStrand(started.StrandGUID); err != nil {
+			t.Fatalf("StopStrand(%q) error = %v", started.StrandGUID, err)
+		}
+		return append(readings, reading(w, "stopped"))
 	}},
 }

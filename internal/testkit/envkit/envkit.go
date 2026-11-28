@@ -5,6 +5,8 @@
 // Builders return plain values the caller mutates; there are no option structs.
 // A builder fails the test only on its own setup.
 // NilSeams reports and never asserts, so the CLI wiring tests and this kit's own test assert on its answer.
+// The session seams run a real session runner over real reed, whose tmux answers from a recording.
+// The liveness, registration and live-strand seams read that reed's strand table.
 //
 // `shedrecipe` and `landingshed` cannot import the kit without a cycle, so each keeps one local builder.
 package envkit
@@ -42,6 +44,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/pullrequest"
 	"github.com/Knatte18/loomyard/internal/raddleparser"
+	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
@@ -50,7 +54,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
-	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
+	"github.com/Knatte18/loomyard/internal/testkit/tmuxrec"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 	"github.com/Knatte18/loomyard/internal/weaverengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -155,14 +159,22 @@ var nilLegal = map[string]bool{
 	"Teardown.Level":               true,
 }
 
-// noopSamplerSessions is a loomshed.SamplerSessions that starts and stops nothing.
-type noopSamplerSessions struct{}
+// sessionRecording names the recorded tmux the kit's sessions replay.
+const sessionRecording = "session-start-stop"
 
-func (noopSamplerSessions) StartSession(shuttleengine.Spec) (shuttleengine.OpenResult, error) {
-	return shuttleengine.OpenResult{}, nil
+// replayedSessions returns a session runner over real reed whose tmux answers from the kit's recording.
+// It also returns the liveness, pane-registration and live-strand-name seams over that reed's strand table;
+// a registration writes under dir.
+func replayedSessions(t testing.TB, dir string) (runner *shuttleengine.Runner, live func(guid string) (bool, error), register func(guid string) error, liveNames func() ([]string, error)) {
+	t.Helper()
+	session := tmuxrec.IdleSession(t, sessionRecording)
+	status := session.Reed.Status
+	registerDir := filepath.Join(dir, "runproc")
+	register = reedengine.SessionRegistrar(status, func(pid int) error {
+		return runproc.Register(registerDir, "fixture", runproc.ChildRecord(pid, runproc.RoleSession, nil))
+	})
+	return session.Runner, reedengine.SessionLiveness(status), register, reedengine.LiveStrandNames(status)
 }
-
-func (noopSamplerSessions) StopStrand(string) error { return nil }
 
 // noFindingsIndex is a planindex.Index that answers no findings,
 // so the packages built on the kit do not link the resolve-backed index.
@@ -191,8 +203,10 @@ func (noopFixerSeats) Run(seatengine.Table) (seatengine.Result, error) {
 }
 
 // LandingDeps returns a `landingshed.Deps` with every field the landing constructors require.
-// The fields hold fixed values derived from dir.
-func LandingDeps(dir string) landingshed.Deps {
+// The fields hold fixed values derived from dir, and the PR-Review session seams run over a replayed reed.
+func LandingDeps(t testing.TB, dir string) landingshed.Deps {
+	t.Helper()
+	sessions, sessionLive, registerSession, _ := replayedSessions(t, dir)
 	return landingshed.Deps{
 		GateKey:          "parent-align",
 		Reap:             func() error { return nil },
@@ -258,9 +272,9 @@ func LandingDeps(dir string) landingshed.Deps {
 			},
 			DropBeamRecord:  func() error { return nil },
 			MailAgent:       func(string, string) error { return nil },
-			Sessions:        shuttleengine.NewRunner(&shuttlefake.Reed{}, shuttlefake.EngineSet(&shuttlefake.Engine{}), dir, dir, shuttleengine.Config{}),
-			SessionLive:     func(string) (bool, error) { return false, nil },
-			RegisterSession: func(string) error { return nil },
+			Sessions:        sessions,
+			SessionLive:     sessionLive,
+			RegisterSession: registerSession,
 		},
 	}
 }
@@ -399,6 +413,7 @@ func raddleFileDeps(dir string) loomshed.RaddleFileDeps {
 func FullEnv(t testing.TB) shedrecipe.Env {
 	t.Helper()
 	dir := t.TempDir()
+	samplerSessions, samplerLive, samplerRegister, liveStrands := replayedSessions(t, filepath.Join(dir, "sampler"))
 	return shedrecipe.Env{
 		Cwd:                mustMkdir(t, filepath.Join(dir, "cwd")),
 		AnchorPath:         mustMkdir(t, filepath.Join(dir, "anchor")),
@@ -456,9 +471,9 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			Setting:      func() (string, error) { return "webster", nil },
 			StateHistory: func() ([]weaverengine.StateVersion, error) { return nil, nil },
 			TaskHead:     func() (string, error) { return "task-head", nil },
-			LiveStrands:  func() ([]string, error) { return nil, nil },
+			LiveStrands:  liveStrands,
 		},
-		Landing: LandingDeps(mustMkdir(t, filepath.Join(dir, "landing"))),
+		Landing: LandingDeps(t, mustMkdir(t, filepath.Join(dir, "landing"))),
 		DiscussionTable: func() (seatengine.Table, error) {
 			return seatengine.Table{
 				RolePrefix: "discussion",
@@ -596,9 +611,9 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			RecordPath:      filepath.Join(dir, "sampler", "sampler.json"),
 			RecordLockPath:  filepath.Join(dir, "sampler", "sampler.json.lock"),
 			Spec:            func() (shuttleengine.Spec, error) { return shuttleengine.Spec{}, nil },
-			Sessions:        noopSamplerSessions{},
-			SessionLive:     func(string) (bool, error) { return false, nil },
-			RegisterSession: func(string) error { return nil },
+			Sessions:        samplerSessions,
+			SessionLive:     samplerLive,
+			RegisterSession: samplerRegister,
 			Stamp:           func() (int, error) { return 1, nil },
 			DirtyPaths:      func() ([]string, error) { return nil, nil },
 			CheckRecord:     func() ([]discussionparser.Finding, error) { return nil, nil },

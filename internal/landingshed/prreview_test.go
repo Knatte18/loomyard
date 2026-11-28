@@ -672,7 +672,8 @@ const testVerdict = "## Regression check\n\n- Scope: full.\n- Compare: passed at
 // The credit is on, and claude is the one engine that ran.
 // Every PullRequest seam is filled.
 // The sessions run in a fresh session world.
-// The PR-Review model-spec is claude:fixture-model, and a gate failure's mail is dropped.
+// The PR-Review model-spec is claude:fixture-model.
+// A mail to the session fails the test: the mail goes through creel, which this package cannot reach.
 // The origin is a GitHub one, beam.yaml's pull_request is review, the task head is "head-new", and the worktree is clean.
 // No pause covers the run, and the clock moves only when the wait sleeps.
 // A test replaces the seams it scripts.
@@ -713,9 +714,12 @@ func prReviewTestDeps(t *testing.T, api *fakePullRequestAPI) Deps {
 			CommitsMissing: func(string, string) ([]string, error) { return nil, nil },
 			TaskHasCommits: func() (bool, error) { return true, nil },
 			DirtyPaths:     func() ([]string, error) { return nil, nil },
-			MailAgent:      func(string, string) error { return nil },
-			PauseCovered:   func() (bool, error) { return false, nil },
-			Now:            func() time.Time { return now },
+			MailAgent: func(strand, line string) error {
+				t.Errorf("MailAgent(%q, %q) called; want no mail from a test of this package", strand, line)
+				return errors.New("landingshed test: no creel to mail through")
+			},
+			PauseCovered: func() (bool, error) { return false, nil },
+			Now:          func() time.Time { return now },
 			Sleep: func(_ context.Context, d time.Duration) error {
 				now = now.Add(d)
 				return nil

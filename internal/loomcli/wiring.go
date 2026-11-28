@@ -892,19 +892,7 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 			}
 			return opened.HeadSHA()
 		},
-		LiveStrands: func() ([]string, error) {
-			status, err := reedEngine.Status()
-			if err != nil {
-				return nil, err
-			}
-			var names []string
-			for _, strand := range status.Strands {
-				if strand.Live {
-					names = append(names, strand.Name)
-				}
-			}
-			return names, nil
-		},
+		LiveStrands: reedengine.LiveStrandNames(reedEngine.Status),
 	}
 
 	c.env = shedrecipe.Env{

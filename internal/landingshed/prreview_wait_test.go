@@ -27,7 +27,7 @@ import (
 
 // waitWorld is the world a PR-Review wait runs in.
 // It scripts the heads and dirty paths, and it runs a clock that moves only when the wait sleeps.
-// It also records every push, mail, mark and sleep.
+// It also records every push, mark and sleep.
 // onSleep runs after each sleep with its 1-based count, so a test changes the world between two wakes.
 type waitWorld struct {
 	deps   Deps
@@ -41,8 +41,6 @@ type waitWorld struct {
 	dirty  []string
 	pushes []string
 	marks  []string
-	// mails records each post to the session as "<strand name>|<line>".
-	mails []string
 	// sessions is the session world; a row whose record names firstGUID finds that strand started and live.
 	sessions *prSessionWorld
 	// missing is what the CommitsMissing seam answers, and missingErr is the error it fails with.
@@ -86,10 +84,6 @@ func newWaitWorld(t *testing.T, scripts map[string][]scriptedCall) (*waitWorld, 
 	pr.DirtyPaths = func() ([]string, error) { return w.dirty, nil }
 	pr.PushTask = func() error {
 		w.pushes = append(w.pushes, w.head)
-		return nil
-	}
-	pr.MailAgent = func(strand, line string) error {
-		w.mails = append(w.mails, strand+"|"+line)
 		return nil
 	}
 	pr.CommitsMissing = func(merged, task string) ([]string, error) {
@@ -442,74 +436,10 @@ func TestPRReview_Wait(t *testing.T) {
 			},
 		},
 		{
-			name: "AFailingGateOnAHandCommitMailsTheSessionOncePerHeadAndPushesNothing", record: seed("h1", withStrand), scripts: statusScript(open), head: "h2", noEntryPush: true,
-			// Three wakes see the failing head, and the second and third must not gate it again.
-			setup:      func(w *waitWorld) { failingGate(w); w.cancelAfter(3) },
-			wantErr:    context.Canceled,
-			wantRecord: recorded("h1", withStrand, func(r *pullrequest.Record) { r.MailedHead = "h2" }),
-			check: func(t *testing.T, w *waitWorld, _ string) {
-				wantMails := []string{"pr-strand|the pr-review gate refused task head h2 of pull request #7, so it is not pushed: " +
-					"the pr-review gate failed at tier 1; output: /logs/gate.log; fix it in a new commit" +
-					"; when the failure lies outside the change, such as a file another process held open, " +
-					"lym loom pr-continue gates this head again, but it also ends the review once a head passes the gate, " +
-					"so run it only on the operator's word"}
-				if diff := cmp.Diff(wantMails, w.mails); diff != "" {
-					t.Errorf("mails mismatch (-want +got):\n%s", diff)
-				}
-				if w.tree.verifyCalls != 1 {
-					t.Errorf("the gate ran %d times; want once for the failing head", w.tree.verifyCalls)
-				}
-			},
-		},
-		{
-			name: "AClearedMailedHeadIsGatedAndMailedAgain", record: seed("h1", withStrand), scripts: statusScript(open), head: "h2", noEntryPush: true,
-			setup: func(w *waitWorld) {
-				failingGate(w)
-				w.onSleep = func(w *waitWorld, n int) {
-					if n == 1 {
-						err := pullrequest.UpdateRecord(w.deps.PullRequest.RecordPath, w.deps.PullRequest.RecordLockPath, func(r *pullrequest.Record) error {
-							r.MailedHead = ""
-							return nil
-						})
-						if err != nil {
-							t.Errorf("clear the mailed head: %v", err)
-						}
-					}
-					if n >= 3 {
-						w.cancel()
-					}
-				}
-			},
-			wantErr: context.Canceled,
-			check: func(t *testing.T, w *waitWorld, _ string) {
-				if w.tree.verifyCalls != 2 || len(w.mails) != 2 {
-					t.Errorf("gate runs = %d, mails = %d; want two of each", w.tree.verifyCalls, len(w.mails))
-				}
-			},
-		},
-		{
-			name: "AGateFailureWhoseMailFailsHaltsAndRecordsNoMailedHead", record: seed("h1", withStrand), scripts: statusScript(open), head: "h2", noEntryPush: true,
-			setup: func(w *waitWorld) {
-				failingGate(w)
-				w.deps.PullRequest.MailAgent = func(string, string) error { return errors.New("no such strand") }
-			},
-			wantOutcome: shedengine.Stuck, wantHalt: true,
-			wantReasonExact: "the pr-review gate refused task head h2 of pull request #7, committed in the task worktree while the review waited: " +
-				"the pr-review gate failed at tier 1; output: /logs/gate.log; fix it in a new commit; " +
-				"way forward: commit a fix in the task worktree, or leave the head as it is when the failure lies outside the change, " +
-				"then run lym loom resume, which gates the task head again before the row pushes it",
-			wantRecord: recorded("h1", withStrand),
-		},
-		{
 			name: "AGateFailureOnAPullRequestClosedWithNoFlagHaltsAndMailsNothing", record: seed("h1", withStrand), scripts: statusScript(closed), head: "h2", noEntryPush: true,
 			setup:       failingGate,
 			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"refused task head h2", "lym loom resume"},
 			wantRecord: seed("h1", withStrand),
-			check: func(t *testing.T, w *waitWorld, _ string) {
-				if len(w.mails) != 0 {
-					t.Errorf("mails = %q; want none for a closed pull request", w.mails)
-				}
-			},
 		},
 		{
 			name: "AGateFailureInAnEndedReviewHaltsAndMailsNothing", record: seed("h1", withStrand, withReviewEnded), scripts: statusScript(open),
@@ -526,11 +456,6 @@ func TestPRReview_Wait(t *testing.T) {
 				}
 			},
 			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"refused task head h2", "lym loom resume"},
-			check: func(t *testing.T, w *waitWorld, _ string) {
-				if len(w.mails) != 0 {
-					t.Errorf("mails = %q; want none for an ended review", w.mails)
-				}
-			},
 		},
 		{
 			// The 7th and 8th wakes are the polls after the entry's, and both fail to read the session.
@@ -562,11 +487,6 @@ func TestPRReview_Wait(t *testing.T) {
 				w.tree.result = verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 134, RunnerCrash: true, Detail: "gate test runner crashed with no failing test: tier1 (exit 134, SIGABRT)", Log: "/logs/gate.log"}
 			},
 			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{LandingStopPrefix, "tier1 (exit 134, SIGABRT)", "/logs/gate.log", "`lym loom resume`"},
-			check: func(t *testing.T, w *waitWorld, _ string) {
-				if len(w.mails) != 0 {
-					t.Errorf("mails = %q; want none, a crash halting the row instead of telling the session", w.mails)
-				}
-			},
 		},
 		{
 			name: "AForeignGitHubHeadAtEntryHaltsNamingItsCommitsAndPushesNothing", record: seed("h1"), scripts: statusScript(openAtGitHubHead("x9")), entryHalt: true,

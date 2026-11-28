@@ -8,7 +8,12 @@
 // A recording keeps the paths and process ids of the machine that made it as placeholders,
 // and a replay binds them to the test's own directories and to process ids no kernel hands out,
 // so no process of the machine running a replay is ever read or signalled.
+// The text a call hands tmux on standard input is what the code under test sent,
+// so a recording holds only the hub directory in it as a placeholder.
 // Replay answers only what was recorded; a call with no recorded answer fails, naming the call.
+// A call matches by its arguments and by the text it hands tmux on standard input, as a paste does.
+// A paste names a fresh buffer each time, so a recording holds a placeholder for the buffer name,
+// and a replayed paste matches whatever buffer name it draws, as long as the call names only that one.
 //
 // Recordings live in this package's testdata directory, one file per scenario.
 // The package's tier0 test replays every scenario over its recording.
@@ -43,6 +48,29 @@ const (
 // pidPlaceholderPrefix starts the placeholder a recording holds in place of a process id.
 const pidPlaceholderPrefix = "{pid:"
 
+// injectBufferPlaceholder is what a recording holds in place of the buffer name a paste loads its text into.
+const injectBufferPlaceholder = "{inject-buffer}"
+
+// injectBufferPattern matches the buffer name a paste draws.
+var injectBufferPattern = regexp.MustCompile(regexp.QuoteMeta(reedengine.InjectBufferPrefix) + `[0-9a-f]+`)
+
+// holdInjectBuffers returns args with each paste buffer name replaced by its placeholder.
+// It reports whether args name at most one buffer, as one paste does.
+func holdInjectBuffers(args []string) ([]string, bool) {
+	held := make([]string, len(args))
+	named := ""
+	for i, arg := range args {
+		for _, name := range injectBufferPattern.FindAllString(arg, -1) {
+			if named != "" && name != named {
+				return nil, false
+			}
+			named = name
+		}
+		held[i] = injectBufferPattern.ReplaceAllString(arg, injectBufferPlaceholder)
+	}
+	return held, true
+}
+
 // replayPIDBase is added to a placeholder's index to make the process id a replay answers.
 // It lies above the largest pid a Linux kernel hands out (2^22), so a replayed pid names no process.
 const replayPIDBase = 1 << 30
@@ -74,6 +102,8 @@ type Call struct {
 	Args []string `json:"args,omitempty"`
 	// Capture marks a tmux call whose standard output reed read.
 	Capture bool `json:"capture,omitempty"`
+	// Stdin is the text a tmux call handed tmux on standard input, such as a paste's text.
+	Stdin string `json:"stdin,omitempty"`
 	// Out is a tmux call's standard output, or a memory-scope move's cgroup.
 	Out string `json:"out,omitempty"`
 	// Err is the text of the error the call failed with, empty for a call that succeeded.
@@ -111,7 +141,7 @@ func (c Call) read() bool {
 
 // matches reports whether c answers the call want, whose placeholders are already bound alike.
 func (c Call) matches(want Call) bool {
-	return c.Kind == want.Kind && slices.Equal(c.Args, want.Args) && c.Capture == want.Capture &&
+	return c.Kind == want.Kind && slices.Equal(c.Args, want.Args) && c.Capture == want.Capture && c.Stdin == want.Stdin &&
 		c.PID == want.PID && c.Unit == want.Unit && c.Limit == want.Limit
 }
 
@@ -239,6 +269,7 @@ func bindCall(call Call, bindings Bindings) Call {
 	for i, arg := range call.Args {
 		bound.Args[i] = bindings.bind(arg)
 	}
+	bound.Stdin = bindings.bind(call.Stdin)
 	bound.Out = bindings.bind(call.Out)
 	bound.Err = bindings.bind(call.Err)
 	bound.Unit = bindings.bind(call.Unit)
@@ -278,8 +309,16 @@ func (r *Replay) Remaining() []string {
 	return remaining
 }
 
-func (r *Replay) tmux(capture bool, _ []byte, args ...string) (string, error) {
-	answer, err := r.answer(Call{Kind: KindTmux, Args: args, Capture: capture})
+func (r *Replay) tmux(capture bool, stdin []byte, args ...string) (string, error) {
+	want := Call{Kind: KindTmux, Args: args, Capture: capture, Stdin: string(stdin)}
+	held, oneBuffer := holdInjectBuffers(args)
+	if !oneBuffer {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		return "", r.refuseLocked(want)
+	}
+	want.Args = held
+	answer, err := r.answer(want)
 	if err != nil {
 		return "", err
 	}
@@ -351,15 +390,24 @@ func (r *Replay) answer(want Call) (Call, error) {
 			}
 		}
 	}
+	return Call{}, r.refuseLocked(want)
+}
+
+// refuseLocked records want as a call the recording holds no answer to and returns the failure naming it.
+// The caller holds the replay's lock.
+func (r *Replay) refuseLocked(want Call) error {
 	described := describe(want)
 	r.unanswered = append(r.unanswered, described)
-	return Call{}, fmt.Errorf("tmuxrec: recording %s holds no answer to %s after call %d", r.name, described, r.next)
+	return fmt.Errorf("tmuxrec: recording %s holds no answer to %s after call %d", r.name, described, r.next)
 }
 
 // describe names a call in a failure.
 func describe(call Call) string {
 	switch call.Kind {
 	case KindTmux:
+		if call.Stdin != "" {
+			return fmt.Sprintf("tmux %s < %q", strings.Join(call.Args, " "), call.Stdin)
+		}
 		return "tmux " + strings.Join(call.Args, " ")
 	case KindPaneAge:
 		return "the pane age of pid " + call.PID

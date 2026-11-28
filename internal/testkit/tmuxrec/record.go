@@ -54,7 +54,7 @@ func (r *Recorder) tmux(capture bool, stdin []byte, args ...string) (string, err
 	for _, pid := range formatPIDs(args, out) {
 		r.keepPID(pid)
 	}
-	call := Call{Kind: KindTmux, Args: append([]string(nil), args...), Capture: capture, Out: out, Err: errText(err)}
+	call := Call{Kind: KindTmux, Args: append([]string(nil), args...), Capture: capture, Stdin: string(stdin), Out: out, Err: errText(err)}
 	var exitErr interface{ ExitCode() int }
 	if errors.As(err, &exitErr) {
 		call.Exit = exitErr.ExitCode()
@@ -227,13 +227,19 @@ func pidPlaceholder(pids map[int]bool) func(string) string {
 // numberToken matches a run of digits that no other digit touches.
 var numberToken = regexp.MustCompile(`[0-9]+`)
 
-// placeholdCall returns call with every bound value and process id replaced by its placeholder.
+// placeholdCall returns call with every paste buffer name, bound value and process id replaced by its placeholder.
+// The buffer names go first, since a run of digits in one can spell a process id.
+// The text on standard input is what the code under test sends.
+// Its numbers are no ids tmux handed out, so it keeps them.
+// Of the bound values it holds only the hub directory as a placeholder.
+// Any other bound value can be literal text of the code's own.
 func placeholdCall(call Call, bindings Bindings, placehold func(string) string) Call {
 	held := call
 	held.Args = make([]string, len(call.Args))
 	for i, arg := range call.Args {
-		held.Args[i] = placehold(bindings.placehold(arg))
+		held.Args[i] = placehold(bindings.placehold(injectBufferPattern.ReplaceAllString(arg, injectBufferPlaceholder)))
 	}
+	held.Stdin = Bindings{"{hub}": bindings["{hub}"]}.placehold(call.Stdin)
 	held.Out = placehold(bindings.placehold(call.Out))
 	held.Err = placehold(bindings.placehold(call.Err))
 	held.Unit = placehold(bindings.placehold(call.Unit))

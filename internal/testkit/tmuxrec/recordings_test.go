@@ -4,6 +4,7 @@ package tmuxrec_test
 
 import (
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -109,4 +110,64 @@ func TestReplay_RefusesWhatItsRecordingCannotAnswer(t *testing.T) {
 			t.Errorf("Unanswered() mismatch (-want +got):\n%s", diff)
 		}
 	})
+}
+
+func TestReplay_MatchesAPasteByItsTextWhateverBufferItNames(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	rec, err := tmuxrec.Embedded("session-paste")
+	if err != nil {
+		t.Fatalf("Embedded() error = %v", err)
+	}
+	var paste tmuxrec.Call
+	for _, call := range rec.Calls {
+		if len(call.Args) > 0 && call.Args[0] == "load-buffer" {
+			paste = call
+		}
+	}
+	if paste.Stdin == "" {
+		t.Fatalf("the recording holds no paste with text; calls = %d", len(rec.Calls))
+	}
+	cut := rec
+	cut.Calls = []tmuxrec.Call{paste}
+	// naming returns the recorded paste's arguments with its buffer placeholder named first, and then second.
+	naming := func(first, second string) []string {
+		args := slices.Clone(paste.Args)
+		seen := 0
+		for i, arg := range args {
+			if strings.Contains(arg, "{inject-buffer}") {
+				name := first
+				if seen > 0 {
+					name = second
+				}
+				args[i] = strings.ReplaceAll(arg, "{inject-buffer}", name)
+				seen++
+			}
+		}
+		return args
+	}
+
+	tests := []struct {
+		name  string
+		args  []string
+		stdin string
+		// wantRefused says whether the replay refuses the paste.
+		wantRefused bool
+	}{
+		{"AnotherFreshBufferName", naming("lym-inject-0f0f0f0f", "lym-inject-0f0f0f0f"), paste.Stdin, false},
+		{"OtherText", naming("lym-inject-0f0f0f0f", "lym-inject-0f0f0f0f"), paste.Stdin + " more", true},
+		{"TwoBufferNamesInOneCall", naming("lym-inject-0f0f0f0f", "lym-inject-1e1e1e1e"), paste.Stdin, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			replay := tmuxrec.NewReplay("cut", cut, tmuxrec.Bindings{})
+
+			_, _ = replay.Outside(nil).Tmux(paste.Capture, []byte(tt.stdin), tt.args...)
+
+			if refused := len(replay.Unanswered()) > 0; refused != tt.wantRefused {
+				t.Errorf("refused = %v; want %v (unanswered: %q)", refused, tt.wantRefused, replay.Unanswered())
+			}
+		})
+	}
 }

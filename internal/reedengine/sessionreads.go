@@ -1,9 +1,27 @@
-// sessionreads.go builds the two reads a caller keeping one session's strand makes of the strand table:
-// whether the strand is live, and the registration of its pane process.
+// sessionreads.go builds the reads a caller that keeps sessions makes of the strand table:
+// whether one strand is live, the registration of its pane process, and the names of the live strands.
 
 package reedengine
 
 import "fmt"
+
+// LiveStrandNames returns a reader of the names of the live strands, built over the strand table status reads.
+// The table is read at each call.
+func LiveStrandNames(status func() (StatusResult, error)) func() ([]string, error) {
+	return func() ([]string, error) {
+		result, err := status()
+		if err != nil {
+			return nil, err
+		}
+		var names []string
+		for _, strand := range result.Strands {
+			if strand.Live {
+				names = append(names, strand.Name)
+			}
+		}
+		return names, nil
+	}
+}
 
 // SessionLiveness returns a reader of whether the strand guid names is live, built over the strand table status reads.
 // The table is read at each call, and a strand is live when it is present, live and not retiring.
