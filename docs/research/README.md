@@ -178,6 +178,7 @@ A study's script finds the repository root with `git rev-parse --show-toplevel`,
 - [testmap-worth-evaluation](testmap-worth-evaluation.md) — every user of the coverage maps, what each has given against its cost, and which to remove.
 - [test-time-measure-2026-11-27](speed/test-time-measure-2026-11-27/report.md) — test and wall time of every package's tier0 and tier1 tests, the packages worth a cut and where build dominates.
 - [gate-fixed-cost-2026-11-27](speed/gate-fixed-cost-2026-11-27/report.md) — what each fixed step of a tier1 gate call costs, and one recommended change per step.
+- [test-speed-effect-2026-11-28](speed/test-speed-effect-2026-11-28/report.md) — wall and test time of the packages the test-speed cuts changed, before and after under the same load.
 
 ## survey — ideas from outside projects
 
