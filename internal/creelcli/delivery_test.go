@@ -199,7 +199,7 @@ func (c *stepClock) Sleep(d time.Duration) { c.now = c.now.Add(d) }
 
 // newStubbedDelivery returns the delivery of hub with its wiring answered by stubs keyed by worktree path.
 func newStubbedDelivery(hub *hubforge.Hub, stubs map[string]*stubOps) *hubDelivery {
-	delivery := newHubDelivery(hub.Path, nil)
+	delivery := newHubDelivery(hub.Path, nil, reedengine.Outside{})
 	delivery.wire = func(location *lymcwd.Location) (worktreeOps, error) {
 		stub, ok := stubs[location.WorktreePath()]
 		if !ok {
@@ -400,7 +400,7 @@ func TestHubDelivery(t *testing.T) {
 			return shuttlefake.EngineSet(&shuttlefake.Engine{}), nil
 		}
 
-		ops, err := wireShuttle(location, enginesFor)
+		ops, err := wireShuttle(location, enginesFor, reedengine.Outside{})
 		if err != nil {
 			t.Fatalf("wireShuttle() = %v", err)
 		}

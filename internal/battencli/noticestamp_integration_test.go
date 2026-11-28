@@ -1,5 +1,5 @@
 // noticestamp_integration_test.go proves batten's notices about a run carry the run's autonomy, over a real hub.
-// Creel's daemon runs in process on a fake delivery.
+// Creel's daemon runs in process over the hub's own delivery, whose reed reads a recorded tmux.
 
 package battencli
 
@@ -25,9 +25,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/creelfake"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
+	"github.com/Knatte18/loomyard/internal/testkit/tmuxrec"
 )
 
-// startNoticeOrch records a prime orch strand for the hub and runs creel's daemon in process with that strand live.
+// startNoticeOrch records a prime orch strand for the hub in reed's state.
+// It also runs creel's daemon in process over the hub's own delivery.
+// Its reed reads the hub's session over a recorded tmux on which no session runs,
+// so the strand reads not live and a posted mail waits unread in the log the test reads.
 // The notice clients then connect to the daemon and spawn none of their own.
 func startNoticeOrch(t *testing.T, h *hubforge.Hub) {
 	t.Helper()
@@ -47,10 +51,11 @@ func startNoticeOrch(t *testing.T, h *hubforge.Hub) {
 	if err := reedengine.SaveState(filepath.Join(h.Location.AnchorPath(), lymdirs.DotLymDirName), reedState); err != nil {
 		t.Fatalf("reedengine.SaveState() = %v; want nil", err)
 	}
-	delivery := creelfake.NewDelivery()
-	delivery.SetStrands(creelfake.LiveStrand(receiver))
-	// Busy, so a posted mail is not carried into the pane before the test reads the log.
-	delivery.SetIdle(receiver, false)
+	reedGeometry, err := hubgeom.ReedGeometry(h.Location)
+	if err != nil {
+		t.Fatalf("ReedGeometry() = %v; want nil", err)
+	}
+	delivery := creelcli.NewHubDelivery(h.Path, tmuxrec.PlayOutside(t, "session-not-started", reedGeometry.SessionName))
 	epoch := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
 
 	ready := make(chan struct{})

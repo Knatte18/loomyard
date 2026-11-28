@@ -62,6 +62,8 @@
 // so the handler can run a second time for mail it already saw.
 //
 // The hub delivery implements the engine's delivery seam.
+// NewHubDelivery builds it with the reed outside each worktree's reed reaches,
+// so a test of another package runs creel's daemon over a hub's real strand listing and a recorded tmux.
 // Shuttle's busy and not-confirmed answers map onto the engine's ErrBusy and ErrNotLanded.
 // ErrBusy means nothing was typed, so a requeue types the line again.
 // Bound: an inject left beside a draft is not retyped; a foreign-text or recordless one is lost rather than typed twice.

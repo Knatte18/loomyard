@@ -14,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymtemp"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
 // goCallTimeout bounds every request a GoClient makes except a wait for mail;
@@ -144,7 +145,7 @@ func (c *GoClient) ReadWait(timeout time.Duration, handle func([]creelengine.Mes
 // HubStrands lists the strands of the hub at hubPath, live or not.
 // It follows the creel daemon's listing, so a caller reads the same strand set the daemon does.
 func HubStrands(hubPath string) ([]creelengine.Strand, error) {
-	return newProductionHubDelivery(hubPath).Strands()
+	return NewHubDelivery(hubPath, reedengine.Outside{}).Strands()
 }
 
 // Inject queues text to be typed into receiver's pane at its next idle and returns the inject's id;

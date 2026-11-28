@@ -56,18 +56,23 @@ type hubDelivery struct {
 }
 
 // newHubDelivery returns the Delivery of the hub at hubPath, building each worktree's shuttle engines with enginesFor.
-func newHubDelivery(hubPath string, enginesFor func(shuttleengine.Config, configengine.Dirs) (shuttleengine.EngineSet, error)) *hubDelivery {
+// Each worktree's reed reaches what outside sets in place of the real thing.
+func newHubDelivery(hubPath string, enginesFor func(shuttleengine.Config, configengine.Dirs) (shuttleengine.EngineSet, error), outside reedengine.Outside) *hubDelivery {
 	return &hubDelivery{
 		hubPath: hubPath,
 		wire: func(location *lymcwd.Location) (worktreeOps, error) {
-			return wireShuttle(location, enginesFor)
+			return wireShuttle(location, enginesFor, outside)
 		},
 	}
 }
 
-// newProductionHubDelivery returns the Delivery of the hub at hubPath over every registered shuttle engine, the one the creel daemon runs.
-func newProductionHubDelivery(hubPath string) *hubDelivery {
-	return newHubDelivery(hubPath, shuttleengines.New)
+// NewHubDelivery returns the Delivery of the hub at hubPath over every registered shuttle engine.
+// It is the Delivery the creel daemon runs.
+// It lists the strands reed's state holds in each worktree of the hub, live or not.
+// Each worktree's reed reaches what outside sets in place of tmux, the process table and the user manager;
+// a zero outside reaches the real ones.
+func NewHubDelivery(hubPath string, outside reedengine.Outside) creelengine.Delivery {
+	return newHubDelivery(hubPath, shuttleengines.New, outside)
 }
 
 // shuttleOps is a worktree's reed engine and the shuttle runner over it.
@@ -77,7 +82,8 @@ type shuttleOps struct {
 }
 
 // wireShuttle builds the reed engine and shuttle runner of the worktree at location, from its configs and geometry.
-func wireShuttle(location *lymcwd.Location, enginesFor func(shuttleengine.Config, configengine.Dirs) (shuttleengine.EngineSet, error)) (shuttleOps, error) {
+// The reed engine reaches what outside sets in place of the real thing.
+func wireShuttle(location *lymcwd.Location, enginesFor func(shuttleengine.Config, configengine.Dirs) (shuttleengine.EngineSet, error), outside reedengine.Outside) (shuttleOps, error) {
 	configDirs := fabricengine.ConfigDirs(location)
 	reedCfg, err := reedengine.LoadConfig(configDirs, "reed")
 	if err != nil {
@@ -99,7 +105,7 @@ func wireShuttle(location *lymcwd.Location, enginesFor func(shuttleengine.Config
 	if err != nil {
 		return shuttleOps{}, err
 	}
-	reed := reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub())
+	reed := reedengine.NewOver(reedCfg, reedGeom, shuttleengines.EnvScrub(), outside)
 	runner := shuttleengine.NewRunner(reed, engines, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 	// The pause record is the hub's, with no slug, so each send judges its target by the target's own strand name.
 	runner.SetPause(pauserecord.Geometry{RecordPath: pauseGeom.RecordPath})

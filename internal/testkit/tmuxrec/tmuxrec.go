@@ -5,9 +5,10 @@
 // It names the command, date and tmux version it was recorded with.
 // Replay answers reed's calls from one recording, as the reedengine.Outside a test passes to reedengine.NewOver,
 // so every module above tmux runs for real.
-// A recording keeps the paths and process ids of the machine that made it as placeholders,
-// and a replay binds them to the test's own directories and to process ids no kernel hands out,
-// so no process of the machine running a replay is ever read or signalled.
+// A recording keeps reed's session name, and the paths and process ids of the machine that made it, as placeholders.
+// A replay binds them to the test's own session name and directories, and to process ids no kernel hands out,
+// so no process of the machine running a replay is ever read or signalled,
+// and a recording serves a reed of any worktree.
 // The text a call hands tmux on standard input is what the code under test sent,
 // so a recording holds only the hub directory in it as a placeholder.
 // Replay answers only what was recorded; a call with no recorded answer fails, naming the call.
@@ -249,6 +250,8 @@ type Replay struct {
 	calls []Call
 	// next is the index of the first call no answer has passed yet.
 	next int
+	// answered counts the calls answered from the recording.
+	answered int
 	// unanswered records each call the recording held no answer for, in order.
 	unanswered []string
 }
@@ -294,6 +297,13 @@ func (r *Replay) Unanswered() []string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return slices.Clone(r.unanswered)
+}
+
+// answeredCount returns how many calls were answered from the recording.
+func (r *Replay) answeredCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.answered
 }
 
 // Remaining returns each recorded change at or after the replay's place, in order: the changes no call has asked for.
@@ -377,6 +387,7 @@ func (r *Replay) answer(want Call) (Call, error) {
 		call := r.calls[i]
 		if call.matches(want) {
 			r.next = i + 1
+			r.answered++
 			return call, nil
 		}
 		if !call.read() {
@@ -386,6 +397,7 @@ func (r *Replay) answer(want Call) (Call, error) {
 	if want.read() {
 		for i := r.next - 1; i >= 0 && r.calls[i].read(); i-- {
 			if r.calls[i].matches(want) {
+				r.answered++
 				return r.calls[i], nil
 			}
 		}

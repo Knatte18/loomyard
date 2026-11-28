@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/creelengine"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/testkit/llmkit"
@@ -35,7 +36,7 @@ func TestSmokeCreelClaudeStrand(t *testing.T) {
 	name, guid := smoke.addStrand(t, "smokeclaude", claudePath)
 	smoke.startDaemon(t, shuttleengines.New)
 
-	delivery := newHubDelivery(smoke.hub.Path, shuttleengines.New)
+	delivery := newHubDelivery(smoke.hub.Path, shuttleengines.New, reedengine.Outside{})
 	strands, err := delivery.Strands()
 	if err != nil {
 		t.Fatalf("Strands() = %v", err)
@@ -55,7 +56,7 @@ func TestSmokeCreelClaudeStrand(t *testing.T) {
 	// Accepting the gate adds the temp hub's path to the operator's Claude trust list.
 	deadline := time.Now().Add(smokePaneWindow)
 	for {
-		ops, err := wireShuttle(smoke.hub.Location, shuttleengines.New)
+		ops, err := wireShuttle(smoke.hub.Location, shuttleengines.New, reedengine.Outside{})
 		if err != nil {
 			t.Fatalf("wireShuttle() = %v", err)
 		}
@@ -141,7 +142,7 @@ const smokeTurnWindow = 4 * time.Minute
 // It stops the run when the test ends and returns the strand's name and guid and the run's events file.
 func (s *smokeHub) startClaudeRun(t *testing.T, spec shuttleengine.Spec) (name, guid, eventsPath string) {
 	t.Helper()
-	ops, err := wireShuttle(s.hub.Location, shuttleengines.New)
+	ops, err := wireShuttle(s.hub.Location, shuttleengines.New, reedengine.Outside{})
 	if err != nil {
 		t.Fatalf("wireShuttle() = %v", err)
 	}

@@ -12,7 +12,7 @@
       "args": [
         "has-session",
         "-t",
-        "=pr-session"
+        "={session}"
       ],
       "err": "exit status 1: no current target",
       "exit": 1
@@ -22,7 +22,7 @@
       "args": [
         "has-session",
         "-t",
-        "=pr-session"
+        "={session}"
       ],
       "err": "exit status 1: no current target",
       "exit": 1
@@ -48,7 +48,7 @@
       "args": [
         "has-session",
         "-t",
-        "=pr-session"
+        "={session}"
       ],
       "err": "exit status 1: no current target",
       "exit": 1
@@ -71,7 +71,7 @@
         "#{pid} #{start_time}"
       ],
       "capture": true,
-      "out": "{pid:1} 1795858703\n"
+      "out": "{pid:1} 1795886975\n"
     },
     {
       "kind": "tmux",
@@ -79,9 +79,9 @@
         "new-session",
         "-d",
         "-s",
-        "pr-session",
+        "{session}",
         "-c",
-        "{hub}/pr-session",
+        "{hub}/{session}",
         "-x",
         "220",
         "-y",
@@ -90,19 +90,19 @@
         ";",
         "set-option",
         "-t",
-        "=pr-session:",
+        "={session}:",
         "destroy-unattached",
         "off",
         ";",
         "set-option",
         "-t",
-        "=pr-session:",
+        "={session}:",
         "@lym_reed_session",
         "on",
         ";",
         "set-option",
         "-t",
-        "=pr-session:",
+        "={session}:",
         "@lym_follow",
         "on"
       ]
@@ -112,7 +112,7 @@
       "args": [
         "has-session",
         "-t",
-        "=pr-session"
+        "={session}"
       ]
     },
     {
@@ -121,7 +121,7 @@
         "display-message",
         "-p",
         "-t",
-        "=pr-session:",
+        "={session}:",
         "#{window_id} #{pane_id} #{window_name}"
       ],
       "capture": true,
@@ -135,7 +135,7 @@
         "#{pid} #{start_time}"
       ],
       "capture": true,
-      "out": "{pid:1} 1795858703\n"
+      "out": "{pid:1} 1795886975\n"
     },
     {
       "kind": "tmux",
@@ -156,7 +156,7 @@
       "args": [
         "has-session",
         "-t",
-        "=pr-session"
+        "={session}"
       ]
     },
     {
@@ -241,7 +241,7 @@
       "args": [
         "set-option",
         "-t",
-        "=pr-session:",
+        "={session}:",
         "status",
         "3"
       ]
@@ -251,7 +251,7 @@
       "args": [
         "set-option",
         "-t",
-        "=pr-session:",
+        "={session}:",
         "status-position",
         "bottom"
       ]
@@ -261,31 +261,31 @@
       "args": [
         "set-option",
         "-t",
-        "=pr-session:",
+        "={session}:",
         "@lym_buttons_plain",
         "",
         ";",
         "set-option",
         "-t",
-        "=pr-session:",
+        "={session}:",
         "@lym_buttons_agent",
         "",
         ";",
         "set-option",
         "-t",
-        "=pr-session:",
+        "={session}:",
         "@lym_button_spec",
         "",
         ";",
         "set-option",
         "-t",
-        "=pr-session:",
+        "={session}:",
         "@lym_button_dir",
         "",
         ";",
         "set-option",
         "-t",
-        "=pr-session:",
+        "={session}:",
         "@lym_orch_dir",
         ""
       ]
@@ -296,7 +296,7 @@
         "set-option",
         "-w",
         "-t",
-        "=pr-session:",
+        "={session}:",
         "window-size",
         "latest"
       ]
@@ -306,7 +306,7 @@
       "args": [
         "set-option",
         "-t",
-        "=pr-session:",
+        "={session}:",
         "default-shell",
         "{shell}"
       ]
@@ -316,7 +316,7 @@
       "args": [
         "set-option",
         "-t",
-        "=pr-session:",
+        "={session}:",
         "default-command",
         "{shell}"
       ]
@@ -459,7 +459,7 @@
       "args": [
         "set-hook",
         "-t",
-        "=pr-session:",
+        "={session}:",
         "session-window-changed",
         "set-option -w -u @lym_unseen"
       ]
@@ -470,18 +470,18 @@
         "display-message",
         "-p",
         "-t",
-        "=pr-session:",
+        "={session}:",
         "#{session_id}|#{pid}|#{session_created}"
       ],
       "capture": true,
-      "out": "$0|{pid:1}|1795858704\n"
+      "out": "$0|{pid:1}|1795886975\n"
     },
     {
       "kind": "tmux",
       "args": [
         "list-windows",
         "-t",
-        "=pr-session",
+        "={session}",
         "-F",
         "#{window_id} #{?#{@lym_strands},1,0}"
       ],
@@ -493,7 +493,7 @@
       "args": [
         "list-panes",
         "-t",
-        "=pr-session:",
+        "={session}:",
         "-F",
         "#{pane_id} #{pane_dead} #{pane_top} #{pane_width} #{pane_height} #{pane_pid} #{pane_title}\t#{pane_current_command}\t#{pane_start_command}"
       ],
@@ -508,7 +508,7 @@
         "-t",
         "%0",
         "-c",
-        "{hub}/pr-session",
+        "{hub}/{session}",
         "-P",
         "-F",
         "#{pane_id}",
@@ -534,7 +534,7 @@
         "list-panes",
         "-s",
         "-t",
-        "=pr-session",
+        "={session}",
         "-F",
         "#{pane_id} #{window_id}"
       ],
@@ -558,7 +558,7 @@
         "list-panes",
         "-s",
         "-t",
-        "=pr-session",
+        "={session}",
         "-F",
         "#{pane_id} #{window_id}"
       ],
@@ -570,7 +570,7 @@
       "args": [
         "list-windows",
         "-t",
-        "=pr-session",
+        "={session}",
         "-F",
         "#{window_id} #{window_index} #{?#{@lym_hidden},1,0} #{?#{@lym_shell_check_failed},1,0} #{window_name}"
       ],
@@ -603,7 +603,7 @@
         "list-panes",
         "-s",
         "-t",
-        "=pr-session",
+        "={session}",
         "-F",
         "#{pane_id} #{window_id}"
       ],
@@ -628,7 +628,7 @@
         "list-panes",
         "-s",
         "-t",
-        "=pr-session",
+        "={session}",
         "-F",
         "#{window_id} #{?#{@lym_own},1,0} #{?#{@lym_group},#{@lym_group},-} #{pane_id} #{pane_dead} #{pane_pid} #{pane_title}\t#{pane_current_command}\t#{pane_start_command}"
       ],
@@ -649,7 +649,7 @@
         "list-panes",
         "-s",
         "-t",
-        "=pr-session",
+        "={session}",
         "-F",
         "#{pane_id} #{window_id}"
       ],
@@ -674,11 +674,11 @@
         "display-message",
         "-p",
         "-t",
-        "=pr-session:",
+        "={session}:",
         "#{session_id}|#{pid}|#{session_created}"
       ],
       "capture": true,
-      "out": "$0|{pid:1}|1795858704\n"
+      "out": "$0|{pid:1}|1795886975\n"
     },
     {
       "kind": "tmux",
@@ -686,7 +686,7 @@
         "list-panes",
         "-s",
         "-t",
-        "=pr-session",
+        "={session}",
         "-F",
         "#{pane_id} #{window_id}"
       ],
@@ -711,7 +711,7 @@
         "list-panes",
         "-s",
         "-t",
-        "=pr-session",
+        "={session}",
         "-F",
         "#{window_id} #{?#{@lym_own},1,0} #{?#{@lym_group},#{@lym_group},-} #{pane_id} #{pane_dead} #{pane_pid} #{pane_title}\t#{pane_current_command}\t#{pane_start_command}"
       ],
@@ -724,7 +724,7 @@
         "list-panes",
         "-s",
         "-t",
-        "=pr-session",
+        "={session}",
         "-F",
         "#{pane_id} #{window_id}"
       ],
@@ -736,7 +736,7 @@
       "args": [
         "list-windows",
         "-t",
-        "=pr-session",
+        "={session}",
         "-F",
         "#{window_id} #{window_index} #{?#{@lym_hidden},1,0} #{?#{@lym_shell_check_failed},1,0} #{window_name}"
       ],
@@ -749,7 +749,7 @@
         "list-panes",
         "-s",
         "-t",
-        "=pr-session",
+        "={session}",
         "-F",
         "#{pane_id} #{window_id}"
       ],
@@ -761,7 +761,7 @@
       "args": [
         "list-windows",
         "-t",
-        "=pr-session",
+        "={session}",
         "-F",
         "#{window_id} #{window_index} #{?#{@lym_hidden},1,0} #{?#{@lym_shell_check_failed},1,0} #{window_name}"
       ],
@@ -774,7 +774,7 @@
         "display-message",
         "-p",
         "-t",
-        "=pr-session:",
+        "={session}:",
         "#{@lym_follow}"
       ],
       "capture": true,
@@ -794,7 +794,7 @@
         "-n",
         "pr-reviewer",
         "-c",
-        "{hub}/pr-session"
+        "{hub}/{session}"
       ],
       "capture": true,
       "out": "%2 @1\n"
@@ -918,7 +918,7 @@
         "-t",
         "%2",
         "-l",
-        ". '{hub}/pr-session/.lym/reed/launch/guid-1.sh'"
+        ". '{hub}/{session}/.lym/reed/launch/guid-1.sh'"
       ]
     },
     {
@@ -936,7 +936,7 @@
         "list-panes",
         "-s",
         "-t",
-        "=pr-session",
+        "={session}",
         "-F",
         "#{pane_id} #{window_id}"
       ],
@@ -961,7 +961,7 @@
         "list-panes",
         "-s",
         "-t",
-        "=pr-session",
+        "={session}",
         "-F",
         "#{window_id} #{?#{@lym_own},1,0} #{?#{@lym_group},#{@lym_group},-} #{pane_id} #{pane_dead} #{pane_pid} #{pane_title}\t#{pane_current_command}\t#{pane_start_command}"
       ],
@@ -973,7 +973,7 @@
       "args": [
         "has-session",
         "-t",
-        "=pr-session"
+        "={session}"
       ]
     },
     {
@@ -982,11 +982,11 @@
         "display-message",
         "-p",
         "-t",
-        "=pr-session:",
+        "={session}:",
         "#{session_id}|#{pid}|#{session_created}"
       ],
       "capture": true,
-      "out": "$0|{pid:1}|1795858704\n"
+      "out": "$0|{pid:1}|1795886975\n"
     },
     {
       "kind": "tmux",
@@ -994,7 +994,7 @@
         "list-panes",
         "-s",
         "-t",
-        "=pr-session",
+        "={session}",
         "-F",
         "#{pane_id} #{window_id}"
       ],
@@ -1019,7 +1019,7 @@
         "list-panes",
         "-s",
         "-t",
-        "=pr-session",
+        "={session}",
         "-F",
         "#{window_id} #{?#{@lym_own},1,0} #{?#{@lym_group},#{@lym_group},-} #{pane_id} #{pane_dead} #{pane_pid} #{pane_title}\t#{pane_current_command}\t#{pane_start_command}"
       ],
@@ -1029,7 +1029,7 @@
     {
       "kind": "pane-age",
       "pid": "{pid:3}",
-      "age_ms": 229,
+      "age_ms": 250,
       "known": true
     },
     {
@@ -1037,7 +1037,7 @@
       "args": [
         "has-session",
         "-t",
-        "=pr-session"
+        "={session}"
       ]
     },
     {
@@ -1046,11 +1046,11 @@
         "display-message",
         "-p",
         "-t",
-        "=pr-session:",
+        "={session}:",
         "#{session_id}|#{pid}|#{session_created}"
       ],
       "capture": true,
-      "out": "$0|{pid:1}|1795858704\n"
+      "out": "$0|{pid:1}|1795886975\n"
     },
     {
       "kind": "tmux",
@@ -1058,7 +1058,7 @@
         "list-panes",
         "-s",
         "-t",
-        "=pr-session",
+        "={session}",
         "-F",
         "#{pane_id} #{window_id}"
       ],
@@ -1083,7 +1083,7 @@
         "list-panes",
         "-s",
         "-t",
-        "=pr-session",
+        "={session}",
         "-F",
         "#{window_id} #{?#{@lym_own},1,0} #{?#{@lym_group},#{@lym_group},-} #{pane_id} #{pane_dead} #{pane_pid} #{pane_title}\t#{pane_current_command}\t#{pane_start_command}"
       ],
@@ -1099,14 +1099,14 @@
         "%2"
       ],
       "capture": true,
-      "out": ". '{hub}/pr-session/.lym/reed/launch/guid-1.sh'\n{user}@{host}:{hub}/pr-session$ . '{hub}/pr-session/.lym/reed/launch/guid-1.sh'\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
+      "out": "{user}@{host}:{hub}/{session}$ . '{hub}/{session}/.lym/reed/launch/guid-1.sh'\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
     },
     {
       "kind": "tmux",
       "args": [
         "has-session",
         "-t",
-        "=pr-session"
+        "={session}"
       ]
     },
     {
@@ -1115,11 +1115,11 @@
         "display-message",
         "-p",
         "-t",
-        "=pr-session:",
+        "={session}:",
         "#{session_id}|#{pid}|#{session_created}"
       ],
       "capture": true,
-      "out": "$0|{pid:1}|1795858704\n"
+      "out": "$0|{pid:1}|1795886975\n"
     },
     {
       "kind": "tmux",
@@ -1127,7 +1127,7 @@
         "list-panes",
         "-s",
         "-t",
-        "=pr-session",
+        "={session}",
         "-F",
         "#{pane_id} #{window_id}"
       ],
@@ -1152,7 +1152,7 @@
         "list-panes",
         "-s",
         "-t",
-        "=pr-session",
+        "={session}",
         "-F",
         "#{window_id} #{?#{@lym_own},1,0} #{?#{@lym_group},#{@lym_group},-} #{pane_id} #{pane_dead} #{pane_pid} #{pane_title}\t#{pane_current_command}\t#{pane_start_command}"
       ],
@@ -1162,7 +1162,7 @@
     {
       "kind": "pane-age",
       "pid": "{pid:3}",
-      "age_ms": 320,
+      "age_ms": 299,
       "known": true
     },
     {
@@ -1170,7 +1170,7 @@
       "args": [
         "has-session",
         "-t",
-        "=pr-session"
+        "={session}"
       ]
     },
     {
@@ -1179,11 +1179,11 @@
         "display-message",
         "-p",
         "-t",
-        "=pr-session:",
+        "={session}:",
         "#{session_id}|#{pid}|#{session_created}"
       ],
       "capture": true,
-      "out": "$0|{pid:1}|1795858704\n"
+      "out": "$0|{pid:1}|1795886975\n"
     },
     {
       "kind": "tmux",
@@ -1191,7 +1191,7 @@
         "list-panes",
         "-s",
         "-t",
-        "=pr-session",
+        "={session}",
         "-F",
         "#{pane_id} #{window_id}"
       ],
@@ -1216,7 +1216,7 @@
         "list-panes",
         "-s",
         "-t",
-        "=pr-session",
+        "={session}",
         "-F",
         "#{window_id} #{?#{@lym_own},1,0} #{?#{@lym_group},#{@lym_group},-} #{pane_id} #{pane_dead} #{pane_pid} #{pane_title}\t#{pane_current_command}\t#{pane_start_command}"
       ],
@@ -1251,7 +1251,7 @@
       "args": [
         "has-session",
         "-t",
-        "=pr-session"
+        "={session}"
       ]
     },
     {
@@ -1260,11 +1260,11 @@
         "display-message",
         "-p",
         "-t",
-        "=pr-session:",
+        "={session}:",
         "#{session_id}|#{pid}|#{session_created}"
       ],
       "capture": true,
-      "out": "$0|{pid:1}|1795858704\n"
+      "out": "$0|{pid:1}|1795886975\n"
     },
     {
       "kind": "tmux",
@@ -1272,7 +1272,7 @@
         "list-panes",
         "-s",
         "-t",
-        "=pr-session",
+        "={session}",
         "-F",
         "#{pane_id} #{window_id}"
       ],
@@ -1297,7 +1297,7 @@
         "list-panes",
         "-s",
         "-t",
-        "=pr-session",
+        "={session}",
         "-F",
         "#{window_id} #{?#{@lym_own},1,0} #{?#{@lym_group},#{@lym_group},-} #{pane_id} #{pane_dead} #{pane_pid} #{pane_title}\t#{pane_current_command}\t#{pane_start_command}"
       ],
@@ -1307,7 +1307,7 @@
     {
       "kind": "pane-age",
       "pid": "{pid:3}",
-      "age_ms": 400,
+      "age_ms": 340,
       "known": true
     },
     {
@@ -1315,7 +1315,7 @@
       "args": [
         "has-session",
         "-t",
-        "=pr-session"
+        "={session}"
       ]
     },
     {
@@ -1324,11 +1324,11 @@
         "display-message",
         "-p",
         "-t",
-        "=pr-session:",
+        "={session}:",
         "#{session_id}|#{pid}|#{session_created}"
       ],
       "capture": true,
-      "out": "$0|{pid:1}|1795858704\n"
+      "out": "$0|{pid:1}|1795886975\n"
     },
     {
       "kind": "tmux",
@@ -1336,7 +1336,7 @@
         "list-panes",
         "-s",
         "-t",
-        "=pr-session",
+        "={session}",
         "-F",
         "#{pane_id} #{window_id}"
       ],
@@ -1361,7 +1361,7 @@
         "list-panes",
         "-s",
         "-t",
-        "=pr-session",
+        "={session}",
         "-F",
         "#{window_id} #{?#{@lym_own},1,0} #{?#{@lym_group},#{@lym_group},-} #{pane_id} #{pane_dead} #{pane_pid} #{pane_title}\t#{pane_current_command}\t#{pane_start_command}"
       ],
@@ -1371,7 +1371,7 @@
     {
       "kind": "pane-age",
       "pid": "{pid:3}",
-      "age_ms": 429,
+      "age_ms": 359,
       "known": true
     },
     {
@@ -1379,7 +1379,7 @@
       "args": [
         "has-session",
         "-t",
-        "=pr-session"
+        "={session}"
       ]
     },
     {
@@ -1388,11 +1388,11 @@
         "display-message",
         "-p",
         "-t",
-        "=pr-session:",
+        "={session}:",
         "#{session_id}|#{pid}|#{session_created}"
       ],
       "capture": true,
-      "out": "$0|{pid:1}|1795858704\n"
+      "out": "$0|{pid:1}|1795886975\n"
     },
     {
       "kind": "tmux",
@@ -1400,7 +1400,7 @@
         "list-panes",
         "-s",
         "-t",
-        "=pr-session",
+        "={session}",
         "-F",
         "#{window_id} #{?#{@lym_own},1,0} #{?#{@lym_group},#{@lym_group},-} #{pane_id} #{pane_dead} #{pane_pid} #{pane_title}\t#{pane_current_command}\t#{pane_start_command}"
       ],
@@ -1413,7 +1413,7 @@
         "display-message",
         "-p",
         "-t",
-        "=pr-session:",
+        "={session}:",
         "#{window_id}"
       ],
       "capture": true,
@@ -1424,7 +1424,7 @@
       "args": [
         "list-windows",
         "-t",
-        "=pr-session",
+        "={session}",
         "-F",
         "#{window_id} #{window_index} #{?#{@lym_hidden},1,0} #{?#{@lym_shell_check_failed},1,0} #{window_name}"
       ],
@@ -1437,7 +1437,7 @@
         "list-panes",
         "-s",
         "-t",
-        "=pr-session",
+        "={session}",
         "-F",
         "#{window_id} #{?#{@lym_own},1,0} #{?#{@lym_group},#{@lym_group},-} #{pane_id} #{pane_dead} #{pane_pid} #{pane_title}\t#{pane_current_command}\t#{pane_start_command}"
       ],
@@ -1458,7 +1458,7 @@
         "list-panes",
         "-s",
         "-t",
-        "=pr-session",
+        "={session}",
         "-F",
         "#{pane_id} #{window_id}"
       ],
@@ -1483,7 +1483,7 @@
         "list-panes",
         "-s",
         "-t",
-        "=pr-session",
+        "={session}",
         "-F",
         "#{window_id} #{?#{@lym_own},1,0} #{?#{@lym_group},#{@lym_group},-} #{pane_id} #{pane_dead} #{pane_pid} #{pane_title}\t#{pane_current_command}\t#{pane_start_command}"
       ],
@@ -1495,7 +1495,7 @@
       "args": [
         "has-session",
         "-t",
-        "=pr-session"
+        "={session}"
       ]
     },
     {
@@ -1504,11 +1504,11 @@
         "display-message",
         "-p",
         "-t",
-        "=pr-session:",
+        "={session}:",
         "#{session_id}|#{pid}|#{session_created}"
       ],
       "capture": true,
-      "out": "$0|{pid:1}|1795858704\n"
+      "out": "$0|{pid:1}|1795886975\n"
     },
     {
       "kind": "tmux",
@@ -1516,7 +1516,7 @@
         "list-panes",
         "-s",
         "-t",
-        "=pr-session",
+        "={session}",
         "-F",
         "#{pane_id} #{window_id}"
       ],
@@ -1541,7 +1541,7 @@
         "list-panes",
         "-s",
         "-t",
-        "=pr-session",
+        "={session}",
         "-F",
         "#{window_id} #{?#{@lym_own},1,0} #{?#{@lym_group},#{@lym_group},-} #{pane_id} #{pane_dead} #{pane_pid} #{pane_title}\t#{pane_current_command}\t#{pane_start_command}"
       ],
@@ -1551,7 +1551,7 @@
     {
       "kind": "pane-age",
       "pid": "{pid:3}",
-      "age_ms": 539,
+      "age_ms": 520,
       "known": true
     }
   ],

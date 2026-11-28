@@ -33,6 +33,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/selfexec"
 	"github.com/Knatte18/loomyard/internal/standalonestate"
 )
@@ -1047,7 +1048,7 @@ func serveDaemon(ctx context.Context, hubPath string) error {
 	defer stop()
 	return creelengine.Run(ctx, creelengine.Options{
 		Geometry:  geometry,
-		Delivery:  newProductionHubDelivery(hubPath),
+		Delivery:  NewHubDelivery(hubPath, reedengine.Outside{}),
 		Hubs:      daemonHubs(hubPath, geometry.Shortname, root.Path()),
 		Bridge:    newSlackBridge(hubPath),
 		Clock:     realClock{},

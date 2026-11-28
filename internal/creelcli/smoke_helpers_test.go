@@ -109,7 +109,7 @@ func (s *smokeHub) startDaemon(t *testing.T, enginesFor func(shuttleengine.Confi
 	go func() {
 		done <- creelengine.Run(ctx, creelengine.Options{
 			Geometry:  s.geometry,
-			Delivery:  newHubDelivery(s.hub.Path, enginesFor),
+			Delivery:  newHubDelivery(s.hub.Path, enginesFor, reedengine.Outside{}),
 			Clock:     realClock{},
 			ParentPID: proc.ParentPID,
 			GOOS:      runtime.GOOS,

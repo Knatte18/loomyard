@@ -1,5 +1,5 @@
 // prreview_mail_integration_test.go pins how the PR-Review row mails a refused head to its session.
-// The row's wired mail seam posts to a real creel daemon, which runs in process on a fake delivery.
+// The row's wired mail seam posts to a real creel daemon, which runs in process over the hub's own delivery.
 // The wired seams that read config, git and the run's records read a real task pair.
 // The session runs over real reed on a recorded tmux, and the gate runs a failing command in that pair.
 
@@ -31,7 +31,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
-	"github.com/Knatte18/loomyard/internal/testkit/creelfake"
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
 	"github.com/Knatte18/loomyard/internal/testkit/prkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -66,7 +65,7 @@ func TestPRReviewGateFailureMail(t *testing.T) {
 	const slug = hubforge.TemplatePairSlug
 	once := hubforge.TestShortname + ":pr-once"
 	again := hubforge.TestShortname + ":pr-again"
-	startNoticeOrch(t, h, creelfake.LiveStrand(once), creelfake.LiveStrand(again))
+	startNoticeOrch(t, h, once, again)
 	pair, err := lymcwd.ResolveWorktree(h.PairCodeWorktree(slug))
 	if err != nil {
 		t.Fatalf("lymcwd.ResolveWorktree(%s) = %v; want nil", slug, err)

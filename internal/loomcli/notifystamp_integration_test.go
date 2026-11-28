@@ -1,6 +1,6 @@
 // notifystamp_integration_test.go proves what loomcli's seams stamp on the notices they post, over a real hub:
 // a halt notice carries the run's autonomy, and a verify-budget notice names the run.
-// Creel's daemon runs in process on a fake delivery.
+// Creel's daemon runs in process over the hub's own delivery, whose reed reads a recorded tmux.
 
 package loomcli
 
@@ -8,6 +8,7 @@ import (
 	"context"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -30,13 +31,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/creelfake"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
+	"github.com/Knatte18/loomyard/internal/testkit/tmuxrec"
 )
 
-// startNoticeOrch records a prime orch strand for the hub and runs creel's daemon in process with that strand live.
-// The daemon also lists each of others.
+// startNoticeOrch records a prime orch strand for the hub in reed's state.
+// Beside it, it records a strand named each of others.
+// It also runs creel's daemon in process over the hub's own delivery.
+// The delivery lists the strands reed's state holds, so creel refuses a mail to any other name as to an unknown strand.
+// Its reed reads the hub's session over a recorded tmux on which no session runs,
+// so every strand reads not live and a posted mail waits unread in the log the test reads.
 // The notice clients then connect to the daemon and spawn none of their own.
-// It returns the daemon's fake delivery and the orch strand's name.
-func startNoticeOrch(t *testing.T, h *hubforge.Hub, others ...creelengine.Strand) (*creelfake.Delivery, string) {
+func startNoticeOrch(t *testing.T, h *hubforge.Hub, others ...string) {
 	t.Helper()
 	root, err := lymtemp.ProcessRoot()
 	if err != nil {
@@ -51,13 +56,17 @@ func startNoticeOrch(t *testing.T, h *hubforge.Hub, others ...creelengine.Strand
 		t.Fatalf("orchengine.SaveState() = %v; want nil", err)
 	}
 	reedState := &reedengine.ReedState{Strands: []reedengine.Strand{{GUID: "g1", Name: receiver}}}
+	for i, name := range others {
+		reedState.Strands = append(reedState.Strands, reedengine.Strand{GUID: "g" + strconv.Itoa(i+2), Name: name})
+	}
 	if err := reedengine.SaveState(filepath.Join(h.Location.AnchorPath(), lymdirs.DotLymDirName), reedState); err != nil {
 		t.Fatalf("reedengine.SaveState() = %v; want nil", err)
 	}
-	delivery := creelfake.NewDelivery()
-	delivery.SetStrands(append([]creelengine.Strand{creelfake.LiveStrand(receiver)}, others...)...)
-	// Busy, so a posted mail is not carried into the pane before the test reads the log.
-	delivery.SetIdle(receiver, false)
+	reedGeometry, err := hubgeom.ReedGeometry(h.Location)
+	if err != nil {
+		t.Fatalf("ReedGeometry() = %v; want nil", err)
+	}
+	delivery := creelcli.NewHubDelivery(h.Path, tmuxrec.PlayOutside(t, "session-not-started", reedGeometry.SessionName))
 	epoch := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
 
 	ready := make(chan struct{})
@@ -80,7 +89,6 @@ func startNoticeOrch(t *testing.T, h *hubforge.Hub, others ...creelengine.Strand
 	case <-time.After(10 * time.Second):
 		t.Fatal("the creel daemon did not listen")
 	}
-	return delivery, receiver
 }
 
 // postedEntries returns the log entry of each mail the hub's creel daemon logged as posted, oldest first.

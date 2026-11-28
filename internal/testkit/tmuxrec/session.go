@@ -74,7 +74,7 @@ type Session struct {
 	StateDir string
 	// StartupTimeoutS is the runner's startup timeout, in seconds; 0 ends a start whose provider is not up at once.
 	StartupTimeoutS int
-	// Bindings binds the placeholders of the session's recordings to its directories.
+	// Bindings binds the placeholders of the session's recordings to its directories and reed's session name.
 	Bindings Bindings
 	Reed     *reedengine.Engine
 	// Engine is the provider engine the runner starts, the one stand-in above reed.
@@ -85,13 +85,16 @@ type Session struct {
 // replaySocket is the -L socket key a replayed session's reed is told; no server listens on it.
 const replaySocket = "tmuxrec-replay"
 
+// sessionPlaceholder is what a recording holds in place of reed's session name.
+const sessionPlaceholder = "{session}"
+
 // newSession builds a session in fresh directories whose reed is told the -L socket key socket.
 // That reed reaches the outside that outside returns for the session's bindings and guid source.
 // Its runner gives a provider startupTimeoutS seconds to come up.
 func newSession(t testing.TB, socket string, startupTimeoutS int, outside func(bindings Bindings, newGUID func() (string, error)) reedengine.Outside) *Session {
 	t.Helper()
 	hub := t.TempDir()
-	bindings := Bindings{"{hub}": hub, "{tmp}": os.TempDir(), "{socket}": socket}
+	bindings := Bindings{"{hub}": hub, "{tmp}": os.TempDir(), "{socket}": socket, sessionPlaceholder: WorktreeName}
 	// A pane's title and prompt name the machine and the user, which a recording keeps as placeholders.
 	if host, err := machinename.Hostname(); err == nil {
 		bindings["{host}"] = host
@@ -204,6 +207,33 @@ func IdleSession(t testing.TB, name string) *Session {
 	}
 	session, _ := replaySession(t, name, rec)
 	return session
+}
+
+// PlayOutside returns the reedengine.Outside that answers from the package's recording named name.
+// It serves a reed whose session is named session.
+// It binds only the recording's session name, so it serves a reed whose calls name no path of the recording's hub.
+// A reed that reads the status of a session that is not running is one such.
+// It skips the test on an operating system other than the recording's, whose tmux calls differ.
+// A call the recording holds no answer to fails in reed, and the test fails at cleanup naming each such call.
+// A replay no call reached fails the test at cleanup too.
+func PlayOutside(t testing.TB, name, session string) reedengine.Outside {
+	t.Helper()
+	rec, err := Embedded(name)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	if rec.Source.OS != runtime.GOOS {
+		t.Skipf("tmuxrec: no recording %s made on %s; the stored one was made on %s", name, runtime.GOOS, rec.Source.OS)
+	}
+	replay := NewReplay(name, rec, Bindings{sessionPlaceholder: session})
+	t.Cleanup(func() {
+		if unanswered := replay.Unanswered(); len(unanswered) > 0 {
+			t.Errorf("recording %s holds no answer to %q", name, unanswered)
+		} else if replay.answeredCount() == 0 {
+			t.Errorf("recording %s answered no call", name)
+		}
+	})
+	return replay.Outside(guidSequence())
 }
 
 // replaySession builds a session whose reed answers from rec, the recording named name.
