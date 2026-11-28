@@ -178,6 +178,44 @@ const (
 	beamStartTaskLabel = "beam start"
 )
 
+// ownTerminalPresentation is how a task that takes over a new terminal of its own shows it: revealed and focused.
+func ownTerminalPresentation() map[string]any {
+	return map[string]any{
+		"reveal": "always",
+		"panel":  "new",
+		"echo":   true,
+		"focus":  true,
+	}
+}
+
+// WorkspaceTasks returns the top-level member of a .code-workspace file that holds its tasks, name and value.
+// The one task, "beam start", runs lymPath with the arguments "beam start <beam>" in the directory cwd.
+// It is a process task, since a workspace file admits only shell and process tasks.
+// An empty lymPath becomes "lym".
+func WorkspaceTasks(lymPath, beam, cwd string) (name string, value json.RawMessage) {
+	if lymPath == "" {
+		lymPath = "lym"
+	}
+	tasks := map[string]any{
+		"version": "2.0.0",
+		"tasks": []map[string]any{
+			{
+				"label":        beamStartTaskLabel,
+				"type":         "process",
+				"command":      lymPath,
+				"args":         []string{"beam", "start", beam},
+				"options":      map[string]any{"cwd": cwd},
+				"presentation": ownTerminalPresentation(),
+			},
+		},
+	}
+	data, err := json.MarshalIndent(tasks, "  ", "  ")
+	if err != nil {
+		panic("vscode: encode the workspace tasks: " + err.Error())
+	}
+	return "tasks", data
+}
+
 // writeWorktreeTasks writes a tasks.json holding the on-demand "reed attach" and "board open" tasks.
 // It overwrites any existing file.
 // Neither task carries runOptions.
@@ -189,16 +227,11 @@ func writeWorktreeTasks(tasksPath, lymPath string) error {
 		"version": "2.0.0",
 		"tasks": []map[string]any{
 			{
-				"label":   attachTaskLabel,
-				"type":    "shell",
-				"command": lymPath,
-				"args":    []string{"reed", "attach"},
-				"presentation": map[string]any{
-					"reveal": "always",
-					"panel":  "new",
-					"echo":   true,
-					"focus":  true,
-				},
+				"label":        attachTaskLabel,
+				"type":         "shell",
+				"command":      lymPath,
+				"args":         []string{"reed", "attach"},
+				"presentation": ownTerminalPresentation(),
 			},
 			{
 				"label":   boardOpenTaskLabel,

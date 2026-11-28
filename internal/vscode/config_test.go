@@ -124,6 +124,42 @@ func TestWriteConfigFallsBackToBareName(t *testing.T) {
 	assertWorktreeTaskShapes(t, readTasksFile(t, dir).Tasks, "lym")
 }
 
+// TestWorkspaceTasks pins the workspace file's tasks member.
+// It holds one beam start process task, presented like the reed attach task.
+// An empty lym path degrades to the bare binary name.
+func TestWorkspaceTasks(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	for _, tt := range []struct{ name, lymPath, wantCommand string }{
+		{"ResolvedPath", "/opt/lym/bin/lym", "/opt/lym/bin/lym"},
+		{"EmptyPath", "", "lym"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			name, value := WorkspaceTasks(tt.lymPath, "b", "/hub/b")
+			if name != "tasks" {
+				t.Errorf("WorkspaceTasks name = %q; want tasks", name)
+			}
+			var got map[string]any
+			if err := json.Unmarshal(value, &got); err != nil {
+				t.Fatalf("WorkspaceTasks value is not valid JSON: %v\n%s", err, value)
+			}
+			want := map[string]any{
+				"version": "2.0.0",
+				"tasks": []any{map[string]any{
+					"label": "beam start", "type": "process", "command": tt.wantCommand,
+					"args":         []any{"beam", "start", "b"},
+					"options":      map[string]any{"cwd": "/hub/b"},
+					"presentation": map[string]any{"reveal": "always", "panel": "new", "echo": true, "focus": true},
+				}},
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("WorkspaceTasks value = %v; want %v", got, want)
+			}
+		})
+	}
+}
+
 // TestWriteConfigRewritesOwnSettingsKeysAndOverwritesTasks pins a rerun over existing files.
 // It sets lym's title and colour keys in settings.json, keeping its other keys and colour customizations;
 // it replaces tasks.json.

@@ -597,6 +597,8 @@ User-facing modules each get one `lym <module>` namespace:
   a part that does not exist is left out.
   A terminal window `lym reed window` opens takes the same title.
   A beam's own `<RepoName>-<beam>.code-workspace` carries the beam's settings, as the hub's carries the prime's.
+  Each of these files carries one `beam start` task, which `alt+shift+0` runs:
+  `lym beam start root` in the hub's, and `lym beam start <beam>` in a beam's.
   Each has the workspace look:
   `window.title` names the hub shortname, then the repository or beam followed by `workspace`,
   and the activity bar takes the workspace's blue-grey, which no worktree takes.
