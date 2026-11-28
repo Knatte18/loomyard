@@ -16,6 +16,12 @@ import (
 	"unicode"
 )
 
+// migrateLoaded applies to a loaded store the migrations a write applies before its mutation, and saves nothing.
+func migrateLoaded(store *Store) {
+	migrateDraftStatus(store)
+	migrateDiscussedStatus(store)
+}
+
 // storedEntry is the decode shape of one board.json entry: a Task plus the retired tier and type fields.
 // Decoding consumes the two retired keys, so they are never kept in Task.Unknown and the saved entry carries neither.
 // Nothing encodes one.

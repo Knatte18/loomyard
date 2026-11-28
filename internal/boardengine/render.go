@@ -1,5 +1,6 @@
 // render.go turns the entry list into the board's output files.
-// Those are README.md, a project-<slug>.md for each project and the root, and a design-*.md for each entry with a body.
+// Those are README.md and a project-<slug>.md for each project and the root.
+// They also include a design-*.md for each entry with a body, and board-data.js, the view projection.
 // Render is a pure function from the entries to a map of filename to content; the caller writes the files.
 // README.md is the overview of every top-level project, each in a collapsible section, with the root's own section last.
 // A project file holds its heading, its facts and brief, and its own entries.
@@ -41,7 +42,7 @@ const renderManifestFile = ".board-rendered.json"
 // An entry flagged discussed whose decision record file is missing from boardPath renders as undiscussed,
 // so no board file links a missing record.
 func RenderToDisk(boardPath string, tasks []Task, primeOwner string, out Outputs, now time.Time) error {
-	files, err := Render(withMissingRecordsUndiscussed(boardPath, tasks), primeOwner, out, now)
+	files, err := renderFiles(tasks, withMissingRecordsUndiscussed(boardPath, tasks), primeOwner, out, now)
 	if err != nil {
 		return err
 	}
@@ -118,7 +119,13 @@ func writeRenderManifest(boardPath string, files map[string]string) {
 // Every project, open or done, gets a file named by projectFileName, and the root project gets rootProjectFile.
 // Every entry flagged discussed is linked to its decision record, which Render takes to exist.
 func Render(tasks []Task, primeOwner string, out Outputs, now time.Time) (map[string]string, error) {
-	ordered, err := RenderOrder(tasks)
+	return renderFiles(tasks, tasks, primeOwner, out, now)
+}
+
+// renderFiles renders every board file from rendered and takes the projection's entry revisions over stored.
+// The two differ only where a rendered entry reads otherwise than the board stores it.
+func renderFiles(stored, rendered []Task, primeOwner string, out Outputs, now time.Time) (map[string]string, error) {
+	ordered, err := RenderOrder(rendered)
 	if err != nil {
 		return nil, err
 	}
@@ -134,8 +141,15 @@ func Render(tasks []Task, primeOwner string, out Outputs, now time.Time) (map[st
 		}
 	}
 
-	for name, content := range renderDesigns(tasks, out.DesignPrefix) {
+	for name, content := range renderDesigns(rendered, out.DesignPrefix) {
 		result[name] = content
+	}
+	view, err := buildView(stored, rendered, primeOwner, out, now)
+	if err != nil {
+		return nil, err
+	}
+	if result[BoardDataFile], err = boardDataScript(view); err != nil {
+		return nil, err
 	}
 	return result, nil
 }
@@ -298,6 +312,14 @@ func notesTypeOrder(types []string) []string {
 // projectFileName is the name of the board file that renders the project slug and the entries under it.
 func projectFileName(slug string) string {
 	return projectFilePrefix + slug + ".md"
+}
+
+// noteSectionName is the Notes subsection heading of the notes typed typeLabel, "" naming those of no configured type.
+func noteSectionName(typeLabel string) string {
+	if typeLabel == "" {
+		return otherNotesHeading
+	}
+	return typeHeading(typeLabel)
 }
 
 // noteType is the first configured type label t carries, in types order, or "" when it carries none.
@@ -712,11 +734,7 @@ func (b boardView) entrySections(project Task, level int) []string {
 		if len(entries) == 0 {
 			continue
 		}
-		sectionName := otherNotesHeading
-		if typeLabel != "" {
-			sectionName = typeHeading(typeLabel)
-		}
-		lines = append(lines, countedHeading(sublevel, sectionName, len(entries)), "")
+		lines = append(lines, countedHeading(sublevel, noteSectionName(typeLabel), len(entries)), "")
 		lines = append(lines, b.table(entries, noteTable)...)
 	}
 
@@ -769,20 +787,28 @@ func (b boardView) childProjects(project Task) []TaskWithLayer {
 	return children
 }
 
+// unmetDependencies returns the slugs of the dependencies of t that hold it back, in depends_on order.
+// A project dependency is judged by its landing members too, and a slug the board does not hold counts as unmet.
+func (b boardView) unmetDependencies(t Task) []string {
+	var unmet []string
+	for _, dep := range t.DependsOn {
+		if _, found := b.bySlug[dep]; found && b.dependencies.met(dep) {
+			continue
+		}
+		unmet = append(unmet, dep)
+	}
+	return unmet
+}
+
 // afterCell returns the After cell of t.
 // The cell holds the handles of its dependencies that are not met, one per line in depends_on order.
-// A project dependency is judged by its landing members too.
 // A dependency the board holds no handle for is shown by its slug.
 func (b boardView) afterCell(t Task) string {
 	var after []string
-	for _, dep := range t.DependsOn {
-		entry, found := b.bySlug[dep]
-		switch {
-		case found && b.dependencies.met(dep):
-			// A met dependency does not hold t back.
-		case found && entry.Handle != "":
+	for _, dep := range b.unmetDependencies(t) {
+		if entry, found := b.bySlug[dep]; found && entry.Handle != "" {
 			after = append(after, cellText(entry.Handle))
-		default:
+		} else {
 			after = append(after, codeSpan(dep))
 		}
 	}
