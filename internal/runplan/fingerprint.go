@@ -127,46 +127,6 @@ func OverviewFrameHashOf(overview []byte) (string, error) {
 	return hex.EncodeToString(sum[:]), nil
 }
 
-// The three causes RecordedOverviewFrame names for a run with no recorded overview frame.
-const (
-	OverviewFrameCauseNoHash         = "no overview hash was recorded"
-	OverviewFrameCauseBaselineAbsent = "the baseline copy of the recorded overview is absent"
-	OverviewFrameCauseNoCardIndex    = "the baseline copy of the recorded overview has no parseable Card Index"
-)
-
-// RecordedOverviewFrame returns the overview frame hash st records.
-// A state without State.PlanOverviewFrameHash takes the frame of the baseline copy of its recorded 00-overview.md.
-// That copy lies under runDir.
-// The frame is "" when the run has no recorded frame:
-// no overview hash recorded, the copy absent, or a copy without a parseable Card Index.
-// For an empty frame, cause is one of the three OverviewFrameCause values, and path is the baseline copy's path.
-// Path is empty when no hash was recorded; both are empty beside a frame.
-// A read failure other than an absent copy is returned.
-// A rebaseline and the plan gate both judge an overview edit against this frame,
-// so the gate refuses what the rebaseline would.
-func RecordedOverviewFrame(st *State, runDir string) (frame, cause, path string, err error) {
-	if st.PlanOverviewFrameHash != "" {
-		return st.PlanOverviewFrameHash, "", "", nil
-	}
-	hash := st.PlanFileHashes[PlanOverviewFile]
-	if hash == "" {
-		return "", OverviewFrameCauseNoHash, "", nil
-	}
-	path = PlanBaselinePath(runDir, hash)
-	data, err := os.ReadFile(path)
-	if errors.Is(err, fs.ErrNotExist) {
-		return "", OverviewFrameCauseBaselineAbsent, path, nil
-	}
-	if err != nil {
-		return "", "", "", fmt.Errorf("runplan: recorded overview frame: read plan baseline copy %s: %w", hash, err)
-	}
-	frame, err = OverviewFrameHashOf(data)
-	if err != nil {
-		return "", OverviewFrameCauseNoCardIndex, path, nil
-	}
-	return frame, "", "", nil
-}
-
 // ChangedPlanFiles returns the plan file names whose current hash differs from st.PlanFileHashes.
 // It also returns files added or removed since, all sorted.
 func ChangedPlanFiles(st *State, planDir string) ([]string, error) {

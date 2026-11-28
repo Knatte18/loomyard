@@ -69,11 +69,7 @@ func Compute(src Sources, opts Options) (Report, error) {
 		Landings: []Landing{},
 		Findings: []Finding{},
 	}
-	batten, err := newBattenIndex(src, landingWalkStart(opts))
-	if err != nil {
-		return Report{}, err
-	}
-	if err := selectRuns(src, opts, &report, batten); err != nil {
+	if err := selectRuns(src, opts, &report); err != nil {
 		return Report{}, err
 	}
 	markAbsentSegments(report.Runs)

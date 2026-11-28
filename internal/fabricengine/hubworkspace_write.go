@@ -9,7 +9,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
@@ -87,7 +86,7 @@ func removeStaleBeamWorkspaces(rec *Mutations, l *lymcwd.Location, live map[stri
 		if err := root.Remove(name); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return fmt.Errorf("remove workspace file %s: %w", name, err)
 		}
-		rec.Append(fabriclayout.KindPathRemoved, BeamWorkspacePath(l, slug), "single")
+		rec.Append(KindPathRemoved, BeamWorkspacePath(l, slug), "single")
 	}
 	return nil
 }

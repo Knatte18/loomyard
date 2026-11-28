@@ -10,12 +10,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -71,7 +69,7 @@ func diffHeader(path string) string {
 	return "diff --git a/" + path + " b/" + path
 }
 
-func readTaskPatch(t *testing.T, fx taskPatchFixture, base string, skip []string) fabriclayout.TaskPatch {
+func readTaskPatch(t *testing.T, fx taskPatchFixture, base string, skip []string) fabricengine.TaskPatch {
 	t.Helper()
 
 	patch, err := fx.fabric.ReadTaskPatch(base, skip)
@@ -85,7 +83,7 @@ func readTaskPatch(t *testing.T, fx taskPatchFixture, base string, skip []string
 // and it reads the patch before and after a file is written under it.
 // With linked, `.scratch` is a link into a directory outside the warp excluded as `/.scratch`;
 // otherwise it is a real directory excluded as `/.scratch/`.
-func readPatchAroundScratchWrite(t *testing.T, fx taskPatchFixture, linked bool) (before, after fabriclayout.TaskPatch) {
+func readPatchAroundScratchWrite(t *testing.T, fx taskPatchFixture, linked bool) (before, after fabricengine.TaskPatch) {
 	t.Helper()
 
 	writeTaskPatchFile(t, fx.warpDir, "lib.txt", strings.Replace(fx.baseFile, "line 15\n", "line 15 changed\n", 1))
@@ -119,31 +117,6 @@ func readPatchAroundScratchWrite(t *testing.T, fx taskPatchFixture, linked bool)
 	writeTaskPatchFile(t, root, scratchNoteName, "scratch content\n")
 	after = readTaskPatch(t, fx, fx.baseSHA, nil)
 	return before, after
-}
-
-// TestFabric_ReadCommittedDiff proves the committed diff holds the commits past the base and nothing else:
-// an uncommitted edit and an untracked file stay out of it.
-func TestFabric_ReadCommittedDiff(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-	fx := newTaskPatchFixture(t)
-	gitkit.CommitFile(t, fx.warpDir, "task.txt", "committed\n", "task change")
-	writeTaskPatchFile(t, fx.warpDir, "lib.txt", strings.Replace(fx.baseFile, "line 15\n", "line 15 edited\n", 1))
-	writeTaskPatchFile(t, fx.warpDir, "untracked.txt", "new\n")
-
-	diff, err := fx.fabric.ReadCommittedDiff(fx.baseSHA)
-
-	if err != nil {
-		t.Fatalf("ReadCommittedDiff(%q) error = %v; want nil", fx.baseSHA, err)
-	}
-	if !strings.Contains(diff, diffHeader("task.txt")) {
-		t.Errorf("ReadCommittedDiff() lacks the committed change %q:\n%s", diffHeader("task.txt"), diff)
-	}
-	for _, path := range []string{"lib.txt", "untracked.txt"} {
-		if strings.Contains(diff, diffHeader(path)) {
-			t.Errorf("ReadCommittedDiff() holds %q; want only the committed change:\n%s", diffHeader(path), diff)
-		}
-	}
 }
 
 // TestFabric_ReadTaskPatch covers which changes the patch holds and how skip exempts untracked paths;
@@ -307,130 +280,6 @@ func TestFabric_ReadTaskPatch(t *testing.T) {
 		writeTaskPatchFile(t, fx.warpDir, "lib.txt", strings.Replace("line 0\n"+fx.baseFile, "line 3\n", "line 3 changed\n", 1))
 		if moved := readTaskPatch(t, fx, movedBase, nil); moved.FullHash == after.FullHash {
 			t.Errorf("FullHash after the task moved its edit = %q, unchanged; want it changed", moved.FullHash)
-		}
-	})
-}
-
-// TestFabric_WorktreeTreeID covers what the working-tree id follows and what ChangedPathsBetween lists,
-// and that neither verb touches the index or HEAD.
-func TestFabric_WorktreeTreeID(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	tests := []struct {
-		name string
-		// mutate edits the checkout after the first id is read.
-		mutate func(t *testing.T, fx taskPatchFixture)
-		// wantSame is whether the second id equals the first.
-		wantSame bool
-		// wantPaths is what ChangedPathsBetween lists for the two ids.
-		wantPaths []string
-	}{
-		{
-			name:     "UnchangedTree",
-			mutate:   func(t *testing.T, fx taskPatchFixture) {},
-			wantSame: true,
-		},
-		{
-			name: "UncommittedEditToTrackedFile",
-			mutate: func(t *testing.T, fx taskPatchFixture) {
-				writeTaskPatchFile(t, fx.warpDir, "lib.txt", "edited\n")
-			},
-			wantPaths: []string{"lib.txt"},
-		},
-		{
-			name: "UntrackedFile",
-			mutate: func(t *testing.T, fx taskPatchFixture) {
-				writeTaskPatchFile(t, fx.warpDir, "new.txt", "new\n")
-			},
-			wantPaths: []string{"new.txt"},
-		},
-		{
-			name: "UntrackedIgnoredFile",
-			mutate: func(t *testing.T, fx taskPatchFixture) {
-				excludePath := filepath.Join(fx.warpDir, ".git", "info", "exclude")
-				if err := os.WriteFile(excludePath, []byte("ignored.txt\n"), 0o644); err != nil {
-					t.Fatalf("WriteFile %s: %v", excludePath, err)
-				}
-				writeTaskPatchFile(t, fx.warpDir, "ignored.txt", "x\n")
-			},
-			wantSame: true,
-		},
-		{
-			name: "EditToTrackedFileMatchedByExclude",
-			mutate: func(t *testing.T, fx taskPatchFixture) {
-				excludePath := filepath.Join(fx.warpDir, ".git", "info", "exclude")
-				if err := os.WriteFile(excludePath, []byte("lib.txt\n"), 0o644); err != nil {
-					t.Fatalf("WriteFile %s: %v", excludePath, err)
-				}
-				writeTaskPatchFile(t, fx.warpDir, "lib.txt", "edited\n")
-			},
-			wantPaths: []string{"lib.txt"},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			fx := newTaskPatchFixture(t)
-			first, err := fx.fabric.WorktreeTreeID()
-			if err != nil {
-				t.Fatalf("WorktreeTreeID() error = %v", err)
-			}
-			head := gitkit.RevParse(t, fx.warpDir, "HEAD")
-			tt.mutate(t, fx)
-			status := gitkit.GitStatusPorcelain(t, fx.warpDir)
-
-			second, err := fx.fabric.WorktreeTreeID()
-			if err != nil {
-				t.Fatalf("WorktreeTreeID() after the edit error = %v", err)
-			}
-			if (first == second) != tt.wantSame {
-				t.Errorf("WorktreeTreeID() before %q, after %q; want equal = %v", first, second, tt.wantSame)
-			}
-			paths, err := fx.fabric.ChangedPathsBetween(first, second)
-			if err != nil {
-				t.Fatalf("ChangedPathsBetween(%q, %q) error = %v", first, second, err)
-			}
-			if !slices.Equal(paths, tt.wantPaths) {
-				t.Errorf("ChangedPathsBetween(%q, %q) = %v; want %v", first, second, paths, tt.wantPaths)
-			}
-			if got := gitkit.GitStatusPorcelain(t, fx.warpDir); got != status {
-				t.Errorf("git status --porcelain after the reads = %q; want it as before, %q", got, status)
-			}
-			if got := gitkit.RevParse(t, fx.warpDir, "HEAD"); got != head {
-				t.Errorf("HEAD after the reads = %q; want %q", got, head)
-			}
-		})
-	}
-
-	t.Run("CommittingTheEditKeepsTheId", func(t *testing.T) {
-		t.Parallel()
-		fx := newTaskPatchFixture(t)
-		writeTaskPatchFile(t, fx.warpDir, "lib.txt", "edited\n")
-		uncommitted, err := fx.fabric.WorktreeTreeID()
-		if err != nil {
-			t.Fatalf("WorktreeTreeID() error = %v", err)
-		}
-		gitkit.CommitFile(t, fx.warpDir, "lib.txt", "edited\n", "commit the edit")
-		committed, err := fx.fabric.WorktreeTreeID()
-		if err != nil {
-			t.Fatalf("WorktreeTreeID() after the commit error = %v", err)
-		}
-		if committed != uncommitted {
-			t.Errorf("WorktreeTreeID() after the commit = %q; want the uncommitted id, %q", committed, uncommitted)
-		}
-	})
-
-	t.Run("UnknownTreeIsAnError", func(t *testing.T) {
-		t.Parallel()
-		fx := newTaskPatchFixture(t)
-		known, err := fx.fabric.WorktreeTreeID()
-		if err != nil {
-			t.Fatalf("WorktreeTreeID() error = %v", err)
-		}
-		unknown := strings.Repeat("0", len(known))
-		if paths, err := fx.fabric.ChangedPathsBetween(known, unknown); err == nil {
-			t.Errorf("ChangedPathsBetween(%q, %q) = %v, nil; want an error", known, unknown, paths)
 		}
 	})
 }

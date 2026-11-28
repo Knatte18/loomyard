@@ -54,14 +54,6 @@ type launchLine struct {
 	model string
 	// effort is the reasoning effort; empty takes Codex's default.
 	effort string
-	// developerInstructions is the text of the session's developer instructions; empty passes none.
-	developerInstructions string
-	// subagentEffort is the reasoning effort the session's subagents take; empty leaves Codex's default.
-	subagentEffort string
-	// maxSubagentThreads caps the concurrent child threads of the session; zero leaves Codex's default.
-	maxSubagentThreads int
-	// projectDocMaxBytes is the cap on the project instruction text Codex reads; zero leaves Codex's default.
-	projectDocMaxBytes int
 	// hooks are the `-c` hook settings, each one `hooks.<Event>=[…]` value; none for an opened session.
 	hooks []string
 	// firstTurn is the session's first turn, typed as the positional prompt;
@@ -86,11 +78,8 @@ func buildLaunchCmd(sh shell.Shell, line launchLine) string {
 // The danger-full-access mode has no sandbox, so the command sets neither the network access nor the writable roots.
 // A hook given by `-c` otherwise waits on a review prompt,
 // so the command passes `--dangerously-bypass-hook-trust` with the hook settings.
-// It passes the developer instructions as a single-line TOML string setting when there are any.
-// It passes the subagent effort and the thread cap as `agents` settings when they are set.
 // It passes the first turn as the positional prompt when there is one,
 // and it loads CLAUDE.md as the project instructions of a directory with no AGENTS.md.
-// It passes the cap on the project instructions it reads when the line carries one.
 // CODEX_HOME names the lym home as a command-scoped assignment.
 func codexCommand(sh shell.Shell, line launchLine) string {
 	// The mode is one of two fixed words the config load admits, so it needs no quoting.
@@ -107,19 +96,7 @@ func codexCommand(sh shell.Shell, line launchLine) string {
 	if line.effort != "" {
 		cmd += " -c " + sh.Quote("model_reasoning_effort="+tomlString(line.effort))
 	}
-	if line.developerInstructions != "" {
-		cmd += " -c " + sh.Quote(developerInstructionsSetting(line.developerInstructions))
-	}
-	if line.subagentEffort != "" {
-		cmd += " -c " + sh.Quote("agents.default_subagent_reasoning_effort="+tomlString(line.subagentEffort))
-	}
-	if line.maxSubagentThreads > 0 {
-		cmd += " -c " + sh.Quote("agents.max_concurrent_threads_per_session="+strconv.Itoa(line.maxSubagentThreads))
-	}
 	cmd += " -c " + sh.Quote("project_doc_fallback_filenames="+tomlArray([]string{instructionFallbackFile}))
-	if line.projectDocMaxBytes > 0 {
-		cmd += " -c " + sh.Quote("project_doc_max_bytes="+strconv.Itoa(line.projectDocMaxBytes))
-	}
 	for _, hook := range line.hooks {
 		cmd += " -c " + sh.Quote(hook)
 	}
@@ -248,30 +225,14 @@ func creelWaitHookCommand(creel creelDelivery) string {
 	return codexHomeEnvKey + "=" + posix.Quote(creel.home) + " " + codexBinaryEnvKey + "=" + posix.Quote(creel.bin) + " " + creelWaitCommand
 }
 
-// toolHooks are the tool-call hooks a launch installs beside its recording hooks; the zero value installs none of them.
-type toolHooks struct {
-	// guards are the installed shell guard rows.
-	guards []shellguard.Row
-	// lymPath is the lym binary the guard rows' live checks run.
-	lymPath string
-	// questionDeny installs the question-tool deny, for an autonomous launch.
-	questionDeny bool
-	// batchingStatePath is the run's batching nudge state file; empty installs no batching hook.
-	batchingStatePath string
-	// editRecordsPath is the run's edit records file; empty installs no edit hook.
-	editRecordsPath string
-}
-
 // hookSettings returns the `-c` hook settings of a run whose events file is eventsPath.
 // Each recorded event gets a recording hook.
-// A PreToolUse setting holds the question-tool deny, on every tool, then one entry per guard row, when tools has either.
+// When guards is non-empty, a PreToolUse setting holds one entry per guard row.
 // The activity hook runs after every tool call.
-// When tools names an edit records file, the edit hook runs after it, on apply_patch calls alone.
-// When tools names a state file, the batching hook runs next, on every tool.
 // With a creel flag directory, the Stop setting runs the merged creel Stop command, then the async idle waiter.
-// The PostToolUse setting also runs the creel mail hook, last.
+// The PostToolUse setting also runs the creel mail hook, after the activity hook.
 // Entries of one event share one setting, since a second `-c` of the same key replaces the first.
-func hookSettings(eventsPath string, tools toolHooks, creel creelDelivery) []string {
+func hookSettings(eventsPath string, guards []shellguard.Row, creel creelDelivery) []string {
 	settings := make([]string, 0, len(recordedHookEvents)+2)
 	for _, event := range recordedHookEvents {
 		if event == hookEventStop && creel.flagDir != "" {
@@ -280,21 +241,10 @@ func hookSettings(eventsPath string, tools toolHooks, creel creelDelivery) []str
 		}
 		settings = append(settings, hookSetting(event, hookEntry("", recordingCommand(event, eventsPath))))
 	}
-	var preToolUse []string
-	if tools.questionDeny {
-		preToolUse = append(preToolUse, hookEntry(toolMatcherAll, questionDenyCommand()))
-	}
-	preToolUse = append(preToolUse, guardEntries(tools.guards, tools.lymPath)...)
-	if len(preToolUse) > 0 {
-		settings = append(settings, hookSetting(hookEventPreToolUse, preToolUse...))
+	if len(guards) > 0 {
+		settings = append(settings, hookSetting(hookEventPreToolUse, guardEntries(guards)...))
 	}
 	postToolUse := []string{hookEntry(toolMatcherAll, activityCommand(eventsPath))}
-	if tools.editRecordsPath != "" {
-		postToolUse = append(postToolUse, hookEntry(toolNameApplyPatch, editRecordHookCommand(tools.editRecordsPath)))
-	}
-	if tools.batchingStatePath != "" {
-		postToolUse = append(postToolUse, hookEntry(toolMatcherAll, batchingNudgeHookCommand(tools.batchingStatePath)))
-	}
 	if creel.flagDir != "" {
 		postToolUse = append(postToolUse, hookEntry(toolMatcherAll, creelMailHookCommand(creel.flagDir)))
 	}

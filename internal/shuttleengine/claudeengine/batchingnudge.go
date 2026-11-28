@@ -1,5 +1,4 @@
-// batchingnudge.go implements the batching nudge:
-// the claude.batching_nudge block, the PostToolUse hook command that runs it, the per-run state file Prepare seeds,
+// batchingnudge.go implements the batching nudge: claude.yaml's batching_nudge block, the PostToolUse hook command that runs it, the per-run state file Prepare seeds,
 // and the judgment that reads the calling chain's transcript tail for a breach of lym's batching rules and answers with one line of additional context.
 
 package claudeengine
@@ -9,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"os"
 	"path/filepath"
@@ -16,14 +16,12 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
-	"github.com/Knatte18/loomyard/internal/shuttleengine/bashlookup"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
 var _ shuttleengine.BatchingNudger = (*Claude)(nil)
 
-// BatchingNudgeConfig is the claude.batching_nudge block:
-// the switches and thresholds of the after-tool-call hook that nudges a session back to batching its calls.
+// BatchingNudgeConfig is claude.yaml's batching_nudge block: the switches and thresholds of the after-tool-call hook that nudges a session back to batching its calls.
 // Prepare copies it into the run's state file, so a running session keeps the values it started with.
 type BatchingNudgeConfig struct {
 	// Enabled installs the hook; off, a run's settings carry no batching hook and Prepare writes no state file.
@@ -46,12 +44,11 @@ type BatchingNudgeConfig struct {
 	MaxNudges int `yaml:"max_nudges" json:"max_nudges"`
 }
 
-// batchingNudgeKey is the key of the claude.batching_nudge block.
+// batchingNudgeKey is claude.yaml's key of the batching_nudge block.
 const batchingNudgeKey = "batching_nudge"
 
-// ValidateBatchingNudge refuses a claude.batching_nudge block a run could not use while the hook is on:
-// a negative claude.batching_nudge.context_tokens, or a claude.batching_nudge.lookup_run below 1.
-// So is a claude.batching_nudge.edit_run, claude.batching_nudge.slice_lines or claude.batching_nudge.max_nudges below 1.
+// ValidateBatchingNudge refuses a batching_nudge block a run could not use while the hook is on:
+// a negative context_tokens, or a lookup_run, edit_run, slice_lines or max_nudges below 1.
 // The refusal names the key and the way forward, lym config claude.
 func ValidateBatchingNudge(cfg Config) error {
 	nudge := cfg.BatchingNudge
@@ -70,8 +67,8 @@ func ValidateBatchingNudge(cfg Config) error {
 	}
 	for _, bound := range bounds {
 		if bound.value < bound.least {
-			return fmt.Errorf("claudeengine: %s is %d, below its least value %d; way forward: lym config claude --set %s.%s=<n>",
-				keyName(batchingNudgeKey+"."+bound.key), bound.value, bound.least, batchingNudgeKey, bound.key)
+			return fmt.Errorf("claudeengine: claude.yaml's %s.%s is %d, below its least value %d; way forward: lym config claude --set %s.%s=<n>",
+				batchingNudgeKey, bound.key, bound.value, bound.least, batchingNudgeKey, bound.key)
 		}
 	}
 	return nil
@@ -249,7 +246,7 @@ func (c *Claude) BatchingNudge(statePath string, payload []byte) ([]byte, error)
 		return nil, nil
 	}
 	// A Bash call that is no lookup makes a message that is neither a lookup nor edits, so no breach can fire and the transcript is left unread.
-	if input.ToolName == toolBash && !bashlookup.IsReadOnlyLookup(input.ToolInput.Command) {
+	if input.ToolName == toolBash && !isReadOnlyLookup(input.ToolInput.Command) {
 		return nil, nil
 	}
 	transcript, ok := input.chainTranscript()
@@ -319,7 +316,7 @@ func (c *Claude) awaitCallInTranscript(transcriptPath, toolUseID string, sidecha
 		}
 		if info.Size() != readSize {
 			readSize = info.Size()
-			tail, err := shuttleengine.ReadFileTail(transcriptPath, batchingTailBytes)
+			tail, err := readTranscriptTail(transcriptPath, batchingTailBytes)
 			if err != nil {
 				return nil, false
 			}
@@ -337,6 +334,36 @@ func (c *Claude) awaitCallInTranscript(transcriptPath, toolUseID string, sidecha
 		}
 		wait.sleep(wait.tick)
 	}
+}
+
+// readTranscriptTail returns the complete lines of the last budget bytes of the transcript at transcriptPath, the whole file when it is smaller.
+// The window's first line is dropped unless the window starts the file, since it may be cut.
+func readTranscriptTail(transcriptPath string, budget int64) ([]byte, error) {
+	f, err := os.Open(transcriptPath)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	start := info.Size() - budget
+	if start < 0 {
+		start = 0
+	}
+	tail := make([]byte, info.Size()-start)
+	if _, err := f.ReadAt(tail, start); err != nil && err != io.EOF {
+		return nil, err
+	}
+	if start > 0 {
+		nl := bytes.IndexByte(tail, '\n')
+		if nl < 0 {
+			return nil, nil
+		}
+		tail = tail[nl+1:]
+	}
+	return tail, nil
 }
 
 // tailMessage is one assistant message of a transcript tail's chain: its id, the time of its first line and its tool calls in order.
@@ -360,7 +387,7 @@ func (call tailCall) lookup() bool {
 	case toolRead, toolGrep, toolGlob:
 		return true
 	case toolBash:
-		return bashlookup.IsReadOnlyLookup(call.command)
+		return isReadOnlyLookup(call.command)
 	}
 	return false
 }
@@ -497,7 +524,7 @@ func judgeBatching(settings BatchingNudgeConfig, messages []tailMessage, current
 // the file holds fewer than the settings' slice lines, or the latest earlier message that read it is not older than the file's last modification.
 // A file that cannot be read or statted is no breach.
 func sliceBreach(settings BatchingNudgeConfig, messages []tailMessage, current int, filePath string) string {
-	lines, err := shuttleengine.CountLinesUpTo(filePath, settings.SliceLines)
+	lines, err := countLinesUpTo(filePath, settings.SliceLines)
 	if err != nil {
 		return ""
 	}
@@ -520,4 +547,32 @@ func sliceBreach(settings BatchingNudgeConfig, messages []tailMessage, current i
 		}
 	}
 	return ""
+}
+
+// countLinesUpTo counts the lines of the file at filePath, stopping once the count reaches limit; a last line without its newline counts.
+func countLinesUpTo(filePath string, limit int) (int, error) {
+	f, err := os.Open(filePath)
+	if err != nil {
+		return 0, err
+	}
+	defer f.Close()
+	buf := make([]byte, 32*1024)
+	lines, unterminated := 0, false
+	for lines < limit {
+		n, err := f.Read(buf)
+		lines += bytes.Count(buf[:n], []byte{'\n'})
+		if n > 0 {
+			unterminated = buf[n-1] != '\n'
+		}
+		if err == io.EOF {
+			if unterminated {
+				lines++
+			}
+			return lines, nil
+		}
+		if err != nil {
+			return 0, err
+		}
+	}
+	return lines, nil
 }

@@ -13,7 +13,6 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -55,7 +54,7 @@ func (r *Resolver) Resolve(ctx context.Context, source, tip string) (Result, err
 		return Result{}, err
 	}
 
-	var mergeRes fabriclayout.MergeResult
+	var mergeRes fabricengine.MergeResult
 	if tip == "" {
 		mergeRes, err = r.deps.Fabric.MergeIn(source)
 	} else {

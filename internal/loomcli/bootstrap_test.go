@@ -15,7 +15,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
@@ -63,7 +63,7 @@ func TestMustSpawnDriver(t *testing.T) {
 
 // TestResolveDriverStrandAction covers every arm of `resolveDriverStrandAction`.
 //
-//testtiming:keep pins the driver strand action over every strand shape: none, status-only, live, dead, retiring and full-name; its covering tests resolve it without asserting each arm
+//testtiming:keep pins the driver strand action over every strand shape: none, status-only, live, dead, retiring, full-name and legacy-named; its covering tests resolve it without asserting each arm
 func TestResolveDriverStrandAction(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -110,6 +110,18 @@ func TestResolveDriverStrandAction(t *testing.T) {
 			name:     "LiveFullNameDriverStrand",
 			strands:  []reedengine.StrandStatus{{GUID: "g0", Name: "ly:task:driver", PaneID: "%0", Live: true}},
 			want:     driverStrandLive,
+			wantGUID: "g0",
+		},
+		{
+			name:     "LiveLegacyDriverStrand",
+			strands:  []reedengine.StrandStatus{{GUID: "g0", Name: loomengine.LegacyLoomDriverStrandName, PaneID: "%0", Live: true}},
+			want:     driverStrandLive,
+			wantGUID: "g0",
+		},
+		{
+			name:     "DeadLegacyDriverStrand",
+			strands:  []reedengine.StrandStatus{{GUID: "g0", Name: loomengine.LegacyLoomDriverStrandName, PaneID: "", Live: false}},
+			want:     driverStrandDead,
 			wantGUID: "g0",
 		},
 	}
@@ -179,7 +191,7 @@ func TestAwaitRunLock(t *testing.T) {
 		{name: "ready before the alive check, child about to exit", lockHeldOnCall: 1, deadline: 10, want: awaitRunLockReady},
 		// The regression guard for a finished driver that is still alive with the lock free.
 		// shedengine.Run releases the run lock on return, and the driver then runs the friction reflection agent.
-		// That agent can take up to `loom.friction.timeout_min`, against a handshake budget far shorter than that.
+		// That agent can take up to `friction_timeout_min`, against a handshake budget far shorter than that.
 		// A finished machine with a live child and a free lock must report halted;
 		// otherwise it falls through to the deadline, which dispositionForHandshake refuses.
 		// That refusal reports a healthy run as a driver that did not take the run lock.
@@ -687,7 +699,7 @@ func TestStatusStrandSpec_TitlesTheWindowWithTheRunsHandleAndRecipe(t *testing.T
 	tiergate.Require(t, 0)
 	t.Parallel()
 	location := locationkit.Location(t.TempDir(), "run", "")
-	boardkit.WriteBoard(t, fabriclayout.BoardDir(location.HubPath), `{"id":1,"slug":"run","kind":"task","labels":["bug"],"handle":"T4"}`)
+	boardkit.WriteBoard(t, fabricengine.BoardDir(location.HubPath), `{"id":1,"slug":"run","kind":"task","labels":["bug"],"handle":"T4"}`)
 	c := &loomCLI{location: location, recipe: "darn"}
 
 	got := c.statusStrandSpec("/fixed/lym")
@@ -726,10 +738,10 @@ func TestStatusWindowTitle(t *testing.T) {
 			t.Parallel()
 			location := locationkit.Location(t.TempDir(), "run", "")
 			if len(tt.entries) > 0 {
-				boardkit.WriteBoard(t, fabriclayout.BoardDir(location.HubPath), tt.entries...)
+				boardkit.WriteBoard(t, fabricengine.BoardDir(location.HubPath), tt.entries...)
 			}
 			if tt.shortname != "" {
-				if err := fabricengine.WriteShortname(fabriclayout.BoardDir(location.HubPath), tt.shortname); err != nil {
+				if err := fabricengine.WriteShortname(fabricengine.BoardDir(location.HubPath), tt.shortname); err != nil {
 					t.Fatalf("record the shortname: %v", err)
 				}
 			}

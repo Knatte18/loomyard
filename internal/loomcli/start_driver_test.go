@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -119,7 +119,7 @@ func newTestLLMArmReceiver(t *testing.T, starter driverStarter, probe driverPane
 	dir := t.TempDir()
 	stencilsDir := filepath.Join(dir, "stencils")
 	stencilkit.SeedInto(t, stencilsDir)
-	stencilkit.SeedEngineBlockCopies(t, stencilsDir, "fake")
+	stencilkit.SeedEditDirectiveCopies(t, stencilsDir, "fake")
 	return &loomCLI{
 		location:        &lymcwd.Location{HubPath: dir, WorktreeName: "pair", AnchorRel: "."},
 		runDeps:         websterengine.RunDeps{Geom: websterengine.Geometry{StencilsDir: stencilsDir}},
@@ -225,7 +225,7 @@ func TestStartLLMDriverArm(t *testing.T) {
 	})
 
 	// The refusal comes from shuttle's Start over an engine that meets no requirement, before any pane exists.
-	// The message names the loom.driver key in place of the generic way forward.
+	// The message names the driver key in place of the generic way forward.
 	t.Run("a requirements refusal names the driver key and adds no strand", func(t *testing.T) {
 		reed := &shuttlefake.Reed{}
 		root := t.TempDir()
@@ -320,7 +320,7 @@ func newTestSpawnAndWaitReceiver(t *testing.T, starter driverStarter, probe driv
 	}
 	stencilsDir := filepath.Join(dir, "stencils")
 	stencilkit.SeedInto(t, stencilsDir)
-	stencilkit.SeedEngineBlockCopies(t, stencilsDir, "fake")
+	stencilkit.SeedEditDirectiveCopies(t, stencilsDir, "fake")
 	c := &loomCLI{
 		location:        &lymcwd.Location{HubPath: dir, WorktreeName: "pair", AnchorRel: "."},
 		runDeps:         websterengine.RunDeps{Geom: websterengine.Geometry{StencilsDir: stencilsDir}},
@@ -329,8 +329,8 @@ func newTestSpawnAndWaitReceiver(t *testing.T, starter driverStarter, probe driv
 		registry:        modelspec.Registry{},
 		driverStarter:   starter,
 		driverPaneProbe: probe,
-		midMerge: func(*lymcwd.Location) (fabriclayout.MidMergeState, error) {
-			return fabriclayout.MidMergeState{Kind: fabriclayout.MidMergeNone}, nil
+		midMerge: func(*lymcwd.Location) (fabricengine.MidMergeState, error) {
+			return fabricengine.MidMergeState{Kind: fabricengine.MidMergeNone}, nil
 		},
 		shedPaths: shedbuild.ShedPaths{
 			LockPath:       filepath.Join(runLockDir, "run.lock"),
@@ -485,7 +485,7 @@ func TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnFailure(t *testing.T) {
 
 			bootstrapLock := acquireTestBootstrapLock(t, bootstrapLockPath)
 			var out bytes.Buffer
-			ok, _ := c.runDriverSpawnAndWait(context.Background(), &out, shedrun.DriverLLM, bootstrapLock, noopLockHeld)
+			ok := c.runDriverSpawnAndWait(context.Background(), &out, shedrun.DriverLLM, bootstrapLock, noopLockHeld)
 
 			if ok {
 				t.Error("runDriverSpawnAndWait() = true; want false")
@@ -517,7 +517,7 @@ func TestRunDriverSpawnAndWait_LiveRetiringDriverIsRemovedThenReplaced(t *testin
 	c, bootstrapLockPath := newTestSpawnAndWaitReceiver(t, orderingStarter{starter: starter, order: &order}, probe)
 
 	bootstrapLock := acquireTestBootstrapLock(t, bootstrapLockPath)
-	ok, _ := c.runDriverSpawnAndWait(context.Background(), &bytes.Buffer{}, shedrun.DriverLLM, bootstrapLock, noopLockHeld)
+	ok := c.runDriverSpawnAndWait(context.Background(), &bytes.Buffer{}, shedrun.DriverLLM, bootstrapLock, noopLockHeld)
 	defer func() { _ = bootstrapLock.Release() }()
 
 	if !ok {
@@ -550,7 +550,7 @@ func TestRunDriverSpawnAndWait_LLMArm_NeverConsultsTheRunLockHandshake(t *testin
 	}
 
 	bootstrapLock := acquireTestBootstrapLock(t, bootstrapLockPath)
-	ok, _ := c.runDriverSpawnAndWait(context.Background(), &bytes.Buffer{}, shedrun.DriverLLM, bootstrapLock, countingLockHeld)
+	ok := c.runDriverSpawnAndWait(context.Background(), &bytes.Buffer{}, shedrun.DriverLLM, bootstrapLock, countingLockHeld)
 
 	if !ok {
 		t.Fatal("runDriverSpawnAndWait() = false; want true (this scenario is a clean success)")
@@ -626,11 +626,11 @@ func TestRunDriverSpawnAndWait_SpawnVouchesForTheResume(t *testing.T) {
 			}
 
 			bootstrapLock := acquireTestBootstrapLock(t, lockPath)
-			ok, putToWork := c.runDriverSpawnAndWait(context.Background(), &bytes.Buffer{}, shedrun.DriverLLM, bootstrapLock, noopLockHeld)
+			ok := c.runDriverSpawnAndWait(context.Background(), &bytes.Buffer{}, shedrun.DriverLLM, bootstrapLock, noopLockHeld)
 			_ = bootstrapLock.Release()
 
-			if !ok || !putToWork || !starter.called {
-				t.Fatalf("runDriverSpawnAndWait() = %v, %v, starter called = %v; want a spawn that put a driver to work", ok, putToWork, starter.called)
+			if !ok || !starter.called {
+				t.Fatalf("runDriverSpawnAndWait() = %v, starter called = %v; want a spawn", ok, starter.called)
 			}
 			voucher, found := voucherOnDisk(t, c)
 			if found != tc.wantVoucher {
@@ -654,13 +654,10 @@ func TestRunDriverSpawnAndWait_LiveParkedDriverIsResumedNotSpawned(t *testing.T)
 
 	var out bytes.Buffer
 	bootstrapLock := acquireTestBootstrapLock(t, lockPath)
-	ok, putToWork := c.runDriverSpawnAndWait(context.Background(), &out, shedrun.DriverLLM, bootstrapLock, noopLockHeld)
+	ok := c.runDriverSpawnAndWait(context.Background(), &out, shedrun.DriverLLM, bootstrapLock, noopLockHeld)
 
 	if !ok {
 		t.Fatalf("runDriverSpawnAndWait() = false; want true (output %q)", out.String())
-	}
-	if !putToWork {
-		t.Error("runDriverSpawnAndWait() reported no driver put to work; want the parked-driver resume to count")
 	}
 	if len(sender.texts) != 1 {
 		t.Errorf("SendDriver calls = %d; want 1", len(sender.texts))
@@ -758,7 +755,7 @@ func TestRunDriverSpawnAndWait_LiveDriverWithoutParkMarker(t *testing.T) {
 
 				var out bytes.Buffer
 				bootstrapLock := acquireTestBootstrapLock(t, lockPath)
-				ok, putToWork := c.runDriverSpawnAndWait(context.Background(), &out, shedrun.DriverLLM, bootstrapLock, noopLockHeld)
+				ok := c.runDriverSpawnAndWait(context.Background(), &out, shedrun.DriverLLM, bootstrapLock, noopLockHeld)
 
 				if len(sender.texts) != 0 || starter.called || probe.removeCalled {
 					t.Errorf("sent %d line(s), starter called = %v, strand removed = %v; want none", len(sender.texts), starter.called, probe.removeCalled)
@@ -767,8 +764,8 @@ func TestRunDriverSpawnAndWait_LiveDriverWithoutParkMarker(t *testing.T) {
 					t.Error("the live-strand call wrote a handoff voucher")
 				}
 				if tt.wantIn == nil {
-					if !ok || putToWork || out.Len() != 0 {
-						t.Errorf("runDriverSpawnAndWait() = %v, %v, output %q; want true, false and no output", ok, putToWork, out.String())
+					if !ok || out.Len() != 0 {
+						t.Errorf("runDriverSpawnAndWait() = %v, output %q; want true and no output", ok, out.String())
 					}
 					_ = bootstrapLock.Release()
 					return
@@ -835,7 +832,7 @@ func TestRunDriverSpawnAndWait_GoArm(t *testing.T) {
 
 			var out bytes.Buffer
 			bootstrapLock := acquireTestBootstrapLock(t, lockPath)
-			ok, _ := c.runDriverSpawnAndWait(context.Background(), &out, shedrun.DriverGo, bootstrapLock, c.driverLockHeld)
+			ok := c.runDriverSpawnAndWait(context.Background(), &out, shedrun.DriverGo, bootstrapLock, c.driverLockHeld)
 
 			if spawns != 1 {
 				t.Errorf("spawnGoDriver called %d times; want 1", spawns)
@@ -867,7 +864,7 @@ func TestRunDriverSpawnAndWait_DeadDriverWithStaleMarkerRemovesItAndSpawns(t *te
 	}
 
 	bootstrapLock := acquireTestBootstrapLock(t, lockPath)
-	ok, _ := c.runDriverSpawnAndWait(context.Background(), &bytes.Buffer{}, shedrun.DriverLLM, bootstrapLock, noopLockHeld)
+	ok := c.runDriverSpawnAndWait(context.Background(), &bytes.Buffer{}, shedrun.DriverLLM, bootstrapLock, noopLockHeld)
 
 	if !ok {
 		t.Fatal("runDriverSpawnAndWait() = false; want true")
@@ -892,7 +889,7 @@ func TestRunDriverSpawnAndWait_ResumeNeverReadyRefusesAndKeepsMarker(t *testing.
 
 	var out bytes.Buffer
 	bootstrapLock := acquireTestBootstrapLock(t, lockPath)
-	ok, _ := c.runDriverSpawnAndWait(context.Background(), &out, shedrun.DriverLLM, bootstrapLock, noopLockHeld)
+	ok := c.runDriverSpawnAndWait(context.Background(), &out, shedrun.DriverLLM, bootstrapLock, noopLockHeld)
 
 	if ok {
 		t.Error("runDriverSpawnAndWait() = true; want a refusal")
@@ -917,7 +914,7 @@ func TestRunDriverSpawnAndWait_ResumeOnABusyPaneRefusesAsDriverBusyAndKeepsMarke
 
 	var out bytes.Buffer
 	bootstrapLock := acquireTestBootstrapLock(t, lockPath)
-	ok, _ := c.runDriverSpawnAndWait(context.Background(), &out, shedrun.DriverLLM, bootstrapLock, noopLockHeld)
+	ok := c.runDriverSpawnAndWait(context.Background(), &out, shedrun.DriverLLM, bootstrapLock, noopLockHeld)
 
 	if ok {
 		t.Error("runDriverSpawnAndWait() = true; want a refusal")

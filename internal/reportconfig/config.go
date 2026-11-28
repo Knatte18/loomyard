@@ -48,7 +48,7 @@ func ConfigSpec() configengine.Spec {
 
 // LoadConfig loads and unmarshals the report module's configuration through the hub-wide layer stack under dirs.
 // A hub whose base file is absent resolves the template, so a report never fails on a hub not yet reconciled.
-// It refuses a report.cost_min_runs under 1, naming the key and the way forward.
+// It refuses a cost_min_runs under 1, naming the key and the way forward.
 func LoadConfig(dirs configengine.Dirs) (Config, error) {
 	resolved, err := configengine.LoadOrTemplate(dirs, ConfigSpec())
 	if err != nil {
@@ -59,7 +59,7 @@ func LoadConfig(dirs configengine.Dirs) (Config, error) {
 		return Config{}, configengine.MarkInvalid(fmt.Errorf("unmarshal report config: %w", err))
 	}
 	if cfg.CostMinRuns < 1 {
-		return Config{}, configengine.MarkInvalid(fmt.Errorf("config key %q holds %d; want an integer of at least 1; way forward: run `lym config report --set %s=<runs>`", configengine.KeyName(configModule, costMinRunsKey), cfg.CostMinRuns, costMinRunsKey))
+		return Config{}, configengine.MarkInvalid(fmt.Errorf("report config key %q holds %d; want an integer of at least 1; way forward: run `lym config report --set %s=<runs>`", costMinRunsKey, cfg.CostMinRuns, costMinRunsKey))
 	}
 	return cfg, nil
 }

@@ -19,7 +19,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -37,7 +36,7 @@ type startGuard struct {
 	// SourceDirty lists the tracked uncommitted paths of the source worktree.
 	SourceDirty func() ([]string, error)
 	// PairParts reads which parts of the slug's pair are present locally.
-	PairParts func() (fabriclayout.PairParts, error)
+	PairParts func() (fabricengine.PairParts, error)
 	// ParentBeam reads the beam the slug's pair forks from over the local board, "" meaning the prime.
 	// A nil ParentBeam reads every task as forked from the prime.
 	ParentBeam func() (string, error)
@@ -59,7 +58,7 @@ type startGuard struct {
 	// found is false when the pair has no readable record; marked says whether it carries the beam mark.
 	PairMark func() (marked, found bool, err error)
 	// Unreleased reads the board status of the slug when it is a task no run starts:
-	// boardengine.StatusDraft, and "" for any other entry.
+	// boardengine.StatusDraft or boardengine.LegacyStatusDiscussed, and "" for any other entry.
 	// A nil Unreleased reads every entry as released.
 	Unreleased func() (string, error)
 	// Raddle judges the start of a raddle entry.
@@ -95,14 +94,14 @@ func hubStartGuard(location *lymcwd.Location, slug string) startGuard {
 		Lock:        func() (cancelMarkerReading, error) { return readCancelLock(location, slug) },
 		SourceDirty: func() ([]string, error) { return fabricengine.SourceDirtyPaths(location) },
 		ParentBeam: func() (string, error) {
-			tasks, err := boardengine.ReadTasks(fabriclayout.BoardDir(location.HubPath))
+			tasks, err := boardengine.ReadTasks(fabricengine.BoardDir(location.HubPath))
 			if err != nil {
 				return "", err
 			}
 			return boardengine.ParentBeam(tasks, slug), nil
 		},
 		Promoted: func() (bool, error) {
-			owners, err := boardengine.ReadOwners(fabriclayout.BoardDir(location.HubPath))
+			owners, err := boardengine.ReadOwners(fabricengine.BoardDir(location.HubPath))
 			if err != nil {
 				return false, err
 			}
@@ -116,7 +115,7 @@ func hubStartGuard(location *lymcwd.Location, slug string) startGuard {
 			return found && origin.Beam, nil
 		},
 		Project: func() (bool, bool, error) {
-			owners, err := boardengine.ReadOwners(fabriclayout.BoardDir(location.HubPath))
+			owners, err := boardengine.ReadOwners(fabricengine.BoardDir(location.HubPath))
 			if err != nil {
 				return false, false, err
 			}
@@ -133,7 +132,7 @@ func hubStartGuard(location *lymcwd.Location, slug string) startGuard {
 		},
 		ReachedParent: hubChildReachedParent(location, slug),
 		Unreleased: func() (string, error) {
-			tasks, err := boardengine.ReadTasks(fabriclayout.BoardDir(location.HubPath))
+			tasks, err := boardengine.ReadTasks(fabricengine.BoardDir(location.HubPath))
 			if err != nil {
 				return "", err
 			}
@@ -141,16 +140,16 @@ func hubStartGuard(location *lymcwd.Location, slug string) startGuard {
 				if task.Slug != slug || task.Status == nil {
 					continue
 				}
-				if *task.Status == boardengine.StatusDraft {
+				if *task.Status == boardengine.StatusDraft || *task.Status == boardengine.LegacyStatusDiscussed {
 					return *task.Status, nil
 				}
 			}
 			return "", nil
 		},
-		PairParts: func() (fabriclayout.PairParts, error) {
+		PairParts: func() (fabricengine.PairParts, error) {
 			cfg, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(location))
 			if err != nil {
-				return fabriclayout.PairParts{}, err
+				return fabricengine.PairParts{}, err
 			}
 			return fabricengine.NewTopology(cfg).PairParts(location, slug)
 		},
@@ -186,7 +185,7 @@ func startClearsMotifRun(location *lymcwd.Location, task boardengine.Task) (bool
 // The board's entry under slug decides; an absent entry clears nothing.
 // It removes nothing.
 func clearsMotifRunOfRaddleEntry(location *lymcwd.Location, slug string) (bool, error) {
-	tasks, err := boardengine.ReadTasks(fabriclayout.BoardDir(location.HubPath))
+	tasks, err := boardengine.ReadTasks(fabricengine.BoardDir(location.HubPath))
 	if err != nil {
 		return false, err
 	}
@@ -200,7 +199,7 @@ func clearsMotifRunOfRaddleEntry(location *lymcwd.Location, slug string) (bool, 
 // readRaddleStartRefusal reads the slug's board entry and, when its recipe is raddle, judges its start.
 // An absent entry and an entry of another recipe pass.
 func readRaddleStartRefusal(location *lymcwd.Location, slug string) error {
-	boardDir := fabriclayout.BoardDir(location.HubPath)
+	boardDir := fabricengine.BoardDir(location.HubPath)
 	tasks, err := boardengine.ReadTasks(boardDir)
 	if err != nil {
 		return err
@@ -273,7 +272,7 @@ func raddleStartRefusal(entry boardengine.Task, recordStored bool, store boarden
 // A resume past Worktree-Create passes over all the checks.
 // A marked beam pair passes over the dirty-source and left-pair checks.
 // A beam project with no marked pair here is left to the checks of a task.
-// A run or step with no status file refuses a task whose board status is draft.
+// A run or step with no status file refuses a task whose board status is draft or discussed.
 // The refusal names that status and the release that makes it startable.
 // A beam project skips that check.
 // A beam's cancel leaves its entry draft, and `lym beam create` starts its run again from there.
@@ -385,7 +384,7 @@ func (g startGuard) refuse(slug, verb string, status shedengine.Status, found, t
 // Any other grouping project is refused naming the create that makes it a beam.
 // A resume past Worktree-Create passes.
 // A beam pair here with no readable origin record is refused.
-// A marked one passes the dirty-source and left-pair checks, as the resumed run's own pair.
+// A marked one passes the dirty-source and left-pair checks, as the legacy beam's or the resumed run's own pair.
 func (g startGuard) refuseProject(slug, rerun string, status shedengine.Status, found bool) (beam, judged bool, err error) {
 	project, beamFlag, err := g.Project()
 	if err != nil {
@@ -443,7 +442,7 @@ func (g startGuard) forksFromPrime() (bool, error) {
 // leftPartNames names the parts of a pair that make a start refuse:
 // the task worktree, the records worktree and the local records branch.
 // A task branch left alone is not named, since the add refuses it and Worktree-Create halts on it.
-func leftPartNames(parts fabriclayout.PairParts) []string {
+func leftPartNames(parts fabricengine.PairParts) []string {
 	var names []string
 	if parts.TaskWorktree {
 		names = append(names, "task worktree")
@@ -457,7 +456,7 @@ func leftPartNames(parts fabriclayout.PairParts) []string {
 	return names
 }
 
-// releaseCommandText words the command that releases the draft task slug.
+// releaseCommandText words the command that releases the draft or discussed task slug.
 // The slug is filled in, so a way forward that names the command runs as typed.
 func releaseCommandText(slug string) string {
 	return fmt.Sprintf(`lym board set-status '{"slug":"%s","status":null}'`, slug)

@@ -19,10 +19,6 @@ An unbounded wait is a loop that lives as long as a run or a session and has no 
 - dobby's loop in `internal/dobbyengine/loop.go`:
   it wakes on a file event or its timer, at most one tick a second,
   and it doubles the timer from batten's probe interval to a minute while no run is in flight,
-- the board server's watch loop in `internal/boardserve/run.go`:
-  it wakes on an `internal/fswatch` event on `board.json`, never within a second of its previous read, or on its timer,
-  from one second doubling to eight while the board is unchanged,
-  and each wake checks whether the binary was replaced and whether the idle bound passed,
 - batten's Land row land-lock wait in `internal/battenshed/land.go`:
   it polls from one second and doubles to thirty seconds,
 - the parent lock wait in `internal/parentlock/acquire.go`:
@@ -35,9 +31,6 @@ An unbounded wait is a loop that lives as long as a run or a session and has no 
 - the current capture's lock wait in `internal/driftengine/capture.go`:
   it polls the capture lock from one second and takes it once free,
   and it doubles to thirty seconds while the lock stays held,
-- the autonomous judge's wait for the parent's answer in `internal/driftengine/verify.go`:
-  it waits from one second and doubles to a minute while the ask record is unchanged,
-  and returns to one second when it changes,
 - the pause hold in `internal/pauserecord/hold.go`:
   it polls from one second and doubles to five seconds while the covering entry is unchanged,
 - shuttle's `Wait`,
@@ -50,13 +43,16 @@ An unbounded wait is a loop that lives as long as a run or a session and has no 
   it samples once per period, 5 seconds in production, for as long as go test runs;
   it spawns nothing,
 - the gate memory guard in `internal/gatecli/memoryguard.go`:
-  it samples once a second for as long as a tier's command runs;
+  it samples once a second for as long as a tier's command, `lym gate redundant`, `lym gate testmap`
+  or the redundancy report step of `lym gate test` runs;
   it spawns nothing,
 - the detached gate runner's lease read in `internal/gatecli/detachrun.go`:
   it wakes once a second for as long as the run's lease lasts,
 - the capped gate call's front in `internal/gatecli/detachfront.go`:
   it tries the key directory's lock, looks for the runner's claim and polls the run's exit file once a second each;
   the call's keep-warm cap bounds it,
+- the coverage map's wait in `internal/gatecli/testmapwait.go`:
+  a named call's wait for a map build lock polls from one second and doubles to thirty seconds,
 - the `--until-stop` waiter in `internal/shedverbs/loopwait.go`:
   its event source is `internal/fswatch` on the run's steps directory, and its timer starts at the one-second floor,
 - the PR-Review row's wait in `internal/landingshed/prreview.go`:
@@ -87,23 +83,18 @@ An unbounded wait is a loop that lives as long as a run or a session and has no 
   each retries a transient answer from a one-second base, doubling to a one-minute ceiling,
   and the wait is capped at what is left of the message's hour;
   the worker ends at that hour, and a wake changes nothing during the wait,
-- creel's machine hour loop in `internal/creelengine/machinemail.go`:
-  it wakes at the earliest pending hour of a message to another machine, one hour from its post, and never within a second;
-  with none pending it waits for a wake, and a failed pass is retried from one second, doubling to a minute,
 - creel's daemon poll in `internal/creelengine/server.go`:
   it asks once a second whether its binary was replaced and whether the UTC day changed,
 - creel's waiting verbs in `internal/creelengine/client.go` and `server.go`:
   `post --wait-reply`, `inject --wait`, `read --wait` and `hook-wait` wait on their connection;
   they reconnect from one second;
   the client's connect wait after a spawn also ends when the daemon it started exits, except a lost start race,
-- the pusher's interval wait in `internal/runpusher/run.go`:
-  it waits from `fabric.push_interval_s`, doubling to `fabric.push_ceiling_s` while the push stays owed,
-  and an `internal/fswatch` event on a push-now mark wakes it, never within a second of the wait's start,
-- the Go driver's network wait in `internal/sheddriver/drive.go`:
-  it waits from 15 seconds, doubling to `fabric.push_ceiling_s` while the stop stays a network failure,
+- the `lym adopt` follow in `internal/adoptcli/follow.go`:
+  it reads the adopt record from one second, doubling to eight seconds while the record is unchanged,
+  and it returns to one second on a change;
+  an agent session's keep-warm cap bounds it, and a plain shell follows until the worker ends,
 - the Slack relay's loops:
   the outbound read in `internal/slackengine/relay.go`, with the binary check and the retried work after it, from five seconds doubling to sixty;
-  the bridge poll in `internal/slackengine/bridgepoll.go`, from five seconds doubling to sixty and never within a second of the previous round's start;
   the holder in `internal/slackengine/holder.go`, its lock wait blocking without waking, its 30-second ping spawning nothing and its reconnect from one second doubling to sixty;
   and the inbox and forwarding-file watch in `internal/slackengine/relay.go`, never within a second of the previous wake's start, with its on-disk fallback from one second to sixty.
 

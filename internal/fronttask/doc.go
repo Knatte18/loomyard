@@ -15,8 +15,11 @@
 //
 // `File` refuses an `OnLand` outside the action table and a project that already holds an open front task.
 // Both refusals come before any write.
-// A `between` error or a release error leaves a draft entry, which is closed and holds no start.
-// A record write that fails after the release is logged, and `File` returns nil; `Settle` records the started entry.
+// It then creates the entry as a draft and runs the caller's `between` step.
+// It releases the entry and records its action and project under its slug.
+// A `between` error or a release error leaves the draft entry, which is closed and holds no start.
+// A record write that fails after the release is logged, and `File` returns nil.
+// The released entry starts, and `Settle` records it.
 //
 // # The record
 //
@@ -27,7 +30,8 @@
 //
 // # Removing
 //
-// `Remove` drops the record and the entry under the record's lock, which `Settle` holds across its read and writes.
+// `Remove` cancels the slug's run when one exists, drops its record and removes its entry.
+// The last two steps run under the record's lock, which `Settle` holds across its read of the board and its writes.
 // A settle running beside a removal therefore never runs the action of an entry the removal is deleting.
 // A failing step stops the removal with a `*RemoveError` that names the hand removal.
 //
@@ -35,10 +39,17 @@
 //
 // A dobby calls `Settle` each tick for its worktree's project.
 // When this machine does not own the worktree's subject, it drops the project's records and runs nothing.
-// It records each open front entry that has no record, so a filing that died before its record is healed.
-// It runs the action of each record whose entry is gone or done, once, and drops the record.
+// Otherwise it records each open front entry that has no record,
+// so a filing that died between its release and its record is healed before dobby starts the task.
+// It then runs the action of each record whose entry is gone or done, once, and drops the record.
 // A failed action keeps its record for the next settle and is returned with the hand step from the table.
 // An entry that is draft, halted or in any other status keeps its record and runs nothing.
 //
 // The action table is closed: a record naming a key outside it runs nothing, so no board edit makes dobby run a command.
+//
+// # Hub wiring
+//
+// `HubDeps` and `HubSettleDeps` fill the seams over a hub; a test fakes them.
+// The action runs as a detached spawn of the running `lym` executable in the prime's anchor.
+// Its output is appended to a file in the front-task directory.
 package fronttask

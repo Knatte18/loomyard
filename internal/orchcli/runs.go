@@ -10,7 +10,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -53,7 +53,7 @@ func runsWindowTitleIn(location *lymcwd.Location, beam bool) string {
 	if !beam {
 		return title
 	}
-	return boardengine.TitleWithHandle(fabriclayout.BoardDir(location.HubPath), location.WorktreeName, title)
+	return boardengine.TitleWithHandle(fabricengine.BoardDir(location.HubPath), location.WorktreeName, title)
 }
 
 // runsStrandAddSpec builds the runs strand's reedengine.AddSpec for the given pane command and window title:

@@ -112,21 +112,16 @@ type settleRecord struct {
 // generationRecord is the record of a run directory's review generation, kept as generation-record.json.
 // Number is the generation; Amendment says the generation reviews only a change under the amendment allowance;
 // Base is its amendment base.
-// ReviewInputs holds the path of each review input the generation was opened over, which it reads besides the change.
+// ReviewInput is the path of the review input a re-entry is told, which the amendment reviews besides the change.
 // JudgeSubject, JudgeBase and JudgeAt (RFC 3339) are the subject, base and time the latest judge spawn recorded.
 type generationRecord struct {
-	Number       int      `json:"number"`
-	Amendment    bool     `json:"amendment,omitempty"`
-	Base         string   `json:"base,omitempty"`
-	ReviewInputs []string `json:"review_inputs,omitempty"`
-	JudgeSubject Subject  `json:"judge_subject"`
-	JudgeBase    string   `json:"judge_base,omitempty"`
-	JudgeAt      string   `json:"judge_at,omitempty"`
-}
-
-// inputPaths returns the review input paths the record names.
-func (g generationRecord) inputPaths() []string {
-	return g.ReviewInputs
+	Number       int     `json:"number"`
+	Amendment    bool    `json:"amendment,omitempty"`
+	Base         string  `json:"base,omitempty"`
+	ReviewInput  string  `json:"review_input,omitempty"`
+	JudgeSubject Subject `json:"judge_subject"`
+	JudgeBase    string  `json:"judge_base,omitempty"`
+	JudgeAt      string  `json:"judge_at,omitempty"`
 }
 
 // readRecord decodes the JSON record at path, tolerating keys the type does not know.

@@ -1,6 +1,5 @@
 // taskpatch.go — the read-only git reads a code segment's identity needs on a Fabric:
-// the task's patch against its merge base and the task's committed diff.
-// It also holds the merge-in-only test of the task's history and the weft HEAD.
+// the task's patch against its merge base, the merge-in-only test of its history, and the weft HEAD.
 
 package fabricengine
 
@@ -9,28 +8,37 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 )
+
+// TaskPatch is the warp working tree's change against a merge base.
+// Head is the commit HEAD stands at, Full the full diff bytes in a stable order, and FullHash the hex SHA-256 of Full.
+// PatchID is git's stable patch-id of the zero-context form of the same diff.
+// It survives a rebase that moves the context around the change, and it is empty when the diff has no change.
+type TaskPatch struct {
+	Head     string
+	Full     []byte
+	FullHash string
+	PatchID  string
+}
 
 // ReadTaskPatch reads the warp working tree's change against base, the merge base the caller passes.
 // The change is the full diff of tracked files, uncommitted changes included.
 // It adds every untracked file that is not ignored, each rendered as a new-file diff.
 // An untracked path equal to a skip entry, or under a skip entry ending in "/", is left out;
 // a skip entry exempts a path only while it is untracked, so a tracked file of that name still counts.
-func (f *Fabric) ReadTaskPatch(base string, skip []string) (fabriclayout.TaskPatch, error) {
+func (f *Fabric) ReadTaskPatch(base string, skip []string) (TaskPatch, error) {
 	head, err := f.code.CurrentSHA()
 	if err != nil {
-		return fabriclayout.TaskPatch{}, fmt.Errorf("fabricengine: read task patch: %w", err)
+		return TaskPatch{}, fmt.Errorf("fabricengine: read task patch: %w", err)
 	}
 
 	untracked, err := f.code.UntrackedFiles()
 	if err != nil {
-		return fabriclayout.TaskPatch{}, fmt.Errorf("fabricengine: read task patch: list untracked files: %w", err)
+		return TaskPatch{}, fmt.Errorf("fabricengine: read task patch: list untracked files: %w", err)
 	}
 	var counted []string
 	for _, path := range untracked {
@@ -41,58 +49,19 @@ func (f *Fabric) ReadTaskPatch(base string, skip []string) (fabriclayout.TaskPat
 
 	full, err := f.renderTaskDiff(base, counted, "-U3")
 	if err != nil {
-		return fabriclayout.TaskPatch{}, err
+		return TaskPatch{}, err
 	}
 	zeroContext, err := f.renderTaskDiff(base, counted, "-U0")
 	if err != nil {
-		return fabriclayout.TaskPatch{}, err
+		return TaskPatch{}, err
 	}
 
 	patchID, err := stablePatchID(f.warpPath, zeroContext)
 	if err != nil {
-		return fabriclayout.TaskPatch{}, err
+		return TaskPatch{}, err
 	}
 	sum := sha256.Sum256(full)
-	return fabriclayout.TaskPatch{Head: head, Full: full, FullHash: hex.EncodeToString(sum[:]), PatchID: patchID}, nil
-}
-
-// ReadCommittedDiff returns the full diff of the commits from base to the warp checkout's HEAD.
-// It holds neither an uncommitted edit nor an untracked file, so it is the range a code review reads.
-func (f *Fabric) ReadCommittedDiff(base string) (string, error) {
-	diff, err := gitexec.Run([]string{"diff", "--no-color", "--no-ext-diff", "--no-textconv", "--no-renames", "--binary", "-U3", base, "HEAD", "--"}, f.warpPath)
-	if err != nil {
-		return "", fmt.Errorf("fabricengine: read committed diff: diff %s to HEAD: %w", base, err)
-	}
-	return diff, nil
-}
-
-// CommittedFileDiffs lists the files that exist at base and change between base and the warp checkout's HEAD.
-// A file counts when the range modifies or deletes it, so a rename lists its old path and an added file is not listed.
-// Each entry carries that file's own committed diff, and the list is sorted by path.
-// An empty range gives an empty list, and a base that does not resolve is an error naming it.
-// Like ReadCommittedDiff it holds neither an uncommitted edit nor an untracked file.
-func (f *Fabric) CommittedFileDiffs(base string) ([]fabriclayout.FileDiff, error) {
-	names, err := gitexec.Run([]string{"diff", "--name-only", "-z", "--no-renames", "--diff-filter=MD", base, "HEAD", "--"}, f.warpPath)
-	if err != nil {
-		return nil, fmt.Errorf("fabricengine: committed file diffs: list changed files %s to HEAD: %w", base, err)
-	}
-	paths := []string{}
-	for _, path := range strings.Split(names, "\x00") {
-		if path != "" {
-			paths = append(paths, path)
-		}
-	}
-	slices.Sort(paths)
-
-	diffs := make([]fabriclayout.FileDiff, 0, len(paths))
-	for _, path := range paths {
-		diff, err := gitexec.Run([]string{"diff", "--no-color", "--no-ext-diff", "--no-textconv", "--no-renames", "-U3", base, "HEAD", "--", path}, f.warpPath)
-		if err != nil {
-			return nil, fmt.Errorf("fabricengine: committed file diffs: diff %s of %s to HEAD: %w", path, base, err)
-		}
-		diffs = append(diffs, fabriclayout.FileDiff{Path: path, Diff: diff})
-	}
-	return diffs, nil
+	return TaskPatch{Head: head, Full: full, FullHash: hex.EncodeToString(sum[:]), PatchID: patchID}, nil
 }
 
 // skippedPath reports whether the untracked path is exempted by a skip entry.

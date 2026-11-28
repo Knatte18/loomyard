@@ -13,14 +13,14 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 )
 
 // fakeRecordsCommit is one commit of a commitStore: the whole tree as of the commit and its trailers.
 type fakeRecordsCommit struct {
 	sha      string
 	codeHead string
-	trailers []fabriclayout.Trailer
+	trailers []fabricengine.Trailer
 	files    map[string][]byte
 }
 
@@ -49,7 +49,7 @@ func (s *commitStore) deps(p Paths) Deps {
 		Paths:        p,
 		WorktreeRoot: s.root,
 		Head:         func() (string, error) { return s.codeHead, nil },
-		CommitWithTrailers: func(relPaths []string, trailers []fabriclayout.Trailer) error {
+		CommitWithTrailers: func(relPaths []string, trailers []fabricengine.Trailer) error {
 			return s.commit(relPaths, trailers)
 		},
 		TrailerCommit: s.trailerCommit,
@@ -58,7 +58,7 @@ func (s *commitStore) deps(p Paths) Deps {
 }
 
 // commit adds a commit of relPaths with trailers.
-func (s *commitStore) commit(relPaths []string, trailers []fabriclayout.Trailer) error {
+func (s *commitStore) commit(relPaths []string, trailers []fabricengine.Trailer) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -89,7 +89,7 @@ func (s *commitStore) commit(relPaths []string, trailers []fabriclayout.Trailer)
 }
 
 // trailerCommit finds the newest or the oldest commit carrying key, with the key's last value in that commit.
-func (s *commitStore) trailerCommit(key string, newest bool) (fabriclayout.TrailerCommit, bool, error) {
+func (s *commitStore) trailerCommit(key string, newest bool) (fabricengine.TrailerCommit, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -100,11 +100,11 @@ func (s *commitStore) trailerCommit(key string, newest bool) (fabriclayout.Trail
 	for _, commit := range order {
 		for _, trailer := range slices.Backward(commit.trailers) {
 			if trailer.Key == key {
-				return fabriclayout.TrailerCommit{SHA: commit.sha, Value: trailer.Value, CodeHead: commit.codeHead}, true, nil
+				return fabricengine.TrailerCommit{SHA: commit.sha, Value: trailer.Value, CodeHead: commit.codeHead}, true, nil
 			}
 		}
 	}
-	return fabriclayout.TrailerCommit{}, false, nil
+	return fabricengine.TrailerCommit{}, false, nil
 }
 
 // fileAt returns relPath as the commit rev holds it.

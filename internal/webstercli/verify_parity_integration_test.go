@@ -2,7 +2,7 @@
 // `lym webster verify`, loomshed.NewVerifyGate and websterengine.NewVerifyGate.
 // They must reach the same three-way verdict over one fixture.
 // It is integration-tagged because every side spawns git and a shell.
-// The test puts the built `lym` first on `PATH` once, so it is serial, and its cases run in parallel under that.
+// It is not parallel because each fixture puts the built `lym` first on `PATH`.
 // Every side runs the `final` gate call over the same seeded gate.yaml.
 // The shape follows loomcli's TestGateParity_*.
 
@@ -16,7 +16,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
-	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -54,10 +53,8 @@ func verbVerdict(env envelope.Envelope) verifyParityVerdict {
 	return verifyVerdictError
 }
 
-// Serial: it puts `lym` first on PATH once, and its cases run in parallel under that.
 func TestGateParity_VerifyGate(t *testing.T) {
 	tiergate.Require(t, 1)
-	lymbin.PutFirstOnPath(t)
 	cases := []struct {
 		name    string
 		command string
@@ -70,7 +67,6 @@ func TestGateParity_VerifyGate(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
 			// Each side gets its own fixture, so one side's record cannot skip another side's run.
 			prepare := func() *verifyFixture {
 				fx := newVerifyFixture(t, tc.command)

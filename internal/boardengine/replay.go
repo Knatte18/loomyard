@@ -17,19 +17,17 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
-	"reflect"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/entrymerge"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fsx"
 )
 
-// File names a replay recognises at the Bolt root:
-// the rendered overview, board-data.js and board.html, and the per-entry design and decision files.
+// File names a replay recognises at the Bolt root: the rendered overview and the per-entry design and decision files.
 // Per-project overviews use projectFilePrefix, and the entry store is boardFile.
 const (
 	overviewFile       = "README.md"
@@ -47,10 +45,9 @@ type FabricReplay struct{}
 func (FabricReplay) Name() string { return "board" }
 
 // Claims reports whether path, a Bolt-root-relative slash path, is a file of the board:
-// the entry store, a rendered overview file, the view projection or the viewer page;
-// a design file, a decision record or a file of a raddle store directory.
+// the entry store, a rendered overview file, a design file, a decision record or a file of a raddle store directory.
 func (FabricReplay) Claims(path string) bool {
-	if path == boardFile || path == BoardDataFile || path == BoardPageFile || isBoardOverview(path) {
+	if path == boardFile || isBoardOverview(path) {
 		return true
 	}
 	if _, design := boardDesignSlug(path); design {
@@ -207,6 +204,8 @@ var replayFields = entrymerge.Table[Task]{
 		{Name: "short_name", Get: func(t Task) any { return t.ShortName }, Set: func(dst *Task, src Task) { dst.ShortName = src.ShortName }},
 		{Name: "run_settings", Get: func(t Task) any { return orNilSettings(t.RunSettings) }, Set: func(dst *Task, src Task) { dst.RunSettings = cloneSettings(src.RunSettings) }},
 		{Name: "profile", Get: func(t Task) any { return t.Profile }, Set: func(dst *Task, src Task) { dst.Profile = src.Profile }},
+		{Name: pullRequestKey, Get: func(t Task) any { return t.PullRequest }, Set: func(dst *Task, src Task) { dst.PullRequest = src.PullRequest }},
+		{Name: "notify_on_land", Get: func(t Task) any { return t.NotifyOnLand }, Set: func(dst *Task, src Task) { dst.NotifyOnLand = src.NotifyOnLand }},
 		{Name: "owner_machine", Get: func(t Task) any { return t.OwnerMachine }, Set: func(dst *Task, src Task) { dst.OwnerMachine = src.OwnerMachine }},
 		{Name: "project", Get: func(t Task) any { return t.Project }, Set: func(dst *Task, src Task) { dst.Project = src.Project }},
 		{Name: "order", Get: func(t Task) any { return orEmpty(t.Order) }, Set: func(dst *Task, src Task) { dst.Order = slices.Clone(src.Order) }},
@@ -258,6 +257,21 @@ func parsePrimeOwner(data []byte) (string, error) {
 	return decoded.PrimeOwner, nil
 }
 
+// parseDraftStatus decodes the top-level draft_status of a board.json read from a commit.
+// An absent or empty file, or an absent key, yields false.
+func parseDraftStatus(data []byte) (bool, error) {
+	if len(bytes.TrimSpace(data)) == 0 {
+		return false, nil
+	}
+	var decoded struct {
+		DraftStatus bool `json:"draft_status"`
+	}
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return false, err
+	}
+	return decoded.DraftStatus, nil
+}
+
 // parseReplayBoard decodes a board.json read from a commit, an absent or empty file being a board with no entry.
 func parseReplayBoard(data []byte) (map[string]Task, []Task, error) {
 	if len(bytes.TrimSpace(data)) == 0 {
@@ -276,14 +290,14 @@ func parseReplayBoard(data []byte) (map[string]Task, []Task, error) {
 
 // Runs decodes data, a `board.json`, into each entry's slug, whether it is done and its created stamp, in file order.
 // Empty data holds no entry.
-func (FabricReplay) Runs(data []byte) ([]fabriclayout.LedgerRun, error) {
+func (FabricReplay) Runs(data []byte) ([]fabricengine.LedgerRun, error) {
 	_, tasks, err := parseReplayBoard(data)
 	if err != nil {
 		return nil, err
 	}
-	runs := make([]fabriclayout.LedgerRun, len(tasks))
+	runs := make([]fabricengine.LedgerRun, len(tasks))
 	for i, task := range tasks {
-		runs[i] = fabriclayout.LedgerRun{Slug: task.Slug, Ended: isDone(task), Created: task.Created}
+		runs[i] = fabricengine.LedgerRun{Slug: task.Slug, Ended: isDone(task), Created: task.Created}
 	}
 	return runs, nil
 }
@@ -298,122 +312,8 @@ type replayRun struct {
 	refusedAdds map[string]bool
 	// lostAdds holds the slugs of the added entries origin already held under a different entry, whose add was reported lost.
 	lostAdds map[string]bool
-	result   fabriclayout.ReplayResult
+	result   fabricengine.ReplayResult
 	applied  bool
-	// The holds and machine registry of the merge base, the commit's parent and the commit.
-	baseHolds, parentHolds, commitHolds          []Hold
-	baseMachines, parentMachines, commitMachines Registry
-}
-
-// sameHold reports whether two holds are equal in every field.
-func sameHold(a, b Hold) bool { return reflect.DeepEqual(a, b) }
-
-// containsHold reports whether holds holds a hold equal to hold.
-func containsHold(holds []Hold, hold Hold) bool {
-	return slices.ContainsFunc(holds, func(candidate Hold) bool { return sameHold(candidate, hold) })
-}
-
-// refuseOverAnotherMachinesNewHold judges the commit's hold changes against origin's holds.
-// It reports whether it refused.
-// A commit that changes no hold is never refused.
-// Otherwise it is refused whole when origin holds a hold the commit's parent did not hold.
-// The refusal applies when that hold was written by a machine other than the one the commit's hold changes name.
-// That machine is the machine of each hold the commit added, else the machine of each hold it removed.
-// The refusal is one finding, and nothing of the commit's board.json change is applied.
-func (r *replayRun) refuseOverAnotherMachinesNewHold() bool {
-	if slices.EqualFunc(r.parentHolds, r.commitHolds, sameHold) {
-		return false
-	}
-	var writers []string
-	for _, hold := range r.commitHolds {
-		if !containsHold(r.parentHolds, hold) {
-			writers = append(writers, hold.Machine)
-		}
-	}
-	if len(writers) == 0 {
-		for _, hold := range r.parentHolds {
-			if !containsHold(r.commitHolds, hold) {
-				writers = append(writers, hold.Machine)
-			}
-		}
-	}
-	for _, standing := range r.store.holds {
-		if containsHold(r.parentHolds, standing) {
-			continue
-		}
-		written := slices.ContainsFunc(writers, func(writer string) bool { return r.store.machines.sameMachine(standing.Machine, writer) })
-		if written {
-			continue
-		}
-		r.refuse("holds", "", fmt.Errorf("origin holds the %s hold of machine %q written at %s, which this commit's parent did not hold, so the commit's whole %s change is refused",
-			standing.Kind, standing.Machine, standing.At.Format(time.RFC3339), boardFile))
-		return true
-	}
-	return false
-}
-
-// changeHolds applies the commit's hold changes onto origin's holds.
-// A parent hold the commit removed or replaced is matched in origin's list by equality:
-// a removed one leaves the list, and a replaced one is replaced at the same position as in the commit.
-// One origin no longer holds is reported lost with its change not applied.
-// Each hold the commit added is appended.
-func (r *replayRun) changeHolds() {
-	if slices.EqualFunc(r.parentHolds, r.commitHolds, sameHold) {
-		return
-	}
-	replacement := make([]bool, len(r.commitHolds))
-	for i, before := range r.parentHolds {
-		if containsHold(r.commitHolds, before) {
-			continue
-		}
-		replaced := i < len(r.commitHolds) && !containsHold(r.parentHolds, r.commitHolds[i])
-		if replaced {
-			replacement[i] = true
-		}
-		index := slices.IndexFunc(r.store.holds, func(candidate Hold) bool { return sameHold(candidate, before) })
-		if index < 0 {
-			r.lost("holds", "hold", "origin no longer holds the hold this commit changes", "")
-			continue
-		}
-		if replaced {
-			r.store.holds[index] = r.commitHolds[i]
-		} else {
-			r.store.holds = slices.Delete(r.store.holds, index, index+1)
-		}
-		r.applied = true
-	}
-	for i, added := range r.commitHolds {
-		if replacement[i] || containsHold(r.parentHolds, added) || containsHold(r.store.holds, added) {
-			continue
-		}
-		r.store.holds = append(r.store.holds, added)
-		r.applied = true
-	}
-}
-
-// changeRegistry sets each machine entry the commit added or changed onto origin's registry.
-// An entry origin changed since the merge base keeps origin's and is reported lost.
-func (r *replayRun) changeRegistry() {
-	for _, id := range slices.Sorted(maps.Keys(r.commitMachines)) {
-		entry := r.commitMachines[id]
-		if before, held := r.parentMachines[id]; held && reflect.DeepEqual(before, entry) {
-			continue
-		}
-		current, inOrigin := r.store.machines[id]
-		if inOrigin && reflect.DeepEqual(current, entry) {
-			continue
-		}
-		base, inBase := r.baseMachines[id]
-		if inOrigin != inBase || (inOrigin && !reflect.DeepEqual(current, base)) {
-			r.lost("machines", id, "origin changed the machine's entry since the merge base", "")
-			continue
-		}
-		if r.store.machines == nil {
-			r.store.machines = Registry{}
-		}
-		r.store.machines[id] = entry
-		r.applied = true
-	}
 }
 
 // Apply re-applies the request's commit onto the board directory:
@@ -436,23 +336,19 @@ func (r *replayRun) changeRegistry() {
 // The rest of the commit still lands.
 // An added entry takes a handle free on origin's board,
 // and a changed entry keeps origin's handle unless its letter changed.
-// The commit's holds and machine registry replay too.
-// A commit whose holds differ from its parent's is refused whole when origin gained a hold of another machine.
-// None of its board.json change is applied then.
-// A commit that changes neither key replays as before, even when origin gained a hold.
 // It saves board.json and re-renders the board's output files when anything was applied;
 // and writes nothing otherwise.
 // It takes no lock and spawns no sync, since its caller holds the board and push locks.
-func (FabricReplay) Apply(req fabriclayout.ReplayRequest) (fabriclayout.ReplayResult, error) {
+func (FabricReplay) Apply(req fabricengine.ReplayRequest) (fabricengine.ReplayResult, error) {
 	cfg, err := LoadConfig(configengine.Dirs{Board: req.Dir}, "board")
 	if err != nil {
-		return fabriclayout.ReplayResult{}, err
+		return fabricengine.ReplayResult{}, err
 	}
 	vocabulary := cfg.Vocabulary()
 
 	var baseJSON, parentJSON, commitJSON []byte
-	var designFiles, recordFiles []fabriclayout.ReplayFile
-	storeFiles := map[string][]fabriclayout.ReplayFile{}
+	var designFiles, recordFiles []fabricengine.ReplayFile
+	storeFiles := map[string][]fabricengine.ReplayFile{}
 	for _, file := range req.Files {
 		if file.Path == boardFile {
 			baseJSON, parentJSON, commitJSON = file.Base, file.Before, file.After
@@ -467,81 +363,68 @@ func (FabricReplay) Apply(req fabriclayout.ReplayRequest) (fabriclayout.ReplayRe
 
 	base, _, err := parseReplayBoard(baseJSON)
 	if err != nil {
-		return fabriclayout.ReplayResult{}, fmt.Errorf("merge base %s: %w", boardFile, err)
+		return fabricengine.ReplayResult{}, fmt.Errorf("merge base %s: %w", boardFile, err)
 	}
 	parent, parentTasks, err := parseReplayBoard(parentJSON)
 	if err != nil {
-		return fabriclayout.ReplayResult{}, fmt.Errorf("parent %s: %w", boardFile, err)
+		return fabricengine.ReplayResult{}, fmt.Errorf("parent %s: %w", boardFile, err)
 	}
 	_, commitTasks, err := parseReplayBoard(commitJSON)
 	if err != nil {
-		return fabriclayout.ReplayResult{}, fmt.Errorf("commit %s: %w", boardFile, err)
+		return fabricengine.ReplayResult{}, fmt.Errorf("commit %s: %w", boardFile, err)
 	}
 
 	basePrime, err := parsePrimeOwner(baseJSON)
 	if err != nil {
-		return fabriclayout.ReplayResult{}, fmt.Errorf("merge base %s: %w", boardFile, err)
+		return fabricengine.ReplayResult{}, fmt.Errorf("merge base %s: %w", boardFile, err)
 	}
 	parentPrime, err := parsePrimeOwner(parentJSON)
 	if err != nil {
-		return fabriclayout.ReplayResult{}, fmt.Errorf("parent %s: %w", boardFile, err)
+		return fabricengine.ReplayResult{}, fmt.Errorf("parent %s: %w", boardFile, err)
 	}
 	commitPrime, err := parsePrimeOwner(commitJSON)
 	if err != nil {
-		return fabriclayout.ReplayResult{}, fmt.Errorf("commit %s: %w", boardFile, err)
+		return fabricengine.ReplayResult{}, fmt.Errorf("commit %s: %w", boardFile, err)
+	}
+
+	commitDraft, err := parseDraftStatus(commitJSON)
+	if err != nil {
+		return fabricengine.ReplayResult{}, fmt.Errorf("commit %s: %w", boardFile, err)
 	}
 
 	store := NewStore(req.Dir)
 	store.vocab = &vocabulary
 	if err := store.Load(); err != nil {
-		return fabriclayout.ReplayResult{}, err
+		return fabricengine.ReplayResult{}, err
 	}
-	baseOwners, err := ParseOwners(baseJSON)
-	if err != nil {
-		return fabriclayout.ReplayResult{}, fmt.Errorf("merge base %s: %w", boardFile, err)
-	}
-	parentOwners, err := ParseOwners(parentJSON)
-	if err != nil {
-		return fabriclayout.ReplayResult{}, fmt.Errorf("parent %s: %w", boardFile, err)
-	}
-	commitOwners, err := ParseOwners(commitJSON)
-	if err != nil {
-		return fabriclayout.ReplayResult{}, fmt.Errorf("commit %s: %w", boardFile, err)
-	}
+	run := &replayRun{store: store, origin: cloneTasks(store.Tasks()), base: base, refusedAdds: map[string]bool{}, lostAdds: map[string]bool{}}
 
-	run := &replayRun{
-		store: store, origin: cloneTasks(store.Tasks()), base: base, refusedAdds: map[string]bool{}, lostAdds: map[string]bool{},
-		baseHolds: baseOwners.Holds, parentHolds: parentOwners.Holds, commitHolds: commitOwners.Holds,
-		baseMachines: baseOwners.Registry, parentMachines: parentOwners.Registry, commitMachines: commitOwners.Registry,
-	}
-
-	// The hold check runs before any board.json change, so an adopt commit lands all or nothing.
-	if !run.refuseOverAnotherMachinesNewHold() {
-		inCommit := make(map[string]bool, len(commitTasks))
-		for _, commit := range commitTasks {
-			inCommit[commit.Slug] = true
-			if before, existed := parent[commit.Slug]; existed {
-				run.changeEntry(before, commit)
-			} else {
-				run.addEntry(commit)
-			}
+	inCommit := make(map[string]bool, len(commitTasks))
+	for _, commit := range commitTasks {
+		inCommit[commit.Slug] = true
+		if before, existed := parent[commit.Slug]; existed {
+			run.changeEntry(before, commit)
+		} else {
+			run.addEntry(commit)
 		}
-		for _, before := range parentTasks {
-			if !inCommit[before.Slug] {
-				run.removeEntry(before)
-			}
+	}
+	for _, before := range parentTasks {
+		if !inCommit[before.Slug] {
+			run.removeEntry(before)
 		}
+	}
 
-		run.changePrimeOwner(basePrime, parentPrime, commitPrime)
-		run.changeHolds()
-		run.changeRegistry()
+	run.changePrimeOwner(basePrime, parentPrime, commitPrime)
+	if commitDraft && !store.draftStatus {
+		store.draftStatus = true
+		run.applied = true
 	}
 
 	designsApplied := false
 	for _, file := range designFiles {
 		applied, err := run.applyDesignFile(req.Dir, "design file", file)
 		if err != nil {
-			return fabriclayout.ReplayResult{}, err
+			return fabricengine.ReplayResult{}, err
 		}
 		designsApplied = designsApplied || applied
 	}
@@ -554,7 +437,7 @@ func (FabricReplay) Apply(req fabriclayout.ReplayRequest) (fabriclayout.ReplayRe
 		}
 		applied, err := run.applyDesignFile(req.Dir, "decision record", file)
 		if err != nil {
-			return fabriclayout.ReplayResult{}, err
+			return fabricengine.ReplayResult{}, err
 		}
 		designsApplied = designsApplied || applied
 	}
@@ -570,7 +453,7 @@ func (FabricReplay) Apply(req fabriclayout.ReplayRequest) (fabriclayout.ReplayRe
 		for _, file := range files {
 			applied, err := run.applyDesignFile(req.Dir, "raddle store file", file)
 			if err != nil {
-				return fabriclayout.ReplayResult{}, err
+				return fabricengine.ReplayResult{}, err
 			}
 			designsApplied = designsApplied || applied
 		}
@@ -583,11 +466,11 @@ func (FabricReplay) Apply(req fabriclayout.ReplayRequest) (fabriclayout.ReplayRe
 	if run.applied {
 		assignHandles(store.tasks, store.vocab)
 		if err := store.Save(); err != nil {
-			return fabriclayout.ReplayResult{}, fmt.Errorf("save store: %w", err)
+			return fabricengine.ReplayResult{}, fmt.Errorf("save store: %w", err)
 		}
 	}
 	if err := RenderToDisk(req.Dir, store.Tasks(), store.primeOwner, cfg.Outputs(), time.Now()); err != nil {
-		return fabriclayout.ReplayResult{}, fmt.Errorf("render: %w", err)
+		return fabricengine.ReplayResult{}, fmt.Errorf("render: %w", err)
 	}
 	return run.result, nil
 }
@@ -596,7 +479,7 @@ func (FabricReplay) Apply(req fabriclayout.ReplayRequest) (fabriclayout.ReplayRe
 // They are when the commit's store.json among them records as filed an entry whose add was refused or lost.
 // The store is the done marker of the entries it names, so origin never holds one without them.
 // A store.json that cannot be decoded sets them aside too, since origin would then refuse every slug-making write.
-func (r *replayRun) storeSetAsideReason(files []fabriclayout.ReplayFile) (string, bool) {
+func (r *replayRun) storeSetAsideReason(files []fabricengine.ReplayFile) (string, bool) {
 	for _, file := range files {
 		if filepath.Base(file.Path) != raddleStoreFileName || file.After == nil {
 			continue
@@ -618,11 +501,11 @@ func (r *replayRun) storeSetAsideReason(files []fabriclayout.ReplayFile) (string
 }
 
 func (r *replayRun) lost(entry, field, reason, local string) {
-	r.result.Lost = append(r.result.Lost, fabriclayout.ReplayFinding{Entry: entry, Field: field, Reason: reason, Local: local})
+	r.result.Lost = append(r.result.Lost, fabricengine.ReplayFinding{Entry: entry, Field: field, Reason: reason, Local: local})
 }
 
 func (r *replayRun) refuse(entry, field string, err error) {
-	r.result.Refused = append(r.result.Refused, fabriclayout.ReplayFinding{Entry: entry, Field: field, Reason: err.Error()})
+	r.result.Refused = append(r.result.Refused, fabricengine.ReplayFinding{Entry: entry, Field: field, Reason: err.Error()})
 }
 
 // originEntry returns the store's current entry for slug and its index, or false when the store holds none.
@@ -784,7 +667,7 @@ func (r *replayRun) removeEntry(before Task) {
 // A design file or decision record must be a plain file name, and a store file a path directly in a store directory.
 // A path of any other shape is refused.
 // A file origin changed too stays as origin holds it and is reported lost.
-func (r *replayRun) applyDesignFile(boardDir, label string, file fabriclayout.ReplayFile) (bool, error) {
+func (r *replayRun) applyDesignFile(boardDir, label string, file fabricengine.ReplayFile) (bool, error) {
 	_, inStore := raddleStorePath(file.Path)
 	if file.Path == "" || (!inStore && file.Path != filepath.Base(file.Path)) {
 		r.refuse(file.Path, label, fmt.Errorf("%s name %q is not a plain file name", label, file.Path))

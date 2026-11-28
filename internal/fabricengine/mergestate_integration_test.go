@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -43,6 +42,7 @@ func assertNoZeroFields(t *testing.T, label string, v any) {
 }
 
 // TestMergeState_Record drives the on-disk merge-state record through one pair, in this order:
+// with no record saved, loadMergeState reports not-found and mergeRecordExists reports false;
 // the save->load roundtrip preserves every field;
 // the record lands at <weft gitdir>/fabric-merge.json, and git status on both sides does not show it;
 // and deleteMergeState removes a saved record and tolerates a second call against an absent one.
@@ -55,6 +55,24 @@ func TestMergeState_Record(t *testing.T) {
 	t.Parallel()
 
 	f, h := newMergeStateFixture(t)
+
+	t.Run("absent record", func(t *testing.T) {
+		_, found, err := fabricengine.LoadMergeStateForTest(f)
+		if err != nil {
+			t.Fatalf("LoadMergeStateForTest() error = %v", err)
+		}
+		if found {
+			t.Error("LoadMergeStateForTest() found = true; want false with no record ever saved")
+		}
+
+		exists, err := fabricengine.MergeRecordExistsForTest(f)
+		if err != nil {
+			t.Fatalf("MergeRecordExistsForTest() error = %v", err)
+		}
+		if exists {
+			t.Error("MergeRecordExistsForTest() = true; want false with no record ever saved")
+		}
+	})
 
 	t.Run("save and load roundtrip preserves every field", func(t *testing.T) {
 		want := fabricengine.MergeStateForTest{
@@ -173,14 +191,14 @@ func driveConflictedMergeStart(t *testing.T, dir string, repo *gitrepo.Repo) {
 // wantWorktreeResetEntries asserts entries is exactly one KindWorktreeReset entry carrying the warp
 // pre-merge SHA.
 // The weft is never a reset target, so the warp reset is the record's only entry.
-func wantWorktreeResetEntries(t *testing.T, entries []fabriclayout.Mutation, wantWarpSHA string) {
+func wantWorktreeResetEntries(t *testing.T, entries []fabricengine.Mutation, wantWarpSHA string) {
 	t.Helper()
 
 	if len(entries) != 1 {
 		t.Fatalf("resetMergeSides record has %d entries; want exactly 1 (warp reset): %+v", len(entries), entries)
 	}
-	if entries[0].Kind != fabriclayout.KindWorktreeReset {
-		t.Errorf("entries[0].Kind = %q; want %q", entries[0].Kind, fabriclayout.KindWorktreeReset)
+	if entries[0].Kind != fabricengine.KindWorktreeReset {
+		t.Errorf("entries[0].Kind = %q; want %q", entries[0].Kind, fabricengine.KindWorktreeReset)
 	}
 	if entries[0].Detail != wantWarpSHA {
 		t.Errorf("entries[0] (warp) Detail = %q; want warp pre-merge SHA %q", entries[0].Detail, wantWarpSHA)
@@ -192,6 +210,7 @@ func wantWorktreeResetEntries(t *testing.T, entries []fabriclayout.Mutation, wan
 // Warp HEAD returns to the captured pre-merge SHA, and the warp worktree ends clean.
 // MergeHeadPresent is false on the warp, and the record holds exactly one KindWorktreeReset entry.
 // The weft side is never dirtied in that case, so its unchanged HEAD check is trivially true.
+// Against the hub's prime warp worktree with nothing to reset, the ownership gate must admit the reset.
 // With the weft side left dirty by a real conflicted MergeStart, the warp-only reset restores warp HEAD alone.
 // The weft's conflicted merge state stays exactly as it was:
 // MERGE_HEAD still present, conflict markers still on disk.
@@ -235,6 +254,17 @@ func TestMergeState_ResetMergeSides(t *testing.T) {
 		}
 
 		wantWorktreeResetEntries(t, rec.Snapshot().Entries(), warpStartSHA)
+	})
+
+	t.Run("prime warp worktree is admitted by the ownership gate", func(t *testing.T) {
+		warpSHA := fabricengine.CurrentSHAForTest(t, warpPath)
+
+		rec := fabricengine.NewMutations(h.Path)
+		if err := fabricengine.ResetMergeSidesForTest(f, rec, warpSHA); err != nil {
+			t.Fatalf("ResetMergeSidesForTest() against the prime pair error = %v; want the ownership gate to admit the prime warp worktree", err)
+		}
+
+		wantWorktreeResetEntries(t, rec.Snapshot().Entries(), warpSHA)
 	})
 
 	t.Run("weft side conflicted is left untouched", func(t *testing.T) {

@@ -6,7 +6,6 @@ package tendercli
 import (
 	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"slices"
 	"strings"
@@ -15,7 +14,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/tenderengine"
@@ -31,10 +29,8 @@ const (
 
 // caller says who runs a verb.
 type caller struct {
-	// orch is true for the hub orchestrator, the prime's orch.
+	// orch is true for the hub orchestrator.
 	orch bool
-	// beam is the beam whose orch runs the verb, empty for any other caller.
-	beam string
 	// agent is true for any other strand.
 	agent bool
 	// slug is the pair an agent belongs to, empty for an agent with no pair.
@@ -42,85 +38,37 @@ type caller struct {
 }
 
 // callerOf reads the caller from the strand name.
-// An empty name is external, the orch role in the prime is the orch, and the orch role of a beam is that beam's orch.
+// An empty name is external, and the orch role in the prime is the orch.
 // Any other name is an agent of the slug it carries.
 func callerOf(strand string) caller {
 	if strand == "" {
 		return caller{}
 	}
 	name, err := agentname.Parse(strand)
+	if err == nil && name.Role == agentname.RoleOrch && name.Slug == "" {
+		return caller{orch: true}
+	}
 	if err != nil {
 		return caller{agent: true}
-	}
-	if name.Role == agentname.RoleOrch {
-		if name.Slug == "" {
-			return caller{orch: true}
-		}
-		return caller{beam: name.Slug}
 	}
 	return caller{agent: true, slug: name.Slug}
 }
 
-// refuseCaller refuses a pause, resume or revive of slug, empty for the whole hub, by a caller that may not run it.
-// The orch and an external caller are never refused, and an agent may act only on its own pair.
-// A beam's orch may act on its beam and on every pair whose beam chain holds the beam.
-// That reach exists because the beam's orch is the session that settles those runs' halts.
-// underBeam reports whether a pair's chain holds the beam.
-func refuseCaller(c caller, slug string, underBeam func(beam, slug string) (bool, error)) error {
-	switch {
-	case c.agent:
-		if slug != "" && slug == c.slug {
-			return nil
-		}
-		return errors.New(`pause: an agent may pause, resume or revive only its own pair; way forward: ask your parent session, which runs "lym tender pause", "lym tender resume" or "lym tender revive" for you`)
-	case c.beam != "":
-		if slug != "" {
-			under, err := underBeam(c.beam, slug)
-			if err != nil {
-				return fmt.Errorf("pause: read whether %q works under the beam %q: %w; way forward: re-run the verb", slug, c.beam, err)
-			}
-			if under {
-				return nil
-			}
-		}
-		return errors.New(`pause: a beam's orch may pause, resume or revive only its beam and the pairs under it; way forward: ask your parent session, which runs "lym tender pause", "lym tender resume" or "lym tender revive" for you`)
-	}
-	return nil
-}
-
-// pairUnderBeam reports whether the beam chain of the pair slug in the hub of location holds beam.
-// The chain includes the pair itself.
-// A pair not present here is under no beam.
-func pairUnderBeam(location *lymcwd.Location, beam, slug string) (bool, error) {
-	root := fabricengine.WorktreePath(location, slug)
-	if _, err := os.Stat(root); errors.Is(err, fs.ErrNotExist) {
-		return false, nil
-	}
-	pair, err := lymcwd.ResolveWorktree(root)
-	if err != nil {
-		return false, err
-	}
-	chain, err := hubgeom.OrchChain(pair)
-	if err != nil {
-		return false, err
-	}
-	return slices.ContainsFunc(chain, func(orch hubgeom.Parent) bool { return orch.Worktree == beam }), nil
-}
-
-// refuseCallerIn applies refuseCaller to the calling strand for a pause, resume or revive of slug in the hub of location.
-func refuseCallerIn(location *lymcwd.Location, slug string) error {
-	return refuseCaller(callerOf(os.Getenv(agentname.StrandNameEnv)), slug, func(beam, slug string) (bool, error) {
-		return pairUnderBeam(location, beam, slug)
-	})
-}
-
-// refuseReapCaller refuses a reap by any caller but the orch and an external caller.
-// Those two are the only ones that end orphaned processes.
-func refuseReapCaller(c caller) error {
-	if !c.agent && c.beam == "" {
+// refuseCaller refuses an agent's pause, resume or revive unless it names its own pair.
+// The orch and an external caller are never refused.
+func refuseCaller(c caller, slug string) error {
+	if !c.agent || (slug != "" && slug == c.slug) {
 		return nil
 	}
-	return errors.New(`reap: only the hub's orch ends orphaned processes; way forward: ask your parent session, which runs "lym tender reap" for you`)
+	return errors.New(`pause: an agent may pause, resume or revive only its own pair; way forward: ask your parent session, which runs "lym tender pause", "lym tender resume" or "lym tender revive" for you`)
+}
+
+// refuseReapCaller refuses an agent's reap: only the orch and an external caller end orphaned processes.
+func refuseReapCaller(c caller) error {
+	if !c.agent {
+		return nil
+	}
+	return errors.New(`reap: an agent may not end orphaned processes; way forward: ask your parent session, which runs "lym tender reap" for you`)
 }
 
 // Command returns the cobra command for `lym tender`, with its pause, resume, revive, status and reap verbs.
@@ -153,9 +101,7 @@ with Esc, and holds every path that would start agent or network work until
 
 A second Esc goes only after the provider's settle time, and only into a pane
 still showing a running turn. A session whose turn ended with background work
-is sent no Esc and is reported under "background". A pair with no reed session,
-as after a crash, has no running turn: it is reported under "skipped" and the
-pause goes on.
+is sent no Esc and is reported under "background".
 
 With no slug it covers the whole hub; with a slug it covers that pair. A repeated
 pause adds no entry and interrupts only the sessions in a running turn now. The
@@ -191,15 +137,15 @@ Example:
 			if grace < 0 || grace > maxGraceSeconds {
 				return fail(fmt.Errorf("pause: --grace %d is outside the range 0 to %d seconds; way forward: pass a --grace within it", grace, maxGraceSeconds))
 			}
+			if err := refuseCaller(callerOf(os.Getenv(agentname.StrandNameEnv)), slug); err != nil {
+				return fail(err)
+			}
 			cwd, err := lymcwd.CwdFrom(ctx)
 			if err != nil {
 				return fail(err)
 			}
 			location, err := lymcwd.Resolve(cwd)
 			if err != nil {
-				return fail(err)
-			}
-			if err := refuseCallerIn(location, slug); err != nil {
 				return fail(err)
 			}
 			deps, slugs, err := HubDeps(location, os.Getenv(agentname.StrandNameEnv))
@@ -252,21 +198,17 @@ With a slug, a resume also clears the run's pause intent from its batten record,
 and commits and pushes it. A run another machine owns is refused, naming that
 machine.
 
-While an adopt's hold stands in the board, a slug held only by a bolt-hold entry
-is refused, naming the hold's machine, and a resume with no slug leaves every
-bolt-hold entry standing; the worktree's dobby lifts them once the hold clears.
-
 Each session the pause interrupted gets one line to carry on, unless its strand
 is not live or its guarded send is refused, as for a running turn, a draft, a
 dialog on screen or an open rewind picker; those are named with the reason. A
 session another live entry still covers moves to that entry with no line. The
 orchestrator's line comes from its own watcher.
 
-A lift also spawns what a pause held back: the background pusher of each pair
-the lifted entries covered that holds commits origin lacks, the prime's records
-push and the board sync. A pair a live entry still covers, one another machine
-owns and one that is gone is not pushed. The report's "spawned" lists the spawns
-and "spawn_failed" the ones that failed; neither fails the resume.
+A lift also spawns what a pause deferred: the detached push of each pair the
+lifted entries covered, the prime's records push and the board sync. A pair a
+live entry still covers, one another machine owns and one that is gone is not
+pushed. The report's "spawned" lists the spawns and "spawn_failed" the ones that
+failed; neither fails the resume.
 
 Example:
   lym tender resume
@@ -286,15 +228,15 @@ Example:
 			if len(args) == 1 {
 				slug = args[0]
 			}
+			if err := refuseCaller(callerOf(os.Getenv(agentname.StrandNameEnv)), slug); err != nil {
+				return fail(err)
+			}
 			cwd, err := lymcwd.CwdFrom(ctx)
 			if err != nil {
 				return fail(err)
 			}
 			location, err := lymcwd.Resolve(cwd)
 			if err != nil {
-				return fail(err)
-			}
-			if err := refuseCallerIn(location, slug); err != nil {
 				return fail(err)
 			}
 			deps, _, err := HubDeps(location, os.Getenv(agentname.StrandNameEnv))
@@ -328,8 +270,7 @@ func reviveCmd() *cobra.Command {
 		Long: `revive types one fixed carry-on line into each session whose last turn stopped
 on an API error, the case a network outage without a machine sleep leaves
 behind. A session in any other state is skipped with the state read, and a
-session a live pause covers is left to "lym tender resume". A pair with no reed
-session, as after a crash, is reported under "skipped" and the revive goes on.
+session a live pause covers is left to "lym tender resume".
 
 With no slug it covers the whole hub, the orchestrator included: the orch gets
 the line as a checked creel inject, reported with its id. With a slug it covers that pair. Every send is refused at once when
@@ -354,15 +295,15 @@ Example:
 			if len(args) == 1 {
 				slug = args[0]
 			}
+			if err := refuseCaller(callerOf(os.Getenv(agentname.StrandNameEnv)), slug); err != nil {
+				return fail(err)
+			}
 			cwd, err := lymcwd.CwdFrom(ctx)
 			if err != nil {
 				return fail(err)
 			}
 			location, err := lymcwd.Resolve(cwd)
 			if err != nil {
-				return fail(err)
-			}
-			if err := refuseCallerIn(location, slug); err != nil {
 				return fail(err)
 			}
 			deps, slugs, err := HubDeps(location, os.Getenv(agentname.StrandNameEnv))
@@ -391,7 +332,6 @@ func statusCmd() *cobra.Command {
 		Long: `status prints the live pause entries, the network operations in flight and the
 parent locks held, then every live session in the hub with its state, cause and
 whether an entry covers it, and the lym processes running a replaced binary.
-skipped lists each pair, the prime included, with no reed session, whose sessions are not read.
 processes lists every live process registered to a run, by owner, with its role,
 pid and age and whether it is an orphan: its owner has no pair and no live batten,
 and it works outside every registered worktree.

@@ -8,14 +8,12 @@ import (
 	"fmt"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/vscode"
 )
 
 // createDeps holds the seam of every create step, filled over the hub in production and faked in tests.
 // Acting names the worktree the verb runs from, and PrimeName the hub's prime.
-// Identity reads this machine's identity, and a nil Identity reads the name Machine returns alone.
 // ParentOf names the slug of the pair a slug was forked from, "" for the prime.
 // ParentBeam names the beam a board entry belongs to over its project links, "" for the prime.
 // PairPresent reports whether this machine holds the slug's pair worktree.
@@ -28,7 +26,6 @@ type createDeps struct {
 	Acting         string
 	PrimeName      string
 	Machine        func() (string, error)
-	Identity       func() (machinename.Identity, error)
 	ReadOwners     func() (boardengine.Owners, error)
 	ParentOf       func(slug string) (string, error)
 	ParentBeam     func(slug string) (string, error)
@@ -121,11 +118,7 @@ func judgeCreateEntry(deps createDeps, owners boardengine.Owners, here, slug str
 	case entry.Done:
 		return fmt.Errorf("lym beam create: the project %q is done and already landed; way forward: make a new project entry with `lym board upsert` under a slug of its own, then run `lym beam create` on it", slug)
 	}
-	identity, err := identityOrName(deps.Identity, here)
-	if err != nil {
-		return fmt.Errorf("lym beam create: read this machine's identity: %w", err)
-	}
-	if entry.Beam && boardengine.OwnedElsewhere(entry.Owner, owners.Registry, identity) {
+	if entry.Beam && boardengine.OwnedElsewhere(entry.Owner, here) {
 		return fmt.Errorf("lym beam create: the beam %s is owned by machine %s; way forward: run `lym beam create %s` on %s, or run `lym adopt %s` here to take the beam over and then `lym beam create %s`", slug, entry.Owner, slug, entry.Owner, slug, slug)
 	}
 	return judgeParentOwner(deps, owners, here, slug)
@@ -147,11 +140,7 @@ func judgeParentOwner(deps createDeps, owners boardengine.Owners, here, slug str
 			return fmt.Errorf("lym beam create: read what adopting %s takes: %w", parent, err)
 		}
 	}
-	identity, err := identityOrName(deps.Identity, here)
-	if err != nil {
-		return fmt.Errorf("lym beam create: read this machine's identity: %w", err)
-	}
-	if boardengine.OwnedElsewhere(owner, owners.Registry, identity) {
+	if boardengine.OwnedElsewhere(owner, here) {
 		return fmt.Errorf("lym beam create: the parent of %s is owned by machine %s, which owns whatever is made under it; way forward: run `lym adopt %s` here to take it over, then `lym beam create %s`", slug, owner, subject, slug)
 	}
 	return nil
@@ -187,12 +176,8 @@ func createSteps(deps createDeps, owners boardengine.Owners, here, slug, anchor 
 		}
 	}
 
-	identity, err := identityOrName(deps.Identity, here)
-	if err != nil {
-		return fmt.Errorf("lym beam create: read this machine's identity: %w", err)
-	}
 	entry := owners.Entries[slug]
-	if !entry.Beam || !owners.Registry.ReadsAsHere(entry.Owner, identity) || entry.BeamColor == "" {
+	if !entry.Beam || entry.Owner != here || entry.BeamColor == "" {
 		write, err := deps.SetOwners(boardengine.OwnerRequest{Machine: here, Slugs: []string{slug}, Beam: true, BeamColor: vscode.PickBeamColor, ParentOf: deps.ParentOf})
 		if err != nil {
 			return fmt.Errorf("lym beam create: record this machine as the owner of %s with the beam flag: %w; way forward: fix the cause it names, then %s", slug, err, rerun)

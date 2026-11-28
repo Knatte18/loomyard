@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -97,7 +96,6 @@ func TestMergeCrucible_ContinueRefusesAttemptThatNeverReachedBothSides(t *testin
 		Verb:        "merge-in",
 		Source:      "feature",
 		WarpStart:   warpStart,
-		WarpSource:  gitkit.RevParse(t, h.PrimeWorktree(), "feature"),
 		WeftStart:   weftStart,
 		WarpOutcome: "staged",
 		StartedAt:   time.Now(),
@@ -195,7 +193,7 @@ func TestMergeCrucible_RemoveRefusesAPairSomeOtherMergeIsConsuming(t *testing.T)
 		t.Fatalf("MergeIn(%s).Conflicts is empty; the fixture must leave a live merge record", sourceBranch)
 	}
 
-	_, err = h.Topology.Remove(primeLocation, slug, false, false, "")
+	_, err = h.Topology.Remove(primeLocation, slug, false, false)
 	var refused *fabricengine.ErrMergeInProgress
 	if !errors.As(err, &refused) {
 		t.Fatalf("Remove(%s) while the prime pair is mid-merge on its branches: error = %v (%T); want *ErrMergeInProgress", slug, err, err)
@@ -203,12 +201,12 @@ func TestMergeCrucible_RemoveRefusesAPairSomeOtherMergeIsConsuming(t *testing.T)
 	if !fileExistsInWorktree(t, sourceWarpDir, "conflict.txt") {
 		t.Errorf("source warp worktree %s was torn down by the refused Remove", sourceWarpDir)
 	}
-	if !gitkit.BranchExists(t, h.PrimeRecords(), fabriclayout.RecordsBranchName(sourceBranch)) {
-		t.Errorf("weft branch %q was deleted by the refused Remove; want it intact", fabriclayout.RecordsBranchName(sourceBranch))
+	if !gitkit.BranchExists(t, h.PrimeRecords(), fabricengine.RecordsBranchName(sourceBranch)) {
+		t.Errorf("weft branch %q was deleted by the refused Remove; want it intact", fabricengine.RecordsBranchName(sourceBranch))
 	}
 
 	// force answers dirtiness only, never a live merge record.
-	if _, err := h.Topology.Remove(primeLocation, slug, true, false, ""); !errors.As(err, &refused) {
+	if _, err := h.Topology.Remove(primeLocation, slug, true, false); !errors.As(err, &refused) {
 		t.Fatalf("Remove(%s, force=true): error = %v (%T); want *ErrMergeInProgress even with force", slug, err, err)
 	}
 
@@ -216,7 +214,7 @@ func TestMergeCrucible_RemoveRefusesAPairSomeOtherMergeIsConsuming(t *testing.T)
 	if _, err := prime.MergeAbort(); err != nil {
 		t.Fatalf("MergeAbort: %v", err)
 	}
-	if _, err := h.Topology.Remove(primeLocation, slug, true, false, ""); err != nil {
+	if _, err := h.Topology.Remove(primeLocation, slug, true, false); err != nil {
 		t.Fatalf("Remove(%s) after MergeAbort: %v; want success — the guard must close a window, not block the pair forever", slug, err)
 	}
 }
@@ -228,7 +226,7 @@ func TestMergeCrucible_ConflictsIsEmptyNeverNil(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	assertConflictsMarshalsAsArray := func(t *testing.T, label string, res fabriclayout.MergeResult) {
+	assertConflictsMarshalsAsArray := func(t *testing.T, label string, res fabricengine.MergeResult) {
 		t.Helper()
 		if res.Conflicts == nil {
 			t.Errorf("%s.Conflicts is nil; want an empty non-nil slice", label)
@@ -277,7 +275,7 @@ func TestMergeCrucible_ConflictsIsEmptyNeverNil(t *testing.T) {
 
 	t.Run("MergeGuardRefusal", func(t *testing.T) {
 		_, f, _, _, _, _ := newMergePairFixture(t, ".")
-		res, err := f.Merge("no-such-branch", fabriclayout.MergeOptions{})
+		res, err := f.Merge("no-such-branch", fabricengine.MergeOptions{})
 		if err == nil {
 			t.Fatal("Merge(no-such-branch) error = nil; want a guard refusal")
 		}
@@ -354,13 +352,17 @@ func mergeHeadPresentInCheckout(t *testing.T, dir string) bool {
 // so an abort against a half-concluded attempt would discard a conclude-commit that has landed.
 // With force: true the reset succeeds and drops the landed commit with no warning.
 // That commit may carry the operator's hand-written conflict resolutions.
-// The record is not always honest about what landed.
-// Here the operator concludes the warp side by hand with plain git:
-// warp HEAD moves past its recorded start while warp_committed stays empty.
-// concludeMergeSides leaves this shape when CurrentSHA or the record re-save fails after `git commit` succeeds,
-// and a guard keyed only on the recorded SHA would sail straight through it.
+// Two arms, because the record is not always honest about what landed:
+//   - Recorded: the warp conclude lands and WarpCommitted is set in the record.
+//     The call then crashes before RecordCorrespondence and deleteMergeState run.
+//     A real MergeContinue has no independent second side to fail on,
+//     so SaveMergeStateForTest creates this crash point directly.
+//   - Invisible: the operator concludes the warp side by hand with plain git.
+//     Warp HEAD moves past its recorded start while warp_committed stays empty.
+//     concludeMergeSides leaves this shape when CurrentSHA or the record re-save fails after `git commit` succeeds,
+//     and a guard keyed only on the recorded SHA would sail straight through it.
 //
-// The abort must refuse, and the landed commit must survive; MergeContinue must then still finish.
+// Both must refuse, and the landed commit must survive; MergeContinue must then still finish.
 //
 //testtiming:keep a conclude commit the operator landed by hand, unknown to the record, surviving a refused MergeAbort; coverage of its blocks by other tests does not show an assertion of this
 func TestMergeCrucible_AbortRefusesAnAttemptWhoseConcludeLanded(t *testing.T) {
@@ -373,6 +375,23 @@ func TestMergeCrucible_AbortRefusesAnAttemptWhoseConcludeLanded(t *testing.T) {
 		// It leaves the pair mid-merge with the record still live.
 		landWarpConclude func(t *testing.T, h *hubforge.Hub, f *fabricengine.Fabric) string
 	}{
+		{
+			name: "RecordedConcludeSHA",
+			landWarpConclude: func(t *testing.T, h *hubforge.Hub, f *fabricengine.Fabric) string {
+				t.Helper()
+				st, found, err := fabricengine.LoadMergeStateForTest(f)
+				if err != nil || !found {
+					t.Fatalf("LoadMergeStateForTest() = (_, %v, %v); want found", found, err)
+				}
+				gitkit.Git(t, h.PrimeWorktree(), "commit", "--no-edit")
+				sha := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
+				st.WarpCommitted = sha
+				if err := fabricengine.SaveMergeStateForTest(f, st); err != nil {
+					t.Fatalf("SaveMergeStateForTest() error = %v", err)
+				}
+				return sha
+			},
+		},
 		{
 			name: "InvisibleConcludeTheRecordNeverLearnedAbout",
 			landWarpConclude: func(t *testing.T, h *hubforge.Hub, f *fabricengine.Fabric) string {
@@ -533,7 +552,7 @@ func TestMergeCrucible_DerivedAlreadyUpToDateIsReadFromTheRecord(t *testing.T) {
 	warpBefore := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
 	weftBefore := fabricengine.CurrentSHAForTest(t, h.PrimeRecords())
 
-	res, err := f.Merge("feature", fabriclayout.MergeOptions{Squash: true})
+	res, err := f.Merge("feature", fabricengine.MergeOptions{Squash: true})
 	if err != nil {
 		t.Fatalf("Merge(feature, squash): %v", err)
 	}

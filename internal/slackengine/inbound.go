@@ -21,7 +21,7 @@ import (
 )
 
 // SlackProgram is the creel program name the relay signs as, formed with the hub's shortname as `<shortname>:SLACK`.
-const SlackProgram = creelengine.BridgeProgram
+const SlackProgram = "SLACK"
 
 const (
 	// relayNoticePrefix opens the body of a notice about the relay itself, which carries no operator authority.
@@ -38,10 +38,6 @@ const (
 	threadBroadcastSubtype = "thread_broadcast"
 	// hintThreadSeparator joins the channel and the thread timestamp in the name of a thread hint.
 	hintThreadSeparator = "_"
-	// awayCommand, backCommand and statusCommand are the presence commands' words after the relay command prefix.
-	awayCommand   = "away"
-	backCommand   = "back"
-	statusCommand = "status"
 )
 
 // Clock is the relay's source of time.
@@ -70,16 +66,6 @@ type Mailbox interface {
 	ReadAll(handle func([]creelengine.Message) error) error
 	// ReadWait blocks until there is unread mail, hands it to handle and acknowledges it when handle returns nil; timeout bounds the wait, the handler and the confirmation together.
 	ReadWait(timeout time.Duration, handle func([]creelengine.Message) error) error
-	// TakeMachine answers the pending messages to orchs of other machines, oldest first.
-	TakeMachine() ([]creelengine.MachineOutbound, error)
-	// ReportMachine tells creel the relay holds message id for reason.
-	ReportMachine(id int64, reason string) error
-	// SettleMachineDelivered settles message id as posted to Slack at slackTS.
-	SettleMachineDelivered(id int64, slackTS string) error
-	// SettleMachineReturned settles message id as returned to its sender for reason.
-	SettleMachineReturned(id int64, reason string) error
-	// DeliverMachine offers creel one message from an orch of another machine and answers the id it has here.
-	DeliverMachine(mail creelengine.MachineMail) (int64, error)
 }
 
 // SlackClient is the set of Slack API calls the relay makes.
@@ -107,19 +93,6 @@ type SlackClient interface {
 	Archive(ctx context.Context, channel string) error
 	// AuthTest checks the token and tells who it belongs to.
 	AuthTest(ctx context.Context) (Identity, error)
-	// BotAppID reads the id of the Slack app the bot belongs to.
-	BotAppID(ctx context.Context, botID string) (string, error)
-	// BotUsersNamed lists the bot users that are not deleted and whose name equals name, with their app ids;
-	// an empty name lists every such bot user.
-	BotUsersNamed(ctx context.Context, name string) ([]BotUser, error)
-	// UserAppID reads the id of the Slack app the user belongs to, empty for a human.
-	UserAppID(ctx context.Context, userID string) (string, error)
-	// MemberChannels lists the public channels the bot is a member of, archived ones left out, with their creators.
-	MemberChannels(ctx context.Context) ([]ChannelInfo, error)
-	// PostTimestamped posts as PostAs does and answers the posted message's timestamp.
-	PostTimestamped(ctx context.Context, channel, text string, sender Sender) (string, error)
-	// PostThreadReply posts text in the thread started at thread, under the bot's default name.
-	PostThreadReply(ctx context.Context, channel, thread, text string) error
 }
 
 // Hub is the hub state the relay reads that is not in its own files.
@@ -132,9 +105,6 @@ type Hub struct {
 	// An empty slug is the hub's own orch, which runs the root project.
 	// An empty handle means the board holds no entry for the beam.
 	Project func(slug string) (handle, project string, err error)
-	// MachineNames reads this machine's current name and its former names.
-	// The relay always sets it.
-	MachineNames func() (current string, former []string, err error)
 }
 
 // owedRead is a read of one orch's channel, or of one thread in it, that is still to be made.
@@ -172,11 +142,6 @@ type inbound struct {
 	failingKey   string
 	failingSince time.Time
 	episodes     logger.EpisodeSet
-	// bridgeChannelHinted is set by a hint that names a bridge channel.
-	// bridgeResyncHinted is set by a hint that asks for a bridge resync.
-	// takeBridgeSignals answers and clears both.
-	bridgeChannelHinted bool
-	bridgeResyncHinted  bool
 }
 
 // newInbound returns an inbound over the seams.
@@ -355,9 +320,6 @@ func (in *inbound) retryOwed(ctx context.Context) bool {
 
 // takeHints removes each hint in the inbox and returns the reads they ask for, in the hints' name order.
 // A name that starts with a dot is a hint being written and is left alone.
-// A hint that names a bridge channel or one of its threads, or asks for a bridge resync, asks for no read:
-// it sets the signal takeBridgeSignals answers.
-// A bridge map that cannot be read is logged and read as empty, so the orch channels' hints are still read.
 func (in *inbound) takeHints() ([]owedRead, error) {
 	entries, err := os.ReadDir(in.geom.InboxDir)
 	if errors.Is(err, os.ErrNotExist) {
@@ -379,18 +341,10 @@ func (in *inbound) takeHints() ([]owedRead, error) {
 	if err != nil {
 		return nil, err
 	}
-	bridgeMap, err := ReadBridgeMap(in.geom.BridgeMapPath)
-	if err != nil {
-		logger.Warn("slackengine: hints for bridge channels cannot be told apart while the bridge map is unreadable", "error", err)
-		bridgeMap = BridgeMap{}
-	}
 	var reads []owedRead
 	for _, name := range names {
 		if err := os.Remove(filepath.Join(in.geom.InboxDir, name)); err != nil && !errors.Is(err, os.ErrNotExist) {
 			logger.Debug("slackengine: could not remove a hint", "hint", name, "error", err)
-		}
-		if in.noteBridgeHint(bridgeMap, name) {
-			continue
 		}
 		for _, read := range readsForHint(channelMap, name) {
 			reads = addRead(reads, read)
@@ -399,38 +353,8 @@ func (in *inbound) takeHints() ([]owedRead, error) {
 	return reads, nil
 }
 
-// noteBridgeHint sets the bridge signal the hint called name stands for and reports whether it stands for one.
-// The hint names a channel the bridge map holds, a thread of one, or asks for a bridge resync.
-// The caller holds in.mu.
-func (in *inbound) noteBridgeHint(bridgeMap BridgeMap, name string) bool {
-	if name == bridgeResyncHint {
-		in.bridgeResyncHinted = true
-		return true
-	}
-	channel, _, ok := parseHint(name)
-	if !ok {
-		return false
-	}
-	if _, held := bridgeMap.Channels[channel]; !held {
-		return false
-	}
-	in.bridgeChannelHinted = true
-	return true
-}
-
-// takeBridgeSignals answers whether a hint named a bridge channel and whether one asked for a bridge resync.
-// It clears both.
-func (in *inbound) takeBridgeSignals() (bool, bool) {
-	in.mu.Lock()
-	defer in.mu.Unlock()
-	channelHinted, resyncHinted := in.bridgeChannelHinted, in.bridgeResyncHinted
-	in.bridgeChannelHinted, in.bridgeResyncHinted = false, false
-	return channelHinted, resyncHinted
-}
-
 // readsForHint returns the reads the hint called name asks for.
 // A resync asks for every open channel's read; any other hint asks for one channel's or thread's.
-// It never sees a hint of a bridge channel, which takeHints takes first.
 func readsForHint(channelMap ChannelMap, name string) []owedRead {
 	if name == resyncHint {
 		var reads []owedRead
@@ -669,8 +593,6 @@ func (in *inbound) readFailed(orch string, err error) error {
 // handle handles one message of the orch's channel and reports whether it forwarded or answered anything.
 // It forwards the setup's operator's message of no subtype, `file_share` or `thread_broadcast`;
 // any other subtype, a bot's message and anyone else's are skipped.
-// A relay command, `lym away`, `lym back`, `lym status`, `lym approve` or `lym revoke`, is answered and not forwarded;
-// any other text is forwarded as written.
 // While the orch's slack button is off, such a message is answered in the channel and not forwarded.
 // A message it forwards first sets the presence to slack.
 // An error means the message is not handled yet and the cursor stays before it.
@@ -681,18 +603,13 @@ func (in *inbound) handle(ctx context.Context, setup Setup, orch, channel string
 		return false, nil
 	}
 	text := inboundText(message.Text)
-	if words, isCommand := relayCommandWords(text); isCommand && len(words) == 1 {
-		switch strings.ToLower(words[0]) {
-		case awayCommand:
-			return in.setPresence(ctx, channel, message, PresenceSlack)
-		case backCommand:
-			return in.setPresence(ctx, channel, message, PresenceTerminal)
-		case statusCommand:
-			return in.status(ctx, channel, message)
-		}
-	}
-	if command, isPeerCommand := parsePeerCommand(text); isPeerCommand {
-		return in.handlePeerCommand(ctx, channel, message, command)
+	switch strings.ToLower(strings.TrimSpace(text)) {
+	case "away":
+		return in.setPresence(ctx, channel, message, PresenceSlack)
+	case "back":
+		return in.setPresence(ctx, channel, message, PresenceTerminal)
+	case "status":
+		return in.status(ctx, channel, message)
 	}
 	on, err := ForwardingOn(in.geom.ForwardingPath, orch)
 	if err != nil {
@@ -720,8 +637,7 @@ func (in *inbound) awayOnOperatorMessage() {
 	in.lastPresence, in.presenceKnown = PresenceSlack, true
 }
 
-// setPresence sets the presence for a `lym away` or `lym back` command.
-// It answers in the channel with the resulting state.
+// setPresence sets the presence for an `away` or `back` command and answers in the channel with the resulting state.
 // A presence that was not written is retried.
 func (in *inbound) setPresence(ctx context.Context, channel string, message Message, presence Presence) (bool, error) {
 	if _, err := WritePresence(in.geom.PresencePath, presence, in.clock.Now()); err != nil {
@@ -733,24 +649,15 @@ func (in *inbound) setPresence(ctx context.Context, channel string, message Mess
 	return true, nil
 }
 
-// status answers a `lym status` command in the channel with the presence and this machine's app id.
-// The operator compares the app id with the other machine's before approving it.
+// status answers a `status` command in the channel with the presence.
 func (in *inbound) status(ctx context.Context, channel string, message Message) (bool, error) {
 	presence, err := ReadPresence(in.geom.PresencePath)
 	if err != nil {
 		return in.retryOrGiveUp(ctx, channel, message, "the presence could not be read", err)
 	}
-	credentials, err := ReadCredentials(in.geom.TokenPath)
-	if err != nil {
-		return in.retryOrGiveUp(ctx, channel, message, "the app id could not be read", err)
-	}
 	in.lastPresence, in.presenceKnown = presence, true
 	in.settle()
-	appID := "unknown, run lym slack login"
-	if credentials.AppID != "" {
-		appID = credentials.AppID
-	}
-	in.answer(ctx, channel, fmt.Sprintf("presence is %s; this machine's app id is %s", presence, appID))
+	in.answer(ctx, channel, fmt.Sprintf("presence is %s", presence))
 	return true, nil
 }
 

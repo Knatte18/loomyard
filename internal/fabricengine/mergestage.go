@@ -7,9 +7,12 @@ package fabricengine
 import (
 	"fmt"
 	"path/filepath"
-
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 )
+
+// StageResult is the result of the merge staging verbs; it embeds MutationRecord to report what was staged.
+type StageResult struct {
+	MutationRecord
+}
 
 // MergeStageResolved takes unified, worktree-relative paths and stages each on the side whose index lists it unmerged.
 // A path listed by neither side is an error, not a silent skip:
@@ -30,35 +33,35 @@ import (
 // With no record and no foreign state, both sides list no conflicts,
 // so every path fails the partition and nothing is staged.
 // A lock would serialize the verb against nothing.
-func (f *Fabric) MergeStageResolved(paths []string) (res fabriclayout.StageResult, err error) {
+func (f *Fabric) MergeStageResolved(paths []string) (res StageResult, err error) {
 	rec := NewMutations(filepath.Dir(f.warpPath))
 	defer func() { res.Mutations = rec.Snapshot() }()
 
 	if len(paths) == 0 {
-		return fabriclayout.StageResult{}, nil
+		return StageResult{}, nil
 	}
 
 	recordExists, err := f.mergeRecordExists()
 	if err != nil {
-		return fabriclayout.StageResult{}, err
+		return StageResult{}, err
 	}
 	if !recordExists {
 		foreign, err := f.foreignMergeStatePresent()
 		if err != nil {
-			return fabriclayout.StageResult{}, err
+			return StageResult{}, err
 		}
 		if foreign {
-			return fabriclayout.StageResult{}, &ErrForeignMergeState{}
+			return StageResult{}, &ErrForeignMergeState{}
 		}
 	}
 
 	warpConflicts, err := f.code.ConflictedFiles()
 	if err != nil {
-		return fabriclayout.StageResult{}, fmt.Errorf("fabricengine: read conflicted files: %w", err)
+		return StageResult{}, fmt.Errorf("fabricengine: read conflicted files: %w", err)
 	}
 	weftConflicts, err := f.records.ConflictedFiles()
 	if err != nil {
-		return fabriclayout.StageResult{}, fmt.Errorf("fabricengine: read conflicted files: %w", err)
+		return StageResult{}, fmt.Errorf("fabricengine: read conflicted files: %w", err)
 	}
 
 	warpSet := make(map[string]bool, len(warpConflicts))
@@ -86,25 +89,25 @@ func (f *Fabric) MergeStageResolved(paths []string) (res fabriclayout.StageResul
 			// The message names neither side, so it does not disclose which lists were checked.
 			// It also names the exact-spelling contract:
 			// a `./`-prefixed or absolute spelling of a conflicted path lands here too.
-			return fabriclayout.StageResult{}, fmt.Errorf("fabricengine: %s is not a conflicted path in this merge; pass paths exactly as the conflicts list reported them", p)
+			return StageResult{}, fmt.Errorf("fabricengine: %s is not a conflicted path in this merge; pass paths exactly as the conflicts list reported them", p)
 		}
 	}
 
 	// Warp first, then weft, in the fixed side order the merge conclusion uses.
 	if len(warpBatch) > 0 {
 		if err := f.code.StageResolved(warpBatch); err != nil {
-			return fabriclayout.StageResult{}, fmt.Errorf("fabricengine: stage resolved paths: %w", err)
+			return StageResult{}, fmt.Errorf("fabricengine: stage resolved paths: %w", err)
 		}
-		rec.Append(fabriclayout.KindMergeResolvedStaged, f.warpPath, "")
+		rec.Append(KindMergeResolvedStaged, f.warpPath, "")
 	}
 	if len(weftBatch) > 0 {
 		if err := f.records.StageResolved(weftBatch); err != nil {
-			return fabriclayout.StageResult{}, fmt.Errorf("fabricengine: stage resolved paths: %w", err)
+			return StageResult{}, fmt.Errorf("fabricengine: stage resolved paths: %w", err)
 		}
-		rec.Append(fabriclayout.KindMergeResolvedStaged, f.weftPath, "")
+		rec.Append(KindMergeResolvedStaged, f.weftPath, "")
 	}
 
-	return fabriclayout.StageResult{}, nil
+	return StageResult{}, nil
 }
 
 // MergeStageTracked stages every tracked modification and deletion in the warp checkout of an in-progress fabric merge,
@@ -117,23 +120,23 @@ func (f *Fabric) MergeStageResolved(paths []string) (res fabriclayout.StageResul
 // otherwise it refuses with *ErrNoMergeInProgress, and it stages nothing either way.
 // It takes no weft write lock: with a record present, the guarded sibling verbs already refuse,
 // so no other fabric writer can be in the index concurrently.
-func (f *Fabric) MergeStageTracked() (res fabriclayout.StageResult, err error) {
+func (f *Fabric) MergeStageTracked() (res StageResult, err error) {
 	rec := NewMutations(filepath.Dir(f.warpPath))
 	defer func() { res.Mutations = rec.Snapshot() }()
 
 	recordExists, err := f.mergeRecordExists()
 	if err != nil {
-		return fabriclayout.StageResult{}, err
+		return StageResult{}, err
 	}
 	if !recordExists {
-		return fabriclayout.StageResult{}, f.mergeStateOrForeignErr()
+		return StageResult{}, f.mergeStateOrForeignErr()
 	}
 
 	if err := f.code.StageTrackedChanges(); err != nil {
-		return fabriclayout.StageResult{}, fmt.Errorf("fabricengine: stage tracked changes: %w", err)
+		return StageResult{}, fmt.Errorf("fabricengine: stage tracked changes: %w", err)
 	}
-	rec.Append(fabriclayout.KindMergeTrackedStaged, f.warpPath, "")
-	return fabriclayout.StageResult{}, nil
+	rec.Append(KindMergeTrackedStaged, f.warpPath, "")
+	return StageResult{}, nil
 }
 
 // MergeUntrackedFiles returns the untracked, non-ignored, worktree-relative paths in the task worktree's warp checkout,

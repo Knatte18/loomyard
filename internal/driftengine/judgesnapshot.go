@@ -4,7 +4,6 @@
 package driftengine
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -17,8 +16,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/discussionparser"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/state"
 )
@@ -28,8 +26,6 @@ const (
 	judgeSnapshotFileName = "snapshot.json"
 	// judgeSnapshotUntrackedDir holds the copies of the untracked files, one subdirectory per checkout.
 	judgeSnapshotUntrackedDir = "untracked"
-	// judgeSnapshotRecordCopy is the copy of the decision record as the records checkout held it, beside the record.
-	judgeSnapshotRecordCopy = "decision-record.md"
 	// absentHash is the content hash recorded for a path that is not on disk.
 	absentHash = "absent"
 )
@@ -56,28 +52,6 @@ type JudgeSnapshot struct {
 	ScratchDir string `json:"scratch_dir,omitempty"`
 	// Scratch maps each file of the scratch directory, by slash-separated path, to the hash of its content.
 	Scratch map[string]string `json:"scratch,omitempty"`
-}
-
-// GuardChange is one change the judge snapshot names.
-type GuardChange struct {
-	// Text names the change, such as "code: a.go was changed".
-	Text string
-	// Path is the changed file's absolute path, and empty for a moved HEAD or a deleted path.
-	Path string
-}
-
-// lockDecisionRecord takes the run's decision lock when Deps.DecisionRecord and Deps.LockDecisionRecord are set,
-// so no read of the record sees a decision verb's write before its commit.
-// It returns the release, which does nothing when no lock was taken.
-func lockDecisionRecord(d Deps) (func(), error) {
-	if d.DecisionRecord == "" || d.LockDecisionRecord == nil {
-		return func() {}, nil
-	}
-	release, err := d.LockDecisionRecord()
-	if err != nil {
-		return nil, fmt.Errorf("drift: take the run's decision lock: %w", err)
-	}
-	return func() { _ = release() }, nil
 }
 
 // contentHash returns the sha256 of the file at path, or the absent marker when the file does not exist.
@@ -122,7 +96,7 @@ func hashDirectory(dir string) (map[string]string, error) {
 
 // snapshotCheckout records the checkout's HEAD and the content of its changed and untracked paths.
 // It copies each untracked file under copyDir.
-func snapshotCheckout(checkout fabriclayout.CheckoutState, copyDir string) (CheckoutSnapshot, error) {
+func snapshotCheckout(checkout fabricengine.CheckoutState, copyDir string) (CheckoutSnapshot, error) {
 	snapshot := CheckoutSnapshot{Root: checkout.Root, Head: checkout.Head, Changed: map[string]string{}, Untracked: map[string]string{}}
 	for _, rel := range checkout.Changed {
 		hash, err := contentHash(filepath.Join(checkout.Root, filepath.FromSlash(rel)))
@@ -158,8 +132,6 @@ func judgeSnapshotLock(d Deps) string {
 // The record holds each checkout's HEAD and a content hash of every changed tracked path and every untracked path.
 // It also holds the path and hash of every file under scratchDir.
 // A copy of each untracked file lies beside the record.
-// So does a copy of the decision record Deps.DecisionRecord names when the records checkout holds it.
-// It holds the run's decision lock throughout, so the copy is never a decision verb's uncommitted write.
 // Only the copies are cleared first.
 // The earlier record stays until one atomic write replaces it,
 // so a reader never finds the snapshot gone while one is taken.
@@ -171,11 +143,6 @@ func TakeJudgeSnapshot(d Deps, scratchDir string) (JudgeSnapshot, error) {
 	if err != nil {
 		return JudgeSnapshot{}, err
 	}
-	release, err := lockDecisionRecord(d)
-	if err != nil {
-		return JudgeSnapshot{}, err
-	}
-	defer release()
 	code, records, err := d.Checkouts()
 	if err != nil {
 		return JudgeSnapshot{}, fmt.Errorf("drift: read both checkouts for the judge snapshot: %w", err)
@@ -184,10 +151,6 @@ func TakeJudgeSnapshot(d Deps, scratchDir string) (JudgeSnapshot, error) {
 	if err := os.RemoveAll(copies); err != nil {
 		return JudgeSnapshot{}, fmt.Errorf("drift: clear the judge snapshot's copies %s: %w", copies, err)
 	}
-	recordCopy := filepath.Join(d.JudgeSnapshotDir, judgeSnapshotRecordCopy)
-	if err := os.Remove(recordCopy); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return JudgeSnapshot{}, fmt.Errorf("drift: clear the judge snapshot's copy of the decision record %s: %w", recordCopy, err)
-	}
 
 	snapshot := JudgeSnapshot{ScratchDir: scratchDir}
 	if snapshot.Code, err = snapshotCheckout(code, filepath.Join(copies, "code")); err != nil {
@@ -195,17 +158,6 @@ func TakeJudgeSnapshot(d Deps, scratchDir string) (JudgeSnapshot, error) {
 	}
 	if snapshot.Records, err = snapshotCheckout(records, filepath.Join(copies, "records")); err != nil {
 		return JudgeSnapshot{}, err
-	}
-	if d.DecisionRecord != "" {
-		source, err := recordsCheckoutPath(d, records.Root, d.DecisionRecord)
-		if err != nil {
-			return JudgeSnapshot{}, err
-		}
-		if _, statErr := os.Stat(source); statErr == nil {
-			if err := copyFile(source, recordCopy); err != nil {
-				return JudgeSnapshot{}, err
-			}
-		}
 	}
 	if scratchDir != "" {
 		if _, statErr := os.Stat(scratchDir); statErr == nil {
@@ -243,19 +195,13 @@ func ReadJudgeSnapshot(d Deps) (JudgeSnapshot, bool, error) {
 // every path under a loom records directory or starting with one of its prefixes, and the drift logs.
 // The scope.json and judged.json records are exempt only while both match their newest Drift-Records commit,
 // so a hand edit of either is still a change.
-// The decision record is exempt when the records checkout holds it committed.
-// It must also differ only by entries added after the Discussion.
-// The base is its copy in the snapshot,
-// or the record as the newest `lym loom decision replace` commit made since the snapshot's records head wrote it.
-// Every entry and carry-over block that base held must be kept unchanged.
-// The comparison holds the run's decision lock, so a decision verb's write is read only once committed.
 // A path is judged by content.
 // A path the snapshot recorded is a change only when its content now differs from the recorded content,
 // so a later commit of content that was already there is no change.
 // A deletion already uncommitted at the snapshot and still absent is no change either.
 // A moved records HEAD counts only through the records paths that changed since the snapshot's head.
 // Of those, only the paths that are not exempt and not unchanged count.
-func (s JudgeSnapshot) Changes(d Deps) ([]GuardChange, error) {
+func (s JudgeSnapshot) Changes(d Deps) ([]string, error) {
 	err := requireSeams("the judge snapshot",
 		seam{"Checkouts", d.Checkouts != nil},
 		seam{"RecordsChangedSince", d.RecordsChangedSince != nil},
@@ -265,11 +211,6 @@ func (s JudgeSnapshot) Changes(d Deps) ([]GuardChange, error) {
 	if err != nil {
 		return nil, err
 	}
-	release, err := lockDecisionRecord(d)
-	if err != nil {
-		return nil, err
-	}
-	defer release()
 	code, records, err := d.Checkouts()
 	if err != nil {
 		return nil, fmt.Errorf("drift: read both checkouts for the judge snapshot: %w", err)
@@ -282,14 +223,10 @@ func (s JudgeSnapshot) Changes(d Deps) ([]GuardChange, error) {
 	if err != nil {
 		return nil, err
 	}
-	appendedRecord, err := appendedDecisionRecord(d, records, s.Records.Head)
-	if err != nil {
-		return nil, err
-	}
 
-	var changes []GuardChange
+	var changes []string
 	if code.Head != s.Code.Head {
-		changes = append(changes, GuardChange{Text: fmt.Sprintf("code: HEAD moved from %q to %q", s.Code.Head, code.Head)})
+		changes = append(changes, fmt.Sprintf("code: HEAD moved from %q to %q", s.Code.Head, code.Head))
 	}
 	codeChanges, err := checkoutChanges("code", s.Code, code, nil, func(rel string) bool { return isJudgementPath(judgementRel, rel) })
 	if err != nil {
@@ -304,7 +241,7 @@ func (s JudgeSnapshot) Changes(d Deps) ([]GuardChange, error) {
 		}
 	}
 	recordsExempt := func(rel string) bool {
-		return isJudgementPath(judgementRel, rel) || isLoomRecordsPath(lymWritten, rel) || rel == appendedRecord
+		return isJudgementPath(judgementRel, rel) || isLoomRecordsPath(lymWritten, rel)
 	}
 	recordsChanges, err := checkoutChanges("records", s.Records, records, committed, recordsExempt)
 	if err != nil {
@@ -326,71 +263,6 @@ func worktreeRel(d Deps, path string) (string, error) {
 		return "", fmt.Errorf("drift: relate %s to the worktree: %w", path, err)
 	}
 	return filepath.ToSlash(rel), nil
-}
-
-// recordsCheckoutPath returns the file of the records checkout rooted at recordsRoot that path names in the worktree.
-func recordsCheckoutPath(d Deps, recordsRoot, path string) (string, error) {
-	rel, err := worktreeRel(d, path)
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(recordsRoot, filepath.FromSlash(rel)), nil
-}
-
-// appendedDecisionRecord returns the decision record's path relative to the worktree root, or empty.
-// It returns the path when the record is committed in the records checkout.
-// The record must differ only by entries added after the Discussion from one of two bases.
-// One base is the snapshot's copy.
-// The other is the record as the newest `lym loom decision replace` commit made after snapshotHead wrote it,
-// so a replace that predates the snapshot is no base.
-// Every entry and carry-over block the base held must be kept unchanged.
-// It returns empty when Deps.DecisionRecord is unset, neither base exists or the record is gone.
-// It also returns empty when the checkout lists the record as changed or untracked, which names an uncommitted write.
-// It also returns empty when the record differs in any other way.
-// Carry-over blocks the record gained are left out of the comparison, since lym settles them.
-func appendedDecisionRecord(d Deps, records fabriclayout.CheckoutState, snapshotHead string) (string, error) {
-	if d.DecisionRecord == "" {
-		return "", nil
-	}
-	rel, err := worktreeRel(d, d.DecisionRecord)
-	if err != nil {
-		return "", err
-	}
-	if slices.Contains(records.Changed, rel) || slices.Contains(records.Untracked, rel) {
-		return "", nil
-	}
-	current := filepath.Join(records.Root, filepath.FromSlash(rel))
-	now, err := os.ReadFile(current)
-	if errors.Is(err, fs.ErrNotExist) {
-		return "", nil
-	}
-	if err != nil {
-		return "", fmt.Errorf("drift: read the decision record %s: %w", current, err)
-	}
-	appendedTo := func(base []byte) bool {
-		return bytes.Equal(discussionparser.IdentityText(base), discussionparser.IdentityText(now)) &&
-			len(discussionparser.CheckAddedEntriesSubset(now, base)) == 0 &&
-			len(discussionparser.CheckCarryOversNotLost(base, now)) == 0
-	}
-
-	before, err := os.ReadFile(filepath.Join(d.JudgeSnapshotDir, judgeSnapshotRecordCopy))
-	switch {
-	case err == nil && appendedTo(before):
-		return rel, nil
-	case err != nil && !errors.Is(err, fs.ErrNotExist):
-		return "", fmt.Errorf("drift: read the judge snapshot's copy of the decision record: %w", err)
-	}
-	if d.ReplacedDecisionRecord == nil {
-		return "", nil
-	}
-	replaced, found, err := d.ReplacedDecisionRecord(snapshotHead)
-	if err != nil {
-		return "", fmt.Errorf("drift: read the decision record as its newest replace wrote it: %w", err)
-	}
-	if found && appendedTo(replaced) {
-		return rel, nil
-	}
-	return "", nil
 }
 
 // lymWrittenRecords returns the records paths lym writes itself around a judge session.
@@ -454,7 +326,7 @@ func isLoomRecordsPath(loomRecordsDirs []string, rel string) bool {
 
 // checkoutChanges names each path of one checkout the judge changed, judged by content against the snapshot.
 // committed holds paths a later commit changed, which the checkout's own lists no longer show.
-func checkoutChanges(label string, snapshot CheckoutSnapshot, now fabriclayout.CheckoutState, committed []string, exempt func(rel string) bool) ([]GuardChange, error) {
+func checkoutChanges(label string, snapshot CheckoutSnapshot, now fabricengine.CheckoutState, committed []string, exempt func(rel string) bool) ([]string, error) {
 	candidates := map[string]bool{}
 	for _, group := range [][]string{now.Changed, now.Untracked, committed} {
 		for _, rel := range group {
@@ -475,10 +347,9 @@ func checkoutChanges(label string, snapshot CheckoutSnapshot, now fabriclayout.C
 	}
 	sort.Strings(rels)
 
-	var changes []GuardChange
+	var changes []string
 	for _, rel := range rels {
-		path := filepath.Join(now.Root, filepath.FromSlash(rel))
-		hash, err := contentHash(path)
+		hash, err := contentHash(filepath.Join(now.Root, filepath.FromSlash(rel)))
 		if err != nil {
 			return nil, err
 		}
@@ -489,11 +360,11 @@ func checkoutChanges(label string, snapshot CheckoutSnapshot, now fabriclayout.C
 		switch {
 		case wasRecorded && hash == recorded:
 		case hash == absentHash:
-			changes = append(changes, GuardChange{Text: fmt.Sprintf("%s: %s was deleted", label, rel)})
+			changes = append(changes, fmt.Sprintf("%s: %s was deleted", label, rel))
 		case !wasRecorded && slices.Contains(now.Untracked, rel):
-			changes = append(changes, GuardChange{Text: fmt.Sprintf("%s: %s was added", label, rel), Path: path})
+			changes = append(changes, fmt.Sprintf("%s: %s was added", label, rel))
 		default:
-			changes = append(changes, GuardChange{Text: fmt.Sprintf("%s: %s was changed", label, rel), Path: path})
+			changes = append(changes, fmt.Sprintf("%s: %s was changed", label, rel))
 		}
 	}
 	return changes, nil
@@ -501,7 +372,7 @@ func checkoutChanges(label string, snapshot CheckoutSnapshot, now fabriclayout.C
 
 // scratchChanges names each file of the scratch directory that was changed, added or deleted since the snapshot.
 // It names none when the directory is gone.
-func (s JudgeSnapshot) scratchChanges() ([]GuardChange, error) {
+func (s JudgeSnapshot) scratchChanges() ([]string, error) {
 	if s.ScratchDir == "" {
 		return nil, nil
 	}
@@ -512,22 +383,21 @@ func (s JudgeSnapshot) scratchChanges() ([]GuardChange, error) {
 	if err != nil {
 		return nil, err
 	}
-	var changes []GuardChange
+	var changes []string
 	for rel, hash := range now {
-		path := filepath.Join(s.ScratchDir, filepath.FromSlash(rel))
 		recorded, ok := s.Scratch[rel]
 		switch {
 		case !ok:
-			changes = append(changes, GuardChange{Text: fmt.Sprintf("scratch: %s was added", rel), Path: path})
+			changes = append(changes, fmt.Sprintf("scratch: %s was added", rel))
 		case recorded != hash:
-			changes = append(changes, GuardChange{Text: fmt.Sprintf("scratch: %s was changed", rel), Path: path})
+			changes = append(changes, fmt.Sprintf("scratch: %s was changed", rel))
 		}
 	}
 	for rel := range s.Scratch {
 		if _, ok := now[rel]; !ok {
-			changes = append(changes, GuardChange{Text: fmt.Sprintf("scratch: %s was deleted", rel)})
+			changes = append(changes, fmt.Sprintf("scratch: %s was deleted", rel))
 		}
 	}
-	slices.SortFunc(changes, func(a, b GuardChange) int { return strings.Compare(a.Text, b.Text) })
+	sort.Strings(changes)
 	return changes, nil
 }

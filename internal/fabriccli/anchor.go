@@ -17,7 +17,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -63,7 +62,7 @@ type anchorResult struct {
 	// Its message names `lym slack start` as the way forward.
 	RelayStartError string
 	// Mutations is the record of what the call changed.
-	Mutations fabriclayout.Mutations
+	Mutations fabricengine.Mutations
 }
 
 // fields returns the envelope fields of the result.
@@ -121,7 +120,7 @@ type anchorDeps struct {
 	// found is false when the worktree has no upstream.
 	UpstreamAnchor func(location *lymcwd.Location) (anchor string, found bool, err error)
 	// MoveRecord reads the move record of the worktree's weft.
-	MoveRecord func(location *lymcwd.Location) (record fabriclayout.MoveRecord, found bool, err error)
+	MoveRecord func(location *lymcwd.Location) (record fabricengine.MoveRecord, found bool, err error)
 	// ReedHeld reports whether the worktree's reed state holds a session or a strand, live or stored.
 	ReedHeld func(location *lymcwd.Location) (bool, error)
 	// DriverLockHeld reports whether the worktree's run driver lock is held.
@@ -267,7 +266,7 @@ func refuseForeignOwner(deps anchorDeps, location *lymcwd.Location, owner, targe
 			return err
 		}
 	}
-	adopt := fmt.Sprintf("`lym adopt %s` here, which records this machine as the owner and resets a weft stopped by an anchor change to origin's tip", subject)
+	adopt := fmt.Sprintf("`lym adopt %s` here, which records this machine as the owner, or `lym adopt %s --keep-local` over a weft stopped by an anchor change, which records the owner over the stopped weft", subject, subject)
 	if slug == deps.Prime {
 		adopt = "`lym adopt root` here, which records this machine as the owner, and whose refusal over a prime weft stopped by an anchor change names the `--set` to its upstream tip's marker"
 	}
@@ -472,7 +471,7 @@ func moveAnchor(ctx context.Context, deps anchorDeps, location *lymcwd.Location,
 		}
 	}
 
-	if err := deps.ReopenLog(fabriclayout.RecordsLockDirPath(fabricengine.RecordsWorktreePath(location, slug))); err != nil {
+	if err := deps.ReopenLog(fabricengine.RecordsLockDirPath(fabricengine.RecordsWorktreePath(location, slug))); err != nil {
 		return fail(err)
 	}
 	landed, applyErr := change.Apply(rec)

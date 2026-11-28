@@ -2,7 +2,7 @@
      internal/loomengine's PartsTable builds the seat, and internal/seatengine fills it from the lead's value map.
      The directive markers parent_directive and edit_directive are required.
      So are decision_record_path, relevant_path, parts_path, parts_dir, parts_max, depth_block and specs_dir.
-     depth_block holds the stencil that tapestry.parts.depth names: loom-fragment-parts-light or loom-fragment-parts-medium.
+     depth_block holds the stencil that tapestry.yaml's parts_depth names: loom-fragment-parts-light or loom-fragment-parts-medium.
      pattern_directive and friction_directive are optional and render as nothing when their tier is inactive.
      The parts format's Go contract is contracts/specs/loom-parts-spec.md; this stencil carries its LLM-facing subset. -->
 
@@ -106,6 +106,6 @@ Run `lym loom validate-parts`, which takes no arguments, and fix every finding i
 Besides the format, it refuses an export that already exists and runs on each `plan:` export the name checks its writer's card will face.
 Your turn ends once the parts file passes.
 
-## Never use {{template "engine-question-tool"}}
+## Never use `AskUserQuestion`
 
-Never call the {{template "engine-question-tool"}} tool: this session is autonomous, and no operator is present.
+Never call the `AskUserQuestion` tool: this session is autonomous, and no operator is present.

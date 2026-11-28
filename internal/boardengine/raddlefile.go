@@ -253,13 +253,13 @@ func arrasProjectOf(entry Task, parts []string) Task {
 // before must be a task whose run status has RaddleFileProducer as its producer half, whatever its state half.
 // The family's parts are the entries of after absent from loaded whose project is the entry, in their sequence in after;
 // each must be a discussed draft task that follows every part it depends on.
-// now must have no status, profile or run settings, and the discussed flag of before,
+// now must have no status, profile, run settings or notify_on_land, and the discussed flag of before,
 // and it must equal arrasProjectOf of before and the parts in every field the scope comparison reads.
 // A change to the title, labels, depends_on, body or any other scope field alongside it is therefore no such change.
 func endsAsFamilyProject(before, now Task, loadedSlugs map[string]bool, after []Task, removedDone map[string]bool) bool {
 	producer, _ := RunStatusProducer(before.Status)
 	if producer != RaddleFileProducer || before.Kind != KindTask || now.Status != nil || now.Discussed != before.Discussed ||
-		now.Profile != "" || len(now.RunSettings) > 0 {
+		now.Profile != "" || len(now.RunSettings) > 0 || now.NotifyOnLand {
 		return false
 	}
 	family := map[string]bool{}
@@ -428,8 +428,8 @@ func (b *Board) HoldsRaddleFiling(sketch string, slugs []string) (bool, error) {
 	return true, nil
 }
 
-// EndRaddleEntry marks the entry slug done in one write.
-// The run lock admits the write since status is no scope.
+// EndRaddleEntry marks the entry slug done and clears its notify_on_land in one write.
+// The run lock admits the write since neither field is scope.
 // It writes nothing for an absent or done entry.
 func (b *Board) EndRaddleEntry(slug string) error {
 	_, err := b.boardCriticalSection(func(store *Store) (any, error) {
@@ -439,6 +439,7 @@ func (b *Board) EndRaddleEntry(slug string) error {
 		}
 		done := StatusDone
 		store.tasks[i].Status = &done
+		store.tasks[i].NotifyOnLand = false
 		return nil, nil
 	}, nil)
 	return err

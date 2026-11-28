@@ -28,7 +28,7 @@ const stateMutateLockName = "mutate.lock"
 // Every holder's critical section is bounded, so the wait is short and never a deadlock risk.
 // Callers hold the lease across their whole load-mutate-save sequence.
 // A caller that spawns a strand under the lease holds it through that strand's startup window.
-// Shuttle returns a *Run handle only past the provider's startup gates, which shuttle.startup_timeout_s bounds.
+// Shuttle returns a *Run handle only past the provider's startup gates, which startup_timeout_s bounds.
 // A concurrent verb blocks on the lease for that time rather than failing.
 // This serializes two concurrent recoveries of one batch:
 // the second reads the first's recorded guid and attaches instead of spawning a duplicate.
@@ -98,13 +98,7 @@ type SuspectPath struct {
 	Blob string `json:"blob,omitempty"`
 }
 
-// ParentAnswer is one need a batch waited on and what the run's parent answered.
-type ParentAnswer struct {
-	Need   string `json:"need"`
-	Answer string `json:"answer"`
-}
-
-// AmendedCard is one card edit that a rebaseline accepted on a begun batch for its next recovery to render.
+// AmendedCard is one card of an in-flight batch that an operator edited mid-run and a rebaseline accepted.
 type AmendedCard struct {
 	// Card is the amended card's NN-<slug> id.
 	Card string `json:"card"`
@@ -126,15 +120,10 @@ type BatchState struct {
 	// A rebaseline compares it so a begun card whose body changed while its file name stayed is refused.
 	// A record written before the field existed has none, and a rebaseline compares only its ids.
 	CardHashes map[string]string `json:"cardHashes,omitempty"`
-	// AmendedCards lists the cards of this batch that a rebaseline accepted an edit to.
-	// An edit is recorded while the batch is in flight or terminal dead.
-	// A batch already holding an entry takes later edits too.
+	// AmendedCards lists the cards of this batch that a rebaseline accepted an edit to while the batch was in flight.
 	// It holds one entry per card.
-	// An attempt running then keeps the old text; the next recovery renders the edited cards.
+	// The attempt running then keeps the old text; a recovery re-runs the batch on the edited cards.
 	AmendedCards []AmendedCard `json:"amendedCards,omitempty"`
-	// ParentAnswers is every answer the run's parent gave this batch's recovery resumes, oldest first.
-	// A recovery carries it forward and renders it into its prompt.
-	ParentAnswers []ParentAnswer `json:"parentAnswers,omitempty"`
 	// StartSHA is the repo HEAD immediately before this batch's first attempt started.
 	// It is the durable base-commit record that a resume, an operator diagnosis and the post-batch delta read.
 	// A recovery inherits the stuck attempt's value instead of capturing the head at recovery spawn,
@@ -158,8 +147,7 @@ type BatchState struct {
 	// Terminal reports whether this batch has reached a terminal classification (done, stuck, dead, or failed).
 	Terminal bool `json:"terminal"`
 	// Status is the batch's terminal status once Terminal is true (done, stuck, dead, or failed).
-	// It is empty while the batch is in flight.
-	// It is "waiting" while the batch waits on a step or an answer only the run's parent can give.
+	// It is empty while the batch is in flight, or "waiting" while it waits on a step only the run's parent can take.
 	Status string `json:"status"`
 	// Digest is the distilled digest persisted at terminal classification.
 	// It is the carry-forward home: the next batch's prompt renders it,

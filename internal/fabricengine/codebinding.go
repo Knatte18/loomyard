@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
@@ -24,13 +23,21 @@ var ErrNoWarpBinding = errors.New("no recorded warp binding")
 // ErrWarpBindingMismatch matches, under errors.Is, the refusal to re-point a recorded binding at a different warp URL.
 var ErrWarpBindingMismatch = errors.New("warp binding mismatch")
 
+// WarpBindingFileName is the filename of the recorded warp-URL binding at the board root (<boardDir>/.lym-warp).
+// It holds only the warp URL string, plus a trailing newline.
+// This is a structural per-repo record, written once at clone and read on every subsequent clone or reconcile.
+// It is never a config or env override.
+// The anchor file says where in warp lym is rooted; this file says which warp repo the weft pairs with.
+// Exported so other packages and tests can name the file.
+const WarpBindingFileName = ".lym-warp"
+
 // readWarpBinding reads the recorded warp-URL binding from <boardDir>/.lym-warp and reports whether a
 // usable URL was found.
 // Any read error (an absent board directory, an absent binding file, or an unreadable file) reports ("", false).
 // So does an empty-after-trim result.
 // The caller therefore treats a corrupt or missing record the same as an unbound weft.
 func readWarpBinding(boardDir string) (warpURL string, found bool) {
-	data, err := os.ReadFile(filepath.Join(boardDir, fabriclayout.WarpBindingFileName))
+	data, err := os.ReadFile(filepath.Join(boardDir, WarpBindingFileName))
 	if err != nil {
 		return "", false
 	}
@@ -47,12 +54,12 @@ func readWarpBinding(boardDir string) (warpURL string, found bool) {
 // The binding wins when both exist, since it is the hub's recorded pairing.
 // It returns an error naming both sources when neither yields a URL.
 func HubRepoURL(l *lymcwd.Location) (string, error) {
-	if recorded, found := readWarpBinding(fabriclayout.BoltDir(l.HubPath)); found {
+	if recorded, found := readWarpBinding(BoltDir(l.HubPath)); found {
 		return recorded, nil
 	}
 	origin, err := gitrepo.New(l.WorktreePath()).RemoteURL("origin")
 	if err != nil {
-		return "", fmt.Errorf("the hub records no %s warp binding and its warp worktree has no usable origin remote: %w", fabriclayout.WarpBindingFileName, err)
+		return "", fmt.Errorf("the hub records no %s warp binding and its warp worktree has no usable origin remote: %w", WarpBindingFileName, err)
 	}
 	return origin, nil
 }
@@ -62,7 +69,7 @@ func HubRepoURL(l *lymcwd.Location) (string, error) {
 // It reads the repository's local config and spawns no git process.
 // A prime with no origin remote, or an origin with no configured URL, is an error.
 func HubOriginURL(hubPath string) (string, error) {
-	prime := filepath.Join(hubPath, strings.TrimSuffix(filepath.Base(hubPath), fabriclayout.HubSuffix))
+	prime := filepath.Join(hubPath, strings.TrimSuffix(filepath.Base(hubPath), HubSuffix))
 	return gitrepo.New(prime).RemoteURL("origin")
 }
 
@@ -71,7 +78,7 @@ func HubOriginURL(hubPath string) (string, error) {
 // The caller is responsible for committing the result onto weft:main through Bolt;
 // this function only touches the working tree.
 func writeWarpBinding(boardDir, warpURL string) error {
-	path := filepath.Join(boardDir, fabriclayout.WarpBindingFileName)
+	path := filepath.Join(boardDir, WarpBindingFileName)
 	if err := os.WriteFile(path, []byte(warpURL+"\n"), 0o644); err != nil {
 		// Wrap with %w so a caller can unwrap to the os error while still seeing the path that failed.
 		return fmt.Errorf("write %s: %w", path, err)
@@ -158,6 +165,6 @@ func resolveEffectiveWarpURL(recorded string, found bool, supplied string) (effe
 	return "", false, &sentinelError{
 		sentinel: ErrWarpBindingMismatch,
 		msg: fmt.Sprintf("recorded warp binding %s does not match %s; refusing to re-point. If the warp repo moved, edit %s in the hub's %s worktree and commit.",
-			recorded, supplied, fabriclayout.WarpBindingFileName, fabriclayout.BoltDirName),
+			recorded, supplied, WarpBindingFileName, BoltDirName),
 	}
 }

@@ -97,8 +97,6 @@ func (e *Engine) launchStrandLocked(st *ReedState, s *Strand, launchCmd string) 
 
 	s.PaneID = paneID
 	e.killReplacedOwnWindowPaneLocked(previousPaneID, paneID)
-	// The cap comes before anything is typed into the pane, so every process the launch starts runs under it.
-	e.capPaneMemoryLocked(paneID, s)
 	// Both title commands only mirror the display: allow-set-title off stops the agent inside from overwriting the name.
 	// No lookup or delivery resolves through a title, so a failure of either costs display only and never fails the launch.
 	// A tmux that predates allow-set-title skips the option, and the version probe has already logged that fallback once.
@@ -172,7 +170,7 @@ func (e *Engine) killReplacedOwnWindowPaneLocked(previousPaneID, newPaneID strin
 // A grouped strand's placement opens the group's shared window, joins it, or gives it a window of its own.
 // The group record the placement returns is stored in st, which the caller persists with the strand.
 // A refusal returns before anything is created.
-// A shared window is laid out evenly in the reed.window_split direction after a new pane joins or opens it,
+// A shared window is laid out evenly in the window_split direction after a new pane joins or opens it,
 // and its resize hook is pinned to lay it out evenly again whenever the window resizes.
 func (e *Engine) createOwnWindowPaneLocked(st *ReedState, s *Strand) (string, error) {
 	group := s.Display.Window

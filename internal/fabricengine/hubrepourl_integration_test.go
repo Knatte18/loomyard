@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -23,7 +22,7 @@ func TestHubRepoURL_BindingThenOriginThenError(t *testing.T) {
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	bindingPath := filepath.Join(h.BoardDir(), fabriclayout.WarpBindingFileName)
+	bindingPath := filepath.Join(h.BoardDir(), fabricengine.WarpBindingFileName)
 	const bound = "https://github.com/owner/bound-repo.git"
 	if err := os.WriteFile(bindingPath, []byte(bound+"\n"), 0o644); err != nil {
 		t.Fatalf("write binding: %v", err)
@@ -48,7 +47,7 @@ func TestHubRepoURL_BindingThenOriginThenError(t *testing.T) {
 	if err == nil {
 		t.Fatalf("HubRepoURL() with neither source = %q, nil; want an error", got)
 	}
-	for _, source := range []string{fabriclayout.WarpBindingFileName, "origin"} {
+	for _, source := range []string{fabricengine.WarpBindingFileName, "origin"} {
 		if !strings.Contains(err.Error(), source) {
 			t.Errorf("HubRepoURL() with neither source error = %q; want it to name %q", err, source)
 		}

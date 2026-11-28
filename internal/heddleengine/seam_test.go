@@ -5,13 +5,11 @@ package heddleengine
 
 import (
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -20,7 +18,7 @@ import (
 type seamFixture struct {
 	renderFixture
 	root  string
-	event fabriclayout.WorktreeEvent
+	event fabricengine.WorktreeEvent
 }
 
 func newSeamFixture(t *testing.T, anchorRel string) seamFixture {
@@ -37,7 +35,7 @@ func newSeamFixture(t *testing.T, anchorRel string) seamFixture {
 	return seamFixture{
 		renderFixture: f,
 		root:          root,
-		event:         fabriclayout.WorktreeEvent{Root: root, Anchor: f.anchor, ScratchDir: f.scratch, BoltDir: f.bolt, Excluded: f.excluded},
+		event:         fabricengine.WorktreeEvent{Root: root, Anchor: f.anchor, ScratchDir: f.scratch, BoltDir: f.bolt, Excluded: f.excluded},
 	}
 }
 
@@ -133,41 +131,6 @@ func TestSeam(t *testing.T) {
 				}
 				if tt.wantOverride && !strings.Contains(f.readAnchor(t, "AGENTS.override.md"), "new rules") {
 					t.Errorf("AGENTS.override.md = %q; want it built from the changed AGENTS.md", f.readAnchor(t, "AGENTS.override.md"))
-				}
-			})
-		}
-	})
-
-	t.Run("TookInRendersTheCodexFileOnAChangedImport", func(t *testing.T) {
-		t.Parallel()
-		tests := []struct {
-			name            string
-			anchorRel       string
-			malformedRecord bool
-			wantOverride    bool
-		}{
-			{"NoAnchor", ".", false, true},
-			{"Anchored", "src/app", false, true},
-			{"MalformedRecord", ".", true, false},
-		}
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				t.Parallel()
-				f := newSeamFixture(t, tt.anchorRel)
-				f.writeAnchor(t, "CLAUDE.md", "@docs/rules.md\n")
-				f.writeAnchor(t, "docs/rules.md", "imported rules\n")
-				if err := (Seam{}).Made(f.event); err != nil {
-					t.Fatalf("Made() = %v", err)
-				}
-				if tt.malformedRecord {
-					if err := os.WriteFile(importRecordPath(f.scratch), []byte("{not json"), 0o644); err != nil {
-						t.Fatal(err)
-					}
-				}
-				f.tookInAfterClearing(t, path.Join(filepath.ToSlash(tt.anchorRel), "docs/rules.md"))
-				if f.anchorHas("AGENTS.override.md") != tt.wantOverride || f.anchorHas("CLAUDE.local.md") {
-					t.Errorf("after TookIn over the import: AGENTS.override.md present = %v, CLAUDE.local.md present = %v; want %v and false",
-						f.anchorHas("AGENTS.override.md"), f.anchorHas("CLAUDE.local.md"), tt.wantOverride)
 				}
 			})
 		}

@@ -7,7 +7,7 @@ package loomcli
 import (
 	"fmt"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 )
 
 // resolveParentBranch decides the parent branch the session bootstrap seeds against, and whether
@@ -31,7 +31,7 @@ import (
 // A present-but-empty recorded value is treated exactly as an absent record throughout.
 // The status contract makes the parent mandatory and counts an empty string as absent;
 // see contracts/specs/loom-status-spec.md's validation checklist.
-func resolveParentBranch(recorded fabriclayout.Origin, found bool, parentFlag string) (parent string, write bool, err error) {
+func resolveParentBranch(recorded fabricengine.Origin, found bool, parentFlag string) (parent string, write bool, err error) {
 	haveRecord := found && recorded.ParentBranch != ""
 
 	if haveRecord {
@@ -57,7 +57,7 @@ func resolveParentBranch(recorded fabriclayout.Origin, found bool, parentFlag st
 //
 // It refuses an unrecorded or empty parent with the parent resolution's own error.
 // It also refuses a parent equal to taskBranch, because a task may not be its own parent.
-func resolveLandingParent(recorded fabriclayout.Origin, found bool, taskBranch string) (parentBranch string, err error) {
+func resolveLandingParent(recorded fabricengine.Origin, found bool, taskBranch string) (parentBranch string, err error) {
 	parent, _, err := resolveParentBranch(recorded, found, "")
 	if err != nil {
 		return "", err

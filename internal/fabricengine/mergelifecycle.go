@@ -7,18 +7,18 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
-// concludeMergeSides lands the conclude-commit on the warp side of an in-progress merge.
-// The caller already holds the write lock.
-// The weft is not a merge participant, so no commit lands there.
-// The warp side is skipped when its recorded outcome is fast_forwarded or up_to_date, so no commit is fabricated on it.
-// It is skipped too when its committed SHA is already recorded, which keeps a resumed MergeContinue idempotent.
-// A crash or I/O failure between the warp side's `git commit` and the record re-save leaves the commit landed unrecorded.
+// concludeMergeSides lands the conclude-commit on both sides of an in-progress merge, under the
+// caller's already-held write lock: warp first, then weft.
+// The weft arm covers records an older binary wrote, where WeftOutcome can be "staged".
+// Records this binary writes carry mergeOutcomeAlreadyUpToDate on the weft side, so the arm's guard skips it.
+// A side whose recorded outcome is fast_forwarded or up_to_date is skipped, so no commit is fabricated on it.
+// A side whose committed SHA is already recorded is skipped too, which keeps a resumed MergeContinue idempotent.
+// A crash or I/O failure between a side's `git commit` and the record re-save leaves the commit landed unrecorded.
 // A re-run `git commit` then fails on the clean tree.
 // The conclude check adopts such a commit into the record when git parentage shows it is this merge's conclude.
 // MergeContinue then finishes the states that MergeAbort must not destroy.
@@ -28,9 +28,9 @@ import (
 // MergeContinue enforces this before the call.
 // The effective message is the explicit msg, then the record's Message, then empty.
 // An empty message makes git use the message it prepared for the merge.
-// After the warp side lands, its SHA is saved to the record and KindMergeCommitted is recorded.
+// After each side lands, its SHA is saved to the record and KindMergeCommitted is recorded.
 // Its target is the checkout path and its detail is the SHA.
-// If the conclude fails, nothing is rolled back.
+// If a conclude fails on either side, nothing is rolled back.
 // The record is kept, the git failure is logged, and *ErrMergeIncomplete is returned.
 func concludeMergeSides(f *Fabric, rec *Mutations, st *mergeState, msg string) error {
 	effectiveMsg := msg
@@ -58,7 +58,30 @@ func concludeMergeSides(f *Fabric, rec *Mutations, st *mergeState, msg string) e
 		if err := f.saveMergeState(st); err != nil {
 			return err
 		}
-		rec.Append(fabriclayout.KindMergeCommitted, f.warpPath, sha)
+		rec.Append(KindMergeCommitted, f.warpPath, sha)
+	}
+
+	if st.WeftOutcome != mergeOutcomeFastForwarded && st.WeftOutcome != mergeOutcomeAlreadyUpToDate && st.WeftCommitted == "" {
+		sha, landed, err := sideConcludeAlreadyLanded(f.records, st.WeftStart, st.WeftSource, st.Squash)
+		if err != nil {
+			return err
+		}
+		if !landed {
+			if err := f.records.MergeConclude(effectiveMsg); err != nil {
+				logger.Warn("fabricengine: merge conclude failed", "side", "weft", "error", err)
+				return &ErrMergeIncomplete{}
+			}
+			sha, err = f.records.CurrentSHA()
+			if err != nil {
+				logger.Warn("fabricengine: resolve weft HEAD after conclude failed", "error", err)
+				return &ErrMergeIncomplete{}
+			}
+		}
+		st.WeftCommitted = sha
+		if err := f.saveMergeState(st); err != nil {
+			return err
+		}
+		rec.Append(KindMergeCommitted, f.weftPath, sha)
 	}
 
 	return nil
@@ -81,10 +104,11 @@ func concludeMergeSides(f *Fabric, rec *Mutations, st *mergeState, msg string) e
 // fabric starts a non-squash merge with `git merge --ff --no-commit <sourceSHA>`, so MERGE_HEAD holds
 // exactly that SHA, and the conclude-commit has exactly two parents: the pre-merge start first, the
 // merge source second.
-// All four of these must hold before a commit is adopted:
+// All five of these must hold before a commit is adopted:
 //   - HEAD moved off the recorded pre-merge start,
 //   - no live MERGE_HEAD (the merge is finished, not still concludable),
 //   - the record is not a squash (see below),
+//   - the record carries a resolved source SHA for this side,
 //   - HEAD is a merge commit with exactly two parents: the recorded start first, the recorded
 //     source SHA second.
 //
@@ -99,6 +123,8 @@ func concludeMergeSides(f *Fabric, rec *Mutations, st *mergeState, msg string) e
 // Its conclude is an ordinary one-parent commit, with no evidence separating it from other commits.
 // Refusing leaves the re-run `git commit` to fail on the clean tree.
 // It returns *ErrMergeIncomplete with the record retained.
+// An empty recorded source SHA, which a record without one carries, refuses too.
+// No evidence is not satisfied evidence.
 //
 // The caller records an adoption as KindMergeCommitted, although this call ran no `git commit`.
 // The commit is this merge's own conclude.
@@ -118,7 +144,7 @@ func sideConcludeAlreadyLanded(repo *gitrepo.Repo, start, sourceSHA string, squa
 	if mergeHeadPresent {
 		return "", false, nil
 	}
-	if squash {
+	if squash || sourceSHA == "" {
 		return "", false, nil
 	}
 
@@ -213,7 +239,7 @@ func mergeAttemptIncompleteReason(st *mergeState) []string {
 // A call that loses that race records up_to_date on both sides.
 // A crash before its conclude leaves exactly that record for this call to resume.
 // So the field comes from the record, not a constant.
-func (f *Fabric) MergeContinue(msg string) (res fabriclayout.MergeResult, err error) {
+func (f *Fabric) MergeContinue(msg string) (res MergeResult, err error) {
 	rec := NewMutations(filepath.Dir(f.warpPath))
 	defer func() { finalizeMergeResult(&res, rec) }()
 
@@ -225,29 +251,29 @@ func (f *Fabric) MergeContinue(msg string) (res fabriclayout.MergeResult, err er
 	// Everything below the acquisition sees a state no other fabric writer can be mutating.
 	lockDir, err := f.ensureWeftLockDir()
 	if err != nil {
-		return fabriclayout.MergeResult{}, err
+		return MergeResult{}, err
 	}
 	fl, err := acquireWeftWriteLock(lockDir)
 	if err != nil {
-		return fabriclayout.MergeResult{}, fmt.Errorf("fabricengine: acquire weft write lock: %w", err)
+		return MergeResult{}, fmt.Errorf("fabricengine: acquire weft write lock: %w", err)
 	}
 	defer func() { _ = fl.Release() }()
 
 	st, err := f.loadMergeState()
 	if err != nil {
-		return fabriclayout.MergeResult{}, err
+		return MergeResult{}, err
 	}
 	if st == nil {
-		return fabriclayout.MergeResult{}, f.mergeStateOrForeignErr()
+		return MergeResult{}, f.mergeStateOrForeignErr()
 	}
 
 	warpConflicts, err := f.code.ConflictedFiles()
 	if err != nil {
-		return fabriclayout.MergeResult{}, err
+		return MergeResult{}, err
 	}
 	weftConflicts, err := f.records.ConflictedFiles()
 	if err != nil {
-		return fabriclayout.MergeResult{}, err
+		return MergeResult{}, err
 	}
 	var reasons []string
 	var stillConflicted []string
@@ -258,33 +284,33 @@ func (f *Fabric) MergeContinue(msg string) (res fabriclayout.MergeResult, err er
 	reasons = append(reasons, mergeAttemptIncompleteReason(st)...)
 	recordedMergeGone, err := recordedMergeGoneReason(f, st)
 	if err != nil {
-		return fabriclayout.MergeResult{}, err
+		return MergeResult{}, err
 	}
 	reasons = append(reasons, recordedMergeGone...)
 	if len(reasons) > 0 {
-		return fabriclayout.MergeResult{Conflicts: stillConflicted}, newMergeGuardError(reasons)
+		return MergeResult{Conflicts: stillConflicted}, newMergeGuardError(reasons)
 	}
 
 	if err := concludeMergeSides(f, rec, st, msg); err != nil {
-		return fabriclayout.MergeResult{}, err
+		return MergeResult{}, err
 	}
 
 	newWarpHEAD, err := f.code.CurrentSHA()
 	if err != nil {
-		return fabriclayout.MergeResult{}, fmt.Errorf("fabricengine: resolve checkout HEAD after merge: %w", err)
+		return MergeResult{}, fmt.Errorf("fabricengine: resolve checkout HEAD after merge: %w", err)
 	}
 	newWeftHEAD, err := f.records.CurrentSHA()
 	if err != nil {
-		return fabriclayout.MergeResult{}, fmt.Errorf("fabricengine: resolve checkout HEAD after merge: %w", err)
+		return MergeResult{}, fmt.Errorf("fabricengine: resolve checkout HEAD after merge: %w", err)
 	}
 	if err := f.RecordCorrespondence(newWarpHEAD, newWeftHEAD); err != nil {
-		return fabriclayout.MergeResult{}, err
+		return MergeResult{}, err
 	}
 	if err := f.deleteMergeState(); err != nil {
-		return fabriclayout.MergeResult{}, err
+		return MergeResult{}, err
 	}
 
-	return fabriclayout.MergeResult{
+	return MergeResult{
 		AlreadyUpToDate: st.bothSidesAlreadyUpToDate(),
 		Conflicts:       mergeNoConflicts,
 		Committed:       st.landedConcludeCommit(),
@@ -305,7 +331,7 @@ func (f *Fabric) MergeContinue(msg string) (res fabriclayout.MergeResult, err er
 // It then resets the warp side via resetMergeSides.
 // That reset covers a side that fast-forwarded or never moved.
 // It deletes the merge-state record and returns MergeResult{} with Committed false.
-func (f *Fabric) MergeAbort() (res fabriclayout.MergeResult, err error) {
+func (f *Fabric) MergeAbort() (res MergeResult, err error) {
 	rec := NewMutations(filepath.Dir(f.warpPath))
 	defer func() { finalizeMergeResult(&res, rec) }()
 
@@ -317,38 +343,38 @@ func (f *Fabric) MergeAbort() (res fabriclayout.MergeResult, err error) {
 	// Everything below the acquisition sees a state no other fabric writer can be mutating.
 	lockDir, err := f.ensureWeftLockDir()
 	if err != nil {
-		return fabriclayout.MergeResult{}, err
+		return MergeResult{}, err
 	}
 	fl, err := acquireWeftWriteLock(lockDir)
 	if err != nil {
-		return fabriclayout.MergeResult{}, fmt.Errorf("fabricengine: acquire weft write lock: %w", err)
+		return MergeResult{}, fmt.Errorf("fabricengine: acquire weft write lock: %w", err)
 	}
 	defer func() { _ = fl.Release() }()
 
 	st, err := f.loadMergeState()
 	if err != nil {
-		return fabriclayout.MergeResult{}, err
+		return MergeResult{}, err
 	}
 	if st == nil {
-		return fabriclayout.MergeResult{}, f.mergeStateOrForeignErr()
+		return MergeResult{}, f.mergeStateOrForeignErr()
 	}
 
 	reasons, err := concludeLandedReason(f, st)
 	if err != nil {
-		return fabriclayout.MergeResult{}, err
+		return MergeResult{}, err
 	}
 	if len(reasons) > 0 {
-		return fabriclayout.MergeResult{}, newMergeGuardError(reasons)
+		return MergeResult{}, newMergeGuardError(reasons)
 	}
 
 	if err := f.resetMergeSides(rec, st.WarpStart); err != nil {
-		return fabriclayout.MergeResult{}, err
+		return MergeResult{}, err
 	}
 	if err := f.deleteMergeState(); err != nil {
-		return fabriclayout.MergeResult{}, err
+		return MergeResult{}, err
 	}
 
-	return fabriclayout.MergeResult{Conflicts: mergeNoConflicts}, nil
+	return MergeResult{Conflicts: mergeNoConflicts}, nil
 }
 
 // MergeInProgress reports whether fabric has a merge in progress on this pair.

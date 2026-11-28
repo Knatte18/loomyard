@@ -1,31 +1,20 @@
 // roleguard_test.go pins the sandboxed-role guard of the fabric command tree:
-// which subcommands a task-session role may run.
-// It also pins which strand names the guard lets through.
-// It pins which directories a task role may run a mutating verb in.
-// It pins which bench pairs a docs run's darn writer may add, remove and push.
-// It drives the built command tree against directories that hold no hub.
-// A passing verb stops at its own worktree-resolution error and spawns nothing.
+// which subcommands a task-session role may run, and which strand names the guard lets through.
+// It drives the built command tree against an empty directory,
+// so a passing verb stops at its own worktree-resolution error and spawns nothing.
 
 package fabriccli_test
 
 import (
 	"bytes"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabriccli"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
-	"github.com/Knatte18/loomyard/internal/fslink"
-	"github.com/Knatte18/loomyard/internal/lymcwd"
-	"github.com/Knatte18/loomyard/internal/lymdirs"
-	"github.com/Knatte18/loomyard/internal/runprofile"
-	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
-	"github.com/Knatte18/loomyard/internal/weftname"
 	"github.com/spf13/cobra"
 )
 
@@ -49,19 +38,17 @@ var guardVerbs = map[string]guardVerb{
 	"remove":    {args: []string{"remove", "slug"}},
 	// The hidden teardown child passes by name, since it inherits the removal's strand name; the walk counts it a reader.
 	"remote-teardown": {args: []string{"remote-teardown"}, reader: true},
-	// The bar's job passes by name too.
-	"sync-status": {args: []string{"sync-status"}, reader: true},
-	"checkout":    {args: []string{"checkout"}},
-	"reconcile":   {args: []string{"reconcile"}},
-	"anchor":      {args: []string{"anchor"}},
-	"unwire":      {args: []string{"unwire"}},
-	"commit":      {args: []string{"commit"}},
-	"push":        {args: []string{"push"}},
-	"pull":        {args: []string{"pull"}},
-	"sync":        {args: []string{"sync"}},
-	"merge":       {args: []string{"merge", "branch"}},
-	"merge-in":    {args: []string{"merge-in", "branch"}},
-	"merge-stage": {args: []string{"merge-stage", "path"}},
+	"checkout":        {args: []string{"checkout"}},
+	"reconcile":       {args: []string{"reconcile"}},
+	"anchor":          {args: []string{"anchor"}},
+	"unwire":          {args: []string{"unwire"}},
+	"commit":          {args: []string{"commit"}},
+	"push":            {args: []string{"push"}},
+	"pull":            {args: []string{"pull"}},
+	"sync":            {args: []string{"sync"}},
+	"merge":           {args: []string{"merge", "branch"}},
+	"merge-in":        {args: []string{"merge-in", "branch"}},
+	"merge-stage":     {args: []string{"merge-stage", "path"}},
 }
 
 // refusalMarker is the text every guard refusal carries.
@@ -70,93 +57,11 @@ const refusalMarker = "from the task session"
 // runUnderParent mounts the fabric command under a bare parent as main.go does and runs args from an empty directory.
 func runUnderParent(t *testing.T, args ...string) (code int, out string) {
 	t.Helper()
-	return runUnderParentIn(t, t.TempDir(), args...)
-}
-
-// runUnderParentIn mounts the fabric command under a bare parent as main.go does and runs args from dir.
-func runUnderParentIn(t *testing.T, dir string, args ...string) (code int, out string) {
-	t.Helper()
 	root := &cobra.Command{Use: "lym"}
 	root.AddCommand(fabriccli.Command())
 	var buf bytes.Buffer
-	code = clihelp.ExecuteIn(root, dir, &buf, append([]string{"fabric"}, args...))
+	code = clihelp.ExecuteIn(root, t.TempDir(), &buf, append([]string{"fabric"}, args...))
 	return code, buf.String()
-}
-
-// fakeWorktree makes a directory named name under parent that resolves as a worktree root:
-// its `.git` holds HEAD, objects and refs, written with no git process.
-func fakeWorktree(t *testing.T, parent, name string) string {
-	t.Helper()
-	worktree := filepath.Join(parent, name)
-	for _, dir := range []string{"objects", "refs"} {
-		if err := os.MkdirAll(filepath.Join(worktree, ".git", dir), 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := os.WriteFile(filepath.Join(worktree, ".git", "HEAD"), []byte("ref: refs/heads/main\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	return worktree
-}
-
-// sandboxHubDir makes a hub directory under the sandbox root of worktree and returns it as written through the worktree.
-// The worktree's `.lym` is a directory link into its records sibling, as fabric wires it,
-// so the directory itself lives under the sibling.
-func sandboxHubDir(t *testing.T, worktree string) string {
-	t.Helper()
-	sibling := worktree + weftname.Suffix
-	if err := os.MkdirAll(filepath.Join(sibling, lymdirs.DotLymDirName, lymdirs.HardenSandboxDirName, "hub-1"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	link := filepath.Join(worktree, lymdirs.DotLymDirName)
-	if _, err := os.Lstat(link); err != nil {
-		if err := fslink.CreateDirLink(link, filepath.Join(sibling, lymdirs.DotLymDirName)); err != nil {
-			t.Fatal(err)
-		}
-	}
-	return filepath.Join(link, lymdirs.HardenSandboxDirName, "hub-1")
-}
-
-// recordShortname writes the repo shortname record of the hub directory hub.
-func recordShortname(t *testing.T, hub, shortname string) {
-	t.Helper()
-	boltDir := fabriclayout.BoltDir(hub)
-	if err := os.MkdirAll(boltDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(boltDir, fabriclayout.ShortnameFileName), []byte(shortname+"\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-}
-
-// linkTo makes a directory link in a new temp directory that points at target, and returns the link.
-func linkTo(t *testing.T, target string) string {
-	t.Helper()
-	link := filepath.Join(t.TempDir(), "link")
-	if err := fslink.CreateDirLink(link, target); err != nil {
-		t.Fatal(err)
-	}
-	return link
-}
-
-// benchTaskWorktree makes a hub whose recorded shortname is ly and returns its worktree slug.
-// The worktree holds a run identity record naming recipe and profile, and none when recipe is empty.
-func benchTaskWorktree(t *testing.T, recipe, profile string) string {
-	t.Helper()
-	hub := t.TempDir()
-	recordShortname(t, hub, "ly")
-	worktree := fakeWorktree(t, hub, "slug")
-	if recipe == "" {
-		return worktree
-	}
-	location, err := lymcwd.ResolveWorktree(worktree)
-	if err != nil {
-		t.Fatalf("resolve the task worktree: %v", err)
-	}
-	if err := shedrun.WriteRunUsage(shedrun.UsageDir(location), shedrun.RunUsageRecord{Recipe: recipe, Profile: profile}); err != nil {
-		t.Fatalf("write the run identity record: %v", err)
-	}
-	return worktree
 }
 
 // TestSandboxedRoleGuard sets the strand-name environment variable with t.Setenv.
@@ -202,7 +107,7 @@ func TestSandboxedRoleGuard(t *testing.T) {
 	})
 
 	t.Run("every fabric reader verb is a guard reader", func(t *testing.T) {
-		for _, name := range fabriclayout.FabricReaderVerbs() {
+		for _, name := range fabricengine.FabricReaderVerbs() {
 			if verb, ok := guardVerbs[name]; !ok || !verb.reader {
 				t.Errorf("fabricengine reader verb %q is not a guard reader", name)
 			}
@@ -218,7 +123,7 @@ func TestSandboxedRoleGuard(t *testing.T) {
 					t.Errorf("%s under %s = %d, output %s; want a guard refusal", verb, strand, code, out)
 				}
 				if verb == "add" && strand == webster {
-					for _, want := range []string{"hubforge", "status: FAILED", "`lym harden sandbox new` under "} {
+					for _, want := range []string{"hubforge", "status: FAILED"} {
 						if !strings.Contains(out, want) {
 							t.Errorf("add refusal under %s lacks %q: %s", strand, want, out)
 						}
@@ -281,248 +186,14 @@ func TestSandboxedRoleGuard(t *testing.T) {
 		}
 	})
 
-	t.Run("a push's path flags pass only for the role's own pair or a pair under its own sandbox root", func(t *testing.T) {
+	t.Run("a bypass flag passes only on push", func(t *testing.T) {
 		t.Setenv(agentname.StrandNameEnv, webster)
-		hubs := t.TempDir()
-		recordShortname(t, hubs, "ly")
-		own := fakeWorktree(t, hubs, "slug")
-		ownSandboxHub := sandboxHubDir(t, own)
-		other := fakeWorktree(t, hubs, "other")
-		otherHubs := t.TempDir()
-		recordShortname(t, otherHubs, "zz")
-		sameSlugInOtherHub := fakeWorktree(t, otherHubs, "slug")
-
-		tests := []struct {
-			name     string
-			weftPath string
-			warpPath string
-			refused  bool
-		}{
-			{"OwnPair", own + weftname.Suffix, own, false},
-			{"OwnRecordsSiblingAlone", own + weftname.Suffix, "", false},
-			{"PairUnderOwnSandboxRoot", filepath.Join(ownSandboxHub, "t1"+weftname.Suffix), filepath.Join(ownSandboxHub, "t1"), false},
-			{"AnotherWorktreesPair", other + weftname.Suffix, other, true},
-			{"OwnRecordsSiblingWithAnotherWorktree", own + weftname.Suffix, other, true},
-			{"SameSlugPairInAnotherHub", sameSlugInOtherHub + weftname.Suffix, sameSlugInOtherHub, true},
-			{"PathsOutsideAnyHub", t.TempDir(), t.TempDir(), true},
+		if _, out := runUnderParent(t, "push", "--weft-path", t.TempDir()); strings.Contains(out, refusalMarker) {
+			t.Errorf("push with --weft-path was refused: %s", out)
 		}
-		for _, tt := range tests {
-			args := []string{"push"}
-			if tt.weftPath != "" {
-				args = append(args, "--weft-path", tt.weftPath)
-			}
-			if tt.warpPath != "" {
-				args = append(args, "--warp-path", tt.warpPath)
-			}
-			code, out := runUnderParent(t, args...)
-			if refused := strings.Contains(out, refusalMarker); refused != tt.refused {
-				t.Errorf("%s: %v under %s refused = %v; want %v; output: %s", tt.name, args, webster, refused, tt.refused, out)
-			}
-			if tt.refused && code != 1 {
-				t.Errorf("%s: %v under %s = %d; want exit 1", tt.name, args, webster, code)
-			}
-		}
-
 		for _, args := range [][]string{{"add", "slug", "--warp-path", "x"}, {"clone", "u", "--warp-path", "x"}, {"status", "--weft-path", "x"}} {
 			if code, out := runUnderParent(t, args...); code != 1 || !strings.Contains(out, refusalMarker) {
 				t.Errorf("%v under %s = %d, output %s; want a guard refusal", args, webster, code, out)
-			}
-		}
-	})
-
-	t.Run("a task role runs mutating verbs only in a hub under its own worktree's sandbox root", func(t *testing.T) {
-		t.Setenv(agentname.StrandNameEnv, webster)
-		hubs := t.TempDir()
-		recordShortname(t, hubs, "ly")
-		own := fakeWorktree(t, hubs, "slug")
-		other := fakeWorktree(t, hubs, "other")
-		notWorktree := filepath.Join(t.TempDir(), "slug")
-		ownSandboxHub := sandboxHubDir(t, own)
-		ownSandboxRoot := filepath.Dir(ownSandboxHub)
-		otherHubs := t.TempDir()
-		recordShortname(t, otherHubs, "zz")
-		sameSlugInOtherHub := fakeWorktree(t, otherHubs, "slug")
-
-		nestedHub := filepath.Join(own, "sub", lymdirs.DotLymDirName, lymdirs.HardenSandboxDirName, "hub-1")
-		if err := os.MkdirAll(nestedHub, 0o755); err != nil {
-			t.Fatal(err)
-		}
-		escape := filepath.Join(ownSandboxRoot, "escape")
-		if err := fslink.CreateDirLink(escape, t.TempDir()); err != nil {
-			t.Fatal(err)
-		}
-		dangling := filepath.Join(ownSandboxRoot, "dangling")
-		if err := fslink.CreateDirLink(dangling, filepath.Join(t.TempDir(), "absent")); err != nil {
-			t.Fatal(err)
-		}
-
-		// A worktree whose records sibling holds a `.lym` with no sandbox root yet.
-		freshHubs := t.TempDir()
-		recordShortname(t, freshHubs, "ly")
-		fresh := fakeWorktree(t, freshHubs, "slug")
-		if err := os.MkdirAll(filepath.Join(fresh+weftname.Suffix, lymdirs.DotLymDirName), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := fslink.CreateDirLink(filepath.Join(fresh, lymdirs.DotLymDirName), filepath.Join(fresh+weftname.Suffix, lymdirs.DotLymDirName)); err != nil {
-			t.Fatal(err)
-		}
-
-		// Each form fails at its own worktree resolution once the guard lets it through, so none spawns;
-		// clone's three URLs stop it at its usage check.
-		mutatingForms := [][]string{
-			{"add", "slug"}, {"push"}, {"pull"}, {"sync"}, {"reconcile"}, {"checkout"},
-			{"remove", "slug"}, {"cleanup", "--apply"}, {"clone", "a", "b", "c"},
-		}
-		tests := []struct {
-			name    string
-			cwd     string
-			refused bool
-		}{
-			{"OwnSandboxHub", ownSandboxHub, false},
-			{"OwnSandboxHubInItsRecordsSiblingForm", filepath.Join(own+weftname.Suffix, lymdirs.DotLymDirName, lymdirs.HardenSandboxDirName, "hub-1"), false},
-			{"LinkIntoOwnSandboxHub", linkTo(t, ownSandboxHub), false},
-			{"OtherWorktreesSandboxHub", sandboxHubDir(t, other), true},
-			{"SandboxRootOfADirectoryNoWorktree", sandboxHubDir(t, notWorktree), true},
-			{"SameSlugWorktreeInAnotherHub", sandboxHubDir(t, sameSlugInOtherHub), true},
-			{"OwnWorktreeOutsideItsSandboxRoot", own, true},
-			{"SandboxRootBelowASubdirectoryOfOwnWorktree", nestedHub, true},
-			{"LinkInsideOwnSandboxRootPointingOut", escape, true},
-		}
-		for _, tt := range tests {
-			for _, args := range mutatingForms {
-				code, out := runUnderParentIn(t, tt.cwd, args...)
-				if refused := strings.Contains(out, refusalMarker); refused != tt.refused {
-					t.Errorf("%s: %v under %s refused = %v; want %v; output: %s", tt.name, args, webster, refused, tt.refused, out)
-				}
-				if tt.refused && code != 1 {
-					t.Errorf("%s: %v under %s = %d; want exit 1", tt.name, args, webster, code)
-				}
-			}
-		}
-
-		cloneTests := []struct {
-			name    string
-			cwd     string
-			into    string
-			refused bool
-		}{
-			{"IntoOwnSandboxRootFromItsWorktree", own, filepath.Join(own, lymdirs.DotLymDirName, lymdirs.HardenSandboxDirName, "hub-2"), false},
-			{"RelativeIntoOwnSandboxRootFromItsWorktree", own, filepath.Join(lymdirs.DotLymDirName, lymdirs.HardenSandboxDirName, "hub-3"), false},
-			{"IntoAnotherDirectoryFromOwnSandboxHub", ownSandboxHub, hubs, true},
-			{"IntoBelowALinkPointingOutOfOwnSandboxRoot", own, filepath.Join(escape, "new"), true},
-			{"IntoADanglingLinkInOwnSandboxRoot", own, dangling, true},
-			{"IntoOwnSandboxRootThatDoesNotExistYet", fresh, filepath.Join(fresh, lymdirs.DotLymDirName, lymdirs.HardenSandboxDirName, "hub-1"), false},
-		}
-		for _, tt := range cloneTests {
-			_, out := runUnderParentIn(t, tt.cwd, "clone", "--into", tt.into, "a", "b", "c")
-			if refused := strings.Contains(out, refusalMarker); refused != tt.refused {
-				t.Errorf("%s: clone --into %s refused = %v; want %v; output: %s", tt.name, tt.into, refused, tt.refused, out)
-			}
-		}
-
-		if code, out := runUnderParentIn(t, ownSandboxHub, "pull", "--weft-path", "/x"); code != 1 || !strings.Contains(out, "refuses the path flags") {
-			t.Errorf("pull --weft-path from the own sandbox hub = %d, output %s; want the path-flag refusal", code, out)
-		}
-	})
-
-	t.Run("a docs run's darn writer adds and removes only its own bench pairs, from its task worktree", func(t *testing.T) {
-		const writer = "ly:slug:darn"
-		docs := benchTaskWorktree(t, shedrun.RecipeDarn, runprofile.DocsProfile)
-		if err := os.MkdirAll(docs+weftname.Suffix, 0o755); err != nil {
-			t.Fatal(err)
-		}
-		other := fakeWorktree(t, filepath.Dir(docs), "other")
-		noRecord := benchTaskWorktree(t, "", "")
-		light := benchTaskWorktree(t, shedrun.RecipeDarn, "light")
-		tapestry := benchTaskWorktree(t, shedrun.RecipeTapestry, runprofile.DocsProfile)
-		broken := benchTaskWorktree(t, shedrun.RecipeDarn, runprofile.DocsProfile)
-		brokenLocation, err := lymcwd.ResolveWorktree(broken)
-		if err != nil {
-			t.Fatalf("resolve the task worktree: %v", err)
-		}
-		if err := os.WriteFile(filepath.Join(shedrun.UsageDir(brokenLocation), "run.json"), []byte("{"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		// A fake worktree is its own repository, so it is its own prime and holds the batten run directory.
-		docsLocation, err := lymcwd.ResolveWorktree(docs)
-		if err != nil {
-			t.Fatalf("resolve the task worktree: %v", err)
-		}
-		if err := os.MkdirAll(shedrun.RunDir(docsLocation, "slug-b3"), 0o755); err != nil {
-			t.Fatal(err)
-		}
-
-		tests := []struct {
-			name    string
-			strand  string
-			cwd     string
-			args    []string
-			refused bool
-			// reason is what a writer's refusal gives in place of the bench pair way forward, empty when it gives none.
-			reason string
-		}{
-			{"AddFromTaskWorktree", writer, docs, []string{"add", "slug-b1"}, false, ""},
-			{"RemoveFromTaskWorktree", writer, docs, []string{"remove", "slug-b2"}, false, ""},
-			{"AddFromRecordsSibling", writer, docs + weftname.Suffix, []string{"add", "slug-b1"}, false, ""},
-			{"NumberedWriter", "ly:slug:darn-2", docs, []string{"add", "slug-b1"}, false, ""},
-			{"AddWithParent", writer, docs, []string{"add", "slug-b1", "--parent", "other"}, true, ""},
-			{"AddAdoptingLocal", writer, docs, []string{"add", "slug-b1", "--adopt-local"}, true, ""},
-			{"SlugNotABenchPair", writer, docs, []string{"add", "slug-notes"}, true, ""},
-			{"NoSlug", writer, docs, []string{"add"}, true, ""},
-			{"BenchPairOfAnotherTask", writer, docs, []string{"remove", "other-b1"}, true, ""},
-			{"FromAnotherWorktree", writer, other, []string{"add", "slug-b1"}, true, ""},
-			{"NoRunRecord", writer, noRecord, []string{"add", "slug-b1"}, true, ""},
-			{"UndecodableRunRecord", writer, broken, []string{"add", "slug-b1"}, true, "does not decode"},
-			{"RunOnAnotherProfile", writer, light, []string{"add", "slug-b1"}, true, ""},
-			{"RunOfAnotherRecipe", writer, tapestry, []string{"remove", "slug-b1"}, true, ""},
-			{"AddOfASlugABattenRunNames", writer, docs, []string{"add", "slug-b3"}, true, "a batten run directory names slug-b3"},
-			{"RemoveOfASlugABattenRunNames", writer, docs, []string{"remove", "slug-b3"}, true, "a batten run directory names slug-b3"},
-			{"NotADarnWriter", webster, docs, []string{"add", "slug-b1"}, true, ""},
-		}
-		for _, tt := range tests {
-			t.Setenv(agentname.StrandNameEnv, tt.strand)
-			code, out := runUnderParentIn(t, tt.cwd, tt.args...)
-			if refused := strings.Contains(out, refusalMarker); refused != tt.refused {
-				t.Errorf("%s: %v under %s refused = %v; want %v; output: %s", tt.name, tt.args, tt.strand, refused, tt.refused, out)
-			}
-			if !tt.refused {
-				continue
-			}
-			if code != 1 {
-				t.Errorf("%s: %v under %s = %d; want exit 1", tt.name, tt.args, tt.strand, code)
-			}
-			wantWayForward := tt.strand == writer && tt.reason == ""
-			if strings.Contains(out, "`lym fabric add slug-b1`") != wantWayForward {
-				t.Errorf("%s: refusal under %s names the bench pair way forward = %v; want %v; output: %s",
-					tt.name, tt.strand, !wantWayForward, wantWayForward, out)
-			}
-			if !strings.Contains(out, tt.reason) {
-				t.Errorf("%s: refusal under %s lacks %q: %s", tt.name, tt.strand, tt.reason, out)
-			}
-		}
-
-		bench := fakeWorktree(t, filepath.Dir(docs), "slug-b1")
-		battenNamedBench := fakeWorktree(t, filepath.Dir(docs), "slug-b3")
-		lightBench := fakeWorktree(t, filepath.Dir(light), "slug-b1")
-		otherHubBench := fakeWorktree(t, filepath.Dir(benchTaskWorktree(t, shedrun.RecipeDarn, runprofile.DocsProfile)), "slug-b1")
-		recordShortname(t, filepath.Dir(otherHubBench), "zz")
-		pushTests := []struct {
-			name    string
-			strand  string
-			pair    string
-			refused bool
-		}{
-			{"WritersBenchPair", writer, bench, false},
-			{"BenchPairInAnotherHub", writer, otherHubBench, true},
-			{"BenchSlugUnderAnotherRole", webster, bench, true},
-			{"WriterOnAnotherProfile", writer, lightBench, true},
-			{"BenchSlugABattenRunNames", writer, battenNamedBench, true},
-		}
-		for _, tt := range pushTests {
-			t.Setenv(agentname.StrandNameEnv, tt.strand)
-			args := []string{"push", "--weft-path", tt.pair + weftname.Suffix, "--warp-path", tt.pair}
-			if _, out := runUnderParent(t, args...); strings.Contains(out, refusalMarker) != tt.refused {
-				t.Errorf("%s: %v under %s refused = %v; want %v; output: %s", tt.name, args, tt.strand, !tt.refused, tt.refused, out)
 			}
 		}
 	})

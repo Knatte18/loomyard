@@ -15,7 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/creelconfig"
 	"github.com/Knatte18/loomyard/internal/creelengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/hubregistry"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -59,8 +59,8 @@ daemon_answers, trusted}]}. repository is the hub's GitHub repository, owner/rep
 read from its origin remote; a hub with none shows no_repository, the reason,
 instead, and is never trusted. daemon_answers says whether the hub's daemon
 answers on its socket; the verb never starts a daemon and writes no record.
-trusted says whether this hub's creel.trusted_hubs lists the repository,
-so its orch's mail is obeyed here.
+trusted says whether this hub's creel.yaml lists the repository in
+trusted_hubs, so its orch's mail is obeyed here.
 
 To mail a strand of another hub, post to its full name, as lym creel post
 <shortname>:orch "<text>" does.
@@ -82,7 +82,7 @@ Example:
 				if err != nil {
 					return result{}, err
 				}
-				cfg, err := creelconfig.LoadConfig(configengine.Dirs{Board: fabriclayout.BoltDir(hubPath)})
+				cfg, err := creelconfig.LoadConfig(configengine.Dirs{Board: fabricengine.BoltDir(hubPath)})
 				if errors.Is(err, configengine.ErrInvalid) {
 					return result{}, fmt.Errorf("%w; way forward: correct the file with `lym config creel`", err)
 				}

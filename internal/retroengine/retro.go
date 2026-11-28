@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/runprofile"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
@@ -37,7 +36,7 @@ const (
 	StencilName = "retro-template-task"
 
 	// TaskProfile is the run profile of the retro task, the darn profile for prose work.
-	TaskProfile = runprofile.DocsProfile
+	TaskProfile = "docs"
 
 	// TaskWriter is the model-spec of the retro task's darn writer.
 	// The writer judges transcripts and routes proposals, work a weaker model turns into board noise.

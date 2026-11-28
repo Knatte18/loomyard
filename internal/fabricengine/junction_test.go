@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fslink"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -25,6 +26,23 @@ func wireTestJunction(t *testing.T, link, target string) {
 	}
 	if err := fslink.CreateDirLink(link, target); err != nil {
 		t.Fatalf("CreateDirLink(%s, %s): %v", link, target, err)
+	}
+}
+
+// TestWorktreePath verifies that WorktreePath(l, slug) joins HubPath and slug.
+//
+//testtiming:keep WorktreePath joining the hub path and slug; coverage of its blocks by other tests does not show an assertion of this
+func TestWorktreePath(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	l := &lymcwd.Location{HubPath: filepath.Join("home", "user", "project-LYMHUB")}
+	slug := "test-wt"
+
+	got := WorktreePath(l, slug)
+	want := filepath.Join(l.HubPath, slug)
+	if got != want {
+		t.Errorf("WorktreePath(l, %q) = %q; want %q", slug, got, want)
 	}
 }
 

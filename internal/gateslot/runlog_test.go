@@ -28,7 +28,7 @@ func TestWriteRunRecord(t *testing.T) {
 		want := RunRecord{
 			Worktree: "/hub/slug", Slug: "slug", TierList: []int{0, 1}, GateKey: "parent-align", Tier: 1,
 			Command: "go test ./...", RunDir: "/hub/slug/internal/x", ScopeForm: "--all", Slots: 2,
-			WaitStart: now.Add(-time.Minute), SlotsHeld: now.Add(-40 * time.Second), Start: now.Add(-30 * time.Second), End: now, WallSec: 30,
+			WaitStart: now.Add(-time.Minute), Start: now.Add(-30 * time.Second), End: now, WallSec: 30,
 			ExitCode: 1, TimedOut: false, Outcome: "failed", GuardStep: true, Carried: true,
 			Discovered: 9, Passed: 7, Failed: 1, Skipped: 1,
 			Launches: []PackageLaunch{{Package: "example.com/p", LaunchSeconds: 0.25, ElapsedSeconds: 1.5}},
@@ -187,7 +187,6 @@ func testFailedTier(t *testing.T) {
 		{"a failing build line first", build(1, 1) + "\n", 1, true, true},
 		{"a passing build line then a failing tier line", build(0, 0) + "\n" + line(2, 1) + "\n", 2, false, true},
 		{"a failing build line after a failing tier line", line(1, 1) + "\n" + build(2, 1) + "\n", 1, false, true},
-		{"a failing line with no wait field", "gate test: tier1 diff discovered 3 passed 2 failed 1 skipped 0 wall 1.5s exit 1 log x\n", 1, false, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -196,79 +195,6 @@ func testFailedTier(t *testing.T) {
 			tier, isBuild, ok := FailedTier(tt.log)
 			if tier != tt.wantTier || isBuild != tt.wantBuild || ok != tt.wantOK {
 				t.Errorf("FailedTier() = %d, %v, %v; want %d, %v, %v", tier, isBuild, ok, tt.wantTier, tt.wantBuild, tt.wantOK)
-			}
-		})
-	}
-}
-
-// TestTierDiscovered pins that the discovered counts of a log's tier summary lines are added up.
-// A build summary line counts none.
-func TestTierDiscovered(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	line := func(tier, discovered, exit int) string {
-		return TierSummaryLine(RunRecord{Tier: tier, ScopeForm: "--base main", Discovered: discovered, WallSec: 1.5, ExitCode: exit}, "/runs/x.log")
-	}
-	build := BuildSummaryLine(RunRecord{Tier: 0, Build: true, ScopeForm: "build", WallSec: 2.5}, "/runs/b.log")
-	tests := []struct {
-		name      string
-		log       string
-		want      int
-		wantFound bool
-	}{
-		{"one tier line", line(0, 4, 0) + "\n", 4, true},
-		{"a tier line that discovered none is found", line(0, 0, 0) + "\n", 0, true},
-		{"tier lines add up", line(0, 2, 0) + "\n" + line(1, 3, 1) + "\n", 5, true},
-		{"a line with no wait field is read", "gate test: tier1 diff discovered 3 passed 2 failed 1 skipped 0 wall 1.5s exit 1 log x\n", 3, true},
-		{"a build line and other text are no tier line", build + "\nPassed!\n", 0, false},
-		{"no summary line", "FAIL\n", 0, false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			got, found := TierDiscovered(tt.log)
-			if got != tt.want || found != tt.wantFound {
-				t.Errorf("TierDiscovered() = %d, %v; want %d, %v", got, found, tt.want, tt.wantFound)
-			}
-		})
-	}
-}
-
-// TestTierSummaryLine pins that a tier's summary line shows its slot wait and its run's wall time apart.
-func TestTierSummaryLine(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	start := time.Date(2026, 3, 20, 12, 0, 0, 0, time.UTC)
-	tests := []struct {
-		name   string
-		record RunRecord
-		want   string
-	}{
-		{
-			"WaitAndWallApart",
-			RunRecord{Tier: 1, ScopeForm: "diff", Discovered: 3, Passed: 2, Failed: 1, WaitStart: start.Add(-300 * time.Second), Start: start, WallSec: 12.5, ExitCode: 1},
-			"gate test: tier1 diff wait 300.0s discovered 3 passed 2 failed 1 skipped 0 wall 12.5s exit 1 log /runs/x.log",
-		},
-		{
-			"WaitEndsWhereTheSlotsWereHeld",
-			RunRecord{Tier: 1, ScopeForm: "diff", WaitStart: start.Add(-300 * time.Second), SlotsHeld: start.Add(-100 * time.Second), Start: start},
-			"gate test: tier1 diff wait 200.0s discovered 0 passed 0 failed 0 skipped 0 wall 0.0s exit 0 log /runs/x.log",
-		},
-		{
-			"NoWaitStartWaitedNone",
-			RunRecord{Tier: 0, ScopeForm: "all", Carried: true, Start: start},
-			"gate test: tier0 all carried wait 0.0s discovered 0 passed 0 failed 0 skipped 0 wall 0.0s exit 0 log /runs/x.log",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			if got := TierSummaryLine(tt.record, "/runs/x.log"); got != tt.want {
-				t.Errorf("TierSummaryLine() = %q; want %q", got, tt.want)
 			}
 		})
 	}

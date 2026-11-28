@@ -13,7 +13,7 @@ import (
 	"io/fs"
 	"os"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
@@ -146,7 +146,7 @@ func ReadRecords(d Deps) (Records, error) {
 // It refuses while the files on disk differ from the newest Drift-Records commit;
 // a write would hide the difference, so only restoring them from that commit clears it.
 // A write interrupted before its commit leaves such a difference.
-func WriteRecords(d Deps, change func(scope *ScopeRecord, judged *JudgedRecord) error, extra ...fabriclayout.Trailer) error {
+func WriteRecords(d Deps, change func(scope *ScopeRecord, judged *JudgedRecord) error, extra ...fabricengine.Trailer) error {
 	if err := requireSeams("the records guard", seam{"CommitWithTrailers", d.CommitWithTrailers != nil}); err != nil {
 		return err
 	}
@@ -172,7 +172,7 @@ func WriteRecords(d Deps, change func(scope *ScopeRecord, judged *JudgedRecord) 
 	if err != nil {
 		return err
 	}
-	trailers := append([]fabriclayout.Trailer{{Key: RecordsTrailerKey, Value: digest}}, extra...)
+	trailers := append([]fabricengine.Trailer{{Key: RecordsTrailerKey, Value: digest}}, extra...)
 	if err := d.CommitWithTrailers([]string{durableRel(scopeFileName), durableRel(judgedFileName)}, trailers); err != nil {
 		return fmt.Errorf("drift: commit the records: %w", err)
 	}

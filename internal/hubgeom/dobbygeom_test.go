@@ -9,13 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
-	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -51,82 +48,14 @@ func standMove(t *testing.T, prime *lymcwd.Location, worktree string) string {
 	t.Helper()
 
 	records := fabricengine.RecordsWorktreePath(prime, worktree)
-	if err := os.MkdirAll(fabriclayout.RecordsLockDirPath(records), 0o755); err != nil {
+	if err := os.MkdirAll(fabricengine.RecordsLockDirPath(records), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	record := fabriclayout.MoveRecordPath(records)
+	record := fabricengine.MoveRecordPath(records)
 	if err := os.WriteFile(record, []byte(`{"a":".","b":"sub","kind":"move","pid":4242}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	return record
-}
-
-// TestBeamPair pins the owner a beam pair reads as and whether the registry reads it as another machine.
-// An owner recorded under a former name of this machine's registry entry reads here.
-// An unregistered machine reads no registered machine's current name as its own.
-// A beam with no owner of its own reads its parent's.
-func TestBeamPair(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	beamProject := func(owner string) boardengine.OwnerEntry {
-		return boardengine.OwnerEntry{IsProject: true, Beam: true, Owner: owner}
-	}
-	tests := []struct {
-		name          string
-		owners        boardengine.Owners
-		here          machinename.Identity
-		wantOwner     string
-		wantElsewhere bool
-	}{
-		{
-			name: "AnOwnerUnderAFormerNameOfThisMachinesEntryReadsHere",
-			owners: boardengine.Owners{
-				Entries:  map[string]boardengine.OwnerEntry{"b": beamProject("old-name")},
-				Registry: boardengine.Registry{"id1": {Name: "new-name", Former: []string{"old-name"}}},
-			},
-			here:      machinename.Identity{ID: "id1", Name: "new-name"},
-			wantOwner: "old-name",
-		},
-		{
-			name: "AnUnregisteredMachineReadsARegisteredMachinesCurrentNameElsewhere",
-			owners: boardengine.Owners{
-				Entries:  map[string]boardengine.OwnerEntry{"b": beamProject("other")},
-				Registry: boardengine.Registry{"id2": {Name: "other"}},
-			},
-			here:          machinename.Identity{Name: "other"},
-			wantOwner:     "other",
-			wantElsewhere: true,
-		},
-		{
-			name: "ABeamWithNoOwnerOfItsOwnReadsItsParentsOwner",
-			owners: boardengine.Owners{
-				Entries: map[string]boardengine.OwnerEntry{"b": beamProject(""), "p": beamProject("there")},
-			},
-			here:          machinename.Identity{Name: "here"},
-			wantOwner:     "there",
-			wantElsewhere: true,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			parentOf := func(slug string) (string, error) {
-				if slug == "b" {
-					return "p", nil
-				}
-				return "", nil
-			}
-			got, err := beamPair("b", tt.owners, tt.here, parentOf)
-			if err != nil {
-				t.Fatalf("beamPair() error = %v; want nil", err)
-			}
-			if got.Slug != "b" || got.Owner != tt.wantOwner || got.Elsewhere != tt.wantElsewhere {
-				t.Errorf("beamPair() = %+v; want slug b, owner %q, elsewhere %v", got, tt.wantOwner, tt.wantElsewhere)
-			}
-		})
-	}
 }
 
 // TestDobbyGeometry pins the paths each worktree's dobby uses and the move records that stop a dobby.
@@ -164,8 +93,8 @@ func TestDobbyGeometry(t *testing.T) {
 
 			root := filepath.Join(hub, tt.worktree)
 			beamDir := filepath.Join(root, tt.wantAnchor, lymdirs.DotLymDirName, lymdirs.BeamDirName)
-			if got.HubRoot != hub || got.BoardDir != fabriclayout.BoardDir(hub) || got.PrimeAnchor != prime.AnchorPath() {
-				t.Errorf("DobbyGeometry(%q) hub paths = %q, %q, %q; want %q, %q, %q", tt.worktree, got.HubRoot, got.BoardDir, got.PrimeAnchor, hub, fabriclayout.BoardDir(hub), prime.AnchorPath())
+			if got.HubRoot != hub || got.BoardDir != fabricengine.BoardDir(hub) || got.PrimeAnchor != prime.AnchorPath() {
+				t.Errorf("DobbyGeometry(%q) hub paths = %q, %q, %q; want %q, %q, %q", tt.worktree, got.HubRoot, got.BoardDir, got.PrimeAnchor, hub, fabricengine.BoardDir(hub), prime.AnchorPath())
 			}
 			if got.WorktreeRoot != root || got.WorktreeName != tt.worktree || got.Slug != tt.wantSlug {
 				t.Errorf("DobbyGeometry(%q) worktree = %q, %q, slug %q; want %q, %q, slug %q", tt.worktree, got.WorktreeRoot, got.WorktreeName, got.Slug, root, tt.worktree, tt.wantSlug)
@@ -187,7 +116,7 @@ func TestDobbyGeometry(t *testing.T) {
 					t.Fatalf("NamedWorktree(%q) = %v; want nil", tt.worktree, err)
 				}
 				paths := PawlPaths(beam)
-				for name, path := range map[string]string{"LandRequest": paths.LandRequest, "DobbyStopMarker": paths.DobbyStopMarker, "AwaitMarker": paths.AwaitMarker, "HandOffMarker": paths.HandOffMarker, "DrainMarker": paths.DrainMarker} {
+				for name, path := range map[string]string{"LandRequest": paths.LandRequest, "ReopenRequest": paths.ReopenRequest, "DobbyStopMarker": paths.DobbyStopMarker, "AwaitMarker": paths.AwaitMarker, "HandOffMarker": paths.HandOffMarker} {
 					if filepath.Dir(path) != beamDir {
 						t.Errorf("PawlPaths(%q).%s = %q; want it directly under the dobby's directory %q", tt.worktree, name, path, beamDir)
 					}
@@ -199,9 +128,9 @@ func TestDobbyGeometry(t *testing.T) {
 			if got.LymExecutable == "" || !filepath.IsAbs(got.LymExecutable) {
 				t.Errorf("DobbyGeometry(%q).LymExecutable = %q; want an absolute path", tt.worktree, got.LymExecutable)
 			}
-			wantRecords := []string{fabriclayout.MoveRecordPath(fabricengine.RecordsWorktreePath(prime, prime.WorktreeName))}
+			wantRecords := []string{fabricengine.MoveRecordPath(fabricengine.RecordsWorktreePath(prime, prime.WorktreeName))}
 			if tt.worktree != prime.WorktreeName {
-				wantRecords = append([]string{fabriclayout.MoveRecordPath(fabricengine.RecordsWorktreePath(prime, tt.worktree))}, wantRecords...)
+				wantRecords = append([]string{fabricengine.MoveRecordPath(fabricengine.RecordsWorktreePath(prime, tt.worktree))}, wantRecords...)
 			}
 			if !slices.Equal(got.MoveRecords, wantRecords) {
 				t.Errorf("DobbyGeometry(%q).MoveRecords = %v; want %v, the worktree's own record and then the prime's", tt.worktree, got.MoveRecords, wantRecords)

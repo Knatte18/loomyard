@@ -2,7 +2,6 @@ package shedadapters
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -136,38 +135,6 @@ func TestComputeRoundFacts_CountsAndRecurringKeys(t *testing.T) {
 	}
 }
 
-func TestWriteRoundFacts_HardenSection(t *testing.T) {
-	tiergate.Require(t, 0)
-	dir := t.TempDir()
-	writeFactsReview(t, dir, 1, factsFinding{burlerengine.SeverityLow, "scope"})
-
-	if err := writeRoundFacts("gate", dir, 1, reportName, false, "", nil); err != nil {
-		t.Fatalf("writeRoundFacts(nil section) = %v; want nil", err)
-	}
-	raw, err := os.ReadFile(factsPath(dir, 1))
-	if err != nil || strings.Contains(string(raw), "## Campaign facts") {
-		t.Errorf("facts file without a section = %q, %v; want no campaign heading", raw, err)
-	}
-
-	var gotRound int
-	section := func(round int) (string, error) {
-		gotRound = round
-		return "Reviewer model: opus\n", nil
-	}
-	if err := writeRoundFacts("gate", dir, 1, reportName, false, "", section); err != nil {
-		t.Fatalf("writeRoundFacts(section) = %v; want nil", err)
-	}
-	raw, err = os.ReadFile(factsPath(dir, 1))
-	if err != nil || !strings.HasSuffix(string(raw), "\n## Campaign facts\n\nReviewer model: opus\n") || gotRound != 1 {
-		t.Errorf("facts file with a section = %q, %v (section asked for round %d); want it rendered last under its heading", raw, err, gotRound)
-	}
-
-	failing := func(int) (string, error) { return "", errors.New("campaign state unreadable") }
-	if err := writeRoundFacts("gate", dir, 1, reportName, false, "", failing); err == nil || !strings.Contains(err.Error(), "campaign state unreadable") {
-		t.Errorf("writeRoundFacts(failing section) = %v; want an error carrying the section's", err)
-	}
-}
-
 func TestComputeRoundFacts_ClasslessReviewIsAParseErrorRow(t *testing.T) {
 	tiergate.Require(t, 0)
 	dir := t.TempDir()
@@ -182,7 +149,7 @@ func TestComputeRoundFacts_ClasslessReviewIsAParseErrorRow(t *testing.T) {
 		t.Errorf("round 2 row = %+v; want its counts rendered", facts.Rows[1])
 	}
 
-	if err := writeRoundFacts("gate", dir, 2, reportName, false, "", nil); err != nil {
+	if err := writeRoundFacts("gate", dir, 2, reportName, false, ""); err != nil {
 		t.Fatalf("writeRoundFacts = %v; want nil", err)
 	}
 	raw, err := os.ReadFile(factsPath(dir, 2))
@@ -266,7 +233,7 @@ func TestWriteRoundFacts_IsDeterministic(t *testing.T) {
 	writeFactsReview(t, dir, 2, factsFinding{burlerengine.SeverityLow, "scope"})
 	writeFactsLedger(t, dir, 1, "k:open:[1]", "j:open:[1]")
 
-	if err := writeRoundFacts("gate", dir, 2, reportName, false, "", nil); err != nil {
+	if err := writeRoundFacts("gate", dir, 2, reportName, false, ""); err != nil {
 		t.Fatalf("writeRoundFacts first = %v; want nil", err)
 	}
 	first, err := os.ReadFile(factsPath(dir, 2))
@@ -282,7 +249,7 @@ func TestWriteRoundFacts_IsDeterministic(t *testing.T) {
 	if round1 := string(renderRoundFacts(computeRoundFacts(dir, 1, reportName))); !strings.Contains(round1, "No ledger key was open in an earlier round.") {
 		t.Errorf("round 1 facts = %q; want the empty earlier-open line", round1)
 	}
-	if err := writeRoundFacts("gate", dir, 2, reportName, false, "", nil); err != nil {
+	if err := writeRoundFacts("gate", dir, 2, reportName, false, ""); err != nil {
 		t.Fatalf("writeRoundFacts second = %v; want nil", err)
 	}
 	second, err := os.ReadFile(factsPath(dir, 2))
@@ -344,7 +311,7 @@ prose
 `
 	writeFacts := func(t *testing.T, dir string) string {
 		t.Helper()
-		if err := writeRoundFacts("gate", dir, 2, reportName, true, "", nil); err != nil {
+		if err := writeRoundFacts("gate", dir, 2, reportName, true, ""); err != nil {
 			t.Fatalf("writeRoundFacts = %v; want nil", err)
 		}
 		raw, err := os.ReadFile(factsPath(dir, 2))
@@ -430,7 +397,7 @@ prose
 		t.Parallel()
 		dir := t.TempDir()
 		writeReview(t, dir)
-		if err := writeRoundFacts("gate", dir, 2, reportName, false, "the record carries no fans_recorded flag", nil); err != nil {
+		if err := writeRoundFacts("gate", dir, 2, reportName, false, "the record carries no fans_recorded flag"); err != nil {
 			t.Fatalf("writeRoundFacts = %v; want nil", err)
 		}
 		raw, err := os.ReadFile(factsPath(dir, 2))

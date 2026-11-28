@@ -5,8 +5,6 @@
 // Builders return plain values the caller mutates; there are no option structs.
 // A builder fails the test only on its own setup.
 // NilSeams reports and never asserts, so the CLI wiring tests and this kit's own test assert on its answer.
-// The session seams run a real session runner over real reed, whose tmux answers from a recording.
-// The liveness, registration and live-strand seams read that reed's strand table.
 //
 // `shedrecipe` and `landingshed` cannot import the kit without a cycle, so each keeps one local builder.
 package envkit
@@ -18,8 +16,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"regexp"
-	"strings"
 	"testing"
 	"time"
 
@@ -31,8 +27,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
-	"github.com/Knatte18/loomyard/internal/hardenshed"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
@@ -44,8 +38,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/pullrequest"
 	"github.com/Knatte18/loomyard/internal/raddleparser"
-	"github.com/Knatte18/loomyard/internal/reedengine"
-	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
@@ -54,7 +46,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
-	"github.com/Knatte18/loomyard/internal/testkit/tmuxrec"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 	"github.com/Knatte18/loomyard/internal/weaverengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -63,118 +54,101 @@ import (
 
 // nilLegal holds the dotted paths NilSeams skips: seams whose nil is a documented default rather than a missing wiring.
 var nilLegal = map[string]bool{
-	"Now":                          true,
-	"VerifyMergeBase":              true,
-	"ReviewBase":                   true,
-	"VerifyTreeScope":              true,
-	"VerifyBudget.Notify":          true,
-	"GateFixer":                    true,
-	"WebsterRecord":                true,
-	"PreflightBatcher":             true,
-	"PreflightStencils":            true,
-	"PreflightDrift":               true,
-	"PreflightHarden":              true,
-	"Pawl.Watch":                   true,
-	"Sampler.Watch":                true,
-	"NotifyParent":                 true,
-	"Landing.CommitStatus":         true,
-	"Landing.Reap":                 true,
-	"Landing.CommitParentRecords":  true,
-	"Landing.MergeState":           true,
-	"Landing.AbortMerge":           true,
-	"Landing.StopConflictSession":  true,
-	"Landing.MarkTaskDone":         true,
-	"Landing.RecordLanding":        true,
-	"Landing.RecordLandedSize":     true,
-	"Landing.ConfigChanges":        true,
-	"Landing.Notify":               true,
-	"Landing.Reconcile":            true,
-	"Landing.RemoveFollowUp":       true,
-	"Landing.ParentHoldsTaskWork":  true,
-	"Landing.ParentOwner":          true,
-	"Landing.AdoptSubject":         true,
-	"Landing.LandBlockers":         true,
-	"Landing.OwnedElsewhere":       true,
-	"Landing.HandOver":             true,
-	"Landing.LandLocally":          true,
-	"Landing.ParentAheadByOwed":    true,
-	"Landing.ParentPushState":      true,
-	"Landing.RemoveLeftovers":      true,
-	"InnerRun.OwnerCheck":          true,
-	"InnerRun.ParentHoldsTaskWork": true,
-	"InnerRun.Restepped":           true,
-	"InnerRun.HandBack":            true,
-	"Landing.VerifyCommand":        true,
-	"Landing.VerifyWaitMark":       true,
-	"Landing.FailingTests":         true,
-	"Landing.TraceFailure":         true,
-	"Landing.Registry":             true,
-	"Landing.Config.CreditEngines": true,
-	"WebsterDeps.Batcher":          true,
-	"WebsterDeps.Roles":            true,
-	"WebsterDeps.ParentBranch":     true,
-	"WebsterDeps.InstructionFiles": true,
-	"WebsterDeps.Geom.Git":         true,
-	"WebsterDeps.Geom.GateSlots":   true,
-	"WebsterDeps.Geom.GateConfig":  true,
-	"WeaverDeps.Batcher":           true,
-	"WeaverDeps.Verify":            true,
-	"WeaverDeps.Clock":             true,
-	"WeaverDeps.ParentBranch":      true,
-	"WeaverDeps.Geom.Git":          true,
-	"WeaverDeps.Geom.GateSlots":    true,
-	"WeaverDeps.Geom.GateConfig":   true,
-	"InnerRun.Now":                 true,
-	"InnerRun.Awake":               true,
-	"InnerRun.Pause":               true,
-	"InnerRun.Notify":              true,
-	"InnerRun.PairDir":             true,
-	"InnerRun.ChildDriverLockHeld": true,
-	"InnerRun.TacklerInFlight":     true,
-	"InnerRun.ArbiterStop":         true,
-	"InnerRun.ChildBuildChanged":   true,
-	"InnerRun.ChildDirtyPaths":     true,
-	"Land.Sleep":                   true,
-	"Land.Now":                     true,
-	"Land.LandLock.Sleep":          true,
-	"Land.Notices.Notify":          true,
-	"Land.Notices.Sleep":           true,
-	"PrimeLock.Sleep":              true,
-	"SegmentBounces":               true,
-	"Segments":                     true,
-	"Setting":                      true,
-	"Command.Setting":              true,
-	"Command.ExecutableSetting":    true,
-	"Drift.ReviewBase":             true,
-	"Drift.Seats":                  true,
-	"Drift.Now":                    true,
-	"DocumentSubject":              true,
-	"CodeSubject":                  true,
-	"CodeDiff":                     true,
-	"MergeInOnly":                  true,
-	"RecordHead":                   true,
-	"ReviewInputs":                 true,
-	"Harden":                       true,
-	"Teardown.Push":                true,
-	"Teardown.Level":               true,
+	"Now":                              true,
+	"VerifyMergeBase":                  true,
+	"ReviewBase":                       true,
+	"RedundancyReport":                 true,
+	"VerifyTreeScope":                  true,
+	"VerifyBudget.Notify":              true,
+	"GateFixer":                        true,
+	"WebsterRecord":                    true,
+	"PreflightBatcher":                 true,
+	"PreflightStencils":                true,
+	"PreflightDrift":                   true,
+	"Pawl.Watch":                       true,
+	"Sampler.Watch":                    true,
+	"NotifyParent":                     true,
+	"Landing.CommitStatus":             true,
+	"Landing.CommitParentRecords":      true,
+	"Landing.MergeState":               true,
+	"Landing.AbortMerge":               true,
+	"Landing.StopConflictSession":      true,
+	"Landing.MarkTaskDone":             true,
+	"Landing.RecordLanding":            true,
+	"Landing.RecordLandedSize":         true,
+	"Landing.ConfigChanges":            true,
+	"Landing.Notify":                   true,
+	"Landing.Reconcile":                true,
+	"Landing.RemoveFollowUp":           true,
+	"Landing.ParentHoldsTaskWork":      true,
+	"Landing.ParentOwner":              true,
+	"Landing.AdoptSubject":             true,
+	"Landing.LandBlockers":             true,
+	"Landing.OriginParentHoldsWork":    true,
+	"Landing.ParentCommitsOriginLacks": true,
+	"InnerRun.OwnerCheck":              true,
+	"InnerRun.PauseOwned":              true,
+	"InnerRun.ParentHoldsTaskWork":     true,
+	"InnerRun.Restepped":               true,
+	"InnerRun.HandBack":                true,
+	"Landing.VerifyCommand":            true,
+	"Landing.VerifyWaitMark":           true,
+	"Landing.FailingTests":             true,
+	"Landing.TraceFailure":             true,
+	"Landing.Registry":                 true,
+	"Landing.Config.CreditEngines":     true,
+	"WebsterDeps.Batcher":              true,
+	"WebsterDeps.Roles":                true,
+	"WebsterDeps.ParentBranch":         true,
+	"WebsterDeps.InstructionFiles":     true,
+	"WebsterDeps.Geom.Git":             true,
+	"WebsterDeps.Geom.GateSlots":       true,
+	"WebsterDeps.Geom.GateConfig":      true,
+	"WeaverDeps.Batcher":               true,
+	"WeaverDeps.Verify":                true,
+	"WeaverDeps.Clock":                 true,
+	"WeaverDeps.ParentBranch":          true,
+	"WeaverDeps.Geom.Git":              true,
+	"WeaverDeps.Geom.GateSlots":        true,
+	"WeaverDeps.Geom.GateConfig":       true,
+	"InnerRun.Now":                     true,
+	"InnerRun.Awake":                   true,
+	"InnerRun.Pause":                   true,
+	"InnerRun.Notify":                  true,
+	"InnerRun.PairDir":                 true,
+	"InnerRun.ChildDriverLockHeld":     true,
+	"InnerRun.TacklerInFlight":         true,
+	"InnerRun.ArbiterStop":             true,
+	"InnerRun.ChildBuildChanged":       true,
+	"InnerRun.ChildDirtyPaths":         true,
+	"Land.Sleep":                       true,
+	"Land.Now":                         true,
+	"Land.LandLock.Sleep":              true,
+	"Land.Notices.Notify":              true,
+	"Land.Notices.Sleep":               true,
+	"PrimeLock.Sleep":                  true,
+	"SegmentBounces":                   true,
+	"Segments":                         true,
+	"Setting":                          true,
+	"Command.Setting":                  true,
+	"Command.ExecutableSetting":        true,
+	"Drift.Seats":                      true,
+	"Drift.Now":                        true,
+	"DocumentSubject":                  true,
+	"CodeSubject":                      true,
+	"MergeInOnly":                      true,
+	"RecordHead":                       true,
+	"ReviewInput":                      true,
 }
 
-// sessionRecording names the recorded tmux the kit's sessions replay.
-const sessionRecording = "session-start-stop"
+// noopSamplerSessions is a loomshed.SamplerSessions that starts and stops nothing.
+type noopSamplerSessions struct{}
 
-// replayedSessions returns a session runner over real reed whose tmux answers from the kit's recording.
-// It also returns the liveness, pane-registration and live-strand-name seams over that reed's strand table;
-// a registration writes under dir.
-func replayedSessions(t testing.TB, dir string) (runner *shuttleengine.Runner, live func(guid string) (bool, error), register func(guid string) error, liveNames func() ([]string, error)) {
-	t.Helper()
-	session := tmuxrec.IdleSession(t, sessionRecording)
-	status := session.Reed.Status
-	registerDir := filepath.Join(dir, "runproc")
-	register = reedengine.SessionRegistrar(status, func(pid int) error {
-		return runproc.Register(registerDir, "fixture", runproc.ChildRecord(pid, runproc.RoleSession, nil))
-	})
-	return session.Runner, reedengine.SessionLiveness(status), register, reedengine.LiveStrandNames(status)
+func (noopSamplerSessions) StartSession(shuttleengine.Spec) (shuttleengine.OpenResult, error) {
+	return shuttleengine.OpenResult{}, nil
 }
+
+func (noopSamplerSessions) StopStrand(string) error { return nil }
 
 // noFindingsIndex is a planindex.Index that answers no findings,
 // so the packages built on the kit do not link the resolve-backed index.
@@ -202,14 +176,23 @@ func (noopFixerSeats) Run(seatengine.Table) (seatengine.Result, error) {
 	return seatengine.Result{}, nil
 }
 
+// noopSessions is a session runner that starts nothing and stops nothing.
+// The fixture's landing takes the local path and opens no session, so the runner is never reached.
+type noopSessions struct{}
+
+func (noopSessions) StartSession(shuttleengine.Spec) (shuttleengine.OpenResult, error) {
+	return shuttleengine.OpenResult{}, errors.New("envkit: the fixture's landing starts no session")
+}
+
+func (noopSessions) StopStrand(string) error { return nil }
+
+func (noopSessions) EngineName(choice shuttleengine.ModelChoice) string { return choice.Engine }
+
 // LandingDeps returns a `landingshed.Deps` with every field the landing constructors require.
-// The fields hold fixed values derived from dir, and the PR-Review session seams run over a replayed reed.
-func LandingDeps(t testing.TB, dir string) landingshed.Deps {
-	t.Helper()
-	sessions, sessionLive, registerSession, _ := replayedSessions(t, dir)
+// The fields hold fixed values derived from dir.
+func LandingDeps(dir string) landingshed.Deps {
 	return landingshed.Deps{
 		GateKey:          "parent-align",
-		Reap:             func() error { return nil },
 		WorktreeRoot:     dir,
 		TaskBranch:       "task-branch",
 		ParentBranch:     "fixture-parent",
@@ -233,8 +216,8 @@ func LandingDeps(t testing.TB, dir string) landingshed.Deps {
 			WaitPath:       parentlock.WaitRecordPath(filepath.Join(dir, "landing-scratch")),
 			PauseRequested: func() (bool, error) { return false, nil },
 		},
-		ReadParentTips: func(bool) (fabriclayout.ParentTips, error) {
-			return fabriclayout.ParentTips{Local: "tip", Upstream: "tip", Relation: fabriclayout.ParentEqual}, nil
+		ReadParentTips: func(bool) (fabricengine.ParentTips, error) {
+			return fabricengine.ParentTips{Local: "tip", Upstream: "tip", Relation: fabricengine.ParentEqual}, nil
 		},
 		HoldsWork:          func(string, string) (bool, error) { return false, nil },
 		ChangedPaths:       func(string, string) ([]string, error) { return nil, nil },
@@ -243,38 +226,40 @@ func LandingDeps(t testing.TB, dir string) landingshed.Deps {
 		FixerSeats:         noopFixerSeats{},
 		DecisionRecordPath: filepath.Join(dir, "decision-record.md"),
 		PlanDir:            filepath.Join(dir, "plan"),
-		LineChange:         func(string, string) (fabriclayout.LineChange, error) { return fabriclayout.LineChange{}, nil },
+		LineChange:         func(string, string) (fabricengine.LineChange, error) { return fabricengine.LineChange{}, nil },
 		IsTestFile:         func(string) bool { return false },
 		RowEntry:           func(string) (int, error) { return 1, nil },
 		TaskRemoteTip:      func() (string, error) { return "", nil },
-		IsAncestor:         func(string, string) (bool, error) { return false, nil },
 		CodeReviewOff:      func() (bool, error) { return false, nil },
-		// Mode answers off and Origin is empty, so a landing through this deps takes the local path and calls no GitHub.
+		// ParentMode answers off and Origin is empty, so a landing through this deps takes the local path and calls no GitHub.
 		PullRequest: landingshed.PullRequestDeps{
 			RecordPath:     filepath.Join(dir, "landing-scratch", "pull-request.json"),
 			RecordLockPath: filepath.Join(dir, "landing-scratch", "pull-request.lock"),
 			CommitRecord:   func() error { return nil },
-			Mode:           func() (string, error) { return "off", nil },
+			ParentMode:     func() (string, string, error) { return "off", "fixture-parent", nil },
+			EntryField:     func() (string, error) { return "", nil },
 			Origin:         func() (landingshed.Origin, error) { return landingshed.Origin{}, nil },
 			API: func(string) (pullrequest.API, error) {
 				return nil, errors.New("envkit: the fixture's landing reaches no GitHub")
 			},
-			PushTask:       func() error { return nil },
-			CommitsMissing: func(string, string) ([]string, error) { return nil, nil },
-			TaskHasCommits: func() (bool, error) { return true, nil },
-			DirtyPaths:     func() ([]string, error) { return nil, nil },
-			PauseCovered:   func() (bool, error) { return false, nil },
-			Now:            time.Now,
-			Sleep:          func(context.Context, time.Duration) error { return nil },
-			RecordChanges:  func() (<-chan struct{}, func()) { return nil, func() {} },
+			PushTask:           func() error { return nil },
+			CommitsMissing:     func(string, string) ([]string, error) { return nil, nil },
+			TaskHasCommits:     func() (bool, error) { return true, nil },
+			DirtyPaths:         func() ([]string, error) { return nil, nil },
+			MailAgent:          func(string, string) error { return nil },
+			ParentReviewWanted: func() (bool, error) { return false, nil },
+			AskParent:          func(string) (bool, error) { return false, nil },
+			PauseCovered:       func() (bool, error) { return false, nil },
+			Now:                time.Now,
+			Sleep:              func(context.Context, time.Duration) error { return nil },
+			RecordChanges:      func() (<-chan struct{}, func()) { return nil, func() {} },
+			Sessions:           noopSessions{},
+			SessionLive:        func(string) (bool, error) { return false, nil },
+			RegisterSession:    func(string) error { return nil },
 			BeamRecord: func() (landingshed.BeamPullRequest, bool, error) {
 				return landingshed.BeamPullRequest{}, false, nil
 			},
-			DropBeamRecord:  func() error { return nil },
-			MailAgent:       func(string, string) error { return nil },
-			Sessions:        sessions,
-			SessionLive:     sessionLive,
-			RegisterSession: registerSession,
+			DropBeamRecord: func() error { return nil },
 		},
 	}
 }
@@ -293,7 +278,7 @@ func ReworkDeps(t testing.TB, dir string) loomshed.PRReworkDeps {
 	}
 }
 
-// TemplateSetting answers any registered config module's dotted key path from the module's embedded template.
+// TemplateSetting answers any registered config module's key from the module's embedded template.
 // It errors naming the module when it is unregistered, and naming the key when the template lacks it.
 // A recipe that names a new setting key needs no kit change.
 func TemplateSetting(module, key string) (any, error) {
@@ -305,13 +290,9 @@ func TemplateSetting(module, key string) (any, error) {
 	if err := yaml.Unmarshal([]byte(registered.Template()), &template); err != nil {
 		return nil, fmt.Errorf("envkit: decode %s template: %w", module, err)
 	}
-	var value any = template
-	for _, step := range strings.Split(key, ".") {
-		mapping, _ := value.(map[string]any)
-		held := false
-		if value, held = mapping[step]; !held {
-			return nil, fmt.Errorf("envkit: key %q is not in the %s template", key, module)
-		}
+	value, ok := template[key]
+	if !ok {
+		return nil, fmt.Errorf("envkit: key %q is not in the %s template", key, module)
 	}
 	return value, nil
 }
@@ -413,7 +394,6 @@ func raddleFileDeps(dir string) loomshed.RaddleFileDeps {
 func FullEnv(t testing.TB) shedrecipe.Env {
 	t.Helper()
 	dir := t.TempDir()
-	samplerSessions, samplerLive, samplerRegister, liveStrands := replayedSessions(t, filepath.Join(dir, "sampler"))
 	return shedrecipe.Env{
 		Cwd:                mustMkdir(t, filepath.Join(dir, "cwd")),
 		AnchorPath:         mustMkdir(t, filepath.Join(dir, "anchor")),
@@ -423,25 +403,19 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		VerifyCommand:      func(string) (string, error) { return "go test ./...", nil },
 		VerifyTreeScope:    func(string) (string, bool, error) { return "", false, nil },
 		VerifyHold:         verifytree.NewPauseHold(pauserecord.Geometry{}, nil),
-		EntryLabels:        func() ([]string, error) { return nil, nil },
-		RedFirstCommand:    func(key string) string { return "lym gate red-first --gate " + key },
 		StatusPath:         filepath.Join(dir, "status.json"),
 		StatusLockPath:     filepath.Join(dir, "status.json.lock"),
-		PreflightHarden:    func() error { return nil },
 		StencilsDir:        mustMkdir(t, filepath.Join(dir, "stencils")),
 		SpecsDir:           mustMkdir(t, filepath.Join(dir, "specs")),
 		RunRoot:            mustMkdir(t, filepath.Join(dir, "run-root")),
 		RunScratchDir:      mustMkdir(t, filepath.Join(dir, "run-scratch")),
 		GateFindingsFile:   func(row string) string { return filepath.Join(dir, "gate-findings", row+".md") },
 		DecisionRecordPath: filepath.Join(dir, "decision-record.md"),
-		AmendmentPath:      filepath.Join(dir, "plan-amendment.yaml"),
-		HaltConflictDir:    mustMkdir(t, filepath.Join(dir, "halt-conflict")),
 		PatternRecordPath:  filepath.Join(dir, "decision-record.md"),
 		RefuseRaw:          []string{"go test"},
 		SupportLogPath:     filepath.Join(dir, "support-log.md"),
 		RelevantPath:       filepath.Join(dir, "relevant.md"),
 		DescriptionPath:    filepath.Join(dir, "description.md"),
-		DescriptionTerms:   func() ([]*regexp.Regexp, error) { return nil, nil },
 		Shuttle:            &shedfake.Shuttle{},
 		Burler:             &shedfake.BurlerHalfRunner{},
 		Seats:              &shedfake.SeatRunner{},
@@ -455,7 +429,6 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			"Plan-Review":       fullEnvSegment(3, "loom.yaml"),
 			"Code-Review":       fullEnvSegment(3, "loom.yaml"),
 			"Raddle-Review":     fullEnvSegment(3, "loom.yaml"),
-			"Harden-Review":     fullEnvSegment(3, "hardener.yaml"),
 		},
 		WebsterRun: func(websterengine.RunDeps, websterengine.RunOptions) (websterengine.RunResult, error) {
 			return websterengine.RunResult{}, nil
@@ -471,9 +444,9 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			Setting:      func() (string, error) { return "webster", nil },
 			StateHistory: func() ([]weaverengine.StateVersion, error) { return nil, nil },
 			TaskHead:     func() (string, error) { return "task-head", nil },
-			LiveStrands:  liveStrands,
+			LiveStrands:  func() ([]string, error) { return nil, nil },
 		},
-		Landing: LandingDeps(t, mustMkdir(t, filepath.Join(dir, "landing"))),
+		Landing: LandingDeps(mustMkdir(t, filepath.Join(dir, "landing"))),
 		DiscussionTable: func() (seatengine.Table, error) {
 			return seatengine.Table{
 				RolePrefix: "discussion",
@@ -503,11 +476,12 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			RunID: "run-1",
 			Paths: pawlengine.Paths{
 				LandRequest:     filepath.Join(dir, "land-request.json"),
+				ReopenRequest:   filepath.Join(dir, "reopen-request.json"),
 				DobbyStopMarker: filepath.Join(dir, "dobby-stop"),
 				AwaitMarker:     filepath.Join(dir, "await-entered"),
 				HandOffMarker:   filepath.Join(dir, pawlengine.HandOffMarkerName),
-				DrainMarker:     filepath.Join(dir, pawlengine.DrainMarkerName),
 			},
+			RetiredRows:         []string{"Parent-Align"},
 			SetStatus:           func(string) error { return nil },
 			EntryProducer:       func() (string, error) { return "", nil },
 			OwnedElsewhere:      func() (bool, error) { return false, nil },
@@ -523,9 +497,6 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			ReadyStands:         func() (bool, error) { return false, nil },
 			StampWake:           func(time.Time) error { return nil },
 			Notify:              func(string) (bool, error) { return true, nil },
-			Autonomous:          func() bool { return false },
-			HoldsCommits:        func() (bool, error) { return false, nil },
-			WorkRemains:         func() (bool, error) { return false, nil },
 			Down:                func() error { return nil },
 			Now:                 time.Now,
 			Sleep:               func(context.Context, time.Duration) error { return nil },
@@ -574,13 +545,10 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		CodeSubject: func() (shedadapters.Subject, bool, error) {
 			return shedadapters.Subject{Kind: shedadapters.SubjectCode, MergeBase: "merge-base", Head: "head", FullHash: "full-hash", PatchID: "patch-id"}, true, nil
 		},
-		CodeDiff:           func() (string, error) { return "", nil },
 		MergeInOnly:        func(string) (bool, error) { return false, nil },
 		RecordHead:         func() (string, error) { return "record-head", nil },
-		ReviewInputs:       func() ([]shedadapters.ReviewInput, error) { return nil, nil },
+		ReviewInput:        func() (string, time.Time, bool, error) { return "", time.Time{}, false, nil },
 		ReviewBase:         func() (string, error) { return "review-base", nil },
-		ReviewTreeID:       func() (string, error) { return "review-tree", nil },
-		ReviewTreeChanges:  func(string, string) ([]string, error) { return nil, nil },
 		ReflectFriction:    func() string { return "skipped" },
 		Rework:             ReworkDeps(t, dir),
 		DarnVerifyAttempts: 3,
@@ -601,8 +569,6 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			CommittedRecord: func() (bool, error) { return false, nil },
 			Commit:          func() error { return nil },
 			LatestOutcome:   func() (loomshed.DarnOutcome, bool, error) { return loomshed.DarnOutcome{}, false, nil },
-			BranchCommits:   func() ([]string, error) { return nil, nil },
-			ScratchDir:      filepath.Join(dir, "darn-scratch"),
 			CheckRecord:     func() ([]discussionparser.Finding, error) { return nil, nil },
 
 			ConditionStopMarkerPath: filepath.Join(dir, "condition-stop-marker"),
@@ -611,9 +577,9 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			RecordPath:      filepath.Join(dir, "sampler", "sampler.json"),
 			RecordLockPath:  filepath.Join(dir, "sampler", "sampler.json.lock"),
 			Spec:            func() (shuttleengine.Spec, error) { return shuttleengine.Spec{}, nil },
-			Sessions:        samplerSessions,
-			SessionLive:     samplerLive,
-			RegisterSession: samplerRegister,
+			Sessions:        noopSamplerSessions{},
+			SessionLive:     func(string) (bool, error) { return false, nil },
+			RegisterSession: func(string) error { return nil },
 			Stamp:           func() (int, error) { return 1, nil },
 			DirtyPaths:      func() ([]string, error) { return nil, nil },
 			CheckRecord:     func() ([]discussionparser.Finding, error) { return nil, nil },
@@ -632,7 +598,6 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		},
 		RaddleWrite: raddleWriteEnv(dir),
 		RaddleFile:  raddleFileDeps(dir),
-		Harden:      hardenCampaign(dir),
 
 		Drift:     driftDeps(mustMkdir(t, filepath.Join(dir, "drift"))),
 		PlanIndex: noFindingsIndex{},
@@ -729,27 +694,6 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 	}
 }
 
-// hardenCampaign returns a hardener campaign over dir whose seams are no-ops.
-// Its live runs pass and its reaps find nothing.
-func hardenCampaign(dir string) *hardenshed.Campaign {
-	return &hardenshed.Campaign{
-		Config: hardenshed.Config{
-			Packages: []string{"pkg"}, Reviewer: []string{"opus"}, Fixer: []string{"opus"},
-			Concurrency: 1, LiveAttempts: 3, VerifyAttempts: 3,
-		},
-		WorktreeRoot: filepath.Join(dir, "worktree"),
-		AnchorPath:   filepath.Join(dir, "worktree"),
-		RunDir:       filepath.Join(dir, "run-root", "harden"),
-		RunLive: func(string, int, []string) (hardenshed.LiveRun, error) {
-			return hardenshed.LiveRun{Passed: true}, nil
-		},
-		Reap:    func(string, hardenshed.ReapPoint) ([]hardenshed.StrayEntry, error) { return nil, nil },
-		Head:    func() (string, error) { return "head", nil },
-		Commits: func(string) ([]string, error) { return nil, nil },
-		Commit:  func([]string, string) error { return nil },
-	}
-}
-
 // driftDeps returns the drift engine's seams over root, with no-op seams.
 // It leaves the seat runner and the clock unset for the registry entries to fill from the Env.
 func driftDeps(root string) driftengine.Deps {
@@ -764,19 +708,14 @@ func driftDeps(root string) driftengine.Deps {
 		BranchPoint:  func() (string, error) { return "branch-point", nil },
 		DirtyPaths:   func() ([]string, error) { return nil, nil },
 		Commit:       func([]string) error { return nil },
-		CommitWithTrailers: func([]string, []fabriclayout.Trailer) error {
+		CommitWithTrailers: func([]string, []fabricengine.Trailer) error {
 			return nil
 		},
-		TrailerCommit: func(string, bool) (fabriclayout.TrailerCommit, bool, error) {
-			return fabriclayout.TrailerCommit{}, false, nil
+		TrailerCommit: func(string, bool) (fabricengine.TrailerCommit, bool, error) {
+			return fabricengine.TrailerCommit{}, false, nil
 		},
 		FileAt:       func(string, string) ([]byte, bool, error) { return nil, false, nil },
 		CommitsSince: func(string) ([]string, error) { return nil, nil },
-		ChangedFiles: func(string) ([]fabriclayout.FileDiff, error) { return nil, nil },
-		RangeDiff:    func(string) (string, error) { return "", nil },
-		CommitMessages: func(string) ([]string, error) {
-			return nil, nil
-		},
 		ExpectTable:  func(string) (seatengine.Table, error) { return table() },
 		StartCapture: func() error { return nil },
 		RunCapture: func(context.Context) (driftengine.CaptureRecord, error) {
@@ -790,17 +729,12 @@ func driftDeps(root string) driftengine.Deps {
 			return driftengine.CompareResult{Passed: true}, nil
 		},
 		JudgeTable: func(string) (seatengine.Table, error) { return table() },
-		Checkouts: func() (fabriclayout.CheckoutState, fabriclayout.CheckoutState, error) {
-			return fabriclayout.CheckoutState{}, fabriclayout.CheckoutState{}, nil
+		Checkouts: func() (fabricengine.CheckoutState, fabricengine.CheckoutState, error) {
+			return fabricengine.CheckoutState{}, fabricengine.CheckoutState{}, nil
 		},
 		RecordsChangedSince: func(string) ([]string, error) { return nil, nil },
-		LockDecisionRecord: func() (func() error, error) {
-			return func() error { return nil }, nil
-		},
-		ReplacedDecisionRecord: func(string) ([]byte, bool, error) { return nil, false, nil },
-		EndRoles:               func([]string) error { return nil },
-		JudgeSnapshotDir:       filepath.Join(root, "judge-snapshot"),
-		JudgeParent:            &driftengine.JudgeParentSeat{},
+		EndRoles:            func([]string) error { return nil },
+		JudgeSnapshotDir:    filepath.Join(root, "judge-snapshot"),
 	}
 }
 
@@ -824,11 +758,11 @@ func darnRowNames() []string {
 }
 
 // fullEnvSegment returns a review segment's settings with empty models and the given bounce budget.
-// MaxBouncesKey names loom.review.max_bounces in configFile.
+// MaxBouncesKey names review_max_bounces in configFile.
 func fullEnvSegment(maxBounces int, configFile string) shedrecipe.SegmentSettings {
 	return shedrecipe.SegmentSettings{
 		MaxBounces:      maxBounces,
-		MaxBouncesKey:   "review.max_bounces",
+		MaxBouncesKey:   "review_max_bounces",
 		ConfigFile:      configFile,
 		AmendMaxBounces: 1,
 	}

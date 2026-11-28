@@ -3,8 +3,7 @@
 // The parent is the one recorded in the pair's origin record.
 // Otherwise the branch is kept with a reason.
 //
-// Every hub is built through hubforge.NewHub with an empty fabric.branch_prefix,
-// so the pair's warp branch is the bare slug.
+// Every hub is built through hubforge.NewHub with an empty branch_prefix, so the pair's warp branch is the bare slug.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
@@ -49,7 +48,7 @@ func TestRemove_UnlandedWarpBranchIsKept(t *testing.T) {
 			}
 			warpBranchCommit(t, l, slug, "work.txt")
 
-			res, err := topology.Remove(l, slug, force, false, "")
+			res, err := topology.Remove(l, slug, force, false)
 			if err != nil {
 				t.Fatalf("Remove(%q, force=%v) error = %v; a kept branch is not a failure", slug, force, err)
 			}

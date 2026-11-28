@@ -49,12 +49,6 @@ func (p pwshShell) ExportEnv(key, value string) string {
 	return "$env:" + key + " = " + p.Quote(value)
 }
 
-// UnsetEnv returns the pwsh `Remove-Item -ErrorAction SilentlyContinue Env:key` statement.
-// The statement is no error when key is absent.
-func (p pwshShell) UnsetEnv(key string) string {
-	return "Remove-Item -ErrorAction SilentlyContinue Env:" + key
-}
-
 // PrependPathEntry returns a pwsh `$env:PATH = <quoted dir> + $(if ($env:PATH) { ... })`
 // statement.
 // The `if` has no `else`, so the subexpression yields nothing when $env:PATH is empty or unset

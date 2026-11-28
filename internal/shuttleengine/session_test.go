@@ -305,10 +305,6 @@ func TestRunner_SessionIdle_ReturnsScriptedClassification(t *testing.T) {
 		seeded string
 		// styled gives the engine the styled box read, which blanks a capture's ~…~ spans.
 		styled bool
-		// styledLosesBox gives the engine a styled box read that loses the box the plain capture shows.
-		styledLosesBox bool
-		// plainFails fails every capture after the first, which for a box-losing styled read is the plain one.
-		plainFails bool
 		// guarded runs the row on guardedReadinessEngine, which adds the running-turn check Claude's pane probe uses.
 		guarded     bool
 		outstanding []BackgroundTask
@@ -357,14 +353,6 @@ func TestRunner_SessionIdle_ReturnsScriptedClassification(t *testing.T) {
 			probes: []probe{{capture: idleFrame, want: IdleProbe{Idle: true, NoTurn: true}}},
 		},
 		{name: "a pane with no readable box is held for an engine that reads one", probes: []probe{{events: turnEnded, capture: "no box here", want: atEnd(IdleProbe{Reason: readinessReasonNoInputBox, NoInputBox: true}), wantReason: "no input box"}}},
-		{
-			name:           "a styled capture that loses the box reads the plain capture's box",
-			styledLosesBox: true,
-			probes:         []probe{{events: turnEnded, capture: idleFrame, want: idleAtEnd}},
-			wantLog:        "the styled capture showed no input box where the plain capture shows one",
-		},
-		{name: "a styled capture and a plain one that both show no box are held", styledLosesBox: true, probes: []probe{{events: turnEnded, capture: "no box here", want: atEnd(IdleProbe{Reason: readinessReasonNoInputBox, NoInputBox: true}), wantReason: "no input box"}}},
-		{name: "a failed plain capture keeps the styled reading", styledLosesBox: true, plainFails: true, probes: []probe{{events: turnEnded, capture: idleFrame, want: atEnd(IdleProbe{Reason: readinessReasonNoInputBox, NoInputBox: true}), wantReason: "no input box"}}},
 		{name: "an active operator is held with the activity reason", probes: []probe{{events: turnEnded, capture: idleFrame, active: true, want: atEnd(IdleProbe{Reason: "the operator typed in this pane within the last 5 s"}), wantReason: "operator typed"}}},
 		{
 			name: "a turn start with no turn end is held, then released by a later turn end",
@@ -402,9 +390,6 @@ func TestRunner_SessionIdle_ReturnsScriptedClassification(t *testing.T) {
 			logger.SetVerbosity(2)
 			clock := newFakeClock(time.Date(2026, 10, 8, 8, 0, 0, 0, time.UTC))
 			reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
-			if tt.plainFails {
-				reed.CaptureErrQueue = []error{nil, errors.New("pane gone")}
-			}
 			engine := &readinessEngine{tooShort: tt.tooShort}
 			engine.StartupScript = []StartupState{StartupReady}
 			engine.liveness = LivenessAlive
@@ -421,9 +406,6 @@ func TestRunner_SessionIdle_ReturnsScriptedClassification(t *testing.T) {
 			}
 			if tt.styled {
 				probed = &styledReadinessEngine{readinessEngine: engine}
-			}
-			if tt.styledLosesBox {
-				probed = &boxLosingStyledEngine{readinessEngine: engine}
 			}
 			fx := newFixture(t, reed, probed, withStrand("strand-1"), withClock(clock))
 			runDir := filepath.Dir(fx.EventsPath)
@@ -634,8 +616,6 @@ const (
 	parserlessPasteShape
 	// clearlessPasteShape hides the input-box clear.
 	clearlessPasteShape
-	// remoteControlReadingShape adds a scripted record of remote-control connections, which starts empty.
-	remoteControlReadingShape
 )
 
 // newSlashPasteRunner returns a runner over a live strand "strand-1" on a paste-path engine.
@@ -669,8 +649,6 @@ func newSlashPasteRunnerAppending(t *testing.T, box string, active, noColor bool
 		engine = parserlessPasteEngine{Engine: slash, TextPaster: slash, InputBoxReader: slash, InputBoxClearer: slash, SessionCycler: slash, RemoteController: slash}
 	case clearlessPasteShape:
 		engine = clearlessPasteEngine{Engine: slash, TextPaster: slash, InputBoxReader: slash, SessionCycler: slash, RemoteController: slash}
-	case remoteControlReadingShape:
-		engine = &remoteControlPasteEngine{slashPasteEngine: slash, remoteControlRecord: &remoteControlRecord{}}
 	}
 	cfg := Config{SubmitSettleMS: 100, SubmitConfirmTimeoutS: 30, SendReadyTimeoutS: 60}
 	fx := newFixture(t, appending, engine, withConfig(cfg), withStrand("strand-1"), withClock(clock))
@@ -968,16 +946,13 @@ func TestRunner_TurnOnRemoteControl_PastesTheNamedCommandThroughTheGuardedSend(t
 	t.Parallel()
 
 	const name = "neve::tst:orch"
-	checkPastedSessionCommand(t, "/remote-control "+name, func(r *Runner) error {
-		_, err := r.TurnOnRemoteControl("strand-1", name)
-		return err
-	})
+	checkPastedSessionCommand(t, "/remote-control "+name, func(r *Runner) error { return r.TurnOnRemoteControl("strand-1", name) })
 
 	t.Run("a name spanning several lines is refused and nothing is typed", func(t *testing.T) {
 		t.Parallel()
 		for _, multiLine := range []string{"a\nb", "a\r\nb"} {
 			runner, reed, _ := newSlashPasteRunner(t, "", false, false)
-			if _, err := runner.TurnOnRemoteControl("strand-1", multiLine); err == nil {
+			if err := runner.TurnOnRemoteControl("strand-1", multiLine); err == nil {
 				t.Errorf("TurnOnRemoteControl(%q) = nil error", multiLine)
 			}
 			if len(reed.PasteSubmitCalls) != 0 || len(sentCalls(reed)) != 0 {
@@ -990,8 +965,8 @@ func TestRunner_TurnOnRemoteControl_PastesTheNamedCommandThroughTheGuardedSend(t
 		t.Parallel()
 		reed := &fakeReed{StatusQueue: liveStrandStatus(true), CaptureQueue: []string{"IDLE"}}
 		runner := newFixture(t, reed, readyCyclerEngine(), withStrand("strand-1")).Runner
-		if connected, err := runner.TurnOnRemoteControl("strand-1", name); connected || err != nil {
-			t.Errorf("TurnOnRemoteControl() = %v, %v; want false, nil", connected, err)
+		if err := runner.TurnOnRemoteControl("strand-1", name); err != nil {
+			t.Errorf("TurnOnRemoteControl() = %v, want nil", err)
 		}
 		if len(reed.PasteSubmitCalls) != 0 || len(sentCalls(reed)) != 0 {
 			t.Errorf("typed without the capability: pastes %+v, sent %v", reed.PasteSubmitCalls, sentCalls(reed))
@@ -1002,7 +977,7 @@ func TestRunner_TurnOnRemoteControl_PastesTheNamedCommandThroughTheGuardedSend(t
 		t.Parallel()
 		reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
 		runner := NewRunner(reed, singleEngineSet(&fakeEngine{}), "", t.TempDir(), Config{RunTimeoutMin: 5})
-		if _, err := runner.TurnOnRemoteControl("strand-1", name); err == nil || !strings.Contains(err.Error(), "empty path") {
+		if err := runner.TurnOnRemoteControl("strand-1", name); err == nil || !strings.Contains(err.Error(), "empty path") {
 			t.Errorf("TurnOnRemoteControl() = %v, want an error naming the empty path", err)
 		}
 		if len(reed.CallLog) != 0 {

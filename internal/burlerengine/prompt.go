@@ -16,7 +16,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/friction"
@@ -137,20 +136,15 @@ func composeReviewPrompt(stencilsDir, specsDir, engine string, p *Profile, patte
 	if err != nil {
 		return halfPrompt{}, err
 	}
-	diffPieces, err := diffPiecesBlock(stencilsDir, engine, p.diffPieces)
-	if err != nil {
-		return halfPrompt{}, err
-	}
 	explore, err := stencil.FillWith(exploreTemplate, exploreBlocks, map[string]string{
 		"pattern_directive": patternDirective,
 		focusMarkerName:     focusDirective,
 		"target":            formatFileSet(p.Target),
-		"diff_pieces":       diffPieces,
 		"fasit":             formatFileSet(p.Fasit),
 		"rubric":            p.Rubric,
 		"tool_use_rules":    toolUseRules(p.ToolUse),
 		"fork_reading":      forkReading,
-	}, []string{"pattern_directive", focusMarkerName, "diff_pieces", "fork_reading"})
+	}, []string{"pattern_directive", focusMarkerName, "fork_reading"})
 	if err != nil {
 		return halfPrompt{}, fmt.Errorf("burler: compose prompt: %w", err)
 	}
@@ -188,7 +182,7 @@ func composeReviewPrompt(stencilsDir, specsDir, engine string, p *Profile, patte
 // composeFixPrompt builds the fix half's prompt for p, rendered for the fixer's engine:
 // the review-file format and the fix step.
 // frictionDirective is the caller-resolved Tier 2 note directive, empty when Tier 2 is off.
-// work is the fix step's statement of what to fix, followed by the target's instructions when p sets any.
+// work is the fix step's statement of what to fix.
 // specsDir holds the deployed lens report spec a fixer fan's fixer saves its fork reports in the format of.
 // The fixer's files hold no rubric, fasit, PATTERN directive, focus file, prior rounds or explore step;
 // p is assumed already validated by validateFix.
@@ -204,7 +198,7 @@ func composeFixPrompt(stencilsDir, specsDir, engine string, p *Profile, friction
 	}
 	fix, err := stencil.FillWith(fixTemplate, fixBlocks, map[string]string{
 		friction.MarkerName: frictionDirective,
-		"work":              workWithInstructions(work, p.Target.Instructions),
+		"work":              work,
 		"fix_scope_rules":   fixScopeRules(p),
 		"review_path":       p.ReviewPath,
 		"fixer_report_path": p.FixerReportPath,
@@ -227,49 +221,20 @@ func composeFixPrompt(stencilsDir, specsDir, engine string, p *Profile, friction
 	}, nil
 }
 
-// workWithInstructions returns work followed by instructions, the row's own rules for the fixer.
-// Blank instructions leave work unchanged.
-func workWithInstructions(work, instructions string) string {
-	if strings.TrimSpace(instructions) == "" {
-		return work
-	}
-	return work + "\n\n" + strings.TrimSpace(instructions)
-}
-
 // fixWork returns the fix step's required work statement.
 // With no gate-findings path the review's findings are the work;
 // with one, the review holds no findings but the round's gates failed, so the work is what that file names.
 // With decisionsRouted set, the review's decision-class findings went to the run's parent, not the fixer.
-// A rerun with a reason adds a paragraph saying the fix runs again, not for new work, and why.
-func fixWork(reviewPath, gateFindingsPath string, decisionsRouted bool, rerun FixRerun) string {
-	var work string
+func fixWork(reviewPath, gateFindingsPath string, decisionsRouted bool) string {
 	switch {
 	case gateFindingsPath == "" && !decisionsRouted:
-		work = fmt.Sprintf("Fix every finding of the review at `%s`.", reviewPath)
+		return fmt.Sprintf("Fix every finding of the review at `%s`.", reviewPath)
 	case gateFindingsPath == "":
-		work = fmt.Sprintf("Fix every finding of the review at `%s` but its `decision`-class findings. %s", reviewPath, routedDecisionsLine)
+		return fmt.Sprintf("Fix every finding of the review at `%s` but its `decision`-class findings. %s", reviewPath, routedDecisionsLine)
 	case !decisionsRouted:
-		work = fmt.Sprintf("The review at `%s` holds no findings, but the round's gates failed on the target as it stands. Fix what the gate findings in `%s` name.", reviewPath, gateFindingsPath)
-	default:
-		work = fmt.Sprintf("The review at `%s` holds no findings but `decision`-class ones, and the round's gates failed on the target as it stands. Fix what the gate findings in `%s` name. %s", reviewPath, gateFindingsPath, routedDecisionsLine)
+		return fmt.Sprintf("The review at `%s` holds no findings, but the round's gates failed on the target as it stands. Fix what the gate findings in `%s` name.", reviewPath, gateFindingsPath)
 	}
-	if rerun.Reason == "" {
-		return work
-	}
-	return work + "\n\n" + fixRerunStatement(rerun)
-}
-
-// fixRerunStatement tells a fixer it runs again over a review an earlier fixer session worked, and why.
-// It names the earlier session's archived report when there is one, so the fixer can carry its dispositions over.
-func fixRerunStatement(rerun FixRerun) string {
-	earlier, carryOver := "An earlier fixer session over this review ended without a fixer-report", "."
-	if rerun.Report != "" {
-		earlier = fmt.Sprintf("An earlier fixer session over this review wrote a fixer-report, now set aside as `%s`", rerun.Report)
-		carryOver = ", carrying over each of its dispositions that still applies."
-	}
-	return fmt.Sprintf("This fix runs again, not for new work. %s; the reason: %s. "+
-		"The target may already hold that session's changes: check each finding against the target as it stands, "+
-		"keep each change that holds, and write the fixer-report afresh%s", earlier, rerun.Reason, carryOver)
+	return fmt.Sprintf("The review at `%s` holds no findings but `decision`-class ones, and the round's gates failed on the target as it stands. Fix what the gate findings in `%s` name. %s", reviewPath, gateFindingsPath, routedDecisionsLine)
 }
 
 // routedDecisionsLine tells a fixer the review's decision-class findings went to the run's parent, not to it.
@@ -340,13 +305,7 @@ func formatFileSet(fs FileSet) string {
 }
 
 // fixScopeRules returns the write-surface and git-discipline prose for p's FixScope.
-// FixScopeSource gets the commit rules.
-// The write surface is the working tree.
-// Each finding gets its own commit.
-// The fixer forms the groups before it starts fixing.
-// Findings that change a file in common share one joint commit, and groups chain through a shared finding.
-// A finding that reaches a file an earlier commit already changed is committed on its own.
-// It never pushes.
+// FixScopeSource gets the commit-per-fix rules (working tree, commit each fix individually, never push).
 // FixScopeOverlay gets the overlay rules.
 // The write surface is exactly the target paths plus the fixer-report, never the review file.
 // It runs no git at all, since the loop owner commits.
@@ -357,18 +316,9 @@ func fixScopeRules(p *Profile) string {
 		return "Write surface: the working tree in this task worktree — the files the " +
 			"findings point at, plus whatever the discipline requires in the same change (a " +
 			"test that would have caught the bug, the module doc).\n\n" +
-			"Except for a group below, you commit each finding's fix on its own, once green, before starting the next finding. " +
+			"You commit each fix individually, once green, before starting the next finding. " +
 			"Commit message format: `<module-or-target>: fix <finding-id> — <one-line " +
-			"what/why>`.\n\n" +
-			"Before you start fixing, form the groups from the files the findings' location and " +
-			"fix keys name. Findings whose changes touch a file in common form one group, and groups " +
-			"chain: a finding whose change touches a file any member of a group changes joins that " +
-			"whole group, so every finding lands in exactly one commit. Fix a group's findings " +
-			"together and commit them, once green, as one commit whose subject names every id in " +
-			"it: `<module-or-target>: fix <finding-id>, <finding-id> — <one-line what/why>`. " +
-			"A finding that shares no changed file with another keeps its own commit. " +
-			"A finding whose change reaches a file an earlier commit already changed is committed " +
-			"on its own, never folded into that commit. Never push."
+			"what/why>`. Never push."
 	case FixScopeOverlay:
 		var lensReports string
 		if p.FixFan != "" {
@@ -410,59 +360,10 @@ func toolUseRules(toolUse bool) string {
 	return "Read-only analysis in the explore and review steps: read files, run nothing."
 }
 
-// priorFindingsHeading is the heading line that opens the prior-findings block of a round with a round context.
-// No other prior-rounds text holds it as a line of its own.
-const priorFindingsHeading = "### Prior findings"
-
-// heldByParentMark marks a prior finding that the run's parent rules on, not the fixer.
-const heldByParentMark = "held by the parent: the run's parent rules on this finding"
-
-// inScopeMark marks a held prior finding that the run's parent ruled in scope, so this round's fixer takes it.
-const inScopeMark = "ruled in scope by the parent: the task's record already asks for it, so carry it as fixer work with a class other than decision, or resolve it once the code does it"
-
-// amendsPlanMark leads an added decision record entry that is pending as a plan amendment.
-const amendsPlanMark = "(amends the plan) "
-
-// rulingReportLabel labels a `ruling` disposition.
-// It is the fixer's report of a ruling that reached it, never the parent's answer.
-const rulingReportLabel = "the fixer's report of a ruling that reached it, never the parent's answer"
-
-// priorRoundsBlock returns the prior-rounds value of the review step.
-// A profile with a round context gets the prior-findings block.
-// A profile with no prior-round files gets the first-round fallback.
-// A profile with prior-round files gets a bullet list of the prior review and fixer-report paths.
-// That list is followed by the clean-room rule.
+// priorRoundsBlock returns the clean-room hydration prose.
+// When p carries no prior-round files, it returns the first-round fallback.
+// Otherwise, it returns a bullet list of the prior review and fixer-report paths, plus the clean-room rule.
 func priorRoundsBlock(p *Profile) string {
-	block := priorRoundsBase(p)
-	if p.HaltReason == "" {
-		return block
-	}
-	return block + "\n\n" + haltReasonBlock(p.HaltReason)
-}
-
-// haltReasonHeading is the heading line that opens the halt-reason block.
-const haltReasonHeading = "### Plan executor halt"
-
-// haltReasonBlock renders the block that makes the reviewer raise the plan executor's halt reason as a finding.
-// The reason is quoted verbatim.
-func haltReasonBlock(reason string) string {
-	var b strings.Builder
-	b.WriteString(haltReasonHeading)
-	b.WriteString("\n\n")
-	b.WriteString("The plan executor halted with the reason quoted below, and the run was sent back to plan review.\n")
-	fmt.Fprintf(&b, "Raise it as a BLOCKING finding with `origin: %s`, located on the card or file it names,\n", WebsterOrigin)
-	b.WriteString("whose fix is the plan edit the reason asks for.\n")
-	b.WriteString("When the plan already does what the reason asks, raise no finding and say so in the review summary.\n\n")
-	b.WriteString("> ")
-	b.WriteString(strings.ReplaceAll(strings.TrimRight(reason, "\n"), "\n", "\n> "))
-	return b.String()
-}
-
-// priorRoundsBase returns the prior-rounds text of p before any halt-reason block.
-func priorRoundsBase(p *Profile) string {
-	if p.Round != nil {
-		return priorFindingsBlock(p.Round)
-	}
 	if len(p.PriorReviews) == 0 && len(p.PriorFixerReports) == 0 {
 		return "This is the first round — no prior round files exist."
 	}
@@ -486,99 +387,6 @@ func priorRoundsBase(p *Profile) string {
 		"**Issue:** why the dispute's evidence does not hold, amending the matching " +
 		"finding in your saved review before you end your turn.")
 	return b.String()
-}
-
-// priorFindingsBlock renders round as the prior-findings block.
-// The block names the files of the round before and says whether this round is incremental.
-// It lists each prior finding with the fixer's disposition of it, and the decision-record entries added since.
-// An entry that amends the plan is listed and marked whether it was added since or earlier.
-func priorFindingsBlock(round *RoundContext) string {
-	var b strings.Builder
-	b.WriteString(priorFindingsHeading)
-	b.WriteString("\n\n")
-	fmt.Fprintf(&b, "The previous round's review is `%s` and its fixer-report is `%s`.", round.PriorReviewPath, round.PriorFixerReportPath)
-	if round.ChangesPath != "" {
-		fmt.Fprintf(&b, " The files the fixes changed are listed in `%s`.", round.ChangesPath)
-	}
-	b.WriteString("\n")
-	if round.Incremental {
-		b.WriteString("This round is incremental.\n")
-	} else {
-		b.WriteString("This round is a full round.\n")
-	}
-	b.WriteString("\n")
-	for _, prior := range round.Prior {
-		writePriorFinding(&b, prior)
-	}
-	b.WriteString("\n")
-	writeEntry := func(text string) {
-		b.WriteString("- ")
-		if slices.Contains(round.AmendingTexts, text) {
-			b.WriteString(amendsPlanMark)
-		}
-		b.WriteString(strings.ReplaceAll(strings.TrimRight(text, "\n"), "\n", "\n  "))
-		b.WriteString("\n")
-	}
-	if len(round.AddedTexts) == 0 {
-		b.WriteString("No entry was added to the decision record since the previous round.\n")
-	} else {
-		b.WriteString("Entries added to the decision record since the previous round:\n\n")
-		for _, text := range round.AddedTexts {
-			writeEntry(text)
-		}
-	}
-	// An amendment pending since an earlier round stays in force until the plan carries it, so it stays in the prompt.
-	var carriedAmendments []string
-	for _, text := range round.AmendingTexts {
-		if !slices.Contains(round.AddedTexts, text) {
-			carriedAmendments = append(carriedAmendments, text)
-		}
-	}
-	if len(carriedAmendments) > 0 {
-		b.WriteString("\nEntries added in an earlier round that still amend the plan:\n\n")
-		for _, text := range carriedAmendments {
-			writeEntry(text)
-		}
-	}
-	if len(round.AmendingTexts) > 0 {
-		b.WriteString("\nThe entries marked as amending the plan amend the approved plan.\n")
-		b.WriteString("A new BLOCKING finding on a card an amending entry names is admitted whether or not the changes file lists that card.\n")
-		b.WriteString("Raise one on each named card that does not yet carry the amendment.\n")
-	}
-	return strings.TrimRight(b.String(), "\n")
-}
-
-// writePriorFinding writes one prior finding and the fixer's disposition of it as a bullet with sub-bullets.
-func writePriorFinding(b *strings.Builder, prior PriorFinding) {
-	finding := prior.Finding
-	fmt.Fprintf(b, "- `%s` — %s, %s, `%s`\n", finding.ID, finding.Severity, finding.Class, finding.Location)
-	fmt.Fprintf(b, "  - summary: %s\n", finding.Summary)
-	fmt.Fprintf(b, "  - fix: %s\n", finding.Fix)
-	switch {
-	case prior.InScope:
-		fmt.Fprintf(b, "  - %s\n", inScopeMark)
-	case prior.Held:
-		fmt.Fprintf(b, "  - %s\n", heldByParentMark)
-	}
-	disposition := prior.Disposition
-	switch {
-	case disposition == nil:
-		b.WriteString("  - fixer disposition: no disposition\n")
-	case disposition.Disposition == DispositionDisputed:
-		fmt.Fprintf(b, "  - fixer disposition: disputed on the ground %q\n", disposition.Ground)
-		fmt.Fprintf(b, "    - rebuttal: %s\n", disposition.Rebuttal)
-		for _, item := range disposition.Evidence {
-			fmt.Fprintf(b, "    - evidence: %s\n", item)
-		}
-	case disposition.Disposition == DispositionRuling:
-		fmt.Fprintf(b, "  - fixer disposition: ruling, %s\n", rulingReportLabel)
-		fmt.Fprintf(b, "    - reason: %s\n", disposition.Reason)
-	default:
-		fmt.Fprintf(b, "  - fixer disposition: %s\n", disposition.Disposition)
-		if disposition.Reason != "" {
-			fmt.Fprintf(b, "    - reason: %s\n", disposition.Reason)
-		}
-	}
 }
 
 // clusterRulesBlock renders the review step's cluster-rules value for engine from the cluster stencils.
@@ -622,21 +430,6 @@ func forkReadingBlock(stencilsDir, engine string, p *Profile) (string, error) {
 		return "", err
 	}
 	return "\n\n" + strings.TrimRight(string(reading), "\n"), nil
-}
-
-// diffPiecesBlock renders the diff-pieces stencil for engine, as the explore step's optional diff_pieces marker.
-// It lists pieces, and a round with no piece returns "" without reading anything.
-// The value leads with the blank line that separates it from the target,
-// and its trailing newline is left to the explore stencil.
-func diffPiecesBlock(stencilsDir, engine string, pieces []diffPiece) (string, error) {
-	if len(pieces) == 0 {
-		return "", nil
-	}
-	block, err := fillInstruction(stencilsDir, engine, "burler-diff-pieces", map[string]string{"piece_list": formatDiffPieces(pieces)}, nil)
-	if err != nil {
-		return "", err
-	}
-	return "\n\n" + strings.TrimRight(string(block), "\n"), nil
 }
 
 // selfCheckBlock renders the fix self-check stencil for engine, for the fix step's optional self_check marker.

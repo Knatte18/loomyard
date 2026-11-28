@@ -34,12 +34,6 @@ type RunView struct {
 	// State is batten's status state and Producer its current producer.
 	State    string
 	Producer string
-	// HistoryLen is the length of batten's status history.
-	// LastRepeats is the folded repeats of its last entry, zero for an empty history.
-	HistoryLen  int
-	LastRepeats int
-	// Error is batten's status reason.
-	Error string
 	// StatusModified is the modification time of batten's own status file and ChildStatusModified that of the child's status file.
 	StatusModified      time.Time
 	ChildStatusModified time.Time
@@ -52,46 +46,26 @@ type RunView struct {
 	Verdict runfsm.Verdict
 	// DriverLockHeld reports whether the run's driver lock is held, which a pass in flight does.
 	DriverLockHeld bool
-	// Waiting reports that a live driver of the run, the child's or batten's own, is waiting out a network failure.
-	// WaitDied reports that such a driver died while it waited, so the run is stopped.
-	Waiting  bool
-	WaitDied bool
-	// WaitProducer, WaitClass and WaitSince are the row, the failure class and the start of that wait.
-	// WaitSince is zero for a wait whose record is not yet written.
-	WaitProducer string
-	WaitClass    string
-	WaitSince    time.Time
+	// OriginOwed reports whether the run's origin-owed marker stands.
+	OriginOwed bool
 	// Covered reports whether a pause entry covers the hub or the slug.
 	Covered bool
-	// Held reports whether a live pause entry of the run's own scope is a bolt-hold entry.
-	// It carries pauserecord.BoltHoldCaller, and the dobby lifts it itself.
+	// Held reports whether a live pause entry of the run's own scope is an adopt pause:
+	// it carries pauserecord.AdoptCaller, or the legacy pauserecord.HoldCaller.
+	// Only a hand lifts such an entry.
 	Held bool
-	// NoSlot reports whether the run takes no slot under beam.max_runs: a pawl run whose landing hold does not stand.
+	// NoSlot reports whether the run takes no slot under max_runs: a pawl run whose landing hold does not stand.
 	NoSlot bool
 	// EntryEnded reports whether the run's board entry is done or gone from the board, whatever batten's state says.
-	// Such a run takes no slot under beam.max_runs.
+	// Such a run takes no slot under max_runs.
 	EntryEnded bool
 	// PairPresent reports whether the run's task worktree is still on disk.
 	PairPresent bool
-	// PairKept reports whether the run is cancelled by a cancel that kept its pair, and KeptSince when that cancel finished.
-	// KeptSince is zero when the record does not say.
-	PairKept  bool
-	KeptSince time.Time
-	// OwnedElsewhere reports whether the machine registry reads the run's owner as another machine.
-	OwnedElsewhere bool
-	// BoltHeld reports whether an adopt hold in Bolt holds the run.
-	BoltHeld bool
-	// HandOverMarked reports whether this machine's hand-over mark names the run, which this machine handed over.
-	HandOverMarked bool
 	// PastLand reports whether the run is past its Land row, and Landed whether it landed there rather than ending without landing.
 	PastLand bool
 	Landed   bool
 	// LandingCommit is the commit the run's landing put on its parent branch, empty when none is recorded.
 	LandingCommit string
-	// EmptyLanding reports that the run's landing changed no code path on its parent branch, so none of its work reached it.
-	EmptyLanding bool
-	// Motif reports whether the run's child ran the motif recipe, whose landing leaves its entry a Sketch.
-	Motif bool
 	// ReachedParent reports whether the run's work already reached its parent branch.
 	// Then only its Land and Worktree-Teardown rows are left.
 	// It is read for a paused run only.
@@ -119,6 +93,8 @@ const (
 	passContinue
 	// passFull is a full pass.
 	passFull
+	// passFullNoReopen is a full pass that leaves the origin reconcile owed.
+	passFullNoReopen
 )
 
 // passTrigger is what woke the planner for one run.
@@ -146,7 +122,7 @@ type passTrigger struct {
 // so a pass's own writes never trigger the next.
 // The lift of a pause that covered the run gives the full pass, and an owed full pass is given with it.
 // A continue pass needs the run at Run-Shed, with no full pass owed and no lift to answer.
-// Every other pass is full.
+// Every other pass is full, and while the origin-owed marker stands it leaves the origin reconcile owed.
 // A run recorded owned elsewhere gets a full pass at the lift and on each probe tick; no other trigger gives it one.
 func planPass(run RunView, rs RunState, trigger passTrigger) passKind {
 	if !drivable(run) || run.CancelMarker || trigger.InFlight || run.DriverLockHeld {
@@ -155,9 +131,13 @@ func planPass(run RunView, rs RunState, trigger passTrigger) passKind {
 	if run.Verdict.Answer != runfsm.AnswerAct {
 		return passNone
 	}
+	full := passFull
+	if run.OriginOwed {
+		full = passFullNoReopen
+	}
 	if rs.OwnedElsewhere {
 		if trigger.Lift || trigger.ProbeTick {
-			return passFull
+			return full
 		}
 		return passNone
 	}
@@ -165,8 +145,8 @@ func planPass(run RunView, rs RunState, trigger passTrigger) passKind {
 	if !(trigger.ProbeTick || trigger.ChildWrite || trigger.Start || trigger.Lift || battenWrite) {
 		return passNone
 	}
-	if rs.FullPassOwed || run.Producer != producerRunShed || trigger.Lift {
-		return passFull
+	if rs.FullPassOwed || run.Producer != producerRunShed || run.OriginOwed || trigger.Lift {
+		return full
 	}
 	return passContinue
 }
@@ -182,8 +162,6 @@ type flight struct {
 }
 
 // drivePasses reads exited passes, owes full passes, and spawns the pass each listed run's trigger calls for.
-// A listed run whose verdict hands it over while its pair is here owes the catch-up from origin.
-// Right after the listing, the bolt-hold entries of the runs the catch-up covers are synced with the hold.
 // A done run is driven no further.
 // Unless a pass of it is in flight, it takes no slot, is planned no pass, and its state entry is dropped.
 // It leaves d.busy set while any run is in flight or could be given a pass on the next probe tick.
@@ -196,8 +174,6 @@ func (d *daemon) drivePasses(ctx context.Context, now time.Time) error {
 	}
 	d.logRunChanges(now, runs)
 	d.listedRuns = slices.Clone(runs)
-	d.oweHandOverCatchUp(d.listedRuns)
-	d.syncBoltHold(ctx)
 	runs = slices.DeleteFunc(runs, func(run RunView) bool {
 		_, inFlight := d.flights[run.Slug]
 		return run.State == runStateDone && !inFlight
@@ -214,6 +190,13 @@ func (d *daemon) drivePasses(ctx context.Context, now time.Time) error {
 	d.busy = false
 	for _, run := range runs {
 		rs := current.Runs[run.Slug]
+		if d.probeDue && rs.OwnedElsewhere && !rs.OwnerPauseFailed && !run.Held {
+			d.recheckOwnerPause(ctx, run.Slug)
+			if d.liftPending[run.Slug] && run.Verdict.Reason == runfsm.ReasonPauseCovers {
+				// The lift removed the pause the listed verdict waited on.
+				run.Covered, run.Verdict = false, runfsm.Verdict{Answer: runfsm.AnswerAct}
+			}
+		}
 		trigger := d.triggerFor(run)
 		kind := planPass(run, rs, trigger)
 		if !trigger.InFlight && (!drivable(run) || run.CancelMarker || run.Verdict.Answer != runfsm.AnswerAct) {
@@ -378,7 +361,7 @@ func (d *daemon) triggerFor(run RunView) passTrigger {
 // A spawn that fails counts as a failed pass whose text is the spawn error.
 func (d *daemon) spawn(slug string, kind passKind, now time.Time) {
 	full := kind != passContinue
-	exit, err := d.deps.SpawnPass(slug, !full, false)
+	exit, err := d.deps.SpawnPass(slug, !full, kind == passFullNoReopen)
 	delete(d.liftPending, slug)
 	if err != nil {
 		d.passExited(slug, full, 1, err.Error(), now)
@@ -415,13 +398,16 @@ func (d *daemon) collectExits(now time.Time) {
 
 // passExited reads how a pass of slug exited.
 // Exit 0 clears the run's failing-pass count and noticed texts.
-// It also clears the owed full pass when the pass was full.
+// It also clears the owed full pass when the pass was full and no origin-owed marker stands.
 // A refused continue pass owes a full pass, and a covered pass counts as no failure.
-// The owned-elsewhere, origin-wait and refused-catch-up exits are never a failing pass.
-// Each of them owes the catch-up from origin.
+// The owned-elsewhere exit is never a failing pass.
 // Any other exit counts a failure by its error text.
 // Once the count reaches failingPassNoticeAfter, one notice per error text goes to the nearest live orch.
 func (d *daemon) passExited(slug string, full bool, code int, errText string, at time.Time) {
+	originOwed := false
+	if code == 0 && full {
+		originOwed = d.originOwed(slug)
+	}
 	noticeDue, failingStarted, succeedsAgain := false, false, false
 	err := UpdateState(d.geom.StatePath, func(s *State) error {
 		rs := s.Runs[slug]
@@ -430,13 +416,15 @@ func (d *daemon) passExited(slug string, full bool, code int, errText string, at
 		case 0:
 			succeedsAgain = rs.FailingPassCount > 0
 			rs.FailingPassError, rs.FailingPassCount, rs.Noticed = "", 0, nil
-			if full {
+			if full && !originOwed {
 				rs.FullPassOwed = false
-				rs.OwnedElsewhere, rs.OwnerNoticeSent = false, false
+			}
+			if full {
+				rs.OwnedElsewhere, rs.OwnerNoticeSent, rs.OwnerPauseFailed = false, false, false
 			}
 		case PassExitContinueRefused:
 			rs.FullPassOwed = true
-		case PassExitCovered, PassExitOwnedElsewhere, PassExitOriginWait, PassExitCatchUpRefused:
+		case PassExitCovered, PassExitOwnedElsewhere:
 		default:
 			if errText == rs.FailingPassError {
 				rs.FailingPassCount++
@@ -465,12 +453,24 @@ func (d *daemon) passExited(slug string, full bool, code int, errText string, at
 	if noticeDue {
 		d.noticeFailingPass(slug, errText)
 	}
-	if code == PassExitOriginWait || code == PassExitCatchUpRefused {
-		d.oweCatchUp()
-	}
 	if code == PassExitOwnedElsewhere {
 		d.ownedElsewhere(d.tickCtx, slug, at)
 	}
+}
+
+// originOwed reads whether slug's origin-owed marker stands now, the pass having just exited.
+// A run no longer listed has none.
+func (d *daemon) originOwed(slug string) bool {
+	runs, err := d.deps.Runs()
+	if err != nil {
+		return true
+	}
+	for _, run := range runs {
+		if run.Slug == slug {
+			return run.OriginOwed
+		}
+	}
+	return false
 }
 
 // noticeFailingPass posts the failing-pass notice for slug and records the text as noticed once it went out.

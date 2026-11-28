@@ -14,7 +14,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
@@ -27,7 +26,7 @@ import (
 // Menu returns an error when the board config cannot be loaded or the board fails its health check.
 // An input of q returns nil without starting a worktree; otherwise Menu starts the chosen one.
 func Menu(l *lymcwd.Location, in io.Reader, out io.Writer) error {
-	boardDir := fabriclayout.BoardDir(l.HubPath)
+	boardDir := fabricengine.BoardDir(l.HubPath)
 	cfg, err := boardengine.LoadConfig(fabricengine.ConfigDirs(l), "board")
 	if err != nil {
 		return fmt.Errorf("load board config: %w", err)

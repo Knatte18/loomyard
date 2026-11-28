@@ -23,7 +23,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -201,12 +200,17 @@ func TestNewHub(t *testing.T) {
 						}
 					}
 
+					markerRel := filepath.ToSlash(configengine.BaseSparseMarkerRel())
+					if tracked := gitkit.LsFiles(t, h.BoardDir(), "--", markerRel); len(tracked) != 1 || tracked[0] != markerRel {
+						t.Errorf("git ls-files of the base-sparse marker in the board = %v; want [%s]", tracked, markerRel)
+					}
+
 					cfg, err := loomengine.LoadConfig(configengine.Dirs{Anchor: h.WeftBase, Board: h.BoardDir()}, "loom")
 					if err != nil {
 						t.Fatalf("loomengine.LoadConfig over the prime: %v", err)
 					}
-					if cfg.Discussion.Lenses != "twill-discussion" {
-						t.Errorf("Discussion.Lenses = %q; want the template's twill-discussion", cfg.Discussion.Lenses)
+					if cfg.DiscussionLenses != "twill-discussion" {
+						t.Errorf("DiscussionLenses = %q; want the template's twill-discussion", cfg.DiscussionLenses)
 					}
 				}},
 				{"SeedConfigRedundantSeedDoesNotFatal", func(t *testing.T) {
@@ -215,7 +219,7 @@ func TestNewHub(t *testing.T) {
 					// A different seed still lands on disk, which shows that --allow-empty did not turn the helper into a no-op.
 					// The clone leaves no loom file in the prime, so loom is seeded once before it is read back.
 					loomConfigPath := configengine.ConfigFile(h.WeftBase, "loom")
-					SeedConfig(t, h, map[string]string{"loom": "review:\n  max_bounces: 2\n"})
+					SeedConfig(t, h, map[string]string{"loom": "review_max_bounces: 2\n"})
 					original, err := os.ReadFile(loomConfigPath)
 					if err != nil {
 						t.Fatalf("read seeded loom config %s: %v", loomConfigPath, err)
@@ -267,13 +271,13 @@ func TestNewHub(t *testing.T) {
 				}},
 				{"AddPairWith_SkipPushKeepsWeftBranchOffTheBare", func(t *testing.T) {
 					skipped := AddPairWith(t, h, "skipped", fabricengine.AddOptions{SkipPush: true})
-					skippedWeft := fabriclayout.RecordsBranchName(skipped.Branch)
+					skippedWeft := fabricengine.RecordsBranchName(skipped.Branch)
 					if gitkit.BranchExists(t, h.RecordsBare, skippedWeft) {
 						t.Errorf("branch %q is on the weft bare; want it absent under SkipPush", skippedWeft)
 					}
 
 					pushed := AddPairWith(t, h, "pushed", fabricengine.AddOptions{})
-					pushedWeft := fabriclayout.RecordsBranchName(pushed.Branch)
+					pushedWeft := fabricengine.RecordsBranchName(pushed.Branch)
 					if !gitkit.BranchExists(t, h.RecordsBare, pushedWeft) {
 						t.Errorf("zero-options AddPairWith: weft branch %q absent from the bare; want it pushed", pushedWeft)
 					}
@@ -334,10 +338,10 @@ func assertRealHub(t *testing.T, h *Hub) {
 
 	boardInfo, err := os.Stat(h.BoardDir())
 	if err != nil {
-		t.Fatalf("%s missing at %s: %v", fabriclayout.BoltDirName, h.BoardDir(), err)
+		t.Fatalf("%s missing at %s: %v", fabricengine.BoltDirName, h.BoardDir(), err)
 	}
 	if !boardInfo.IsDir() {
-		t.Errorf("%s at %s: want a real directory, got mode %v", fabriclayout.BoltDirName, h.BoardDir(), boardInfo.Mode())
+		t.Errorf("%s at %s: want a real directory, got mode %v", fabricengine.BoltDirName, h.BoardDir(), boardInfo.Mode())
 	}
 
 	anchorMarker := filepath.Join(h.PrimeRecords(), lymcwd.AnchorFileName)
@@ -346,9 +350,9 @@ func assertRealHub(t *testing.T, h *Hub) {
 	}
 
 	// The hub's scratch directory lives under the Bolt checkout, not at hub level.
-	// Its path comes from fabriclayout.HubScratchDir, the same constructor CloneHub materialises it through,
+	// Its path comes from fabricengine.HubScratchDir, the same constructor CloneHub materialises it through,
 	// so this assertion cannot drift from the geometry it checks.
-	hubScratch := fabriclayout.HubScratchDir(h.Path)
+	hubScratch := fabricengine.HubScratchDir(h.Path)
 	if _, err := os.Stat(hubScratch); err != nil {
 		t.Errorf("hub scratch %s missing at %s: %v", lymdirs.DotLymDirName, hubScratch, err)
 	}
@@ -380,7 +384,7 @@ func assertRealHub(t *testing.T, h *Hub) {
 		t.Errorf("repo-wide fabric.yaml missing at %s: %v", fabricConfig, err)
 	}
 
-	warpBinding := filepath.Join(h.BoardDir(), fabriclayout.WarpBindingFileName)
+	warpBinding := filepath.Join(h.BoardDir(), fabricengine.WarpBindingFileName)
 	if _, err := os.Stat(warpBinding); err != nil {
 		t.Errorf("weft:main warp-URL binding missing at %s: %v", warpBinding, err)
 	}
@@ -460,7 +464,7 @@ func TestNewHub_TeardownRemovesJunctionsKeepsTargets(t *testing.T) {
 	t.Run("hub", func(t *testing.T) {
 		warpBare, weftBare := copyBares(t)
 
-		res, err := fabriccli.CloneAndWire(container, fabriclayout.CloneOptions{
+		res, err := fabriccli.CloneAndWire(container, fabricengine.CloneOptions{
 			WeftURL:   filepath.ToSlash(weftBare),
 			WarpURL:   filepath.ToSlash(warpBare),
 			Shortname: TestShortname,

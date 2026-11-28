@@ -15,7 +15,7 @@ import (
 )
 
 // TestLoadConfig covers the template defaults, a hub file, and a local override that sets the keys.
-// It also covers the ide.open_files entries that `LoadConfig` refuses.
+// It also covers the open_files entries that `LoadConfig` refuses.
 func TestLoadConfig(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -41,9 +41,9 @@ func TestLoadConfig(t *testing.T) {
 			local: "render_markdown: false\n",
 			want:  ideconfig.Config{OpenFiles: ideconfig.OpenFiles{Prime: []string{}, Beam: []string{}, Task: []string{}}},
 		},
-		{name: "AbsoluteEntryRefused", hub: "open_files:\n  task: [/etc/hosts]\n", wantErr: `config key "ide.open_files.task" holds "/etc/hosts"`},
-		{name: "ClimbingEntryRefused", hub: "open_files:\n  beam: [../README.md]\n", wantErr: `config key "ide.open_files.beam" holds "../README.md"`},
-		{name: "EmptyEntryRefused", hub: "open_files:\n  prime: [\"\"]\n", wantErr: `config key "ide.open_files.prime" holds ""`},
+		{name: "AbsoluteEntryRefused", hub: "open_files:\n  task: [/etc/hosts]\n", wantErr: `ide config key "open_files.task" holds "/etc/hosts"`},
+		{name: "ClimbingEntryRefused", hub: "open_files:\n  beam: [../README.md]\n", wantErr: `ide config key "open_files.beam" holds "../README.md"`},
+		{name: "EmptyEntryRefused", hub: "open_files:\n  prime: [\"\"]\n", wantErr: `ide config key "open_files.prime" holds ""`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

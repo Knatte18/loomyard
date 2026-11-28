@@ -11,8 +11,6 @@ Before you edit anything, read — in THIS turn — every card file this section
 A decision notice in your inherited context, the one your parent directive admits, is your parent's call for this run.
 Where it touches your cards, follow it over the card, inside your cards' targets;
 a change it needs outside them is not yours to make.
-Where two decisions in your context differ, the later one supersedes the earlier one, whether it came as a notice or among the recorded decisions:
-follow the later one even where an earlier one told you to revert or drop work.
 
 ## Prior-batch context
 
@@ -25,8 +23,8 @@ The line's `pattern departures` are the preceding batch's `Pattern-Departure:` t
 
 ## Where and how you run commands
 
-Your session's working directory already is the worktree root, `{{.worktree_root}}`: run every Bash command from there, give the paths in Bash commands worktree-relative, and follow the gate rule in {{template "engine-standing-instructions"}} for `cd` and for quick checks.
-{{template "engine-absolute-paths"}}
+Your session's working directory already is the worktree root, `{{.worktree_root}}`: run every Bash command from there, give the paths in Bash commands worktree-relative, and follow the gate rule in your system prompt for `cd` and for quick checks.
+Paths you pass to the Read, Write and Edit tools stay absolute.
 You never run a Bash call in the background: every card gate step, every `lym gate card-verify` call and the batch gate runs as a foreground Bash call under the gate rule, and you end your turn only after writing the report.
 
 ## Your cards — implement each in declared order, build+test+verify+commit per card
@@ -42,7 +40,7 @@ For EACH card file listed above, in the order listed:
 Make exactly the changes the card describes, in exactly the targets its type labels name.
    A deviation is a change outside the batch's card targets as the scope guard counts them: a member target covers that member, a file target every member of that file, a package target every member of the files directly in its directory, and a rename is inside when either its old or its new name is a target.
    `**Uses:**` entries add no coverage, so a change to a member a card only reads is a deviation unless a target of some card in the batch covers it.
-   Three deviations are sanctioned, each within its bound: the guard-test fix in step 3, only in a file a `//lym:guard` test's failure names; a fix to a failure the card caused, under the bounded self-fix section's two-pronged test and its attempt cap; and the retired-name sweep edit below, only to a hit that references a name the card retires.
+   Three deviations are sanctioned, each within its bound: the guard-step fix in step 3, only in a file the guard step's failure names; a fix to a failure the card caused, under the bounded self-fix section's two-pronged test and its attempt cap; and the retired-name sweep edit below, only to a hit that references a name the card retires.
    No other change outside the targets is made.
    The scope guard records every deviation, sanctioned ones included; you list, compare and report none, and a deviation alone never makes the report `FAILED`.
    The plan's glyph names are the contract: keep every name a card gives a symbol, and rename nothing the plan does not declare.
@@ -54,7 +52,7 @@ Make exactly the changes the card describes, in exactly the targets its type lab
 
    Locate them with one `lym quarry resolve <glyph>...` call over the card's target and `Uses:` glyphs: each answer gives the member's `file` and its `start` and `end` lines, so read those spans instead of grepping for them.
    The card is one change: before its first edit, read in one message every file it needs, a file whole when you need most of it, otherwise every span you need from it, never one file in slices over several turns.
-   A file you have read in this batch stays in your context: read it again only where a change you did not make by hand, such as a rename tool's run, touched it since, never to check an edit of your own, which the edit's own result confirms.
+   A file you have read in this batch stays in your context: read it again only where a change you did not make by hand, such as a rename tool's run, touched it since, never to check an edit of your own, which the Edit tool confirms.
    Put the card's edits that do not depend on each other in one message, and run the card's gate, as step 3 lists it, after the card's last edit rather than after each edit.
    A card that removes or renames a name, such as a symbol, file, config key or string literal, retires the old name: sweep for it before the card's first hand edit, after any rename tool run.
    Grep the whole worktree for every retired name in one Bash call, test files, `testdata/` and other fixtures included, never only the card's targets or the non-test files.
@@ -63,24 +61,23 @@ Make exactly the changes the card describes, in exactly the targets its type lab
    An edit to a hit outside the card's targets is sanctioned only when the hit references a name the card retires, and stays limited to those references.
    It is not a fix to a failure, so the attempt cap of the bounded self-fix section does not apply to it, and a hit that matches a retired string by accident, such as a generic literal, is left alone.
    A `plan:` handle names a member the card creates and does not resolve yet.
-3. Run each step of the card's gate from the list below, in order, each as its own foreground Bash call under the gate rule in {{template "engine-standing-instructions"}}.
+3. Run each step of the card's gate from the list below, in order, each as its own foreground Bash call under the gate rule in your system prompt.
    A failure here is the card's own gate — fix it before moving on;
    this gate is implicit in every card, never optional.
 
 {{.card_gates}}{{.card_gate_fixer}}
 
    A failing gate call closes with a failure report that lists every failure at once, its lint findings included, with each failure's `file:line` and the log path; fix every failure it lists before you run the gate again.
-   The gate call computes the card's packages from the plan, with every package that depends on them, and runs the guard step itself, the step over the repository's `//lym:guard` tests.
-   The gate call's runs, the listed tiers over the dependent packages as well as the guard step, can fail on a file the card does not list, such as the pinned set in a `cmd/lym` test.
-   When a `//lym:guard` test fails so, in either, fix it under the card's commit.
+   The gate call computes the card's packages from the plan and runs the guard step itself, the step over the repository's `//lym:guard` tests, which can fail on a file the card does not list, such as the pinned set in a `cmd/lym` test.
+   Fix it under the card's commit.
    Fix the code that broke the guard where that is the right fix, and change a pinned set or an allowlist only when the pin itself must move.
-   Change only a file that guard test's failure names this way, the first sanctioned deviation in step 2's rule.
+   Change only a file the guard step's failure names this way, the first sanctioned deviation in step 2's rule.
 
 4. Commit the card to the repo — normal dev git, run from your working directory — never any `_lym` path.
    One commit per card is the norm.
    The commit subject is `N: <name>` — the card's own number and heading name (e.g. `1: alpha`) — unless the card FILE carries a `**Commit:**` line, which pins the exact subject to use verbatim.
    This subject shape is the plan's resume trail: a fresh session reads from `git log` exactly which card was reached.
-   You never spawn a fork or subagent yourself (no nested forks — this is banned),
+   You never call the Agent tool yourself (no nested forks — this is banned),
    and you are never passed a name of your own when spawned.
 5. If the card declares a `**Verify:**` line, run `lym gate card-verify <card id>` once, as a foreground Bash call under the gate rule, immediately after committing that card; the call runs the card's line itself, so you never run the line as a Bash call of your own.
    A non-zero exit fails the card exactly like the gate in step 3 — there is no separate "deferred verify" concept;
@@ -90,17 +87,7 @@ Make exactly the changes the card describes, in exactly the targets its type lab
 
 A card that departs from its own text because a PATTERN entry forbids the card's way records the departure as a `Pattern-Departure:` trailer in that card's commit, in the shape the `## Pattern-Departure trailer` section of `{{.specs_dir}}/loom/loom-plan-spec.md` defines.
 
-{{template "loom-fragment-loosened-check"}}
-
-{{template "loom-fragment-tooling-names"}}
-
 If any card's gate fails, or a test the card broke fails, and you cannot fix it within your self-fix bound (see next section), stop and report `status: FAILED` — do not continue to a later card on top of a broken one.
-
-## External tools and processes
-
-Learn how an external tool such as tmux behaves from a test in the repository, in the tier the hub runs that tool's tests in, never from processes you start in the shell.
-Run that one test through `lym gate test --tier <that tier>` with its package and, after `--`, a filter that selects it, and check that the gate's report shows the test ran, not skipped.
-Never start a background or detached process from the shell: such a process outlives your command and runs outside every memory cap lym sets.
 
 ## The sandbox rule
 
@@ -128,8 +115,8 @@ It costs no self-fix attempt, never makes the report `FAILED`, and you run the s
 
 The one route to a test run is `lym gate test` with a gate's tier list and a scope form, such as `--tier <n>` with `--card <card id>` or explicit packages, never a raw test command.
 A gate line saying a tier ran no test of a project means the project skipped its own tests, and the gate's pass covers none of them.
-When your card needs those tests and the hub's `gate.refuse_raw` does not list `dotnet test`, run them by hand as that line's way forward names, and check that the run's summary line reports them: this is the one raw test command you run.
-When `gate.refuse_raw` lists it, report the skipped tests to your parent.
+When your card needs those tests and the hub's `refuse_raw` does not list `dotnet test`, run them by hand as that line's way forward names, and check that the run's summary line reports them: this is the one raw test command you run.
+When `refuse_raw` lists it, report the skipped tests to your parent.
 The hub's tiers and gate lists follow:
 
 {{.gate_tiers}}

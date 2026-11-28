@@ -1,11 +1,7 @@
 <!-- This is the darn writer's Step 4 list for a run whose verify gate has a cold fixer:
-     the writer and its subagents run no gate, except the writer's single measuring run of one test class,
-     and the writer acts only on what the fixer leaves.
-     The writer asks its parent for the single run of the test a task's reported failure names, before it diagnoses it,
-     and for the measurement calls of an entry whose deliverable is gate measurements, before it runs any.
-     internal/darnengine's DarnTable reads it for the writer's engine,
-     fills the {{.subagent_model}} marker its Claude engine block declares from loom.subagent_model,
-     fills the {{.measure_call}} marker with the measuring call the hub's gate config can run,
+     the writer and its subagents run no gate, and the writer acts only on what the fixer leaves.
+     The writer asks its parent for the single run of the test a task's reported failure names, before it diagnoses it.
+     internal/darnengine's DarnTable fills its one marker, {{.subagent_model}}, from loom.yaml's subagent_model,
      then fills the result whole into darn-template-write's make_change marker. -->
 
 1. When the task starts from a reported test failure, ask your parent before you diagnose it or make any edit:
@@ -19,46 +15,17 @@
    Edit the repository to make the change.
    Follow the existing patterns, and the PATTERN entries in this prompt.
    Each commit is one change, with its own reads and edits.
-2. {{template "engine-darn-subagents"}}
+2. Hand work that needs no overview of the change to fresh subagents through the Agent tool, each with `subagent_type: "general-purpose"` and `model: "{{.subagent_model}}"`: a batch of lookups, and per-package work whose edits you have already decided, one subagent per package, each owning its own files.
+   Launch every subagent of a batch together in one message.
+   Give each Agent call the `effort`, and each prompt the skills, that the subagent passage of your system prompt names.
    A fresh subagent sees none of this session, so each prompt names the files the subagent owns and the edits to make, and tells the subagent to run no `lym gate test`.
    Keep in this session the work that needs the overview: the design, a change that spans packages, the commits and the change description.
 3. Run no `lym gate test` yourself.
-   There are two exceptions.
-   One is a value the change needs that only a test run shows, such as a golden test's output.
-   The other is a fact the change needs about how an external tool such as tmux behaves:
-   learn it from a test you write in the repository, in the tier the hub runs that tool's tests in.
-   For either, run that one test class once through `{{.measure_call}}`,
-   with the args by which the tier's runner selects one class.
-   The call names one package or project and selects one class, so it never starts a whole tier.
-   The args reach every tier the call runs, so they must suit each of them.
-   Never learn how a tool behaves from processes you start in the shell, and never start a background or detached process from it:
-   such a process outlives your command and runs outside every memory cap lym sets.
-   Never run a raw test command for it: a raw run can exit 0 with no output when no test ran, and only the gate's report says so.
-   When that report says a project ran no test, the property that makes it run is the one its project file's `IsTestProject` condition names.
-   When the tier's command holds `{args}`, run the same gate call once more with `-p:<property>=true` among the args after `--`,
-   and never the raw command the report's line suggests.
-   When that run still runs no test, or the tier's command holds no `{args}`, name the tests to your parent.
-   The measurement calls of an entry whose deliverable is itself gate measurements, such as test times per package,
-   fall outside these rules.
-   Before any of them, ask your parent with `lym creel post --parent --expect-reply "<text>"`,
-   naming every call you plan and their count, then end your turn to wait.
-   Run only the calls your parent's answer allows, within the limits it sets, one at a time in the foreground.
-   The verify gate's test of your committed tree is none of these calls and still runs.
-   With no parent, or when the post is refused and no strand answers,
-   run only the calls an `Added after Discussion` entry of the record allows,
-   within its limits, one at a time in the foreground.
-   With no such entry, run none of them and stop.
-   Write the change description, your one output file, as a stop report in the final-summary spec's form,
-   naming the measurements the entry asks for and their scope, never as gate or tier calls,
-   and as the way forward a decision on the measurement runs and their limits.
-   Then create the stop marker Step 3 names, and end your turn with no further commit.
    Once you end your turn, the row's verify gate tests your committed tree, and a cold fixer clears its failures before you hear of them.
    You are re-prompted only with what the fixer leaves: act on that alone.
 4. Update, in the same commits as the code, the docs the change makes stale: the package doc of each package whose behavior changes, `doc.go` for a Go package;
    the repository's overview doc when a module table or execution stack it shows changes;
    and, when the repository has a `PATTERN.md`, its entry for a cross-cutting invariant the change adds or changes.
 5. Apply each bullet of the record's `## PATTERN changes` section to `PATTERN.md` in your own commits.
-6. Commit on the task branch after each coherent step, as soon as its edits are made, in small commits.
-   Never hold the change uncommitted until the end:
-   a stall, a dead session or a reboot then loses at most one step, and your parent sees your progress in the branch's history.
+6. Commit on the task branch in small, coherent commits.
    Never push: the landing steps that follow push the branch.

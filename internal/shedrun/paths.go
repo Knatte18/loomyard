@@ -41,17 +41,14 @@ const tacklerDirName = "tackler"
 // tacklerMarkerFileName is the filename of the tackler in-flight marker, whose path TacklerMarker returns.
 const tacklerMarkerFileName = "tackler-inflight.json"
 
+// originOwedMarkerFileName is the filename of the origin-owed marker, whose path OriginOwedMarker returns.
+const originOwedMarkerFileName = "origin-owed.json"
+
 // driverLockFileName is the filename of the Go-driver lock, whose path DriverLock returns.
 const driverLockFileName = "driver.lock"
 
-// driveWaitFileName is the filename of the Go driver's wait record, whose path DriveWaitRecord returns.
-const driveWaitFileName = "drive-wait.json"
-
 // settleRecordsFileName is the filename of the Go driver's settle records, whose path SettleRecords returns.
 const settleRecordsFileName = "go-settle.jsonl"
-
-// mergeInBaseFileName is the filename of the merge-in base file, whose path MergeInBaseFile returns.
-const mergeInBaseFileName = "merge-in-base"
 
 // alignmentDirName is the segment under a run's directory that holds its alignment attempts, one directory per point.
 const alignmentDirName = "alignment"
@@ -144,6 +141,7 @@ const StartMergeInProgressKind = "merge_in_progress"
 // RunDir returns the path to the durable, fabric-synced directory holding a single run's seed.json and status.json.
 // It joins the given *lymcwd.Location's AnchorPath() with lymdirs.LymDirName, shedDirName and the run's segment.
 // runSegment picks the segment: the worktree slug for SelfRunID.
+// The legacy "self" directory serves when only that one exists.
 func RunDir(l *lymcwd.Location, runID string) string {
 	return filepath.Join(l.AnchorPath(), lymdirs.LymDirName, shedDirName, runSegment(l, runID))
 }
@@ -208,12 +206,6 @@ func ScratchDir(l *lymcwd.Location, runID string) string {
 	return filepath.Join(l.AnchorPath(), lymdirs.DotLymDirName, shedDirName, runSegment(l, runID))
 }
 
-// MergeInBaseFile returns the path to the ephemeral file that holds the task head a merge-in started from.
-// It is merge-in-base under ScratchDir(l, runID).
-func MergeInBaseFile(l *lymcwd.Location, runID string) string {
-	return filepath.Join(ScratchDir(l, runID), mergeInBaseFileName)
-}
-
 // StepsDir returns the path to the ephemeral directory of a run's `lym shed step` records.
 // It sits under ScratchDir(l, runID).
 func StepsDir(l *lymcwd.Location, runID string) string {
@@ -257,6 +249,13 @@ func PullRequestRecordLock(l *lymcwd.Location, runID string) string {
 // It is the pathspec a records commit takes for the record.
 func PullRequestRecordRel(l *lymcwd.Location, runID string) string {
 	return filepath.Join(lymdirs.LymDirName, shedDirName, runSegment(l, runID), pullRequestRecordFileName)
+}
+
+// LegacyPullRequestRecord returns the path where the run's pull request record lived while it was never-tracked.
+// It is pull-request.json under ScratchDir(l, runID).
+// A record found only there is moved to PullRequestRecord's path once, so a run in flight keeps its pull request.
+func LegacyPullRequestRecord(l *lymcwd.Location, runID string) string {
+	return filepath.Join(ScratchDir(l, runID), pullRequestRecordFileName)
 }
 
 // ParentNoticeFile returns the path to the ephemeral file, pre-push-parent-notice under ScratchDir(l, runID).
@@ -305,7 +304,7 @@ func BattenWatchedMarker(l *lymcwd.Location, runID string) string {
 // GateFindingsFile returns the path to the ephemeral gate findings file of the row named row.
 // It sits under ScratchDir(l, runID).
 // There is one file per row: the row's producer writes it when its gate is exhausted,
-// and a later call whose gates pass leaves it in place.
+// and the row's next call whose gates pass removes it.
 // A goto, a resume and a pause leave the scratch directory alone, so the file outlives them.
 func GateFindingsFile(l *lymcwd.Location, runID, row string) string {
 	return filepath.Join(ScratchDir(l, runID), gateFindingsDirName, row+gateFindingsFileSuffix)
@@ -396,12 +395,6 @@ func DriverLock(l *lymcwd.Location, runID string) string {
 	return filepath.Join(ScratchDir(l, runID), driverLockFileName)
 }
 
-// DriveWaitRecord returns the path to the ephemeral record the Go driver keeps while it waits out a network failure.
-// The file is driveWaitFileName under ScratchDir(l, runID).
-func DriveWaitRecord(l *lymcwd.Location, runID string) string {
-	return filepath.Join(ScratchDir(l, runID), driveWaitFileName)
-}
-
 // TacklerDir returns the path to the durable directory holding every tackler attempt of a run:
 // RunDir(l, runID) joined with tacklerDirName.
 func TacklerDir(l *lymcwd.Location, runID string) string {
@@ -470,6 +463,13 @@ func TacklerMarker(l *lymcwd.Location, runID string) string {
 	return filepath.Join(ScratchDir(l, runID), tacklerMarkerFileName)
 }
 
+// OriginOwedMarker returns the path to the ephemeral marker of a resume that judged its owner without origin.
+// The file is originOwedMarkerFileName under ScratchDir(l, runID).
+// While it stands, the run's passes stay full until one reaches origin.
+func OriginOwedMarker(l *lymcwd.Location, runID string) string {
+	return filepath.Join(ScratchDir(l, runID), originOwedMarkerFileName)
+}
+
 // CancelMarkerLock returns the path to the cancel's local lock, whose holder is the live writer of a cancel under way.
 // The cancel's intent lives in the batten record; the lock is held only on the machine that runs the cancel.
 // The file is <run segment>.cancel.lock directly under ScratchRoot(l).
@@ -527,7 +527,7 @@ type RunTreeRels struct {
 }
 
 // TreeRunRels returns the tree-relative record paths of runID.
-// It validates runID and applies no "self" alias:
+// It validates runID and applies no "self" alias and no legacy directory fallback:
 // a tree read from git has no disk to resolve against.
 // A runID that fails validation returns that error and a zero value.
 func TreeRunRels(runID string) (RunTreeRels, error) {
@@ -548,7 +548,7 @@ func TreeRunRels(runID string) (RunTreeRels, error) {
 
 // TreeRunFileRels returns the tree-relative paths of a run's seed.json and status.json.
 // They are slash-separated, as a git tree read takes them.
-// It validates runID and applies no "self" alias:
+// It validates runID and applies no "self" alias and no legacy directory fallback:
 // a tree read from git has no disk to resolve against.
 // A runID that fails validation returns that error and empty paths.
 func TreeRunFileRels(runID string) (seedRel, statusRel string, err error) {

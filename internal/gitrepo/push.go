@@ -48,7 +48,7 @@ func (r *Repo) PushLockPath() (string, error) {
 // rebaseRetryTriggers are the git-push stderr substrings that mean the remote has commits this checkout lacks.
 var rebaseRetryTriggers = []string{"non-fast-forward", "rejected", "fetch first"}
 
-// ErrPushAuthRefused is matched with errors.Is against the error a push returns when the remote refuses it.
+// ErrPushAuthRefused is matched with errors.Is against the error PushRebaseFree returns when the remote refuses it.
 // Retrying cannot clear the refusal, which is neither a rejection nor a transport failure.
 // The error also carries git's refusal line.
 var ErrPushAuthRefused = errors.New("gitrepo: push refused for authentication or permission")
@@ -57,12 +57,18 @@ var ErrPushAuthRefused = errors.New("gitrepo: push refused for authentication or
 // They use GitHub's wording, untranslated, so a translated git locale defeats the match.
 var authRefusalTriggers = []string{"Permission to", "denied to", "returned error: 403", "Authentication failed", "could not read Username"}
 
+// remoteRefAbsentTrigger is the git-push-delete stderr substring for a remote ref already gone before the delete ran.
+// Git's fuller wording is `error: unable to delete '<branch>': remote ref does not exist`.
+// That line contains this substring verbatim, so matching on it alone needs no list.
+// A future git rewording that drops or changes this substring must fail the test that pins it.
+// The common case must not silently turn into an error.
+const remoteRefAbsentTrigger = "remote ref does not exist"
+
 // Push runs git push, and after one non-fast-forward rejection runs pull --rebase and retries.
-// The branch lands under the origin ref name ns maps it to.
 // The worktree must be clean.
 // Callers must re-read CurrentSHA after Push if SHAs were captured beforehand.
-func (r *Repo) Push(ns RefNamespace) error {
-	return r.pushWithRebaseRetry(ns)
+func (r *Repo) Push() error {
+	return r.pushWithRebaseRetry()
 }
 
 // ErrPullRebaseFailed is matched with errors.Is against the error a push returns when its recovery rebase was aborted.
@@ -84,8 +90,8 @@ func (e abortedRebaseError) Unwrap() error { return ErrPullRebaseFailed }
 // On a rebaseRetryTriggers match it runs git pull --rebase once, retries, and aborts the rebase if it fails.
 // A first push establishes tracking.
 // A rebase that failed and was aborted returns an error satisfying errors.Is(err, ErrPullRebaseFailed).
-func (r *Repo) pushWithRebaseRetry(ns RefNamespace) error {
-	err := r.pushPlainWithRetry("", "", "", ns)
+func (r *Repo) pushWithRebaseRetry() error {
+	err := r.pushPlainWithRetry("", "", "")
 	if err == nil {
 		return nil
 	}
@@ -127,7 +133,7 @@ func (r *Repo) pushWithRebaseRetry(ns RefNamespace) error {
 		return abortedRebaseError{message: fmt.Sprintf("gitrepo: git pull --rebase: %s", rebaseGitErr.Stderr)}
 	}
 
-	err = r.pushPlainWithRetry("", "", "", ns)
+	err = r.pushPlainWithRetry("", "", "")
 	if err != nil {
 		return fmt.Errorf("gitrepo: git push (retry after rebase): %w", err)
 	}
@@ -139,10 +145,10 @@ func (r *Repo) pushWithRebaseRetry(ns RefNamespace) error {
 // Once an attempt succeeds, the pushed commit is recorded in the branch's tracking ref under the lock.
 // With both remote and branch empty, it pushes the checked-out branch to the default push remote.
 // It pushes to the branch of the same name there, and a branch with no upstream takes that branch as its upstream.
-// With a named branch it pushes source to the origin ref name ns maps the branch to on remote.
+// With a named branch it pushes source to refs/heads/<branch> on remote.
 // An empty source means refs/heads/<branch>, and the branch need not be checked out.
 // The commit recorded is the one source names when the push starts.
-func (r *Repo) pushPlainWithRetry(remote, source, branch string, ns RefNamespace) error {
+func (r *Repo) pushPlainWithRetry(remote, source, branch string) error {
 	if branch == "" {
 		current, err := r.CurrentBranch()
 		if err != nil {
@@ -153,7 +159,7 @@ func (r *Repo) pushPlainWithRetry(remote, source, branch string, ns RefNamespace
 	if source == "" {
 		source = "refs/heads/" + branch
 	}
-	dest, err := r.resolvePushDestination(remote, branch, ns)
+	dest, err := r.resolvePushDestination(remote, branch)
 	if err != nil {
 		return err
 	}
@@ -162,9 +168,9 @@ func (r *Repo) pushPlainWithRetry(remote, source, branch string, ns RefNamespace
 		return err
 	}
 	err = PushWithRetry(func() error {
-		_, err := r.runChecked("push", dest.url, source+":"+ns.Branch(branch))
+		_, err := r.runChecked("push", dest.url, source+":refs/heads/"+branch)
 		return err
-	}, branch, ns, PushBackoffDelays(), r.pushSleep)
+	}, branch, PushBackoffDelays(), r.pushSleep)
 	if err != nil {
 		return err
 	}
@@ -172,15 +178,12 @@ func (r *Repo) pushPlainWithRetry(remote, source, branch string, ns RefNamespace
 	return nil
 }
 
-// recordLandedPush records a push whose transfer already landed, sha being the remote ref's new tip, "" for a delete.
-// It first leaves a trace line naming the checkout, the remote ref and its new tip,
-// so the process that moved a remote ref can be found from the logs.
+// recordLandedPush records a push whose transfer already landed.
 // It logs a failure of the record instead of returning it.
 // The remote has changed, so reporting the push as failed would be wrong.
 // A fetch corrects a tracking ref that the push moved.
 // A ref that a delete left behind stays until something drops it, so the warning names that ref.
 func (r *Repo) recordLandedPush(dest pushDestination, sha string, keepNewer bool) {
-	logger.Info("gitrepo: push landed", "repo", r.path, "remote", dest.remote, "ref", dest.namespace.Branch(dest.branch), "tip", sha)
 	if err := r.recordPush(dest, sha, keepNewer); err != nil {
 		logger.Warn("gitrepo: push landed but its tracking ref was not recorded", "branch", dest.branch, "trackingRef", dest.trackingRef, "error", err)
 	}
@@ -192,15 +195,15 @@ func (r *Repo) recordLandedPush(dest pushDestination, sha string, keepNewer bool
 // A refusal for want of authentication or permission wraps ErrPushAuthRefused.
 // A retryable remote refusal that outlasts the bounded retry wraps ErrPushRetriesExhausted.
 // The transfer runs outside the remote-refs lock, and the branch's remote-tracking ref is written under it afterwards.
-func (r *Repo) PushBranch(remote, branch string, ns RefNamespace) error {
-	return mapPlainPushError(r.pushPlainWithRetry(remote, "", branch, ns))
+func (r *Repo) PushBranch(remote, branch string) error {
+	return mapPlainPushError(r.pushPlainWithRetry(remote, "", branch))
 }
 
 // PushCommit pushes the commit sha to the branch on the named remote, without rebasing or forcing.
 // It needs no local branch.
 // It records the push in the branch's remote-tracking ref and returns the classified push errors.
-func (r *Repo) PushCommit(remote, sha, branch string, ns RefNamespace) error {
-	return mapPlainPushError(r.pushPlainWithRetry(remote, sha, branch, ns))
+func (r *Repo) PushCommit(remote, sha, branch string) error {
+	return mapPlainPushError(r.pushPlainWithRetry(remote, sha, branch))
 }
 
 // configKeyNotSetExit is the exit code `git config --unset` answers when the key is absent.
@@ -226,28 +229,6 @@ func (r *Repo) DropRemoteTracking(remote, branch string) error {
 	})
 }
 
-// DeleteRemoteTrackingRef deletes the remote-tracking ref of a branch.
-// It is the ref that the remote's fetch refspecs map the branch's ref under ns to.
-// The ref is resolved as a push destination resolves its tracking ref, and deleted in one hold of the remote-refs lock.
-// It touches no config, so the branch keeps its upstream setting and reads as upstream-set with a pruned ref.
-// An absent ref, or a remote whose refspecs map no ref, is no error.
-// It touches no remote and no local branch.
-func (r *Repo) DeleteRemoteTrackingRef(remote, branch string, ns RefNamespace) error {
-	dest, err := r.resolvePushDestination(remote, branch, ns)
-	if err != nil {
-		return err
-	}
-	if dest.trackingRef == "" {
-		return nil
-	}
-	return r.withRemoteRefs(func() error {
-		if err := r.moveTrackingRef(dest.trackingRef, "", false); err != nil {
-			return fmt.Errorf("gitrepo: delete remote-tracking ref %s: %w", dest.trackingRef, err)
-		}
-		return nil
-	})
-}
-
 // PushRebaseFree pushes the checked-out branch without rebasing.
 // A branch with no upstream gets its remote branch as upstream.
 // A rejection returns an error wrapping ErrPushRejected with git's rejection line.
@@ -259,16 +240,14 @@ func (r *Repo) DeleteRemoteTrackingRef(remote, branch string, ns RefNamespace) e
 // It takes no push-serialising lock of its own;
 // the transfer runs outside the repository's remote-refs lock,
 // and the tracking ref and upstream are written under it afterwards.
-func (r *Repo) PushRebaseFree(ns RefNamespace) error {
-	return mapPlainPushError(r.pushPlainWithRetry("", "", "", ns))
+func (r *Repo) PushRebaseFree() error {
+	return mapPlainPushError(r.pushPlainWithRetry("", "", ""))
 }
 
 // mapPlainPushError maps the error of a plain push to the package's classified push errors.
 // Nil stays nil.
 // An exhausted retry wraps ErrPushRetriesExhausted, and an authentication refusal wraps ErrPushAuthRefused.
-// A rejection wraps ErrPushRejected and carries git's rejection line followed by the push's `remote:` lines,
-// so a hook's own refusal text reaches the caller.
-// Every other failure is wrapped as a git push failure.
+// A rejection wraps ErrPushRejected, and every other failure is wrapped as a git push failure.
 func mapPlainPushError(err error) error {
 	if err == nil {
 		return nil
@@ -283,27 +262,10 @@ func mapPlainPushError(err error) error {
 			return fmt.Errorf("%w: %s", ErrPushAuthRefused, line)
 		}
 		if line, found := lastLineHolding(gitErr.Stderr, rebaseRetryTriggers); found {
-			detail := line
-			for _, remoteLine := range remoteLines(gitErr.Stderr) {
-				if remoteLine != line {
-					detail += "; " + remoteLine
-				}
-			}
-			return fmt.Errorf("%w: %s", ErrPushRejected, detail)
+			return fmt.Errorf("%w: %s", ErrPushRejected, line)
 		}
 	}
 	return fmt.Errorf("gitrepo: git push: %w", err)
-}
-
-// remoteLines returns the trimmed lines of stderr that git relays from the remote, those starting with `remote:`.
-func remoteLines(stderr string) []string {
-	var lines []string
-	for _, line := range strings.Split(stderr, "\n") {
-		if trimmed := strings.TrimSpace(line); strings.HasPrefix(trimmed, "remote:") {
-			lines = append(lines, trimmed)
-		}
-	}
-	return lines
 }
 
 // lastLineHolding returns the last line of stderr that holds one of triggers, trimmed.
@@ -317,46 +279,33 @@ func lastLineHolding(stderr string, triggers []string) (line string, found bool)
 	return "", false
 }
 
-// DeleteRemoteBranch deletes the origin ref ns maps branch to on the named remote via `git push --delete`.
-// It first lists that exact ref with `git ls-remote`, because git deletes a missing full-name ref silently.
-// An absent remote ref returns (false, nil) and pushes nothing, an idempotent success.
+// DeleteRemoteBranch deletes branch on the named remote via `git push --delete`.
+// An absent remote ref returns (false, nil), an idempotent success.
 // The executors in fabric's destruction gate are idempotent for an already-absent target,
 // and the common case is a branch that was never pushed.
 // deleted is returned separately from err so the caller's mutation record can tell a removal from an absent ref.
 // The deletion runs outside the remote-refs lock,
 // and the branch's remote-tracking ref is deleted under it afterwards.
-func (r *Repo) DeleteRemoteBranch(remote, branch string, ns RefNamespace) (deleted bool, err error) {
-	dest, err := r.resolvePushDestination(remote, branch, ns)
+func (r *Repo) DeleteRemoteBranch(remote, branch string) (deleted bool, err error) {
+	dest, err := r.resolvePushDestination(remote, branch)
 	if err != nil {
 		return false, err
 	}
-	remoteRef := ns.Branch(branch)
-	listing, err := r.runChecked("ls-remote", dest.url, remoteRef)
-	if err != nil {
-		return false, fmt.Errorf("gitrepo: git ls-remote %s: %w", remoteRef, err)
+	// The short branch name makes git report an absent remote ref; a full refs/heads/ name deletes a missing ref silently.
+	_, err = r.runChecked("push", dest.url, "--delete", branch)
+	if err == nil {
+		r.recordLandedPush(dest, "", false)
+		return true, nil
 	}
-	if !listsRef(listing, remoteRef) {
+
+	var gitErr *gitexec.GitError
+	if errors.As(err, &gitErr) && strings.Contains(gitErr.Stderr, remoteRefAbsentTrigger) {
 		return false, nil
 	}
-	if _, err = r.runChecked("push", dest.url, "--delete", remoteRef); err != nil {
-		return false, fmt.Errorf("gitrepo: git push --delete: %w", err)
-	}
-	r.recordLandedPush(dest, "", false)
-	return true, nil
+	return false, fmt.Errorf("gitrepo: git push --delete: %w", err)
 }
 
-// listsRef reports whether an ls-remote listing holds a line for exactly the ref name ref.
-func listsRef(listing, ref string) bool {
-	for _, line := range strings.Split(listing, "\n") {
-		if _, name, found := strings.Cut(strings.TrimSpace(line), "\t"); found && name == ref {
-			return true
-		}
-	}
-	return false
-}
-
-// DeleteRemoteBranchLeased deletes the origin ref ns maps branch to on the named remote via `git push --delete`.
-// It deletes by the full name, under a force-with-lease.
+// DeleteRemoteBranchLeased deletes branch on the named remote via `git push --delete` under a force-with-lease.
 // The lease succeeds only while the remote branch still sits at expectSHA.
 // expectSHA must be a valid hex object name, or ErrInvalidSHA is returned before any git spawn.
 // An already-absent remote ref is a failed lease, not an idempotent success:
@@ -365,18 +314,17 @@ func listsRef(listing, ref string) bool {
 // every other failure returns the wrapped git error and never matches it.
 // The deletion runs outside the remote-refs lock,
 // and the branch's remote-tracking ref is deleted under it afterwards.
-func (r *Repo) DeleteRemoteBranchLeased(remote, branch, expectSHA string, ns RefNamespace) error {
+func (r *Repo) DeleteRemoteBranchLeased(remote, branch, expectSHA string) error {
 	if !validSHA(expectSHA) {
 		return ErrInvalidSHA
 	}
 
-	dest, err := r.resolvePushDestination(remote, branch, ns)
+	dest, err := r.resolvePushDestination(remote, branch)
 	if err != nil {
 		return err
 	}
-	remoteRef := ns.Branch(branch)
-	lease := "--force-with-lease=" + remoteRef + ":" + expectSHA
-	_, err = r.runChecked("push", lease, dest.url, "--delete", remoteRef)
+	lease := "--force-with-lease=refs/heads/" + branch + ":" + expectSHA
+	_, err = r.runChecked("push", lease, dest.url, "--delete", branch)
 	if err == nil {
 		r.recordLandedPush(dest, "", false)
 		return nil
@@ -388,29 +336,25 @@ func (r *Repo) DeleteRemoteBranchLeased(remote, branch, expectSHA string, ns Ref
 	return fmt.Errorf("gitrepo: git push --delete (leased at %s): %w", expectSHA, err)
 }
 
-// UpdateRemoteBranchLeased moves the origin ref ns maps branch to on the named remote to sha.
-// It runs under a force-with-lease on expectSHA.
+// UpdateRemoteBranchLeased moves branch on the named remote to sha under a force-with-lease on expectSHA.
 // sha may be an ancestor of expectSHA, so the branch can move backwards.
 // sha and expectSHA must be valid hex object names, or ErrInvalidSHA is returned before any git spawn.
-// An empty expectSHA is a lease on absence: the update succeeds only while the remote branch does not exist.
 // A branch that moved or vanished since expectSHA was read is a failed lease, returned bare as ErrLeaseRejected;
 // every other failure (network, authentication, a hook rejection) returns the wrapped git error and never the sentinel.
-// A refusal for want of authentication or permission also wraps ErrPushAuthRefused with git's refusal line.
 // It is the package's only force-shaped push, and it never takes a lease it did not read itself.
 // The transfer runs outside the remote-refs lock,
 // and the branch's remote-tracking ref moves to sha under it afterwards.
-func (r *Repo) UpdateRemoteBranchLeased(remote, branch, sha, expectSHA string, ns RefNamespace) error {
-	if !validSHA(sha) || (expectSHA != "" && !validSHA(expectSHA)) {
+func (r *Repo) UpdateRemoteBranchLeased(remote, branch, sha, expectSHA string) error {
+	if !validSHA(sha) || !validSHA(expectSHA) {
 		return ErrInvalidSHA
 	}
 
-	dest, err := r.resolvePushDestination(remote, branch, ns)
+	dest, err := r.resolvePushDestination(remote, branch)
 	if err != nil {
 		return err
 	}
-	remoteRef := ns.Branch(branch)
-	lease := "--force-with-lease=" + remoteRef + ":" + expectSHA
-	_, err = r.runChecked("push", lease, dest.url, sha+":"+remoteRef)
+	lease := "--force-with-lease=refs/heads/" + branch + ":" + expectSHA
+	_, err = r.runChecked("push", lease, dest.url, sha+":refs/heads/"+branch)
 	if err == nil {
 		r.recordLandedPush(dest, sha, false)
 		return nil
@@ -419,11 +363,6 @@ func (r *Repo) UpdateRemoteBranchLeased(remote, branch, sha, expectSHA string, n
 	var gitErr *gitexec.GitError
 	if errors.As(err, &gitErr) && strings.Contains(gitErr.Stderr, leaseRejectedTrigger) {
 		return ErrLeaseRejected
-	}
-	if gitErr != nil {
-		if line, found := lastLineHolding(gitErr.Stderr, authRefusalTriggers); found {
-			return fmt.Errorf("gitrepo: git push --force-with-lease (leased at %s): %w: %s: %w", expectSHA, ErrPushAuthRefused, line, err)
-		}
 	}
 	return fmt.Errorf("gitrepo: git push --force-with-lease (leased at %s): %w", expectSHA, err)
 }
@@ -442,7 +381,7 @@ func containsAny(s string, substrs []string) bool {
 // Returns immediately if nothing is unpushed once the lock is acquired.
 // The push may run `git pull --rebase` and retry,
 // so a SHA the caller read before the call can be stale after it.
-func (r *Repo) PushCoalesced(ns RefNamespace) error {
+func (r *Repo) PushCoalesced() error {
 	lockPath, err := r.PushLockPath()
 	if err != nil {
 		return err
@@ -460,7 +399,7 @@ func (r *Repo) PushCoalesced(ns RefNamespace) error {
 	if !unpushed {
 		return nil
 	}
-	return r.pushWithRebaseRetry(ns)
+	return r.pushWithRebaseRetry()
 }
 
 // HasUnpushed reports whether HEAD is ahead of its upstream.

@@ -4,16 +4,15 @@ Heddle entries are rendered only via `heddleengine`, and lym's own instructions 
 
 ## Heddle rendering
 
-Rule: Rendering heddle entries into a file or prompt: only via `heddleengine`, from its shipped layer, Bolt's `heddle.json` and, under `heddle.lym_override`, lym overrides; `heddle.json` written only via `lym heddle` or its replayer; fabric names no heddle file.
+Rule: Rendering heddle entries into a file or prompt: only via `heddleengine`, from its shipped layer, Bolt's `heddle.json` and, under `lym_override`, lym overrides; `heddle.json` written only via `lym heddle` or its replayer; fabric names no heddle file.
 
 Heddle's instruction text is stored once per layer and rendered from those stores, never from a copy.
 
 - The shipped layer is `shipped.json`, embedded in `internal/heddleengine`.
   It holds lym's own entries and changes only with a lym release.
-  Its glossary entry, `lym-glossary`, is embedded from `glossary.md` beside it, the one copy of lym's glossary.
 - The repository layer is `heddle.json` at the Bolt checkout's root.
 - A hub's lym overrides sit in `heddle-lym-override.json` beside it.
-  A render reads them only while the hub sets `heddle.lym_override`.
+  A render reads them only while the hub's `heddle.yaml` sets `lym_override`.
 - The `lym heddle` verbs and heddle's Bolt replayer are the only writers of `heddle.json`.
   Another module's verb, such as `lym orch rules`, writes it only through the write path the `lym heddle` verbs share.
 - The verbs alone write `heddle-lym-override.json`, which the replayer leaves unclaimed.
@@ -22,8 +21,7 @@ Heddle's instruction text is stored once per layer and rendered from those store
 - `internal/heddleengine` is the only package that reads the layers and renders them.
 - It renders file targets at a worktree's anchor, beside the repository's own CLAUDE and AGENTS files.
   It does so through fabric's worktree seam, `lym heddle render`,
-  `lym heddle set` and `remove`, which render into every live worktree of the hub after a save,
-  and the hub config reconcile, which renders into every walked worktree once per lym build.
+  and `lym heddle set` and `remove`, which render into every live worktree of the hub after a save.
 - It renders a session's appended system prompt through shuttle's prompt seam.
 - Fabric hands heddle paths and events and names no heddle file.
 - Heddle's file targets are the one place a per-worktree file lym seeds is declared, so a new such file is a new target.

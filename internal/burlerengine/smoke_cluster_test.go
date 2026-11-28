@@ -21,7 +21,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lenses"
@@ -124,7 +123,7 @@ func newClusterSmokeEngine(t *testing.T) (*burlerengine.Engine, *hubforge.Hub) {
 	}
 	// Every seat's edit directive is its engine's copy, so a seat naming no engine needs a default.
 	burlerGeom.DefaultEngine = "claude"
-	engine := burlerengine.New(seatengine.RunnerShuttle(runner), burlerGeom, cfg, fabriclayout.StencilsDir(h.Location.HubPath), "", nil)
+	engine := burlerengine.New(seatengine.RunnerShuttle(runner), burlerGeom, cfg, fabricengine.StencilsDir(h.Location.HubPath), "", nil)
 	return engine, h
 }
 
@@ -240,8 +239,8 @@ func TestSmokeBurlerClusterRogueFork(t *testing.T) {
 		t.Fatalf("cluster round failed with a fork-count shortfall, not the expected Agent-call violation: %v", err)
 	}
 	// The error names the Agent-call violation specifically.
-	// auditClusterRound words it as "attempted N nested spawn call(s)", so the check matches on "nested spawn call".
-	if !strings.Contains(err.Error(), "nested spawn call") {
+	// auditClusterRound words it as "attempted N Agent tool call(s)", so the check matches on "Agent tool call".
+	if !strings.Contains(err.Error(), "Agent tool call") {
 		t.Fatalf("cluster round error = %q; want it to name the Agent-call-in-fork violation", err.Error())
 	}
 

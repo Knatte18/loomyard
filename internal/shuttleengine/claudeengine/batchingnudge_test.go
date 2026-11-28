@@ -1,7 +1,7 @@
 // batchingnudge_test.go pins the batching nudge: which breach a transcript tail fires, and what holds it back.
 // It covers the main session and subagents' transcripts, the state file's counts, and the transcript tail read.
 // It also covers the wait for a call to reach the transcript.
-// It also covers the bounds of the claude.batching_nudge block and the hook and state file Prepare installs from it.
+// It also covers the bounds of claude.yaml's batching_nudge block and the hook and state file Prepare installs from it.
 
 package claudeengine
 
@@ -484,9 +484,49 @@ func TestEngineConstructorsSetTheTranscriptWait(t *testing.T) {
 	}
 }
 
-// TestValidateBatchingNudge pins the bounds of the claude.batching_nudge block:
-// claude.batching_nudge.context_tokens may be 0, the other numbers must be at least 1,
-// and a block that is off is not checked.
+// TestReadTranscriptTail pins the window of the transcript the nudge reads.
+// A file under the budget is read whole, and a larger one is cut to its complete lines.
+// A window holding no line end yields nothing.
+func TestReadTranscriptTail(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	tests := []struct {
+		name    string
+		content string
+		budget  int64
+		want    string
+		wantNil bool
+	}{
+		{name: "FileUnderTheBudgetIsReadWhole", content: "aaa\nbbb\nccc\n", budget: 100, want: "aaa\nbbb\nccc\n"},
+		{name: "FileOverTheBudgetDropsTheCutFirstLine", content: "aaa\nbbb\nccc\n", budget: 6, want: "ccc\n"},
+		{name: "WindowWithoutALineEndIsNil", content: "aaa\nbbb", budget: 2, wantNil: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			transcript := filepath.Join(t.TempDir(), "transcript.jsonl")
+			if err := os.WriteFile(transcript, []byte(tt.content), 0o644); err != nil {
+				t.Fatalf("write transcript: %v", err)
+			}
+			got, err := readTranscriptTail(transcript, tt.budget)
+			if err != nil {
+				t.Fatalf("readTranscriptTail() error: %v", err)
+			}
+			if tt.wantNil {
+				if got != nil {
+					t.Errorf("readTranscriptTail(%q, %d) = %q; want nil", tt.content, tt.budget, got)
+				}
+				return
+			}
+			if string(got) != tt.want {
+				t.Errorf("readTranscriptTail(%q, %d) = %q; want %q", tt.content, tt.budget, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestValidateBatchingNudge pins the bounds of the batching_nudge block:
+// context_tokens may be 0, the other numbers must be at least 1, and a block that is off is not checked.
 func TestValidateBatchingNudge(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -526,7 +566,7 @@ func TestValidateBatchingNudge(t *testing.T) {
 	}
 }
 
-// TestPrepare_BatchingNudgeHook pins that the template's claude.batching_nudge installs the hook.
+// TestPrepare_BatchingNudgeHook pins that the template's batching_nudge installs the hook.
 // The hook names the run's state file, and that file is seeded with the block.
 // An off switch installs neither, and a threshold below its least value refuses the run before any artifact.
 func TestPrepare_BatchingNudgeHook(t *testing.T) {

@@ -1,6 +1,5 @@
 // waiting.go implements the batch that waits on its parent.
 // A fork or recovery strand that stops on a step only the run's parent can take reports NEEDS_PARENT.
-// A recovery strand with a question only the parent can answer reports the same way.
 // record-batch or recover-batch then records the batch in flight with status waiting, spending no recovery.
 
 package websterengine
@@ -10,7 +9,7 @@ import (
 	"time"
 )
 
-// waitsOnParent reports whether bs is an in-flight batch waiting on a step or an answer only the run's parent can give.
+// waitsOnParent reports whether bs is an in-flight batch waiting on a step only the run's parent can take.
 func waitsOnParent(bs *BatchState) bool {
 	return bs != nil && !bs.Terminal && bs.Status == DigestStatusWaiting
 }
@@ -29,10 +28,10 @@ func recordWaiting(bs *BatchState, digest *Digest, reportsDir string, number int
 }
 
 // resumeStep is the verb that resumes waiting batch number once the parent has acted:
-// begin-batch for a fork batch, recover-batch with the parent's answer for a recovery batch.
+// begin-batch for a fork batch, recover-batch for a recovery batch.
 func resumeStep(bs *BatchState, number int) string {
 	if bs.Kind == "recovery" {
-		return fmt.Sprintf(`lym webster recover-batch %d --answer "<the parent's answer>"`, number)
+		return fmt.Sprintf("lym webster recover-batch %d", number)
 	}
 	return fmt.Sprintf("lym webster begin-batch %d", number)
 }

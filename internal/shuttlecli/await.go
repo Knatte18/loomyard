@@ -64,7 +64,7 @@ or git repository. Without --cap the call waits the keep-warm cap of the caller'
 role from claude.yaml inside a git worktree, and 250s elsewhere.
 
 A marker is a path like any other: the condition is "this file appears",
-whoever writes it. Run the command with a shell command timeout of 3600000 ms
+whoever writes it. Run the command with a Bash tool timeout of 3600000 ms
 and re-run it in a turn that does nothing else, so the prompt
 cache stays warm between calls.
 

@@ -60,8 +60,6 @@ type Scheduler struct {
 	// hubStarts counts starts per hub path since its daemon last answered; hubCapWarned marks paths warned this episode.
 	hubStarts    map[string]int
 	hubCapWarned map[string]bool
-	// machineWake tells the machine hour loop that a message to another machine was journaled.
-	machineWake chan struct{}
 }
 
 // NewScheduler returns a Scheduler delivering the store's pool through delivery.
@@ -70,7 +68,6 @@ func NewScheduler(store *Store, delivery Delivery, clock Clock) *Scheduler {
 		store: store, delivery: delivery, clock: clock,
 		workers: map[string]*worker{}, chasers: map[string]*chaser{}, stop: make(chan struct{}), sweepWake: make(chan struct{}, 1),
 		outbound: map[string]*outboundWorker{}, hubStarts: map[string]int{}, hubCapWarned: map[string]bool{},
-		machineWake: make(chan struct{}, 1),
 	}
 }
 
@@ -78,14 +75,11 @@ func NewScheduler(store *Store, delivery Delivery, clock Clock) *Scheduler {
 // It launches a worker for each receiver the pool already shows with a queued inject or unread mail.
 // It launches a chaser for each holder of a chaseable message.
 // It launches an outbound worker for each hub with a pending outbound message.
-// It starts the machine hour loop, whose first pass returns every message to another machine already past its hour.
 func (s *Scheduler) Start() {
 	s.store.SetWakeHook(s.wake)
 	s.store.SetOutboundHook(s.wakeOutbound)
-	s.store.SetMachineHook(s.wakeMachineHour)
-	s.wg.Add(2)
+	s.wg.Add(1)
 	go s.sweepLoop()
-	go s.machineHourLoop()
 	for _, receiver := range s.store.pendingReceivers() {
 		s.wake(receiver)
 	}

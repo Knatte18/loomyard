@@ -137,7 +137,7 @@ func TestSpawnAnchoredScenario(t *testing.T) {
 		if _, err := Seed(h.Location, slug); err != nil {
 			t.Fatalf("Seed: %v", err)
 		}
-		assertWorktreeTasks(t, anchorDir)
+		assertAttachTaskOnly(t, anchorDir)
 		if err := OpenTask(h.Location, slug); err != nil {
 			t.Fatalf("OpenTask: %v", err)
 		}

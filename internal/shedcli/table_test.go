@@ -1,11 +1,10 @@
-// table_test.go covers table.go's recipes map and its lookup accessor.
-// It stays in tier 0: it reads recipes and calls lookup alone, neither of which resolves cwd or spawns git.
+// table_test.go covers table.go's recipes map and its two accessors. It stays in tier 0: it
+// calls lookup and names alone, neither of which resolves cwd or spawns git.
 
 package shedcli
 
 import (
 	"go/ast"
-	"maps"
 	"slices"
 	"sort"
 	"strings"
@@ -28,7 +27,7 @@ const tableScanMinFiles = 3
 // four-name contract is the simpler, equally authoritative source.
 var allGenericVerbs = []string{"run", "step", "status", "pause", "goto"}
 
-// TestRecipes_KeySet asserts recipes' key set is exactly the recipe names it lists.
+// TestRecipes_KeySet asserts recipes' key set is exactly the eight recipe names it lists.
 // It also asserts the set equals shedrun.RecipeNames(),
 // so the vocabulary internal/shedrun declares and the arming table internal/shedcli declares cannot drift apart.
 //
@@ -40,15 +39,20 @@ func TestRecipes_KeySet(t *testing.T) {
 		name string
 		want []string
 	}{
-		{"exactly arras, batten, darn, hardener, motif, pawl, raddle, sampler and tapestry", []string{"arras", "batten", "darn", "hardener", "motif", "pawl", "raddle", "sampler", "tapestry"}},
+		{"exactly arras, batten, darn, motif, pawl, raddle, sampler and tapestry", []string{"arras", "batten", "darn", "motif", "pawl", "raddle", "sampler", "tapestry"}},
 		{"matches the shedrun vocabulary", shedrun.RecipeNames()},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := slices.Sorted(maps.Keys(recipes))
-			if !slices.Equal(got, tt.want) {
-				t.Errorf("sorted recipes keys = %v; want %v", got, tt.want)
+			got := names()
+			if len(got) != len(tt.want) {
+				t.Fatalf("names() = %v; want %v", got, tt.want)
+			}
+			for i := range tt.want {
+				if got[i] != tt.want[i] {
+					t.Errorf("names()[%d] = %q; want %q", i, got[i], tt.want[i])
+				}
 			}
 		})
 	}

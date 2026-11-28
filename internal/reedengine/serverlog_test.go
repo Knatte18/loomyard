@@ -1,4 +1,4 @@
-// serverlog_test.go tests the pure reed.debug_log parsing helper.
+// serverlog_test.go tests the pure debug_log parsing helper.
 // It is untagged because it does no filesystem or process I/O, per Test Tier Purity.
 
 package reedengine
@@ -33,7 +33,7 @@ func TestDebugLogArgs(t *testing.T) {
 				if err == nil {
 					t.Fatalf("debugLogArgs(%q) = %v, nil; want error", tt.level, got)
 				}
-				wantMsg := `invalid reed.debug_log "` + tt.level + `": must be 0, 1 or 2`
+				wantMsg := `invalid debug_log "` + tt.level + `": must be 0, 1 or 2`
 				if err.Error() != wantMsg {
 					t.Errorf("debugLogArgs(%q) error = %q; want %q", tt.level, err.Error(), wantMsg)
 				}

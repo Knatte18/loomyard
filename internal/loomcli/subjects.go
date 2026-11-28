@@ -151,8 +151,15 @@ func taskMergeBase(l *lymcwd.Location) func() (string, error) {
 // Bound: a change confined to harnessOwnFiles reads as an unchanged subject.
 // The landing gate at Parent-Align and Finalize bounds it.
 func codeSubject(location *lymcwd.Location, runID string) (shedadapters.Subject, bool, error) {
-	base, found, err := recordedTaskBase(location)
-	if err != nil || !found {
+	origin, found, err := fabricengine.ReadOrigin(location)
+	if err != nil {
+		return shedadapters.Subject{}, false, err
+	}
+	if !found || origin.ParentBranch == "" {
+		return shedadapters.Subject{}, false, nil
+	}
+	base, err := taskMergeBase(location)()
+	if err != nil {
 		return shedadapters.Subject{}, false, err
 	}
 	handle, err := fabricengine.Open(location)
@@ -172,41 +179,6 @@ func codeSubject(location *lymcwd.Location, runID string) (shedadapters.Subject,
 		Base:      base,
 		Patch:     patch.Full,
 	}, true, nil
-}
-
-// recordedTaskBase returns the commit the task's diff is taken from.
-// A run with no recorded parent branch, a standalone run, answers not found.
-func recordedTaskBase(location *lymcwd.Location) (string, bool, error) {
-	origin, found, err := fabricengine.ReadOrigin(location)
-	if err != nil {
-		return "", false, err
-	}
-	if !found || origin.ParentBranch == "" {
-		return "", false, nil
-	}
-	base, err := taskMergeBase(location)()
-	if err != nil {
-		return "", false, err
-	}
-	return base, true, nil
-}
-
-// committedCodeDiff returns the reader of the task's committed diff, from its merge base to HEAD.
-// It holds no uncommitted edit and no untracked file.
-// A standalone run, which records no parent branch, reads as no diff.
-// The base and the fabric are read on each call, so a commit made since wiring is read as it stands.
-func committedCodeDiff(location *lymcwd.Location) func() (string, error) {
-	return func() (string, error) {
-		base, found, err := recordedTaskBase(location)
-		if err != nil || !found {
-			return "", err
-		}
-		handle, err := fabricengine.Open(location)
-		if err != nil {
-			return "", err
-		}
-		return handle.ReadCommittedDiff(base)
-	}
 }
 
 // patchSkipEntries returns the skip entries of a code subject's patch.
@@ -276,21 +248,18 @@ func documentSubjectWithHead(location *lymcwd.Location, head func() (string, err
 // fixerReportInput returns the review input seam of a tapestry run.
 // The seam reads the merge fixer's latest Parent-Align report under scratchDir.
 // It also returns the time the report was written.
+// It falls back to a report under the name Merge-In when the Parent-Align report is absent.
+// Older runs wrote their report under that name.
 // A session that never ran leaves no report, which answers not found.
 func fixerReportInput(scratchDir string) func() (string, time.Time, bool, error) {
-	return reviewInputFile(filepath.Join(scratchDir, loomshed.NameParentAlign+"-fixer-report.md"))
-}
-
-// reviewInputs returns the review inputs seam of a run, reading under scratchDir.
-// It answers the merge fixer's latest Parent-Align report once that file exists, so a run without one answers none.
-func reviewInputs(scratchDir string) func() ([]shedadapters.ReviewInput, error) {
-	fixerReport := fixerReportInput(scratchDir)
-	return func() ([]shedadapters.ReviewInput, error) {
-		path, writtenAt, found, err := fixerReport()
-		if err != nil || !found {
-			return nil, err
+	current := reviewInputFile(filepath.Join(scratchDir, loomshed.NameParentAlign+"-fixer-report.md"))
+	retired := reviewInputFile(filepath.Join(scratchDir, "Merge-In-fixer-report.md"))
+	return func() (string, time.Time, bool, error) {
+		path, written, found, err := current()
+		if err != nil || found {
+			return path, written, found, err
 		}
-		return []shedadapters.ReviewInput{{Path: path, WrittenAt: writtenAt}}, nil
+		return retired()
 	}
 }
 

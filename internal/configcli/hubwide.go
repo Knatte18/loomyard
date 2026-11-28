@@ -20,10 +20,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/configsync"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
 
 // configDirs holds what a config verb addresses:
@@ -167,10 +167,12 @@ func newHubCommit(boardDir string) hubCommitFunc {
 // reconcileDefaultLayer reconciles every module's file under the hub's board dir and reports the reconcile envelope.
 // It seeds absent bases sparse from the prime's anchor and never fills a present base that is not seed-only;
 // a present seed-only file follows its template against the template base kept beside it.
+// The one-time base strip of an unmigrated board is reported as pending and never performed,
+// so the board marker is not written.
 // A dry run writes nothing and takes no guard.
 // apply is refused when guard refuses.
 // Otherwise it holds the board write lock and runs a dry run first,
-// so a file that fails to parse leaves every file unwritten.
+// so a file that fails to parse or migrate leaves every file unwritten.
 // Then the reconcile writes, its files are committed in the Bolt checkout and the commit is pushed.
 // A write that fails part-way is undone, restoring every config file of the board dir.
 // A write that succeeded but was not committed, or was committed but not pushed, is reported as an error.
@@ -239,7 +241,7 @@ func reconcileDefaultLayer(l *lymcwd.Location, out io.Writer, apply bool, guard 
 	}
 	if committed {
 		if pushErr := bolt.Push(syncOpts); pushErr != nil {
-			return output.Err(out, fmt.Sprintf("reconciled %s in %s and committed them in %s but did not push: %v; the next board push carries them", strings.Join(written, ", "), board, fabriclayout.BoltDirName, pushErr))
+			return output.Err(out, fmt.Sprintf("reconciled %s in %s and committed them in %s but did not push: %v; the next board push carries them", strings.Join(written, ", "), board, fabricengine.BoltDirName, pushErr))
 		}
 	}
 	return output.Ok(out, reconcileEnvelope(true, results))
@@ -350,7 +352,7 @@ func reportHubWrite(out io.Writer, module, path string, commitErr, writeErr erro
 	}
 	fields := map[string]any{
 		"module":  module,
-		"message": fmt.Sprintf("edited and committed %s in %s", path, fabriclayout.BoltDirName),
+		"message": fmt.Sprintf("edited and committed %s in %s", path, fabricengine.BoltDirName),
 	}
 	for key, value := range extra {
 		fields[key] = value
@@ -358,11 +360,11 @@ func reportHubWrite(out io.Writer, module, path string, commitErr, writeErr erro
 	return output.Ok(out, fields)
 }
 
-// setHubWide applies write to a hub-wide module's file at the board dir and commits it in the Bolt checkout.
+// setHubWide writes pairs into a hub-wide module's file at the board dir and commits it in the Bolt checkout.
 // The file is validated strictly before the commit, then loaded alone through the module's own loader.
 // Its command dirs are checked against the prime, and the file is restored on any failure.
 // The check refuses the write only with a failure the file did not already have.
-func setHubWide(dirs configDirs, out io.Writer, module configreg.Module, write layerWrite, commit hubCommitFunc) int {
+func setHubWide(dirs configDirs, out io.Writer, module configreg.Module, pairs []yamlengine.KV, commit hubCommitFunc) int {
 	path := configengine.ConfigFile(dirs.board, module.Name)
 	boardDirs := configengine.Dirs{Board: dirs.board}
 	var preserved []string
@@ -371,7 +373,7 @@ func setHubWide(dirs configDirs, out io.Writer, module configreg.Module, write l
 		snap, err := snapshotFile(path)
 		if err == nil {
 			before := checkHubModule(dirs, module)
-			preserved, err = write(boardDirs, module.Spec(), configengine.LayerDefault)
+			preserved, err = configengine.Set(boardDirs, module.Spec(), configengine.LayerDefault, pairs)
 			if err == nil {
 				err = validateHubFile(dirs.board, module)
 			}

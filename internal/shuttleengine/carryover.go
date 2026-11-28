@@ -10,7 +10,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
 )
@@ -108,80 +107,60 @@ func operatorInstructions(runDir string, rs RunState, engine Engine) []string {
 }
 
 // roleKey returns the key a run start matches its predecessor by: the spec's name override, else its role.
-// A spec with NoCarryOver set has the empty key, which matches no run.
 func roleKey(spec Spec) string {
-	if spec.NoCarryOver {
-		return ""
-	}
 	if spec.NameOverride != "" {
 		return spec.NameOverride
 	}
 	return spec.Role
 }
 
-// unfinished reports whether rs is a run that ended without finishing at now.
-// Such a run is stopped, died, timed out or ended on API errors.
-// A run reading running with its waiter gone and no relaunching mark within bound is also unfinished.
-func unfinished(rs RunState, now time.Time, bound time.Duration) bool {
+// unfinished reports whether rs is a run that ended without finishing: stopped, died, timed out or ended on API errors, or reading running with its waiter gone.
+func unfinished(rs RunState) bool {
 	switch rs.Outcome {
 	case runOutcomeStopped, string(OutcomeDied), string(OutcomeTimeout), string(OutcomeAPIError):
 		return true
 	case runOutcomeRunning:
-		return !runIsLive(rs, now, bound)
+		return !runIsLive(rs)
 	}
 	return false
 }
 
-// predecessor is the newest earlier run of a role under a runner's run-directory root.
-type predecessor struct {
-	runDir string
-	state  RunState
-}
-
-// newestPredecessor returns the newest run of the role key under the runner's run-directory root, and whether one exists.
-// An empty key, an unreadable root and a root with no run of key find none.
-func (r *Runner) newestPredecessor(key string) (predecessor, bool) {
+// carriedInstructions returns the instructions a new run of the role key carries over: the carried and operator instructions of the newest run of key under the runner's run-directory root, without repeats, when that run is unfinished.
+// An empty key, no run of key, a newest run that is not unfinished and a run whose engine is not registered carry none.
+func (r *Runner) carriedInstructions(key string) []string {
 	if key == "" {
-		return predecessor{}, false
+		return nil
 	}
 	root := runDirRoot(r.cfg, r.anchorPath)
 	entries, err := os.ReadDir(root)
 	if err != nil {
-		return predecessor{}, false
+		return nil
 	}
-	var newest predecessor
-	found := false
+	var newest RunState
+	var newestDir string
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
 		}
 		runDir := filepath.Join(root, entry.Name())
-		rs, ok, err := loadRunState(runDir)
-		if err != nil || !ok || rs.RoleKey != key {
+		rs, found, err := loadRunState(runDir)
+		if err != nil || !found || rs.RoleKey != key {
 			continue
 		}
-		if !found || rs.CreatedAt > newest.state.CreatedAt || (rs.CreatedAt == newest.state.CreatedAt && runDir > newest.runDir) {
-			newest, found = predecessor{runDir: runDir, state: rs}, true
+		if newestDir == "" || rs.CreatedAt > newest.CreatedAt || (rs.CreatedAt == newest.CreatedAt && runDir > newestDir) {
+			newest, newestDir = rs, runDir
 		}
 	}
-	return newest, found
-}
-
-// carriedInstructions returns the instructions a new run carries over from pred.
-// pred is the newest run of its role, and found reports whether there is one.
-// They are pred's carried and operator instructions, without repeats, when pred is unfinished.
-// No predecessor, one that is not unfinished and one whose engine is not registered carry none.
-func (r *Runner) carriedInstructions(pred predecessor, found bool) []string {
-	if !found || !unfinished(pred.state, r.clock.Now(), relaunchBound(r.cfg)) {
+	if newestDir == "" || !unfinished(newest) {
 		return nil
 	}
-	engine, _, err := r.engineFor(pred.state)
+	engine, _, err := r.engineFor(newest)
 	if err != nil {
 		return nil
 	}
 	seen := map[string]bool{}
 	var carried []string
-	for _, instruction := range append(append([]string(nil), pred.state.CarriedInstructions...), operatorInstructions(pred.runDir, pred.state, engine)...) {
+	for _, instruction := range append(append([]string(nil), newest.CarriedInstructions...), operatorInstructions(newestDir, newest, engine)...) {
 		if !seen[instruction] {
 			seen[instruction] = true
 			carried = append(carried, instruction)

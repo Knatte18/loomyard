@@ -20,6 +20,7 @@ import (
 // with neither, the task's settings stand alone.
 // A refusal wraps battenshed.ErrInvalidRunSettings.
 // It covers an unknown profile, a profile with no block for the recipe, or a profiles file that does not decode.
+// A default held only under the recipe's former name is refused the same way.
 // So is a refusal of the profile's or the task's settings.
 // A profiles file that cannot be read is returned as it is.
 func prepareRunSettings(dirs configengine.Dirs, settings battenshed.RunSettings) (map[string][]byte, error) {

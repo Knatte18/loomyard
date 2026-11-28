@@ -66,7 +66,7 @@ func (e *Engine) AttachArgv(cols, rows int) []string {
 			return err
 		}
 
-		// The shell window is named and placed on attach.
+		// Sessions booted by an older lym get their shell window named and placed on attach.
 		// This runs before every step that can fail, and also when no client size is known.
 		e.ensureShellWindowLocked(st)
 
@@ -81,7 +81,7 @@ func (e *Engine) AttachArgv(cols, rows int) []string {
 			return err
 		}
 
-		// Display options are re-asserted on attach.
+		// Strands and sessions spawned by an older lym get their display options re-asserted on attach.
 		e.markStrandWindowLocked(windowTarget)
 		if windowPanes, err := e.tmux.listPanes(windowTarget); err != nil {
 			logger.Warn("reed: could not list the strand window's panes to re-assert strand options", "window", windowTarget, "err", err)
@@ -93,7 +93,7 @@ func (e *Engine) AttachArgv(cols, rows int) []string {
 		shellPath := ""
 		if runtime.GOOS != "windows" {
 			var err error
-			if shellPath, err = ResolveShellPath(e.cfg.Shell); err != nil {
+			if shellPath, err = resolveShellPath(e.cfg.Shell); err != nil {
 				logger.Warn("reed: cannot resolve the configured shell, leaving the session's shell pins as they are", "key", "shell", "shell", e.cfg.Shell, "err", err)
 			}
 		}

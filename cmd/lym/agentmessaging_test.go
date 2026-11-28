@@ -23,11 +23,10 @@ import (
 const engineTool = "SendMessage"
 
 // engineToolAllowed maps a repository-relative stencil path to the one line of text admitted there.
-// A row admits the line of a Claude engine block, which only a launch on Claude renders.
-// Only that engine addresses a fork in-session by SendMessage.
-// The scan cannot tell which engine renders a block, so review holds that half.
+// A row is made only for a stencil whose role's spec sets ForkSubagents, since such a role addresses a fork in-session;
+// the scan cannot read the spec from a stencil, so review holds that half.
 var engineToolAllowed = map[string]string{
-	"contracts/stencils/engine/claude/fork-message.md": "by `SendMessage`, addressed by the agent id its completion notification carried",
+	"contracts/stencils/webster/webster-template-master.md": "to that batch's fork by `SendMessage`, addressed by the agent id its completion notification carried",
 }
 
 // engineToolHits returns one "line N: SendMessage" entry per line of content that names the tool.
@@ -92,16 +91,14 @@ func testdataPromptRoots(t *testing.T, root string) []string {
 	return roots
 }
 
-//lym:guard
-//lym:only parent-align finalize
 func TestAgentMessaging_NoEngineTool(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("FixtureRows", func(t *testing.T) {
 		t.Parallel()
-		const forkMessageBlock = "contracts/stencils/engine/claude/fork-message.md"
-		admittedLine := "by `SendMessage`, addressed by the agent id its completion notification carried"
+		const masterStencil = "contracts/stencils/webster/webster-template-master.md"
+		admittedLine := "  Send the refusal's message verbatim to that batch's fork by `SendMessage`, addressed by the agent id its completion notification carried, and end your turn."
 
 		engineTests := []struct {
 			name    string
@@ -110,9 +107,9 @@ func TestAgentMessaging_NoEngineTool(t *testing.T) {
 			want    []string
 		}{
 			{"PlantedStencilLine", "contracts/stencils/x.md", "ok\nmessage the chair with SendMessage\n", []string{"line 2: SendMessage"}},
-			{"AllowlistedBlockLine", forkMessageBlock, admittedLine, nil},
+			{"AllowlistedMasterLine", masterStencil, admittedLine, nil},
 			{"SameLineInAnotherStencil", "contracts/stencils/other.md", admittedLine, []string{"line 1: SendMessage"}},
-			{"AnotherLineInTheBlock", forkMessageBlock, "use SendMessage to reach the chair", []string{"line 1: SendMessage"}},
+			{"AnotherLineInTheMasterStencil", masterStencil, "use SendMessage to reach the chair", []string{"line 1: SendMessage"}},
 			{"CleanContent", "contracts/stencils/x.md", "post with lym creel post\n", nil},
 		}
 		for _, tt := range engineTests {
@@ -199,7 +196,7 @@ func TestAgentMessaging_NoEngineTool(t *testing.T) {
 		scankit.RequireFloor(t, scannedGo, 200, "production Go files")
 
 		if len(failures) > 0 {
-			t.Errorf("an engine's own messaging tool is named; message through lym creel, or admit a Claude engine block's line in engineToolAllowed:\n%s", strings.Join(failures, "\n"))
+			t.Errorf("an engine's own messaging tool is named; message through lym creel, or admit a ForkSubagents stencil line in engineToolAllowed:\n%s", strings.Join(failures, "\n"))
 		}
 	})
 }

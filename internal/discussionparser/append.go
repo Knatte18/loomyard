@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"regexp"
 	"strings"
 	"time"
 )
@@ -34,9 +33,6 @@ type AddedDecision struct {
 	// WithdrawnPattern, when set, is the entry ID of a declared PATTERN change the decision takes back.
 	// Its bullet is struck with the decision's entry, which names the ID; it is never set with PatternChange.
 	WithdrawnPattern string
-	// DroppedCreates are the Create targets, as a plan card spells them, the decision drops.
-	// Each is written as its own `Drops Create: `<target>`` line after the Rationale paragraph.
-	DroppedCreates []string
 }
 
 // AppendDecisions adds every entry of ds, in order, at the end of the decision record's `## Decisions` section.
@@ -115,25 +111,13 @@ func insertDecision(content string, d AddedDecision) (string, error) {
 		}
 	}
 
-	var drops strings.Builder
-	for _, target := range d.DroppedCreates {
-		target = strings.TrimSpace(target)
-		if target == "" || strings.ContainsAny(target, "`\n\r") {
-			return "", fmt.Errorf("dropped Create target %q is empty or holds a backtick or a newline", target)
-		}
-		if drops.Len() == 0 {
-			drops.WriteString("\n")
-		}
-		drops.WriteString("Drops Create: `" + target + "`\n")
-	}
-
 	at, err := decisionsInsertOffset(content)
 	if err != nil {
 		return "", err
 	}
 
 	entry := fmt.Sprintf("\n### Added after Discussion (%s, %s): %s\n\nDecision: %s\n\nRationale: %s\n",
-		by, d.Date.UTC().Format("2006-01-02"), title, decision, rationale) + drops.String()
+		by, d.Date.UTC().Format("2006-01-02"), title, decision, rationale)
 	if at > 0 && content[at-1] != '\n' {
 		entry = "\n" + entry
 	}
@@ -225,49 +209,6 @@ func AddedDecisionTexts(recordPath string) ([]string, error) {
 		texts = append(texts, addedDecisionSpanText(lines, span))
 	}
 	return texts, nil
-}
-
-// droppedCreateLine matches a line of an added-decision entry that drops a Create target, capturing the target.
-var droppedCreateLine = regexp.MustCompile("^Drops Create: `([^`]+)`$")
-
-// DroppedCreates returns the Create targets the added-decision entries of the record at recordPath drop.
-// Each target maps to the title of the entry whose `Drops Create: `<target>“ line names it;
-// when several entries drop the same target, the later entry's title is kept.
-// It reads only inside added-decision entries and outside fenced blocks.
-// An empty recordPath and a missing record return nil and no error; a read error is returned.
-func DroppedCreates(recordPath string) (map[string]string, error) {
-	if recordPath == "" {
-		return nil, nil
-	}
-	data, err := os.ReadFile(recordPath)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	lines := strings.Split(string(data), "\n")
-	fenced := fencedLines(lines)
-	_, spans := addedDecisionSpans(lines, fenced)
-	var dropped map[string]string
-	for _, span := range spans {
-		heading := strings.TrimRight(lines[span.first], " \t\r")
-		rest, _ := strings.CutPrefix(heading, addedDecisionHeadingPrefix)
-		// addedDecisionSpans keeps only headings that parse, so the parse cannot fail here.
-		entry, _ := parseAddedDecisionHeading(rest)
-		for i := span.first + 1; i <= span.last; i++ {
-			if fenced[i] {
-				continue
-			}
-			if match := droppedCreateLine.FindStringSubmatch(strings.TrimRight(lines[i], " \t\r")); match != nil {
-				if dropped == nil {
-					dropped = map[string]string{}
-				}
-				dropped[match[1]] = entry.Title
-			}
-		}
-	}
-	return dropped, nil
 }
 
 // addedDecisionSpanText renders the added-decision entry at span as its lines joined by newlines.

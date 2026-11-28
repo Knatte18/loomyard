@@ -14,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
@@ -66,14 +65,13 @@ type LandDeps struct {
 	PrimeDirty func() ([]string, error)
 	// Pull pulls the prime; a refusal, a diverged prime included, is an error carrying the reason.
 	// A nil error with a non-empty recordsStop means only the records side did not pull; the landing goes on and names it.
-	// An error carrying a transient class ends the row as that error rather than as Stuck.
 	Pull func(ctx context.Context) (recordsStop string, err error)
 	// Landing reads the hub-wide landing config; it is read on every Call.
 	Landing func() (LandingSettings, error)
 	// RunDeploy runs command in the prime with its output to logPath, ending it after timeout.
 	// An error means the shell could not start.
 	RunDeploy func(ctx context.Context, command, logPath string, timeout time.Duration) (DeployResult, error)
-	// PruneBoard prunes the done tasks off the board.
+	// PruneBoard prunes the done tasks off the board, keeping one that still carries notify_on_land.
 	PruneBoard func() error
 	// LandLock is the hub-level lock one landing holds for its whole body, acquired without blocking.
 	LandLock PrimeLock
@@ -104,7 +102,7 @@ var _ shedengine.ShedProducer = (*landProducer)(nil)
 // Under the land lock it pulls the prime, runs the deploy command and prunes the board.
 // It posts one notice only when the pull's records side stopped.
 // A child that landed no code only prunes the board.
-// A failed step ends the row as Stuck naming the step, except a pull that failed transiently, which is its error.
+// A failed step ends the row as Stuck naming the step.
 // A pause seen during a wait ends it as Stuck naming the goto that clears the pause.
 // Neither posts a notice: the driver's hand-back tells the orch of a stop the stop chain did not settle.
 func NewLand(name, slug string, deps LandDeps, primeLock PrimeLock, scratchDir string) shedengine.ShedProducer {
@@ -169,8 +167,7 @@ func (p *landProducer) pausedReason(what string) string {
 // It runs, under the land lock, the prime check, the pull, the deploy, the board prune and the records-stop notice.
 // Each step is idempotent, so a resume re-runs the row from the top.
 // A child that landed nothing skips all but the board prune.
-// Every failed step, a seam read error included, is Stuck naming the step.
-// A cancelled context and a pull error carrying a transient class are the hard errors.
+// Every failed step, a seam read error included, is Stuck naming the step; only a cancelled context is a hard error.
 func (p *landProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, p.name); err != nil {
 		return "", shedengine.OutputPointer{}, err
@@ -248,12 +245,11 @@ func (p *landProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine
 }
 
 // pullAndDeploy pulls the prime under the prime lock.
-// Outside the lock it runs the deploy command.
-// It does so when the landing config names one and lists parent in landing.deploy_branches.
+// Outside the lock it runs the deploy command, when the landing config names one and lists parent in deploy_branches.
 // A non-empty reason is the Stuck reason of the failed step.
 // A non-empty recordsStop is the records side's stop message from a pull that otherwise succeeded.
 // The deploy runs regardless.
-// A non-nil err is the cancelled-during-run diagnosis, or a pull error carrying a transient class.
+// A non-nil err is the cancelled-during-run diagnosis.
 func (p *landProducer) pullAndDeploy(ctx context.Context, parent string) (reason, recordsStop string, err error) {
 	release, lockReason, err := acquirePrimeLock(ctx, p.name, p.slug, p.primeLock)
 	if err != nil {
@@ -269,9 +265,6 @@ func (p *landProducer) pullAndDeploy(ctx context.Context, parent string) (reason
 	if rerr := release(); rerr != nil {
 		logger.Warn("battenshed: release prime lock failed", "producer", p.name, "slug", p.slug, "path", p.primeLock.Path, "error", rerr)
 	}
-	if shedengine.TransientOf(pullErr) != "" {
-		return "", "", fmt.Errorf("battenshed: %s: pull failed: %w", p.name, pullErr)
-	}
 	if pullErr != nil {
 		return "pull failed: " + pullErr.Error(), "", nil
 	}
@@ -284,7 +277,7 @@ func (p *landProducer) pullAndDeploy(ctx context.Context, parent string) (reason
 		return "", recordsStop, nil
 	}
 	if !slices.Contains(settings.DeployBranches, parent) {
-		logger.Info("battenshed: parent branch is not in "+configengine.KeyName("landing", "deploy_branches")+"; skipping deploy", "producer", p.name, "slug", p.slug, "parent", parent)
+		logger.Info("battenshed: parent branch is not in deploy_branches; skipping deploy", "producer", p.name, "slug", p.slug, "parent", parent)
 		return "", recordsStop, nil
 	}
 

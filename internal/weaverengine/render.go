@@ -71,7 +71,7 @@ type BatchPromptInputs struct {
 }
 
 // RenderBatchPrompt fills the batch template for one attempt, writes it under in.PromptsDir and returns its bytes.
-// The template and the edit directive it carries are worded for in.Engine, the engine the attempt launches on.
+// The edit directive it carries is the copy for in.Engine, the engine the attempt launches on.
 // The card pointers carry their card gates, and the batch gate carries the main packages for the last batch.
 // A gate config that lacks the `card` or `batch` list refuses with the config's way forward.
 // A friction directive that cannot be rendered is logged and left out.
@@ -106,7 +106,7 @@ func RenderBatchPrompt(in BatchPromptInputs) ([]byte, error) {
 		frictionDirective = ""
 	}
 
-	template, err := stencilstore.ReadForEngine(in.StencilsDir, in.Engine, batchTemplateStencil)
+	template, err := stencilstore.Read(in.StencilsDir, batchTemplateStencil)
 	if err != nil {
 		return nil, fmt.Errorf("weaver: read the batch template: %w", err)
 	}

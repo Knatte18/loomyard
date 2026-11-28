@@ -25,7 +25,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/gatefixer"
 	"github.com/Knatte18/loomyard/internal/gateslot"
@@ -370,12 +369,6 @@ func (r testRequest) words() []string {
 	}
 	if r.guards {
 		words = append(words, "--guards")
-	}
-	if r.noCarry {
-		words = append(words, "--"+gateslot.NoCarryFlag)
-	}
-	if r.copies > 0 {
-		add("copies", strconv.Itoa(r.copies))
 	}
 	words = append(words, r.targets...)
 	if len(r.args) > 0 {
@@ -936,7 +929,7 @@ func (f *front) registerRunner(pid int, run detachRun) {
 		return
 	}
 	argv := []string{os.Args[0], "gate", "run-detached", run.dir}
-	if err := runproc.Register(fabriclayout.RunProcDir(f.call.location.HubPath), slug, runproc.ChildRecord(pid, runproc.RoleGate, argv)); err != nil {
+	if err := runproc.Register(fabricengine.RunProcDir(f.call.location.HubPath), slug, runproc.ChildRecord(pid, runproc.RoleGate, argv)); err != nil {
 		logger.Warn("gate test: could not register the detached runner", "pid", pid, "slug", slug, "cause", err)
 	}
 }

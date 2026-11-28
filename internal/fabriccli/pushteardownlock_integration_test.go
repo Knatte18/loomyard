@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -32,11 +32,11 @@ func TestCommand_PushSkippedWhileTeardownLockHeld(t *testing.T) {
 	if code, output := runFabric(t, h.PrimeWorktree(), "add", slug); code != 0 {
 		t.Fatalf("Execute(add) = %d; want 0\noutput: %s", code, output)
 	}
-	weftBranch := fabriclayout.RecordsBranchName(slug)
+	weftBranch := fabricengine.RecordsBranchName(slug)
 	tipBefore := gitkit.RevParse(t, h.RecordsBare, weftBranch)
 	gitkit.CommitFile(t, h.PairRecordsSibling(slug), "held.txt", "held\n", "records work while the lock is held")
 
-	lockPath := fabriclayout.TeardownLockPath(h.Path, slug)
+	lockPath := fabricengine.TeardownLockPath(h.Path, slug)
 	if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
 		t.Fatalf("mkdir the teardown lock dir: %v", err)
 	}

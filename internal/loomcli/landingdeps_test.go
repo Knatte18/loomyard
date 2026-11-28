@@ -19,7 +19,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -130,9 +129,7 @@ func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 	// FixerSeats is filled by wireLanding, from the seat engine wire it builds.
 	// GateKey is filled by each landing row's registry entry, on its own copy of Deps.
 	// LandBlockers and ParentWorktree are a pawl run's, which a tapestry run leaves unset.
-	// Reap is a hardener run's, which reaps its sandbox before Finalize lands.
 	unfilled := map[string]bool{
-		"Reap":           true,
 		"FixerSeats":     true,
 		"GateKey":        true,
 		"LandBlockers":   true,
@@ -148,13 +145,13 @@ func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 		}
 	}
 
-	// BeamRecord and DropBeamRecord are a pawl run's, which a tapestry run leaves unset.
 	// SessionLive and RegisterSession read reed's strand table, which only wireLanding holds, so it fills them.
+	// BeamRecord and DropBeamRecord are a pawl run's, which a tapestry run leaves unset.
 	unfilledPullRequest := map[string]bool{
-		"BeamRecord":      true,
-		"DropBeamRecord":  true,
 		"SessionLive":     true,
 		"RegisterSession": true,
+		"BeamRecord":      true,
+		"DropBeamRecord":  true,
 	}
 	pullRequest := reflect.ValueOf(deps.PullRequest)
 	pullRequestType := pullRequest.Type()
@@ -173,11 +170,6 @@ func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 	}
 	if pawl := build(shedrun.RecipePawl).PullRequest; pawl.BeamRecord == nil || pawl.DropBeamRecord == nil {
 		t.Error("landingDeps(...).PullRequest beam seams are unset for the pawl recipe; want both populated")
-	}
-
-	// Only a hardener run leaves a sandbox, so only its landing reaps one.
-	if deps.Reap != nil || build(shedrun.RecipeHardener).Reap == nil {
-		t.Errorf("landingDeps(...).Reap nil for tapestry = %v, nil for hardener = %v; want nil only for the tapestry recipe", deps.Reap == nil, build(shedrun.RecipeHardener).Reap == nil)
 	}
 }
 
@@ -411,6 +403,108 @@ func TestConflictSessionStopper(t *testing.T) {
 	}
 }
 
+// TestPRSessionSeams asserts the liveness seam reads a strand as live only while it is live and not retiring.
+// The registrar registers the pane process of a strand that has one, and refuses a strand that is absent or has none.
+// A failing table read passes through.
+func TestPRSessionSeams(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	strand := func(guid string, live, retiring bool, panePID int) reedengine.StrandStatus {
+		return reedengine.StrandStatus{GUID: guid, Live: live, Retiring: retiring, PanePID: panePID}
+	}
+	statusErr := errors.New("reed down")
+	registerErr := errors.New("disk full")
+
+	tests := []struct {
+		name         string
+		strands      []reedengine.StrandStatus
+		statusErr    error
+		registerErr  error
+		wantLive     bool
+		wantLiveErr  error
+		wantPID      int
+		wantRegister bool
+		wantRegErr   error
+	}{
+		{name: "LiveStrandIsLiveAndRegistersItsPanePID", strands: []reedengine.StrandStatus{strand("g", true, false, 4242)}, wantLive: true, wantPID: 4242, wantRegister: true},
+		{name: "DeadStrandIsNotLiveAndHasNoPaneToRegister", strands: []reedengine.StrandStatus{strand("g", false, false, 0)}},
+		{name: "RetiringStrandIsNotLive", strands: []reedengine.StrandStatus{strand("g", true, true, 4242)}, wantPID: 4242, wantRegister: true},
+		{name: "AbsentStrandIsNotLive", strands: []reedengine.StrandStatus{strand("other", true, false, 1)}},
+		{name: "TableReadFailureIsPassedThrough", statusErr: statusErr, wantLiveErr: statusErr, wantRegErr: statusErr},
+		{name: "RegisterFailureIsPassedThrough", strands: []reedengine.StrandStatus{strand("g", true, false, 4242)}, registerErr: registerErr, wantLive: true, wantPID: 4242, wantRegister: true, wantRegErr: registerErr},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			status := func() (reedengine.StatusResult, error) {
+				return reedengine.StatusResult{Strands: tt.strands}, tt.statusErr
+			}
+			live, err := sessionLiveness(status)("g")
+			if live != tt.wantLive || !errors.Is(err, tt.wantLiveErr) {
+				t.Errorf("sessionLiveness() = %v, %v; want %v, %v", live, err, tt.wantLive, tt.wantLiveErr)
+			}
+
+			gotPID := 0
+			err = sessionRegistrar(status, func(pid int) error {
+				gotPID = pid
+				return tt.registerErr
+			})("g")
+			if gotPID != tt.wantPID {
+				t.Errorf("sessionRegistrar() registered pid %d; want %d", gotPID, tt.wantPID)
+			}
+			wantErr := tt.wantRegErr != nil || !tt.wantRegister
+			if (err != nil) != wantErr || (tt.wantRegErr != nil && !errors.Is(err, tt.wantRegErr)) {
+				t.Errorf("sessionRegistrar() error = %v; want error %v (%v)", err, wantErr, tt.wantRegErr)
+			}
+		})
+	}
+}
+
+// TestPullRequestDeps_ParentReviewWantedReadsThePairsLayers asserts what the setting seam reads.
+// It reads pr_review_ask_parent over the pair's layers.
+// It reads false when no layer sets it, and true when the worktree's loom.yaml or the task's local layer does.
+// The local layer is where a task's run_settings land.
+func TestPullRequestDeps_ParentReviewWantedReadsThePairsLayers(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	tests := []struct {
+		name       string
+		hubValue   string
+		localLayer string
+		wantWanted bool
+	}{
+		{name: "no layer setting it reads false", wantWanted: false},
+		{name: "the worktree's loom.yaml set to true reads true", hubValue: "true", wantWanted: true},
+		{name: "the task's local layer set to true over a loom.yaml of false reads true", hubValue: "false", localLayer: "pr_review_ask_parent: true\n", wantWanted: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			loc := hubLocation(t, "pair", ".")
+			if tt.hubValue != "" {
+				seedLoomConfigWithKeys(t, loc.AnchorPath(), map[string]string{"pr_review_ask_parent": tt.hubValue})
+			}
+			if tt.localLayer != "" {
+				localConfig := configengine.LocalFile(loc.AnchorPath(), "loom")
+				if err := os.MkdirAll(filepath.Dir(localConfig), 0o755); err != nil {
+					t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(localConfig), err)
+				}
+				if err := os.WriteFile(localConfig, []byte(tt.localLayer), 0o644); err != nil {
+					t.Fatalf("WriteFile(%q) = %v; want nil", localConfig, err)
+				}
+			}
+
+			pullRequest := pullRequestDepsGuardedBy(prePushCheck{}, loc, "main", false, &shuttleengine.Runner{})
+			got, err := pullRequest.ParentReviewWanted()
+			if err != nil || got != tt.wantWanted {
+				t.Errorf("ParentReviewWanted() = %v, %v; want %v, nil", got, err, tt.wantWanted)
+			}
+		})
+	}
+}
+
 // TestParentLockDeps_PauseAfterTheWaitingRowEndsTheWait writes Publish's status as running and asserts the pause seam.
 // It reports false with no pause condition, or with pause_after naming another row.
 // It reports true with pause_after naming Publish, and false with only pause_requested set.
@@ -451,12 +545,12 @@ func TestParentLockDeps_PauseAfterTheWaitingRowEndsTheWait(t *testing.T) {
 func TestReportOfRunKeepsOnlyTheRunsOwnEntry(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
-	report := fabriclayout.OriginReport{
+	report := fabricengine.OriginReport{
 		Unreachable: true,
-		Branches:    []fabriclayout.BranchOutcome{{Branch: "parent"}},
-		Entries: []fabriclayout.EntryOutcome{
-			{Slug: "parent", State: fabriclayout.EntryStopped},
-			{Slug: "child", State: fabriclayout.EntryActive},
+		Branches:    []fabricengine.BranchOutcome{{Branch: "parent"}},
+		Entries: []fabricengine.EntryOutcome{
+			{Slug: "parent", State: fabricengine.EntryStopped},
+			{Slug: "child", State: fabricengine.EntryActive},
 		},
 	}
 
@@ -514,7 +608,7 @@ func TestPushRidingOutBusyLock(t *testing.T) {
 // TestCodeBudgetZero_ReadsTheCodePerchFromLoomYaml pins that the budget-zero seam reads the Code-Review perch at call time:
 // a budget of 0 reports the perch off and a budget above 0 reports it on.
 // A loom.yaml that fails to load is returned as the seam's error.
-// On a sampler run the perch also reads off when sampler.code_review leaves the rows out,
+// On a sampler run the perch also reads off when sampler.yaml's code_review leaves the rows out,
 // and a non-bool value is returned as the gate's error.
 func TestCodeBudgetZero_ReadsTheCodePerchFromLoomYaml(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -540,9 +634,9 @@ func TestCodeBudgetZero_ReadsTheCodePerchFromLoomYaml(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			loc := hubLocation(t, "pair", ".")
-			seedLoomConfigWithKeys(t, loc.AnchorPath(), map[string]string{"code.max_bounces": tt.codeBudget})
+			seedLoomConfigWithKeys(t, loc.AnchorPath(), map[string]string{"code_max_bounces": tt.codeBudget})
 			if tt.codeReview != "" {
-				hubConfig := configengine.ConfigFile(fabriclayout.BoardDir(loc.HubPath), "sampler")
+				hubConfig := configengine.ConfigFile(fabricengine.BoardDir(loc.HubPath), "sampler")
 				contents := strings.Replace(samplerengine.ConfigTemplate(), "code_review: false", "code_review: "+tt.codeReview, 1)
 				if err := os.WriteFile(hubConfig, []byte(contents), 0o644); err != nil {
 					t.Fatalf("WriteFile(%q) = %v; want nil", hubConfig, err)

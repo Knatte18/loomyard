@@ -1,7 +1,5 @@
 // Package statuscommit is the shared core of a shed module's per-transition status commit.
-// It commits the run's status file onto the fabric sibling.
-// It then starts the worktree's pusher, which brings the commit to origin in the background.
-// No transition waits for a push, a fetch or the network.
+// It commits the run's status file onto the fabric sibling and spawns the push that publishes it.
 //
 // A caller wraps the closure with the steps that are its own.
 // It passes its commit-message prefix and log prefix, so the texts stay its own.
@@ -15,17 +13,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
-// Deps carries the calls the seam drives.
+// Deps carries the three fabric calls the seam drives.
 // They are plain function values, so a test drives the seam's branching from stub closures alone.
 type Deps struct {
 	// MergeActive reports whether the fabric sibling worktree that carries the status file is mid-merge at the git level.
 	MergeActive func() (bool, error)
 	// Commit commits the module's own status file with msg and reports whether it made a commit.
 	Commit func(msg string) (committed bool, err error)
-	// StartPush starts the pusher of the worktree the commit was made in and reports whether a pusher started.
-	// It logs its own failure, and a failed start reads false: the next commit, tick or resume starts one.
-	// It is required: New panics on a nil StartPush.
-	StartPush func() bool
+	// Spawn starts the detached push of the module's run records, and whatever else its caller's push publishes with them.
+	// It starts the push and does not wait for it.
+	Spawn func() error
 }
 
 // Message renders the commit message for a per-transition status commit as "<prefix>: <producer> -> <state>".
@@ -37,12 +34,11 @@ func Message(prefix, producer, state string) string {
 
 // New builds the status commit closure from deps.
 // commitPrefix heads every commit message (see Message) and logPrefix heads every log line.
-// afterCommit, when non-nil, runs after a successful commit call and before the pusher starts.
-// It panics when deps.StartPush is nil.
+// afterCommit, when non-nil, runs after a successful commit and before the spawn.
 //
-// The closure applies three dispositions, in order: skip first, then commit, then start the pusher:
+// The closure applies three dispositions, in order: skip first, then commit, then spawn:
 //
-//  1. skip-while-mid-merge: MergeActive reporting true skips both Commit and StartPush, logged at warn.
+//  1. skip-while-mid-merge: MergeActive reporting true skips both Commit and Spawn, logged at warn.
 //     A non-nil error from MergeActive counts as true:
 //     an unreadable probe is the same "git state cannot be trusted right now" case the skip exists for,
 //     and probe I/O failures cluster while foreign merge machinery is touching the repo.
@@ -52,13 +48,13 @@ func Message(prefix, producer, state string) string {
 //     A git fault on the run's own bookkeeping is infrastructure breakage.
 //     The exception is a failure the re-probe explains as a merge that started after the first probe;
 //     it takes the skip disposition instead.
-//  3. start-push: StartPush runs only after a Commit that made a commit, and its result is not waited on.
-//     The seam takes no network-gate admission, pushes nothing and fetches nothing.
+//  3. spawn-warns: Spawn runs only after a Commit that made a commit.
+//     A Spawn failure logs a warning and returns nil, since a push that cannot start must not kill an autonomous run;
+//     the next transition's spawn carries the commits.
+//     The seam never sees the push itself: the detached child logs a rejection or an unreachable remote at warn.
+//     A rejection means another machine advanced the branch:
+//     that is a human decision, not something a background persist may rewrite history over.
 func New(deps Deps, commitPrefix, logPrefix string, afterCommit func(producer, state string)) func(producer, state string) error {
-	if deps.StartPush == nil {
-		panic("statuscommit: New needs a StartPush")
-	}
-
 	return func(producer, state string) error {
 		active, err := deps.MergeActive()
 		if err != nil {
@@ -79,8 +75,11 @@ func New(deps Deps, commitPrefix, logPrefix string, afterCommit func(producer, s
 			afterCommit(producer, state)
 		}
 
-		if committed {
-			deps.StartPush()
+		if !committed {
+			return nil
+		}
+		if err := deps.Spawn(); err != nil {
+			logger.Warn(logPrefix+": status push spawn failed; the next transition's spawn carries the commits", "producer", producer, "state", state, "error", err)
 		}
 		return nil
 	}

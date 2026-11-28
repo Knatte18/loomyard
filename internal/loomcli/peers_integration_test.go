@@ -1,5 +1,5 @@
 // peers_integration_test.go drives the real hubPeersDeps closures over a hub forged by hubforge.
-// It copies the hub with the caller's pair and adds the other pairs through hubforge.AddPair.
+// It adds the pairs through hubforge.AddPair.
 // This package's own testmain_test.go arms the hermetic git test environment for the whole binary,
 // so this file adds no TestMain.
 
@@ -37,9 +37,8 @@ func TestHubPeersDeps_OverRealHub(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	h := hubforge.CopyHub(t, pairHubShape)
-	const caller = hubforge.TemplatePairSlug
-	for _, slug := range []string{"peer", "no-origin", "seeded-darn", "seeded-empty"} {
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	for _, slug := range []string{"caller", "peer", "no-origin", "seeded-darn", "seeded-empty"} {
 		hubforge.AddPair(t, h, slug)
 	}
 
@@ -49,8 +48,8 @@ func TestHubPeersDeps_OverRealHub(t *testing.T) {
 	}
 	boardConfig.Path = h.BoardDir()
 	board := boardengine.New(boardConfig)
-	for _, slug := range []string{caller, "peer", "no-origin", "ghost"} {
-		// The recipe is named, since an entry with none runs board.default_recipe.
+	for _, slug := range []string{"caller", "peer", "no-origin", "ghost"} {
+		// The recipe is named, since an entry with none runs the board's default_recipe.
 		// In the template that recipe is darn, which has no Plan-Write row.
 		if _, err := board.UpsertTask(map[string]any{"slug": slug, "title": "Title of " + slug, "kind": "task", "recipe": shedrun.RecipeTapestry, "labels": []string{"bug"}}); err != nil {
 			t.Fatalf("seed board task %q: %v", slug, err)
@@ -60,7 +59,7 @@ func TestHubPeersDeps_OverRealHub(t *testing.T) {
 		}
 	}
 
-	gitkit.CommitFile(t, h.PairCodeWorktree(caller), "caller.txt", "c", "caller: change")
+	gitkit.CommitFile(t, h.PairCodeWorktree("caller"), "caller.txt", "c", "caller: change")
 	gitkit.CommitFile(t, h.PairCodeWorktree("peer"), "z/last.txt", "z", "peer: last")
 	gitkit.CommitFile(t, h.PairCodeWorktree("peer"), "a/first.txt", "a", "peer: first")
 	firstOnParent := gitkit.CommitFile(t, h.PrimeWorktree(), "parent-one.txt", "1", "parent: one")
@@ -101,7 +100,7 @@ func TestHubPeersDeps_OverRealHub(t *testing.T) {
 		t.Fatalf("write the empty-recipe seed: %v", err)
 	}
 
-	callerLocation, err := lymcwd.ResolveWorktree(h.PairCodeWorktree(caller))
+	callerLocation, err := lymcwd.ResolveWorktree(h.PairCodeWorktree("caller"))
 	if err != nil {
 		t.Fatalf("lymcwd.ResolveWorktree(caller) error = %v; want nil", err)
 	}

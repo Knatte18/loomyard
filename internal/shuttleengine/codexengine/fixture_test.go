@@ -100,7 +100,7 @@ func (r repoFixture) routeGitDirsThroughLink(t *testing.T, anchor string) {
 	writeFile(t, filepath.Join(anchor, ".git"), "gitdir: "+gitDir+"\n")
 }
 
-// writeWritableRoots writes anchor's codex.yaml worktree layer, the one layer that may set codex.writable_roots;
+// writeWritableRoots writes anchor's codex.yaml worktree layer, the one layer that may set writable_roots;
 // it names roots as the YAML list's items.
 func writeWritableRoots(t *testing.T, anchor, roots string) {
 	t.Helper()
@@ -146,12 +146,9 @@ func (w *warnLog) String() string {
 // Its sandbox probe reports a sandbox that starts, so no test runs Codex.
 func newEngine(anchor string) (*Codex, *warnLog) {
 	log := &warnLog{}
-	engine := NewFromConfig(
-		shuttleengine.Config{SubmitRedrawSettleMS: defaultSubmitRedrawSettleMS},
-		configengine.Dirs{Anchor: anchor},
-		Seams{SandboxProbe: func(string, string, string) error { return nil }},
-	)
+	engine := NewFromConfig(shuttleengine.Config{SubmitRedrawSettleMS: defaultSubmitRedrawSettleMS}, configengine.Dirs{Anchor: anchor})
 	engine.warn = log.warn
+	engine.sandboxProbe = func(string, string, string) error { return nil }
 	return engine, log
 }
 

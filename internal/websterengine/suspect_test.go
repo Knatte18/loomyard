@@ -4,14 +4,12 @@ package websterengine
 
 import (
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -376,77 +374,6 @@ func TestAcceptPendingAudit_AcceptsAfterHeadReset(t *testing.T) {
 	}
 }
 
-// TestAcceptPendingAudit_AcceptsVerifyFixCommits proves which commits above the last batch head are accepted.
-// The verify-gate fix commits between the recorded fixed base and fixed head are, and no other commit is.
-func TestAcceptPendingAudit_AcceptsVerifyFixCommits(t *testing.T) {
-	tiergate.Require(t, 1)
-	commit := func(t *testing.T, fx *suspectFixture, name string) string {
-		t.Helper()
-		return gitkit.CommitFile(t, fx.geom.WorktreeRoot, name, name, name)
-	}
-	tests := []struct {
-		name string
-		// history adds commits above the last batch head and returns the fixed base and head the state records.
-		history func(t *testing.T, fx *suspectFixture) (base, head string)
-		accept  bool
-	}{
-		{name: "FixCommit", accept: true, history: func(t *testing.T, fx *suspectFixture) (string, string) {
-			return fx.head, commit(t, fx, "fix.txt")
-		}},
-		{name: "CommitPastTheFixedHead", history: func(t *testing.T, fx *suspectFixture) (string, string) {
-			fixed := commit(t, fx, "fix.txt")
-			commit(t, fx, "later.txt")
-			return fx.head, fixed
-		}},
-		{name: "UnvettedCommitBelowTheFixedBase", history: func(t *testing.T, fx *suspectFixture) (string, string) {
-			base := commit(t, fx, "unvetted.txt")
-			return base, commit(t, fx, "fix.txt")
-		}},
-		{name: "NoFixedBase", history: func(t *testing.T, fx *suspectFixture) (string, string) {
-			return "", commit(t, fx, "fix.txt")
-		}},
-		{name: "FixedHeadOnASideBranch", history: func(t *testing.T, fx *suspectFixture) (string, string) {
-			root := fx.geom.WorktreeRoot
-			_, sideTip := gitwrapMergeSide(t, root, "side")
-			return fx.head, sideTip
-		}},
-		{name: "FixedHeadBelowTheLastBatchHead", history: func(t *testing.T, fx *suspectFixture) (string, string) {
-			commit(t, fx, "above.txt")
-			return fx.head, fx.start
-		}},
-		{name: "FixedHeadIsTheLastBatchHead", history: func(t *testing.T, fx *suspectFixture) (string, string) {
-			commit(t, fx, "above.txt")
-			return fx.head, fx.head
-		}},
-		{name: "FixedHeadNotInTheRepository", history: func(t *testing.T, fx *suspectFixture) (string, string) {
-			commit(t, fx, "above.txt")
-			return fx.head, "0123456789abcdef0123456789abcdef01234567"
-		}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			fx := newSuspectFixture(t)
-			fx.st.FixedBase, fx.st.FixedHead = tt.history(t, fx)
-			fx.st.PendingAuditFindings = []PendingAuditFinding{{ID: "f1", Class: "parent-write", Detail: "d", Paths: []string{"tracked.txt"}}}
-
-			got, _, err := AcceptPendingAudit(nil, fx.st, fx.geom, nil)
-
-			if tt.accept {
-				if err != nil || len(got) != 1 || len(fx.st.PendingAuditFindings) != 0 {
-					t.Errorf("AcceptPendingAudit() = %v, %v, pending %v; want the one finding cleared", got, err, fx.st.PendingAuditFindings)
-				}
-				return
-			}
-			if !errors.Is(err, ErrAuditNotAcceptable) || !strings.Contains(err.Error(), "lym webster reset --to last-batch-head") {
-				t.Errorf("AcceptPendingAudit() error = %v; want ErrAuditNotAcceptable naming reset --to last-batch-head", err)
-			}
-			if len(fx.st.PendingAuditFindings) != 1 {
-				t.Errorf("PendingAuditFindings = %v; want unchanged", fx.st.PendingAuditFindings)
-			}
-		})
-	}
-}
-
 func TestAcceptPendingAudit_RefusesUnverifiablePath(t *testing.T) {
 	tiergate.Require(t, 1)
 	fx := newSuspectFixture(t)
@@ -460,107 +387,6 @@ func TestAcceptPendingAudit_RefusesUnverifiablePath(t *testing.T) {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error = %q; want it to contain %q", err, want)
 		}
-	}
-}
-
-// TestAcceptPendingAudit_RecordsSidePath proves how a path on the run's records side is judged.
-// It clears when unchanged since the recorded base commit, absence included.
-// A changed one refuses toward restoring it.
-// The records side is a subdirectory of a second repository, which the worktree's `_lym` links to.
-func TestAcceptPendingAudit_RecordsSidePath(t *testing.T) {
-	tiergate.Require(t, 1)
-	const restore = "1) restore %s to records-side commit %s"
-	const reset = "1) lym webster reset --to start"
-	tests := []struct {
-		name string
-		path string
-		// write is the content written to path before the call; empty writes nothing.
-		write string
-		// after changes the records side once the base commit is recorded.
-		after func(t *testing.T, repo string)
-		// noBase leaves the state without a base commit.
-		noBase bool
-		// wantRefusal is a fragment the refusal and the pending way forward hold; empty means accepted.
-		// A restore fragment takes the path and the base commit.
-		wantRefusal string
-	}{
-		{name: "AbsentNote", path: "_lym/loom/friction/webster-master.md"},
-		{name: "CommittedNote", path: "_lym/loom/friction/committed.md"},
-		{name: "EditedNote", path: "_lym/loom/friction/committed.md", write: "edited", wantRefusal: restore},
-		{name: "UncommittedNote", path: "_lym/loom/friction/new.md", write: "new", wantRefusal: restore},
-		{name: "CommittedAfterTheBase", path: "_lym/loom/friction/late.md", wantRefusal: restore, after: func(t *testing.T, repo string) {
-			gitkit.CommitFile(t, repo, "anchor/_lym/loom/friction/late.md", "late", "sync")
-		}},
-		{name: "DeletedAfterTheBase", path: "_lym/loom/friction/committed.md", wantRefusal: restore, after: func(t *testing.T, repo string) {
-			if err := os.Remove(filepath.Join(repo, "anchor", "_lym", "loom", "friction", "committed.md")); err != nil {
-				t.Fatal(err)
-			}
-		}},
-		{name: "Ignored", path: "_lym/loom/friction/note.tmp", write: "x", wantRefusal: restore},
-		{name: "NoBase", path: "_lym/loom/friction/committed.md", noBase: true, wantRefusal: reset},
-		{name: "RunState", path: "_lym/webster/state.json", wantRefusal: reset},
-		{name: "ReportsDir", path: "_lym/reports/01.yaml", wantRefusal: reset},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			fx := newSuspectFixture(t)
-			repo := gitwrapNewScratchRepo(t)
-			gitkit.CommitFile(t, repo, ".gitignore", "*.tmp\n", "ignore")
-			base := gitkit.CommitFile(t, repo, "anchor/_lym/loom/friction/committed.md", "note", "add note")
-			records := filepath.Join(repo, "anchor", "_lym")
-			if !tt.noBase {
-				fx.st.MasterRecordsBase = base
-			}
-			fx.geom.ReportsDir = filepath.Join(fx.geom.WorktreeRoot, "_lym", "reports")
-			// The fixture's run state moves to the records side, so the link can take the directory's place.
-			lym := filepath.Join(fx.geom.WorktreeRoot, "_lym")
-			if err := os.Rename(filepath.Join(lym, "webster"), filepath.Join(records, "webster")); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.Remove(lym); err != nil {
-				t.Fatal(err)
-			}
-			if err := fslink.CreateDirLink(lym, records); err != nil {
-				t.Fatal(err)
-			}
-			if tt.write != "" {
-				if err := os.WriteFile(filepath.Join(fx.geom.WorktreeRoot, tt.path), []byte(tt.write), 0o644); err != nil {
-					t.Fatal(err)
-				}
-			}
-			if tt.after != nil {
-				tt.after(t, repo)
-			}
-			fx.st.PendingAuditFindings = []PendingAuditFinding{{ID: "f1", Class: "parent-write", Detail: "d", Paths: []string{tt.path}}}
-			wantRefusal := tt.wantRefusal
-			if wantRefusal == restore {
-				wantRefusal = fmt.Sprintf(restore, tt.path, base)
-			}
-
-			wayForward := pendingAuditFindingsError(nil, fx.st, fx.geom, stepRun).Error()
-			got, _, err := AcceptPendingAudit(nil, fx.st, fx.geom, nil)
-			if tt.wantRefusal == "" {
-				if err != nil {
-					t.Fatalf("AcceptPendingAudit() error = %v; want accepted", err)
-				}
-				if len(got) != 1 || len(fx.st.PendingAuditFindings) != 0 {
-					t.Errorf("returned %v, pending %v; want one cleared finding", got, fx.st.PendingAuditFindings)
-				}
-				if want := "1) lym webster accept-audit"; !strings.Contains(wayForward, want) {
-					t.Errorf("pending way forward = %q; want it to contain %q", wayForward, want)
-				}
-				return
-			}
-			if !errors.Is(err, ErrAuditNotAcceptable) || !strings.Contains(err.Error(), wantRefusal) {
-				t.Errorf("AcceptPendingAudit() error = %v; want ErrAuditNotAcceptable containing %q", err, wantRefusal)
-			}
-			if !strings.Contains(wayForward, wantRefusal) {
-				t.Errorf("pending way forward = %q; want it to contain %q", wayForward, wantRefusal)
-			}
-			if len(fx.st.PendingAuditFindings) != 1 {
-				t.Errorf("PendingAuditFindings = %v; want unchanged", fx.st.PendingAuditFindings)
-			}
-		})
 	}
 }
 

@@ -1,6 +1,6 @@
 // relay.go runs the relay process.
 // It waits to be reparented, takes the relay lock and makes the first creel read.
-// It then runs the socket holder, the outbound loop, the bridge poll and the wake loop.
+// It then runs the socket holder, the outbound loop and the wake loop.
 // It also re-execs onto a replaced binary and writes the relay log.
 
 package slackengine
@@ -14,7 +14,6 @@ import (
 	"slices"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/creelengine"
@@ -161,12 +160,9 @@ func waitFor(ctx context.Context, clock Clock, d time.Duration) bool {
 // It takes the relay lock, registers itself, records its pid, and makes the first creel read before any Slack call.
 // Only then does it refuse a machine missing either token and a hub with no setup file, through missingTokenExit.
 // It ensures the channel of each orch whose slack button is on.
-// It settles delivered the machine mail the post record holds as accepted by Slack.
-// It owes the start read of each open channel.
-// It then runs four loops:
+// It owes the start read of each open channel, then runs three loops:
 // the machine's socket holder, which turns Slack events into hints in the hub's inbox;
 // the outbound read of the relay's mailbox;
-// the bridge poll, which sends machine mail, finds the bridge channels the hub lacks and reads the ones it has;
 // and the wake loop, which reads the channels on a hint and follows a press of an orch's button.
 // At the end of each outbound read it stamps the relay's last-healthy time in its state,
 // and the wake loop then does the retried work and checks whether the lym binary was replaced.
@@ -222,12 +218,9 @@ func RunRelay(ctx context.Context, geom Geometry, deps RelayDeps) error {
 	if watchOpen == nil {
 		watchOpen = fswatch.Watch
 	}
-	poll := newBridgePoll(deps.Clock)
-	var bridgeResyncWanted atomic.Bool
 	wake := &wakeLoop{
 		geom: geom, hub: deps.Hub, mailbox: deps.Mailbox, clock: deps.Clock, keeper: keeper, in: reader, log: log, floor: floor,
 		watchOpen: watchOpen, checkBinary: deps.CheckBinary, relayLock: heldLock, holder: holder,
-		bridgePoll: poll, bridgeResync: &bridgeResyncWanted,
 		outbound: make(chan chan struct{}),
 	}
 	stampLastHealthy := func() {
@@ -245,20 +238,6 @@ func RunRelay(ctx context.Context, geom Geometry, deps RelayDeps) error {
 		stampLastHealthy()
 		wake.askOutboundWake(readCtx)
 	}
-	sender := newBridgeSender(geom, deps.Mailbox, deps.Slack, deps.Clock, keeper)
-	if err := sender.settleAccepted(); err != nil {
-		log.fail("bridge-settle", err)
-	} else {
-		log.recovered("bridge-settle")
-	}
-	round := &bridgeRound{
-		sender:       sender,
-		reader:       newBridgeReader(geom, deps.Mailbox, deps.Slack, deps.Hub, deps.LiveHubs, deps.Clock, keeper, reader),
-		clock:        deps.Clock,
-		log:          log,
-		resyncWanted: &bridgeResyncWanted,
-	}
-	go poll.run(loopCtx, round.run)
 	go runOutbound(loopCtx, newOutbound(geom, deps.Mailbox, deps.Slack, deps.Clock, floor, keeper, deps.Hub), deps.Clock, log, afterRead)
 	return wake.run(loopCtx)
 }
@@ -327,7 +306,7 @@ func firstRead(ctx context.Context, geom Geometry, deps RelayDeps, heldLock *rel
 // Neither the login nor a dobby tick while presence is `terminal` starts a relay that has exited.
 // The same line is first posted to the hub's prime channel.
 // That needs a bot token on the machine and the channel in the channel map.
-// With no prime entry nothing is posted to Slack.
+// With no prime entry it is posted to the channel id an older binary's setup file holds, the only read of that key.
 func missingTokenExit(ctx context.Context, geom Geometry, deps RelayDeps, refusal error) error {
 	line := fmt.Sprintf("%v, then `lym slack start`", refusal)
 	credentials, credentialsErr := ReadCredentials(geom.TokenPath)
@@ -351,7 +330,7 @@ func missingTokenExit(ctx context.Context, geom Geometry, deps RelayDeps, refusa
 }
 
 // missingTokenChannel returns the channel a refused relay posts its line to and reports whether there is one.
-// It is the prime's open channel in the hub's map.
+// It is the prime's open channel in the hub's map, otherwise the channel id of an older binary's setup file.
 func missingTokenChannel(geom Geometry) (string, bool) {
 	channelMap, err := ReadChannelMap(geom.ChannelMapPath)
 	if err != nil {
@@ -362,11 +341,14 @@ func missingTokenChannel(geom Geometry) (string, bool) {
 	if err != nil {
 		return "", false
 	}
-	entry, held := channelMap.Channels[prime]
-	if !held {
+	if entry, held := channelMap.Channels[prime]; held {
+		return entry.ID, !entry.Archived
+	}
+	setup, found, err := ReadSetup(geom.SetupPath)
+	if err != nil || !found || setup.ChannelID == "" {
 		return "", false
 	}
-	return entry.ID, !entry.Archived
+	return setup.ChannelID, true
 }
 
 // relayStart ensures the channel of each orch of the hub whose slack button is on.
@@ -482,9 +464,6 @@ type wakeLoop struct {
 	checkBinary func(beforeExec func(), failed func(error))
 	relayLock   *relayLock
 	holder      *holderRun
-	// bridgePoll is woken by a hint that names a bridge channel; bridgeResync is set by a hint that asks for a bridge resync.
-	bridgePoll   *bridgePoll
-	bridgeResync *atomic.Bool
 	// outbound carries an outbound read's request for a wake; the loop answers by closing the channel it was sent.
 	outbound chan chan struct{}
 
@@ -637,7 +616,6 @@ func (w *wakeLoop) diskCheck() bool {
 
 // wake does the channel work of one wake.
 // It drains the inbox and reads the hub's beams and the orchs whose slack button is on.
-// A hint the drain found for a bridge channel wakes the bridge poll, and a bridge resync hint marks a resync wanted.
 // It ensures the channel of each such orch that has none, a beam's only while the beams read lists it,
 // so a press of a button makes its orch's channel.
 // It retires the channels of beams that a successful beams read no longer lists.
@@ -657,13 +635,6 @@ func (w *wakeLoop) wake(ctx context.Context, fromOutbound bool) {
 		}
 	} else {
 		w.log.recovered("inbound")
-	}
-	channelHinted, resyncHinted := w.in.takeBridgeSignals()
-	if resyncHinted {
-		w.bridgeResync.Store(true)
-	}
-	if channelHinted {
-		w.bridgePoll.wake()
 	}
 
 	beams, beamsErr := w.hub.Beams()

@@ -1,5 +1,5 @@
 // taskbranchdiscard_integration_test.go covers Topology.DiscardTaskBranch and its deletion half.
-// The tests run over hubforge hubs, which have an empty fabric.branch_prefix.
+// The tests run over hubforge hubs, which have an empty branch_prefix.
 // A pair's task branch is therefore the bare slug, and h.CodeBare is the warp origin.
 //
 // The package is fabricengine_test and shares the single TestMain in testmain_test.go.
@@ -15,7 +15,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -51,7 +50,7 @@ func advanceOrigin(t *testing.T, h *hubforge.Hub, branch string) string {
 func archiveTagsOnOrigin(t *testing.T, h *hubforge.Hub, slug string) []string {
 	t.Helper()
 
-	return strings.Fields(gitkit.Git(t, h.CodeBare, "tag", "--list", fabriclayout.ArchiveTagPrefix+slug+"/*"))
+	return strings.Fields(gitkit.Git(t, h.CodeBare, "tag", "--list", fabricengine.ArchiveTagPrefix+slug+"/*"))
 }
 
 // TestDiscardTaskBranch pins which tips DiscardTaskBranch archives.
@@ -88,7 +87,7 @@ func TestDiscardTaskBranch(t *testing.T) {
 			const slug = "discard"
 			h, wantTipped := tt.setup(t, slug)
 
-			res, err := h.Topology.DiscardTaskBranch(h.Location, slug, "")
+			res, err := h.Topology.DiscardTaskBranch(h.Location, slug)
 			if err != nil {
 				t.Fatalf("DiscardTaskBranch: %v", err)
 			}
@@ -103,7 +102,7 @@ func TestDiscardTaskBranch(t *testing.T) {
 			}
 			var wantTags []string
 			for _, tip := range wantTipped {
-				wantTags = append(wantTags, fabriclayout.ArchiveTagPrefix+slug+"/"+tip[:12])
+				wantTags = append(wantTags, fabricengine.ArchiveTagPrefix+slug+"/"+tip[:12])
 			}
 			slices.Sort(wantTags)
 			gotTags := slices.Clone(res.ArchiveTags)
@@ -121,7 +120,7 @@ func TestDiscardTaskBranch(t *testing.T) {
 		t.Parallel()
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 
-		res, err := h.Topology.DiscardTaskBranch(h.Location, "never-added", "")
+		res, err := h.Topology.DiscardTaskBranch(h.Location, "never-added")
 		if err != nil {
 			t.Fatalf("DiscardTaskBranch: %v", err)
 		}
@@ -140,11 +139,11 @@ func TestDiscardTaskBranch(t *testing.T) {
 		}
 		localTip := gitkit.RevParse(t, h.PrimeWorktree(), slug)
 
-		_, err := h.Topology.DiscardTaskBranch(h.Location, slug, "")
+		_, err := h.Topology.DiscardTaskBranch(h.Location, slug)
 		if !errors.Is(err, fabricengine.ErrArchiveFailed) {
 			t.Fatalf("DiscardTaskBranch error = %v; want one wrapping ErrArchiveFailed", err)
 		}
-		if got := gitkit.RevParse(t, h.PrimeWorktree(), "refs/tags/"+fabriclayout.ArchiveTagName(slug, localTip)); got != localTip {
+		if got := gitkit.RevParse(t, h.PrimeWorktree(), "refs/tags/"+fabricengine.ArchiveTagName(slug, localTip)); got != localTip {
 			t.Errorf("local archive tag points at %s; want the local tip %s", got, localTip)
 		}
 		if gitkit.BranchExists(t, h.PrimeWorktree(), slug) {
@@ -154,56 +153,6 @@ func TestDiscardTaskBranch(t *testing.T) {
 			t.Errorf("task branch %q gone from origin; want it kept", slug)
 		}
 	})
-}
-
-// TestDiscardTaskBranch_OneRepositoryHubArchivesUnderTheCodeStoresPrefix pins where a discard archives.
-// The hub is a one-repository hub.
-// The task branch's archive tag lands under the code store's own prefix below origin's records namespace root.
-// Nothing lands under origin's plain refs/tags/ or among the records store's tags.
-// That holds however the code store spells origin's URL.
-func TestDiscardTaskBranch_OneRepositoryHubArchivesUnderTheCodeStoresPrefix(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	tests := []struct {
-		name string
-		// originURL returns the URL the code store names origin by, given the path of origin's bare repository.
-		originURL func(bare string) string
-	}{
-		{"TheCodeStoreSpellsOriginAsTheRecordsStoreDoes", func(bare string) string { return bare }},
-		{"TheCodeStoreSpellsOriginAsAFileURL", func(bare string) string { return "file://" + filepath.ToSlash(bare) }},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			const slug = "ns-discard"
-			h := hubforge.NewOneRepoHub(t, hubforge.OneRepoOptions{})
-			branch := hubforge.AddPair(t, h, slug).Branch
-			warpBranchCommit(t, h.Location, slug, "local-work.txt")
-			removePairWorktreesByHand(t, h, slug)
-			tip := gitkit.RevParse(t, h.PrimeWorktree(), branch)
-			gitkit.Git(t, h.PrimeWorktree(), "remote", "set-url", "origin", tt.originURL(h.CodeBare))
-
-			res, err := h.Topology.DiscardTaskBranch(h.Location, slug, "")
-
-			if err != nil {
-				t.Fatalf("DiscardTaskBranch: %v", err)
-			}
-			tag := fabriclayout.ArchiveTagName(slug, tip)
-			if !slices.Equal(res.ArchiveTags, []string{tag}) {
-				t.Errorf("ArchiveTags = %v; want [%s]", res.ArchiveTags, tag)
-			}
-			if got := refLines(t, h.CodeBare, "%(objectname)", namespaceCodeTagsPrefix+tag); !slices.Equal(got, []string{tip}) {
-				t.Errorf("origin's archive tag under %s = %v; want one at %s", namespaceCodeTagsPrefix, got, tip)
-			}
-			if got := refLines(t, h.CodeBare, "%(refname)", "refs/tags/", namespaceTagsPrefix); len(got) != 0 {
-				t.Errorf("origin holds tags %v under refs/tags/ or %s; want none", got, namespaceTagsPrefix)
-			}
-			if gitkit.BranchExists(t, h.CodeBare, branch) {
-				t.Errorf("task branch %q still on origin", branch)
-			}
-		})
-	}
 }
 
 // TestDeleteArchivedTaskBranch pins the gates of the deletion half.

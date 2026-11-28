@@ -32,12 +32,6 @@ type GateResult struct {
 	Send string
 	// SendFailedWayForward is the clause the loop's Warn quotes when sending Send fails.
 	SendFailedWayForward string
-	// Delivered, when non-nil, is set true by the loop each time it has delivered Send to the writer.
-	// A closure that offers Send until it is delivered reads it to stop offering.
-	Delivered *bool
-	// Reprompted, when non-nil, is told by the loop once it has delivered the re-prompt of this failing result.
-	// A closure that must offer its findings until the writer has them records that there.
-	Reprompted RepromptRecorder
 	// Terminal marks a failing result the run finalizes at once, with no re-prompt.
 	// The entry's failure count is not incremented for it.
 	// Its Findings text rides GateOutcome.Reason to the producer:
@@ -45,16 +39,6 @@ type GateResult struct {
 	// Only a must-pass entry may return it:
 	// Terminal on a passed or pending result, or from a PassOnCap entry, is a returned gate error.
 	Terminal bool
-	// WriterOnly marks a failing result meant for the writer alone, which no cold fixer is handed.
-	// The run loop treats it as any failing result:
-	// the findings are written, the entry's failure counts and the writer is re-prompted.
-	WriterOnly bool
-}
-
-// RepromptRecorder records that a failing result's re-prompt reached the writer.
-// It is an interface rather than a func, so a GateResult stays comparable.
-type RepromptRecorder interface {
-	RecordReprompt()
 }
 
 // Gate is a mechanical validator a gated run consults at each arrival and at its single verdict site, finalize.

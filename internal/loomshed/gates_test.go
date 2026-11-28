@@ -160,7 +160,7 @@ func TestGateRows_StopsNameAWayForward(t *testing.T) {
 			if err != nil || outcome != shedengine.Stuck {
 				t.Fatalf("Call() = (%q, %v); want Stuck with no error", outcome, err)
 			}
-			if !strings.Contains(pointer.Reason, "way forward: fix batcher.yaml (batcher.active or the profile it names)") {
+			if !strings.Contains(pointer.Reason, "way forward: fix batcher.yaml (its active: key or the profile it names)") {
 				t.Errorf("Reason = %q; want the batcher.yaml way forward", pointer.Reason)
 			}
 
@@ -728,113 +728,6 @@ func TestNewPlanGate(t *testing.T) {
 		}
 		if result.Passed || !strings.Contains(result.Findings, "done-card-edited/01-first-card") {
 			t.Errorf("gate() = %+v; want a done-card-edited failure on card 1 from Weaver's record", result)
-		}
-	})
-
-	// Once a batch has begun, the overview outside its Card Index is frozen: an edit there fails the gate.
-	// The frame comes from the record or, without it, from the run directory's baseline copy of the recorded overview.
-	const (
-		recordFrame       = "frame"
-		recordHashAndCopy = "hash and baseline copy, no frame"
-		recordHashNoCopy  = "hash without a baseline copy"
-		recordNoOverview  = "no overview hash"
-	)
-	for _, tt := range []struct {
-		name string
-		// batches is whether the record holds a begun batch; record is what the record and run directory hold of the overview.
-		batches bool
-		record  string
-		// edit rewrites the framing; editCardIndex rewrites a Card Index line only.
-		edit, editCardIndex bool
-		wantPassing         bool
-	}{
-		{"OverviewEditedOutsideTheCardIndexAfterABegunBatchFails", true, recordFrame, true, false, false},
-		{"UneditedOverviewAfterABegunBatchReportsNothing", true, recordFrame, false, false, true},
-		{"CardIndexEditedAfterABegunBatchReportsNothing", true, recordFrame, false, true, true},
-		{"OverviewEditedBeforeAnyBatchBeganReportsNothing", false, recordFrame, true, false, true},
-		{"RecordWithoutAnOverviewHashReportsNothing", true, recordNoOverview, true, false, true},
-		{"FrameFromTheBaselineCopyFailsOnAnEditOutsideTheCardIndex", true, recordHashAndCopy, true, false, false},
-		{"FrameFromTheBaselineCopyAllowsACardIndexEdit", true, recordHashAndCopy, false, true, true},
-		{"MissingBaselineCopyFailsOnAnyOverviewEdit", true, recordHashNoCopy, true, false, false},
-		{"MissingBaselineCopyFailsOnACardIndexEdit", true, recordHashNoCopy, false, true, false},
-		{"MissingBaselineCopyWithAnUneditedOverviewReportsNothing", true, recordHashNoCopy, false, false, true},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			anchorPath := t.TempDir()
-			seedPlanFormatFixture(t, anchorPath, true)
-			planDir := planparser.PlanDir(anchorPath)
-			st := &websterengine.State{State: runplan.State{Batches: map[int]*websterengine.BatchState{}}}
-			if tt.batches {
-				st = batchOne(false, "", nil)
-			}
-			if tt.record == recordFrame {
-				frame, err := runplan.OverviewFrameHash(planDir)
-				if err != nil {
-					t.Fatalf("OverviewFrameHash: %v", err)
-				}
-				st.PlanOverviewFrameHash = frame
-			}
-			if tt.record == recordHashAndCopy || tt.record == recordHashNoCopy {
-				hashes, err := runplan.PlanFileHashes(planDir)
-				if err != nil {
-					t.Fatalf("PlanFileHashes: %v", err)
-				}
-				st.PlanFileHashes = hashes
-				if tt.record == recordHashAndCopy {
-					if err := runplan.StorePlanBaseline(websterengine.Dir(anchorPath), planDir, hashes); err != nil {
-						t.Fatalf("StorePlanBaseline: %v", err)
-					}
-				}
-			}
-			saveState(t, anchorPath, st)
-			for _, edit := range []struct {
-				wanted        bool
-				old, replaced string
-			}{
-				{tt.edit, "Framing.", "Framing, amended by a decision."},
-				{tt.editCardIndex, "placeholder card 1", "a reworded card 1"},
-			} {
-				if !edit.wanted {
-					continue
-				}
-				overviewPath := filepath.Join(planDir, runplan.PlanOverviewFile)
-				overview, err := os.ReadFile(overviewPath)
-				if err != nil {
-					t.Fatalf("read overview: %v", err)
-				}
-				if !strings.Contains(string(overview), edit.old) {
-					t.Fatalf("overview %q holds no %q to edit", overview, edit.old)
-				}
-				if err := os.WriteFile(overviewPath, []byte(strings.Replace(string(overview), edit.old, edit.replaced, 1)), 0o644); err != nil {
-					t.Fatalf("write overview: %v", err)
-				}
-			}
-
-			result, err := NewPlanGate(anchorPath, t.TempDir(), "", planglyph.NewIndex(fabricengine.NewReferenceRule()), PlanContext{})()
-			if err != nil {
-				t.Fatalf("gate() error = %v; want nil", err)
-			}
-			if result.Passed != tt.wantPassing {
-				t.Errorf("gate() = %+v; want Passed %v", result, tt.wantPassing)
-			}
-			if got := strings.Contains(result.Findings, "overview-frame-edited"); got != !tt.wantPassing {
-				t.Errorf("gate() Findings = %q; want overview-frame-edited: %v", result.Findings, !tt.wantPassing)
-			}
-		})
-	}
-
-	t.Run("UnreadableOverviewIsAReturnedError", func(t *testing.T) {
-		t.Parallel()
-		planDir := t.TempDir()
-		// A directory in the overview's place fails the read with an error other than not-exist.
-		if err := os.Mkdir(filepath.Join(planDir, runplan.PlanOverviewFile), 0o755); err != nil {
-			t.Fatalf("mkdir overview: %v", err)
-		}
-		st := &runplan.State{Batches: map[int]*runplan.BatchState{1: {Slug: "first-card"}}, PlanOverviewFrameHash: "recorded"}
-
-		if findings, err := overviewFrameEditedFindings(planDir, t.TempDir(), st); err == nil {
-			t.Errorf("overviewFrameEditedFindings() = %+v, nil; want a returned error", findings)
 		}
 	})
 

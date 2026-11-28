@@ -97,9 +97,6 @@ Under `language: none` the glyph checks are skipped:
 - `glyph-not-found`, `glyph-ambiguous`, `glyph-rejected` *(planglyph)* — a glyph target that fails to resolve:
   it matches nothing, matches several declarations, or is rejected by quarry's grammar.
   A `Create` target and a `Rename` `New` side are not resolved.
-  A target spelling the member a `Create` handle names passes on the creating card and every card after it;
-  on an earlier card its finding names the creating card.
-  A missing member of a unit that exists says no card creates it and lists the members declared beside it.
   A member declared once per mutually exclusive build-constraint set resolves as one member.
 - `create-already-exists` *(planglyph)* — a `Create` target whose name a declaration already holds.
   `create-new-unit` is its informational partner for a target in a unit that does not exist yet.
@@ -136,8 +133,8 @@ Under `language: none` the glyph checks are skipped:
   a card lists a test named after it under `Edit` in the same unit, and no pair renames that test.
   A test is named after it when it is `Test<base>` or `Test<base>_<case>`, with base `Name`, or `T_M` for a method.
   Way forward: add the test's rename as a pair on the renaming card.
-- `rename-tool-missing` *(loomshed)* — a symbol pair of a pending card while `language.rename_tools` is empty.
-  Way forward: set `language.rename_tools` with `lym config language` from the prime, or recast the card.
+- `rename-tool-missing` *(loomshed)* — a symbol pair of a pending card while `language.yaml` lists no `rename_tools`.
+  Way forward: set `rename_tools` with `lym config language` from the prime, or recast the card.
 
 ## Re-signs, deletes and callers
 
@@ -192,7 +189,7 @@ None sees a command behind a variable or `bash -c`.
   A directory created by this or an earlier card counts as on disk.
   A card at or after a `Move` is skipped.
   Way forward: correct the line; a `_test`-suffixed argument names its directory's spelling.
-- `verify-raw-command` *(loomshed)* — a command the hub's `gate.refuse_raw` list names.
+- `verify-raw-command` *(loomshed)* — a command the hub's `gate.yaml` `refuse_raw` list names.
   A leading `env`, `exec`, `xargs`, `sudo` or `time` is looked past.
   Way forward: one `lym gate test --wait` call with a tier list and a scope form.
 - `verify-gate-no-wait` *(loomshed)* — a `lym gate test` call without `--wait`.
@@ -226,7 +223,6 @@ The overview is read at the task branch's merge base with its parent, or at `HEA
   Way forward: shorten the prescribed lines or move detail into background files.
   When that is not enough, record a `changes` decision that shortens other entries.
   Record it with `lym loom decision add`, adding `--amends-plan` once the plan is approved.
-  Once the task's scope is closed no decision enters the record, so only the shortening is left.
 - `pattern-card-headroom` — a pending card's own step grows the projected overview past the headroom line.
   The projection takes the cards in plan order.
   Each card applies its fenced lines, then drops the `removes` entries it is first to name.
@@ -292,14 +288,6 @@ The overview is read at the task branch's merge base with its parent, or at `HEA
   a card that webster's run record holds done no longer hashes to what its batch recorded at begin.
   Way forward: restore the card file.
   A fix to its work is a follow-up card after the last begun batch, with its Card Index line.
-- `overview-frame-edited` *(loomshed)* — an edited overview frame:
-  the implementer's run record holds a begun batch and a recorded overview frame,
-  and `00-overview.md` outside its Card Index no longer hashes to that frame.
-  A record without the frame takes it from the stored baseline copy of its recorded overview, as the rebaseline does.
-  With no frame either way, any change to a recorded overview is the finding, since the rebaseline refuses it.
-  A record with no begun batch, or with no recorded overview hash, raises nothing.
-  Way forward: restore the overview.
-  Carry the change in a follow-up card after the last begun batch, with its Card Index line.
 - `part-spot-target` — under a part scope: a card's target is a shared spot's path.
   Way forward: drop the target and say in the card's `**Intent:**` what it needs from the spot.
 - `part-export-missing` *(loomshed, `--part` only)* — an export of the part's contract that no part card creates.

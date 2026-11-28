@@ -16,14 +16,10 @@ import (
 )
 
 // fakeStart is an in-memory stand-in for the hub.
-// It serves the owners it holds with the flags that say whether each reads elsewhere.
-// It records the claims and spawns, and reads a spawned worktree as live afterwards.
+// It serves the owners it holds, records the claims and spawns, and reads a spawned worktree as live afterwards.
 // A worktree in moving has an anchor change standing, and one in moveErr fails the read of whether it does.
 type fakeStart struct {
-	primeOwner     string
-	primeElsewhere bool
-	// machineErr fails the read of this machine's name.
-	machineErr error
+	primeOwner string
 	claimErr   error
 	claimLost  string
 	beams      []BeamPair
@@ -66,12 +62,12 @@ func (f *fakeStart) allWorktrees() []string {
 
 func (f *fakeStart) baseDeps() StartDeps {
 	return StartDeps{
-		Machine:    func() (string, error) { return "here", f.machineErr },
-		PrimeOwner: func() (string, bool, error) { return f.primeOwner, f.primeElsewhere, nil },
+		Machine:    func() (string, error) { return "here", nil },
+		PrimeOwner: func() (string, error) { return f.primeOwner, nil },
 		ClaimPrime: func(machine string) (string, error) {
 			f.claims = append(f.claims, machine)
 			if f.claimErr == nil && f.claimLost == "" {
-				f.primeOwner, f.primeElsewhere = machine, false
+				f.primeOwner = machine
 			}
 			return f.claimLost, f.claimErr
 		},
@@ -143,24 +139,10 @@ func TestEnsureLive(t *testing.T) {
 		},
 		{
 			name:        "APrimeAnotherMachineOwnsStartsNoPrimeAndNamesItsOwner",
-			fake:        fakeStart{primeOwner: "there", primeElsewhere: true, beams: []BeamPair{{Slug: "b1", Owner: "here"}}},
+			fake:        fakeStart{primeOwner: "there", beams: []BeamPair{{Slug: "b1", Owner: "here"}}},
 			wantEntries: []StartEntry{{Worktree: PrimeLabel, Outcome: OutcomeRefused}, {Worktree: "b1", Outcome: OutcomeStarted}},
 			wantSpawned: []string{"b1"},
 			wantDetails: []string{"owned by there; lym adopt root takes it over here"},
-		},
-		{
-			name:        "AnOwnerNameEqualToThisMachinesNameReadingElsewhereIsRefusedAndADifferentNameReadingHereStarts",
-			fake:        fakeStart{primeOwner: "here", primeElsewhere: true, beams: []BeamPair{{Slug: "b1", Owner: "here", Elsewhere: true}, {Slug: "b2", Owner: "there"}}},
-			wantEntries: []StartEntry{{Worktree: PrimeLabel, Outcome: OutcomeRefused}, {Worktree: "b1", Outcome: OutcomeRefused}, {Worktree: "b2", Outcome: OutcomeStarted}},
-			wantSpawned: []string{"b2"},
-			wantDetails: []string{"owned by here; lym adopt root takes it over here"},
-		},
-		{
-			name:           "AMachineNameThatDoesNotReadRefusesEveryNamedWorktreeWithItsFailureAndSpawnsNothing",
-			fake:           fakeStart{machineErr: errors.New("machine registration refused: no directory holds this machine's file; way forward: set XDG_CONFIG_HOME, then run `lym beam stop` and `lym beam start`"), beams: []BeamPair{{Slug: "b1"}, {Slug: "b2"}}},
-			wantEntries:    []StartEntry{{Worktree: PrimeLabel, Outcome: OutcomeRefused}, {Worktree: "b1", Outcome: OutcomeRefused}, {Worktree: "b2", Outcome: OutcomeRefused}},
-			wantDetails:    []string{"no directory holds this machine's file", "lym beam stop"},
-			wantBeamDetail: "lym beam start",
 		},
 		{
 			name:        "ALostPrimeClaimReadsTheOtherMachinesClaim",
@@ -171,7 +153,7 @@ func TestEnsureLive(t *testing.T) {
 		},
 		{
 			name:           "ANamedBeamOwnedElsewhereIsRefusedNamingAdoptAndItsOwner",
-			fake:           fakeStart{primeOwner: "here", beams: []BeamPair{{Slug: "b1", Owner: "there", Elsewhere: true}, {Slug: "b2", Owner: "here"}}},
+			fake:           fakeStart{primeOwner: "here", beams: []BeamPair{{Slug: "b1", Owner: "there"}, {Slug: "b2", Owner: "here"}}},
 			wantEntries:    []StartEntry{{Worktree: PrimeLabel, Outcome: OutcomeStarted}, {Worktree: "b1", Outcome: OutcomeRefused}, {Worktree: "b2", Outcome: OutcomeStarted}},
 			wantSpawned:    []string{"hub-prime", "b2"},
 			wantBeamDetail: "owned by there; lym adopt b1",
@@ -307,12 +289,7 @@ func TestOwnedWorktrees(t *testing.T) {
 		},
 		{
 			name: "APrimeAndABeamOwnedElsewhereAreLeftOut",
-			fake: fakeStart{primeOwner: "there", primeElsewhere: true, beams: []BeamPair{{Slug: "b1", Owner: "there", Elsewhere: true}, {Slug: "b2", Owner: "here"}}},
-			want: []string{"b2"},
-		},
-		{
-			name: "AnOwnerNameEqualToThisMachinesNameReadingElsewhereIsLeftOutAndADifferentNameReadingHereIsListed",
-			fake: fakeStart{primeOwner: "here", primeElsewhere: true, beams: []BeamPair{{Slug: "b1", Owner: "here", Elsewhere: true}, {Slug: "b2", Owner: "there"}}},
+			fake: fakeStart{primeOwner: "there", beams: []BeamPair{{Slug: "b1", Owner: "there"}, {Slug: "b2", Owner: "here"}}},
 			want: []string{"b2"},
 		},
 	}

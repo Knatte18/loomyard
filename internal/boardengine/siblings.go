@@ -1,6 +1,5 @@
 // siblings.go reports the siblings a depends_on write creates.
 // A sibling is an open task that shares a module label with the written task and waits on a dependency the write added.
-// A note never runs, so its depends_on makes no sibling.
 
 package boardengine
 
@@ -34,10 +33,9 @@ func SharedModuleLabels(a, b Task, v Vocabulary) []string {
 // before holds the entries as loaded and after the entries as the mutation left them.
 // A task X in after that is not done has the dependencies its depends_on gained over its baseline.
 // Dependencies that are already met are left out.
-// X's baseline is the depends_on that X and every before task absent from after held as tasks in before,
-// so a merge warns only on dependencies none of the merged tasks had,
-// and a promoted note's own dependencies count as added.
-// Another task in after is a sibling of X when it is neither done nor abandoned and shares a module label with X.
+// X's baseline is its own depends_on in before together with the depends_on of every before entry absent from after,
+// so a merge warns only on dependencies none of the merged entries had.
+// Another entry in after is a sibling of X when it is neither done nor abandoned and shares a module label with X.
 // It must also wait on an entry an added dependency waits on.
 // A dependency on a project waits on the project and on each of its landing members not yet done.
 // A pair found from both sides is reported once, in the first orientation in after order, with both sides' dependencies.
@@ -51,9 +49,6 @@ func addedSiblings(before, after []Task, v Vocabulary) []Sibling {
 	var removedDeps []string
 	beforeDeps := make(map[string][]string, len(before))
 	for _, task := range before {
-		if task.Kind != KindTask {
-			continue
-		}
 		beforeDeps[task.Slug] = task.DependsOn
 		if _, kept := afterSlugs[task.Slug]; !kept {
 			removedDeps = append(removedDeps, task.DependsOn...)
@@ -63,7 +58,7 @@ func addedSiblings(before, after []Task, v Vocabulary) []Sibling {
 	var siblings []Sibling
 	reported := map[[2]string]int{}
 	for _, x := range after {
-		if x.Kind != KindTask || isDone(x) {
+		if isDone(x) {
 			continue
 		}
 		var added []string
@@ -81,7 +76,7 @@ func addedSiblings(before, after []Task, v Vocabulary) []Sibling {
 		}
 
 		for _, y := range after {
-			if y.Slug == x.Slug || y.Kind != KindTask || isDone(y) || (y.Status != nil && *y.Status == "abandoned") {
+			if y.Slug == x.Slug || isDone(y) || (y.Status != nil && *y.Status == "abandoned") {
 				continue
 			}
 			var shared []string

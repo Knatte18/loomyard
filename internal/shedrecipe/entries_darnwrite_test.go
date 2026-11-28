@@ -44,8 +44,6 @@ func darnTestEnv(t *testing.T) Env {
 		CommittedRecord: func() (bool, error) { return false, nil },
 		Commit:          func() error { return nil },
 		LatestOutcome:   func() (loomshed.DarnOutcome, bool, error) { return loomshed.DarnOutcome{}, false, nil },
-		BranchCommits:   func() ([]string, error) { return nil, nil },
-		ScratchDir:      filepath.Join(dir, "scratch"),
 		CheckRecord:     func() ([]discussionparser.Finding, error) { return nil, nil },
 
 		ConditionStopMarkerPath: filepath.Join(dir, "condition-stop-marker"),
@@ -66,8 +64,6 @@ func TestDarnWriteEntry_ConstructionFailures(t *testing.T) {
 		{"NilSeats", "Seats", gated, func(e *Env) { e.Seats = nil }},
 		{"NilCommit", "Darn.Commit", gated, func(e *Env) { e.Darn.Commit = nil }},
 		{"NilLatestOutcome", "Darn.LatestOutcome", gated, func(e *Env) { e.Darn.LatestOutcome = nil }},
-		{"NilBranchCommits", "Darn.BranchCommits", gated, func(e *Env) { e.Darn.BranchCommits = nil }},
-		{"RelativeScratchDir", "Darn.ScratchDir", gated, func(e *Env) { e.Darn.ScratchDir = "scratch" }},
 		{"NilCheckRecord", "Darn.CheckRecord", gated, func(e *Env) { e.Darn.CheckRecord = nil }},
 		{"NilCommittedRecord", "Darn.CommittedRecord", gated, func(e *Env) { e.Darn.CommittedRecord = nil }},
 		{"RelativeRecordPath", "Darn.RecordPath", gated, func(e *Env) { e.Darn.RecordPath = "decision-record.md" }},

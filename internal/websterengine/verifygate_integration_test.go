@@ -198,59 +198,6 @@ func TestVerifyGate_CleanParentMergeAboveTheFixBasePasses(t *testing.T) {
 	}
 }
 
-// TestVerifyGate_TakesOverAnEarlierRunsPreFixHead pins the fixed base a restarted run's gate records.
-// It is the earlier failure's pre-fix head.
-// It ignores one that a batch has since landed above, or that a merge it would reject lies above.
-func TestVerifyGate_TakesOverAnEarlierRunsPreFixHead(t *testing.T) {
-	tiergate.Require(t, 1)
-	tests := []struct {
-		name string
-		// batchAbove records a batch head above the persisted pre-fix head.
-		batchAbove bool
-		// rejectedMergeAbove merges a branch that is not the parent above the persisted pre-fix head.
-		rejectedMergeAbove bool
-	}{
-		{name: "KeptAcrossTheRestart"},
-		{name: "StaleBelowABatchHead", batchAbove: true},
-		{name: "DroppedBelowARejectedMerge", rejectedMergeAbove: true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			r := newVerifyGateRepo(t)
-			root := r.geom.WorktreeRoot
-			preFix := gitkit.RevParse(t, root, "HEAD")
-			head := gitkit.CommitFile(t, root, "fix.txt", "fix", "fix")
-			if tt.rejectedMergeAbove {
-				gitwrapMergeSide(t, root, "unrelated")
-			}
-			st := &State{PreFixHead: preFix}
-			if tt.batchAbove {
-				st.Batches = map[int]*BatchState{1: {Slug: "one", StartSHA: preFix, Terminal: true, Status: DigestStatusDone, Digest: &Digest{HeadSHA: head}}}
-			}
-			if err := SaveState(r.geom.WebsterDir, r.geom.ScratchDir, st); err != nil {
-				t.Fatalf("SaveState: %v", err)
-			}
-			gate, _ := NewVerifyGate(r.geom, 3, nil, nil, "", testFixPromptPath)
-
-			if res, err := gate(); err != nil || !res.Passed {
-				t.Fatalf("gate() = %+v, %v; want a pass", res, err)
-			}
-
-			wantBase, wantHead := preFix, head
-			if tt.batchAbove || tt.rejectedMergeAbove {
-				wantBase, wantHead = "", ""
-			}
-			got, err := LoadState(r.geom.WebsterDir, r.geom.ScratchDir)
-			if err != nil {
-				t.Fatalf("LoadState: %v", err)
-			}
-			if got.FixedBase != wantBase || got.FixedHead != wantHead {
-				t.Errorf("FixedBase, FixedHead = %q, %q; want %q, %q", got.FixedBase, got.FixedHead, wantBase, wantHead)
-			}
-		})
-	}
-}
-
 // TestVerifyGate_TellsTheGeometryHoldOnTheFirstRunAndTheRerun pins the gate's calls to geom.VerifyHold:
 // a verify that fails on its first run and passes on the rerun waits out the pause once before each.
 func TestVerifyGate_TellsTheGeometryHoldOnTheFirstRunAndTheRerun(t *testing.T) {

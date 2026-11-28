@@ -9,7 +9,6 @@ import (
 	"fmt"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -61,12 +60,8 @@ type CancelResult struct {
 // a lock still busy then is refused.
 // Every refusal wraps ErrDriverBusy where a busy holder caused it.
 // It names `lym batten cancel <slug>` as the way to run the phase again.
-// While a landing the pair carries or holds is still owed, it refuses with ErrLandingStands before any process is ended.
 func (t *Teardown) EndForCancel(ctx context.Context, req CancelRequest) (CancelResult, error) {
 	var res CancelResult
-	if err := t.refuseWhileLandingStands(req.Slug, "lym batten cancel "+req.Slug); err != nil {
-		return res, err
-	}
 	gone, err := t.gone(req.Slug)
 	if err != nil {
 		return res, err
@@ -216,7 +211,7 @@ func (t *Teardown) holdRecordsWriteLocks(slug string) (release func() error, err
 			return nil, errors.Join(err, releaseAll())
 		}
 		if !held {
-			return nil, errors.Join(writeLockBusyError(slug, fabriclayout.RecordsLockDirPath(worktree)), releaseAll())
+			return nil, errors.Join(writeLockBusyError(slug, fabricengine.RecordsLockDirPath(worktree)), releaseAll())
 		}
 		releases = append(releases, releaseOne)
 	}

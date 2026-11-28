@@ -24,7 +24,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -37,8 +36,7 @@ import (
 
 // TestWire_BuildsLazilyForANonexistentTaskWorktree asserts wire succeeds for a missing task worktree.
 // Every lazy seam must be an injected closure after wire returns, not an already-evaluated value.
-// The seams checked are the status-path resolver, the spawn directory, the teardown seams and the status commit seam.
-// The teardown's push and level seams are checked here because the exhaustive seam test skips them as nil-legal.
+// The seams checked are the status-path resolver, the spawn directory, both teardown halves and the status commit seam.
 // Each seam is checked separately: eager evaluation is the failure laziness exists to avoid,
 // and a check on one seam alone would let the others regress silently.
 func TestWire_BuildsLazilyForANonexistentTaskWorktree(t *testing.T) {
@@ -65,8 +63,6 @@ func TestWire_BuildsLazilyForANonexistentTaskWorktree(t *testing.T) {
 		{"SpawnDirectory", c.env.InnerRun.Spawn != nil},
 		{"TeardownShutdown", c.env.Teardown.Shutdown != nil},
 		{"TeardownRemove", c.env.Teardown.Remove != nil},
-		{"TeardownPush", c.env.Teardown.Push != nil},
-		{"TeardownLevel", c.env.Teardown.Level != nil},
 		{"ReadDecision", c.env.InnerRun.ReadDecision != nil},
 		{"DriverAlive", c.env.InnerRun.DriverAlive != nil},
 		{"DriverStrand", c.env.InnerRun.DriverStrand != nil},
@@ -91,7 +87,7 @@ func TestWire_BuildsLazilyForANonexistentTaskWorktree(t *testing.T) {
 // TestDriverAliveFrom covers driverAliveFrom's answers without tmux.
 // An absent task worktree is false without reading status, and an absent reed session is false with no error.
 // Any other status error is returned.
-// Only a live driver strand is true, under its full name or its role.
+// Only a live driver strand is true, under its full name, its role or the legacy loom-driver literal.
 func TestDriverAliveFrom(t *testing.T) {
 	tiergate.Require(t, 0)
 	boom := errors.New("boom")
@@ -116,6 +112,7 @@ func TestDriverAliveFrom(t *testing.T) {
 		{"OtherErrorReturned", true, status(reedengine.StatusResult{}, boom), false, boom},
 		{"LiveDriver", true, status(strands(reedengine.StrandStatus{Name: loomengine.LoomDriverStrandName, Live: true}), nil), true, nil},
 		{"LiveFullNameDriver", true, status(strands(reedengine.StrandStatus{Name: "ly:task:driver", Live: true}), nil), true, nil},
+		{"LiveLegacyDriver", true, status(strands(reedengine.StrandStatus{Name: loomengine.LegacyLoomDriverStrandName, Live: true}), nil), true, nil},
 		{"DeadDriver", true, status(strands(reedengine.StrandStatus{Name: loomengine.LoomDriverStrandName}), nil), false, nil},
 		{"OtherStrandLiveOnly", true, status(strands(reedengine.StrandStatus{Name: "other", Live: true}), nil), false, nil},
 		{"NoStrands", true, status(reedengine.StatusResult{}, nil), false, nil},
@@ -136,7 +133,7 @@ func TestDriverAliveFrom(t *testing.T) {
 // TestDriverStrandFrom covers driverStrandFrom's answers without tmux.
 // An absent task worktree is none without reading the directory.
 // A directory error is returned.
-// A driver row is live, retiring or dead by its flags, under its full name or its role.
+// A driver row is live, retiring or dead by its flags, under its full name, its role or the legacy loom-driver literal.
 func TestDriverStrandFrom(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -161,6 +158,7 @@ func TestDriverStrandFrom(t *testing.T) {
 		{"NoDriverRow", true, rows(reedengine.DirectoryRow{Name: "other", Live: true}), battenshed.ChildDriverNone, nil},
 		{"LiveDriver", true, rows(reedengine.DirectoryRow{Name: loomengine.LoomDriverStrandName, Live: true}), battenshed.ChildDriverLive, nil},
 		{"LiveFullNameDriver", true, rows(reedengine.DirectoryRow{Name: "ly:task:driver", Live: true}), battenshed.ChildDriverLive, nil},
+		{"LiveLegacyDriver", true, rows(reedengine.DirectoryRow{Name: loomengine.LegacyLoomDriverStrandName, Live: true}), battenshed.ChildDriverLive, nil},
 		{"RetiringDriver", true, rows(reedengine.DirectoryRow{Name: loomengine.LoomDriverStrandName, Live: true, Retiring: true}), battenshed.ChildDriverRetiring, nil},
 		{"DeadDriver", true, rows(reedengine.DirectoryRow{Name: loomengine.LoomDriverStrandName}), battenshed.ChildDriverDead, nil},
 	}
@@ -469,13 +467,10 @@ func TestWire_WriteSeedRefusesANonLoomChildBeforeTouchingTheWorktree(t *testing.
 	if !errors.Is(err, battenshed.ErrUnsupportedChildRecipe) {
 		t.Fatalf("WriteSeed(batten) error = %v; want it to wrap ErrUnsupportedChildRecipe", err)
 	}
-	for _, offered := range []string{shedrun.RecipeTapestry, shedrun.RecipeMotif, shedrun.RecipeDarn, shedrun.RecipePawl, shedrun.RecipeSampler} {
-		if !strings.Contains(err.Error(), offered) {
-			t.Errorf("WriteSeed(batten) error = %q; want it to name the offered recipe %q", err, offered)
+	for _, admitted := range []string{shedrun.RecipeTapestry, shedrun.RecipeMotif, shedrun.RecipeDarn, shedrun.RecipePawl, shedrun.RecipeSampler, shedrun.RecipeArras} {
+		if !strings.Contains(err.Error(), admitted) {
+			t.Errorf("WriteSeed(batten) error = %q; want it to name the admitted recipe %q", err, admitted)
 		}
-	}
-	if strings.Contains(err.Error(), shedrun.RecipeArras) {
-		t.Errorf("WriteSeed(batten) error = %q; want it not to offer %q", err, shedrun.RecipeArras)
 	}
 
 	err = c.env.SeedChild.WriteSeed(context.Background(), "no-such-recipe", shedrun.DriverGo)
@@ -495,7 +490,7 @@ func TestWire_WriteSeedRefusesANonLoomChildBeforeTouchingTheWorktree(t *testing.
 }
 
 // TestBoardRecipe asserts the recipe Seed-Child seeds:
-// pawl for a project entry; the entry's own recipe field otherwise or board.default_recipe when it is empty;
+// pawl for a project entry; the entry's own recipe field otherwise or the board's default_recipe when it is empty;
 // and boardengine's project recipe is the shedrun one.
 func TestBoardRecipe(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -921,7 +916,7 @@ func TestFinishRemoval(t *testing.T) {
 
 	tests := []struct {
 		name       string
-		result     fabriclayout.RemoveResult
+		result     fabricengine.RemoveResult
 		removeErr  error
 		wantErr    bool
 		wantSubstr []string
@@ -930,10 +925,10 @@ func TestFinishRemoval(t *testing.T) {
 			name:      "NotFoundIsDone",
 			removeErr: fmt.Errorf("remove: %w: nothing of %q remains", fabricengine.ErrPairNotFound, slug),
 		},
-		{name: "FinishedHalfRemovedPairIsDone", result: fabriclayout.RemoveResult{Finished: true}},
+		{name: "FinishedHalfRemovedPairIsDone", result: fabricengine.RemoveResult{Finished: true}},
 		{
 			name:       "RemoteBranchErrorHaltsResumable",
-			result:     fabriclayout.RemoveResult{RemoteBranchError: "push refused"},
+			result:     fabricengine.RemoveResult{RemoteBranchError: "push refused"},
 			wantErr:    true,
 			wantSubstr: []string{slug, "push refused", "re-run lym batten run " + slug + " to retry the deletion"},
 		},
@@ -974,26 +969,26 @@ func TestOwnerVerdictOf(t *testing.T) {
 
 	tests := []struct {
 		name   string
-		report fabriclayout.OriginReport
+		report fabricengine.OriginReport
 		want   battenshed.OwnerVerdict
 	}{
 		{
 			name:   "owned_elsewhere_entry_names_its_owner_and_adopt_subject",
-			report: fabriclayout.OriginReport{Entries: []fabriclayout.EntryOutcome{{Slug: "other", State: fabriclayout.EntryActive}, {Slug: "task", State: fabriclayout.EntryOwnedElsewhere, Owner: "laptop", AdoptSubject: "beam"}}},
+			report: fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: "other", State: fabricengine.EntryActive}, {Slug: "task", State: fabricengine.EntryOwnedElsewhere, Owner: "laptop", AdoptSubject: "beam"}}},
 			want:   battenshed.OwnerVerdict{Owner: "laptop", AdoptSubject: "beam", Elsewhere: true},
 		},
 		{
 			name:   "active_entry_is_owned_here",
-			report: fabriclayout.OriginReport{Entries: []fabriclayout.EntryOutcome{{Slug: "task", State: fabriclayout.EntryActive}}},
+			report: fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: "task", State: fabricengine.EntryActive}}},
 		},
 		{
 			name:   "unreachable_report_is_unreachable",
-			report: fabriclayout.OriginReport{Unreachable: true},
+			report: fabricengine.OriginReport{Unreachable: true},
 			want:   battenshed.OwnerVerdict{Unreachable: true},
 		},
 		{
 			name:   "report_without_the_slug_is_owned_here",
-			report: fabriclayout.OriginReport{Entries: []fabriclayout.EntryOutcome{{Slug: "other", State: fabriclayout.EntryOwnedElsewhere, Owner: "laptop"}}},
+			report: fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: "other", State: fabricengine.EntryOwnedElsewhere, Owner: "laptop"}}},
 		},
 	}
 	for _, tt := range tests {

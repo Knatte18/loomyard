@@ -9,7 +9,7 @@
 # Drift-Verify, the Code-Review ring, Drift-Recheck, Describe, PR-Review, Finalize and Friction-Reflect.
 # The Drift rows carry entry_gate: drift.enabled, so a hub that leaves regression off records
 # each of them Skipped and spawns or runs nothing for them.
-# Parts-Write and Parts-Plan-Write carry entry_gate: tapestry.plan.split, and Plan-Write carries entry_gate: tapestry.plan.split != true.
+# Parts-Write and Parts-Plan-Write carry entry_gate: tapestry.plan_split, and Plan-Write carries entry_gate: tapestry.plan_split != true.
 # With the flag off, each of the two parts rows is recorded Skipped and Plan-Write runs as before.
 # With it on, Parts-Plan-Write's Done enters Plan-Write, whose gate skips it to Plan-Bouncer.
 # Bound: each row reads the flag when the run enters it, and a goto bypasses only its target's gate,
@@ -94,8 +94,8 @@
 # plan itself, and Preflight's batcher.yaml load keeps the early failure the row gave.
 #
 # The Bouncer, review and fix rows of those segments declare no max_bounces: their budget is the
-# perch's own key (loom.discussion.max_bounces, loom.code.max_bounces or tapestry.plan.max_bounces),
-# an absent per-perch budget takes loom.review.max_bounces, and a perch at 0 keeps its route while its
+# perch's own key (loom.yaml's discussion_max_bounces or code_max_bounces, tapestry.yaml's plan_max_bounces),
+# an absent per-perch budget takes loom.yaml's review_max_bounces, and a perch at 0 keeps its route while its
 # Bouncer settles at once, applied by internal/loomrecipe.
 
 version: 1
@@ -125,7 +125,7 @@ producers:
       gates:
         - name: discussion
           attempts: 3
-          fixer: loom.discussion.gate_fixer
+          fixer: loom.discussion_gate_fixer
 
   - name: Discussion-Bouncer
     engine: Bouncer
@@ -136,8 +136,8 @@ producers:
       run_subdir: discussion
       subject: document
       role_prefix: discussion
-      reviewer_fan_setting: loom.discussion.reviewer_fan
-      auto_accept_setting: loom.discussion.auto_accept
+      reviewer_fan_setting: loom.discussion_reviewer_fan
+      auto_accept_setting: loom.discussion_auto_accept
       artifact_paths:
         - _lym/discussion/decision-record.md
         - _lym/discussion/support-log.md
@@ -173,8 +173,8 @@ producers:
       # shared run directory.
       run_subdir: discussion
       role_prefix: discussion
-      reviewer_fan_setting: loom.discussion.reviewer_fan
-      fixer_fan_setting: loom.discussion.fixer_fan
+      reviewer_fan_setting: loom.discussion_reviewer_fan
+      fixer_fan_setting: loom.discussion_fixer_fan
       profile:
         target:
           paths:
@@ -206,7 +206,7 @@ producers:
     config:
       run_subdir: discussion
       role_prefix: discussion
-      fixer_fan_setting: loom.discussion.fixer_fan
+      fixer_fan_setting: loom.discussion_fixer_fan
       # decisions_escalated says Discussion-Bouncer's escalate_decisions sends the round's
       # decision-class findings to the parent, so this row keeps them out of the fixer's work
       # and posts no notice of its own.
@@ -237,14 +237,14 @@ producers:
     config:
       subject: decision-record
 
-  # Parts-Write and Parts-Plan-Write write the plan in two steps when tapestry.plan.split is true: Parts-Write splits
+  # Parts-Write and Parts-Plan-Write write the plan in two steps when tapestry.plan_split is true: Parts-Write splits
   # the task into parts with contracts, and Parts-Plan-Write runs one writer per part and a chair that joins their cards
   # into one ordinary plan. With the flag off both rows are recorded Skipped and Plan-Write runs as before; with it on,
   # Parts-Plan-Write's Done enters Plan-Write, whose gate skips it to Plan-Bouncer. Neither carries on_stuck: a Stuck
   # halts the run as Plan-Write's does, and the way back is a rerun of the halted row.
   - name: Parts-Write
     engine: PartsWrite
-    entry_gate: tapestry.plan.split
+    entry_gate: tapestry.plan_split
     on_done: Parts-Plan-Write
     config:
       gates:
@@ -253,7 +253,7 @@ producers:
 
   - name: Parts-Plan-Write
     engine: PartsPlanWrite
-    entry_gate: tapestry.plan.split
+    entry_gate: tapestry.plan_split
     on_done: Plan-Write
     config:
       # gates holds the chair's handoff until the joined plan passes the plan gate; part_gates gives each writer seat
@@ -267,7 +267,7 @@ producers:
 
   - name: Plan-Write
     engine: PlanWrite
-    entry_gate: tapestry.plan.split != true
+    entry_gate: tapestry.plan_split != true
     on_done: Plan-Bouncer
     config:
       # gates holds this row's handoff until the artifact is mechanically valid: each entry names a
@@ -278,7 +278,7 @@ producers:
       gates:
         - name: plan
           attempts: 3
-          fixer: tapestry.plan.gate_fixer
+          fixer: tapestry.plan_gate_fixer
 
   - name: Plan-Bouncer
     engine: Bouncer
@@ -289,8 +289,8 @@ producers:
       run_subdir: plan
       subject: document
       role_prefix: plan
-      reviewer_fan_setting: tapestry.plan.reviewer_fan
-      auto_accept_setting: tapestry.plan.auto_accept
+      reviewer_fan_setting: tapestry.plan_reviewer_fan
+      auto_accept_setting: tapestry.plan_auto_accept
       # A plan is 00-overview.md plus a variable number of card files, so no enumeration written
       # here stays correct across plans -- the single directory entry is what stays right. Both
       # consumers accept a directory: shedadapters.NewBouncer stats nothing, and burlerengine's own
@@ -319,7 +319,7 @@ producers:
       # carry_over names this row's own segment: the Bouncer files the round's still-open findings
       # under it in the decision record's Open risks section, and a test pins it equal to segment.
       carry_over: Plan-Review
-      # No model/effort/version key: the row refuses them as unknown keys, and loom.yaml's review.judge and review.seed, with tapestry.yaml's plan.judge and plan.seed,
+      # No model/effort/version key: the row refuses them as unknown keys, and loom.yaml's judge and seed, with tapestry.yaml's plan_judge and plan_seed,
       # are the only source of this row's passes' models.
 
   - name: Plan-Burler-Review
@@ -335,8 +335,8 @@ producers:
       # shared run directory.
       run_subdir: plan
       role_prefix: plan
-      reviewer_fan_setting: tapestry.plan.reviewer_fan
-      fixer_fan_setting: tapestry.plan.fixer_fan
+      reviewer_fan_setting: tapestry.plan_reviewer_fan
+      fixer_fan_setting: tapestry.plan_fixer_fan
       profile:
         target:
           paths:
@@ -397,7 +397,7 @@ producers:
     config:
       run_subdir: plan
       role_prefix: plan
-      fixer_fan_setting: tapestry.plan.fixer_fan
+      fixer_fan_setting: tapestry.plan_fixer_fan
       review_row: Plan-Burler-Review
       # gates holds this row's handoff until the artifact is mechanically valid: each entry names a
       # validator and re-prompts the live session up to its attempts times, so a failure never
@@ -475,8 +475,8 @@ producers:
       run_subdir: code
       subject: code
       role_prefix: code
-      reviewer_fan_setting: loom.code.reviewer_fan
-      auto_accept_setting: loom.code.auto_accept
+      reviewer_fan_setting: loom.code_reviewer_fan
+      auto_accept_setting: loom.code_auto_accept
       # The subject under review is the committed diff, which artifact_paths cannot name at all:
       # the key is required and non-empty, every entry resolves to an absolute path under
       # Env.AnchorPath, and the generic bouncer-template-judge.md renders the list as the
@@ -499,15 +499,6 @@ producers:
       # carry_over names this row's own segment: the Bouncer files the round's still-open findings
       # under it in the decision record's Open risks section, and a test pins it equal to segment.
       carry_over: Code-Review
-      # escalate_decisions makes this Bouncer send a round's decision-class findings to the run's
-      # parent and wait for its ruling; Code-Burler-Fix sets decisions_escalated so its fixer is
-      # given none and posts no notice of its own.
-      escalate_decisions: true
-      # scope_closed says the segment runs after the task's scope closed at its first round.
-      scope_closed: true
-      # blocking_escalates sends a spent budget with an open BLOCKING finding to the run's parent,
-      # which accepts it or orders another round, instead of to the auto-accept.
-      blocking_escalates: true
       # No model/effort/version key: the row refuses them as unknown keys, and loom.yaml's judge,
       # seed and per-segment judge and seed keys are the only source of this row's passes' models.
 
@@ -524,11 +515,8 @@ producers:
       # shared run directory.
       run_subdir: code
       role_prefix: code
-      reviewer_fan_setting: loom.code.reviewer_fan
-      fixer_fan_setting: loom.code.fixer_fan
-      # The reviewer gets the task's diff written out in per-package pieces, each small enough to
-      # read whole, so it never prints or reads the whole diff at once.
-      stage_diff: true
+      reviewer_fan_setting: loom.code_reviewer_fan
+      fixer_fan_setting: loom.code_fixer_fan
       profile:
         target:
           # No paths key, deliberately: burlerengine's own Profile.validate resolves and stats
@@ -565,7 +553,7 @@ producers:
         # The round reviews code, so its seats load the hub's language skills after their own.
         language-skills: true
         # No cluster-fan key: the row's reviewer_fan_setting and fixer_fan_setting keys name loom.yaml's
-        # code.reviewer_fan and code.fixer_fan, whose forks reach the diff through read-only git.
+        # code_reviewer_fan and code_fixer_fan, whose forks reach the diff through read-only git.
       # No model/effort key: model choice lives in loom.yaml's reviewer and fixer model keys only.
       # No timeout_s key, for the same Env fallback reason as Code-Bouncer.
 
@@ -580,11 +568,8 @@ producers:
     config:
       run_subdir: code
       role_prefix: code
-      fixer_fan_setting: loom.code.fixer_fan
+      fixer_fan_setting: loom.code_fixer_fan
       review_row: Code-Burler-Review
-      # decisions_escalated says Code-Bouncer's escalate_decisions sends the round's decision-class
-      # findings to the parent.
-      decisions_escalated: true
       # The verify gate runs on the committed tree after each round and re-prompts the round
       # session with the findings until it passes. It first runs the headroom lint from the merge
       # base with the parent branch, then lints the comments the round added from its own latest
@@ -629,7 +614,7 @@ producers:
           attempts: 3
 
   # PR-Review lands the task through a GitHub pull request when the pull-request resolver says so.
-  # It carries no entry_gate and no on_stuck, because its Stuck halts the run.
+  # It carries no entry_gate and no on_stuck, because its Stuck is always a Halt.
   - name: PR-Review
     engine: PRReview
     on_done: Finalize

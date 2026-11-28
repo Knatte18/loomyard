@@ -13,31 +13,15 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/shell"
-	"github.com/Knatte18/loomyard/internal/shellguard"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
-
-// wantCreelHead returns the developer instructions of an autonomous launch with guards and inputs in.
-// The launch has no standing passage.
-// They are the deny notice of the question-tool deny and the rows in announces, then the creel trust sentence.
-func wantCreelHead(guards []shellguard.Row, in guardInputs) string {
-	return denyNotice(true, guards, in) + " " + shuttleengine.CreelTrustSentence
-}
-
-// autonomousHooks returns the tool hooks of an autonomous launch in runDir.
-// The launch installs guards, under the template's batching nudge.
-func autonomousHooks(runDir string, guards []shellguard.Row) toolHooks {
-	return toolHooks{guards: guards, lymPath: testLymPath, questionDeny: true, batchingStatePath: filepath.Join(runDir, batchingNudgeStateFileName)}
-}
 
 func readRecord(t *testing.T, home string) trustRecord {
 	t.Helper()
@@ -61,8 +45,7 @@ func readRecord(t *testing.T, home string) trustRecord {
 // The line also carries the prompt pointer.
 // It also pins the resume line, which exits and records the session start.
 // An engine told no board gets no creel hooks, and the resume line has no session id.
-// The developer instructions hold the deny notice and the creel trust sentence,
-// and the prompt file holds the spec's prompt alone.
+// The prompt file holds the deny notice, the creel trust sentence and the spec's prompt.
 func TestPrepare_Launch(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -128,23 +111,19 @@ func TestPrepare_Launch(t *testing.T) {
 			}
 
 			promptPath := filepath.Join(runDir, "prompt.md")
-			guardIn := guardInputs{denyPython: true, denyPublish: true}
-			guards := installedGuards(nil, guardIn)
+			guards := installedGuards(nil, guardInputs{denyPython: true, denyPublish: true})
 			sh := shell.ForGOOS()
 			want := shuttleengine.Launch{
 				Cmd: buildLaunchCmd(sh, launchLine{
-					bin:                   "codex",
-					home:                  repo.lymHome,
-					sandboxMode:           sandboxWorkspaceWrite,
-					writableRoots:         wantRoots,
-					model:                 "gpt-6-astra",
-					effort:                "medium",
-					developerInstructions: wantCreelHead(guards, guardIn),
-					maxSubagentThreads:    16,
-					projectDocMaxBytes:    defaultProjectDocMaxBytes,
-					hooks:                 hookSettings(filepath.Join(runDir, "events.jsonl"), autonomousHooks(runDir, guards), creelDelivery{}),
-					firstTurn:             launchPointer(promptPath),
-					eventsPath:            filepath.Join(runDir, "events.jsonl"),
+					bin:           "codex",
+					home:          repo.lymHome,
+					sandboxMode:   sandboxWorkspaceWrite,
+					writableRoots: wantRoots,
+					model:         "gpt-6-astra",
+					effort:        "medium",
+					hooks:         hookSettings(filepath.Join(runDir, "events.jsonl"), guards, creelDelivery{}),
+					firstTurn:     launchPointer(promptPath),
+					eventsPath:    filepath.Join(runDir, "events.jsonl"),
 				}),
 				ResumeCmd:            sh.Exit(),
 				RecordsSessionStarts: true,
@@ -152,8 +131,8 @@ func TestPrepare_Launch(t *testing.T) {
 			if !reflect.DeepEqual(launch, want) {
 				t.Errorf("Prepare() launch = %+v; want %+v", launch, want)
 			}
-			if got, err := os.ReadFile(promptPath); err != nil || string(got) != "review the plan" {
-				t.Errorf("prompt.md = %q, %v; want the spec's prompt alone", got, err)
+			if got, err := os.ReadFile(promptPath); err != nil || string(got) != denyNotice(guards)+" "+shuttleengine.CreelTrustSentence+"\n\nreview the plan" {
+				t.Errorf("prompt.md = %q, %v; want the deny notice, the creel trust sentence and the spec's prompt", got, err)
 			}
 			if warnings.String() != "" {
 				t.Errorf("warnings = %q; want none", warnings)
@@ -162,7 +141,7 @@ func TestPrepare_Launch(t *testing.T) {
 	}
 }
 
-// TestPrepare_SandboxMode pins the sandbox a launch runs in for each codex.sandbox_mode and probe result.
+// TestPrepare_SandboxMode pins the sandbox a launch runs in for each sandbox_mode and probe result.
 // auto and workspace-write probe the sandbox once, with the Codex executable, under the lym home, in the anchor;
 // a sandbox that starts runs workspace-write.
 // One that cannot start runs danger-full-access under auto, with a warning naming the cause.
@@ -248,16 +227,13 @@ func TestPrepare_SandboxMode(t *testing.T) {
 			}
 			eventsPath := filepath.Join(runDir, "events.jsonl")
 			want := buildLaunchCmd(shell.ForGOOS(), launchLine{
-				bin:                   "codex",
-				home:                  repo.lymHome,
-				sandboxMode:           tt.wantMode,
-				writableRoots:         repo.wantGitDirs(anchor),
-				developerInstructions: wantCreelHead(installedGuards(nil, guardInputs{}), guardInputs{}),
-				maxSubagentThreads:    16,
-				projectDocMaxBytes:    defaultProjectDocMaxBytes,
-				hooks:                 hookSettings(eventsPath, autonomousHooks(runDir, installedGuards(nil, guardInputs{})), creelDelivery{}),
-				firstTurn:             launchPointer(promptPath),
-				eventsPath:            eventsPath,
+				bin:           "codex",
+				home:          repo.lymHome,
+				sandboxMode:   tt.wantMode,
+				writableRoots: repo.wantGitDirs(anchor),
+				hooks:         hookSettings(eventsPath, installedGuards(nil, guardInputs{}), creelDelivery{}),
+				firstTurn:     launchPointer(promptPath),
+				eventsPath:    eventsPath,
 			})
 			if launch.Cmd != want {
 				t.Errorf("Prepare() launch line = %q; want %q", launch.Cmd, want)
@@ -269,10 +245,8 @@ func TestPrepare_SandboxMode(t *testing.T) {
 	}
 }
 
-// TestPrepare_ExpandsHomeInWritableRoots pins that a leading ~/ in codex.writable_roots expands to the user's home.
+// TestPrepare_ExpandsHomeInWritableRoots pins that a leading ~/ in writable_roots expands to the user's home.
 // It sets the home environment variables, so it does not run in parallel.
-//
-//testtiming:keep pins the leading tilde expansion in the launch line, the only test that sets a tilde writable root
 func TestPrepare_ExpandsHomeInWritableRoots(t *testing.T) {
 	tiergate.Require(t, 0)
 
@@ -294,16 +268,13 @@ func TestPrepare_ExpandsHomeInWritableRoots(t *testing.T) {
 
 	promptPath := filepath.Join(runDir, "prompt.md")
 	want := buildLaunchCmd(shell.ForGOOS(), launchLine{
-		bin:                   "codex",
-		home:                  repo.lymHome,
-		sandboxMode:           sandboxWorkspaceWrite,
-		writableRoots:         append(repo.wantGitDirs(anchor), cache),
-		developerInstructions: wantCreelHead(installedGuards(nil, guardInputs{}), guardInputs{}),
-		maxSubagentThreads:    16,
-		projectDocMaxBytes:    defaultProjectDocMaxBytes,
-		hooks:                 hookSettings(filepath.Join(runDir, "events.jsonl"), autonomousHooks(runDir, installedGuards(nil, guardInputs{})), creelDelivery{}),
-		firstTurn:             launchPointer(promptPath),
-		eventsPath:            filepath.Join(runDir, "events.jsonl"),
+		bin:           "codex",
+		home:          repo.lymHome,
+		sandboxMode:   sandboxWorkspaceWrite,
+		writableRoots: append(repo.wantGitDirs(anchor), cache),
+		hooks:         hookSettings(filepath.Join(runDir, "events.jsonl"), installedGuards(nil, guardInputs{}), creelDelivery{}),
+		firstTurn:     launchPointer(promptPath),
+		eventsPath:    filepath.Join(runDir, "events.jsonl"),
 	})
 	if launch.Cmd != want {
 		t.Errorf("Prepare() launch line = %q; want %q", launch.Cmd, want)
@@ -311,11 +282,9 @@ func TestPrepare_ExpandsHomeInWritableRoots(t *testing.T) {
 }
 
 // TestPrepare_InstallsGuardsFromItsInputs pins which inputs reach the installed guard rows.
-// The python switch decides only whether the deny notice names the python row, which every launch installs;
-// the publish guard installs its own row alone;
-// a seeded gate.refuse_raw list of the hub's gate config reaches the hook and the developer instructions' deny notice.
-// It does so also when a gate key the launch does not read fails to load;
-// and a gate config that does not parse refuses the launch before the prompt file is written.
+// The python switch and the publish guard each install their own row alone;
+// a seeded refuse_raw list of the hub's gate config reaches the hook and the prompt file's deny notice;
+// and a gate config that is present but does not load refuses the launch before the prompt file is written.
 func TestPrepare_InstallsGuardsFromItsInputs(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -326,19 +295,15 @@ func TestPrepare_InstallsGuardsFromItsInputs(t *testing.T) {
 		gate        string
 		denyPython  bool
 		denyPublish bool
-		// allowRawTmux is the spec's exemption from the tmux and script row.
-		allowRawTmux bool
-		wantRefuse   []string
-		wantInputs   guardInputs
-		wantErr      bool
+		wantRefuse  []string
+		wantInputs  guardInputs
+		wantErr     bool
 	}{
 		{name: "PythonSwitchAlone", denyPython: true, wantInputs: guardInputs{denyPython: true}},
 		{name: "PublishGuardAlone", denyPublish: true, wantInputs: guardInputs{denyPublish: true}},
-		{name: "RawTmuxExemption", allowRawTmux: true, wantInputs: guardInputs{allowRawTmux: true}},
-		{name: "SeededRefuseRaw", gate: "slots: 2\nrefuse_raw: [\"go test\", \"dotnet test\"]\n", wantRefuse: []string{"go test", "dotnet test"}, wantInputs: guardInputs{}},
-		{name: "ScopelessGateKeyStillLaunches", gate: "slots: 2\nrefuse_raw: [\"go test\"]\ngates:\n  harden-live-copies:\n    tiers: [1]\n", wantRefuse: []string{"go test"}, wantInputs: guardInputs{}},
-		{name: "GateConfigThatDoesNotParse", gate: "slots: [\n", wantErr: true},
-		{name: "InvalidRefuseRawBesideAScopelessGateKeyStillRefuses", gate: "slots: 2\nrefuse_raw: [\"go  test\"]\ngates:\n  harden-live-copies:\n    tiers: [1]\n", wantErr: true}}
+		{name: "SeededRefuseRaw", gate: "slots: 2\nrefuse_raw: [\"go test\", \"dotnet test\"]\n", wantRefuse: []string{"go test", "dotnet test"}},
+		{name: "GateConfigThatDoesNotLoad", gate: "slots: [\n", wantErr: true},
+	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
@@ -352,7 +317,7 @@ func TestPrepare_InstallsGuardsFromItsInputs(t *testing.T) {
 			engine, _ := newEngine(anchor)
 			runDir := t.TempDir()
 
-			launch, err := engine.Prepare(runDir, shuttleengine.Spec{Prompt: "p", PromptEngine: engineName, DenyPublish: tt.denyPublish, AllowRawTmux: tt.allowRawTmux}, shuttleengine.Config{DenyPython: tt.denyPython})
+			launch, err := engine.Prepare(runDir, shuttleengine.Spec{Prompt: "p", PromptEngine: engineName, DenyPublish: tt.denyPublish}, shuttleengine.Config{DenyPython: tt.denyPython})
 			promptPath := filepath.Join(runDir, "prompt.md")
 			if tt.wantErr {
 				if err == nil || !strings.HasPrefix(err.Error(), "codexengine:") {
@@ -368,114 +333,61 @@ func TestPrepare_InstallsGuardsFromItsInputs(t *testing.T) {
 			}
 			guards := installedGuards(tt.wantRefuse, tt.wantInputs)
 			wantCmd := buildLaunchCmd(shell.ForGOOS(), launchLine{
-				bin:                   "codex",
-				home:                  repo.lymHome,
-				sandboxMode:           sandboxWorkspaceWrite,
-				writableRoots:         repo.wantGitDirs(anchor),
-				developerInstructions: wantCreelHead(guards, tt.wantInputs),
-				maxSubagentThreads:    16,
-				projectDocMaxBytes:    defaultProjectDocMaxBytes,
-				hooks:                 hookSettings(filepath.Join(runDir, "events.jsonl"), autonomousHooks(runDir, guards), creelDelivery{}),
-				firstTurn:             launchPointer(promptPath),
-				eventsPath:            filepath.Join(runDir, "events.jsonl"),
+				bin:           "codex",
+				home:          repo.lymHome,
+				sandboxMode:   sandboxWorkspaceWrite,
+				writableRoots: repo.wantGitDirs(anchor),
+				hooks:         hookSettings(filepath.Join(runDir, "events.jsonl"), guards, creelDelivery{}),
+				firstTurn:     launchPointer(promptPath),
+				eventsPath:    filepath.Join(runDir, "events.jsonl"),
 			})
 			if launch.Cmd != wantCmd {
 				t.Errorf("Prepare() launch line = %q; want %q", launch.Cmd, wantCmd)
 			}
-			if got, err := os.ReadFile(promptPath); err != nil || string(got) != "p" {
-				t.Errorf("prompt.md = %q, %v; want the spec's prompt alone", got, err)
+			if got, err := os.ReadFile(promptPath); err != nil || string(got) != denyNotice(guards)+" "+shuttleengine.CreelTrustSentence+"\n\np" {
+				t.Errorf("prompt.md = %q, %v; want the deny notice of the installed rows and the prompt", got, err)
 			}
 		})
 	}
 }
 
-// TestPrepare_AppendsStandingPassages pins the developer instructions' opening.
-// They open with the deny notice and the creel trust sentence;
-// the passages the reader finds for engine codex and the spec's role follow, each before a blank line,
-// and the prompt file holds the prompt alone.
-// A setting one byte under the argument cap goes ahead;
-// one at the cap refuses the launch, naming its size, the largest item and the way forward, and writes no prompt file.
+// TestPrepare_AppendsStandingPassages pins that the prompt file opens with the deny notice;
+// the passages the reader finds for engine codex and the spec's role follow, each before a blank line.
 // A told board hides the local layer of a worktree with no `_lym` folder;
 // its base layer names the fixture's homes.
-// The test also checks that a launch that goes ahead readied the fixture's lym home, so it never reaches the operator's.
+// The test also checks that the launch readied the fixture's lym home, so it never reaches the operator's.
 // It installs the process-wide passage reader, so it does not run in parallel.
 //
-//testtiming:keep pins the prompt.md holding the prompt alone, the reader's engine and role arguments, the argument cap refusal and its boundary, and the fixture lym home's trust roots, which TestPrepare_CreelHooksInAHub and TestCheckAfterStartup do not assert
+//testtiming:keep pins the prompt.md passages, the reader's engine and role arguments and the fixture lym home's trust roots, which TestPrepare_CreelHooksInAHub and TestCheckAfterStartup do not assert
 func TestPrepare_AppendsStandingPassages(t *testing.T) {
 	tiergate.Require(t, 0)
 
-	head := wantCreelHead(installedGuards(nil, guardInputs{}), guardInputs{})
-	// fillBytes is the size of the one passage that makes the setting maxArgumentBytes-1 bytes.
-	// tomlString of the head and its blank line holds both quotes, so a plain passage adds exactly its own length.
-	fillBytes := maxArgumentBytes - 1 - len(developerInstructionsKey+"=") - len(tomlString(head+"\n\n"))
-	tests := []struct {
-		name     string
-		passages []string
-		// wantInstructions is the developer instructions the launch carries; empty when the launch is refused.
-		wantInstructions string
-		// wantErr holds the texts a refusal must carry; empty means the launch goes ahead.
-		wantErr []string
-	}{
-		{name: "PassagesFollowTheCreelHead", passages: []string{"first passage", "second passage"}, wantInstructions: head + "\n\nfirst passage\n\nsecond passage"},
-		{name: "AtTheArgumentCap", passages: []string{strings.Repeat("a", fillBytes)}, wantInstructions: head + "\n\n" + strings.Repeat("a", fillBytes)},
-		{
-			name: "OverTheArgumentCap", passages: []string{strings.Repeat("a", fillBytes+1)},
-			wantErr: []string{"codexengine:", strconv.Itoa(maxArgumentBytes), strconv.Itoa(fillBytes + 1), "heddle passage slug-1", "lym heddle show codex-prompt", "way forward"},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			repo := newRepoFixture(t)
-			anchor, _ := repo.addWorktree(t, "wt")
-			engine, _ := newEngine(anchor)
-			board := t.TempDir()
-			repo.writeCodexConfig(t, configengine.ConfigFile(board, "codex"), "")
-			engine.dirs.Board = board
-			var asked []string
-			restore := shuttleengine.InstallPassageReader(func(boltDir, engine, role string) (shuttleengine.Standing, error) {
-				asked = append(asked, engine, role)
-				passages := make([]shuttleengine.Passage, len(tt.passages))
-				for i, text := range tt.passages {
-					passages[i] = shuttleengine.Passage{Slug: fmt.Sprintf("slug-%d", i+1), Text: text}
-				}
-				return shuttleengine.Standing{Passages: passages}, nil
-			})
-			t.Cleanup(restore)
+	repo := newRepoFixture(t)
+	anchor, _ := repo.addWorktree(t, "wt")
+	engine, _ := newEngine(anchor)
+	board := t.TempDir()
+	repo.writeCodexConfig(t, configengine.ConfigFile(board, "codex"), "")
+	engine.dirs.Board = board
+	var asked []string
+	restore := shuttleengine.InstallPassageReader(func(boltDir, engine, role string) ([]string, error) {
+		asked = append(asked, engine, role)
+		return []string{"first passage", "second passage"}, nil
+	})
+	t.Cleanup(restore)
 
-			runDir := t.TempDir()
-			launch, err := engine.Prepare(runDir, shuttleengine.Spec{Prompt: "the prompt", PromptEngine: engineName, Role: "code-review-assist"}, shuttleengine.Config{})
-			if want := []string{"codex", "code-review-assist"}; !reflect.DeepEqual(asked, want) {
-				t.Errorf("passage reader asked for %v; want %v", asked, want)
-			}
-			promptPath := filepath.Join(runDir, "prompt.md")
-			if len(tt.wantErr) > 0 {
-				if err == nil {
-					t.Fatal("Prepare() error = nil; want a refusal")
-				}
-				for _, want := range tt.wantErr {
-					if !strings.Contains(err.Error(), want) {
-						t.Errorf("Prepare() error %q does not contain %q", err, want)
-					}
-				}
-				if _, statErr := os.Stat(promptPath); !errors.Is(statErr, os.ErrNotExist) {
-					t.Errorf("prompt.md stat error = %v; want no prompt file", statErr)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("Prepare() error: %v", err)
-			}
-			setting := developerInstructionsKey + "=" + tomlString(tt.wantInstructions)
-			if want := shell.ForGOOS().Quote(setting); !strings.Contains(launch.Cmd, want) {
-				t.Errorf("Prepare() launch line = %q; want it to hold the setting %s", launch.Cmd, want)
-			}
-			if got, err := os.ReadFile(promptPath); err != nil || string(got) != "the prompt" {
-				t.Errorf("prompt.md = %q, %v; want the prompt alone", got, err)
-			}
-			if got, want := readRecord(t, repo.lymHome).Roots, []string{repo.mainRoot, anchor}; !reflect.DeepEqual(got, want) {
-				t.Errorf("fixture lym home trust roots = %v; want %v", got, want)
-			}
-		})
+	runDir := t.TempDir()
+	if _, err := engine.Prepare(runDir, shuttleengine.Spec{Prompt: "the prompt", PromptEngine: engineName, Role: "code-review-assist"}, shuttleengine.Config{}); err != nil {
+		t.Fatalf("Prepare() error: %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(runDir, "prompt.md"))
+	if want := denyNotice(installedGuards(nil, guardInputs{})) + " " + shuttleengine.CreelTrustSentence + "\n\nfirst passage\n\nsecond passage\n\nthe prompt"; err != nil || string(got) != want {
+		t.Errorf("prompt.md = %q, %v; want %q", got, err, want)
+	}
+	if want := []string{"codex", "code-review-assist"}; !reflect.DeepEqual(asked, want) {
+		t.Errorf("passage reader asked for %v; want %v", asked, want)
+	}
+	if got, want := readRecord(t, repo.lymHome).Roots, []string{repo.mainRoot, anchor}; !reflect.DeepEqual(got, want) {
+		t.Errorf("fixture lym home trust roots = %v; want %v", got, want)
 	}
 }
 
@@ -502,94 +414,13 @@ func TestPrepare_CreelHooksInAHub(t *testing.T) {
 		t.Error("Prepare() CreelHooks = false; want true for an engine told a board")
 	}
 	creel := creelDelivery{flagDir: shuttleengine.CreelFlagDir(board), home: repo.lymHome, bin: "/opt/codex/bin/codex-custom"}
-	settings := hookSettings(filepath.Join(runDir, "events.jsonl"), autonomousHooks(runDir, installedGuards(nil, guardInputs{})), creel)
+	settings := hookSettings(filepath.Join(runDir, "events.jsonl"), installedGuards(nil, guardInputs{}), creel)
 	for _, setting := range settings {
 		if strings.HasPrefix(setting, "hooks."+hookEventStop+"=") || strings.HasPrefix(setting, "hooks."+hookEventPostToolUse+"=") {
 			if quoted := shell.ForGOOS().Quote(setting); !strings.Contains(launch.Cmd, quoted) {
 				t.Errorf("Prepare() launch line = %q; want it to hold the creel setting %s", launch.Cmd, quoted)
 			}
 		}
-	}
-}
-
-// TestPrepare_SwitchedToolHooks pins the three tool hooks a launch's spec, codex.yaml and shuttle.yaml switch.
-// An autonomous spec carries the question-tool deny and its notice, and an interactive one carries neither.
-// With the batching nudge on, Prepare seeds the state file with the codex.batching_nudge block.
-// The line then runs the batching hook over it.
-// With the nudge off, Prepare writes no state file and the line carries no batching hook.
-// An autonomous spec carries the edit hook over the run's edit records file while the edit-loop watch is on.
-// An interactive spec, or a watch that is off, carries none.
-func TestPrepare_SwitchedToolHooks(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	tests := []struct {
-		name         string
-		interactive  bool
-		batchingOff  bool
-		editLoopOff  bool
-		wantDeny     bool
-		wantBatching bool
-		wantEditHook bool
-	}{
-		{name: "Autonomous", wantDeny: true, wantBatching: true, wantEditHook: true},
-		{name: "Interactive", interactive: true, wantBatching: true},
-		{name: "BatchingOff", batchingOff: true, wantDeny: true, wantEditHook: true},
-		{name: "EditLoopOff", editLoopOff: true, wantDeny: true, wantBatching: true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			repo := newRepoFixture(t)
-			anchor, _ := repo.addWorktree(t, "wt")
-			if tt.batchingOff {
-				repo.writeCodexLayer(t, anchor, "batching_nudge:\n  enabled: false\n")
-			}
-			engine, _ := newEngine(anchor)
-			runDir := t.TempDir()
-
-			cfg := shuttleengine.Config{EditLoopEdits: 4, EditLoopWindowS: 300}
-			if tt.editLoopOff {
-				cfg.EditLoopEdits = 0
-			}
-			launch, err := engine.Prepare(runDir, shuttleengine.Spec{Prompt: "p", PromptEngine: engineName, Interactive: tt.interactive}, cfg)
-			if err != nil {
-				t.Fatalf("Prepare() error: %v", err)
-			}
-			guardIn := guardInputs{}
-			guards := installedGuards(nil, guardIn)
-			tools := toolHooks{guards: guards, lymPath: testLymPath, questionDeny: tt.wantDeny}
-			statePath := filepath.Join(runDir, batchingNudgeStateFileName)
-			if tt.wantBatching {
-				tools.batchingStatePath = statePath
-			}
-			if tt.wantEditHook {
-				tools.editRecordsPath = filepath.Join(runDir, shuttleengine.EditRecordsFileName)
-			}
-			for _, setting := range hookSettings(filepath.Join(runDir, "events.jsonl"), tools, creelDelivery{}) {
-				if quoted := shell.ForGOOS().Quote(setting); !strings.Contains(launch.Cmd, quoted) {
-					t.Errorf("Prepare() launch line = %q; want it to hold the setting %s", launch.Cmd, quoted)
-				}
-			}
-			notice := shell.ForGOOS().Quote(developerInstructionsKey + "=" + tomlString(denyNotice(tt.wantDeny, guards, guardIn)+" "+shuttleengine.CreelTrustSentence))
-			if !strings.Contains(launch.Cmd, notice) {
-				t.Errorf("Prepare() launch line = %q; want developer instructions opening %s", launch.Cmd, notice)
-			}
-			data, err := os.ReadFile(statePath)
-			if !tt.wantBatching {
-				if !errors.Is(err, os.ErrNotExist) {
-					t.Errorf("state file read error = %v; want no state file", err)
-				}
-				return
-			}
-			var seeded batchingNudgeState
-			if err != nil || json.Unmarshal(data, &seeded) != nil {
-				t.Fatalf("state file = %s, %v; want the seeded state", data, err)
-			}
-			if template, _ := LoadConfig(configengine.Dirs{Anchor: t.TempDir()}); !reflect.DeepEqual(seeded, batchingNudgeState{Settings: template.BatchingNudge}) {
-				t.Errorf("seeded state = %+v; want the template's block and no counts", seeded)
-			}
-		})
 	}
 }
 
@@ -735,20 +566,20 @@ func TestPrepare_RefusesBeforeWriting(t *testing.T) {
 		{name: "PromptPermissionMode", spec: shuttleengine.Spec{PermissionMode: "prompt"}, wantErr: []string{`permission mode "prompt"`, "way forward"}},
 		{name: "ResumedSession", spec: shuttleengine.Spec{ResumeSessionID: "abc"}, wantErr: []string{"cannot be resumed", "way forward"}},
 		{name: "Advisor", spec: shuttleengine.Spec{Advisor: "opus"}, wantErr: []string{`advisor "opus"`, "way forward"}},
-		{name: "EffortOutsideEfforts", spec: shuttleengine.Spec{ModelChoice: shuttleengine.ModelChoice{Effort: "xhigh"}}, wantErr: []string{`effort "xhigh"`, "codex.efforts", "way forward"}},
+		{name: "EffortOutsideEfforts", spec: shuttleengine.Spec{ModelChoice: shuttleengine.ModelChoice{Effort: "xhigh"}}, wantErr: []string{`effort "xhigh"`, "codex.yaml's efforts", "way forward"}},
 		{
 			name: "RelativeWritableRoot",
 			setup: func(t *testing.T, anchor string) {
 				writeWritableRoots(t, anchor, "cache")
 			},
-			wantErr: []string{`codex.writable_roots "cache"`, "way forward"},
+			wantErr: []string{`codex.yaml's writable_roots "cache"`, "way forward"},
 		},
 		{
 			name: "UnknownSandboxMode",
 			setup: func(t *testing.T, anchor string) {
 				writeFile(t, configengine.ConfigFile(anchor, "codex"), "writable_roots: []\nsandbox_mode: read-only\n")
 			},
-			wantErr: []string{`codex.sandbox_mode "read-only"`, "way forward", "--layer <default|worktree|machine|local>"},
+			wantErr: []string{`codex.yaml's sandbox_mode "read-only"`, "way forward", "--layer <default|worktree|machine|local>"},
 		},
 		{
 			name: "RulesInWorktree",
@@ -955,8 +786,6 @@ func TestCheckAfterStartup(t *testing.T) {
 // TestLoadConfig_Template pins codex.yaml's template:
 // the codex binary on PATH, the homes under ~/, the efforts low to high;
 // the Claude plugin cache as the skill root, the auto sandbox mode and the Go build cache as the writable root.
-//
-//testtiming:keep pins the template's whole resolved key set, including the subagent and plugin hook defaults, which TestPrepare_InstallsGuardsFromItsInputs does not assert
 func TestLoadConfig_Template(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -965,10 +794,7 @@ func TestLoadConfig_Template(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfig() error: %v", err)
 	}
-	want := Config{
-		Home: "~/.lym/codex", OperatorHome: "~/.codex", Efforts: []string{"low", "medium", "high"}, SkillRoots: []string{"~/.claude/plugins/cache"}, SandboxMode: sandboxAuto, WritableRoots: []string{"~/.cache/go-build"}, MaxSubagentThreads: 16, PluginHookTimeout: "10s",
-		BatchingNudge: BatchingNudgeConfig{Enabled: true, LookupChain: true, ReadSlice: true, EditChain: true, ContextTokens: 150000, LookupRun: 3, EditRun: 2, SliceLines: 2000, MaxNudges: 5},
-	}
+	want := Config{Home: "~/.lym/codex", OperatorHome: "~/.codex", Efforts: []string{"low", "medium", "high"}, SkillRoots: []string{"~/.claude/plugins/cache"}, SandboxMode: sandboxAuto, WritableRoots: []string{"~/.cache/go-build"}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("LoadConfig() = %+v; want %+v", got, want)
 	}
@@ -977,7 +803,7 @@ func TestLoadConfig_Template(t *testing.T) {
 	}
 }
 
-// TestLoadConfig_SandboxModeLayers pins which layers set codex.sandbox_mode in a hub.
+// TestLoadConfig_SandboxModeLayers pins which layers set sandbox_mode in a hub.
 // The machine override wins over the worktree file.
 // So one machine runs unsandboxed while the tracked files keep the sandbox.
 // A local override that sets it refuses the load.
@@ -996,7 +822,7 @@ func TestLoadConfig_SandboxModeLayers(t *testing.T) {
 	}{
 		{name: "MachineOverWorktree", worktree: sandboxWorkspaceWrite, machine: sandboxFullAccess, want: sandboxFullAccess},
 		{name: "WorktreeWithNoMachineFile", worktree: sandboxFullAccess, want: sandboxFullAccess},
-		{name: "LocalRefused", local: sandboxFullAccess, wantErr: `"codex.sandbox_mode"`},
+		{name: "LocalRefused", local: sandboxFullAccess, wantErr: `"sandbox_mode"`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1034,177 +860,6 @@ func TestLoadConfig_SandboxModeLayers(t *testing.T) {
 	}
 }
 
-// TestLoadConfig_RefusesInvalidValues pins that a local layer value LoadConfig cannot accept refuses the load.
-// Each refusal carries the invalid mark and names the key.
-func TestLoadConfig_RefusesInvalidValues(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	tests := []struct {
-		name    string
-		layer   string
-		wantKey string
-	}{
-		{name: "MaxSubagentThreadsZero", layer: "max_subagent_threads: 0\n", wantKey: "max_subagent_threads"},
-		{name: "MaxSubagentThreadsNegative", layer: "max_subagent_threads: -2\n", wantKey: "max_subagent_threads"},
-		{name: "PluginHookTimeoutNotADuration", layer: "plugin_hook_timeout: soon\n", wantKey: "plugin_hook_timeout"},
-		{name: "PluginHookTimeoutZero", layer: "plugin_hook_timeout: 0s\n", wantKey: "plugin_hook_timeout"},
-		{name: "BatchingContextTokensNegative", layer: "batching_nudge:\n  context_tokens: -1\n", wantKey: "batching_nudge.context_tokens"},
-		{name: "BatchingLookupRunZero", layer: "batching_nudge:\n  lookup_run: 0\n", wantKey: "batching_nudge.lookup_run"},
-		{name: "BatchingEditRunZero", layer: "batching_nudge:\n  edit_run: 0\n", wantKey: "batching_nudge.edit_run"},
-		{name: "BatchingSliceLinesZero", layer: "batching_nudge:\n  slice_lines: 0\n", wantKey: "batching_nudge.slice_lines"},
-		{name: "BatchingMaxNudgesZero", layer: "batching_nudge:\n  max_nudges: 0\n", wantKey: "batching_nudge.max_nudges"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			dirs := configengine.Dirs{Anchor: t.TempDir()}
-			path := configengine.LocalFile(dirs.Anchor, "codex")
-			mkdirAll(t, filepath.Dir(path))
-			writeFile(t, path, tt.layer)
-
-			_, err := LoadConfig(dirs)
-			if !errors.Is(err, configengine.ErrInvalid) || !strings.Contains(err.Error(), tt.wantKey) {
-				t.Errorf("LoadConfig() error = %v; want an invalid-content refusal naming %s", err, tt.wantKey)
-			}
-		})
-	}
-}
-
-// TestLoadConfig_AcceptsBatchingNudgeEdges pins the codex.batching_nudge values the validation lets through:
-// an off block is not validated, and a codex.batching_nudge.context_tokens of 0 is allowed while the block is on.
-func TestLoadConfig_AcceptsBatchingNudgeEdges(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	template := BatchingNudgeConfig{Enabled: true, LookupChain: true, ReadSlice: true, EditChain: true, ContextTokens: 150000, LookupRun: 3, EditRun: 2, SliceLines: 2000, MaxNudges: 5}
-	offBlock := template
-	offBlock.Enabled, offBlock.LookupRun = false, 0
-	zeroContext := template
-	zeroContext.ContextTokens = 0
-	tests := []struct {
-		name  string
-		layer string
-		want  BatchingNudgeConfig
-	}{
-		{name: "OffBlockIsNotValidated", layer: "batching_nudge:\n  enabled: false\n  lookup_run: 0\n", want: offBlock},
-		{name: "ContextTokensZeroWithTheBlockOn", layer: "batching_nudge:\n  context_tokens: 0\n", want: zeroContext},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			dirs := configengine.Dirs{Anchor: t.TempDir()}
-			path := configengine.LocalFile(dirs.Anchor, "codex")
-			mkdirAll(t, filepath.Dir(path))
-			writeFile(t, path, tt.layer)
-
-			got, err := LoadConfig(dirs)
-			if err != nil {
-				t.Fatalf("LoadConfig() error: %v", err)
-			}
-			if !reflect.DeepEqual(got.BatchingNudge, tt.want) {
-				t.Errorf("LoadConfig().BatchingNudge = %+v; want %+v", got.BatchingNudge, tt.want)
-			}
-		})
-	}
-}
-
-// TestPrepare_SubagentTerms pins what a launch gives the session's subagents.
-// The effort agents.yaml gives the role rides an agents setting.
-// The passage of the developer instructions names it and the skills;
-// an effort codex.efforts does not list, or no effort at all, gives neither.
-// The thread cap rides every launch and follows codex.max_subagent_threads.
-func TestPrepare_SubagentTerms(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	tests := []struct {
-		name string
-		// agents is the agents.yaml text written for the worktree; empty gives the zero agents config.
-		agents string
-		skills []string
-		// codexExtra is appended to the codex.yaml local layer.
-		codexExtra string
-		// wantEffort is the effort the agents setting and the passage name; empty means neither.
-		wantEffort  string
-		wantThreads int
-		// wantWarn is a text the warnings must hold; empty means none.
-		wantWarn string
-	}{
-		{
-			name: "EffortCodexLists", agents: "efforts:\n  default: high\n", skills: []string{"scribe:prose", "scribe:testing"},
-			wantEffort: "high", wantThreads: 16,
-		},
-		{
-			name: "EffortCodexListsWithNoSkills", agents: "efforts:\n  default: high\n",
-			wantEffort: "high", wantThreads: 16,
-		},
-		{name: "EffortCodexDoesNotList", agents: "efforts:\n  default: xhigh\n", wantThreads: 16, wantWarn: "xhigh"},
-		{name: "NoEffortForTheRole", wantThreads: 16},
-		{
-			name: "ConfiguredThreadCap", agents: "efforts:\n  default: low\n", codexExtra: "max_subagent_threads: 24\n",
-			wantEffort: "low", wantThreads: 24,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			repo := newRepoFixture(t)
-			anchor, _ := repo.addWorktree(t, "wt")
-			repo.writeCodexLayer(t, anchor, tt.codexExtra)
-			var agents agentconfig.Config
-			if tt.agents != "" {
-				path := configengine.ConfigFile(anchor, "agents")
-				mkdirAll(t, filepath.Dir(path))
-				writeFile(t, path, tt.agents)
-				loaded, err := agentconfig.Load(configengine.Dirs{Anchor: anchor})
-				if err != nil {
-					t.Fatalf("agentconfig.Load() error: %v", err)
-				}
-				agents = loaded
-			}
-			engine, warnings := newEngine(anchor)
-
-			launch, err := engine.Prepare(t.TempDir(), shuttleengine.Spec{Prompt: "p", PromptEngine: engineName, ConfigRole: agentconfig.RoleDarn, Skills: tt.skills}, shuttleengine.Config{Agents: agents})
-			if err != nil {
-				t.Fatalf("Prepare() error: %v", err)
-			}
-
-			items := []instructionItem{{text: wantCreelHead(installedGuards(nil, guardInputs{}), guardInputs{})}}
-			effortSetting := "agents.default_subagent_reasoning_effort="
-			if tt.wantEffort != "" {
-				passage := subagentPassage(tt.wantEffort, tt.skills)
-				for _, want := range append([]string{"`" + tt.wantEffort + "`"}, tt.skills...) {
-					if !strings.Contains(passage, want) {
-						t.Errorf("subagent passage = %q; want it to contain %q", passage, want)
-					}
-				}
-				items = append(items, instructionItem{text: passage})
-				if want := shell.ForGOOS().Quote(effortSetting + tomlString(tt.wantEffort)); !strings.Contains(launch.Cmd, want) {
-					t.Errorf("Prepare() launch line = %q; want it to hold %s", launch.Cmd, want)
-				}
-			} else if strings.Contains(launch.Cmd, effortSetting) {
-				t.Errorf("Prepare() launch line = %q; want no %s", launch.Cmd, effortSetting)
-			}
-			instructions, err := developerInstructions(items)
-			if err != nil {
-				t.Fatalf("developerInstructions() error: %v", err)
-			}
-			for _, want := range []string{
-				developerInstructionsSetting(instructions),
-				"agents.max_concurrent_threads_per_session=" + strconv.Itoa(tt.wantThreads),
-			} {
-				if quoted := shell.ForGOOS().Quote(want); !strings.Contains(launch.Cmd, quoted) {
-					t.Errorf("Prepare() launch line = %q; want it to hold %s", launch.Cmd, quoted)
-				}
-			}
-			if got := warnings.String(); tt.wantWarn == "" && got != "" || !strings.Contains(got, tt.wantWarn) || tt.wantWarn != "" && !strings.Contains(got, "lym config codex") {
-				t.Errorf("warnings = %q; want %q and lym config codex", got, tt.wantWarn)
-			}
-		})
-	}
-}
-
 // TestExpandHomePath pins the home keys' resolution:
 // a leading ~/ under the user's home, an absolute path kept, and an empty or relative value refused by its key.
 func TestExpandHomePath(t *testing.T) {
@@ -1232,7 +887,7 @@ func TestExpandHomePath(t *testing.T) {
 			t.Parallel()
 			got, err := expandHomePath("home", tt.value)
 			if tt.wantErr {
-				if err == nil || !strings.Contains(err.Error(), "codex.home") {
+				if err == nil || !strings.Contains(err.Error(), "codex.yaml's home") {
 					t.Errorf("expandHomePath(%q) error = %v; want a refusal naming the key", tt.value, err)
 				}
 				return

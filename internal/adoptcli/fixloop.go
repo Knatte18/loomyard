@@ -1,5 +1,5 @@
 // fixloop.go files the fix task of a failed adopt check through the `fronttask` package, up to the try limit.
-// It keeps the try count in the hold and words that task's slug and body.
+// It also words that task's slug and body.
 
 package adoptcli
 
@@ -18,7 +18,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fronttask"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
@@ -42,17 +41,11 @@ const (
 	// fixLabelBug is the type label every fix task carries; fixLabelGate is added when the board's vocabulary knows it.
 	fixLabelBug  = "bug"
 	fixLabelGate = "gate"
-	// fixLimitLineOpening opens the line that says a subject's fix tries ran out.
-	// The hold check posts that line as the dobby's notice.
-	fixLimitLineOpening = "the fix tries of "
 )
 
 // fixDeps holds the seams of one subject's failed end.
 // Subject names the subject; Dir is its scratch directory; Project is its project, none for `root`;
 // Machine is this machine's name, and TryLimit is the try limit.
-// Tries is the subject's try count as the hold records it.
-// Rerun is the command that checks the hold's subjects again.
-// FixHold writes the adopt-fix hold naming task with the subject's count tries, and returns its refusal.
 // Tasks reads the board's entries.
 // RunRecord reads the batten run record of a slug, reporting false when none exists.
 // EscalationEligible reports whether a slug's awaiting run stands at a producer whose escalation the arbiter admits.
@@ -66,9 +59,6 @@ type fixDeps struct {
 	Project            string
 	Machine            string
 	TryLimit           int
-	Tries              int
-	Rerun              string
-	FixHold            func(task string, tries int) error
 	Tasks              func() ([]boardengine.Task, error)
 	RunRecord          func(slug string) (shedengine.Status, bool, error)
 	EscalationEligible func(slug string) bool
@@ -144,11 +134,10 @@ func failedTiers(record CheckRecord) (tiers, tests []string, more int) {
 
 // fixBody renders the body of the subject's fix task.
 // It names the failing tiers and failed tests, quoting an excerpt of suiteLog around each failed test's first line.
-// It tells the agent to diagnose the failure first.
-// It gives the stop condition for a machine failure, whose way forward is the re-run rerun.
+// It tells the agent to diagnose the failure first, and gives the stop condition for a machine failure.
 // An excerpt starts a few lines before the test's first line in suiteLog and holds a bounded number of lines.
 // A test whose first line, or its name when it has none, appears in no line of suiteLog gets no excerpt.
-func fixBody(subject, rerun string, record CheckRecord, suiteLog string) string {
+func fixBody(subject string, record CheckRecord, suiteLog string) string {
 	tiers, _, _ := failedTiers(record)
 	logLines := strings.Split(suiteLog, "\n")
 
@@ -197,33 +186,34 @@ func fixBody(subject, rerun string, record CheckRecord, suiteLog string) string 
 	}
 
 	body.WriteString("Diagnose the failure first. A code failure you fix and land as usual. A machine failure, such as a missing tool, an old version or timing like a security agent holding new binaries, has nothing to commit.\n\n")
-	fmt.Fprintf(&body, "Stop condition: the failure is a machine failure. Write a stop report naming the exact steps the operator must take on this machine and, as its way forward, a re-run of %s once the machine is settled, never lym loom resume.\n", rerun)
+	fmt.Fprintf(&body, "Stop condition: the failure is a machine failure. Write a stop report naming the exact steps the operator must take on this machine and, as its way forward, a re-run of lym adopt %s once the machine is settled, never lym loom resume.\n", subject)
 	return body.String()
 }
 
-// failedEnd handles a failed adopt check that recorded a failed tier.
-// It returns the fix task filed or the own one left standing, the lines of its notice,
-// and the refusal of the adopt-fix hold write when it met one.
+// failedEnd handles a failed adopt check that recorded a failed tier, and returns the lines of its notice.
 // In order, each case ends the call with its lines:
 //  1. The subject's own fix task stands open and healthy:
 //     released, starting, running, paused, or awaiting with an admitted escalation.
 //     Nothing is filed or removed.
 //  2. Another front task stands open in the subject's worktree.
 //     Nothing is filed or removed.
-//  3. The try count the hold records is at the limit.
+//  3. The try count is at the limit.
 //     Nothing is filed or removed.
 //  4. The own fix task is a draft or halted, and it is removed.
 //     A failed removal files nothing.
 //  5. A fix task is filed with the next free slug.
-//     The adopt-fix hold is written with the try count plus one between the entry's creation and its release.
+//     The try count rises by one between the entry's creation and its release.
 //
 // It never starts a pass of the task: its parent's dobby starts it from the empty status.
-func failedEnd(deps fixDeps, record CheckRecord) (fixTask string, lines []string, lost *boardengine.HoldRefusal) {
+func failedEnd(deps fixDeps, record CheckRecord) []string {
 	tasks, err := deps.Tasks()
 	if err != nil {
-		return "", []string{fixReadError(deps, "the board", err)}, nil
+		return []string{fixReadError(deps, "the board", err)}
 	}
-	tries := deps.Tries
+	tries, err := readTries(deps.Dir)
+	if err != nil {
+		return []string{fixReadError(deps, "the fix-try count", err)}
+	}
 
 	own, hasOwn := fronttask.FrontOf(tasks, deps.Project, fronttask.ActionAdoptCheck)
 	ownHalted := false
@@ -231,21 +221,21 @@ func failedEnd(deps fixDeps, record CheckRecord) (fixTask string, lines []string
 		var state, handStep string
 		state, handStep, ownHalted, err = judgeOwnFix(deps, own)
 		if err != nil {
-			return "", []string{fixReadError(deps, "the run record of "+own.Slug, err)}, nil
+			return []string{fixReadError(deps, "the run record of "+own.Slug, err)}
 		}
 		if !ownHalted {
-			return own.Slug, []string{fmt.Sprintf("the fix task %s of %s stands %s, so no new one was filed: its landing starts the next check; %s", own.Slug, deps.Subject, state, handStep)}, nil
+			return []string{fmt.Sprintf("the fix task %s of %s stands %s, so no new one was filed: its landing starts the next check; %s", own.Slug, deps.Subject, state, handStep)}
 		}
 	}
 
 	others := slices.DeleteFunc(slices.Clone(tasks), func(task boardengine.Task) bool { return hasOwn && task.Slug == own.Slug })
 	if other, found := fronttask.OpenFront(others, deps.Project); found {
-		return "", []string{fmt.Sprintf("the front task %s stands open in the worktree of %s, so no fix task was filed: a front task of another action starts no check; re-run %s once %s lands", other.Slug, deps.Subject, deps.Rerun, other.Slug)}, nil
+		return []string{fmt.Sprintf("the front task %s stands open in the worktree of %s, so no fix task was filed: a front task of another action starts no check; re-run lym adopt %s once %s lands", other.Slug, deps.Subject, deps.Subject, other.Slug)}
 	}
 
 	failedTierWords, failedTests, more := failedTiers(record)
 	if tries >= deps.TryLimit {
-		line := fmt.Sprintf("%s%s ran out (%d of %d), so no fix task was filed: %s failed", fixLimitLineOpening, deps.Subject, tries, deps.TryLimit, strings.Join(failedTierWords, ", "))
+		line := fmt.Sprintf("the fix tries of %s ran out (%d of %d), so no fix task was filed: %s failed", deps.Subject, tries, deps.TryLimit, strings.Join(failedTierWords, ", "))
 		if len(failedTests) > 0 {
 			line += " in " + strings.Join(failedTests, ", ")
 			if more > 0 {
@@ -253,22 +243,20 @@ func failedEnd(deps fixDeps, record CheckRecord) (fixTask string, lines []string
 			}
 		}
 		line += "; suite.log in " + deps.Dir + " holds the output"
-		standing := ""
 		if hasOwn {
-			standing = own.Slug
 			line += fmt.Sprintf("; the fix task %s stands halted", own.Slug)
 		}
-		return standing, []string{line + fmt.Sprintf("; settle the failure by hand, then run %s, whose check removes that task", deps.Rerun)}, nil
+		return []string{line + fmt.Sprintf("; re-run lym adopt %s once you have settled it, whose check removes that task", deps.Subject)}
 	}
 
 	// taken is read before the removal, so the slug of a removed task is not given out again.
 	taken, err := takenFixSlugs(deps, tasks)
 	if err != nil {
-		return "", []string{fixFilingError(deps, err)}, nil
+		return []string{fixFilingError(deps, err)}
 	}
 	if hasOwn {
 		if err := fronttask.Remove(deps.FrontDeps, own.Slug); err != nil {
-			return "", []string{fixRemovalError(deps, own.Slug, err)}, nil
+			return []string{fixRemovalError(deps, own.Slug, err)}
 		}
 	}
 
@@ -281,18 +269,17 @@ func failedEnd(deps fixDeps, record CheckRecord) (fixTask string, lines []string
 	request := fronttask.Request{
 		Slug:    slug,
 		Title:   fmt.Sprintf("Fix the adopt check of %s on %s", deps.Subject, deps.Machine),
-		Body:    fixBody(deps.Subject, deps.Rerun, record, string(suiteLog)),
+		Body:    fixBody(deps.Subject, record, string(suiteLog)),
 		Labels:  labels,
 		Recipe:  fixRecipe,
 		Profile: fixProfile,
 		Project: deps.Project,
 		OnLand:  fronttask.ActionAdoptCheck,
 	}
-	if err := fronttask.File(deps.FrontDeps, request, func() error { return deps.FixHold(slug, tries+1) }); err != nil {
-		errors.As(err, &lost)
-		return "", []string{fixFilingError(deps, err)}, lost
+	if err := fronttask.File(deps.FrontDeps, request, func() error { return writeTries(deps.Dir, tries+1) }); err != nil {
+		return []string{fixFilingError(deps, err)}
 	}
-	return slug, []string{fmt.Sprintf("filed the fix task %s for the failed adopt check of %s (try %d of %d); it is the only run that starts: its parent's dobby starts it ahead of the worktree's other tasks, and its landing checks again", slug, deps.Subject, tries+1, deps.TryLimit)}, nil
+	return []string{fmt.Sprintf("filed the fix task %s for the failed adopt check of %s (try %d of %d); it is the only run that starts: its parent's dobby starts it ahead of the worktree's other tasks, and its landing checks again", slug, deps.Subject, tries+1, deps.TryLimit)}
 }
 
 // judgeOwnFix reads the state of the subject's own fix task.
@@ -344,15 +331,13 @@ func takenFixSlugs(deps fixDeps, tasks []boardengine.Task) ([]string, error) {
 }
 
 // fixReadError words a failed read of the fix loop, which files nothing.
-// The hold stands meanwhile, and its try count is unchanged.
 func fixReadError(deps fixDeps, what string, err error) string {
-	return fmt.Sprintf("%s was not read (%v), so no fix task of %s was filed; way forward: fix the cause it names, then re-run %s, which checks again, the hold standing meanwhile", what, err, deps.Subject, deps.Rerun)
+	return fmt.Sprintf("%s was not read (%v), so no fix task of %s was filed; way forward: fix the cause it names, then re-run lym adopt %s, which resets the count and checks again, the adopt pauses standing meanwhile", what, err, deps.Subject, deps.Subject)
 }
 
 // fixFilingError words a filing that failed, which files nothing more.
-// The hold stands meanwhile, and its try count is unchanged.
 func fixFilingError(deps fixDeps, err error) string {
-	return fmt.Sprintf("the fix task of %s was not filed (%v); way forward: fix the cause it names, then re-run %s, which checks again, the hold standing meanwhile", deps.Subject, err, deps.Rerun)
+	return fmt.Sprintf("the fix task of %s was not filed (%v); way forward: fix the cause it names, then re-run lym adopt %s, which resets the count and checks again, the adopt pauses standing meanwhile", deps.Subject, err, deps.Subject)
 }
 
 // fixRemovalError words a failed removal of the halted or draft fix task slug.
@@ -362,16 +347,14 @@ func fixRemovalError(deps fixDeps, slug string, err error) string {
 	line := fmt.Sprintf("the fix task %s of %s was not removed, so no new one was filed: %v", slug, deps.Subject, err)
 	var removal *fronttask.RemoveError
 	if errors.As(err, &removal) && removal.Step == "entry" {
-		line += fmt.Sprintf("; then re-run %s", deps.Rerun)
+		line += fmt.Sprintf("; then re-run lym adopt %s", deps.Subject)
 	}
 	return line
 }
 
 // hubFixDeps fills fixDeps for the failed end of the check of subject over the hub of prime.
-// The try limit is `beam.adopt_fix_tries` of the config stack of the subject's worktree,
+// The try limit is `adopt_fix_tries` of the config stack of the subject's worktree,
 // and the board's vocabulary is the prime's.
-// FixHold writes the hold of this machine with the subject's tries alone.
-// It leaves Tries and Rerun unset, which its caller sets.
 func hubFixDeps(prime *lymcwd.Location, subject string) (fixDeps, error) {
 	worktree, err := resolveSubjectWorktree(prime, subject)
 	if err != nil {
@@ -393,7 +376,7 @@ func hubFixDeps(prime *lymcwd.Location, subject string) (fixDeps, error) {
 	if err != nil {
 		return fixDeps{}, err
 	}
-	boardDir := fabriclayout.BoardDir(prime.HubPath)
+	boardDir := fabricengine.BoardDir(prime.HubPath)
 	project := ""
 	if subject != boardengine.RootSubject {
 		project = subject
@@ -404,15 +387,7 @@ func hubFixDeps(prime *lymcwd.Location, subject string) (fixDeps, error) {
 		Project:  project,
 		Machine:  machine,
 		TryLimit: beam.AdoptFixTries,
-		FixHold: func(task string, tries int) error {
-			here, err := machinename.ReadIdentity()
-			if err != nil {
-				return err
-			}
-			_, err = boardengine.FixHold(boardDir, here, task, map[string]int{subject: tries})
-			return err
-		},
-		Tasks: func() ([]boardengine.Task, error) { return boardengine.ReadTasks(boardDir) },
+		Tasks:    func() ([]boardengine.Task, error) { return boardengine.ReadTasks(boardDir) },
 		RunRecord: func(slug string) (shedengine.Status, bool, error) {
 			return readStatus(shedrun.StatusFile(prime, slug))
 		},

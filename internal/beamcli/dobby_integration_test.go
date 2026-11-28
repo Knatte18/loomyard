@@ -12,7 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/beamcli"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
@@ -44,7 +44,7 @@ func TestDobbyCmd_RefusesAPathItCannotPlace(t *testing.T) {
 			clihelp.ExecuteIn(beamcli.Command(), h.Path, &out, []string{"dobby", tt.root})
 
 			envelope.RequireErr(t, out.String(), "lym beam start")
-			owners, err := runproc.Owners(fabriclayout.RunProcDir(h.Path))
+			owners, err := runproc.Owners(fabricengine.RunProcDir(h.Path))
 			if err != nil || len(owners) != 0 {
 				t.Errorf("runproc.Owners() = %v, %v; want no record written", owners, err)
 			}

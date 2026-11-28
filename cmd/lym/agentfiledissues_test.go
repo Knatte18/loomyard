@@ -28,7 +28,6 @@ const createIssueCall = "selfreportengine.CreateIssue"
 // It fails on a file outside the allowlisted selfreport directories that contains selfreportengine.CreateIssue.
 //
 //lym:guard
-//lym:only parent-align finalize
 func TestAgentFiledIssues_NoCreateIssueOutsideSelfreport(t *testing.T) {
 	tiergate.Require(t, 0)
 	allow := scankit.NewAllowlist(agentFiledIssuesAllowlist)

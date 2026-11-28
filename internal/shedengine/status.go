@@ -160,16 +160,6 @@ type PauseIntent struct {
 	At string `json:"at"`
 }
 
-// Takeover is the entry another machine's adopt writes into a run's status file when it takes the run over.
-type Takeover struct {
-	// Machine is the machine that owns the run after the takeover.
-	Machine string `json:"machine"`
-	// Subject is the adopt subject that moved the run.
-	Subject string `json:"subject"`
-	// At is the RFC 3339 time the takeover was recorded.
-	At string `json:"at"`
-}
-
 // Status is the whole status file.
 //
 // Field ownership follows who writes each field.
@@ -181,9 +171,9 @@ type Takeover struct {
 // PauseRequestedBy, PauseBeforeBy and PauseAfterBy are set from outside beside the request they accompany.
 // They are cleared in the same write as the request.
 // EnteredRow is Shed-owned.
-// Its writers are the entry evaluation, the routed writes, Goto and Relaunch.
+// Its writers are the entry evaluation, the routed writes, Goto, Relaunch and RenameProducers.
 // Product is external-writer-owned and only ever carried through.
-// Cancel, PauseIntent and Takeover are outside-owned like PauseRequested: Shed never writes them.
+// Cancel and PauseIntent are outside-owned like PauseRequested: Shed never writes them.
 type Status struct {
 	// CurrentProducer names the row the run is at;
 	// empty means the run is at its start, the first row of its producer list.
@@ -230,9 +220,6 @@ type Status struct {
 	// PauseIntent is the run's pause intent, written by the pause verb and never by Shed.
 	// A status file written before the field existed decodes as nil.
 	PauseIntent *PauseIntent `json:"pause_intent,omitempty"`
-	// Takeover is the entry another machine's takeover of the run wrote, never written by Shed.
-	// A status file written before the field existed decodes as nil.
-	Takeover *Takeover `json:"takeover,omitempty"`
 }
 
 // ParseStatusTolerant decodes data, the bytes of a status.json a caller read elsewhere, such as from a git tree.

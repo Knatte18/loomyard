@@ -134,25 +134,20 @@ func TestNew(t *testing.T) {
 	}
 
 	forksWithoutAudit := map[string]constructor{
-		"nofork": func(shuttleengine.Config, configengine.Dirs, LaunchSeams, shuttleengine.Worktree) shuttleengine.Engine {
-			return forksWithoutAuditEngine{}
-		},
+		"nofork": func(shuttleengine.Config, configengine.Dirs) shuttleengine.Engine { return forksWithoutAuditEngine{} },
 	}
-	unregistered := []string{"bogus", "registered engines: claude", "shuttle.engine in shuttle.yaml"}
+	unregistered := []string{"bogus", "registered engines: claude", "engine: in shuttle.yaml"}
 	invalidClaudeCfg, invalidClaudeDirs := invalidClaudeConfigFixture(t)
 	tests := []struct {
 		name         string
 		cfg          shuttleengine.Config
 		dirs         configengine.Dirs
 		constructors map[string]constructor
-		// worktree, when set, builds the set through NewForWorktree with it.
-		worktree *shuttleengine.Worktree
-		wantErr  []string
+		wantErr      []string
 		// after, when set, runs against the built set.
 		after func(t *testing.T, set shuttleengine.EngineSet)
 	}{
 		{name: "TemplateConfig", cfg: templateCfg},
-		{name: "ToldWorktree", cfg: templateCfg, worktree: &shuttleengine.Worktree{Name: "beam-a", Kind: shuttleengine.WorktreeBeam}},
 		{name: "InvalidEngineConfig", cfg: invalidClaudeCfg, dirs: invalidClaudeDirs, after: func(t *testing.T, set shuttleengine.EngineSet) {
 			assertBadClaudeConfigRefusesOnlyARunStart(t, set, invalidClaudeCfg, invalidClaudeDirs)
 		}},
@@ -166,9 +161,7 @@ func TestNew(t *testing.T) {
 			var set shuttleengine.EngineSet
 			var err error
 			if tt.constructors != nil {
-				set, err = build(tt.cfg, tt.dirs, tt.constructors, LaunchSeams{}, shuttleengine.Worktree{})
-			} else if tt.worktree != nil {
-				set, err = NewForWorktree(tt.cfg, tt.dirs, *tt.worktree)
+				set, err = build(tt.cfg, tt.dirs, tt.constructors)
 			} else {
 				set, err = New(tt.cfg, tt.dirs)
 			}
@@ -227,16 +220,11 @@ func TestEnvScrub_MatchesTmuxkitServerEnviron(t *testing.T) {
 	t.Parallel()
 
 	environ := []string{
-		"HOME=/home/x", "CLAUDECODE=1", "CLAUDE_CODE_ENTRYPOINT=cli", "CLAUDE_CONFIG_DIR=/x", "CLAUDE_CODEX=keep", "CODEX_HOME=/home/x/.lym/codex",
+		"HOME=/home/x", "CLAUDECODE=1", "CLAUDE_CODE_ENTRYPOINT=cli", "CLAUDE_CODEX=keep", "CODEX_HOME=/home/x/.lym/codex",
 		logger.TraceIDEnv + "=abc", "LYM_STRAND_NAME=ab:orch", "LYM_PARENT=ab:driver", pauserecord.RunProcessEnv + "=1", "LYM_OTHER=keep", "PATH=/bin",
 	}
 
 	clean, _ := EnvScrub().Apply(environ)
-	for _, entry := range clean {
-		if strings.HasPrefix(entry, "CLAUDE_CONFIG_DIR=") {
-			t.Errorf("EnvScrub().Apply left %q; want the account's config directory scrubbed", entry)
-		}
-	}
 	var want []string
 	for _, entry := range clean {
 		switch strings.SplitN(entry, "=", 2)[0] {
@@ -259,17 +247,6 @@ func TestEnvScrub_MatchesTmuxkitServerEnviron(t *testing.T) {
 	}
 }
 
-// TestAccountKeeper pins that the registry's account keeper is the claude engine, built over the told worktree.
-func TestAccountKeeper(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	keeper, ok := AccountKeeper(configengine.Dirs{}, shuttleengine.Worktree{Name: "t", Kind: shuttleengine.WorktreeTask})
-	if _, isClaude := keeper.(*claudeengine.Claude); !ok || !isClaude {
-		t.Errorf("AccountKeeper() = %T, %v; want the claude engine and true", keeper, ok)
-	}
-}
-
 // namingEngine is an engine that also implements reedengine.SessionNamer.
 type namingEngine struct{ shuttleengine.Engine }
 
@@ -285,7 +262,7 @@ func TestSessionNamers(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	namers := SessionNamers(configengine.Dirs{})
+	namers := SessionNamers()
 	if len(namers) != 2 {
 		t.Errorf("SessionNamers tags = %v; want exactly claude and the empty tag", namers)
 	}
@@ -324,14 +301,11 @@ func (readingEngine) PriceMessage(model string, u shuttleengine.MessageUsage) (f
 
 // TestRecordReaders pins that the claude entry carries all three capabilities as adapters that hide the engine,
 // and that readsOf sets exactly the capabilities an engine implements and forwards each to it.
-// It also pins that readers built over a hub's dirs find the sessions of a listed non-default account.
-// It sets HOME and CLAUDE_CONFIG_DIR, so it does not run in parallel.
 func TestRecordReaders(t *testing.T) {
 	tiergate.Require(t, 0)
-	t.Setenv("HOME", t.TempDir())
-	t.Setenv("CLAUDE_CONFIG_DIR", "")
+	t.Parallel()
 
-	claude, ok := RecordReaders(configengine.Dirs{})["claude"]
+	claude, ok := RecordReaders()["claude"]
 	if !ok {
 		t.Fatalf("RecordReaders has no claude entry")
 	}
@@ -367,33 +341,6 @@ func TestRecordReaders(t *testing.T) {
 	if reading.Instructions != nil {
 		t.Errorf("readsOf(reading engine).Instructions = %v; want nil", reading.Instructions)
 	}
-
-	board, anchor, accountDir := t.TempDir(), t.TempDir(), t.TempDir()
-	machineFile := configengine.MachineFile(board, "claude")
-	if err := os.MkdirAll(filepath.Dir(machineFile), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(machineFile, []byte("accounts:\n  - {name: work, config_dir: "+accountDir+", weight: 1}\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	projectDir := filepath.Join(accountDir, "projects", "-hub-task")
-	if err := os.MkdirAll(projectDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(projectDir, "main.jsonl"), []byte("{}\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	listed, ok := RecordReaders(configengine.Dirs{Board: board, Anchor: anchor})["claude"]
-	if !ok {
-		t.Fatal("RecordReaders(hub dirs) has no claude entry")
-	}
-	located, err := listed.Transcripts.LocateSessions("/hub/task")
-	if err != nil || len(located) != 1 || located[0].ID != "main.jsonl" {
-		t.Fatalf("LocateSessions under a listed account = %+v, %v; want the one session main.jsonl", located, err)
-	}
-	if read, err := listed.Transcripts.ReadSession(located[0]); err != nil || read.Main.ID != "main.jsonl" {
-		t.Errorf("ReadSession under a listed account = %+v, %v; want the session main.jsonl", read, err)
-	}
 }
 
 // TestToolBoundaryRenderer pins that the claude entry renders the hook output as the engine does.
@@ -420,22 +367,20 @@ func TestToolBoundaryRenderer(t *testing.T) {
 	}
 }
 
-// TestBatchingNudger pins that the claude and codex entries have the batching nudge, silent for a run with no state file,
+// TestBatchingNudger pins that the claude entry has the batching nudge, silent for a run with no state file,
 // and that an unknown name has none.
 func TestBatchingNudger(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	for _, name := range []string{"claude", "codex"} {
-		nudger, ok := BatchingNudger(name)
-		if !ok {
-			t.Fatalf("BatchingNudger(%s) found none", name)
-		}
-		statePath := t.TempDir() + "/absent.json"
-		got, err := nudger.BatchingNudge(statePath, []byte(`{"transcript_path":"/absent.jsonl","tool_use_id":"call-1","tool_name":"Bash","tool_input":{"command":"ls"}}`))
-		if err != nil || got != nil {
-			t.Errorf("BatchingNudger(%s).BatchingNudge(no state file) = %s, %v; want no output and no error", name, got, err)
-		}
+	nudger, ok := BatchingNudger("claude")
+	if !ok {
+		t.Fatal("BatchingNudger(claude) found none")
+	}
+	statePath := t.TempDir() + "/absent.json"
+	got, err := nudger.BatchingNudge(statePath, []byte(`{"transcript_path":"/absent.jsonl","tool_use_id":"call-1"}`))
+	if err != nil || got != nil {
+		t.Errorf("BatchingNudge(no state file) = %s, %v; want no output and no error", got, err)
 	}
 	if _, ok := BatchingNudger("nope"); ok {
 		t.Error("BatchingNudger(nope) found one; want none")

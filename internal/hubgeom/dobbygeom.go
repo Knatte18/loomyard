@@ -11,7 +11,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/machinename"
@@ -37,7 +36,7 @@ func DobbyGeometry(prime *lymcwd.Location, worktree string) (dobbyengine.Geometr
 		return dobbyengine.Geometry{}, fmt.Errorf("hubgeom: locate the lym executable: %w", err)
 	}
 	slug := worktree
-	moveRecords := []string{fabriclayout.MoveRecordPath(fabricengine.RecordsWorktreePath(prime, prime.WorktreeName))}
+	moveRecords := []string{fabricengine.MoveRecordPath(fabricengine.RecordsWorktreePath(prime, prime.WorktreeName))}
 	own := prime
 	if worktree == prime.WorktreeName {
 		slug = ""
@@ -47,12 +46,12 @@ func DobbyGeometry(prime *lymcwd.Location, worktree string) (dobbyengine.Geometr
 		if err != nil {
 			return dobbyengine.Geometry{}, fmt.Errorf("hubgeom: read the anchor of the worktree %q: %w", worktree, err)
 		}
-		moveRecords = append([]string{fabriclayout.MoveRecordPath(fabricengine.RecordsWorktreePath(own, worktree))}, moveRecords...)
+		moveRecords = append([]string{fabricengine.MoveRecordPath(fabricengine.RecordsWorktreePath(own, worktree))}, moveRecords...)
 	}
 	beamDir := DobbyBeamDir(own)
 	return dobbyengine.Geometry{
 		HubRoot:       prime.HubPath,
-		BoardDir:      fabriclayout.BoardDir(prime.HubPath),
+		BoardDir:      fabricengine.BoardDir(prime.HubPath),
 		PrimeAnchor:   prime.AnchorPath(),
 		WorktreeRoot:  root,
 		WorktreeName:  worktree,
@@ -63,7 +62,6 @@ func DobbyGeometry(prime *lymcwd.Location, worktree string) (dobbyengine.Geometr
 		OutPath:       filepath.Join(beamDir, dobbyengine.OutFileName),
 		PrimeLogPath:  filepath.Join(DobbyBeamDir(prime), dobbyengine.LogFileName),
 		TidyDir:       filepath.Join(beamDir, dobbyengine.TidyDirName),
-		DescribeDir:   filepath.Join(beamDir, dobbyengine.DescribeDirName),
 		PrimeRunsDir:  shedrun.RunsRoot(prime),
 		LymExecutable: executable,
 		MoveRecords:   moveRecords,
@@ -77,54 +75,37 @@ func DobbyBeamDir(worktree *lymcwd.Location) string {
 }
 
 // PawlPaths returns the paths the pawl producers use for the beam whose pair is at beam.
-// They are the land request, dobby-stop, await, hand-off and drain markers.
+// They are the land request, dobby-stop, await and hand-off markers, and the reopen request an older binary wrote.
 // They all lie directly in the `.lym/beam/` directory of the beam worktree, at its own anchor.
 // That is the directory the dobby's files use, so the dobby, `lym beam land` and Beam-Await read one directory.
 func PawlPaths(beam *lymcwd.Location) pawlengine.Paths {
 	beamDir := filepath.Join(beam.AnchorPath(), lymdirs.DotLymDirName, lymdirs.BeamDirName)
 	return pawlengine.Paths{
 		LandRequest:     filepath.Join(beamDir, pawlengine.LandRequestFileName),
+		ReopenRequest:   filepath.Join(beamDir, pawlengine.ReopenRequestFileName),
 		DobbyStopMarker: filepath.Join(beamDir, pawlengine.DobbyStopMarkerName),
 		AwaitMarker:     filepath.Join(beamDir, pawlengine.AwaitMarkerName),
 		HandOffMarker:   filepath.Join(beamDir, pawlengine.HandOffMarkerName),
-		DrainMarker:     filepath.Join(beamDir, pawlengine.DrainMarkerName),
 	}
 }
 
 // DobbyStart fills dobbyengine.StartDeps over the hub of prime.
 // The owners come from the board.
-// Each is judged through the board's machine registry against this machine's identity.
-// The Machine seam returns the name of the identity `boardengine.EnsureIdentity` returns, which writes the id once;
-// its error is the refusal of a machine whose config directory resolves from no variable.
 // The prime owner claim is the one a batten resume makes.
 // The local beams are the pairs whose origin record carries the beam mark.
-// Each carries the owner it effectively reads as through its parent, and whether that owner reads as another machine.
+// Each carries the owner it effectively reads as through its parent.
 // The move check reads an anchor change standing on a worktree's own records worktree or on the prime's.
 // A landing hold is read from the local board's entry of the worktree.
 func DobbyStart(prime *lymcwd.Location) dobbyengine.StartDeps {
-	boardDir := fabriclayout.BoardDir(prime.HubPath)
+	boardDir := fabricengine.BoardDir(prime.HubPath)
 	return dobbyengine.StartDeps{
-		Machine: func() (string, error) {
-			identity, err := boardengine.EnsureIdentity()
-			return identity.Name, err
-		},
-		PrimeOwner: func() (string, bool, error) {
-			here, err := machinename.ReadIdentity()
-			if err != nil {
-				return "", false, err
-			}
+		Machine: machinename.Name,
+		PrimeOwner: func() (string, error) {
 			owners, err := boardengine.ReadOwners(boardDir)
-			if err != nil {
-				return "", false, err
-			}
-			return owners.Prime, boardengine.OwnedElsewhere(owners.Prime, owners.Registry, here), nil
+			return owners.Prime, err
 		},
-		ClaimPrime: func(string) (string, error) {
-			identity, err := boardengine.EnsureIdentity()
-			if err != nil {
-				return "", err
-			}
-			write, err := boardengine.SetOwners(boardDir, boardengine.OwnerRequest{Machine: identity.Name, Identity: identity, Prime: true})
+		ClaimPrime: func(machine string) (string, error) {
+			write, err := boardengine.SetOwners(boardDir, boardengine.OwnerRequest{Machine: machine, Prime: true})
 			if err != nil {
 				return "", err
 			}
@@ -154,7 +135,7 @@ func LandingHeld(prime *lymcwd.Location, worktree string) (bool, error) {
 	if worktree == prime.WorktreeName {
 		return false, nil
 	}
-	tasks, err := boardengine.ReadTasks(fabriclayout.BoardDir(prime.HubPath))
+	tasks, err := boardengine.ReadTasks(fabricengine.BoardDir(prime.HubPath))
 	if err != nil {
 		return false, fmt.Errorf("hubgeom: read the board: %w", err)
 	}
@@ -176,17 +157,13 @@ func moveGateSlugs(prime *lymcwd.Location, worktree string) []string {
 }
 
 // localBeams lists the pairs of the hub present on this machine whose origin record carries the beam mark.
-// Each pair carries the owner it effectively reads as and whether that owner reads as another machine.
+// Each pair carries the owner it effectively reads as.
 func localBeams(prime *lymcwd.Location, boardDir string) ([]dobbyengine.BeamPair, error) {
 	entries, err := fabricengine.List(prime.AnchorPath())
 	if err != nil {
 		return nil, err
 	}
 	owners, err := boardengine.ReadOwners(boardDir)
-	if err != nil {
-		return nil, err
-	}
-	here, err := machinename.ReadIdentity()
 	if err != nil {
 		return nil, err
 	}
@@ -204,22 +181,11 @@ func localBeams(prime *lymcwd.Location, boardDir string) ([]dobbyengine.BeamPair
 		if !found || !origin.Beam {
 			continue
 		}
-		pair, err := beamPair(slug, owners, here, parentOf)
+		owner, err := owners.Effective(slug, parentOf)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("hubgeom: resolve the owner of %q: %w", slug, err)
 		}
-		beams = append(beams, pair)
+		beams = append(beams, dobbyengine.BeamPair{Slug: slug, Owner: owner})
 	}
 	return beams, nil
-}
-
-// beamPair returns the pair of the beam slug with the owner it effectively reads as through parentOf.
-// Elsewhere is set when the board's registry reads that owner as a machine other than here,
-// so an owner recorded under a former name of here's registry entry reads as here.
-func beamPair(slug string, owners boardengine.Owners, here machinename.Identity, parentOf func(slug string) (string, error)) (dobbyengine.BeamPair, error) {
-	owner, err := owners.Effective(slug, parentOf)
-	if err != nil {
-		return dobbyengine.BeamPair{}, fmt.Errorf("hubgeom: resolve the owner of %q: %w", slug, err)
-	}
-	return dobbyengine.BeamPair{Slug: slug, Owner: owner, Elsewhere: boardengine.OwnedElsewhere(owner, owners.Registry, here)}, nil
 }

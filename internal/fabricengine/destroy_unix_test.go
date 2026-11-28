@@ -7,6 +7,7 @@ package fabricengine
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -20,10 +21,12 @@ import (
 func TestGate_ContainmentResolvesSymlinkedAncestors(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Run("SymlinkedParentSegmentEscapesAndIsRefused", func(t *testing.T) {
+		// The test request uses ownedUnderGeometryRoot on purpose:
+		// a kind that refuses on its own would pass this subtest for the wrong reason and prove nothing about containment.
 		hub := t.TempDir()
-		root := filepath.Join(hub, "container")
+		root := filepath.Join(hub, launchersDirName)
 		if err := os.Mkdir(root, 0o755); err != nil {
-			t.Fatalf("mkdir container: %v", err)
+			t.Fatalf("mkdir geometry root: %v", err)
 		}
 
 		outside := t.TempDir()
@@ -33,18 +36,18 @@ func TestGate_ContainmentResolvesSymlinkedAncestors(t *testing.T) {
 		}
 
 		// <root>/slug links to a directory outside the hub.
-		// So <root>/slug/victim.txt is nominally inside the container but outside the hub.
+		// So <root>/slug/victim.txt is nominally inside the geometry root but outside the hub.
 		if err := os.Symlink(outside, filepath.Join(root, "slug")); err != nil {
 			t.Fatalf("symlink slug: %v", err)
 		}
 		target := filepath.Join(root, "slug", "victim.txt")
 
 		req := pathRequest{
-			what:      "remove file",
+			what:      "remove launcher script",
 			container: root,
 			target:    target,
-			ownership: ownedFabricHub(),
-			dirtiness: dirtinessNA("the file is a generated artifact, never edited content"),
+			ownership: ownedUnderGeometryRoot(root),
+			dirtiness: dirtinessNA("launcher scripts are generated artifacts, never edited content"),
 		}
 		assertRefusalCheck(t, checkPathRequest(req), CheckContainment)
 
@@ -105,5 +108,24 @@ func TestGate_ContainmentResolvesSymlinkedAncestors(t *testing.T) {
 			dirtiness: dirtinessNA("irrelevant: this subtest reads containment's verdict off the later ownership refusal"),
 		}
 		assertRefusalCheck(t, checkPathRequest(req), CheckOwnership)
+	})
+
+	t.Run("GeometryRootOwnershipRefusesASymlinkedRoot", func(t *testing.T) {
+		// ownedUnderGeometryRoot is the one ownership kind with no independent resolved-path authority to cross-check against,
+		// so the base-name test, run against the resolved root, must refuse a link standing where the geometry root belongs.
+		hub := t.TempDir()
+		outside := t.TempDir()
+		root := filepath.Join(hub, launchersDirName)
+		if err := os.Symlink(outside, root); err != nil {
+			t.Fatalf("symlink geometry root: %v", err)
+		}
+
+		ok, reason := resolvePathOwnership(ownedUnderGeometryRoot(root), filepath.Join(root, "slug"))
+		if ok {
+			t.Fatalf("resolvePathOwnership(ownedUnderGeometryRoot(<symlinked %s>)) = true; want false", launchersDirName)
+		}
+		if !strings.Contains(reason, "not a fabric geometry root") {
+			t.Errorf("reason = %q; want it to name the geometry-root refusal", reason)
+		}
 	})
 }

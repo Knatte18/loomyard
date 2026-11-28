@@ -15,7 +15,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
@@ -119,7 +119,7 @@ func TestLoomSeedFor_WriteSeedIsIdempotent(t *testing.T) {
 	}
 }
 
-// TestResolveSeedDriver covers resolveSeedDriver: an unseeded worktree takes the resolved shed.driver_kind,
+// TestResolveSeedDriver covers resolveSeedDriver: an unseeded worktree takes the resolved driver_kind,
 // and a recorded seed's driver wins over it.
 func TestResolveSeedDriver(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -182,41 +182,27 @@ func TestResolveSeedRecipe(t *testing.T) {
 // TestBootstrapCommitPaths asserts the pathspec that seedAndCommitBootstrap commits.
 // The status file, the seed and the origin record are always committed,
 // so a crashed-and-resumed bootstrap's seed self-heals into the fabric.
-// The friction directory is committed only when it holds tracked or untracked content,
-// and the stencil pins record only when it is on disk.
+// The friction directory is committed only when it holds tracked or untracked content.
 func TestBootstrapCommitPaths(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
-	// The pathspecs are anchor-relative, so they do not depend on which hub a row's location names.
-	shapeLoc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "task-slug", AnchorRel: "."}
+	loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "task-slug", AnchorRel: "."}
 	base := []string{
-		shedrun.StatusRel(shapeLoc, shedrun.SelfRunID),
-		shedrun.SeedRel(shapeLoc, shedrun.SelfRunID),
-		fabriclayout.OriginRecordRel(),
+		shedrun.StatusRel(loc, shedrun.SelfRunID),
+		shedrun.SeedRel(loc, shedrun.SelfRunID),
+		fabricengine.OriginRecordRel(),
 	}
-	friction := loomengine.LoomFrictionDirRel()
-	pins := shedrun.StencilPinsRel(shapeLoc, shedrun.SelfRunID)
 	tests := []struct {
 		name         string
 		withFriction bool
-		// withPinsRecord writes the run's stencil pins record before the call.
-		withPinsRecord bool
-		want           []string
+		want         []string
 	}{
-		{"NoFrictionDirectory", false, false, base},
-		{"FrictionDirectoryHasContent", true, false, append(append([]string{}, base...), friction)},
-		{"StencilPinsRecordOnDisk", false, true, append(append([]string{}, base...), pins)},
-		{"FrictionDirectoryAndStencilPins", true, true, append(append([]string{}, base...), friction, pins)},
+		{"NoFrictionDirectory", false, base},
+		{"FrictionDirectoryHasContent", true, append(append([]string{}, base...), loomengine.LoomFrictionDirRel())},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "task-slug", AnchorRel: "."}
-			if tt.withPinsRecord {
-				if err := shedrun.WriteStencilPins(loc, shedrun.SelfRunID, shedrun.StencilPins{Stencils: map[string]string{"loom-one": "aaaa"}}); err != nil {
-					t.Fatalf("WriteStencilPins() error: %v", err)
-				}
-			}
 			if got := bootstrapCommitPaths(loc, tt.withFriction); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("bootstrapCommitPaths(loc, %v) = %v; want %v", tt.withFriction, got, tt.want)
 			}

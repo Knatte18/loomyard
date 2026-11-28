@@ -15,7 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/driftengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -71,10 +71,10 @@ func validPawlDeps(dir string) pawlengine.Deps {
 		RunID: "run-1",
 		Paths: pawlengine.Paths{
 			LandRequest:     filepath.Join(dir, "land-request.json"),
+			ReopenRequest:   filepath.Join(dir, "reopen-request.json"),
 			DobbyStopMarker: filepath.Join(dir, "dobby-stop"),
 			AwaitMarker:     filepath.Join(dir, "await-entered"),
 			HandOffMarker:   filepath.Join(dir, pawlengine.HandOffMarkerName),
-			DrainMarker:     filepath.Join(dir, pawlengine.DrainMarkerName),
 		},
 		SetStatus:           func(string) error { return nil },
 		EntryProducer:       func() (string, error) { return "", nil },
@@ -91,9 +91,6 @@ func validPawlDeps(dir string) pawlengine.Deps {
 		ReadyStands:         func() (bool, error) { return false, nil },
 		StampWake:           func(time.Time) error { return nil },
 		Notify:              func(string) (bool, error) { return true, nil },
-		Autonomous:          func() bool { return false },
-		HoldsCommits:        func() (bool, error) { return false, nil },
-		WorkRemains:         func() (bool, error) { return false, nil },
 		Down:                noop,
 		Now:                 time.Now,
 		Sleep:               func(context.Context, time.Duration) error { return nil },
@@ -269,18 +266,16 @@ func newTestEnv(t *testing.T) Env {
 	}
 
 	return Env{
-		Cwd:             mustMkdir("cwd"),
-		AnchorPath:      mustMkdir("anchor"),
-		ConfigDirs:      configengine.Dirs{Anchor: filepath.Join(dir, "anchor")},
-		WorktreeRoot:    mustMkdir("worktree"),
-		VerifyDir:       mustMkdir("verify"),
-		VerifyCommand:   func(string) (string, error) { return "go test ./...", nil },
-		EntryLabels:     func() ([]string, error) { return nil, nil },
-		RedFirstCommand: func(key string) string { return "lym gate red-first --gate " + key },
-		StatusPath:      filepath.Join(dir, "status.json"),
-		StatusLockPath:  filepath.Join(dir, "status.json.lock"),
-		StencilsDir:     mustMkdir("stencils"),
-		SpecsDir:        mustMkdir("specs"),
+		Cwd:            mustMkdir("cwd"),
+		AnchorPath:     mustMkdir("anchor"),
+		ConfigDirs:     configengine.Dirs{Anchor: filepath.Join(dir, "anchor")},
+		WorktreeRoot:   mustMkdir("worktree"),
+		VerifyDir:      mustMkdir("verify"),
+		VerifyCommand:  func(string) (string, error) { return "go test ./...", nil },
+		StatusPath:     filepath.Join(dir, "status.json"),
+		StatusLockPath: filepath.Join(dir, "status.json.lock"),
+		StencilsDir:    mustMkdir("stencils"),
+		SpecsDir:       mustMkdir("specs"),
 		// Inside the anchor, as in production.
 		RunRoot:            mustMkdir("anchor/run-root"),
 		DecisionRecordPath: filepath.Join(dir, "decision-record.md"),
@@ -308,8 +303,8 @@ func newTestEnv(t *testing.T) Env {
 			CaptureCurrent: func(context.Context) (driftengine.CurrentCapture, error) {
 				return driftengine.CurrentCapture{Passed: true}, nil
 			},
-			TrailerCommit: func(string, bool) (fabriclayout.TrailerCommit, bool, error) {
-				return fabriclayout.TrailerCommit{}, false, nil
+			TrailerCommit: func(string, bool) (fabricengine.TrailerCommit, bool, error) {
+				return fabricengine.TrailerCommit{}, false, nil
 			},
 			FileAt: func(string, string) ([]byte, bool, error) { return nil, false, nil },
 			Compare: func(context.Context) (driftengine.CompareResult, error) {

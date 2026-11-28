@@ -11,7 +11,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/shedengine"
-	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/weaverengine"
 )
@@ -60,7 +59,6 @@ func NewWeaverProducer(name string, run WeaverRunner, deps weaverengine.RunDeps)
 // Call runs one iteration of the producer.
 // It checks the context on entry and maps the run's result.
 // Done points at Weaver's summary, which survives a cancellation that arrives during the run.
-// A done or stuck result carries the plan-level verify's spans as gate spans of the verify entry.
 // A stuck result consults the plan-conflict record the run left, through claimConflict,
 // so a new conflict asks for a reroute to plan review and a repeat does not.
 // A busy run and a fault in Weaver's config or state map to Stuck with the error's text, which names its way forward.
@@ -80,14 +78,14 @@ func (p *WeaverProducer) Call(ctx context.Context) (shedengine.Outcome, shedengi
 
 	switch result.Outcome {
 	case weaverOutcomeDone:
-		return shedengine.Done, shedengine.OutputPointer{Path: summaryparser.Path(p.deps.Geom.RunDir), GateSpans: weaverVerifySpans(result)}, nil
+		return shedengine.Done, shedengine.OutputPointer{Path: summaryparser.Path(p.deps.Geom.RunDir)}, nil
 
 	case weaverOutcomeStuck:
 		if cerr := cancelErr(ctx, p.name, weaverEngineLabel); cerr != nil {
 			return "", shedengine.OutputPointer{}, cerr
 		}
 		logger.Warn("shedadapters: weaver run is stuck", "producer", p.name, "engine", weaverEngineLabel, "stuckReason", result.StuckReason, "batchesDone", result.BatchesDone)
-		ptr := claimConflict(p.name, weaverEngineLabel, result.StuckReason, runplan.ConflictDir(p.deps.Geom.AnchorRoot), shedengine.OutputPointer{GateSpans: weaverVerifySpans(result)})
+		ptr := claimConflict(p.name, weaverEngineLabel, result.StuckReason, runplan.ConflictDir(p.deps.Geom.AnchorRoot), shedengine.OutputPointer{})
 		return shedengine.Stuck, ptr, nil
 
 	default:
@@ -96,12 +94,6 @@ func (p *WeaverProducer) Call(ctx context.Context) (shedengine.Outcome, shedengi
 		}
 		return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): unrecognized weaver outcome %q", p.name, weaverEngineLabel, result.Outcome)
 	}
-}
-
-// weaverVerifySpans returns the run's plan-level verify spans as the gate spans of one entry named for the verify.
-// A run that ran no verify returns nil.
-func weaverVerifySpans(result weaverengine.RunResult) []shedengine.GateSpan {
-	return gateSpansOf(&shuttleengine.GateOutcome{Entries: []shuttleengine.GateEntryOutcome{{Name: weaverengine.VerifyGateName, Spans: result.VerifySpans}}})
 }
 
 // claimConflict claims the plan-conflict record in conflictDir for a stuck implementer row named name over engine.

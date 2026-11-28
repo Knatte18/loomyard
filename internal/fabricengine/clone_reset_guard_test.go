@@ -16,7 +16,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -29,7 +28,7 @@ func TestResetHub_RefusesADirectoryThatIsNotAHub(t *testing.T) {
 	t.Parallel()
 
 	parent := t.TempDir()
-	hubPath := filepath.Join(parent, "warp"+fabriclayout.HubSuffix)
+	hubPath := filepath.Join(parent, "warp"+HubSuffix)
 	precious := filepath.Join(hubPath, "important", "data.txt")
 	if err := os.MkdirAll(filepath.Dir(precious), 0o755); err != nil {
 		t.Fatalf("seed non-hub directory: %v", err)
@@ -68,7 +67,7 @@ func TestResetHub_RemovesARealHub(t *testing.T) {
 		name  string
 		child string
 	}{
-		{name: "BoardEntry", child: fabriclayout.BoardDirName},
+		{name: "BoardEntry", child: BoardDirName},
 		{name: "WeftSibling", child: "warp-weft"},
 	}
 
@@ -77,7 +76,7 @@ func TestResetHub_RemovesARealHub(t *testing.T) {
 			t.Parallel()
 
 			parent := t.TempDir()
-			hubPath := filepath.Join(parent, "warp"+fabriclayout.HubSuffix)
+			hubPath := filepath.Join(parent, "warp"+HubSuffix)
 			if err := os.MkdirAll(filepath.Join(hubPath, tt.child), 0o755); err != nil {
 				t.Fatalf("seed hub: %v", err)
 			}
@@ -99,7 +98,7 @@ func TestResetHub_AbsentPathIsANoop(t *testing.T) {
 	t.Parallel()
 
 	parent := t.TempDir()
-	hubPath := filepath.Join(parent, "never-created"+fabriclayout.HubSuffix)
+	hubPath := filepath.Join(parent, "never-created"+HubSuffix)
 	if err := resetHub(NewMutations(""), parent, hubPath); err != nil {
 		t.Fatalf("resetHub(absent) = %v; want nil", err)
 	}

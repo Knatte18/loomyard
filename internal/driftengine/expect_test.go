@@ -15,7 +15,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -364,7 +364,7 @@ func TestDriftExpect(t *testing.T) {
 					t.Fatal(err)
 				}
 				if tt.recordedYet {
-					if err := f.deps.CommitWithTrailers(nil, []fabriclayout.Trailer{{Key: BaselineTrailerKey, Value: digest}}); err != nil {
+					if err := f.deps.CommitWithTrailers(nil, []fabricengine.Trailer{{Key: BaselineTrailerKey, Value: digest}}); err != nil {
 						t.Fatal(err)
 					}
 				}

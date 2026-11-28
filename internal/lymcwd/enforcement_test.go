@@ -93,12 +93,8 @@ func TestStripGoComments(t *testing.T) {
 	}
 }
 
-// enforcementAllowlist is the set of paths TestEnforcement lets name the raw cwd/root primitives.
+// enforcementAllowlist is the set of paths TestEnforcement lets name the raw cwd/root primitives: the whole of internal/lymcwd and cmd/lym/main.go.
 var enforcementAllowlist = []scankit.Entry{
-	{
-		Key: "docs/research/platform/seccomp-connect-probe/main.go",
-		Why: "a //go:build ignore research probe that records one measured run saves its own working directory to restore it after a relative connect; it resolves no lym root",
-	},
 	{
 		Key: "internal/lymcwd/",
 		Why: "the sole cwd owner",
@@ -114,10 +110,6 @@ var enforcementAllowlist = []scankit.Entry{
 	{
 		Key: "internal/testkit/scankit/scankit.go",
 		Why: "the test-only scan kit imports the standard library only and finds the module root from the test binary's starting directory, since -trimpath hides its source path",
-	},
-	{
-		Key: "docs/research/platform/seccomp-connect-probe/main.go",
-		Why: "a study's standalone probe, built only by go run, restores its own working directory after a relative connect and resolves no root",
 	},
 }
 
@@ -226,17 +218,19 @@ func TestEnforcement_GeometryLiterals(t *testing.T) {
 	// geometryTokenOwners maps each policed geometry token to the set of directories permitted to declare or construct it in path-construction context: the finished per-token ownership map, converged batch by batch from a single allowlisted directory (internal/hubgeometry, then internal/lymcwd) to this map, each token's row landing in the same batch that moved its declaration.
 	//
 	geometryTokenOwners := map[string][]string{
-		// "_bolt" is declared once, as lymdirs.BoltDirName, which the layout package and runproc take the name from.
+		// "_bolt" is declared once, as lymdirs.BoltDirName, which lymcwd.BoltDirName re-exports; fabricengine and runproc take the name from it.
 		// "-LYMHUB" is dual-owned: internal/lymcwd keeps a private hubSuffix const
-		// (Location.RepoName derives from it), while internal/fabriclayout
+		// (Location.RepoName derives from it), while internal/fabricengine
 		// owns the exported HubPath constructor every other caller uses.
 		// The duplication is sanctioned by this map, not a leak.
 		"_bolt":   {"internal/lymdirs"},
 		"-weft":   {"internal/weftname"},
-		"-LYMHUB": {"internal/lymcwd", "internal/fabriclayout"},
-		// "_portals" and "_launchers" are reserved hub-level names, which the layout package owns.
-		"_portals":   {"internal/fabriclayout"},
-		"_launchers": {"internal/fabriclayout"},
+		"-LYMHUB": {"internal/lymcwd", "internal/fabricengine"},
+		// "_portals" and "_launchers" are fabric's own illusion-maintenance
+		// plumbing: the portal/launcher path surface relocated to
+		// internal/fabricengine in this batch.
+		"_portals":   {"internal/fabricengine"},
+		"_launchers": {"internal/fabricengine"},
 		// "_lym"'s declaration moved to internal/lymdirs (lymdirs.LymDirName) in
 		// this slice, the single leaf every module now names both directory
 		// tokens through.
@@ -575,12 +569,9 @@ func TestEnforcement_BoltDirNameDeclaredOnce(t *testing.T) {
 // weftnameImportOwners is the set of directories permitted to import internal/weftname: the
 // narrower owner set fabric-vocabulary-rule's rule (3) grants, excluding boardengine and
 // configsync (owners for the bare-token rule but not for this import rule).
-// fabriclayout is an owner too.
 var weftnameImportOwners = map[string]bool{
 	"internal/fabricengine": true,
 	"internal/fabriccli":    true,
-	// internal/fabriclayout imports weftname for the functions that compose and parse the weft branch names.
-	"internal/fabriclayout": true,
 	"internal/gitkit":       true,
 	// internal/weftname's own external-package test imports the package it tests.
 	"internal/weftname": true,
@@ -670,7 +661,7 @@ func fabricVocabularyFailures(t *testing.T, base string) ([]string, int) {
 			}
 			f := file.AST(t, parser.ParseComments|parser.SkipObjectResolution)
 			bareIdent, bareLiteralOrComment, hostHit := fabricVocabularyHits(f)
-			if bareScope && !fabricvocab.SkipsBareCheck(dir) && (bareIdent || bareLiteralOrComment) {
+			if bareScope && !fabricvocab.SkipsBareCheck(dir) && failsBareCheck(dir, bareIdent, bareLiteralOrComment) {
 				fail(rel, "bare weft/warp token outside the owner set")
 			}
 			if hostScope && hostHit {
@@ -698,6 +689,16 @@ func fabricVocabularyFailures(t *testing.T, base string) ([]string, int) {
 		}
 	})
 	return failures, scanned
+}
+
+// failsBareCheck reports whether a file in dir fails the bare-token check, given its hits.
+// fabricvocab.ConfigsyncOwnerDir passes on a literal-or-comment-only hit and fails on an identifier hit.
+// Any other directory reaching it is not an owner, so it fails on either kind of hit.
+func failsBareCheck(dir string, bareIdent, bareLiteralOrComment bool) bool {
+	if dir == fabricvocab.ConfigsyncOwnerDir {
+		return bareIdent
+	}
+	return bareIdent || bareLiteralOrComment
 }
 
 // hostPhrases are the fabric-sense "host X" phrases fabric-vocabulary-rule polices, checked
@@ -782,8 +783,7 @@ func importsWeftname(f *ast.File) bool {
 // and the root README.md, minus vocabScanAllowlist.
 // The host-phrase rule fails any production file or markdown body in its scope, owner set or not --
 // host is retired, not merely scoped, so the owner set never carves out a host hit.
-// The import rule's owners are {fabricengine, fabriccli, fabriclayout, gitkit, hubforge}.
-// It fails any other file that imports internal/weftname,
+// The import rule fails any file outside {fabricengine, fabriccli, gitkit, hubforge} that imports internal/weftname,
 // except weftnameTestImporter, which tests weftname.SiblingPath.
 // The walk is plain, not a //go:embed parse, so a future non-embedded template is policed rather than silently skipped.
 //
@@ -855,6 +855,31 @@ func TestEnforcement_FabricVocabulary(t *testing.T) {
 			_, _, hostHit := fabricVocabularyHits(f)
 			if !hostHit {
 				t.Error("expected the host-phrase rule to still fire for internal/fabricengine")
+			}
+		})
+
+		t.Run("configsync_row_passes_on_literal_and_comment_but_fails_on_identifier", func(t *testing.T) {
+			f := parseWithComments(t, "package configsync\n\n"+
+				"// legacyFabricConfigModules names the pre-cutover warp.yaml/weft.yaml files.\n"+
+				"var legacyFabricConfigModules = []string{\"warp\", \"weft\"}\n")
+			bareIdent, bareLiteralOrComment, _ := fabricVocabularyHits(f)
+			if bareIdent {
+				t.Error("literal-and-comment-only fixture unexpectedly produced an identifier hit")
+			}
+			if !bareLiteralOrComment {
+				t.Fatal("expected the literal/comment hit to be detected")
+			}
+			if failsBareCheck(fabricvocab.ConfigsyncOwnerDir, bareIdent, bareLiteralOrComment) {
+				t.Error("configsync row must pass on a literal/comment-only hit")
+			}
+
+			identFixture := parseWithComments(t, "package configsync\n\nvar weftModule = \"m\"\n")
+			identHit, _, _ := fabricVocabularyHits(identFixture)
+			if !identHit {
+				t.Fatal("expected the identifier hit to be detected")
+			}
+			if !failsBareCheck(fabricvocab.ConfigsyncOwnerDir, identHit, true) {
+				t.Error("configsync row must still fail on an identifier hit")
 			}
 		})
 

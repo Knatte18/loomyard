@@ -1,6 +1,6 @@
 // render.go composes and renders the producer prompts for webster's Master, forks and fixers.
-// Each prompt is composed at render time from stencils read through stencilstore.ReadForEngine.
-// Each is worded for the engine its session launches on, so this file has no go:embed directive of its own.
+// Each prompt is composed at render time from stencils read through stencilstore.Read,
+// so this file has no go:embed directive of its own.
 // The fork and recovery prompts each join the shared implementer body with their own prefix.
 // One prompt cannot serve both, because the in-session fork inherits Master's whole context,
 // and the cold recovery strand inherits nothing.
@@ -33,9 +33,8 @@ import (
 )
 
 // MasterTemplate returns the Master prompt template read from stencilsDir.
-// It is worded for engine, the engine Master launches on.
-func MasterTemplate(stencilsDir, engine string) ([]byte, error) {
-	return stencilstore.ReadForEngine(stencilsDir, engine, "webster-template-master")
+func MasterTemplate(stencilsDir string) ([]byte, error) {
+	return stencilstore.Read(stencilsDir, "webster-template-master")
 }
 
 // joinTemplateAssets strips each asset's leading banner comment via stencil.StripLeadingComment.
@@ -49,13 +48,13 @@ func joinTemplateAssets(prefix, body []byte) []byte {
 }
 
 // composeForkTemplate returns the thin in-session fork prompt: webster-prefix-fork joined ahead of
-// webster-body-implementer, both read from stencilsDir and worded for engine, the engine Master runs on.
-func composeForkTemplate(stencilsDir, engine string) ([]byte, error) {
-	prefix, err := stencilstore.ReadForEngine(stencilsDir, engine, "webster-prefix-fork")
+// webster-body-implementer, both read from stencilsDir.
+func composeForkTemplate(stencilsDir string) ([]byte, error) {
+	prefix, err := stencilstore.Read(stencilsDir, "webster-prefix-fork")
 	if err != nil {
 		return nil, err
 	}
-	body, err := stencilstore.ReadForEngine(stencilsDir, engine, "webster-body-implementer")
+	body, err := stencilstore.Read(stencilsDir, "webster-body-implementer")
 	if err != nil {
 		return nil, err
 	}
@@ -63,14 +62,13 @@ func composeForkTemplate(stencilsDir, engine string) ([]byte, error) {
 }
 
 // composeRecoveryTemplate returns the full cold-start recovery prompt: webster-prefix-recovery
-// joined ahead of webster-body-implementer.
-// Both are read from stencilsDir and worded for engine, the engine the strand launches on.
-func composeRecoveryTemplate(stencilsDir, engine string) ([]byte, error) {
-	prefix, err := stencilstore.ReadForEngine(stencilsDir, engine, "webster-prefix-recovery")
+// joined ahead of webster-body-implementer, both read from stencilsDir.
+func composeRecoveryTemplate(stencilsDir string) ([]byte, error) {
+	prefix, err := stencilstore.Read(stencilsDir, "webster-prefix-recovery")
 	if err != nil {
 		return nil, err
 	}
-	body, err := stencilstore.ReadForEngine(stencilsDir, engine, "webster-body-implementer")
+	body, err := stencilstore.Read(stencilsDir, "webster-body-implementer")
 	if err != nil {
 		return nil, err
 	}
@@ -83,12 +81,11 @@ const cardGateFixerMarker = "card_gate_fixer"
 // cardGateFixerParagraph returns the text the card_gate_fixer marker takes when cardFixer is set.
 // The text is the webster-fragment-card-fixer fragment, led by the blank line that sets it off from the card gates.
 // When cardFixer is unset it returns "", which leaves the rendered prompt without the fixer.
-// The fragment is worded for engine, the engine the prompt launches on.
-func cardGateFixerParagraph(stencilsDir, engine string, cardFixer bool) (string, error) {
+func cardGateFixerParagraph(stencilsDir string, cardFixer bool) (string, error) {
 	if !cardFixer {
 		return "", nil
 	}
-	fragment, err := stencilstore.ReadForEngine(stencilsDir, engine, "webster-fragment-card-fixer")
+	fragment, err := stencilstore.Read(stencilsDir, "webster-fragment-card-fixer")
 	if err != nil {
 		return "", fmt.Errorf("webster: read the card-gate fixer fragment: %w", err)
 	}
@@ -134,9 +131,8 @@ func renderCardPointers(cards []planparser.Card, planDirDisplay string) string {
 // the fork is told never to write them.
 // cardFixer says a failed card gate call goes through a cold fixer first;
 // it renders the card-gate fixer paragraph after the card gates, and false leaves the text unchanged.
-// engine names the engine Master runs on, which the fork inherits with Master's session; the prompt is worded for it.
 // The plan is not a parameter, per the fork-context-hygiene rule.
-func RenderForkPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, reportPath, planDir, promptWorktreeRoot, stencilsDir, engine, specsDir, gateTiers string, renameTools []string, outcomePath, summaryPath string, selfFixCap int, notePath string, cardFixer bool) ([]byte, error) {
+func RenderForkPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, reportPath, planDir, promptWorktreeRoot, stencilsDir, specsDir, gateTiers string, renameTools []string, outcomePath, summaryPath string, selfFixCap int, notePath string, cardFixer bool) ([]byte, error) {
 	digestLine := prevDigest
 	if strings.TrimSpace(digestLine) == "" {
 		digestLine = noPrecedingBatchDigest
@@ -148,7 +144,7 @@ func RenderForkPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, rep
 		directive = ""
 	}
 
-	cardFixerText, err := cardGateFixerParagraph(stencilsDir, engine, cardFixer)
+	cardFixerText, err := cardGateFixerParagraph(stencilsDir, cardFixer)
 	if err != nil {
 		return nil, err
 	}
@@ -169,7 +165,7 @@ func RenderForkPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, rep
 		friction.MarkerName: directive,
 		cardGateFixerMarker: cardFixerText,
 	}
-	template, err := composeForkTemplate(stencilsDir, engine)
+	template, err := composeForkTemplate(stencilsDir)
 	if err != nil {
 		return nil, fmt.Errorf("webster: read fork template: %w", err)
 	}
@@ -204,15 +200,13 @@ func RenderForkPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, rep
 // parentName is the told parent agent name; an empty one renders parentdirective's no-parent variant.
 // failureDigest is the prior failed record's reasons and suspect paths, or "" when the batch was not failed;
 // it fills the optional failure_digest marker, rendered as "none" when empty.
+// Being optional, the marker leaves an older deployed stencil rendering.
 // uncommittedPaths is the caller-rendered block of the worktree's uncommitted paths grouped by who wrote them;
 // it fills the optional uncommitted_paths marker, rendered as "none" when empty.
-// parentAnswers is the caller-rendered block of what the batch waited on and the parent's answers;
-// it fills the optional parent_answers marker, rendered as "none" when empty.
 // cardFixer says a failed card gate call goes through a cold fixer first;
 // it renders the card-gate fixer paragraph after the card gates, and false leaves the text unchanged.
-// engine names the engine the strand launches on.
-// The prompt is worded for it, and the edit directive is that engine's copy.
-func RenderRecoveryPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, failureDigest, parentAnswers, uncommittedPaths, reportPath, repoRoot, planDir, promptWorktreeRoot, stencilsDir, engine, specsDir, gateTiers string, renameTools, patternChanges []string, selfFixCap int, notePath, parentName string, cardFixer bool) ([]byte, error) {
+// engine names the engine the strand launches on; the edit directive is that engine's copy.
+func RenderRecoveryPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, failureDigest, uncommittedPaths, reportPath, repoRoot, planDir, promptWorktreeRoot, stencilsDir, engine, specsDir, gateTiers string, renameTools, patternChanges []string, selfFixCap int, notePath, parentName string, cardFixer bool) ([]byte, error) {
 	digestLine := prevDigest
 	if strings.TrimSpace(digestLine) == "" {
 		digestLine = noPrecedingBatchDigest
@@ -224,10 +218,6 @@ func RenderRecoveryPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest,
 	uncommittedLine := uncommittedPaths
 	if strings.TrimSpace(uncommittedLine) == "" {
 		uncommittedLine = "none"
-	}
-	answersBlock := parentAnswers
-	if strings.TrimSpace(answersBlock) == "" {
-		answersBlock = "none"
 	}
 
 	directive, err := pattern.Directive(repoRoot, stencilsDir, pattern.RoleImplementer, patternChanges)
@@ -251,7 +241,7 @@ func RenderRecoveryPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest,
 		frictionDirective = ""
 	}
 
-	cardFixerText, err := cardGateFixerParagraph(stencilsDir, engine, cardFixer)
+	cardFixerText, err := cardGateFixerParagraph(stencilsDir, cardFixer)
 	if err != nil {
 		return nil, err
 	}
@@ -267,7 +257,6 @@ func RenderRecoveryPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest,
 		cardGateFixerMarker: cardFixerText,
 		"failure_digest":    failureLine,
 		"uncommitted_paths": uncommittedLine,
-		"parent_answers":    answersBlock,
 		"pattern_directive": directive,
 		"specs_dir":         specsDir,
 		"gate_tiers":        gateTiersOrNone(gateTiers),
@@ -277,27 +266,26 @@ func RenderRecoveryPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest,
 		parentdirective.MarkerName: parentDirective,
 		editdirective.MarkerName:   editDirective,
 	}
-	template, err := composeRecoveryTemplate(stencilsDir, engine)
+	template, err := composeRecoveryTemplate(stencilsDir)
 	if err != nil {
 		return nil, fmt.Errorf("webster: read recovery template: %w", err)
 	}
 	friction.WarnIfMarkerAbsent(template, "webster-prefix-recovery", frictionDirective)
-	prompt, err := stencil.FillOptional(template, values, []string{"pattern_directive", "failure_digest", "uncommitted_paths", "parent_answers", cardGateFixerMarker, friction.MarkerName, parentdirective.MarkerName})
+	prompt, err := stencil.FillOptional(template, values, []string{"pattern_directive", "failure_digest", "uncommitted_paths", cardGateFixerMarker, friction.MarkerName, parentdirective.MarkerName})
 	if err != nil {
 		return nil, fmt.Errorf("webster: fill recovery template: %w", err)
 	}
 	return prompt, nil
 }
 
-// composeVerifyFixTemplate returns a verify-gate fixer prompt template.
-// It joins the prefix stencil named prefix ahead of webster-body-verify-fix.
-// Both are read from stencilsDir and worded for engine, the engine Master runs on.
-func composeVerifyFixTemplate(stencilsDir, engine, prefix string) ([]byte, error) {
-	prefixText, err := stencilstore.ReadForEngine(stencilsDir, engine, prefix)
+// composeVerifyFixTemplate returns a verify-gate fixer prompt template:
+// the prefix stencil named prefix joined ahead of webster-body-verify-fix, both read from stencilsDir.
+func composeVerifyFixTemplate(stencilsDir, prefix string) ([]byte, error) {
+	prefixText, err := stencilstore.Read(stencilsDir, prefix)
 	if err != nil {
 		return nil, err
 	}
-	body, err := stencilstore.ReadForEngine(stencilsDir, engine, verifyFixBodyStencil)
+	body, err := stencilstore.Read(stencilsDir, verifyFixBodyStencil)
 	if err != nil {
 		return nil, err
 	}
@@ -346,15 +334,13 @@ func verifyFixValues(reportPath, worktreeRoot, planDir, stencilsDir, outcomePath
 // notePath is the caller-composed friction note path (friction.NotePath), or "" when Tier 2 is off;
 // friction_directive is injected via friction.RoleImplementer when Tier 2 is on;
 // a friction.Directive error is logged as a warning rather than returned.
-// engine names the engine Master runs on, which the fixer fork inherits with Master's session.
-// The prompt is worded for it.
-func RenderVerifyFixPrompt(reportPath, worktreeRoot, planDir, stencilsDir, engine, outcomePath, summaryPath, notePath, fixGate string) ([]byte, error) {
+func RenderVerifyFixPrompt(reportPath, worktreeRoot, planDir, stencilsDir, outcomePath, summaryPath, notePath, fixGate string) ([]byte, error) {
 	const prefix = "webster-prefix-verify-fix-fork"
 	values, err := verifyFixValues(reportPath, worktreeRoot, planDir, stencilsDir, outcomePath, summaryPath, notePath, fixGate, prefix)
 	if err != nil {
 		return nil, err
 	}
-	template, err := composeVerifyFixTemplate(stencilsDir, engine, prefix)
+	template, err := composeVerifyFixTemplate(stencilsDir, prefix)
 	if err != nil {
 		return nil, fmt.Errorf("webster: read verify-fix template: %w", err)
 	}
@@ -375,8 +361,7 @@ func RenderVerifyFixPrompt(reportPath, worktreeRoot, planDir, stencilsDir, engin
 // notePath is the caller-composed friction note path (friction.NotePath), or "" when Tier 2 is off;
 // friction_directive is injected via friction.RoleImplementer when Tier 2 is on;
 // a friction.Directive error is logged as a warning rather than returned.
-// engine names the engine the fixer launches on.
-// The prompt is worded for it, and the edit directive is that engine's copy.
+// engine names the engine the fixer launches on; the edit directive is that engine's copy.
 func RenderPlanFixPrompt(recordPath, replyPath, worktreeRoot, planDir, stencilsDir, engine, specsDir, notePath, parentName string) ([]byte, error) {
 	const stencilName = "webster-template-plan-fix"
 	if strings.TrimSpace(recordPath) == "" || strings.TrimSpace(replyPath) == "" {
@@ -407,7 +392,7 @@ func RenderPlanFixPrompt(recordPath, replyPath, worktreeRoot, planDir, stencilsD
 		editdirective.MarkerName:   editDirective,
 	}
 
-	template, err := stencilstore.ReadForEngine(stencilsDir, engine, stencilName)
+	template, err := stencilstore.Read(stencilsDir, stencilName)
 	if err != nil {
 		return nil, fmt.Errorf("webster: read plan fixer template: %w", err)
 	}
@@ -448,15 +433,14 @@ func masterPlanDirDisplay(paneCwd, planDir string) string {
 // Master never edits code, only forks.
 // patternChanges is the task's declared PATTERN changes as rendered bullet lines;
 // it is passed to the pattern directive, and nil renders none.
-// parentDecisions is every decision the run's parent recorded after the Discussion, each entry's text verbatim.
-// It renders into {{.parent_decisions}} numbered in record order.
-// A fresh Master thereby knows the answers its parent already gave, and which later one supersedes an earlier one.
+// parentDecisions is every decision the run's parent recorded after the Discussion, each entry's text verbatim;
+// it renders into {{.parent_decisions}}, so a fresh Master knows the answers its parent already gave;
 // nil renders `none`.
 // parentName is the told parent agent name; an empty one renders parentdirective's no-parent variant.
 // notePath is the caller-composed friction note path (friction.NotePath), or "" when Tier 2 is off;
 // friction_directive is injected via friction.RoleOrchestrator when Tier 2 is on;
 // a friction.Directive error is logged as a warning rather than returned.
-// engine names the engine Master launches on; the prompt is worded for it and the edit directive is that engine's copy.
+// engine names the engine Master launches on; the edit directive is that engine's copy.
 func RenderMasterPrompt(batches []batcher.Batch, st *State, outcomePath, summaryPath, verifyFixPromptPath, planDir string, selfFixCap int, worktreeRoot, repoRoot, stencilsDir, engine string, patternChanges, parentDecisions []string, notePath, parentName string) ([]byte, error) {
 	directive, err := pattern.Directive(repoRoot, stencilsDir, pattern.RoleOrchestrator, patternChanges)
 	if err != nil {
@@ -495,7 +479,7 @@ func RenderMasterPrompt(batches []batcher.Batch, st *State, outcomePath, summary
 		parentdirective.MarkerName: parentDirective,
 		editdirective.MarkerName:   editDirective,
 	}
-	template, err := MasterTemplate(stencilsDir, engine)
+	template, err := MasterTemplate(stencilsDir)
 	if err != nil {
 		return nil, fmt.Errorf("webster: read master template: %w", err)
 	}
@@ -507,18 +491,13 @@ func RenderMasterPrompt(batches []batcher.Batch, st *State, outcomePath, summary
 	return prompt, nil
 }
 
-// renderParentDecisions renders the decisions for {{.parent_decisions}} in record order, or `none` when there are none.
-// Each entry sits under its own `Decision N:` line, and a blank line joins the entries.
-// The numbers let a later entry that differs from an earlier one be named as superseding it.
+// renderParentDecisions renders the decisions for {{.parent_decisions}}:
+// the entries in order, joined by a blank line, or `none` when there are none.
 func renderParentDecisions(decisions []string) string {
 	if len(decisions) == 0 {
 		return "none"
 	}
-	numbered := make([]string, len(decisions))
-	for i, decision := range decisions {
-		numbered[i] = fmt.Sprintf("Decision %d:\n%s", i+1, decision)
-	}
-	return strings.Join(numbered, "\n\n")
+	return strings.Join(decisions, "\n\n")
 }
 
 // RenderBatchIndex renders batches as ordered-list text for {{.batch_index}}, one line per batch.
@@ -550,7 +529,7 @@ func RenderBatchIndex(batches []batcher.Batch) string {
 // A waiting batch's line names its need and the verb that resumes it.
 // st may be nil (as-yet-uninitialized run).
 // Only the numbers of the walked batches are looked up, and each is positive,
-// so a record under a non-positive number in st.Batches never surfaces here.
+// so a legacy -1 record in st.Batches never surfaces here.
 func RenderProgress(batches []batcher.Batch, st *State) string {
 	if st == nil {
 		return "none"

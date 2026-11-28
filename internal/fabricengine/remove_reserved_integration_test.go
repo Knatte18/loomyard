@@ -12,7 +12,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -30,7 +29,7 @@ func TestRemove_RefusesReservedSlugsAndLeavesThemOnDisk(t *testing.T) {
 	weftPrimeSlug := filepath.Base(l.WorktreePath()) + weftname.Suffix
 
 	reserved := []string{
-		fabriclayout.BoardDirName,
+		fabricengine.BoardDirName,
 		lymdirs.LymDirName,
 		lymdirs.DotLymDirName,
 		weftPrimeSlug,
@@ -46,7 +45,7 @@ func TestRemove_RefusesReservedSlugsAndLeavesThemOnDisk(t *testing.T) {
 			t.Fatalf("seed %s: %v", marker, err)
 		}
 
-		_, err := topology.Remove(l, slug, true, false, "")
+		_, err := topology.Remove(l, slug, true, false)
 		if err == nil {
 			t.Errorf("Remove(%q) = nil error; want an invalid-slug refusal", slug)
 		} else if !errors.Is(err, fabricengine.ErrInvalidSlug) {

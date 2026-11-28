@@ -2,8 +2,7 @@
 // It covers the refusal of a round with no accepted review and the hand-on of an unjudged round.
 // It also covers the fix a finished round carries and records, and the decision findings it sends to the parent.
 // It also covers the gate-failed and changed-review exits with their archive sets.
-// It also covers every other failure exit and the reason a fixer that runs again is told.
-// It also covers cancellation, and probe and resume.
+// It also covers every other failure exit, cancellation, and probe and resume.
 
 package shedadapters
 
@@ -13,7 +12,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -29,7 +27,7 @@ import (
 // It fails the test on a constructor error.
 func newFixProducer(t *testing.T, runDir string, runner *shedfake.BurlerHalfRunner, spec halfProducerSpec) *BurlerFixProducer {
 	t.Helper()
-	p, err := NewBurlerFixProducer("burler-fix", "burler-review", BurlerHalfDeps{Runner: runner, Models: spec.models, Fans: spec.fans, RequiresFans: spec.requiresFans, GateFindingsPath: spec.gateFindingsPath, NotifyParent: spec.notifyParent, DecisionsEscalated: spec.decisionsEscalated, Assist: spec.assist, Parent: spec.parent, Snapshot: spec.snapshot, DecisionRecordPath: spec.decisionRecordPath}, spec.profile, spec.opts, runDir, spec.now)
+	p, err := NewBurlerFixProducer("burler-fix", "burler-review", BurlerHalfDeps{Runner: runner, Models: spec.models, Fans: spec.fans, RequiresFans: spec.requiresFans, GateFindingsPath: spec.gateFindingsPath, NotifyParent: spec.notifyParent}, spec.profile, spec.opts, runDir, spec.now)
 	if err != nil {
 		t.Fatalf("NewBurlerFixProducer() error = %v; want nil", err)
 	}
@@ -111,7 +109,7 @@ func TestBurlerFixProducer_Call_RefusesARoundWithNoAcceptedReview(t *testing.T) 
 			}
 			spec := newHalfSpec()
 			spec.requiresFans = true
-			spec.opts.FixFanKey = "loom.discussion.fixer_fan"
+			spec.opts.FixFanKey = "discussion_fixer_fan"
 			p := newFixProducer(t, runDir, runner, spec)
 
 			_, _, err := p.Call(context.Background())
@@ -124,7 +122,7 @@ func TestBurlerFixProducer_Call_RefusesARoundWithNoAcceptedReview(t *testing.T) 
 				return
 			}
 			want := "round 2's usage record holds no recorded fan names ("
-			source := "the row's fixer fan comes from loom.discussion.fixer_fan"
+			source := "the row's fixer fan comes from discussion_fixer_fan"
 			if err == nil || !strings.Contains(err.Error(), want) || !strings.Contains(err.Error(), source) || !strings.HasSuffix(err.Error(), wayForwardToReview) {
 				t.Fatalf("Call() error = %v; want one containing %q and %q and ending with %q", err, want, source, wayForwardToReview)
 			}
@@ -180,13 +178,7 @@ func TestBurlerFixProducer_Call_FinishedFixIsRecorded(t *testing.T) {
 		requiresFans   bool
 		wantFixFan     string
 		wantForks      *int
-		// notifier and escalated set the spec's decision routing; wantRouted is the flag the round's snapshot record holds.
-		notifier   bool
-		escalated  bool
-		wantRouted bool
 	}{
-		{name: "a row with a notifier records decisions routed", result: burlerengine.FixResult{Outcome: shuttleengine.OutcomeDone}, notifier: true, wantRouted: true},
-		{name: "a row with neither notifier nor escalated decisions records them not routed", result: burlerengine.FixResult{Outcome: shuttleengine.OutcomeDone}},
 		{
 			name: "a spawned fixer",
 			result: burlerengine.FixResult{Outcome: shuttleengine.OutcomeDone, Fix: burlerengine.Half{Engine: "claude", StartedAt: started, EndedAt: started.Add(time.Minute)}, Gate: &shuttleengine.GateOutcome{Passed: true, Attempts: 2, Entries: []shuttleengine.GateEntryOutcome{
@@ -222,10 +214,6 @@ func TestBurlerFixProducer_Call_FinishedFixIsRecorded(t *testing.T) {
 			}
 			spec := newHalfSpec()
 			spec.requiresFans = tt.requiresFans
-			spec.decisionsEscalated = tt.escalated
-			if tt.notifier {
-				spec.notifyParent = func(string) error { return nil }
-			}
 			spec.opts = burlerengine.RunOpts{Timeout: 3 * time.Minute, Gate: shuttleengine.GateSpec{{Name: "verify", Attempts: 1}}}
 			spec.models = burlerengine.RoundModels{Fix: []shuttleengine.ModelChoice{{Model: "f1"}, {Model: "f2"}}}
 			runner := &shedfake.BurlerHalfRunner{FixResults: []burlerengine.FixResult{tt.result}}
@@ -264,10 +252,6 @@ func TestBurlerFixProducer_Call_FinishedFixIsRecorded(t *testing.T) {
 			}
 			requireArchived(t, runDir, "round-2-review.md", 0)
 			requireArchived(t, runDir, "round-2-acceptance.md", 0)
-			snapshot, found, err := readRoundSnapshot(runDir, 2)
-			if err != nil || !found || snapshot.DecisionsRouted == nil || *snapshot.DecisionsRouted != tt.wantRouted {
-				t.Errorf("round 2 snapshot record = %+v, %v, %v; want decisions_routed %v", snapshot, found, err, tt.wantRouted)
-			}
 		})
 	}
 }
@@ -356,7 +340,7 @@ func TestBurlerFixProducer_Call_SendsDecisionFindingsToTheParent(t *testing.T) {
 // TestBurlerFixProducer_Call_GateFailedAndChangedReviewArchiveTheWholeRound proves a finished fixer whose gate failed:
 // a counted Stuck with an empty Path, the gate's reason and attempts.
 // A changed review is a hard error ending with the way forward;
-// both exits archive the review, fixer report and acceptance record together and drop the round's rerun record.
+// both exits archive the review, fixer report and acceptance record together.
 func TestBurlerFixProducer_Call_GateFailedAndChangedReviewArchiveTheWholeRound(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -390,11 +374,10 @@ func TestBurlerFixProducer_Call_GateFailedAndChangedReviewArchiveTheWholeRound(t
 			wantFindings: "the gate's findings",
 		},
 		{
-			name:         "a passed gate keeps the findings file an earlier halt names",
+			name:         "a passed gate removes a findings file left by an earlier call",
 			result:       burlerengine.FixResult{Outcome: shuttleengine.OutcomeDone, Gate: &shuttleengine.GateOutcome{Passed: true, Attempts: 1}},
 			keepFindings: true,
 			preWritten:   true,
-			wantFindings: "x",
 			finished:     true,
 		},
 		{name: "a changed review", err: burlerengine.ErrReviewChanged, wantErrIs: burlerengine.ErrReviewChanged, wantErrEnd: wayForwardToReview},
@@ -406,10 +389,6 @@ func TestBurlerFixProducer_Call_GateFailedAndChangedReviewArchiveTheWholeRound(t
 			writeAcceptedRound(t, runDir, 1, "d1")
 			runner := &shedfake.BurlerHalfRunner{FixResults: []burlerengine.FixResult{tt.result}, FixErrs: []error{tt.err}}
 			runner.DuringFix = func(int) { writeRoundFile(t, roundFixerReportPath(runDir, 1)) }
-			planted := &fixerRerunRecord{ReviewDigest: "d1", Reason: "the round halted: x", Report: "old.md"}
-			if err := updateRoundSnapshot(runDir, 1, func(rec *roundSnapshot, _ bool) { rec.FixerRerun = planted }); err != nil {
-				t.Fatalf("updateRoundSnapshot: %v", err)
-			}
 			spec := newHalfSpec()
 			findingsPath := filepath.Join(t.TempDir(), "gate-findings", "burler-fix.md")
 			if tt.keepFindings {
@@ -451,9 +430,6 @@ func TestBurlerFixProducer_Call_GateFailedAndChangedReviewArchiveTheWholeRound(t
 			}
 			for _, base := range []string{"round-1-review.md", "round-1-fixer-report.md", "round-1-acceptance.md"} {
 				requireArchived(t, runDir, base, 1)
-			}
-			if snapshot, _, snapErr := readRoundSnapshot(runDir, 1); snapErr != nil || snapshot.FixerRerun != nil {
-				t.Errorf("round 1 snapshot rerun = %+v, %v; want none once the round is retired", snapshot.FixerRerun, snapErr)
 			}
 			if runner.FixCalls != 1 {
 				t.Errorf("Fix calls = %d; want 1, since neither exit is retried", runner.FixCalls)
@@ -530,169 +506,6 @@ func TestBurlerFixProducer_Call_FailureExits(t *testing.T) {
 	}
 }
 
-// TestBurlerFixProducer_Call_TellsARerunFixerWhy proves a fixer that runs again over a worked review is told why.
-// The reason and the archived report reach it after a halted call and after a died attempt that left a report;
-// a died attempt that left none gives the reason alone.
-// A halt that archived no report is the reason the next call is told, with the report an earlier call archived.
-// The record written before an attempt survives an exit that records nothing.
-// A first fixer, and a fixer over a review other than the one a recorded rerun answered, are told nothing.
-func TestBurlerFixProducer_Call_TellsARerunFixerWhy(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-	const stamped = "{stamped}"
-	died := burlerengine.FixResult{Outcome: shuttleengine.OutcomeDied}
-	tests := []struct {
-		name    string
-		results []burlerengine.FixResult
-		errs    []error
-		calls   int
-		// reportOnFix holds the zero-based Fix calls that leave a fixer report behind.
-		reportOnFix []int
-		// recorded plants a rerun record in round 1's snapshot before the first call.
-		recorded *fixerRerunRecord
-		// want holds the rerun each Fix call is given; a Report of stamped stands for the archived report's path.
-		want []burlerengine.FixRerun
-	}{
-		{
-			name:        "a call after a halted fix names the archived report and the halt",
-			results:     []burlerengine.FixResult{{}, fixDone},
-			errs:        []error{errors.New("gate closure failed")},
-			calls:       2,
-			reportOnFix: []int{0},
-			want:        []burlerengine.FixRerun{{}, {Reason: "the round halted: shedadapters: burler-fix (burler-fix): round 1 attempt 1: fix: gate closure failed", Report: stamped}},
-		},
-		{
-			name:        "a retry after a died attempt that wrote its report names that report",
-			results:     []burlerengine.FixResult{died, fixDone},
-			calls:       1,
-			reportOnFix: []int{0},
-			want:        []burlerengine.FixRerun{{}, {Reason: `attempt 1's session ended with outcome "died" before the round finished`, Report: stamped}},
-		},
-		{
-			name:    "a retry after a died attempt that left no report gives the reason alone",
-			results: []burlerengine.FixResult{died, fixDone},
-			calls:   1,
-			want:    []burlerengine.FixRerun{{}, {Reason: `attempt 1's session ended with outcome "died"`}},
-		},
-		{
-			name:     "a rerun recorded for another review is not told",
-			results:  []burlerengine.FixResult{fixDone},
-			calls:    1,
-			recorded: &fixerRerunRecord{ReviewDigest: "an earlier review", Reason: "the round halted: x", Report: "old.md"},
-			want:     []burlerengine.FixRerun{{}},
-		},
-		{
-			name:    "a call after two died attempts that wrote no report is told both outcomes",
-			results: []burlerengine.FixResult{died, died, fixDone},
-			calls:   2,
-			want: []burlerengine.FixRerun{
-				{},
-				{Reason: `attempt 1's session ended with outcome "died"`},
-				{Reason: "the round halted: shedadapters: burler-fix (burler-fix): round 1: two consecutive died/timeout outcomes (attempt 1 outcome died fix not started; attempt 1b outcome died fix not started)"},
-			},
-		},
-		{
-			name:        "a call after a halt with a report and a halt without one is told the later halt and the earlier report",
-			results:     []burlerengine.FixResult{{}, {}, fixDone},
-			errs:        []error{errors.New("first failure"), errors.New("second failure"), nil},
-			calls:       3,
-			reportOnFix: []int{0},
-			want: []burlerengine.FixRerun{
-				{},
-				{Reason: "the round halted: shedadapters: burler-fix (burler-fix): round 1 attempt 1: fix: first failure", Report: stamped},
-				{Reason: "the round halted: shedadapters: burler-fix (burler-fix): round 1 attempt 1: fix: second failure", Report: stamped},
-			},
-		},
-		{
-			name:        "a call after a fixer that could not be stopped is told why the first attempt's report was set aside",
-			results:     []burlerengine.FixResult{died, {}, fixDone},
-			errs:        []error{nil, burlerengine.ErrHalfNotStopped, nil},
-			calls:       2,
-			reportOnFix: []int{0},
-			want: []burlerengine.FixRerun{
-				{},
-				{Reason: `attempt 1's session ended with outcome "died" before the round finished`, Report: stamped},
-				{Reason: `attempt 1's session ended with outcome "died" before the round finished`, Report: stamped},
-			},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			runDir := t.TempDir()
-			writeAcceptedRound(t, runDir, 1, "d1")
-			if tt.recorded != nil {
-				if err := updateRoundSnapshot(runDir, 1, func(rec *roundSnapshot, _ bool) { rec.FixerRerun = tt.recorded }); err != nil {
-					t.Fatalf("updateRoundSnapshot: %v", err)
-				}
-			}
-			runner := &shedfake.BurlerHalfRunner{FixResults: tt.results, FixErrs: tt.errs}
-			runner.DuringFix = func(call int) {
-				if slices.Contains(tt.reportOnFix, call) {
-					writeRoundFile(t, roundFixerReportPath(runDir, 1))
-				}
-			}
-			p := newFixProducer(t, runDir, runner, newHalfSpec())
-
-			for range tt.calls {
-				_, _, _ = p.Call(context.Background())
-			}
-
-			if len(runner.GotFixOpts) != len(tt.want) {
-				t.Fatalf("Fix calls = %d; want %d", len(runner.GotFixOpts), len(tt.want))
-			}
-			for i, want := range tt.want {
-				if want.Report == stamped {
-					want.Report = filepath.Join(runDir, "round-1-fixer-report-20260816T151326Z.md")
-				}
-				if got := runner.GotFixOpts[i].Rerun; got != want {
-					t.Errorf("Fix call %d rerun = %+v; want %+v", i, got, want)
-				}
-			}
-		})
-	}
-}
-
-// resumeWritingRunner is a BurlerHalfRunner whose ResumeFix first runs before.
-// That stands in for a resumed fixer that wrote a file.
-type resumeWritingRunner struct {
-	*shedfake.BurlerHalfRunner
-	before func()
-}
-
-func (r resumeWritingRunner) ResumeFix(p burlerengine.Profile, opts burlerengine.RunOpts, digest string, live burlerengine.LiveHalf) (burlerengine.FixResult, error) {
-	r.before()
-	return r.BurlerHalfRunner.ResumeFix(p, opts, digest, live)
-}
-
-// TestBurlerFixProducer_Call_TellsAFixerOverAResumedSessionsReportWhy proves a fixer is told why.
-// It is the fixer that follows a resumed session.
-// The resumed session wrote the round's fixer report and died, so the report is archived before the fresh attempt.
-func TestBurlerFixProducer_Call_TellsAFixerOverAResumedSessionsReportWhy(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-	runDir := t.TempDir()
-	writeAcceptedRound(t, runDir, 1, "d1")
-	fake := &shedfake.BurlerHalfRunner{
-		LiveFixes:        []burlerengine.LiveHalf{{State: burlerengine.HalfLive}},
-		ResumeFixResults: []burlerengine.FixResult{{Outcome: shuttleengine.OutcomeDied}},
-		FixResults:       []burlerengine.FixResult{fixDone},
-	}
-	runner := resumeWritingRunner{BurlerHalfRunner: fake, before: func() { writeRoundFile(t, roundFixerReportPath(runDir, 1)) }}
-	spec := newHalfSpec()
-	p, err := NewBurlerFixProducer("burler-fix", "burler-review", BurlerHalfDeps{Runner: runner, Models: spec.models}, spec.profile, spec.opts, runDir, spec.now)
-	if err != nil {
-		t.Fatalf("NewBurlerFixProducer() error = %v; want nil", err)
-	}
-
-	shedfake.RequireOutcome(t, p, shedengine.Stuck)
-
-	want := burlerengine.FixRerun{Reason: "that session never finished the round", Report: filepath.Join(runDir, "round-1-fixer-report-20260816T151326Z.md")}
-	if len(fake.GotFixOpts) != 1 || fake.GotFixOpts[0].Rerun != want {
-		t.Errorf("Fix opts = %+v; want one call given the rerun %+v", fake.GotFixOpts, want)
-	}
-}
-
 // TestBurlerFixProducer_Call_Cancellation proves a cancelled context returns the cancellation error.
 // That holds before the call and during a failing attempt.
 // After a finished fix it still holds, and the finished round's artifacts survive.
@@ -725,11 +538,6 @@ func TestBurlerFixProducer_Call_Cancellation(t *testing.T) {
 			t.Errorf("Call() error = %v; want context.Canceled over the runner's error", err)
 		}
 		requireArchived(t, runDir, "round-1-fixer-report.md", 1)
-		snapshot, _, err := readRoundSnapshot(runDir, 1)
-		want := fixerRerunRecord{ReviewDigest: "d1", Reason: "the run was cancelled while the fixer ran", Report: filepath.Join(runDir, "round-1-fixer-report-20260816T151326Z.md")}
-		if err != nil || snapshot.FixerRerun == nil || *snapshot.FixerRerun != want {
-			t.Errorf("round 1 snapshot rerun = %+v, %v; want %+v", snapshot.FixerRerun, err, want)
-		}
 	})
 
 	t.Run("after a finished fix its artifacts survive", func(t *testing.T) {

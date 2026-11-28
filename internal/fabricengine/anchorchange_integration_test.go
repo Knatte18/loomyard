@@ -16,7 +16,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -253,10 +252,6 @@ func TestAnchorChange(t *testing.T) {
 		h := newAnchorHub(t)
 		hubforge.AddPair(t, h, mover)
 		hubforge.ReanchorPair(t, h, h.Location.WorktreeName, "sub")
-		// The re-anchored prime keeps its scratch link at the old anchor, and an entry there keeps the line.
-		if err := fslink.Remove(filepath.Join(h.PrimeWorktree(), ".scratch")); err != nil {
-			t.Fatalf("remove the prime's scratch link at the old anchor: %v", err)
-		}
 
 		c, err := beginAnchorChange(t, h, mover, "other")
 		if err != nil {
@@ -390,7 +385,7 @@ func TestAnchorChange(t *testing.T) {
 				setup: func(t *testing.T, h *hubforge.Hub, weft, warp string) {
 					pid := os.Getpid()
 					startTime, _ := proc.StartTime(pid)
-					writeMoveRecord(t, weft, fabriclayout.MoveRecord{A: ".", B: "sub", Kind: fabriclayout.MoveKindMove, PID: pid, StartTime: startTime})
+					writeMoveRecord(t, weft, fabricengine.MoveRecord{A: ".", B: "sub", Kind: fabricengine.MoveKindMove, PID: pid, StartTime: startTime})
 					holdMoveLock(t, weft)
 				},
 				want:   []string{fmt.Sprintf("in progress in process %d", os.Getpid()), "lym fabric anchor"},
@@ -400,7 +395,7 @@ func TestAnchorChange(t *testing.T) {
 				name:   "A move lock held beside the record of a dead process",
 				target: "sub",
 				setup: func(t *testing.T, h *hubforge.Hub, weft, warp string) {
-					writeMoveRecord(t, weft, fabriclayout.MoveRecord{A: ".", B: "sub", Kind: fabriclayout.MoveKindMove, PID: 4242})
+					writeMoveRecord(t, weft, fabricengine.MoveRecord{A: ".", B: "sub", Kind: fabricengine.MoveKindMove, PID: 4242})
 					holdMoveLock(t, weft)
 				},
 				want:   []string{"is starting in another process", "lym fabric anchor"},
@@ -418,7 +413,7 @@ func TestAnchorChange(t *testing.T) {
 				name:   "A killed run's record and another target",
 				target: "other",
 				setup: func(t *testing.T, h *hubforge.Hub, weft, warp string) {
-					writeMoveRecord(t, weft, fabriclayout.MoveRecord{A: ".", B: "sub", Kind: fabriclayout.MoveKindMove, PID: 4242})
+					writeMoveRecord(t, weft, fabricengine.MoveRecord{A: ".", B: "sub", Kind: fabricengine.MoveKindMove, PID: 4242})
 				},
 				want:   []string{"was interrupted", "lym fabric anchor " + mover + " --set sub"},
 				record: true,
@@ -476,7 +471,7 @@ func TestAnchorChange(t *testing.T) {
 		c.Close()
 		requireNoMoveRecord(t, weft)
 
-		writeMoveRecord(t, weft, fabriclayout.MoveRecord{A: ".", B: "sub", Kind: fabriclayout.MoveKindMove, PID: 4242})
+		writeMoveRecord(t, weft, fabricengine.MoveRecord{A: ".", B: "sub", Kind: fabricengine.MoveKindMove, PID: 4242})
 		c, err = beginAnchorChange(t, h, mover, "sub")
 		if err != nil {
 			t.Fatalf("BeginAnchorChange() over a standing record error = %v; want nil", err)
@@ -786,6 +781,7 @@ func TestAnchorChange(t *testing.T) {
 			{name: "A checked-out status that reads unfinished and an upstream that reads finished is finished", upstreamRel: statusRel, upstreamState: "done", want: false},
 			{name: "An upstream status that reads unfinished is unfinished", upstreamRel: statusRel, upstreamState: "running", want: true},
 			{name: "An upstream with no status is finished", want: false},
+			{name: "An upstream status in the legacy self directory counts", upstreamRel: "_lym/shed/self/status.json", upstreamState: "paused", want: true},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {

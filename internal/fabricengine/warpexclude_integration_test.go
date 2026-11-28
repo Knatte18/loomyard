@@ -15,7 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// warpExcludeLines are the anchored exclude lines the template's default fabric.warp_exclude list yields.
+// warpExcludeLines are the anchored exclude lines the template's default warp_exclude list yields.
 var warpExcludeLines = []string{"/CLAUDE.local.md", "/AGENTS.override.md", "/.heddle", "/.claude/settings.local.json"}
 
 // countLine returns how many of lines trim to want.
@@ -93,7 +93,7 @@ func TestSeedWarpExclude_SeedsWarpOnlyOnce(t *testing.T) {
 			}
 		}
 
-		if _, err := h.Topology.Remove(l, slug, false, false, ""); err != nil {
+		if _, err := h.Topology.Remove(l, slug, false, false); err != nil {
 			t.Fatalf("Remove: %v", err)
 		}
 		requireWarpExcludeOnce(t, h.PrimeWorktree())

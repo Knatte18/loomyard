@@ -17,7 +17,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
@@ -47,13 +46,13 @@ func resetWarpJunction(t *testing.T, l *lymcwd.Location, slug, name string) stri
 // A case seeds the file with hubforge.SeedFabricConfig, or with seedRepoWideExtraFabricConfig.
 const extraFabricConfigYAML = "branch_prefix: \"\"\npathspec: _extra\n"
 
-// seedRepoWideExtraFabricConfig overwrites the repo-wide fabric.yaml at fabriclayout.BoardDir(hub)
+// seedRepoWideExtraFabricConfig overwrites the repo-wide fabric.yaml at fabricengine.BoardDir(hub)
 // with extraFabricConfigYAML.
 // It takes a bare hub path rather than a *hubforge.Hub.
 func seedRepoWideExtraFabricConfig(t testing.TB, hub string) {
 	t.Helper()
 
-	boardDir := fabriclayout.BoardDir(hub)
+	boardDir := fabricengine.BoardDir(hub)
 	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
 		t.Fatalf("mkdir repo-wide config dir: %v", err)
 	}
@@ -292,7 +291,7 @@ func TestDetectWarpPollution_LymTrackedAsRestorable(t *testing.T) {
 	}
 
 	wantPath := lymdirs.LymDirName + "/PATTERN.md"
-	var found *fabriclayout.PollutionEntry
+	var found *fabricengine.PollutionEntry
 	for i, entry := range result.Pairs[0].Pollution {
 		if entry.Path == wantPath {
 			found = &result.Pairs[0].Pollution[i]
@@ -513,11 +512,12 @@ func TestWireJunctions_UpgradesLymOnlyWorktreeToBoth(t *testing.T) {
 	}
 }
 
-// TestSeedGitExclude_AnchorsPattern checks the exclude entry.
+// TestSeedGitExclude_AnchorsPatternAndReplacesLegacyBareName checks the exclude entry.
 // It names exactly the one junction path fabric wires, not every same-named directory in the repo.
 // A gitignore pattern with no slash matches at any depth.
 // A bare "_lym" line would silently untrack a monorepo's own frontend/_lym/ on a subpath-anchored hub.
-func TestSeedGitExclude_AnchorsPattern(t *testing.T) {
+// A hub that already holds the bare line must end up with the anchored pattern only.
+func TestSeedGitExclude_AnchorsPatternAndReplacesLegacyBareName(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
@@ -525,6 +525,12 @@ func TestSeedGitExclude_AnchorsPattern(t *testing.T) {
 
 	l := h.Location
 	slug := l.WorktreeName
+
+	// Seed the exclude file with the bare-name line an older binary wrote.
+	excludePath := excludeFilePath(t, l, slug)
+	if err := os.WriteFile(excludePath, []byte(lymdirs.LymDirName+"\n"), 0o644); err != nil {
+		t.Fatalf("seed legacy exclude line: %v", err)
+	}
 
 	if err := fabricengine.WireJunctions(l, slug, []string{lymdirs.LymDirName}); err != nil {
 		t.Fatalf("WireJunctions: %v", err)
@@ -536,7 +542,7 @@ func TestSeedGitExclude_AnchorsPattern(t *testing.T) {
 		t.Errorf(".git/info/exclude = %v; want it to contain the anchored pattern %q", lines, pattern)
 	}
 	if containsLine(lines, lymdirs.LymDirName) {
-		t.Errorf(".git/info/exclude = %v; want no bare %q line beside the anchored pattern",
+		t.Errorf(".git/info/exclude = %v; want the legacy bare %q line replaced, not kept beside the anchored pattern",
 			lines, lymdirs.LymDirName)
 	}
 

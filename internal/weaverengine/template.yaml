@@ -2,6 +2,5 @@ ladder:  # model-specs a batch attempt climbs in order, one rung per failed atte
   - sonnet[medium]
   - opus[medium]
   - opus[high]
-attempt_timeout_min: 90  # minutes from spawn, or from an attach after a crash, at which a batch attempt times out, gate waits and fixers included
 fixer_timeout_min: 60  # minutes after spawn at which the plan-level verify fixer strand classifies dead
 verify_gate: webster  # gate key of the plan-level verify Weaver's Done rests on

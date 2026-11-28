@@ -20,7 +20,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -31,7 +30,7 @@ import (
 // Callers supply only the URL, not the record's on-disk shape.
 func seedWeftBinding(t *testing.T, dir, bareRemote, warpURL string) {
 	t.Helper()
-	commitFileOnBranch(t, dir, bareRemote, "main", fabriclayout.WarpBindingFileName, warpURL+"\n")
+	commitFileOnBranch(t, dir, bareRemote, "main", fabricengine.WarpBindingFileName, warpURL+"\n")
 }
 
 // noProbeResidueInParent asserts that cloneParent holds no hub for the derived names and no probe leftovers.
@@ -40,7 +39,7 @@ func noProbeResidueInParent(t *testing.T, cloneParent string, derivedNames ...st
 	t.Helper()
 
 	for _, name := range derivedNames {
-		hubPath := fabriclayout.HubPath(cloneParent, name)
+		hubPath := fabricengine.HubPath(cloneParent, name)
 		if _, err := os.Stat(hubPath); err == nil {
 			t.Errorf("hub directory %s exists; want no hub created", hubPath)
 		}
@@ -70,7 +69,7 @@ func TestCloneHub_UnboundWeftNamesTwoArgForm(t *testing.T) {
 	weftBare := makeBareRemote(t, fixtures, "unbound-weft")
 
 	cloneParent := t.TempDir()
-	_, err := fabricengine.CloneHub(cloneParent, fabriclayout.CloneOptions{
+	_, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
 		WeftURL: filepath.ToSlash(weftBare),
 	})
 	if err == nil {
@@ -103,7 +102,7 @@ func TestCloneHub_UnreachableWeftIsHardError(t *testing.T) {
 
 	t.Run("OneArgument", func(t *testing.T) {
 		cloneParent := t.TempDir()
-		_, err := fabricengine.CloneHub(cloneParent, fabriclayout.CloneOptions{
+		_, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
 			WeftURL: nonExistentWeft,
 		})
 		if err == nil {
@@ -133,7 +132,7 @@ func TestCloneHub_UnreachableWeftIsHardError(t *testing.T) {
 		nonExistentWeft := filepath.ToSlash(filepath.Join(fixtures, "does-not-exist.git"))
 
 		cloneParent := t.TempDir()
-		_, err := fabricengine.CloneHub(cloneParent, fabriclayout.CloneOptions{
+		_, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
 			WeftURL: nonExistentWeft,
 			WarpURL: filepath.ToSlash(warpBare),
 		})
@@ -168,7 +167,7 @@ func TestCloneHub_OldOrderInvocationIsRefused(t *testing.T) {
 	beforeRefs := gitOutput(t, ordinarySourceBare, "for-each-ref", "--format=%(refname)")
 
 	cloneParent := t.TempDir()
-	_, err := fabricengine.CloneHub(cloneParent, fabriclayout.CloneOptions{
+	_, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
 		WeftURL:   filepath.ToSlash(ordinarySourceBare),
 		WarpURL:   filepath.ToSlash(warpBare),
 		Shortname: "tst",
@@ -229,7 +228,7 @@ func TestCloneHub_ResetRefusalKeepsExistingHub(t *testing.T) {
 		seedWeftBinding(t, recordedFixtures, weftBare, recordedURL)
 
 		cloneParent := t.TempDir()
-		first, err := fabricengine.CloneHub(cloneParent, fabriclayout.CloneOptions{
+		first, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
 			WeftURL: filepath.ToSlash(weftBare),
 			WarpURL: recordedURL,
 		})
@@ -239,7 +238,7 @@ func TestCloneHub_ResetRefusalKeepsExistingHub(t *testing.T) {
 		t.Cleanup(func() { _ = os.RemoveAll(first.HubPath) })
 		sentinel := plantSentinel(t, first.HubPath)
 
-		_, err = fabricengine.CloneHub(cloneParent, fabriclayout.CloneOptions{
+		_, err = fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
 			WeftURL: filepath.ToSlash(weftBare),
 			WarpURL: filepath.ToSlash(suppliedWarpBare),
 			Reset:   true,
@@ -259,7 +258,7 @@ func TestCloneHub_ResetRefusalKeepsExistingHub(t *testing.T) {
 		ordinarySourceBare := makeBareRemote(t, fixtures, "reset-refusal-source")
 		warpBare := makeBareRemote(t, fixtures, "reset-refusal-guard-warp")
 
-		opts := fabriclayout.CloneOptions{
+		opts := fabricengine.CloneOptions{
 			WeftURL:        filepath.ToSlash(ordinarySourceBare),
 			WarpURL:        filepath.ToSlash(warpBare),
 			ForceBootstrap: true,
@@ -292,7 +291,7 @@ func TestCloneHub_ResetRefusalKeepsExistingHub(t *testing.T) {
 		weftBare := makeBareRemote(t, fixtures, "reset-refusal-anchor-weft")
 		commitFileOnBranch(t, fixtures, weftBare, "main", lymcwd.AnchorFileName, ".\n")
 
-		opts := fabriclayout.CloneOptions{
+		opts := fabricengine.CloneOptions{
 			WeftURL:   filepath.ToSlash(weftBare),
 			WarpURL:   filepath.ToSlash(warpBare),
 			Shortname: "tst",
@@ -324,7 +323,7 @@ func TestCloneHub_ResetRefusalKeepsExistingHub(t *testing.T) {
 		warpBare := makeBareRemote(t, fixtures, "reset-refusal-subpath-warp")
 		weftBare := makeBareRemote(t, fixtures, "reset-refusal-subpath-weft")
 
-		opts := fabriclayout.CloneOptions{
+		opts := fabricengine.CloneOptions{
 			WeftURL:        filepath.ToSlash(weftBare),
 			WarpURL:        filepath.ToSlash(warpBare),
 			ForceBootstrap: true,
@@ -374,6 +373,10 @@ func TestCloneHub_ResetSubpathCheckReadsRecordedAnchor(t *testing.T) {
 			seedWeftBranchFromMain(t, fixtures, weftBare, "main-weft")
 			commitFileOnBranch(t, fixtures, weftBare, "main-weft", lymcwd.AnchorFileName, "backend\n")
 		}, "elsewhere", "backend"},
+		{"MainWeftWithoutMarkerFallsBackToDefaultBranch", func(t *testing.T, fixtures, weftBare string) {
+			seedWeftBranchFromMain(t, fixtures, weftBare, "main-weft")
+			commitFileOnBranch(t, fixtures, weftBare, "main", lymcwd.AnchorFileName, "backend\n")
+		}, "elsewhere", "backend"},
 		{"MarkerOnNonWarpDefaultBranchIsNotAdopted", func(t *testing.T, fixtures, weftBare string) {
 			seedWeftBranchFromMain(t, fixtures, weftBare, "main-weft")
 			seedWeftBranchFromMain(t, fixtures, weftBare, "trunk")
@@ -390,7 +393,7 @@ func TestCloneHub_ResetSubpathCheckReadsRecordedAnchor(t *testing.T) {
 			weftBare := makeBareRemote(t, fixtures, "reset-anchor-source-weft")
 			tt.seed(t, fixtures, weftBare)
 
-			opts := fabriclayout.CloneOptions{
+			opts := fabricengine.CloneOptions{
 				WeftURL:   filepath.ToSlash(weftBare),
 				WarpURL:   filepath.ToSlash(warpBare),
 				Shortname: "tst",
@@ -447,7 +450,7 @@ func TestCloneHub_HubExistsCheckPrecedesProbeInTwoArgForm(t *testing.T) {
 	warpURL := filepath.ToSlash(warpBare)
 
 	cloneParent := t.TempDir()
-	firstRes, err := fabricengine.CloneHub(cloneParent, fabriclayout.CloneOptions{
+	firstRes, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
 		WeftURL:        filepath.ToSlash(weftBare),
 		WarpURL:        warpURL,
 		ForceBootstrap: true,
@@ -458,7 +461,7 @@ func TestCloneHub_HubExistsCheckPrecedesProbeInTwoArgForm(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(firstRes.HubPath) })
 
-	_, err = fabricengine.CloneHub(cloneParent, fabriclayout.CloneOptions{
+	_, err = fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
 		WeftURL: filepath.ToSlash(weftBare),
 		WarpURL: warpURL,
 	})
@@ -467,25 +470,6 @@ func TestCloneHub_HubExistsCheckPrecedesProbeInTwoArgForm(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "hub already exists") {
 		t.Errorf("CloneHub() error = %q; want it to contain %q", err.Error(), "hub already exists")
-	}
-	// The hub stands whole, so replacing it could lose work: the way forward moves it aside and names no --reset.
-	moved := firstRes.HubPath + ".old"
-	wantMove := "`mv " + firstRes.HubPath + " " + moved + " && git -C " + filepath.Join(moved, "precedes-warp-weft") +
-		" worktree repair " + filepath.Join(moved, fabriclayout.BoltDirName) + "`"
-	if strings.Contains(err.Error(), "--reset") || !strings.Contains(err.Error(), wantMove) {
-		t.Errorf("CloneHub() error = %q; want it to name %s and no --reset", err.Error(), wantMove)
-	}
-
-	// Without a committed anchor marker the hub is one a stopped clone left, holding no work.
-	records := filepath.Join(firstRes.HubPath, "precedes-warp-weft")
-	gitkit.Git(t, records, "rm", "-q", lymcwd.AnchorFileName)
-	gitkit.Git(t, records, "commit", "-q", "-m", "drop the anchor marker")
-	_, err = fabricengine.CloneHub(cloneParent, fabriclayout.CloneOptions{
-		WeftURL: filepath.ToSlash(weftBare),
-		WarpURL: warpURL,
-	})
-	if err == nil || !strings.Contains(err.Error(), "way forward: replace it with `lym fabric clone ") || !strings.Contains(err.Error(), "--reset") {
-		t.Errorf("CloneHub() over an unfinished hub error = %v; want the --reset clone named", err)
 	}
 
 	entries, err := os.ReadDir(cloneParent)

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -22,35 +22,35 @@ func TestFixCap_Exceeded(t *testing.T) {
 	tests := []struct {
 		name       string
 		isTestFile func(string) bool
-		change     fabriclayout.LineChange
+		change     fabricengine.LineChange
 		want       string
 	}{
-		{"OverTheLineCap", goMatcher, fabriclayout.LineChange{Paths: []string{"internal/x/x.go"}, Lines: 41}, "41 lines, over the cap of 40"},
-		{"AtTheLineCap", goMatcher, fabriclayout.LineChange{Paths: []string{"internal/x/x.go"}, Lines: 40}, ""},
-		{"SmallSourceOnlyChange", goMatcher, fabriclayout.LineChange{Paths: []string{"internal/x/x.go"}, Lines: 3, AddedLines: []string{"x := 1"}}, ""},
-		{"GoTestFile", goMatcher, fabriclayout.LineChange{Paths: []string{"internal/x/x_test.go"}, Lines: 3}, "test file internal/x/x_test.go"},
-		{"CSharpTestFile", csharpMatcher, fabriclayout.LineChange{Paths: []string{"src/FooTests.cs"}, Lines: 3}, "test file src/FooTests.cs"},
-		{"CSharpSourceFileUnderGoMatcher", goMatcher, fabriclayout.LineChange{Paths: []string{"src/FooTests.cs"}, Lines: 3}, ""},
-		{"AnyFileUnderNoneMatcher", noneMatcher, fabriclayout.LineChange{Paths: []string{"internal/x/x.go"}, Lines: 1}, "test file internal/x/x.go"},
-		{"TestdataFile", goMatcher, fabriclayout.LineChange{Paths: []string{"internal/x/testdata/in.txt"}, Lines: 1}, "testdata file internal/x/testdata/in.txt"},
-		{"GoMod", goMatcher, fabriclayout.LineChange{Paths: []string{"go.mod"}, Lines: 1}, "configuration file go.mod"},
-		{"GoSum", goMatcher, fabriclayout.LineChange{Paths: []string{"go.sum"}, Lines: 1}, "configuration file go.sum"},
-		{"GoWork", goMatcher, fabriclayout.LineChange{Paths: []string{"go.work"}, Lines: 1}, "configuration file go.work"},
-		{"Makefile", goMatcher, fabriclayout.LineChange{Paths: []string{"tools/Makefile"}, Lines: 1}, "configuration file tools/Makefile"},
-		{"Csproj", goMatcher, fabriclayout.LineChange{Paths: []string{"src/App.csproj"}, Lines: 1}, "configuration file src/App.csproj"},
-		{"Sln", goMatcher, fabriclayout.LineChange{Paths: []string{"App.sln"}, Lines: 1}, "configuration file App.sln"},
-		{"Props", goMatcher, fabriclayout.LineChange{Paths: []string{"build/Common.props"}, Lines: 1}, "configuration file build/Common.props"},
-		{"Targets", goMatcher, fabriclayout.LineChange{Paths: []string{"build/Common.targets"}, Lines: 1}, "configuration file build/Common.targets"},
-		{"DirectoryBuildProps", goMatcher, fabriclayout.LineChange{Paths: []string{"Directory.Build.props"}, Lines: 1}, "configuration file Directory.Build.props"},
-		{"GithubPath", goMatcher, fabriclayout.LineChange{Paths: []string{".github/workflows/ci.yml"}, Lines: 1}, "configuration file .github/workflows/ci.yml"},
-		{"GateYaml", goMatcher, fabriclayout.LineChange{Paths: []string{"_lym/config/gate.yaml"}, Lines: 1}, "configuration file _lym/config/gate.yaml"},
-		{"AddedTSkip", goMatcher, fabriclayout.LineChange{Paths: []string{"internal/x/x.go"}, Lines: 1, AddedLines: []string{"\tt.Skip(\"flaky\")"}}, `skips a test: t.Skip("flaky")`},
-		{"AddedTSkipNow", goMatcher, fabriclayout.LineChange{Paths: []string{"internal/x/x.go"}, Lines: 1, AddedLines: []string{"\tt.SkipNow()"}}, "skips a test: t.SkipNow()"},
-		{"AddedIgnoreAttribute", goMatcher, fabriclayout.LineChange{Paths: []string{"src/Foo.cs"}, Lines: 1, AddedLines: []string{"[Ignore]"}}, "skips a test: [Ignore]"},
-		{"AddedSkipAssignment", goMatcher, fabriclayout.LineChange{Paths: []string{"src/Foo.cs"}, Lines: 1, AddedLines: []string{"[Fact(Skip = \"x\")]"}}, "skips a test: [Fact(Skip = \"x\")]"},
-		{"AddedGoBuildConstraint", goMatcher, fabriclayout.LineChange{Paths: []string{"internal/x/x.go"}, Lines: 1, AddedLines: []string{"//go:build linux"}}, "build constraint: //go:build linux"},
-		{"AddedPlusBuildConstraint", goMatcher, fabriclayout.LineChange{Paths: []string{"internal/x/x.go"}, Lines: 1, AddedLines: []string{"// +build linux"}}, "build constraint: // +build linux"},
-		{"AddedPreprocessorConstraint", goMatcher, fabriclayout.LineChange{Paths: []string{"src/Foo.cs"}, Lines: 1, AddedLines: []string{"#if DEBUG"}}, "build constraint: #if DEBUG"},
+		{"OverTheLineCap", goMatcher, fabricengine.LineChange{Paths: []string{"internal/x/x.go"}, Lines: 41}, "41 lines, over the cap of 40"},
+		{"AtTheLineCap", goMatcher, fabricengine.LineChange{Paths: []string{"internal/x/x.go"}, Lines: 40}, ""},
+		{"SmallSourceOnlyChange", goMatcher, fabricengine.LineChange{Paths: []string{"internal/x/x.go"}, Lines: 3, AddedLines: []string{"x := 1"}}, ""},
+		{"GoTestFile", goMatcher, fabricengine.LineChange{Paths: []string{"internal/x/x_test.go"}, Lines: 3}, "test file internal/x/x_test.go"},
+		{"CSharpTestFile", csharpMatcher, fabricengine.LineChange{Paths: []string{"src/FooTests.cs"}, Lines: 3}, "test file src/FooTests.cs"},
+		{"CSharpSourceFileUnderGoMatcher", goMatcher, fabricengine.LineChange{Paths: []string{"src/FooTests.cs"}, Lines: 3}, ""},
+		{"AnyFileUnderNoneMatcher", noneMatcher, fabricengine.LineChange{Paths: []string{"internal/x/x.go"}, Lines: 1}, "test file internal/x/x.go"},
+		{"TestdataFile", goMatcher, fabricengine.LineChange{Paths: []string{"internal/x/testdata/in.txt"}, Lines: 1}, "testdata file internal/x/testdata/in.txt"},
+		{"GoMod", goMatcher, fabricengine.LineChange{Paths: []string{"go.mod"}, Lines: 1}, "configuration file go.mod"},
+		{"GoSum", goMatcher, fabricengine.LineChange{Paths: []string{"go.sum"}, Lines: 1}, "configuration file go.sum"},
+		{"GoWork", goMatcher, fabricengine.LineChange{Paths: []string{"go.work"}, Lines: 1}, "configuration file go.work"},
+		{"Makefile", goMatcher, fabricengine.LineChange{Paths: []string{"tools/Makefile"}, Lines: 1}, "configuration file tools/Makefile"},
+		{"Csproj", goMatcher, fabricengine.LineChange{Paths: []string{"src/App.csproj"}, Lines: 1}, "configuration file src/App.csproj"},
+		{"Sln", goMatcher, fabricengine.LineChange{Paths: []string{"App.sln"}, Lines: 1}, "configuration file App.sln"},
+		{"Props", goMatcher, fabricengine.LineChange{Paths: []string{"build/Common.props"}, Lines: 1}, "configuration file build/Common.props"},
+		{"Targets", goMatcher, fabricengine.LineChange{Paths: []string{"build/Common.targets"}, Lines: 1}, "configuration file build/Common.targets"},
+		{"DirectoryBuildProps", goMatcher, fabricengine.LineChange{Paths: []string{"Directory.Build.props"}, Lines: 1}, "configuration file Directory.Build.props"},
+		{"GithubPath", goMatcher, fabricengine.LineChange{Paths: []string{".github/workflows/ci.yml"}, Lines: 1}, "configuration file .github/workflows/ci.yml"},
+		{"GateYaml", goMatcher, fabricengine.LineChange{Paths: []string{"_lym/config/gate.yaml"}, Lines: 1}, "configuration file _lym/config/gate.yaml"},
+		{"AddedTSkip", goMatcher, fabricengine.LineChange{Paths: []string{"internal/x/x.go"}, Lines: 1, AddedLines: []string{"\tt.Skip(\"flaky\")"}}, `skips a test: t.Skip("flaky")`},
+		{"AddedTSkipNow", goMatcher, fabricengine.LineChange{Paths: []string{"internal/x/x.go"}, Lines: 1, AddedLines: []string{"\tt.SkipNow()"}}, "skips a test: t.SkipNow()"},
+		{"AddedIgnoreAttribute", goMatcher, fabricengine.LineChange{Paths: []string{"src/Foo.cs"}, Lines: 1, AddedLines: []string{"[Ignore]"}}, "skips a test: [Ignore]"},
+		{"AddedSkipAssignment", goMatcher, fabricengine.LineChange{Paths: []string{"src/Foo.cs"}, Lines: 1, AddedLines: []string{"[Fact(Skip = \"x\")]"}}, "skips a test: [Fact(Skip = \"x\")]"},
+		{"AddedGoBuildConstraint", goMatcher, fabricengine.LineChange{Paths: []string{"internal/x/x.go"}, Lines: 1, AddedLines: []string{"//go:build linux"}}, "build constraint: //go:build linux"},
+		{"AddedPlusBuildConstraint", goMatcher, fabricengine.LineChange{Paths: []string{"internal/x/x.go"}, Lines: 1, AddedLines: []string{"// +build linux"}}, "build constraint: // +build linux"},
+		{"AddedPreprocessorConstraint", goMatcher, fabricengine.LineChange{Paths: []string{"src/Foo.cs"}, Lines: 1, AddedLines: []string{"#if DEBUG"}}, "build constraint: #if DEBUG"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

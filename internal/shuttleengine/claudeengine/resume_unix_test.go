@@ -23,7 +23,7 @@ func TestCheckResumable_UnstattableTranscriptRefusesNamingTheStatFailure(t *test
 	if err := os.WriteFile(projectFile, nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, err := checkResumable(resumeTestID, projectFile, []string{registryDir}, func(int) bool { return false }, func(int) (string, bool) { return "", false })
+	_, err := checkResumable(resumeTestID, projectFile, registryDir, func(int) bool { return false }, func(int) (string, bool) { return "", false })
 	if err == nil || !strings.Contains(err.Error(), "cannot stat the transcript") {
 		t.Fatalf("err = %v, want a refusal naming the stat failure", err)
 	}

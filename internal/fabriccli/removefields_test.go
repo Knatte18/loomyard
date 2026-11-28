@@ -8,7 +8,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -20,7 +20,7 @@ func TestRemoveFields(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		result  fabriclayout.RemoveResult
+		result  fabricengine.RemoveResult
 		session pairteardown.SessionResult
 		warning string
 		// wantFields are keys that must be present with exactly this value.
@@ -34,13 +34,13 @@ func TestRemoveFields(t *testing.T) {
 	}{
 		{
 			name:       "CodeBranchDeleted",
-			result:     fabriclayout.RemoveResult{Slug: "s", CodeBranchDeleted: true},
+			result:     fabricengine.RemoveResult{Slug: "s", CodeBranchDeleted: true},
 			wantFields: map[string]any{"code_branch_deleted": true},
 			wantAbsent: []string{"code_branch_kept_reason"},
 		},
 		{
 			name:   "WarpBranchKept",
-			result: fabriclayout.RemoveResult{Slug: "s", CodeBranchKeptReason: "unmerged commits"},
+			result: fabricengine.RemoveResult{Slug: "s", CodeBranchKeptReason: "unmerged commits"},
 			wantFields: map[string]any{
 				"code_branch_deleted":     false,
 				"code_branch_kept_reason": "unmerged commits",
@@ -48,7 +48,7 @@ func TestRemoveFields(t *testing.T) {
 		},
 		{
 			name: "ExistingKeysUnchanged",
-			result: fabriclayout.RemoveResult{
+			result: fabricengine.RemoveResult{
 				Slug:                "s",
 				Path:                "/p",
 				LinksRemoved:        2,
@@ -67,7 +67,7 @@ func TestRemoveFields(t *testing.T) {
 		},
 		{
 			name: "TeardownKeys",
-			result: fabriclayout.RemoveResult{
+			result: fabricengine.RemoveResult{
 				Slug:                       "s",
 				Steps:                      []string{"a", "b"},
 				Finished:                   true,
@@ -89,28 +89,28 @@ func TestRemoveFields(t *testing.T) {
 		},
 		{
 			name:       "RemoteBranchKeptReason",
-			result:     fabriclayout.RemoveResult{Slug: "s", RemoteBranchKeptReason: "kept: moved"},
+			result:     fabricengine.RemoveResult{Slug: "s", RemoteBranchKeptReason: "kept: moved"},
 			wantFields: map[string]any{"remote_branch_kept_reason": "kept: moved"},
 		},
 		{
 			name:       "OriginArchiveTag",
-			result:     fabriclayout.RemoveResult{Slug: "s", OriginArchiveTag: "archive/s/abc123"},
+			result:     fabricengine.RemoveResult{Slug: "s", OriginArchiveTag: "archive/s/abc123"},
 			wantFields: map[string]any{"origin_archive_tag": "archive/s/abc123"},
 		},
 		{
 			name:       "RemoteHandedOff",
-			result:     fabriclayout.RemoveResult{Slug: "s", RemoteHandedOff: true},
+			result:     fabricengine.RemoveResult{Slug: "s", RemoteHandedOff: true},
 			wantFields: map[string]any{"remote_handed_off": true},
 		},
 		{
 			name:       "WarningNamesTheBattenFollowUp",
-			result:     fabriclayout.RemoveResult{Slug: "s"},
+			result:     fabricengine.RemoveResult{Slug: "s"},
 			warning:    "the batten run of s still stands; then run `lym batten cancel s --remove`",
 			wantFields: map[string]any{"warning": "the batten run of s still stands; then run `lym batten cancel s --remove`"},
 		},
 		{
 			name:   "EndedProcessesListed",
-			result: fabriclayout.RemoveResult{Slug: "s"},
+			result: fabricengine.RemoveResult{Slug: "s"},
 			session: pairteardown.SessionResult{EndedProcesses: []runproc.Ended{
 				{PID: 11, Role: runproc.RoleDriver},
 				{PID: 12, Role: "descendant of " + runproc.RoleLoop},
@@ -122,7 +122,7 @@ func TestRemoveFields(t *testing.T) {
 		},
 		{
 			name:   "ConditionalKeysAbsentWhenEmpty",
-			result: fabriclayout.RemoveResult{Slug: "s"},
+			result: fabricengine.RemoveResult{Slug: "s"},
 			wantAbsent: []string{
 				"stray_path", "stray_path_deleted", "abandoned_session", "remote_branch_kept_reason", "remote_code_branch_kept_reason", "code_branch_kept_reason",
 				"origin_archive_tag", "remote_handed_off", "warning",

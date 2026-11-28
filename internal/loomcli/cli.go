@@ -11,20 +11,16 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/frictionengine"
-	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/languageconfig"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/modelspec"
-	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/runfsm"
-	"github.com/Knatte18/loomyard/internal/runpusher"
 	"github.com/Knatte18/loomyard/internal/selfexec"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -82,19 +78,6 @@ type loomCLI struct {
 	// endFixers, when set, is what an admitted goto calls to end the pair's gate fixers; nil means endRunFixers.
 	// Tests set it to record the call.
 	endFixers func() error
-	// stopRuns, when set, stops the shuttle runs of a shed step in place of the receiver's runner.
-	// Nil means the runner stops them.
-	// A test sets it to record the call.
-	stopRuns func(shuttleengine.StepTie) (shuttleengine.StepStopReport, error)
-	// stopOrphanedRuns, when set, stops the shuttle runs gone steps of a shed run left in place of the receiver's runner.
-	// Nil means the runner stops them.
-	// A test sets it to record the call.
-	stopOrphanedRuns func(stepsDir string) (shuttleengine.StepStopReport, error)
-	// retireRuns, when set, sets aside the interrupted shuttle runs an admitted goto restarts.
-	// It stands in for the receiver's runner.
-	// Nil means the runner sets them aside.
-	// A test sets it to record the call.
-	retireRuns func() (int, error)
 	// runner is the constructed shuttle runner.
 	// It is carried on the struct so run.go can pass it to landingDeps as the landing seam's Shuttle value.
 	runner *shuttleengine.Runner
@@ -102,7 +85,7 @@ type loomCLI struct {
 	// It is zero under the lightweight wiring, whose verbs never run the loop.
 	shuttleCfg shuttleengine.Config
 	// stepIdleTimeout is the window after which a --until-stop step showing no activity is killed.
-	// It comes from loom.step_idle_timeout_min and is zero under the lightweight wiring.
+	// It comes from loom.yaml's step_idle_timeout_min and is zero under the lightweight wiring.
 	// A step at a row waiting on the operator (Beam-Await, PR-Review, Sampler-Session) reads as active and is never killed.
 	stepIdleTimeout time.Duration
 	// landingCfg is the loaded landing.yaml configuration, loaded once in wire().
@@ -122,7 +105,7 @@ type loomCLI struct {
 	spawnWatchdog func(hubPath, tmuxPath, shellPath string, suppress bool)
 	// midMerge is the seam through which start reads the pair's merge state before spawning or resuming a driver.
 	// The Test Tier Purity Invariant bars real mid-merge pairs in untagged tests; tests substitute a canned state or error.
-	midMerge func(*lymcwd.Location) (fabriclayout.MidMergeState, error)
+	midMerge func(*lymcwd.Location) (fabricengine.MidMergeState, error)
 	// recordedParentBranch is the seam through which start and resume read the pair's recorded parent branch.
 	// It tells a parked merge-in of that branch from any other merge state; a test substitutes a canned branch or error.
 	recordedParentBranch func(*lymcwd.Location) (string, error)
@@ -194,19 +177,6 @@ type loomCLI struct {
 	// runVerdict judges whether the act rule lets the run of slug act, with a shed pause set aside.
 	// A nil runVerdict checks nothing.
 	runVerdict func(l *lymcwd.Location, slug string) (runfsm.Verdict, error)
-	// notifyParent posts one line to the run's parent orch, signed as lym's loom program.
-	// A test substitutes a recorder.
-	notifyParent func(line string) error
-	// startPusher starts the pusher of the run's pair, which a resume does before it wakes a driver.
-	// Nil starts nothing, which only a hand-populated receiver has.
-	startPusher func()
-	// restoreStatusPane brings the worktree's reed session up and keeps, replaces or adds its status strand.
-	// A resume runs it before it puts a driver to work, so a run resumed after a reboot gets its status pane back.
-	// Nil restores nothing, which only a hand-populated receiver has.
-	restoreStatusPane func() error
-	// pusherStart is the pusher start startPusher runs.
-	// Nil selects runpusher.Start.
-	pusherStart func(runpusher.Target) (bool, error)
 }
 
 // newLoomCLI is the only place production code may build a *loomCLI.
@@ -222,13 +192,9 @@ func newLoomCLI() *loomCLI {
 	}
 	c.parentCodeDirt = c.parentCodeDirtFromFabric
 	c.ownerOf = func(l *lymcwd.Location, slug string) (ownerVerdict, error) {
-		return runOwnerVerdict(l, slug, machinename.ReadIdentity)
+		return runOwnerVerdict(l, slug, machinename.Name)
 	}
 	c.runVerdict = hubRunVerdict
-	c.notifyParent = func(line string) error {
-		_, err := orchcli.NotifyParent(c.location, loomProgram, line)
-		return err
-	}
 	c.spawnGoDriverFrom = func(executable string) (int, error) { return spawnDetachedDrive(c.location, executable) }
 	c.spawnGoDriver = func() (int, error) {
 		executable, err := selfexec.LymBinary()
@@ -269,14 +235,8 @@ func (s runnerMasterStarter) StartMaster(spec shuttleengine.Spec, gate shuttleen
 // cmd/lym sets cobra.EnableTraverseRunHooks, so cobra runs this pre-run for them too;
 // without the skip it would arm them and read a slug as a run-id.
 // The checklist pane verb is skipped as well, because arming refuses a missing seed and a pane must outlive one.
-// So is the pusher verb, which resolves the worktree its flag names and arms no run.
-//
-// It reconciles the hub's config after a binary change, ahead of any config load.
-// The reconcile comes before the groups' skip, so their verbs are covered too.
-// The bare group, checklist and pusher load no loom or tapestry config and reconcile nothing.
-// A cwd that is no git repository reconciles nothing either.
 func (c *loomCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) error {
-	if cmd.Name() == "loom" || cmd.Name() == "checklist" || cmd.Name() == "pusher" {
+	if cmd.Name() == "loom" || cmd.Name() == "checklist" || inReviewGroup(cmd) {
 		return nil
 	}
 
@@ -284,15 +244,6 @@ func (c *loomCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) err
 	out := cmd.OutOrStdout()
 
 	cwd, err := lymcwd.CwdFrom(ctx)
-	if err == nil {
-		// A cwd that does not resolve is left to the verb's own resolve, which refuses it.
-		if location, resolveErr := lymcwd.Resolve(cwd); resolveErr == nil {
-			hubgeom.ReconcileBeforeLoad(location)
-		}
-	}
-	if inReviewGroup(cmd) {
-		return nil
-	}
 	if err != nil {
 		output.Err(out, err.Error())
 		clihelp.Abort(ctx, 1)
@@ -560,7 +511,7 @@ Example:
 	pauseVerb.Args = cobra.MaximumNArgs(1)
 	gotoVerb.Args = cobra.MaximumNArgs(1)
 
-	parent.AddCommand(c.startCmd(), c.resumeCmd(), runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb, c.validateDiscussionCmd(), c.validatePlanCmd(), c.validatePartsCmd(), c.joinPartsCmd(), c.insertCardCmd(), c.removeCardCmd(), c.restoreRenumberCmd(), c.validateDescriptionCmd(), c.lintCommentsCmd(), c.lintPatternCmd(), c.fmtCmd(), c.commitRecordsCmd(), c.prContinueCmd(), c.samplerDoneCmd(), c.raddleProposeCmd(), c.raddleApproveCmd(), c.circlingCmd(), c.decisionCmd(), c.parentReviewCmd(), c.peersCmd(), c.arbiterCmd(), c.checklistCmd(), c.driveCmd(), c.pusherCmd())
+	parent.AddCommand(c.startCmd(), c.resumeCmd(), runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb, c.validateDiscussionCmd(), c.validatePlanCmd(), c.validatePartsCmd(), c.joinPartsCmd(), c.insertCardCmd(), c.removeCardCmd(), c.restoreRenumberCmd(), c.validateDescriptionCmd(), c.lintCommentsCmd(), c.lintPatternCmd(), c.fmtCmd(), c.commitRecordsCmd(), c.prContinueCmd(), c.samplerDoneCmd(), c.raddleProposeCmd(), c.raddleApproveCmd(), c.circlingCmd(), c.decisionCmd(), c.parentReviewCmd(), c.peersCmd(), c.arbiterCmd(), c.checklistCmd(), c.driveCmd())
 
 	return parent
 }

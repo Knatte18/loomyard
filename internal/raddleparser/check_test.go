@@ -74,11 +74,17 @@ func TestCheck(t *testing.T) {
 		}, []string{CheckBoardUnchecked}},
 		{"DependsOnCycle", func(p *Proposal, _ *BoardContext) { p.Parts[0].DependsOn = []string{"part-b"} }, []string{CheckDependsCycle}},
 		{"DependsOnUnknown", func(p *Proposal, _ *BoardContext) { p.Parts[1].DependsOn = append(p.Parts[1].DependsOn, "ghost") }, []string{CheckDependsUnknown}},
-		{"DependsOnANoteOnTheBoardPasses", func(p *Proposal, b *BoardContext) {
+		{"DependsOnNote", func(p *Proposal, b *BoardContext) {
 			b.Entries = append(b.Entries, BoardEntry{Slug: "idea", Kind: KindNote, Open: true})
 			p.Parts[1].DependsOn = append(p.Parts[1].DependsOn, "idea")
-		}, nil},
-		{"DependsOnPartThatIsAlsoANoteIsASlugClash", func(_ *Proposal, b *BoardContext) {
+		}, []string{CheckDependsNote}},
+		{"DependsOnNoteWhileFiling", func(p *Proposal, b *BoardContext) {
+			b.Entries = append(b.Entries, BoardEntry{Slug: "idea", Kind: KindNote, Open: true})
+			p.BoardChecked = append(p.BoardChecked, BoardCheck{Slug: "idea"})
+			p.Parts[1].DependsOn = append(p.Parts[1].DependsOn, "idea")
+			b.Filing = true
+		}, []string{CheckDependsNote}},
+		{"DependsOnPartThatIsAlsoANoteIsNoNoteDependency", func(_ *Proposal, b *BoardContext) {
 			b.Entries = append(b.Entries, BoardEntry{Slug: "part-a", Kind: KindNote, Open: true})
 		}, []string{CheckSlugTaken}},
 		{"DependsOnCheckedEntryGoneFromTheBoardPasses", func(p *Proposal, _ *BoardContext) { dependOnGoneEntry(p) }, nil},
@@ -110,15 +116,6 @@ func TestCheck(t *testing.T) {
 		{"SlugFiledTwice", func(p *Proposal, _ *BoardContext) {
 			p.Parts = append(p.Parts, Part{Slug: "part-b", Type: "feature", Labels: []string{"mod-a"}, Recipe: RecipeTapestry, Profile: "standard", Packages: []Package{{Path: "internal/c", Size: 1}}})
 		}, []string{CheckSlugDuplicate}},
-		{"SlugTheBoardRefuses", func(p *Proposal, _ *BoardContext) { p.Parts[1].Slug = refusedSlug }, []string{CheckSlugInvalid}},
-		{"ProjectSlugTheBoardRefuses", func(p *Proposal, _ *BoardContext) {
-			p.Shape = ShapeProject
-			p.Project = &Project{Slug: refusedSlug, Title: "Project", Type: "feature"}
-		}, []string{CheckSlugInvalid}},
-		{"NoSlugRuleChecksNothing", func(p *Proposal, b *BoardContext) {
-			p.Parts[1].Slug = refusedSlug
-			b.ValidateSlug = nil
-		}, nil},
 		{"TapestryWithTwoParts", func(p *Proposal, _ *BoardContext) { p.Shape = ShapeTapestry }, []string{CheckShapeInvalid}},
 		{"ProjectShapeWithNoProject", func(p *Proposal, _ *BoardContext) { p.Shape = ShapeProject }, []string{CheckShapeInvalid}},
 		{"TasksShapeWithAProject", func(p *Proposal, _ *BoardContext) { p.Project = &Project{Slug: "proj-new", Type: "feature"} }, []string{CheckShapeInvalid}},
@@ -176,45 +173,29 @@ func TestCheck(t *testing.T) {
 	}
 }
 
-// TestCheck_DetailNamesTheWayForward pins the text that tells the author how to proceed past a refusal.
-//
-//testtiming:keep pins each refusal's detail text, its reason and way forward, which TestCheck never asserts
-func TestCheck_DetailNamesTheWayForward(t *testing.T) {
+// TestCheck_DependsOnNoteDetailNamesTheWayForward pins the text that tells the author how to proceed.
+func TestCheck_DependsOnNoteDetailNamesTheWayForward(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	tests := []struct {
-		name   string
-		check  string
-		mutate func(p *Proposal, b *BoardContext)
-		want   []string
-	}{
-		{"SlugInvalid", CheckSlugInvalid, func(p *Proposal, _ *BoardContext) { p.Parts[1].Slug = refusedSlug }, []string{
-			`slug "refused-slug" is refused`, "pick a slug the board admits", "lym loom raddle-propose",
-		}},
+	proposal, board := validProposal(), validBoard()
+	board.Entries = append(board.Entries, BoardEntry{Slug: "idea", Kind: KindNote, Open: true})
+	proposal.Parts[1].DependsOn = append(proposal.Parts[1].DependsOn, "idea")
+
+	var details []string
+	for _, finding := range Check(proposal, checkRecord, board) {
+		if finding.Check == CheckDependsNote {
+			details = append(details, finding.Detail)
+		}
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			proposal, board := validProposal(), validBoard()
-			tt.mutate(&proposal, &board)
 
-			var details []string
-			for _, finding := range Check(proposal, checkRecord, board) {
-				if finding.Check == tt.check {
-					details = append(details, finding.Detail)
-				}
-			}
-
-			if len(details) != 1 {
-				t.Fatalf("Check() %s details = %q; want exactly one", tt.check, details)
-			}
-			for _, want := range tt.want {
-				if !strings.Contains(details[0], want) {
-					t.Errorf("%s detail = %q; want it to contain %q", tt.check, details[0], want)
-				}
-			}
-		})
+	if len(details) != 1 {
+		t.Fatalf("Check() depends-note details = %q; want exactly one", details)
+	}
+	for _, want := range []string{`the note "idea"`, "drop the dependency", `lym board promote '{"slug":"idea"}'`} {
+		if !strings.Contains(details[0], want) {
+			t.Errorf("depends-note detail = %q; want it to contain %q", details[0], want)
+		}
 	}
 }
 

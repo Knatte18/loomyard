@@ -43,11 +43,9 @@ const remoteRejectedPrefix = "! [remote rejected]"
 // retryablePushRefusal finds the "! [remote rejected] <src> -> <dst> (<reason>)" line in err's stderr that refuses ref.
 // It returns that line and reports whether the refusal is retryable.
 // The line belongs to ref when source and destination both name it, as a short or full refs/heads/ or refs/tags/ name.
-// A destination also names ref when it maps through ns to ref's local name.
-// That is how git prints a push into a namespaced remote.
 // The refusal is retryable when its reason is exactly "(failed)" or contains "cannot lock ref" or one of extraReasons.
 // Every other stderr line is ignored, and an empty ref matches no line.
-func retryablePushRefusal(err error, ref string, ns RefNamespace, extraReasons []string) (line string, retryable bool) {
+func retryablePushRefusal(err error, ref string, extraReasons []string) (line string, retryable bool) {
 	var gitErr *gitexec.GitError
 	if ref == "" || !errors.As(err, &gitErr) {
 		return "", false
@@ -67,7 +65,7 @@ func retryablePushRefusal(err error, ref string, ns RefNamespace, extraReasons [
 			continue
 		}
 		reason = "(" + reason
-		if !namesRef(strings.TrimSpace(source), ref, ns) || !namesRef(strings.TrimSpace(destination), ref, ns) {
+		if !namesRef(strings.TrimSpace(source), ref) || !namesRef(strings.TrimSpace(destination), ref) {
 			continue
 		}
 		if reason == "(failed)" || strings.Contains(reason, "cannot lock ref") || containsAny(reason, extraReasons) {
@@ -79,23 +77,13 @@ func retryablePushRefusal(err error, ref string, ns RefNamespace, extraReasons [
 
 // namesRef reports whether name is ref in its short form or its full refs/heads/ or refs/tags/ form.
 // A ref given in full form also matches its short form, which is how git prints a pushed ref.
-// A name that maps through ns to a local ref name matches when that local name does.
-func namesRef(name, ref string, ns RefNamespace) bool {
-	if namesLocalRef(name, ref) {
-		return true
-	}
-	local, mapped := ns.LocalRef(name)
-	return mapped && namesLocalRef(local, ref)
-}
-
-// namesLocalRef reports whether name is ref in its short form or its full refs/heads/ or refs/tags/ form.
-func namesLocalRef(name, ref string) bool {
-	for _, namespace := range []string{localHeadsPrefix, localTagsPrefix} {
+func namesRef(name, ref string) bool {
+	for _, namespace := range []string{"refs/heads/", "refs/tags/"} {
 		if short, found := strings.CutPrefix(ref, namespace); found {
 			return name == ref || name == short
 		}
 	}
-	return name == ref || name == localHeadsPrefix+ref || name == localTagsPrefix+ref
+	return name == ref || name == "refs/heads/"+ref || name == "refs/tags/"+ref
 }
 
 // PushWithRetry calls push once, then once more after each delay in delays.
@@ -110,8 +98,8 @@ func namesLocalRef(name, ref string) bool {
 // and the local ref is not stale.
 // The retry is the intended path for it,
 // and the Warn each retry logs is the signal that surfaced the race.
-func PushWithRetry(push func() error, ref string, ns RefNamespace, delays []time.Duration, sleep func(time.Duration)) error {
-	return PushWithRetryReasons(push, ref, ns, delays, sleep, nil)
+func PushWithRetry(push func() error, ref string, delays []time.Duration, sleep func(time.Duration)) error {
+	return PushWithRetryReasons(push, ref, delays, sleep, nil)
 }
 
 // PushWithRetryReasons calls push and retries a remote refusal of ref whose reason contains one of extraReasons.
@@ -119,7 +107,7 @@ func PushWithRetry(push func() error, ref string, ns RefNamespace, delays []time
 // The check still reads only the "remote rejected" line naming ref,
 // and the number of attempts stays one more than delays holds,
 // so a refusal that never clears still ends in an error wrapping ErrPushRetriesExhausted.
-func PushWithRetryReasons(push func() error, ref string, ns RefNamespace, delays []time.Duration, sleep func(time.Duration), extraReasons []string) error {
+func PushWithRetryReasons(push func() error, ref string, delays []time.Duration, sleep func(time.Duration), extraReasons []string) error {
 	if sleep == nil {
 		sleep = func(delay time.Duration) { time.Sleep(delay + rand.N(delay/2+1)) }
 	}
@@ -128,7 +116,7 @@ func PushWithRetryReasons(push func() error, ref string, ns RefNamespace, delays
 		if err == nil {
 			return nil
 		}
-		line, retryable := retryablePushRefusal(err, ref, ns, extraReasons)
+		line, retryable := retryablePushRefusal(err, ref, extraReasons)
 		if !retryable {
 			return err
 		}

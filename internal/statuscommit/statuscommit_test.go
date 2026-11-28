@@ -11,23 +11,23 @@ import (
 
 // TestNew_OrdinaryPath covers the path with no merge in progress.
 // The seam commits with the message its prefix names, then runs afterCommit.
-// It starts the pusher once when the commit landed something and never when it did not.
+// It spawns the push only when the commit landed something.
 func TestNew_OrdinaryPath(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
-		name          string
-		prefix        string
-		producer      string
-		state         string
-		committed     bool
-		wantMessage   string
-		wantStartPush bool
+		name        string
+		prefix      string
+		producer    string
+		state       string
+		committed   bool
+		wantMessage string
+		wantSpawn   bool
 	}{
-		{name: "loom", prefix: "loom", producer: "Discussion-Write", state: "running", committed: true, wantMessage: "loom: Discussion-Write -> running", wantStartPush: true},
-		{name: "batten", prefix: "batten", producer: "Run-Shed", state: "running", committed: true, wantMessage: "batten: Run-Shed -> running", wantStartPush: true},
-		{name: "NothingLanded", prefix: "loom", producer: "Discussion-Write", state: "running", committed: false, wantMessage: "loom: Discussion-Write -> running", wantStartPush: false},
+		{name: "loom", prefix: "loom", producer: "Discussion-Write", state: "running", committed: true, wantMessage: "loom: Discussion-Write -> running", wantSpawn: true},
+		{name: "batten", prefix: "batten", producer: "Run-Shed", state: "running", committed: true, wantMessage: "batten: Run-Shed -> running", wantSpawn: true},
+		{name: "NothingLanded", prefix: "loom", producer: "Discussion-Write", state: "running", committed: false, wantMessage: "loom: Discussion-Write -> running", wantSpawn: false},
 	}
 
 	for _, tt := range tests {
@@ -43,9 +43,9 @@ func TestNew_OrdinaryPath(t *testing.T) {
 					gotMessage = msg
 					return tt.committed, nil
 				},
-				StartPush: func() bool {
-					calls = append(calls, "start-push")
-					return true
+				Spawn: func() error {
+					calls = append(calls, "spawn")
+					return nil
 				},
 			}
 			afterCommit := func(producer, state string) {
@@ -58,8 +58,8 @@ func TestNew_OrdinaryPath(t *testing.T) {
 			}
 
 			want := []string{"commit", fmt.Sprintf("after:%s:%s", tt.producer, tt.state)}
-			if tt.wantStartPush {
-				want = append(want, "start-push")
+			if tt.wantSpawn {
+				want = append(want, "spawn")
 			}
 			if !reflect.DeepEqual(calls, want) {
 				t.Errorf("calls = %v; want %v", calls, want)
@@ -103,20 +103,20 @@ func TestNew_CommitErrorPropagates(t *testing.T) {
 	t.Parallel()
 
 	commitErr := errors.New("commit failed")
-	startPushCalled := false
+	spawnCalled := false
 	afterCalled := false
 	deps := Deps{
 		MergeActive: func() (bool, error) { return false, nil },
 		Commit:      func(msg string) (bool, error) { return false, commitErr },
-		StartPush:   func() bool { startPushCalled = true; return true },
+		Spawn:       func() error { spawnCalled = true; return nil },
 	}
 
 	seam := New(deps, "loom", "loomcli", func(string, string) { afterCalled = true })
 	if err := seam("Discussion-Write", "running"); !errors.Is(err, commitErr) {
 		t.Errorf("seam(...) = %v; want %v", err, commitErr)
 	}
-	if startPushCalled {
-		t.Error("StartPush was called; want it skipped when Commit errors")
+	if spawnCalled {
+		t.Error("Spawn was called; want it skipped when Commit errors")
 	}
 	if afterCalled {
 		t.Error("afterCommit was called; want it skipped when Commit errors")
@@ -155,7 +155,7 @@ func TestNew_CommitFailureExplainedByTheReProbeTakesTheSkip(t *testing.T) {
 			t.Parallel()
 
 			probes := 0
-			startPushCalled := false
+			spawnCalled := false
 			deps := Deps{
 				MergeActive: func() (bool, error) {
 					probes++
@@ -164,8 +164,8 @@ func TestNew_CommitFailureExplainedByTheReProbeTakesTheSkip(t *testing.T) {
 					}
 					return tt.reProbe()
 				},
-				Commit:    func(msg string) (bool, error) { return false, tt.commitErr },
-				StartPush: func() bool { startPushCalled = true; return true },
+				Commit: func(msg string) (bool, error) { return false, tt.commitErr },
+				Spawn:  func() error { spawnCalled = true; return nil },
 			}
 
 			seam := New(deps, "loom", "loomcli", nil)
@@ -175,24 +175,31 @@ func TestNew_CommitFailureExplainedByTheReProbeTakesTheSkip(t *testing.T) {
 			if probes != 2 {
 				t.Errorf("MergeActive called %d time(s); want exactly 2 -- once before the commit, once to explain its failure", probes)
 			}
-			if startPushCalled {
-				t.Error("StartPush was called; want it skipped -- nothing was committed to push")
+			if spawnCalled {
+				t.Error("Spawn was called; want it skipped -- nothing was committed to push")
 			}
 		})
 	}
 }
 
-// TestNew_NilPushPanics pins the wiring guard: a seam with no pusher start would leave every transition unpublished.
-func TestNew_NilPushPanics(t *testing.T) {
+func TestNew_PushErrorReturnsNil(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	defer func() {
-		if recover() == nil {
-			t.Error("New(Deps{}, ...) returned; want a panic for a nil StartPush")
-		}
-	}()
-	New(Deps{MergeActive: func() (bool, error) { return false, nil }}, "loom", "loomcli", nil)
+	commits := 0
+	deps := Deps{
+		MergeActive: func() (bool, error) { return false, nil },
+		Commit:      func(msg string) (bool, error) { commits++; return true, nil },
+		Spawn:       func() error { return errors.New("spawn failed") },
+	}
+
+	seam := New(deps, "loom", "loomcli", nil)
+	if err := seam("Discussion-Write", "running"); err != nil {
+		t.Errorf("seam(...) = %v; want nil -- a push that fails to spawn never halts a run", err)
+	}
+	if commits != 1 {
+		t.Errorf("Commit called %d time(s); want exactly 1 -- the transition is not retried", commits)
+	}
 }
 
 func TestNew_MergeActiveSkips(t *testing.T) {
@@ -214,7 +221,7 @@ func TestNew_MergeActiveSkips(t *testing.T) {
 			deps := Deps{
 				MergeActive: tt.mergeActive,
 				Commit:      func(msg string) (bool, error) { called = append(called, "commit"); return true, nil },
-				StartPush:   func() bool { called = append(called, "start-push"); return true },
+				Spawn:       func() error { called = append(called, "spawn"); return nil },
 			}
 
 			seam := New(deps, "loom", "loomcli", func(string, string) { called = append(called, "after") })

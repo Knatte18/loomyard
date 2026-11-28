@@ -12,7 +12,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"slices"
 
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/runplan"
@@ -94,18 +93,6 @@ type State struct {
 	// Webster reads the session through it, since a shuttle run record does not outlive its run.
 	// Empty for a state written before the field existed.
 	MasterEngine string `json:"masterEngine,omitempty"`
-	// MasterNotePaths holds every friction note path a Master prompt of this run named, in spawn order, each once.
-	// A spawn appends its prompt's path, so a resumed Master's fresh note joins the note an earlier Master was given.
-	// The parent audit lets Master write each of them, since a prompt of this run asked Master to.
-	// Empty when friction notes were off at every Master spawn.
-	MasterNotePaths []string `json:"masterNotePaths,omitempty"`
-	// MasterNotePath is the single note path written by a binary that records no MasterNotePaths.
-	// LoadState moves it to the end of MasterNotePaths, so a loaded state holds it empty and a save drops its key.
-	MasterNotePath string `json:"masterNotePath,omitempty"`
-	// MasterRecordsBase is the records side's HEAD commit from before the most recent Master spawned.
-	// accept-audit compares a suspect records-side path against it.
-	// Empty when the records side held no commit, and for a state written before the field existed.
-	MasterRecordsBase string `json:"masterRecordsBase,omitempty"`
 	// SeenForkTranscripts holds every subagent transcript path already attributed to a batch.
 	// The set spans all batches in this run.
 	// record-batch's incremental audit consults it to parse only what is new.
@@ -123,18 +110,7 @@ type State struct {
 	PendingAuditFindings []PendingAuditFinding `json:"pendingAuditFindings,omitempty"`
 	// PreFixHead is the HEAD the latest verify-gate run started its fixes from.
 	// The gate records it at its first failed evaluation and clears it on a pass, so a later verb can reset to it.
-	// A later run's gate takes it over, recording none of its own, while it still bounds the fixes made since it.
 	PreFixHead string `json:"preFixHead,omitempty"`
-	// FixedHead is the HEAD the latest verify gate passed at after its fixers committed above the pre-fix head.
-	// The gate's commit check vetted the commits between FixedBase and it as fix commits.
-	// So accept-audit accepts them as it accepts a clean parent merge.
-	// A pass with no fix commits leaves it unchanged, and a reset clears it.
-	FixedHead string `json:"fixedHead,omitempty"`
-	// FixedBase is the commit FixedHead's vetted commits start above: the pre-fix head of the gate that passed.
-	// A pass keeps the earlier base when its pre-fix head is the earlier FixedHead or only clean parent merges above it.
-	// The two ranges then join.
-	// It is written and cleared with FixedHead.
-	FixedBase string `json:"fixedBase,omitempty"`
 	// VerifyFixers records every cold verify-gate fixer strand fix-verify spawned, in spawn order.
 	// Only the last can be running.
 	// A state written before this field existed loads it as nil.
@@ -223,10 +199,6 @@ func LoadState(websterDir, scratchDir string) (*State, error) {
 	if !found {
 		return nil, nil
 	}
-	if st.MasterNotePath != "" && !slices.Contains(st.MasterNotePaths, st.MasterNotePath) {
-		st.MasterNotePaths = append(st.MasterNotePaths, st.MasterNotePath)
-	}
-	st.MasterNotePath = ""
 	return &st, nil
 }
 

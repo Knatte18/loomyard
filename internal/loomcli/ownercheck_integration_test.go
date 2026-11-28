@@ -15,7 +15,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/loomcli"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
-	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -33,7 +32,7 @@ func TestRunOwnerVerdict(t *testing.T) {
 	t.Parallel()
 	boardkit.InstallReplay(t)
 
-	const slug = hubforge.TemplatePairSlug
+	const slug = "owned-task"
 	const here = "here"
 	tests := []struct {
 		name string
@@ -51,7 +50,8 @@ func TestRunOwnerVerdict(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			h := hubforge.CopyHub(t, loomcli.PairHubShape)
+			h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+			hubforge.AddPair(t, h, slug)
 			running := shedengine.Status{CurrentProducer: "Run-Shed", State: shedengine.StateRunning}
 			statusPath, statusLockPath := shedrun.StatusFile(h.Location, slug), shedrun.StatusLock(h.Location, slug)
 			for _, dir := range []string{filepath.Dir(statusPath), filepath.Dir(statusLockPath)} {
@@ -89,7 +89,7 @@ func TestRunOwnerVerdict(t *testing.T) {
 				t.Fatalf("resolve the pair's worktree: %v", err)
 			}
 
-			got, err := loomcli.RunOwnerVerdict(taskLocation, slug, func() (machinename.Identity, error) { return machinename.Identity{Name: here}, nil })
+			got, err := loomcli.RunOwnerVerdict(taskLocation, slug, func() (string, error) { return here, nil })
 
 			if err != nil {
 				t.Fatalf("RunOwnerVerdict() error = %v; want nil", err)

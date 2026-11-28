@@ -65,7 +65,6 @@ func TestParseSessionSignals(t *testing.T) {
 		stampLine(hookEventStop, "2026-10-24T11:55:31Z"), stopPayload,
 		stampLine(hookEventPermissionRequest, ""), permissionRequestPayload,
 		preToolUsePayload, slashPrompt, forkStart, exitRecordLine,
-		stampLine(hookEventPostToolUse, "2026-10-24T11:55:32Z"), `{"session_id":"s","hook_event_name":"PostToolUse","tool_name":"apply_patch","tool_input":{}}`,
 	}
 	complete := ""
 	for _, line := range lines {

@@ -16,23 +16,6 @@ Imports only the standard library.
 It holds only the vocabulary predicates and their data.
 That limit matters because the owner-set row exempts the whole package from the bare-token rule.
 
-## `internal/fabriclayout`
-
-Imports only the standard library, `internal/lymdirs` and `internal/weftname`.
-It runs no git, starts no process, touches no filesystem and takes no lock:
-no `os`, `io/ioutil`, `io/fs`, `syscall` or `net` import, nor any import under `os/` or `net/`.
-Bound: the scan sees imports only; a `path/filepath` call that reads the disk, such as `Abs` or `EvalSymlinks`, is held by review.
-It holds fabric's names, path constants, pure path functions, plain option and result types and the mutation record data,
-so a caller that needs only these leaves the engine's gate scope.
-
-## `internal/fabriccore`
-
-Imports only the standard library and `internal/fabriclayout`.
-It runs no git, starts no process, touches no filesystem and takes no lock:
-no `os`, `io/ioutil`, `io/fs`, `syscall` or `net` import, nor any import under `os/` or `net/`.
-Bound: the scan sees imports only; a `path/filepath` call that reads the disk is held by review.
-It holds the snapshot, phase, action list and outcome types and fabric's rules over them, so each rule is checked at tier0.
-
 ## `internal/haltnote`
 
 Imports only the standard library.
@@ -96,11 +79,6 @@ Imports only the standard library, `internal/logger`, `internal/stencil` and `in
 - `internal/logger` is admitted because the marker-absent helper logs the absence.
   Returning a bool instead would make every caller duplicate that logging.
   `internal/friction` already reaches `logger` through `internal/stencilstore`, so the admission widens nothing.
-
-## `internal/claudeimports`
-
-Imports only the standard library.
-It is the one expander of Claude instruction-file imports that `claudeengine`, `heddleengine` and `codexengine` share.
 
 ## `internal/durfmt`
 

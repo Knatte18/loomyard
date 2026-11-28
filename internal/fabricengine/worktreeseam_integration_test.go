@@ -22,7 +22,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/heddleengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -46,7 +45,7 @@ const seamHeal = "lym heddle render"
 // recordedEvent is one event the fake seam heard, with what held true when it fired.
 type recordedEvent struct {
 	kind  string
-	event fabriclayout.WorktreeEvent
+	event fabricengine.WorktreeEvent
 	// boltPresent is whether the Bolt checkout existed when the seam was called.
 	boltPresent bool
 	// linesSeeded is whether every excluded path was in the repository's exclude file when the seam was called.
@@ -62,18 +61,18 @@ type fakeWorktreeSeam struct {
 	events    []recordedEvent
 	failUnder string
 	// onMade, when set, runs on every made event after it is recorded.
-	onMade func(fabriclayout.WorktreeEvent)
+	onMade func(fabricengine.WorktreeEvent)
 }
 
-func (s *fakeWorktreeSeam) Made(event fabriclayout.WorktreeEvent) error {
+func (s *fakeWorktreeSeam) Made(event fabricengine.WorktreeEvent) error {
 	return s.hear(seamMade, event)
 }
 
-func (s *fakeWorktreeSeam) TookIn(event fabriclayout.WorktreeEvent) error {
+func (s *fakeWorktreeSeam) TookIn(event fabricengine.WorktreeEvent) error {
 	return s.hear(seamTookIn, event)
 }
 
-func (s *fakeWorktreeSeam) hear(kind string, event fabriclayout.WorktreeEvent) error {
+func (s *fakeWorktreeSeam) hear(kind string, event fabricengine.WorktreeEvent) error {
 	_, boltErr := os.Stat(event.BoltDir)
 	recorded := recordedEvent{kind: kind, event: event, boltPresent: boltErr == nil, linesSeeded: excludeLinesPresent(s.t, event)}
 	if kind == seamMade {
@@ -100,7 +99,7 @@ func (s *fakeWorktreeSeam) failWithin(dir string) {
 }
 
 // onMadeDo makes the seam run fn on every made event; a nil fn clears it.
-func (s *fakeWorktreeSeam) onMadeDo(fn func(fabriclayout.WorktreeEvent)) {
+func (s *fakeWorktreeSeam) onMadeDo(fn func(fabricengine.WorktreeEvent)) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.onMade = fn
@@ -126,7 +125,7 @@ func within(path, dir string) bool {
 
 // excludeLinesPresent reports whether every path the event excludes has its anchored line in the exclude file.
 // The exclude file is the one of the repository checked out at the event's root.
-func excludeLinesPresent(t *testing.T, event fabriclayout.WorktreeEvent) bool {
+func excludeLinesPresent(t *testing.T, event fabricengine.WorktreeEvent) bool {
 	t.Helper()
 	commonDir := strings.TrimSpace(gitkit.Git(t, event.Root, "rev-parse", "--git-common-dir"))
 	if !filepath.IsAbs(commonDir) {
@@ -151,18 +150,6 @@ func requireOneEvent(t *testing.T, seam *fakeWorktreeSeam, dir, kind string) rec
 	found := seam.under(dir, kind)
 	if len(found) != 1 {
 		t.Fatalf("%q events under %s = %d; want 1", kind, dir, len(found))
-	}
-	return found[0]
-}
-
-// requireCloneMadeEvent fails the test unless a clone under dir fired two made events for one worktree.
-// It returns the first of them.
-// The first is the clone's wiring event; the second is the one its hub walk fires when it reconciles the prime.
-func requireCloneMadeEvent(t *testing.T, seam *fakeWorktreeSeam, dir string) recordedEvent {
-	t.Helper()
-	found := seam.under(dir, seamMade)
-	if len(found) != 2 || found[0].event.Root != found[1].event.Root {
-		t.Fatalf("%q events under %s = %+v; want the clone's event and its hub walk's, both for one worktree", seamMade, dir, found)
 	}
 	return found[0]
 }
@@ -193,9 +180,6 @@ func TestWorktreeSeam_Events(t *testing.T) {
 		if !result.WarpAdvanced || result.SeamWarning != "" {
 			t.Errorf("Pull() WarpAdvanced = %v, SeamWarning = %q; want warp advanced with no warning", result.WarpAdvanced, result.SeamWarning)
 		}
-		if warning := fabricengine.NotifyWorktreeMadeAt(hub.PrimeWorktree()); warning != "" {
-			t.Errorf("NotifyWorktreeMadeAt() with no seam = %q; want none", warning)
-		}
 	})
 
 	// Every later subtest's template copy is taken before the seam is installed:
@@ -216,7 +200,7 @@ func TestWorktreeSeam_Events(t *testing.T) {
 	fab := hubforge.OpenFabric(t, hub)
 
 	t.Run("A hub made through the clone and a pair added to it each fire one made event", func(t *testing.T) {
-		made := requireCloneMadeEvent(t, seam, hub.Path)
+		made := requireOneEvent(t, seam, hub.Path, seamMade)
 		if made.event.Root != hub.PrimeWorktree() {
 			t.Errorf("clone made event root = %q; want the prime worktree %q", made.event.Root, hub.PrimeWorktree())
 		}
@@ -229,39 +213,16 @@ func TestWorktreeSeam_Events(t *testing.T) {
 
 		hubforge.AddPair(t, hub, "p1")
 		pair := seam.under(hub.Path, seamMade)
-		if len(pair) != 3 {
-			t.Fatalf("made events after the add = %d; want 3, the clone's and its walk's for the prime and the pair's", len(pair))
+		if len(pair) != 2 {
+			t.Fatalf("made events after the add = %d; want 2", len(pair))
 		}
-		added := pair[2]
+		added := pair[1]
 		wantScratch := filepath.Join(hub.PairRecordsSibling("p1"), lymdirs.DotLymDirName)
 		if added.event.Root != hub.PairCodeWorktree("p1") || added.event.ScratchDir != wantScratch || added.event.BoltDir != hub.BoardDir() {
 			t.Errorf("added made event = %+v; want root %q, scratch dir %q and Bolt dir %q", added.event, hub.PairCodeWorktree("p1"), wantScratch, hub.BoardDir())
 		}
 		if !added.boltPresent || !added.linesSeeded {
 			t.Errorf("added made event = %+v; want the Bolt checkout present and the exclude lines seeded", added)
-		}
-	})
-
-	t.Run("NotifyWorktreeMadeAt fires one made event for a hub worktree and only a warning for a path in none", func(t *testing.T) {
-		prime := hub.PrimeWorktree()
-		before := len(seam.under(prime, seamMade))
-		if warning := fabricengine.NotifyWorktreeMadeAt(prime); warning != "" {
-			t.Errorf("NotifyWorktreeMadeAt(prime) = %q; want none", warning)
-		}
-		if got := len(seam.under(prime, seamMade)); got != before+1 {
-			t.Errorf("made events under the prime after NotifyWorktreeMadeAt = %d; want %d", got, before+1)
-		}
-
-		outside := t.TempDir()
-		eventCount := func() int {
-			seam.mu.Lock()
-			defer seam.mu.Unlock()
-			return len(seam.events)
-		}
-		total := eventCount()
-		requireWarning(t, "NotifyWorktreeMadeAt(outside)", fabricengine.NotifyWorktreeMadeAt(outside), outside)
-		if got := eventCount(); got != total {
-			t.Errorf("events after NotifyWorktreeMadeAt on a path in no worktree = %d; want %d", got, total)
 		}
 	})
 
@@ -282,7 +243,7 @@ func TestWorktreeSeam_Events(t *testing.T) {
 		seam.failWithin(container)
 		t.Cleanup(func() { seam.failWithin("") })
 
-		res, err := fabriccli.CloneAndWire(container, fabriclayout.CloneOptions{
+		res, err := fabriccli.CloneAndWire(container, fabricengine.CloneOptions{
 			WeftURL:   filepath.ToSlash(hub.RecordsBare),
 			WarpURL:   filepath.ToSlash(hub.CodeBare),
 			Shortname: hubforge.TestShortname,
@@ -298,7 +259,7 @@ func TestWorktreeSeam_Events(t *testing.T) {
 		container := t.TempDir()
 		seam.failWithin(container)
 		// A directory at the build stamp's path makes the walk's last write fail once the made event has fired.
-		seam.onMadeDo(func(event fabriclayout.WorktreeEvent) {
+		seam.onMadeDo(func(event fabricengine.WorktreeEvent) {
 			stampPath := hubreconcile.Geometry{BoardDir: event.BoltDir}.StampPath()
 			if err := os.MkdirAll(stampPath, 0o755); err != nil {
 				t.Errorf("block the build stamp at %s: %v", stampPath, err)
@@ -309,12 +270,12 @@ func TestWorktreeSeam_Events(t *testing.T) {
 			seam.onMadeDo(nil)
 		})
 
-		_, err := fabriccli.CloneAndWire(container, fabriclayout.CloneOptions{
+		_, err := fabriccli.CloneAndWire(container, fabricengine.CloneOptions{
 			WeftURL:   filepath.ToSlash(hub.RecordsBare),
 			WarpURL:   filepath.ToSlash(hub.CodeBare),
 			Shortname: hubforge.TestShortname,
 		})
-		made := requireCloneMadeEvent(t, seam, container)
+		made := requireOneEvent(t, seam, container, seamMade)
 		hubforge.RegisterTeardown(t, filepath.Dir(made.event.Root))
 		if err == nil {
 			t.Fatal("CloneAndWire() with a blocked build stamp error = nil; want the walk to fail the clone")
@@ -329,7 +290,7 @@ func TestWorktreeSeam_Events(t *testing.T) {
 		t.Cleanup(fabricengine.InstallWorktreeSeam(heddleengine.Seam{}))
 		container := t.TempDir()
 
-		res, err := fabriccli.CloneAndWire(container, fabriclayout.CloneOptions{
+		res, err := fabriccli.CloneAndWire(container, fabricengine.CloneOptions{
 			WeftURL:   filepath.ToSlash(hub.RecordsBare),
 			WarpURL:   filepath.ToSlash(hub.CodeBare),
 			Shortname: hubforge.TestShortname,
@@ -379,7 +340,7 @@ func TestWorktreeSeam_Events(t *testing.T) {
 				if envelope.SeamWarning == nil {
 					t.Fatalf("fabric clone output = %s; want a seam_warning field", out.String())
 				}
-				prime := requireCloneMadeEvent(t, seam, container).event.Root
+				prime := requireOneEvent(t, seam, container, seamMade).event.Root
 				if tt.failing {
 					requireWarning(t, "seam_warning", *envelope.SeamWarning, prime)
 				} else if *envelope.SeamWarning != "" {
@@ -478,9 +439,9 @@ func TestWorktreeSeam_Events(t *testing.T) {
 		if err != nil {
 			t.Fatalf("PullHub() error = %v", err)
 		}
-		var primeSide *fabriclayout.HubPullSide
+		var primeSide *fabricengine.HubPullSide
 		for i := range hubResult.Sides {
-			if hubResult.Sides[i].Kind == fabriclayout.HubPullPrime {
+			if hubResult.Sides[i].Kind == fabricengine.HubPullPrime {
 				primeSide = &hubResult.Sides[i]
 			}
 		}
@@ -542,9 +503,9 @@ func TestWorktreeSeam_Events(t *testing.T) {
 		originCommitFile(t, pair.RecordsBare, pair.recordsName, "moved/records.txt", "moved")
 		originCommitFile(t, pair.RecordsBare, "main", "moved/bolt.txt", "moved")
 
-		report := moveReconcile(t, pair.originHub, fabriclayout.ReconcileScope{}, fabricengine.OriginSeams{})
+		report := moveReconcile(t, pair.originHub, fabricengine.ReconcileScope{}, fabricengine.OriginSeams{})
 		for _, row := range []struct{ repo, branch string }{{"code", pair.codeBranch}, {"records", pair.recordsName}, {"bolt", "main"}} {
-			if outcome := requireState(t, report, row.repo, row.branch, fabriclayout.BranchLevel); !outcome.Moved || outcome.Warning != "" {
+			if outcome := requireState(t, report, row.repo, row.branch, fabricengine.BranchLevel); !outcome.Moved || outcome.Warning != "" {
 				t.Errorf("%s outcome = %+v; want it moved with no warning", row.repo, outcome)
 			}
 		}
@@ -557,8 +518,8 @@ func TestWorktreeSeam_Events(t *testing.T) {
 		t.Cleanup(func() { seam.failWithin("") })
 		logs.Reset()
 		originCommitFile(t, pair.CodeBare, pair.codeBranch, "moved/again.txt", "moved")
-		report = moveReconcile(t, pair.originHub, fabriclayout.ReconcileScope{}, fabricengine.OriginSeams{})
-		outcome := requireState(t, report, "code", pair.codeBranch, fabriclayout.BranchLevel)
+		report = moveReconcile(t, pair.originHub, fabricengine.ReconcileScope{}, fabricengine.OriginSeams{})
+		outcome := requireState(t, report, "code", pair.codeBranch, fabricengine.BranchLevel)
 		if !outcome.Moved {
 			t.Errorf("code outcome = %+v; want it moved despite the seam failure", outcome)
 		}
@@ -569,6 +530,9 @@ func TestWorktreeSeam_Events(t *testing.T) {
 		}
 	})
 }
+
+// lymcwdDotLym is the never-tracked directory name under a pair's anchor.
+const lymcwdDotLym = ".lym"
 
 // locationOf resolves the location of the worktree at root, failing the test on error.
 func locationOf(t *testing.T, root string) *lymcwd.Location {

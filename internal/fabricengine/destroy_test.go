@@ -16,11 +16,53 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
+
+// TestGate_CheckOrdering proves the pipeline stops at the first failing check.
+// It submits a request that would fail two checks and asserts the reported check is the earlier one.
+//
+//testtiming:keep the gate stopping at the first failing check, containment before ownership before dirtiness; coverage of its blocks by other tests does not show an assertion of this
+func TestGate_CheckOrdering(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Run("ContainmentBeforeOwnership", func(t *testing.T) {
+		container := t.TempDir()
+		// The target lies outside container, so it fails containment.
+		// It also declares an ownership kind that would fail: `ownedFabricHub` against a plain directory.
+		// The reported check must be `CheckContainment`.
+		outside := t.TempDir()
+		req := pathRequest{
+			what:      "test",
+			container: container,
+			target:    outside,
+			ownership: ownedFabricHub(),
+			dirtiness: dirtyScopeTracked(),
+		}
+		err := checkPathRequest(req)
+		assertRefusalCheck(t, err, CheckContainment)
+	})
+
+	t.Run("OwnershipBeforeDirtiness", func(t *testing.T) {
+		container := t.TempDir()
+		target := filepath.Join(container, "child")
+		if err := os.Mkdir(target, 0o755); err != nil {
+			t.Fatalf("mkdir target: %v", err)
+		}
+		// The target passes containment and fails ownership (not a hub).
+		// The dirtiness declaration would need a git probe, but ownership fails first, so it is never reached.
+		req := pathRequest{
+			what:      "test",
+			container: container,
+			target:    target,
+			ownership: ownedFabricHub(),
+			dirtiness: dirtyScopeTracked(),
+		}
+		err := checkPathRequest(req)
+		assertRefusalCheck(t, err, CheckOwnership)
+	})
+}
 
 // TestGate_Containment checks that the gate refuses a target that is the container itself or resolves outside it.
 //
@@ -175,7 +217,7 @@ func TestGate_SlugValidation(t *testing.T) {
 		slug string
 	}{
 		{"DotDot", ".."},
-		{"ReservedBoardName", fabriclayout.BoardDirName},
+		{"ReservedBoardName", BoardDirName},
 		{"WeftSuffixed", "task-weft"},
 		{"Empty", ""},
 		{"ContainsSeparator", "a/b"},
@@ -263,6 +305,27 @@ func TestGate_Force(t *testing.T) {
 	})
 }
 
+// TestGate_DirtinessNAEmptyReason proves dirtinessNA("") is a refusal, not a pass.
+//
+//testtiming:keep dirtinessNA("") being a refusal and not a pass; coverage of its blocks by other tests does not show an assertion of this
+func TestGate_DirtinessNAEmptyReason(t *testing.T) {
+	tiergate.Require(t, 0)
+	container := t.TempDir()
+	target := filepath.Join(container, "child")
+	if err := os.Mkdir(target, 0o755); err != nil {
+		t.Fatalf("mkdir target: %v", err)
+	}
+	req := pathRequest{
+		what:      "test",
+		container: container,
+		target:    target,
+		ownership: ownedFabricHub(),
+		dirtiness: dirtinessNA(""),
+	}
+	err := checkPathRequest(req)
+	assertRefusalCheck(t, err, CheckDirtiness)
+}
+
 // TestGate_ZeroValueDeclarationsAreRefusals proves an omitted ownership or dirtiness declaration is refused.
 // It holds for both request shapes, and also when the target is absent.
 //
@@ -318,6 +381,38 @@ func TestGate_ZeroValueDeclarationsAreRefusals(t *testing.T) {
 		if err := checkPathRequest(req); err != nil {
 			t.Errorf("checkPathRequest on a well-formed request with an absent target = %v; want nil", err)
 		}
+	})
+
+	t.Run("PathZeroOwnership", func(t *testing.T) {
+		container := t.TempDir()
+		target := filepath.Join(container, "child")
+		if err := os.Mkdir(target, 0o755); err != nil {
+			t.Fatalf("mkdir target: %v", err)
+		}
+		req := pathRequest{
+			what:      "test",
+			container: container,
+			target:    target,
+			dirtiness: dirtyScopeTracked(),
+		}
+		err := checkPathRequest(req)
+		assertRefusalCheck(t, err, CheckOwnership)
+	})
+
+	t.Run("PathZeroDirtiness", func(t *testing.T) {
+		container := t.TempDir()
+		target := filepath.Join(container, "child")
+		if err := os.Mkdir(target, 0o755); err != nil {
+			t.Fatalf("mkdir target: %v", err)
+		}
+		req := pathRequest{
+			what:      "test",
+			container: container,
+			target:    target,
+			ownership: ownedFabricHub(),
+		}
+		err := checkPathRequest(req)
+		assertRefusalCheck(t, err, CheckDirtiness)
 	})
 
 	t.Run("BranchZeroOwnership", func(t *testing.T) {
@@ -531,6 +626,7 @@ func TestGate_AbsentTargetIsNoOp(t *testing.T) {
 		ownedWarpCheckout(container),
 		ownedPairWarpCheckout(container, container, "main"),
 		ownedFabricHub(),
+		ownedUnderGeometryRoot(filepath.Join(container, launchersDirName)),
 		ownedFreshlyCreatedPath(createdToken{path: absent, worktree: false}),
 		ownedFreshlyCreatedWorktree(createdToken{path: absent, worktree: true}),
 		ownedWiredJunction([]string{absent}, "/somewhere"),
@@ -551,6 +647,25 @@ func TestGate_AbsentTargetIsNoOp(t *testing.T) {
 				t.Errorf("checkPathRequest() on absent target = %v; want nil", err)
 			}
 		})
+	}
+
+	// removePath is a no-op on an absent target: it destroys nothing, and it reports no error.
+	req := pathRequest{
+		what:      "test",
+		container: container,
+		target:    absent,
+		ownership: ownedFabricHub(),
+		dirtiness: dirtyScopeTracked(),
+	}
+	rec := NewMutations("")
+	if err := removePath(rec, req); err != nil {
+		t.Errorf("removePath() on absent target = %v; want nil", err)
+	}
+	if _, err := os.Lstat(absent); !os.IsNotExist(err) {
+		t.Errorf("removePath() on absent target unexpectedly created something at %s", absent)
+	}
+	if got := rec.Len(); got != 0 {
+		t.Errorf("removePath() on absent target recorded %d entries; want 0 (a successful no-op is not a removal)", got)
 	}
 }
 
@@ -771,7 +886,7 @@ func TestGate_RecordOnlyOnObservedEffect(t *testing.T) {
 			t.Fatalf("removePath() on directory = %v; want nil", err)
 		}
 		entries := rec.Entries()
-		if len(entries) != 1 || entries[0].Kind != fabriclayout.KindPathRemoved || entries[0].Detail != "recursive" {
+		if len(entries) != 1 || entries[0].Kind != KindPathRemoved || entries[0].Detail != "recursive" {
 			t.Errorf("removePath() on directory recorded %+v; want exactly one path_removed with detail recursive", entries)
 		}
 	})
@@ -794,7 +909,7 @@ func TestGate_RecordOnlyOnObservedEffect(t *testing.T) {
 			t.Fatalf("removePath() on file = %v; want nil", err)
 		}
 		entries := rec.Entries()
-		if len(entries) != 1 || entries[0].Kind != fabriclayout.KindPathRemoved || entries[0].Detail != "single" {
+		if len(entries) != 1 || entries[0].Kind != KindPathRemoved || entries[0].Detail != "single" {
 			t.Errorf("removePath() on file recorded %+v; want exactly one path_removed with detail single", entries)
 		}
 	})
@@ -878,7 +993,7 @@ func TestGate_RecordOnlyOnObservedEffect(t *testing.T) {
 			t.Fatalf("removeLink() on present link = %v; want nil", err)
 		}
 		entries := rec.Entries()
-		if len(entries) != 1 || entries[0].Kind != fabriclayout.KindLinkRemoved {
+		if len(entries) != 1 || entries[0].Kind != KindLinkRemoved {
 			t.Errorf("removeLink() on present link recorded %+v; want exactly one link_removed", entries)
 		}
 	})
@@ -891,7 +1006,7 @@ func TestGate_RecordOnlyOnObservedEffect(t *testing.T) {
 			t.Fatalf("createExclusiveDir() = %v; want nil", err)
 		}
 		entries := rec.Entries()
-		if len(entries) != 1 || entries[0].Kind != fabriclayout.KindDirCreated {
+		if len(entries) != 1 || entries[0].Kind != KindDirCreated {
 			t.Errorf("createExclusiveDir() recorded %+v; want exactly one dir_created", entries)
 		}
 	})
@@ -1006,6 +1121,31 @@ func TestDirtyPathsOutside(t *testing.T) {
 			got := dirtyPathsOutside(tc.porcelain, tc.own)
 			if strings.Join(got, "|") != strings.Join(tc.want, "|") {
 				t.Errorf("dirtyPathsOutside(%q, %q) = %q; want %q", tc.porcelain, tc.own, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestInWorktreeStaging(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		path string
+		want bool
+	}{
+		{"NestedUnderStagingDirectory", "/hub/" + worktreeStagingPrefix + "a1b2c3/feature", true},
+		{"StagingDirectoryItself", "/hub/" + worktreeStagingPrefix + "a1b2c3", true},
+		{"PrefixOnlyName", "/hub/" + strings.TrimSuffix(worktreeStagingPrefix, "-") + "/feature", false},
+		{"PrefixInsideAName", "/hub/not" + worktreeStagingPrefix + "x/feature", false},
+		{"UnrelatedPath", "/hub/feature", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := InWorktreeStaging(tt.path); got != tt.want {
+				t.Errorf("InWorktreeStaging(%q) = %v; want %v", tt.path, got, tt.want)
 			}
 		})
 	}

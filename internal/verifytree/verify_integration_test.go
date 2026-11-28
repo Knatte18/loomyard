@@ -351,7 +351,7 @@ func TestVerify_Scenario(t *testing.T) {
 			t.Fatal(err)
 		}
 		named := logs[len(logs)-1].path
-		if err := WriteLandingFailure(p, LandingFailure{Kind: testFailureKind, LogPath: named, Head: "abc"}); err != nil {
+		if err := WriteLandingFailure(p, LandingFailure{Kind: FailureKindPlanVerify, LogPath: named, Head: "abc"}); err != nil {
 			t.Fatal(err)
 		}
 		mustVerify(t, p, "exit 1")
@@ -676,7 +676,7 @@ func TestVerify_PauseHold(t *testing.T) {
 		}},
 		{"a record naming HEAD's tree written during the stop's pause skips after the resume", false, func(t *testing.T, e *pauseEnv) {
 			out := stopAndWait(t, e)
-			tree, err := HeadTree(e.p.Worktree)
+			tree, err := headTree(e.p.Worktree)
 			if err != nil {
 				t.Fatal(err)
 			}

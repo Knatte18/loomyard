@@ -12,7 +12,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/preflight"
 )
@@ -33,7 +32,7 @@ func InstallPushNotifier(ctx context.Context) {
 		return
 	}
 	hubPath := filepath.Clean(location.HubPath)
-	fabricengine.InstallPushNotifier(func(failedHubPath string, notice fabriclayout.PushNotice) (bool, error) {
+	fabricengine.InstallPushNotifier(func(failedHubPath string, notice fabricengine.PushNotice) (bool, error) {
 		if filepath.Clean(failedHubPath) != hubPath {
 			return false, nil
 		}

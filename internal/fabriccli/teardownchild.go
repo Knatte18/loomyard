@@ -10,7 +10,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/spf13/cobra"
@@ -43,7 +42,7 @@ func warnWhenEnded(hubPath, slug string) (stop func()) {
 // and the parent stops reading after it.
 func teardownChildCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:         fabriclayout.TeardownChildVerb,
+		Use:         fabricengine.TeardownChildVerb,
 		Short:       "hold a pair's teardown lock and run the remote steps of its teardown",
 		Hidden:      true,
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceInternal},
@@ -56,9 +55,9 @@ it is not a verb to run by hand.`,
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
 			}
-			slug, _ := cmd.Flags().GetString(fabriclayout.TeardownChildSlugFlag)
-			try, _ := cmd.Flags().GetBool(fabriclayout.TeardownChildTryFlag)
-			wait, _ := cmd.Flags().GetDuration(fabriclayout.TeardownChildWaitFlag)
+			slug, _ := cmd.Flags().GetString(fabricengine.TeardownChildSlugFlag)
+			try, _ := cmd.Flags().GetBool(fabricengine.TeardownChildTryFlag)
+			wait, _ := cmd.Flags().GetDuration(fabricengine.TeardownChildWaitFlag)
 			cwd, err := lymcwd.CwdFrom(cmd.Context())
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), 1)
@@ -70,7 +69,7 @@ it is not a verb to run by hand.`,
 				clihelp.SetExit(cmd.Context(), 1)
 				return nil
 			}
-			logger.SetDurableSinkDir(fabriclayout.HubLogsDir(hubLocation.HubPath))
+			logger.SetDurableSinkDir(fabricengine.HubLogsDir(hubLocation.HubPath))
 			defer warnWhenEnded(hubLocation.HubPath, slug)()
 			if err := fabricengine.RunTeardownChild(hubLocation.HubPath, slug, try, wait, os.Stdin, os.Stdout); err != nil {
 				logger.Warn("fabriccli: teardown child failed", "slug", slug, "error", err)
@@ -79,8 +78,8 @@ it is not a verb to run by hand.`,
 			return nil
 		},
 	}
-	cmd.Flags().String(fabriclayout.TeardownChildSlugFlag, "", "the slug whose teardown lock the child holds")
-	cmd.Flags().Bool(fabriclayout.TeardownChildTryFlag, false, "take the lock by one attempt instead of waiting")
-	cmd.Flags().Duration(fabriclayout.TeardownChildWaitFlag, fabriclayout.StatusPushLockWait, "how long to wait for the lock")
+	cmd.Flags().String(fabricengine.TeardownChildSlugFlag, "", "the slug whose teardown lock the child holds")
+	cmd.Flags().Bool(fabricengine.TeardownChildTryFlag, false, "take the lock by one attempt instead of waiting")
+	cmd.Flags().Duration(fabricengine.TeardownChildWaitFlag, fabricengine.StatusPushLockWait, "how long to wait for the lock")
 	return cmd
 }

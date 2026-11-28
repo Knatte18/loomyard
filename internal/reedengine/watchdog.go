@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// watchdogOption validates a reed.watchdog config value and normalizes it to a boolean enable.
+// watchdogOption validates a watchdog config value and normalizes it to a boolean enable.
 // The value is trimmed and lowercased.
 // "on" yields true and "off" yields false.
 // Any other value, including the empty string, is an error naming the offending value.

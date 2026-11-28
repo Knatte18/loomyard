@@ -4,7 +4,9 @@
 package loomcli
 
 import (
+	"errors"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
@@ -16,47 +18,49 @@ import (
 
 // TestWiredCommitStatus_FinishedRunEntry drives the seam that wireLightweight and wire each install.
 // The test takes a run through its last transition and asserts the board entry that transition leaves.
-// A recipe with no Finalize row leaves the run-held task a Sketch with no status.
-// It does so whether or not another entry depends on it.
+// A recipe with no Finalize row leaves the run-held task a Sketch with no status;
+// the task stays draft instead when another entry depends on it.
 // A recipe with a Finalize row leaves the task with the status of the last running transition.
 // It is serial because it sets the board skip variable, which is process-global.
-// Its rows run in parallel under it, each over a hub copy of its own.
 func TestWiredCommitStatus_FinishedRunEntry(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Setenv("BOARD_SKIP_GIT", "1")
+	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 
-	const slug = hubforge.TemplatePairSlug
 	running := boardengine.RunStatus("running", "Discussion-Bouncer")
 	wirings := []struct {
 		name string
-		wire func(c *loomCLI, location *lymcwd.Location) error
+		// slugSuffix keeps the pairs of the two entry points apart on the shared hub.
+		slugSuffix string
+		wire       func(c *loomCLI, location *lymcwd.Location) error
 	}{
-		{"WireLightweight", func(c *loomCLI, location *lymcwd.Location) error {
+		{"WireLightweight", "light", func(c *loomCLI, location *lymcwd.Location) error {
 			return c.wireLightweight(location, location.AnchorPath())
 		}},
-		{"Wire", func(c *loomCLI, location *lymcwd.Location) error {
+		{"Wire", "full", func(c *loomCLI, location *lymcwd.Location) error {
 			return c.wire(location, location.AnchorPath())
 		}},
 	}
 	tests := []struct {
 		name   string
+		slug   string
 		recipe string
 		// wantKind and wantLabels are the entry's kind and labels after the finish, and wantStatus its status, "" for none.
 		wantKind   string
 		wantLabels []string
 		wantStatus string
-		// dependedOn makes another entry depend on the run's entry.
+		// dependedOn makes another entry depend on the run's entry, so the board refuses to make it a Sketch.
 		dependedOn bool
 	}{
-		{"FinalizeLessRunMakesTheEntryASketch", shedrun.RecipeMotif, boardengine.KindNote, []string{boardengine.SketchType}, "", false},
-		{"FinalizingRunLeavesTheLastRunningStatus", shedrun.RecipeTapestry, boardengine.KindTask, []string{"bug"}, running, false},
-		{"DependedOnEntryStillBecomesASketch", shedrun.RecipeMotif, boardengine.KindNote, []string{boardengine.SketchType}, "", true},
+		{"FinalizeLessRunMakesTheEntryASketch", "motifrun", shedrun.RecipeMotif, boardengine.KindNote, []string{boardengine.SketchType}, "", false},
+		{"FinalizingRunLeavesTheLastRunningStatus", "tapestryrun", shedrun.RecipeTapestry, boardengine.KindTask, []string{"bug"}, running, false},
+		{"RefusedSketchLeavesTheEntryDraft", "dependedrun", shedrun.RecipeMotif, boardengine.KindTask, []string{"bug"}, boardengine.StatusDraft, true},
 	}
 	for _, w := range wirings {
 		for _, tt := range tests {
 			t.Run(w.name+"_"+tt.name, func(t *testing.T) {
-				t.Parallel()
-				hub := hubforge.CopyHub(t, pairHubShape)
+				slug := tt.slug + w.slugSuffix
+				hubforge.AddPair(t, hub, slug)
 				location, err := lymcwd.ResolveWorktree(hub.PairCodeWorktree(slug))
 				if err != nil {
 					t.Fatalf("ResolveWorktree() error = %v; want nil", err)
@@ -108,29 +112,28 @@ func TestWiredCommitStatus_FinishedRunEntry(t *testing.T) {
 // A recipe with a Raddle-File row writes nothing once the run's filing mark stands in the prime.
 // A recipe with no such row writes whether or not a mark stands.
 // It is serial because it sets the board skip variable, which is process-global.
-// Its rows run in parallel under it, each over a hub copy of its own.
 func TestCommitStatusDeps_SkipsTheBoardStatusAfterAFilingMark(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Setenv("BOARD_SKIP_GIT", "1")
+	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 
-	const slug = hubforge.TemplatePairSlug
 	before := boardengine.RunStatus("running", "Raddle-Write")
 	written := boardengine.RunStatus("running", "Raddle-File")
 	tests := []struct {
 		name       string
+		slug       string
 		recipe     string
 		marked     bool
 		wantStatus string
 	}{
-		{"ARaddleFileRecipeWithoutTheMarkWrites", shedrun.RecipeArras, false, written},
-		{"ARaddleFileRecipeWithTheMarkWritesNothing", shedrun.RecipeArras, true, before},
-		{"ARecipeWithNoRaddleFileRowWritesDespiteTheMark", shedrun.RecipeTapestry, true, written},
+		{"ARaddleFileRecipeWithoutTheMarkWrites", "arrasopen", shedrun.RecipeArras, false, written},
+		{"ARaddleFileRecipeWithTheMarkWritesNothing", "arrasmarked", shedrun.RecipeArras, true, before},
+		{"ARecipeWithNoRaddleFileRowWritesDespiteTheMark", "tapestrymarked", shedrun.RecipeTapestry, true, written},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			hub := hubforge.CopyHub(t, pairHubShape)
-			location, err := lymcwd.ResolveWorktree(hub.PairCodeWorktree(slug))
+			hubforge.AddPair(t, hub, tt.slug)
+			location, err := lymcwd.ResolveWorktree(hub.PairCodeWorktree(tt.slug))
 			if err != nil {
 				t.Fatalf("ResolveWorktree() error = %v; want nil", err)
 			}
@@ -138,10 +141,10 @@ func TestCommitStatusDeps_SkipsTheBoardStatusAfterAFilingMark(t *testing.T) {
 			if err != nil {
 				t.Fatalf("OpenHub() error = %v; want nil", err)
 			}
-			if _, err := board.UpsertTask(map[string]any{"slug": slug, "title": "Run", "kind": "task", "labels": []string{"bug"}}); err != nil {
+			if _, err := board.UpsertTask(map[string]any{"slug": tt.slug, "title": "Run", "kind": "task", "labels": []string{"bug"}}); err != nil {
 				t.Fatalf("UpsertTask() error = %v; want nil", err)
 			}
-			if err := board.SetRunStatus(slug, before); err != nil {
+			if err := board.SetRunStatus(tt.slug, before); err != nil {
 				t.Fatalf("SetRunStatus() error = %v; want nil", err)
 			}
 			if tt.marked {
@@ -149,7 +152,7 @@ func TestCommitStatusDeps_SkipsTheBoardStatusAfterAFilingMark(t *testing.T) {
 				if err != nil {
 					t.Fatalf("primeOfHub() error = %v; want nil", err)
 				}
-				if err := shedrun.WriteFilingMark(prime, slug); err != nil {
+				if err := shedrun.WriteFilingMark(prime, tt.slug); err != nil {
 					t.Fatalf("WriteFilingMark() error = %v; want nil", err)
 				}
 			}
@@ -159,9 +162,79 @@ func TestCommitStatusDeps_SkipsTheBoardStatusAfterAFilingMark(t *testing.T) {
 				t.Fatalf("SetBoardStatus() error = %v; want nil", err)
 			}
 
-			task, found, err := board.GetTask(slug)
+			task, found, err := board.GetTask(tt.slug)
 			if err != nil || !found || task.Status == nil || *task.Status != tt.wantStatus {
 				t.Errorf("board entry = %+v, found %t, error %v; want status %q", task, found, err, tt.wantStatus)
+			}
+		})
+	}
+}
+
+// TestSketchFinish_TellsTheParentOnlyOfARefusedSketch drives a finished motif run's Finish against a real hub board.
+// The finish posts one notice when the board refuses the Sketch, naming the dependent entry and both ways forward.
+// It posts none when the board takes the Sketch.
+// A notice that cannot be sent leaves the finish succeeding after the one attempt.
+// It is serial because it sets the board skip variable, which is process-global.
+func TestSketchFinish_TellsTheParentOnlyOfARefusedSketch(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Setenv("BOARD_SKIP_GIT", "1")
+	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+
+	tests := []struct {
+		name       string
+		slug       string
+		dependedOn bool
+		wantNotice bool
+		// notifyErr is what the notify seam returns after recording its line.
+		notifyErr error
+	}{
+		{"ASketchTheBoardTakesPostsNothing", "takenrun", false, false, nil},
+		{"ARefusedSketchPostsOneNotice", "refusedrun", true, true, nil},
+		{"ANoticeThatCannotBeSentStillFinishesTheRun", "unsentrun", true, true, errors.New("creel is down")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hubforge.AddPair(t, hub, tt.slug)
+			location, err := lymcwd.ResolveWorktree(hub.PairCodeWorktree(tt.slug))
+			if err != nil {
+				t.Fatalf("ResolveWorktree() error = %v; want nil", err)
+			}
+			board, err := boardengine.OpenHub(location.HubPath)
+			if err != nil {
+				t.Fatalf("OpenHub() error = %v; want nil", err)
+			}
+			if _, err := board.UpsertTask(map[string]any{"slug": tt.slug, "title": "Finish", "kind": "task", "labels": []string{"bug"}}); err != nil {
+				t.Fatalf("UpsertTask() error = %v; want nil", err)
+			}
+			dependent := tt.slug + "-after"
+			if tt.dependedOn {
+				if _, err := board.UpsertTask(map[string]any{"slug": dependent, "title": "After", "kind": "task", "labels": []string{"bug"}, "depends_on": []string{tt.slug}}); err != nil {
+					t.Fatalf("UpsertTask() error = %v; want nil", err)
+				}
+			}
+
+			var notices []string
+			finish := sketchFinish(location, shedrun.SelfRunID, func(line string) error {
+				notices = append(notices, line)
+				return tt.notifyErr
+			})
+			if err := finish(); err != nil {
+				t.Fatalf("Finish() error = %v; want nil", err)
+			}
+
+			if !tt.wantNotice {
+				if len(notices) != 0 {
+					t.Errorf("notices = %q; want none", notices)
+				}
+				return
+			}
+			if len(notices) != 1 {
+				t.Fatalf("notices = %q; want one", notices)
+			}
+			for _, want := range []string{"loom " + tt.slug + ":", dependent, "lym board set-deps", `lym board upsert '{"slug":"` + tt.slug + `","kind":"note","labels":["sketch"],"status":null`, `"recipe":"raddle"`, "lym board set-status"} {
+				if !strings.Contains(notices[0], want) {
+					t.Errorf("notice = %q; want it to name %q", notices[0], want)
+				}
 			}
 		})
 	}

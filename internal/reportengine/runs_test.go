@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -32,7 +32,7 @@ type expectation struct {
 }
 
 func tagName(slug, sha string) string {
-	return fabriclayout.ArchiveTagPrefix + slug + "/" + sha
+	return fabricengine.ArchiveTagPrefix + slug + "/" + sha
 }
 
 func TestCompute_SelectsRuns(t *testing.T) {
@@ -111,13 +111,6 @@ func TestCompute_SelectsRuns(t *testing.T) {
 					runs:    []wantRun{{tag: tagName("darned", "t1"), week: "2026-W02", recipe: "darn"}},
 					partial: []string{tagName("darning", "t2")},
 				}
-			},
-		},
-		{
-			name: "a finalized hardener run is a full run carrying its recipe",
-			setup: func(w *world) expectation {
-				w.tag("hardened", "t1", at(1), seedText("hardener"), statusText(w.t, "Harden-Bouncer", "Finalize"))
-				return expectation{runs: []wantRun{{tag: tagName("hardened", "t1"), week: "2026-W02", recipe: "hardener"}}}
 			},
 		},
 		{
@@ -218,123 +211,6 @@ func TestCompute_SelectsRuns(t *testing.T) {
 				if got := report.Findings[i]; got.Tag != wantFinding.Tag || got.File != wantFinding.File || got.Error == "" {
 					t.Errorf("finding %d = %+v; want tag %q, file %q and an error", i, got, wantFinding.Tag, wantFinding.File)
 				}
-			}
-		})
-	}
-}
-
-// battenReadExpectation is what a row expects of the one run in the window.
-// snapshots holds the history length of each batten snapshot, and reads the status reads per commit.
-// walks holds the Since of each walk of the records branch for status files, in order.
-// A zero time is a walk of the whole history.
-type battenReadExpectation struct {
-	snapshots []int
-	reads     map[string]int
-	walks     []time.Time
-}
-
-// TestCompute_ReadsBattenStatusesOnlyOverEachRunsSpan pins the bound of the batten source's read:
-// a run's status file is read once at each commit of its span and at the commit before its seed.
-// It is read nowhere else, however far back the walk of the records branch has to reach for the seed.
-// The walks double their lookback and stop at the run's earlier tag or seed stamp.
-// None walks the whole history unless the run offers no stop.
-func TestCompute_ReadsBattenStatusesOnlyOverEachRunsSpan(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-	create, runShed, land := battenrecipe.NameWorktreeCreate, battenrecipe.NameRunShed, battenrecipe.NameLand
-
-	tests := []struct {
-		name  string
-		setup func(w *world) battenReadExpectation
-	}{
-		{
-			name: "a reused slug's run in the window reads its span and the status before its seed, and none of the earlier run's",
-			setup: func(w *world) battenReadExpectation {
-				w.battenStatus("b0", 0, "reused", create)
-				w.battenStatus("b1", 1, "reused", create, runShed)
-				w.battenStatus("b2", 2, "reused", create, runShed, land)
-				w.finishedRun("reused", "t1", 3)
-				w.recordsCommit("gap", 200, "")
-				w.battenStatus("b300", 300, "reused", create)
-				w.battenStatus("b301", 301, "reused", create, runShed)
-				w.battenStatus("b302", 302, "reused", create, runShed, land)
-				w.finishedRun("reused", "t2", 303)
-				return battenReadExpectation{
-					snapshots: []int{1, 2, 3},
-					reads:     map[string]int{"b0": 0, "b1": 0, "b2": 0, "gap": 1, "b300": 1, "b301": 1, "b302": 1},
-					walks:     []time.Time{at(82)},
-				}
-			},
-		},
-		{
-			name: "a run whose seed lies before the walk's first lookback widens the walk by doubling it and reads its span once",
-			setup: func(w *world) battenReadExpectation {
-				w.battenStatus("l0", 0, "long", create)
-				w.battenStatus("l270", 270, "long", create, runShed)
-				w.finishedRun("long", "t1", 300)
-				return battenReadExpectation{
-					snapshots: []int{1, 2},
-					reads:     map[string]int{"l0": 1, "l270": 1},
-					walks:     []time.Time{at(82), at(-86)},
-				}
-			},
-		},
-		{
-			name: "a run with no earlier tag and no batten status stops widening a week before its seed stamp",
-			setup: func(w *world) battenReadExpectation {
-				w.tag("bare", "t1", at(300), seedStartedAt(at(240)), statusText(w.t, "Plan-Write", "Finalize"))
-				return battenReadExpectation{reads: map[string]int{}, walks: []time.Time{at(82), at(72)}}
-			},
-		},
-		{
-			name: "a reused slug's run with no status after its earlier tag widens the walk only back to that tag",
-			setup: func(w *world) battenReadExpectation {
-				w.battenStatus("b0", 0, "reused", create)
-				w.finishedRun("reused", "t1", 3)
-				w.finishedRun("reused", "t2", 300)
-				return battenReadExpectation{reads: map[string]int{"b0": 0}, walks: []time.Time{at(82), at(3)}}
-			},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			w := newWorld(t)
-			want := tt.setup(w)
-
-			report, err := Compute(w.sources(), Options{Since: at(250)})
-			if err != nil {
-				t.Fatalf("Compute error = %v", err)
-			}
-
-			if len(report.Runs) != 1 {
-				t.Fatalf("runs = %+v; want the one run in the window", report.Runs)
-			}
-			var snapshots []int
-			for _, snapshot := range report.Runs[0].battenSnapshots {
-				snapshots = append(snapshots, len(snapshot.History))
-			}
-			if !slices.Equal(snapshots, want.snapshots) {
-				t.Errorf("snapshots = %v; want %v", snapshots, want.snapshots)
-			}
-			for sha, wantReads := range want.reads {
-				if got := w.repo.fileReads[sha]; got != wantReads {
-					t.Errorf("reads at %s = %d; want %d", sha, got, wantReads)
-				}
-			}
-
-			var walks []time.Time
-			for _, query := range w.repo.logQueries {
-				if query.PathPrefix == "" {
-					continue
-				}
-				if !query.FirstParent {
-					t.Errorf("records walk %+v; want a first-parent walk, which stops at the first commit before its floor", query)
-				}
-				walks = append(walks, query.Since)
-			}
-			if !slices.EqualFunc(walks, want.walks, time.Time.Equal) {
-				t.Errorf("records walks from %v; want from %v", walks, want.walks)
 			}
 		})
 	}

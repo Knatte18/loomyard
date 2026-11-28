@@ -10,7 +10,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
@@ -18,17 +17,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
-	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/pawlengine"
 	"github.com/Knatte18/loomyard/internal/pullrequest"
-	"github.com/Knatte18/loomyard/internal/pushledger"
 	"github.com/Knatte18/loomyard/internal/reviewbudget"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -43,12 +39,11 @@ func hubCreateDeps(prime *lymcwd.Location) (createDeps, error) {
 		return createDeps{}, err
 	}
 	topology := fabricengine.NewTopology(config)
-	boardDir := fabriclayout.BoardDir(prime.HubPath)
+	boardDir := fabricengine.BoardDir(prime.HubPath)
 
 	return createDeps{
 		PrimeName:  prime.WorktreeName,
 		Machine:    machinename.Name,
-		Identity:   machinename.ReadIdentity,
 		ReadOwners: func() (boardengine.Owners, error) { return boardengine.ReadOwners(boardDir) },
 		ParentOf: func(slug string) (string, error) {
 			return hubgeom.ParentOf(prime, slug)
@@ -65,11 +60,6 @@ func hubCreateDeps(prime *lymcwd.Location) (createDeps, error) {
 			return topology.TaskBranchOnOrigin(prime, slug)
 		},
 		SetOwners: func(req boardengine.OwnerRequest) (boardengine.OwnerWrite, error) {
-			identity, err := boardengine.EnsureIdentity()
-			if err != nil {
-				return boardengine.OwnerWrite{}, err
-			}
-			req.Identity, req.Machine = identity, identity.Name
 			return boardengine.SetOwners(boardDir, req)
 		},
 		RunStatus: func(slug string) (shedengine.State, bool, error) {
@@ -95,17 +85,17 @@ func hubLandDeps(prime *lymcwd.Location) landDeps {
 		return lymcwd.ResolveWorktree(fabricengine.WorktreePath(prime, slug))
 	}
 	// beamOrigin returns the beam's location with the origin record of its pair.
-	beamOrigin := func(slug string) (*lymcwd.Location, fabriclayout.Origin, error) {
+	beamOrigin := func(slug string) (*lymcwd.Location, fabricengine.Origin, error) {
 		beam, err := beamOf(slug)
 		if err != nil {
-			return nil, fabriclayout.Origin{}, err
+			return nil, fabricengine.Origin{}, err
 		}
 		origin, found, err := fabricengine.ReadOriginFor(prime, slug)
 		if err != nil {
-			return nil, fabriclayout.Origin{}, err
+			return nil, fabricengine.Origin{}, err
 		}
 		if !found {
-			return nil, fabriclayout.Origin{}, fmt.Errorf("the pair of the beam %s has no readable origin record; way forward: run `lym fabric reconcile` to restore its records worktree, then run the verb again", slug)
+			return nil, fabricengine.Origin{}, fmt.Errorf("the pair of the beam %s has no readable origin record; way forward: run `lym fabric reconcile` to restore its records worktree, then run the verb again", slug)
 		}
 		return beam, origin, nil
 	}
@@ -188,16 +178,15 @@ func hubLandDeps(prime *lymcwd.Location) landDeps {
 		return pair, head, present, nil
 	}
 	return landDeps{
-		Machine:  machinename.Name,
-		Identity: machinename.ReadIdentity,
+		Machine: machinename.Name,
 		ReadOwners: func() (boardengine.Owners, error) {
-			return boardengine.ReadOwners(fabriclayout.BoardDir(prime.HubPath))
+			return boardengine.ReadOwners(fabricengine.BoardDir(prime.HubPath))
 		},
 		ParentOf: func(slug string) (string, error) {
 			return hubgeom.ParentOf(prime, slug)
 		},
 		PairPresent: func(slug string) bool { return pairWorktreePresent(prime, slug) },
-		OriginRecord: func(slug string) (fabriclayout.Origin, bool, error) {
+		OriginRecord: func(slug string) (fabricengine.Origin, bool, error) {
 			return fabricengine.ReadOriginFor(prime, slug)
 		},
 		ChildStatus: func(slug string) (shedengine.Status, bool, error) {
@@ -265,7 +254,7 @@ func hubLandDeps(prime *lymcwd.Location) landDeps {
 		},
 		Now: time.Now,
 		Tasks: func() ([]boardengine.Task, error) {
-			return boardengine.ReadTasks(fabriclayout.BoardDir(prime.HubPath))
+			return boardengine.ReadTasks(fabricengine.BoardDir(prime.HubPath))
 		},
 		// The board gives a new task the draft status, so the filing releases it with a second write.
 		// The writes carry no strand name, so the run-agent task guard does not judge them.
@@ -296,7 +285,6 @@ func hubLandDeps(prime *lymcwd.Location) landDeps {
 		},
 		// The budget is the prime's loom config, the hub's own, which no run profile reaches.
 		CodeReviewCaps: func() (reviewbudget.Caps, error) {
-			hubgeom.ReconcileBeforeLoad(prime)
 			cfg, err := loomengine.LoadConfig(fabricengine.ConfigDirs(prime), "loom")
 			if err != nil {
 				return reviewbudget.Caps{}, err
@@ -317,7 +305,7 @@ func hubLandDeps(prime *lymcwd.Location) landDeps {
 		// The stamp runs inside the description's own commit, after the description validated.
 		// One commit then holds both files, and a refused description stamps nothing.
 		// A repeat commit over an unchanged directory is a no-op.
-		RecordDescription: func(slug, from string, at time.Time) (string, error) {
+		RecordDescription: func(slug string, at time.Time) (string, error) {
 			beam, err := beamOf(slug)
 			if err != nil {
 				return "", err
@@ -334,17 +322,7 @@ func hubLandDeps(prime *lymcwd.Location) landDeps {
 				_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), beam, []string{loomengine.LandingDirRel()}, fmt.Sprintf("beam: change description for %s", slug), fabricengine.EnvSyncOptions())
 				return err
 			}
-			cfg, err := landingshed.LoadConfig(fabricengine.ConfigDirs(beam), "landing")
-			if err != nil {
-				return "", err
-			}
-			record := func() error { return landingshed.RecordBeamDescription(slug, path, cfg.ForbiddenTerms(), commit) }
-			if from != "" {
-				record = func() error {
-					return landingshed.ReplaceBeamDescription(slug, from, path, cfg.ForbiddenTerms(), commit)
-				}
-			}
-			if err := record(); err != nil {
+			if err := landingshed.RecordBeamDescription(slug, path, commit); err != nil {
 				return "", err
 			}
 			return path, nil
@@ -367,21 +345,7 @@ func hubLandDeps(prime *lymcwd.Location) landDeps {
 			if err != nil {
 				return "", err
 			}
-			// A push capped below an unsettled landing would leave origin's branch short of the head returned here.
-			landings, err := pushledger.OwedTips(prime.HubPath, pushledger.RecordsKey(fabricengine.RecordsWorktree(beam)))
-			if err != nil {
-				return "", err
-			}
-			unrecorded, err := fabricengine.UnsettledLandings(beam)
-			if err != nil {
-				return "", err
-			}
-			if len(landings) > 0 || len(unrecorded) > 0 {
-				return "", fmt.Errorf("%w: the beam %s carries a landing its parent push has not settled, so nothing was pushed; way forward: wait for the beam's parent push, or run the step its refused-push record names, then rerun `lym beam pr`", errBeamHoldsLandings, slug)
-			}
-			// A beam verb may run inside the beam's pair, so a hand-over leaves the pair for the parent's dobby to remove.
-			push := pairteardown.RunPush{LockWait: fabriclayout.StatusPushLockWait, InsidePair: true}
-			if _, err := pairteardown.PushRun(prime, beam, slug, push); err != nil {
+			if _, err := fabricengine.PushPairAnchored(beam, fabricengine.EnvSyncOptions(), fabricengine.StatusPushLockWait); err != nil {
 				return "", err
 			}
 			pair, err := fabricengine.Open(beam)
@@ -413,13 +377,19 @@ func hubLandDeps(prime *lymcwd.Location) landDeps {
 			}
 			return pair.HeadSHA()
 		},
-		// The beam's own worktree's beam.yaml files apply first and its parents' after, as for a run landing the beam.
+		// The origin record names the parent pair, so the receiving branch's own beam.yaml decides, as for a run landing on it.
 		PullRequestMode: func(slug string) (string, bool, error) {
-			chain, err := hubgeom.TaskSettingChain(prime, slug)
+			_, origin, err := beamOrigin(slug)
 			if err != nil {
 				return "", false, err
 			}
-			mode, err := dobbyengine.LookupPullRequest(chain)
+			parent := prime
+			if origin.ParentWorktree != "" {
+				if parent, err = lymcwd.ResolveWorktree(fabricengine.WorktreePath(prime, origin.ParentWorktree)); err != nil {
+					return "", false, err
+				}
+			}
+			cfg, err := dobbyengine.LoadConfig(fabricengine.ConfigDirs(parent))
 			if err != nil {
 				return "", false, err
 			}
@@ -428,7 +398,7 @@ func hubLandDeps(prime *lymcwd.Location) landDeps {
 				return "", false, err
 			}
 			required, err := parentRuleRequired(context.Background(), side.Origin, side.ParentBranch, openAPI)
-			return mode, required, err
+			return cfg.PullRequest, required, err
 		},
 		Sleep: func(ctx context.Context, d time.Duration) error {
 			timer := time.NewTimer(d)
@@ -477,11 +447,15 @@ func hubLandDeps(prime *lymcwd.Location) landDeps {
 			if err != nil {
 				return nil, err
 			}
-			cfg, err := landingshed.LoadConfig(fabricengine.ConfigDirs(beam), "landing")
+			findings, err := summaryparser.ValidateDescription(summaryparser.Path(loomengine.LandingDir(beam)))
 			if err != nil {
 				return nil, err
 			}
-			return descriptionFindings(summaryparser.Path(loomengine.LandingDir(beam)), cfg.ForbiddenTerms())
+			var lines []string
+			for _, finding := range findings {
+				lines = append(lines, finding.Error())
+			}
+			return lines, nil
 		},
 		// A pawl run's Finalize reads merged pull requests through this list, so ready and Finalize agree on what one lacks.
 		MergedLacks: func(slug, mergedHead string) ([]string, error) {
@@ -561,20 +535,6 @@ func beamDraftDeps(location *lymcwd.Location, slug, parentBranch string) landing
 			return commits, nil
 		},
 	}
-}
-
-// descriptionFindings lists the findings of the change description at path as their error texts, none when it is valid.
-// A missing file is a finding, and so is a line that one of forbidden matches.
-func descriptionFindings(path string, forbidden []*regexp.Regexp) ([]string, error) {
-	findings, err := summaryparser.ValidateDescription(path, forbidden)
-	if err != nil {
-		return nil, err
-	}
-	var lines []string
-	for _, finding := range findings {
-		lines = append(lines, finding.Error())
-	}
-	return lines, nil
 }
 
 // pairWorktreePresent reports whether this machine holds the worktree of slug's pair.

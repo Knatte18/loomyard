@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -24,8 +23,7 @@ import (
 // or it is refused with the create-path error.
 // The staged clones live under cwd and are removed before it returns.
 // requestedAnchor is the validated form of the explicit --subpath.
-// ns is the origin ref namespace of the records branches, the zero value for a two-repository hub.
-func checkSubpathBeforeReset(cwd, weftURL, warpURL, requestedAnchor string, ns gitrepo.RefNamespace) error {
+func checkSubpathBeforeReset(cwd, weftURL, warpURL, requestedAnchor string) error {
 	stageDir, err := os.MkdirTemp(cwd, warpProbeDirPrefix)
 	if err != nil {
 		return fmt.Errorf("create staging directory in %s: %w", cwd, err)
@@ -49,7 +47,7 @@ func checkSubpathBeforeReset(cwd, weftURL, warpURL, requestedAnchor string, ns g
 		return err
 	}
 
-	markerData, source, found, err := recordedAnchorOnWeft(weftURL, weftStage, warpBranch, ns)
+	markerData, source, found, err := recordedAnchorOnWeft(weftURL, weftStage, warpBranch)
 	if err != nil {
 		return err
 	}
@@ -71,25 +69,33 @@ func checkSubpathBeforeReset(cwd, weftURL, warpURL, requestedAnchor string, ns g
 // recordedAnchorOnWeft reads the anchor marker the hub clone would adopt, from the staged weft clone at weftStage.
 // The prime's weft branch, RecordsBranchName(warpBranch), supplies it when the remote carries that branch;
 // otherwise the weft's default HEAD supplies it, matching how the clone creates that branch.
-// A marker found on neither reports not found.
+// Failing both, the default HEAD supplies the legacy board marker only when the default branch is warpBranch itself;
+// the board checkout adopts a local branch of that name and is orphan-created otherwise.
 // source names where the marker was read, in adoptRecordedAnchor's wording.
-// Under a non-identity ns the staged clone is the code repository, whose HEAD is the code default branch.
-// The records branch is then read from the namespace alone, and an absent branch records no marker.
-func recordedAnchorOnWeft(weftURL, weftStage, warpBranch string, ns gitrepo.RefNamespace) (data []byte, source string, found bool, err error) {
-	primeBranch := fabriclayout.RecordsBranchName(warpBranch)
+func recordedAnchorOnWeft(weftURL, weftStage, warpBranch string) (data []byte, source string, found bool, err error) {
+	primeBranch := RecordsBranchName(warpBranch)
 	primeRef := "HEAD"
-	onRemote, err := fetchWeftBranchTip(weftURL, weftStage, primeBranch, ns)
+	onRemote, err := fetchWeftBranchTip(weftURL, weftStage, primeBranch)
 	if err != nil {
 		return nil, "", false, err
 	}
 	if onRemote {
 		primeRef = "FETCH_HEAD"
 	}
-	if ns != (gitrepo.RefNamespace{}) && !onRemote {
+	data, found, err = readAnchorMarkerAt(weftURL, weftStage, primeRef)
+	if err != nil || found {
+		return data, "on " + primeBranch, found, err
+	}
+
+	stdout, err := gitexec.Run([]string{"branch", "--show-current"}, weftStage)
+	if err != nil {
+		return nil, "", false, wrapProbeError(weftURL, "branch --show-current", err)
+	}
+	if strings.TrimSpace(stdout) != warpBranch {
 		return nil, "", false, nil
 	}
-	data, found, err = readAnchorMarkerAt(weftURL, weftStage, primeRef)
-	return data, "on " + primeBranch, found, err
+	data, found, err = readAnchorMarkerAt(weftURL, weftStage, "HEAD")
+	return data, "on weft:main", found, err
 }
 
 // readAnchorMarkerAt returns the anchor marker's content at the root of ref in the staged clone at dir.

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
@@ -89,8 +89,8 @@ func TestFinalize_LandCheck(t *testing.T) {
 				deps.LandBlockers = func() ([]LandBlocker, error) { return tt.blockers, tt.readErr }
 			}
 			deps.ParentHoldsTaskWork = func() (bool, error) { return tt.holds, nil }
-			deps.Reconcile = func() (fabriclayout.OriginReport, error) { return fabriclayout.OriginReport{}, nil }
-			merger := &recordingParentMerger{results: []mergeCallResult{{result: fabriclayout.MergeResult{Committed: true}}}}
+			deps.Reconcile = func() (fabricengine.OriginReport, error) { return fabricengine.OriginReport{}, nil }
+			merger := &recordingParentMerger{results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}}}
 			fz := &Finalize{deps: deps, resolver: &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}, parentOpener: func() (parentMerger, error) { return merger, nil }}
 
 			ptr := shedfake.RequireOutcome(t, fz, tt.wantOutcome)

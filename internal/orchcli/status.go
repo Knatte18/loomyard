@@ -13,7 +13,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/orchengine"
-	"github.com/Knatte18/loomyard/internal/orchroute"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -151,7 +150,7 @@ func (c *orchCLI) statusCmd() *cobra.Command {
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `status prints one JSON envelope: the recorded strand and whether it is live,
 whether a watcher holds its lock, the latest context reading against the soft
-threshold (` + orchKeyName("soft_threshold_tokens") + `) and the hard cap (` + orchKeyName("threshold_tokens") + `), and the
+threshold (soft_threshold_tokens) and the hard cap (threshold_tokens), and the
 persisted cycle phase (idle, handoff-requested, clearing, resuming or compacting), count, trigger (cycle_trigger), last handoff, abort reason
 and last deferral (last_deferral, RFC 3339 UTC, null when none).
 stuck names the stall reason creel last reported for the watcher's pending inject,
@@ -168,11 +167,7 @@ when this call spawned one, and watcher_live keeps what the probe found. While a
 start or stop holds the lock nothing is restarted and a hint says to rerun
 status. A dead strand gets no watcher: "lym beam start" relaunches strand and
 watcher together. strand_elsewhere names the session:window of the strand's pane
-when it sits in another session of reed's server, empty otherwise.
-strand_down names why the strand is not live, empty while it is:
-` + orchroute.DownNoStrandRecorded + `, ` + orchroute.DownStrandNotInReedState + `, ` + string(reedengine.DownPaneDead) + `,
-` + string(reedengine.DownPaneUnlisted) + `, ` + string(reedengine.DownPanePlacementUnread) + `,
-` + string(reedengine.DownPaneElsewhere) + `, or ` + string(reedengine.DownStartShell) + ` for the pane's start shell in the foreground.`,
+when it sits in another session of reed's server, empty otherwise.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
@@ -218,7 +213,6 @@ strand_down names why the strand is not live, empty while it is:
 			if hint != "" {
 				fields["hint"] = hint
 			}
-			fields["strand_down"] = orchroute.ReadingOf(st, strands).Down
 			fields["cycle_request"] = cycleRequestField(req, pending, pending && c.hubPauseHolds())
 			clihelp.SetExit(cmd.Context(), output.Ok(out, fields))
 			return nil

@@ -3,8 +3,6 @@
 // It plans the reset with websterengine.PlanReset and performs it through fabricengine's pair-checkout reset.
 // In standalone mode it performs it through gitrepo's keep-reset instead.
 // It then clears the persisted pre-fix head and fabric-syncs state.json.
-// That records commit marks the run's transition at the new tip.
-// The verb pushes it before it returns, even when the sync fails after the commit landed.
 // A reset to start ends by archiving the run record, or archives alone when the start cannot be moved to.
 // The verb runs no git of its own, so an agent that is denied `git reset --hard` still has a way to recover.
 package webstercli
@@ -14,16 +12,11 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
-	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
-	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 	"github.com/spf13/cobra"
 )
@@ -62,9 +55,6 @@ leaves the remote task branch alone. A refusal names its way forward.
 
 The envelope carries target, sha, mutations and partial; --to start and a
 standalone reset add uncommitted and warnings, and --to start adds moved.
-The reset pushes the run's records before it returns, a refusal whose records
-commit landed included. A push that fails is reported in push_error and
-recorded as a failed push, which holds the run.
 
 Example:
   lym webster reset --to start
@@ -146,7 +136,7 @@ Example:
 					if err := c.standaloneKeepReset(plan); err != nil {
 						return fail(err.Error())
 					}
-				} else if err := fab.ResetPairCode(rec, plan.SHA, parent, plan.OwnPaths, c.syncOptions); err != nil {
+				} else if err := fab.ResetPairCode(rec, plan.SHA, parent, plan.OwnPaths, fabricengine.EnvSyncOptions()); err != nil {
 					if remoteBranchMoved(rec) {
 						clihelp.SetExit(cmd.Context(), output.ErrFields(out, fmt.Sprintf("webster: reset --to %s moved the remote task branch but not the checkout: %v", target, err), map[string]any{
 							"mutations": rec.Entries(),
@@ -158,8 +148,6 @@ Example:
 				}
 
 				st.PreFixHead = ""
-				st.FixedHead = ""
-				st.FixedBase = ""
 				if target == websterengine.ResetToBatchStart {
 					if bs := st.Batches[batch]; bs != nil {
 						bs.Recoveries = 0
@@ -185,40 +173,14 @@ Example:
 			_ = mutateLock.Release()
 			mutateHeld = false
 
-			// The run's last transition names the code tip a resume and a hand-over check against origin;
-			// left naming a tip the reset dropped, it would refuse the resume and send the run back to that transition.
-			var transition []fabriclayout.Trailer
-			if c.runID != "" {
-				transition = append(transition, fabriclayout.Trailer{Key: fabriclayout.TransitionTrailerKey, Value: c.runID})
-			}
-			if committed, syncErr := fabricSync(c.openFabric, c.anchorRel, c.syncOptions, "reset", transition...); syncErr != nil {
-				msg := fmt.Sprintf("webster: the branch was reset but the fabric sync failed: %v; %s", syncErr, fabricSyncWayForward)
-				if !committed {
-					return fail(msg)
-				}
-				// The records commit landed before the sync failed, so it is pushed as on success.
-				pushErr := c.pushResetRecords()
-				if pushErr == nil {
-					return fail(msg)
-				}
-				// Nothing more is pushed for a handed-over run, so the sync's way forward would mislead.
-				if errors.Is(pushErr, fabricengine.ErrHandedOver) {
-					msg = fmt.Sprintf("webster: the branch was reset, and the run was handed over: %v; the fabric sync also failed: %v; way forward: leave the run to that machine; a session reports status: FAILED to the orch", pushErr, syncErr)
-				}
-				clihelp.SetExit(cmd.Context(), output.ErrFields(out, msg, map[string]any{"push_error": pushErr.Error()}))
-				return nil
+			if _, syncErr := fabricSync(c.openFabric, c.anchorRel, "reset"); syncErr != nil {
+				return fail(fmt.Sprintf("webster: the branch was reset but the fabric sync failed: %v; %s", syncErr, fabricSyncWayForward))
 			}
 
 			fields := map[string]any{
 				"target":    string(plan.Target),
 				"mutations": rec.Entries(),
 				"partial":   false,
-			}
-			switch pushErr := c.pushResetRecords(); {
-			case errors.Is(pushErr, fabricengine.ErrHandedOver):
-				return fail(fmt.Sprintf("webster: the branch was reset, and the run was handed over: %v", pushErr))
-			case pushErr != nil:
-				fields["push_error"] = pushErr.Error()
 			}
 			if !plan.ArchiveOnly {
 				fields["sha"] = plan.SHA
@@ -248,50 +210,11 @@ Example:
 	return cmd
 }
 
-// pushResetRecords pushes the run's records once and returns the push's failure.
-// It returns nil when the push succeeded, or when the CLI's sync options or wiring skip it.
-// It is synchronous, unlike the pusher's quiet retry, so an owed failure writes the record that holds the run.
-// A failure other than a hand-over is logged as a warning.
-func (c *websterCLI) pushResetRecords() error {
-	if c.pushRecords == nil || c.syncOptions.SkipGit || c.syncOptions.SkipPush {
-		return nil
-	}
-	err := c.pushRecords()
-	if err != nil && !errors.Is(err, fabricengine.ErrHandedOver) {
-		logger.Warn("webstercli: the reset's records push failed", "error", err)
-	}
-	return err
-}
-
-// pushPairRecords returns the synchronous push of the records of the pair at loc for the run runID.
-// It waits for a push of the pair already running, since a push given up on a busy lock writes no record.
-// A push that fails is recorded as a failed push of the run, an owed one included.
-// sleep sleeps one delay of the push backoff; nil sleeps for real.
-func pushPairRecords(loc *lymcwd.Location, runID string, sleep func(time.Duration)) func() error {
-	return func() error {
-		name, err := fabricengine.PrimeName(loc)
-		if err != nil {
-			return err
-		}
-		prime, err := lymcwd.NamedWorktree(loc.HubPath, name)
-		if err != nil {
-			return err
-		}
-		_, err = pairteardown.PushRun(prime, loc, runID, pairteardown.RunPush{
-			LockWait:     fabriclayout.LockWaitUnbounded,
-			TeardownWait: fabriclayout.StatusPushLockWait,
-			InsidePair:   true,
-			BackoffSleep: sleep,
-		})
-		return err
-	}
-}
-
 // remoteBranchMoved reports whether rec holds a remote task branch update.
 // Once that update is recorded, a failed reset is no longer a pre-flight refusal.
 func remoteBranchMoved(rec *fabricengine.Mutations) bool {
 	for _, entry := range rec.Entries() {
-		if entry.Kind == fabriclayout.KindRemoteBranchUpdated {
+		if entry.Kind == fabricengine.KindRemoteBranchUpdated {
 			return true
 		}
 	}

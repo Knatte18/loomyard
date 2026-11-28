@@ -26,11 +26,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/creelcli"
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/hubregistry"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
-	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -54,7 +52,6 @@ func productionCLI() *slackCLI {
 		resolveLocation: lymcwd.Resolve,
 		wire:            wireProduction,
 		readHiddenLine:  readHiddenTerminalLine,
-		showToggle:      reedengine.ShowToggleOutcome,
 	}
 }
 
@@ -128,7 +125,6 @@ func wireProduction(c *slackCLI, location *lymcwd.Location) error {
 		return slackengine.NewDialer(baseURL, appToken, &http.Client{}, slackengine.HelloTimeout)
 	}
 	c.liveHubs = liveHubGeometries
-	c.orchAutonomous = func() bool { return hubgeom.Autonomy(location, location.WorktreeName) }
 	c.strandName = func() string { return os.Getenv(agentname.StrandNameEnv) }
 	c.newStrandClient = func(strand string) (strandClient, error) {
 		client, err := creelcli.NewStrandClient(location, strand)
@@ -137,6 +133,7 @@ func wireProduction(c *slackCLI, location *lymcwd.Location) error {
 		}
 		return client, nil
 	}
+	c.showToggle = reedengine.ShowToggleOutcome
 	c.ensure = func(geom slackengine.Geometry) (slackengine.StartOutcome, error) {
 		return slackengine.EnsureRelay(geom, primeName)
 	}
@@ -206,7 +203,7 @@ func orchProject(hubPath, slug string) (string, string, error) {
 	if slug == "" {
 		return rootProjectHandle, boardengine.RootSubject, nil
 	}
-	tasks, err := boardengine.ReadTasks(fabriclayout.BoardDir(hubPath))
+	tasks, err := boardengine.ReadTasks(fabricengine.BoardDir(hubPath))
 	if err != nil {
 		return "", "", fmt.Errorf("slack: read the board for the project of the beam %s: %w", slug, err)
 	}
@@ -291,51 +288,6 @@ func (m *programMailbox) ReadWait(timeout time.Duration, handle func([]creelengi
 	return client.ReadWait(timeout, handle)
 }
 
-// TakeMachine answers the pending messages to orchs of other machines, oldest first.
-func (m *programMailbox) TakeMachine() ([]creelengine.MachineOutbound, error) {
-	client, err := m.resolve()
-	if err != nil {
-		return nil, err
-	}
-	return client.TakeMachine()
-}
-
-// ReportMachine tells creel the relay holds message id for reason.
-func (m *programMailbox) ReportMachine(id int64, reason string) error {
-	client, err := m.resolve()
-	if err != nil {
-		return err
-	}
-	return client.ReportMachine(id, reason)
-}
-
-// SettleMachineDelivered settles message id as posted to Slack at slackTS.
-func (m *programMailbox) SettleMachineDelivered(id int64, slackTS string) error {
-	client, err := m.resolve()
-	if err != nil {
-		return err
-	}
-	return client.SettleMachineDelivered(id, slackTS)
-}
-
-// SettleMachineReturned settles message id as returned to its sender for reason.
-func (m *programMailbox) SettleMachineReturned(id int64, reason string) error {
-	client, err := m.resolve()
-	if err != nil {
-		return err
-	}
-	return client.SettleMachineReturned(id, reason)
-}
-
-// DeliverMachine offers creel one message from an orch of another machine and answers the id it has here.
-func (m *programMailbox) DeliverMachine(mail creelengine.MachineMail) (int64, error) {
-	client, err := m.resolve()
-	if err != nil {
-		return 0, err
-	}
-	return client.DeliverMachine(mail)
-}
-
 // spawnIntermediate is the double fork's intermediate step for the hub at hubPath.
 func spawnIntermediate(hubPath, primeName string) error {
 	geom, err := hubgeom.SlackGeometry(hubPath)
@@ -379,8 +331,6 @@ func runRelay(ctx context.Context, hubPath, primeName string) error {
 			Beams:   func() ([]string, error) { return beamSlugs(prime) },
 			Paused:  func(receiver string) (bool, error) { return receiverPaused(hubPath, prime, receiver) },
 			Project: func(slug string) (string, string, error) { return orchProject(hubPath, slug) },
-
-			MachineNames: machinename.Names,
 		},
 		LiveHubs:       liveHubGeometries,
 		Clock:          slackengine.SystemClock{},

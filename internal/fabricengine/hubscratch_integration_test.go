@@ -13,13 +13,12 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestCloneHub_BoardStageAllCommitNeverStagesHubScratch checks that the board's stage-all commit omits hub scratch.
-// After CloneHub returns, fabriclayout.HubScratchDir(res.HubPath) exists as a real directory;
+// After CloneHub returns, fabricengine.HubScratchDir(res.HubPath) exists as a real directory;
 // a file planted inside it must be absent from the tree of the board's own stage-all commit.
 //
 //testtiming:keep a file planted in the hub scratch tree never appearing in the tree of the board's stage-all commit; coverage of its blocks by other tests does not show an assertion of this
@@ -32,7 +31,7 @@ func TestCloneHub_BoardStageAllCommitNeverStagesHubScratch(t *testing.T) {
 	weftBare := makeBareRemote(t, fixtures, "hubscratch-stage-weft")
 
 	cloneParent := t.TempDir()
-	res, err := fabricengine.CloneHub(cloneParent, fabriclayout.CloneOptions{
+	res, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
 		WeftURL:        filepath.ToSlash(weftBare),
 		WarpURL:        filepath.ToSlash(warpBare),
 		Subpath:        ".",
@@ -44,7 +43,7 @@ func TestCloneHub_BoardStageAllCommitNeverStagesHubScratch(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(res.HubPath) })
 
-	scratchDir := fabriclayout.HubScratchDir(res.HubPath)
+	scratchDir := fabricengine.HubScratchDir(res.HubPath)
 	info, statErr := os.Stat(scratchDir)
 	if statErr != nil {
 		t.Fatalf("stat %s: %v; want CloneHub to have created it", scratchDir, statErr)

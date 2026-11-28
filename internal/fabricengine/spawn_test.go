@@ -10,7 +10,6 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -23,13 +22,13 @@ func TestSpawnDetachedPush_SkipEnvAndEmptyPaths(t *testing.T) {
 	tests := []struct {
 		name    string
 		envKey  string
-		req     fabriclayout.PushSpawn
+		req     PushSpawn
 		wantErr error
 	}{
-		{name: "SkipGit", envKey: "FABRIC_SKIP_GIT", req: fabriclayout.PushSpawn{WarpPath: "/warp", WeftPath: "/weft"}},
-		{name: "SkipPush", envKey: "FABRIC_SKIP_PUSH", req: fabriclayout.PushSpawn{WarpPath: "/warp", WeftPath: "/weft"}},
-		{name: "BothPathsEmpty", req: fabriclayout.PushSpawn{}},
-		{name: "UnderTest", req: fabriclayout.PushSpawn{WarpPath: "/warp", WeftPath: "/weft"}, wantErr: ErrSpawnUnderTest},
+		{name: "SkipGit", envKey: "FABRIC_SKIP_GIT", req: PushSpawn{WarpPath: "/warp", WeftPath: "/weft"}},
+		{name: "SkipPush", envKey: "FABRIC_SKIP_PUSH", req: PushSpawn{WarpPath: "/warp", WeftPath: "/weft"}},
+		{name: "BothPathsEmpty", req: PushSpawn{}},
+		{name: "UnderTest", req: PushSpawn{WarpPath: "/warp", WeftPath: "/weft"}, wantErr: ErrSpawnUnderTest},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -43,32 +42,52 @@ func TestSpawnDetachedPush_SkipEnvAndEmptyPaths(t *testing.T) {
 	}
 }
 
-// TestPushSpawnCommand covers the pusher command line, working directory and owner of a pair and of the prime.
+// TestPushSpawnCommand covers the child's arguments, working directory and owner.
+// The owner is the teardown slug when set and the hub owner otherwise.
+// A flag is present only when its field is set, parent-locked included, except the pause flag, which is always present.
 func TestPushSpawnCommand(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	hub := t.TempDir()
-	code := filepath.Join(hub, "task")
-	records := filepath.Join(hub, "task-weft")
-	prime := filepath.Join(hub, "prime")
-	primeRecords := filepath.Join(hub, "prime-weft")
-	board := filepath.Join(hub, fabriclayout.BoltDirName)
+	warp := filepath.Join(t.TempDir(), "warp")
+	weft := filepath.Join(t.TempDir(), "weft")
+	board := filepath.Join(t.TempDir(), BoltDirName)
 
 	tests := []struct {
-		name     string
-		req      fabriclayout.PushSpawn
-		wantArgs []string
+		name      string
+		req       PushSpawn
+		wantArgs  []string
+		wantOwner string
 	}{
 		{
-			"APairNamesItsCodeWorktreeAndSlug",
-			fabriclayout.PushSpawn{WarpPath: code, WeftPath: records, WorkDir: board},
-			[]string{"loom", "pusher", "--worktree", code, "--slug", "task"},
+			"EveryFieldSet",
+			PushSpawn{WarpPath: warp, WeftPath: weft, PauseSlug: "task", TeardownSlug: "task", WorkDir: board},
+			[]string{"fabric", "--warp-path", warp, "--weft-path", weft, "--teardown-slug", "task", "--pause-slug=task", "push"},
+			"task",
 		},
 		{
-			"ThePrimeNamesItsCodeWorktreeAndNoSlug",
-			fabriclayout.PushSpawn{WeftPath: primeRecords, WorkDir: board},
-			[]string{"loom", "pusher", "--worktree", prime},
+			"ParentLockedCarriesItsFlag",
+			PushSpawn{WarpPath: warp, WeftPath: weft, PauseSlug: "task", TeardownSlug: "task", ParentLocked: true, WorkDir: board},
+			[]string{"fabric", "--warp-path", warp, "--weft-path", weft, "--teardown-slug", "task", "--parent-locked", "--pause-slug=task", "push"},
+			"task",
+		},
+		{
+			"EmptyWarpPathOmitsItsFlagOnly",
+			PushSpawn{WeftPath: weft, PauseSlug: "task", TeardownSlug: "task", WorkDir: board},
+			[]string{"fabric", "--weft-path", weft, "--teardown-slug", "task", "--pause-slug=task", "push"},
+			"task",
+		},
+		{
+			"EmptyTeardownSlugOmitsItsFlagOnly",
+			PushSpawn{WeftPath: weft, PauseSlug: "gate", WorkDir: board},
+			[]string{"fabric", "--weft-path", weft, "--pause-slug=gate", "push"},
+			runproc.HubOwner,
+		},
+		{
+			"EmptyPauseSlugIsStillWritten",
+			PushSpawn{WeftPath: weft, WorkDir: board},
+			[]string{"fabric", "--weft-path", weft, "--pause-slug=", "push"},
+			runproc.HubOwner,
 		},
 	}
 	for _, tt := range tests {
@@ -81,8 +100,8 @@ func TestPushSpawnCommand(t *testing.T) {
 			if dir != board {
 				t.Errorf("pushSpawnCommand(%+v) dir = %q; want %q", tt.req, dir, board)
 			}
-			if owner != runproc.HubOwner {
-				t.Errorf("pushSpawnCommand(%+v) owner = %q; want %q", tt.req, owner, runproc.HubOwner)
+			if owner != tt.wantOwner {
+				t.Errorf("pushSpawnCommand(%+v) owner = %q; want %q", tt.req, owner, tt.wantOwner)
 			}
 		})
 	}

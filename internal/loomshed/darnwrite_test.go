@@ -13,15 +13,11 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/shedengine"
-	"github.com/Knatte18/loomyard/internal/testkit/permkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // darnStopReport is the stop report the fixture's description file holds.
 const darnStopReport = "The entry is outdated: landed work removed the module it names."
-
-// scratchDirToken stands in a case's expected prior work for the fixture's scratch directory, a per-test temporary path.
-const scratchDirToken = "<scratch>"
 
 // darnFixture is one Darn-Write producer setup.
 // It runs over a temporary directory holding a record, a support log and a description.
@@ -68,8 +64,6 @@ func newDarnFixture(t *testing.T) *darnFixture {
 		CommittedRecord:         func() (bool, error) { return f.committed, nil },
 		Commit:                  func() error { f.events = append(f.events, "commit"); return nil },
 		LatestOutcome:           func() (DarnOutcome, bool, error) { return DarnOutcome{}, false, nil },
-		BranchCommits:           func() ([]string, error) { return nil, nil },
-		ScratchDir:              filepath.Join(dir, "scratch"),
 		CheckRecord: func() ([]discussionparser.Finding, error) {
 			f.events = append(f.events, "check")
 			return f.findings, f.checkErr
@@ -120,14 +114,7 @@ func TestDarnWrite_Call(t *testing.T) {
 		// wantReasonLacks is a text the reason must not hold.
 		wantReasonLacks string
 		wantEvents      string
-		// wantTold is the told text, with scratchDirToken standing for the fixture's scratch directory.
-		wantTold DarnTold
-		// scratchFiles are written under a directory the fixture's scratch directory links to, as the `.scratch` link does.
-		scratchFiles []string
-		// unreadableScratchDir names a directory of scratchFiles whose permission bits are cleared before the call.
-		unreadableScratchDir string
-		// danglingScratch makes the fixture's scratch directory a link to a path that does not exist.
-		danglingScratch bool
+		wantTold        DarnTold
 		// staleMarker leaves a stop marker from an earlier spawn in place before the call.
 		staleMarker bool
 		// wantNoMarker asserts the stop marker is absent after the call.
@@ -158,61 +145,6 @@ func TestDarnWrite_Call(t *testing.T) {
 				"That spawn ended stuck.\n" +
 				"Its last gate findings are kept at /run/Darn-Write.findings.md: read them and fix what they name.\n" +
 				decisionsWinLine},
-		},
-		{
-			name: "an interrupted spawn that recorded no outcome is named by its commits and scratch files",
-			mutate: func(f *darnFixture) {
-				f.deps.BranchCommits = func() ([]string, error) {
-					return []string{"b2c3d4e solver: count branches", "a1b2c3d solver: add the branch table"}, nil
-				}
-			},
-			scratchFiles: []string{"runs/second.txt", "measure.md"},
-			session:      true,
-			wantResult:   shedengine.Done,
-			wantEvents:   "session,commit,check",
-			wantTold: DarnTold{PriorWork: "An earlier spawn of this task was interrupted before it recorded an outcome, and its work may be present on the task branch and in the scratch directory.\n" +
-				"Read that work first and continue it instead of starting over.\n" +
-				"The task branch holds these commits beyond its base, newest first:\n" +
-				"- b2c3d4e solver: count branches\n" +
-				"- a1b2c3d solver: add the branch table\n" +
-				"These entries survive under the scratch directory <scratch>:\n" +
-				"- measure.md\n" +
-				"- runs/\n" +
-				decisionsWinLine},
-		},
-		{
-			name:                 "an unreadable scratch subdirectory is listed by name and not read",
-			scratchFiles:         []string{"locked/hidden.txt", "measure.md"},
-			unreadableScratchDir: "locked",
-			session:              true,
-			wantResult:           shedengine.Done,
-			wantEvents:           "session,commit,check",
-			wantTold: DarnTold{PriorWork: "No earlier spawn of this task recorded an outcome, and the task branch holds no commits beyond its base.\n" +
-				"An interrupted spawn or another agent of this task may have left the scratch entries below.\n" +
-				"Read those that bear on the change before you redo or overwrite them.\n" +
-				"These entries survive under the scratch directory <scratch>:\n" +
-				"- locked/\n" +
-				"- measure.md\n" +
-				decisionsWinLine},
-		},
-		{
-			name:            "a dangling scratch link tells nothing",
-			danglingScratch: true,
-			session:         true,
-			wantResult:      shedengine.Done,
-			wantEvents:      "session,commit,check",
-		},
-		{
-			name:    "a scratch path that cannot be listed is an error",
-			mutate:  func(f *darnFixture) { f.deps.ScratchDir = f.deps.RecordPath },
-			wantErr: "list the scratch directory",
-		},
-		{
-			name: "branch commits read failure is an error",
-			mutate: func(f *darnFixture) {
-				f.deps.BranchCommits = func() ([]string, error) { return nil, errors.New("merge base unreadable") }
-			},
-			wantErr: "merge base unreadable",
 		},
 		{
 			name: "gate-failed Stuck commits, keeps the record and appends the way forward",
@@ -328,7 +260,7 @@ func TestDarnWrite_Call(t *testing.T) {
 			session:       true,
 			wantResult:    shedengine.Stuck,
 			wantReason:    darnStopReport,
-			wantReasonHas: []string{"lym loom decision add", "lym loom resume", "lym board upsert", "kind note"},
+			wantReasonHas: []string{"lym loom decision add", "lym loom resume"},
 			wantEvents:    "session,commit",
 		},
 		{
@@ -356,10 +288,7 @@ func TestDarnWrite_Call(t *testing.T) {
 			wantReason:    darnStopReport,
 			wantReasonHas: []string{"lym loom decision add", "lym loom resume"},
 			wantEvents:    "session,commit",
-			wantTold: DarnTold{PriorWork: "An earlier spawn of this task already began the change, and its work is committed on the task branch.\n" +
-				"Read that work first and continue it instead of starting over.\n" +
-				"That spawn ended done.\n" +
-				decisionsWinLine},
+			wantTold:      DarnTold{PriorWork: renderPriorWork(DarnOutcome{Outcome: shedengine.Done}, true)},
 		},
 		{
 			name: "a stop marker with no report file halts naming the missing report",
@@ -461,16 +390,6 @@ func TestDarnWrite_Call(t *testing.T) {
 			mutate:  func(f *darnFixture) { f.deps.CheckRecord = nil },
 			wantErr: "no CheckRecord seam wired",
 		},
-		{
-			name:    "unwired BranchCommits seam is named",
-			mutate:  func(f *darnFixture) { f.deps.BranchCommits = nil },
-			wantErr: "no BranchCommits seam wired",
-		},
-		{
-			name:    "unwired ScratchDir is named",
-			mutate:  func(f *darnFixture) { f.deps.ScratchDir = "" },
-			wantErr: "no ScratchDir seam wired",
-		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -487,17 +406,6 @@ func TestDarnWrite_Call(t *testing.T) {
 			if tc.staleConditionMarker {
 				if err := os.WriteFile(f.deps.ConditionStopMarkerPath, nil, 0o644); err != nil {
 					t.Fatalf("WriteFile(%q) = %v; want nil", f.deps.ConditionStopMarkerPath, err)
-				}
-			}
-			if len(tc.scratchFiles) > 0 {
-				writeLinkedScratch(t, f.deps.ScratchDir, tc.scratchFiles)
-			}
-			if tc.unreadableScratchDir != "" {
-				permkit.Chmod(t, filepath.Join(f.deps.ScratchDir, tc.unreadableScratchDir), 0)
-			}
-			if tc.danglingScratch {
-				if err := os.Symlink(f.deps.ScratchDir+"-absent", f.deps.ScratchDir); err != nil {
-					t.Fatalf("Symlink(%q) = %v; want nil", f.deps.ScratchDir, err)
 				}
 			}
 			outcome, pointer, err := NewDarnWrite(NameDarnWrite, f.session, f.deps).Call(context.Background())
@@ -540,9 +448,8 @@ func TestDarnWrite_Call(t *testing.T) {
 				}
 				return
 			}
-			wantTold := DarnTold{PriorWork: strings.ReplaceAll(tc.wantTold.PriorWork, scratchDirToken, f.deps.ScratchDir)}
-			if len(f.told) != 1 || f.told[0] != wantTold {
-				t.Errorf("told = %+v; want one %+v", f.told, wantTold)
+			if len(f.told) != 1 || f.told[0] != tc.wantTold {
+				t.Errorf("told = %+v; want one %+v", f.told, tc.wantTold)
 			}
 		})
 	}
@@ -559,25 +466,6 @@ func TestDarnWrite_Call(t *testing.T) {
 			}
 		}
 	})
-}
-
-// writeLinkedScratch writes each of files, slash-separated, under a new directory beside link.
-// It then makes link a link to that directory.
-func writeLinkedScratch(t *testing.T, link string, files []string) {
-	t.Helper()
-	target := link + "-target"
-	for _, file := range files {
-		path := filepath.Join(target, filepath.FromSlash(file))
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(path), err)
-		}
-		if err := os.WriteFile(path, []byte("partial\n"), 0o644); err != nil {
-			t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
-		}
-	}
-	if err := os.Symlink(target, link); err != nil {
-		t.Fatalf("Symlink(%q, %q) = %v; want nil", target, link, err)
-	}
 }
 
 func TestDarnWrite_CancelledContextRefusesBeforeAnySeam(t *testing.T) {
@@ -597,54 +485,20 @@ func TestDarnWrite_CancelledContextRefusesBeforeAnySeam(t *testing.T) {
 func TestRenderPriorWork(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
-	manyFiles := make([]string, priorWorkListLimit+2)
-	for i := range manyFiles {
-		manyFiles[i] = "f.txt"
-	}
 	cases := []struct {
 		name   string
 		latest DarnOutcome
 		found  bool
-		work   branchWork
 		want   string
 	}{
-		{"nothing to name", DarnOutcome{}, false, branchWork{}, ""},
-		{"findings of an entry the read did not find are ignored", DarnOutcome{FindingsPath: "/run/stale.md"}, false, branchWork{}, ""},
-		{"an earlier entry with no kept findings", DarnOutcome{Outcome: shedengine.Done}, true, branchWork{}, "An earlier spawn of this task already began the change, and its work is committed on the task branch.\nRead that work first and continue it instead of starting over.\nThat spawn ended done.\n" + decisionsWinLine},
-		{
-			"an earlier entry lists the commits and scratch files after its findings, as maybe a later spawn's",
-			DarnOutcome{Outcome: shedengine.Stuck, FindingsPath: "/run/f.md"},
-			true,
-			branchWork{commits: []string{"a1b2c3d solver: add the branch table"}, scratchDir: "/w/.scratch", scratchEntries: []string{"measure.md"}},
-			"An earlier spawn of this task already began the change, and its work is committed on the task branch.\n" +
-				"Read that work first and continue it instead of starting over.\n" +
-				"That spawn ended stuck.\n" +
-				"Its last gate findings are kept at /run/f.md: read them and fix what they name.\n" +
-				"A later spawn may have been interrupted before it recorded an outcome, so what is listed below can go beyond the spawn that ended so.\n" +
-				"The task branch holds these commits beyond its base, newest first:\n" +
-				"- a1b2c3d solver: add the branch table\n" +
-				"These entries survive under the scratch directory /w/.scratch:\n" +
-				"- measure.md\n" +
-				decisionsWinLine,
-		},
-		{
-			"scratch files alone claim no interrupted spawn and a long list is cut with a count",
-			DarnOutcome{},
-			false,
-			branchWork{scratchDir: "/w/.scratch", scratchEntries: manyFiles},
-			"No earlier spawn of this task recorded an outcome, and the task branch holds no commits beyond its base.\n" +
-				"An interrupted spawn or another agent of this task may have left the scratch entries below.\n" +
-				"Read those that bear on the change before you redo or overwrite them.\n" +
-				"These entries survive under the scratch directory /w/.scratch:\n" +
-				strings.Repeat("- f.txt\n", priorWorkListLimit) +
-				"- and 2 more\n" +
-				decisionsWinLine,
-		},
+		{"nothing to name", DarnOutcome{}, false, ""},
+		{"findings of an entry the read did not find are ignored", DarnOutcome{FindingsPath: "/run/stale.md"}, false, ""},
+		{"an earlier entry with no kept findings", DarnOutcome{Outcome: shedengine.Done}, true, "An earlier spawn of this task already began the change, and its work is committed on the task branch.\nRead that work first and continue it instead of starting over.\nThat spawn ended done.\n" + decisionsWinLine},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			if got := renderPriorWork(tc.latest, tc.found, tc.work); got != tc.want {
+			if got := renderPriorWork(tc.latest, tc.found); got != tc.want {
 				t.Errorf("renderPriorWork() = %q; want %q", got, tc.want)
 			}
 		})

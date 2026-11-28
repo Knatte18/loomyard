@@ -23,7 +23,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/runfsm"
-	"github.com/Knatte18/loomyard/internal/runpusher"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -95,7 +94,7 @@ func TestDobbyRuns_PairAtItsOwnAnchor(t *testing.T) {
 
 	// The tests share one hub and its marker state, so the cases run in sequence.
 	t.Run("ChildStatusAndWatchDirUnderThePairsAnchor", func(t *testing.T) {
-		views, err := battencli.DobbyRuns(prime, geom, newParents(), pauseRecord, runpusher.StartIfAhead)
+		views, err := battencli.DobbyRuns(prime, geom, newParents(), pauseRecord)
 		if err != nil {
 			t.Fatalf("dobbyRuns() = _, %v; want nil", err)
 		}
@@ -126,7 +125,7 @@ func TestDobbyRuns_PairAtItsOwnAnchor(t *testing.T) {
 	t.Run("InvalidMarkerRefusesTheRunsAndLeavesThePairOutOfTheWatch", func(t *testing.T) {
 		commitAnchorMarker(t, h, "broken", "../out")
 
-		views, err := battencli.DobbyRuns(prime, geom, newParents(), pauseRecord, runpusher.StartIfAhead)
+		views, err := battencli.DobbyRuns(prime, geom, newParents(), pauseRecord)
 		if !errors.Is(err, lymcwd.ErrInvalidAnchor) || !strings.Contains(err.Error(), "broken") {
 			t.Fatalf("dobbyRuns() = %v, %v; want an error naming the pair and wrapping ErrInvalidAnchor", views, err)
 		}
@@ -140,14 +139,14 @@ func TestDobbyRuns_PairAtItsOwnAnchor(t *testing.T) {
 		}
 	})
 
-	t.Run("BoltHoldCallerEntryReadsHeldAndAnOperatorEntryDoesNot", func(t *testing.T) {
+	t.Run("HoldCallerEntryReadsHeldAndOwnerEntryDoesNot", func(t *testing.T) {
 		commitAnchorMarker(t, h, "broken", ".")
 		for _, row := range []struct {
 			caller   string
 			wantHeld bool
 		}{
-			{pauserecord.BoltHoldCaller, true},
-			{"EXTERNAL", false},
+			{pauserecord.HoldCaller, true},
+			{pauserecord.OwnerCaller, false},
 		} {
 			content, err := json.Marshal(pauserecord.Record{Live: []pauserecord.Entry{{Scope: "moved", Caller: row.caller, PausedAt: time.Now()}}})
 			if err != nil {
@@ -156,7 +155,7 @@ func TestDobbyRuns_PairAtItsOwnAnchor(t *testing.T) {
 			if err := os.WriteFile(pauseRecord, content, 0o644); err != nil {
 				t.Fatalf("write %s: %v", pauseRecord, err)
 			}
-			views, err := battencli.DobbyRuns(prime, geom, newParents(), pauseRecord, runpusher.StartIfAhead)
+			views, err := battencli.DobbyRuns(prime, geom, newParents(), pauseRecord)
 			if err != nil {
 				t.Fatalf("dobbyRuns() = _, %v; want nil", err)
 			}
@@ -226,7 +225,7 @@ func TestDobbyRuns_ReadsWhetherAPausedRunsWorkReachedItsParent(t *testing.T) {
 		}
 	}
 
-	views, err := battencli.DobbyRuns(prime, dobbyengine.Geometry{}, battencli.NewDobbyParents(prime), filepath.Join(t.TempDir(), "pause.json"), runpusher.StartIfAhead)
+	views, err := battencli.DobbyRuns(prime, dobbyengine.Geometry{}, battencli.NewDobbyParents(prime), filepath.Join(t.TempDir(), "pause.json"))
 	if err != nil {
 		t.Fatalf("DobbyRuns() = _, %v; want nil", err)
 	}
@@ -240,7 +239,7 @@ func TestDobbyRuns_ReadsWhetherAPausedRunsWorkReachedItsParent(t *testing.T) {
 	}
 }
 
-func TestDobbyRuns_ReadsTheLandOutcomeTheLandingCommitTheEndedEntryThePairAndTheMotifRecipe(t *testing.T) {
+func TestDobbyRuns_ReadsTheLandOutcomeTheLandingCommitAndTheEndedEntryAndPair(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
@@ -281,14 +280,8 @@ func TestDobbyRuns_ReadsTheLandOutcomeTheLandingCommitTheEndedEntryThePairAndThe
 	if err := os.WriteFile(filepath.Join(h.BoardDir(), "board.json"), []byte(board), 0o644); err != nil {
 		t.Fatalf("write board.json: %v", err)
 	}
-	if err := shedrun.WriteLandedCommit(prime, "landed", shedrun.LandedCommit{Commit: "abc123", EmptyDiff: true}); err != nil {
+	if err := shedrun.WriteLandedCommit(prime, "landed", "abc123"); err != nil {
 		t.Fatalf("WriteLandedCommit() = %v; want nil", err)
-	}
-	// "landed" ran the motif recipe, and "unlanded" another one.
-	for slug, recipe := range map[string]string{"landed": shedrun.RecipeMotif, "unlanded": shedrun.RecipeTapestry} {
-		if err := shedrun.WriteChildRecipe(prime, slug, recipe); err != nil {
-			t.Fatalf("WriteChildRecipe(%s) = %v; want nil", slug, err)
-		}
 	}
 
 	// A directory where the landed-commit file belongs makes the read fail for a reason other than a missing file.
@@ -297,17 +290,15 @@ func TestDobbyRuns_ReadsTheLandOutcomeTheLandingCommitTheEndedEntryThePairAndThe
 	}
 
 	geom := dobbyengine.Geometry{BoardDir: h.BoardDir()}
-	views, err := battencli.DobbyRuns(prime, geom, battencli.NewDobbyParents(prime), filepath.Join(t.TempDir(), "pause.json"), runpusher.StartIfAhead)
+	views, err := battencli.DobbyRuns(prime, geom, battencli.NewDobbyParents(prime), filepath.Join(t.TempDir(), "pause.json"))
 	if err != nil {
 		t.Fatalf("DobbyRuns() = _, %v; want nil", err)
 	}
 	type landing struct {
 		pastLand, landed        bool
 		commit                  string
-		emptyLanding            bool
 		entryEnded, pairPresent bool
 		cancelMarker            bool
-		motif                   bool
 	}
 	type judged struct {
 		run    runfsm.State
@@ -317,7 +308,7 @@ func TestDobbyRuns_ReadsTheLandOutcomeTheLandingCommitTheEndedEntryThePairAndThe
 	got := map[string]landing{}
 	gotJudged := map[string]judged{}
 	for _, view := range views {
-		got[view.Slug] = landing{view.PastLand, view.Landed, view.LandingCommit, view.EmptyLanding, view.EntryEnded, view.PairPresent, view.CancelMarker, view.Motif}
+		got[view.Slug] = landing{view.PastLand, view.Landed, view.LandingCommit, view.EntryEnded, view.PairPresent, view.CancelMarker}
 		gotJudged[view.Slug] = judged{view.Run, view.Verdict.Answer, view.Verdict.Reason}
 	}
 	wantJudged := map[string]judged{
@@ -334,21 +325,12 @@ func TestDobbyRuns_ReadsTheLandOutcomeTheLandingCommitTheEndedEntryThePairAndThe
 		"ahead":      {pairPresent: true},
 		"paused":     {pairPresent: true},
 		"cancelling": {pairPresent: true, cancelMarker: true},
-		"landed":     {pastLand: true, landed: true, commit: "abc123", emptyLanding: true, entryEnded: true, pairPresent: true, motif: true},
+		"landed":     {pastLand: true, landed: true, commit: "abc123", entryEnded: true, pairPresent: true},
 		"unlanded":   {pastLand: true, entryEnded: true, pairPresent: true},
 		"unreadable": {pastLand: true, landed: true, pairPresent: true},
 		"pairless":   {pastLand: true, entryEnded: true},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("DobbyRuns() land readings = %+v; want %+v", got, want)
-	}
-
-	// A directory where the child-recipe record belongs makes the read fail, which fails the whole listing.
-	if err := os.MkdirAll(shedrun.ChildRecipeFile(prime, "ahead"), 0o755); err != nil {
-		t.Fatalf("make the child-recipe path a directory: %v", err)
-	}
-	views, err = battencli.DobbyRuns(prime, geom, battencli.NewDobbyParents(prime), filepath.Join(t.TempDir(), "pause.json"), runpusher.StartIfAhead)
-	if err == nil || !strings.Contains(err.Error(), "read the run ahead") {
-		t.Errorf("DobbyRuns() with an unreadable child recipe = %v, %v; want an error naming the run ahead", views, err)
 	}
 }

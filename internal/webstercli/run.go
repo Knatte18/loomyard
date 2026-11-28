@@ -115,7 +115,7 @@ Example:
 			if runErr == nil {
 				outcomeLabel = result.Outcome
 			}
-			committed, syncErr := fabricSync(c.openFabric, c.anchorRel, c.syncOptions, fmt.Sprintf("run %s", outcomeLabel))
+			committed, syncErr := fabricSync(c.openFabric, c.anchorRel, fmt.Sprintf("run %s", outcomeLabel))
 
 			if runErr != nil {
 				msg := runErr.Error()

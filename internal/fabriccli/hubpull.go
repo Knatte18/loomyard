@@ -12,7 +12,6 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 )
@@ -28,7 +27,7 @@ func runHubPull(ctx context.Context, out io.Writer, l *lymcwd.Location) int {
 	if err != nil {
 		return output.Err(out, fmt.Sprintf("read the anchor of the prime %q: %v", primeName, err))
 	}
-	boltDir := fabriclayout.BoltDir(l.HubPath)
+	boltDir := fabricengine.BoltDir(l.HubPath)
 	lockPair := func(pair *lymcwd.Location) (func(), error) {
 		return acquireBranchLock(ctx, pair, boltDir, "pull")
 	}
@@ -45,10 +44,10 @@ func runHubPull(ctx context.Context, out io.Writer, l *lymcwd.Location) int {
 }
 
 // hubPullStopError names every stopped side, so the error alone says where to look.
-func hubPullStopError(sides []fabriclayout.HubPullSide) error {
+func hubPullStopError(sides []fabricengine.HubPullSide) error {
 	var stopped []string
 	for _, side := range sides {
-		if side.Outcome == fabriclayout.HubPullStopped {
+		if side.Outcome == fabricengine.HubPullStopped {
 			stopped = append(stopped, fmt.Sprintf("%s %s", side.Kind, side.Worktree))
 		}
 	}
@@ -56,7 +55,7 @@ func hubPullStopError(sides []fabriclayout.HubPullSide) error {
 }
 
 // hubPullSidesMap converts the sides of a hub pull into the maps the envelope lists under "sides", never nil.
-func hubPullSidesMap(sides []fabriclayout.HubPullSide) []map[string]any {
+func hubPullSidesMap(sides []fabricengine.HubPullSide) []map[string]any {
 	out := make([]map[string]any, 0, len(sides))
 	for _, side := range sides {
 		out = append(out, map[string]any{

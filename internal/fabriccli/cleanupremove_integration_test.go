@@ -10,17 +10,14 @@ package fabriccli_test
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
@@ -85,38 +82,6 @@ func warpEntryOf(t *testing.T, env envelope.Envelope, raw, branch string) map[st
 	}
 	t.Fatalf("no warp_entries element for %q\noutput: %s", branch, raw)
 	return nil
-}
-
-// TestCommand_RemoveRemoteSettlesThePendingRecordOfAGonePair runs the removal of a slug of which only its record remains.
-func TestCommand_RemoveRemoteSettlesThePendingRecordOfAGonePair(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	const slug = "gone-pending"
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	record := filepath.Join(filepath.Dir(fabriclayout.TeardownLockPath(h.Path, slug)), slug+".pending.json")
-	raw, err := json.Marshal(fabriclayout.PendingTeardown{Slug: slug, Kind: "remove", Worktree: h.PrimeWorktree()})
-	if err != nil {
-		t.Fatalf("marshal the record: %v", err)
-	}
-	if err := os.MkdirAll(filepath.Dir(record), 0o755); err != nil {
-		t.Fatalf("mkdir the record's directory: %v", err)
-	}
-	if err := os.WriteFile(record, raw, 0o644); err != nil {
-		t.Fatalf("write the record: %v", err)
-	}
-
-	code, output := runFabric(t, h.PrimeWorktree(), "remove", "--remote", slug)
-
-	if code != 0 {
-		t.Fatalf("Execute(remove --remote %s) = %d; want 0\noutput: %s", slug, code, output)
-	}
-	if steps := envelope.RequireOK(t, output).Raw["steps"]; !reflect.DeepEqual(steps, []any{fabriclayout.RemoveStepPendingTeardown}) {
-		t.Errorf("steps = %v; want [%s]\noutput: %s", steps, fabriclayout.RemoveStepPendingTeardown, output)
-	}
-	if _, err := os.Stat(record); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("stat of the pending record = %v; want it removed", err)
-	}
 }
 
 // TestCommand_CleanupRemoveScenario runs the cleanup, prune and remove checks over one hub.
@@ -280,7 +245,7 @@ func TestCommand_CleanupRemoveScenario(t *testing.T) {
 		{"CleanupRemoteAloneWithoutApplyDeletesNothing", func(t *testing.T) {
 			// --remote alone on cleanup, without --apply, deletes nothing on either side and exits 0.
 			// It is the flag combination an operator most likely gets wrong, and the help text states it explicitly.
-			branch := fabriclayout.RecordsBranchName("cli-remote-no-apply")
+			branch := fabricengine.RecordsBranchName("cli-remote-no-apply")
 			remoteEnvelopeCreateOrphanBranch(t, weftRoot, branch)
 			remoteEnvelopePushBranch(t, weftRoot, branch)
 
@@ -300,7 +265,7 @@ func TestCommand_CleanupRemoveScenario(t *testing.T) {
 			// An unreachable GitHub skips every task-branch deletion while the weft sweep still runs.
 			landedManagedBranch(t, h, "gone-landed-unreachable")
 
-			orphan := fabriclayout.RecordsBranchName("weft-orphan")
+			orphan := fabricengine.RecordsBranchName("weft-orphan")
 			remoteEnvelopeCreateOrphanBranch(t, weftRoot, orphan)
 			remoteEnvelopePushBranch(t, weftRoot, orphan)
 
@@ -371,7 +336,7 @@ func TestCommand_CleanupRemoveScenario(t *testing.T) {
 			// A cleanup run where one entry carries a local Error — the git branch -D itself failed — exits non-zero.
 			// It pins the verdict for a local failure, which nothing else in the suite would notice flipping back.
 			// Induced by pre-creating the branch's own ref lock file, so `git branch -D` cannot acquire the lock it needs.
-			branch := fabriclayout.RecordsBranchName("cli-cleanup-local-fail")
+			branch := fabricengine.RecordsBranchName("cli-cleanup-local-fail")
 			remoteEnvelopeCreateOrphanBranch(t, weftRoot, branch)
 
 			lockPath := filepath.Join(weftRoot, ".git", "refs", "heads", branch+".lock")
@@ -424,7 +389,7 @@ func TestCommand_CleanupRemoveScenario(t *testing.T) {
 			// The branch is already deleted locally under its local tag,
 			// and the envelope reports "partial":true with the reason in the entry's error.
 			// The envelope carries no "refusal" key, since a synthesised fmt.Errorf never matches `RefusalOf`.
-			branch := fabriclayout.RecordsBranchName("cli-cleanup-remote-fail")
+			branch := fabricengine.RecordsBranchName("cli-cleanup-remote-fail")
 			remoteEnvelopeCreateOrphanBranch(t, weftRoot, branch)
 			remoteEnvelopeBreakOrigin(t, weftRoot)
 
@@ -470,7 +435,7 @@ func TestCommand_CleanupRemoveScenario(t *testing.T) {
 			// Both halves are needed.
 			// An asymmetric exit code for one configuration across the two verbs is the defect this test guards against.
 			// Only a CLI-level test can observe an exit code at all.
-			branch := fabriclayout.RecordsBranchName("cli-cleanup-no-origin")
+			branch := fabricengine.RecordsBranchName("cli-cleanup-no-origin")
 			remoteEnvelopeCreateOrphanBranch(t, weftRoot, branch)
 			remoteEnvelopeRemoveOrigin(t, weftRoot)
 
@@ -483,10 +448,6 @@ func TestCommand_CleanupRemoveScenario(t *testing.T) {
 			reason, _ := env.Raw["remote_skipped_reason"].(string)
 			if reason == "" {
 				t.Errorf("envelope remote_skipped_reason is empty; want a reason naming the missing origin remote\noutput: %s", output)
-			}
-			// A two-repository hub has no plain archive tags to list, and the key still reports an empty list.
-			if plainTags, ok := env.Raw["plain_archive_tags"].([]any); !ok || len(plainTags) != 0 {
-				t.Errorf("envelope plain_archive_tags = %v; want an empty list\noutput: %s", env.Raw["plain_archive_tags"], output)
 			}
 
 			entries, ok := env.Raw["entries"].([]any)

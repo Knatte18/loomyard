@@ -89,14 +89,11 @@ func TestParentBeam(t *testing.T) {
 		for _, brief := range listed {
 			got[brief.Slug] = brief.ParentBeam
 		}
-		if got["a"] != "beam" || got["b"] != boardengine.RootSubject {
-			t.Errorf("listed parent_beam = %v; want a under beam and b under %s", got, boardengine.RootSubject)
+		if got["a"] != "beam" || got["b"] != "" {
+			t.Errorf("listed parent_beam = %v; want a under beam and b under the prime", got)
 		}
 		if beam, err := b.ParentBeamOf("a"); err != nil || beam != "beam" {
 			t.Errorf("ParentBeamOf(a) = %q, %v; want beam", beam, err)
-		}
-		if beam, err := b.ParentBeamOf("b"); err != nil || beam != "" {
-			t.Errorf("ParentBeamOf(b) = %q, %v; want the empty slug for the prime", beam, err)
 		}
 	})
 
@@ -116,7 +113,7 @@ func TestParentBeam(t *testing.T) {
 			t.Fatalf("ListTasksBrief() error = %v; want nil", err)
 		}
 		for _, brief := range listed {
-			if want := map[string]string{"a": "beam", "beam": boardengine.RootSubject}[brief.Slug]; brief.ParentBeam != want {
+			if want := map[string]string{"a": "beam", "beam": ""}[brief.Slug]; brief.ParentBeam != want {
 				t.Errorf("listed parent_beam of %s = %q; want %q", brief.Slug, brief.ParentBeam, want)
 			}
 		}

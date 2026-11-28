@@ -13,7 +13,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
-	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
@@ -48,11 +47,6 @@ type gateFake struct {
 	// recorded holds the heads recordPreFix was called with, in order.
 	recorded []string
 	cleared  int
-	// fixedBases and fixedHeads hold what recordPass was called with, in order.
-	fixedBases []string
-	fixedHeads []string
-	// earlier is the pre-fix head the earlierPreFix seam returns.
-	earlier string
 	// recordErr is returned by recordPreFix.
 	recordErr error
 }
@@ -99,16 +93,13 @@ func (f *gateFake) seams() verifyGateSeams {
 			}
 			return []string{"internal/b/b.go"}, nil
 		},
-		modulePath:    func() string { return testModulePath },
-		earlierPreFix: func() (string, error) { return f.earlier, nil },
+		modulePath: func() string { return testModulePath },
 		recordPreFix: func(head string) error {
 			f.recorded = append(f.recorded, head)
 			return f.recordErr
 		},
-		recordPass: func(fixedBase, fixedHead string) error {
+		clearPreFix: func() error {
 			f.cleared++
-			f.fixedBases = append(f.fixedBases, fixedBase)
-			f.fixedHeads = append(f.fixedHeads, fixedHead)
 			return nil
 		},
 	}
@@ -174,97 +165,32 @@ func TestVerifyGate_PassesWithoutVerifying(t *testing.T) {
 	}
 }
 
-// TestVerifyGate_FlakyFailurePassesOnRerunWithNote pins a first-run failure whose rerun passes.
-// The gate passes, and the applied notes keep the first run's log path and output tail in the friction note.
-// A first run that names no failing test is a failure of the verify command, never a flaky test.
-//
-//testtiming:keep pins the rerun's flaky notes with the first run's log and output, and every verify site's gate label and attempt; the run-level verify-gate test observes only the pass
+//testtiming:keep pins the rerun's flaky note naming the failing package and every verify site's gate label and attempt; the run-level verify-gate test observes only the pass
 func TestVerifyGate_FlakyFailurePassesOnRerunWithNote(t *testing.T) {
 	tiergate.Require(t, 0)
-	t.Parallel()
-
-	tests := []struct {
-		name      string
-		firstLog  string
-		wantWarns []string
-		// wantNote are the lines the friction note holds.
-		wantNote []string
-		// wantSummary is the summary.md line that lists the failure.
-		wantSummary string
-	}{
-		{
-			name:        "a failing package",
-			firstLog:    "    tmuxkit: a stray entry\n" + failingPackageLog,
-			wantWarns:   []string{"integration verify: flaky failures passed or vanished on rerun: example.com/mod/internal/a"},
-			wantNote:    []string{"(flaky):", "- example.com/mod/internal/a, first run's log /verify/verify-1.log", "      tmuxkit: a stray entry"},
-			wantSummary: "- `example.com/mod/internal/a`",
-		},
-		{
-			name:        "a verify command that named no failing test",
-			firstLog:    "gate test: failed runs: build (exit 1)\n",
-			wantWarns:   []string{"integration verify: the verify command failed naming no failing test and passed on rerun; first run's log: /verify/verify-1.log"},
-			wantNote:    []string{"The verify command failed its first run naming no failing test", "- first run's log /verify/verify-1.log", "  gate test: failed runs: build (exit 1)"},
-			wantSummary: "- `/verify/verify-1.log`",
-		},
+	f := &gateFake{
+		outcome: outcomeDone,
+		command: "go test ./...",
+		results: []verifytree.Result{failedResult(), passedResult()},
+		logs:    []string{failingPackageLog},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
+	notes := &VerifyGateNotes{}
+	gate := newVerifyGate(t.TempDir(), 3, notes, testFixPromptPath, f.seams())
 
-			f := &gateFake{
-				outcome: outcomeDone,
-				command: "go test ./...",
-				results: []verifytree.Result{failedResult(), passedResult()},
-				logs:    []string{tt.firstLog, "rerun output only\n"},
-			}
-			frictionDir := filepath.Join(t.TempDir(), "friction")
-			notes := &VerifyGateNotes{frictionDir: frictionDir}
-			gate := newVerifyGate(t.TempDir(), 3, notes, testFixPromptPath, f.seams())
-
-			res, err := gate()
-			if err != nil || !res.Passed {
-				t.Fatalf("gate() = %+v, %v; want a pass on rerun", res, err)
-			}
-			if f.verifyCalls != 2 {
-				t.Errorf("verify ran %d time(s); want the run and one rerun", f.verifyCalls)
-			}
-			for _, site := range f.sites {
-				if site.Label != "webster gate" || site.Attempt != 1 {
-					t.Errorf("verify site = %+v; want label %q, attempt 1", site, "webster gate")
-				}
-			}
-
-			websterDir := t.TempDir()
-			if err := os.WriteFile(summaryparser.Path(websterDir), []byte("# S\n"), 0o644); err != nil {
-				t.Fatal(err)
-			}
-			warnings, err := notes.Apply(websterDir)
-			if err != nil {
-				t.Fatalf("Apply() error = %v", err)
-			}
-			if !reflect.DeepEqual(warnings, tt.wantWarns) {
-				t.Errorf("Apply() warnings = %q; want %q", warnings, tt.wantWarns)
-			}
-			note, err := os.ReadFile(filepath.Join(frictionDir, "webster-verify-triage.md"))
-			if err != nil {
-				t.Fatalf("read friction note: %v", err)
-			}
-			for _, want := range tt.wantNote {
-				if !strings.Contains(string(note), want) {
-					t.Errorf("friction note = %q; want %q in it", note, want)
-				}
-			}
-			if strings.Contains(string(note), "rerun output only") {
-				t.Errorf("friction note = %q; want the first run's output, not the rerun's", note)
-			}
-			summary, err := os.ReadFile(summaryparser.Path(websterDir))
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !slices.Contains(strings.Split(string(summary), "\n"), tt.wantSummary) {
-				t.Errorf("summary = %q; want the line %q", summary, tt.wantSummary)
-			}
-		})
+	res, err := gate()
+	if err != nil || !res.Passed {
+		t.Fatalf("gate() = %+v, %v; want a pass on rerun", res, err)
+	}
+	if f.verifyCalls != 2 {
+		t.Errorf("verify ran %d time(s); want the run and one rerun", f.verifyCalls)
+	}
+	if want := []string{"example.com/mod/internal/a"}; !reflect.DeepEqual(notes.Flaky(), want) {
+		t.Errorf("notes.Flaky() = %v; want %v", notes.Flaky(), want)
+	}
+	for _, site := range f.sites {
+		if site.Label != "webster gate" || site.Attempt != 1 {
+			t.Errorf("verify site = %+v; want label %q, attempt 1", site, "webster gate")
+		}
 	}
 }
 
@@ -356,8 +282,8 @@ func TestVerifyGate_HungVerifyFailsAtOnceWithoutRerun(t *testing.T) {
 			if tt.wantHang == "" {
 				return
 			}
-			if flaky := notes.flakyFailures(); len(flaky) != 0 {
-				t.Errorf("notes.flakyFailures() = %v; want none for a hang", flaky)
+			if flaky := notes.Flaky(); len(flaky) != 0 {
+				t.Errorf("notes.Flaky() = %v; want none for a hang", flaky)
 			}
 			if !strings.Contains(res.Findings, "not re-run") || !strings.Contains(res.Findings, tt.wantHang) {
 				t.Errorf("findings = %q; want them to say the step was not re-run and name %q", res.Findings, tt.wantHang)
@@ -569,9 +495,6 @@ func TestVerifyGate_NotesFixCommitsOnce(t *testing.T) {
 	if got, want := notes.FixCommits(), []CommitLogEntry{fix}; !reflect.DeepEqual(got, want) {
 		t.Errorf("notes.FixCommits() = %+v; want %+v once", got, want)
 	}
-	if want := []string{"", ""}; !reflect.DeepEqual(f.fixedHeads, want) {
-		t.Errorf("fixed heads recorded with HEAD at the pre-fix head = %q; want %q", f.fixedHeads, want)
-	}
 
 	failing := &gateFake{
 		outcome:      outcomeDone,
@@ -592,10 +515,10 @@ func TestVerifyGate_NotesFixCommitsOnce(t *testing.T) {
 
 // TestVerifyGate_DirtyTreeRecordsPreFixHead walks one fake through dirty-tree failures:
 // a dirty tree fails without verifying or checking fix commits, and reports the dirty paths.
-// The pre-fix head is recorded once, and a new closure given the earlier one keeps it.
-// Its first clean pass checks fix commits from that head, records the range up to HEAD and clears the record.
+// The pre-fix head is recorded once per closure and overwritten by a new closure.
+// The first clean pass checks fix commits from the recorded head and clears the record.
 //
-//testtiming:keep pins the pre-fix head recorded once, kept by a later closure and cleared only on a pass, and the dirty report; the covering parent-merge gate test only passes a clean tree
+//testtiming:keep pins the pre-fix head recorded once per closure, overwritten by a new closure and cleared only on a pass, and the dirty report; the covering parent-merge gate test only passes a clean tree
 func TestVerifyGate_DirtyTreeRecordsPreFixHead(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -632,25 +555,27 @@ func TestVerifyGate_DirtyTreeRecordsPreFixHead(t *testing.T) {
 		t.Errorf("recorded heads after two failures = %v; want %v once", f.recorded, want)
 	}
 
+	f.head = "head1"
+	second := newVerifyGate(t.TempDir(), 5, &VerifyGateNotes{}, testFixPromptPath, f.seams())
+	if res, err := second(); err != nil || res.Passed {
+		t.Fatalf("second closure's gate() = %+v, %v; want a failure", res, err)
+	}
+	if want := []string{"head0", "head1"}; !reflect.DeepEqual(f.recorded, want) {
+		t.Errorf("recorded heads = %v; want the new closure to overwrite with %v", f.recorded, want)
+	}
 	if f.cleared != 0 {
-		t.Errorf("recordPass ran %d time(s) before any pass; want none", f.cleared)
+		t.Errorf("clearPreFix ran %d time(s) before any pass; want none", f.cleared)
 	}
 
-	f.earlier = "head0"
 	f.dirty = nil
-	f.head = "head2"
-	second := newVerifyGate(t.TempDir(), 5, &VerifyGateNotes{}, testFixPromptPath, f.seams())
 	if res, err := second(); err != nil || !res.Passed {
-		t.Fatalf("second closure's gate() on a clean tree = %+v, %v; want a pass", res, err)
+		t.Fatalf("gate() after the tree was cleaned = %+v, %v; want a pass", res, err)
 	}
-	if want := []string{"head0"}; !reflect.DeepEqual(f.rejectionBases, want) {
-		t.Errorf("commit check bases = %v; want the earlier pre-fix head %v", f.rejectionBases, want)
+	if want := []string{"head1"}; !reflect.DeepEqual(f.rejectionBases, want) {
+		t.Errorf("commit check bases = %v; want the recorded pre-fix head %v", f.rejectionBases, want)
 	}
 	if f.cleared != 1 {
-		t.Errorf("recordPass ran %d time(s) on a pass; want 1", f.cleared)
-	}
-	if !slices.Equal(f.fixedBases, []string{"head0"}) || !slices.Equal(f.fixedHeads, []string{"head2"}) {
-		t.Errorf("fixed range recorded on the pass = %v to %v; want head0 to head2", f.fixedBases, f.fixedHeads)
+		t.Errorf("clearPreFix ran %d time(s) on a pass; want 1", f.cleared)
 	}
 }
 
@@ -734,9 +659,6 @@ func TestVerifyGateStuckReason_NamesTheFailureAndAWayForward(t *testing.T) {
 		cmd  = "lym gate test --gate webster"
 		lead = "verify gate did not pass after 2 of 2 re-prompt(s): "
 		fix  = "way forward: 1) read " + log + " and commit a fix on the task branch; 2) lym webster run"
-
-		reportPath  = "<verify-gate-report>"
-		driftAccept = "or, when the drift is the change the plan intends, the run's parent accepts it with `lym drift amend <slug> --entries <file>`, then runs `lym loom resume`"
 	)
 	tests := []struct {
 		name   string
@@ -789,14 +711,8 @@ func TestVerifyGateStuckReason_NamesTheFailureAndAWayForward(t *testing.T) {
 		{
 			name:   "a long entry findings text is cut to its first bytes on a rune boundary",
 			report: VerifyGateReport{Attempt: 3, Cap: 2, Entry: "drift", Findings: strings.Repeat("a", verifyGateStuckTextBytes-1) + "étail"},
-			want: lead + `the run-level "drift" entry failed: ` + strings.Repeat("a", verifyGateStuckTextBytes-1) + `… (cut; the full findings are in ` + reportPath + `); ` +
-				`way forward: 1) fix what the "drift" entry's findings name and commit it on the task branch; 2) lym webster run; ` + driftAccept,
-		},
-		{
-			name:   "a long findings text of a non-drift entry is cut and names the report without the drift route",
-			report: VerifyGateReport{Attempt: 3, Cap: 2, Entry: "expectation", Findings: strings.Repeat("a", verifyGateStuckTextBytes+1)},
-			want: lead + `the run-level "expectation" entry failed: ` + strings.Repeat("a", verifyGateStuckTextBytes) + `… (cut; the full findings are in ` + reportPath + `); ` +
-				`way forward: 1) fix what the "expectation" entry's findings name and commit it on the task branch; 2) lym webster run`,
+			want: lead + `the run-level "drift" entry failed: ` + strings.Repeat("a", verifyGateStuckTextBytes-1) + `; ` +
+				`way forward: 1) fix what the "drift" entry's findings name and commit it on the task branch; 2) lym webster run`,
 		},
 		{
 			name:   "a long output tail is cut to its last bytes",
@@ -812,8 +728,8 @@ func TestVerifyGateStuckReason_NamesTheFailureAndAWayForward(t *testing.T) {
 		{
 			name:   "a run-level entry's failure names the entry and its findings",
 			report: VerifyGateReport{Attempt: 3, Cap: 2, Entry: "drift", Findings: "cell a.txt:3 moved\nsee expected.yaml"},
-			want: lead + `the run-level "drift" entry failed: cell a.txt:3 moved see expected.yaml; the full report is ` + reportPath + `; ` +
-				`way forward: 1) fix what the "drift" entry's findings name and commit it on the task branch; 2) lym webster run; ` + driftAccept,
+			want: lead + `the run-level "drift" entry failed: cell a.txt:3 moved see expected.yaml; ` +
+				`way forward: 1) fix what the "drift" entry's findings name and commit it on the task branch; 2) lym webster run`,
 		},
 	}
 	for _, tt := range tests {
@@ -826,8 +742,7 @@ func TestVerifyGateStuckReason_NamesTheFailureAndAWayForward(t *testing.T) {
 			}
 			gate := &shuttleengine.GateOutcome{Attempts: 2, Entries: []shuttleengine.GateEntryOutcome{{Name: verifyGateName, Attempts: 2, State: shuttleengine.GateEntryFailed}}}
 
-			// The report lives in a per-test temp directory; the stable reportPath stands in for it in the expectation.
-			got := strings.ReplaceAll(verifyGateStuckReason(reportsDir, gate, "lym webster run"), VerifyGateReportPath(reportsDir), reportPath)
+			got := verifyGateStuckReason(reportsDir, gate, "lym webster run")
 
 			if got != tt.want {
 				t.Errorf("verifyGateStuckReason() = %q; want %q", got, tt.want)
@@ -999,74 +914,5 @@ func TestReadModulePath(t *testing.T) {
 	}
 	if got := readModulePath(dir); got != testModulePath {
 		t.Errorf("readModulePath() = %q; want %q", got, testModulePath)
-	}
-}
-
-// mergeOnlyGit answers the first-parent walk: each commit has one parent unless merges lists its parents,
-// and every merge is a clean parent merge.
-type mergeOnlyGit struct {
-	Git
-	merges map[string][]string
-}
-
-func (g mergeOnlyGit) CommitParents(_, commit string) ([]string, error) {
-	if parents, ok := g.merges[commit]; ok {
-		return parents, nil
-	}
-	return []string{"parent"}, nil
-}
-
-func (mergeOnlyGit) MergeRejection(string, string, []string, ParentBranchFunc) string { return "" }
-
-// TestGateStateWrites proves the gate's writes to state.json.
-// A failure records the pre-fix head, and a pass clears it.
-// A pass records the fixed range it is given, and a pass given no head keeps the earlier one.
-// A range starting at the earlier fixed head, or a clean parent merge above it, keeps the earlier base.
-// A run with no state.json is left without one.
-func TestGateStateWrites(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-	root := t.TempDir()
-	git := mergeOnlyGit{merges: map[string][]string{"merge": {"fixed3", "side"}}}
-	geom := Geometry{WebsterDir: filepath.Join(root, "webster"), ScratchDir: filepath.Join(root, "scratch"), Git: git}
-	pass := func(fixedBase, fixedHead string) error { return recordGatePass(geom, nil, fixedBase, fixedHead) }
-	if err := SaveState(geom.WebsterDir, geom.ScratchDir, &State{RunGUID: "g1", FixedBase: "oldbase", FixedHead: "old"}); err != nil {
-		t.Fatalf("SaveState: %v", err)
-	}
-
-	steps := []struct {
-		name          string
-		apply         func() error
-		wantPreFix    string
-		wantFixedBase string
-		wantFixedHead string
-	}{
-		{"FailureRecordsPreFix", func() error { return setPreFixHead(geom, "pre") }, "pre", "oldbase", "old"},
-		{"PassWithoutFixesKeepsFixedHead", func() error { return pass("pre", "") }, "", "oldbase", "old"},
-		{"SecondFailure", func() error { return setPreFixHead(geom, "pre2") }, "pre2", "oldbase", "old"},
-		{"PassAfterFixesRecordsTheRange", func() error { return pass("pre2", "fixed") }, "", "pre2", "fixed"},
-		{"NewFixedHeadAloneIsSaved", func() error { return pass("pre3", "fixed2") }, "", "pre3", "fixed2"},
-		{"RangeFromTheEarlierFixedHeadKeepsItsBase", func() error { return pass("fixed2", "fixed3") }, "", "pre3", "fixed3"},
-		{"RangeFromAMergeAboveItKeepsItsBase", func() error { return pass("merge", "fixed4") }, "", "pre3", "fixed4"},
-	}
-	for _, step := range steps {
-		if err := step.apply(); err != nil {
-			t.Fatalf("%s: error = %v", step.name, err)
-		}
-		st, err := LoadState(geom.WebsterDir, geom.ScratchDir)
-		if err != nil {
-			t.Fatalf("%s: LoadState: %v", step.name, err)
-		}
-		if st.PreFixHead != step.wantPreFix || st.FixedBase != step.wantFixedBase || st.FixedHead != step.wantFixedHead {
-			t.Errorf("%s: PreFixHead, FixedBase, FixedHead = %q, %q, %q; want %q, %q, %q", step.name, st.PreFixHead, st.FixedBase, st.FixedHead, step.wantPreFix, step.wantFixedBase, step.wantFixedHead)
-		}
-	}
-
-	empty := Geometry{WebsterDir: filepath.Join(root, "none", "webster"), ScratchDir: filepath.Join(root, "none", "scratch")}
-	if err := recordGatePass(empty, nil, "pre", "fixed"); err != nil {
-		t.Fatalf("recordGatePass() with no state.json error = %v; want nil", err)
-	}
-	if st, err := LoadState(empty.WebsterDir, empty.ScratchDir); err != nil || st != nil {
-		t.Errorf("LoadState() after recordGatePass with no state.json = %+v, %v; want nil, nil", st, err)
 	}
 }

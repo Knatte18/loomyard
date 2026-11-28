@@ -9,15 +9,12 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"reflect"
 	"slices"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -47,26 +44,6 @@ func readWorkspaceFolders(t *testing.T, path string) []workspaceFolder {
 		t.Fatalf("workspace file is not valid JSON: %v\n%s", err, data)
 	}
 	return ws.Folders
-}
-
-// readFileBytes returns the bytes of the file at path.
-func readFileBytes(t *testing.T, path string) []byte {
-	t.Helper()
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read %s: %v", path, err)
-	}
-	return data
-}
-
-// readWorkspaceMembers returns the top-level members of the workspace file at path, each as raw JSON.
-func readWorkspaceMembers(t *testing.T, path string) map[string]json.RawMessage {
-	t.Helper()
-	var members map[string]json.RawMessage
-	if err := json.Unmarshal(readFileBytes(t, path), &members); err != nil {
-		t.Fatalf("%s is not valid JSON: %v", path, err)
-	}
-	return members
 }
 
 // regenerateHub regenerates the workspace file of h and returns the file's path and the call's mutation record.
@@ -166,13 +143,13 @@ func assertNoWorkspaceFile(t *testing.T, h *hubforge.Hub) {
 }
 
 // recordedFileWrite reports whether rec holds a file_written entry for path.
-func recordedFileWrite(rec recordEntries, hubPath, path string) bool {
+func recordedFileWrite(rec *fabricengine.Mutations, hubPath, path string) bool {
 	rel, err := filepath.Rel(hubPath, path)
 	if err != nil {
 		return false
 	}
 	for _, m := range rec.Entries() {
-		if m.Kind == fabriclayout.KindFileWritten && m.Target == filepath.ToSlash(rel) {
+		if m.Kind == fabricengine.KindFileWritten && m.Target == filepath.ToSlash(rel) {
 			return true
 		}
 	}
@@ -207,82 +184,10 @@ func TestRegenerateHubWorkspace(t *testing.T) {
 		requireFolderNames(t, fabricengine.BeamWorkspacePath(h.Location, "b"), "b", prime, "Bolt", "m")
 	})
 
-	t.Run("CarriesNoTasksKeyWithNoHookInstalled", func(t *testing.T) {
-		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-		hubforge.AddPairWith(t, h, "b", beamAddOptions)
-
-		path, _ := regenerateHub(t, h)
-
-		for _, file := range []string{path, fabricengine.BeamWorkspacePath(h.Location, "b")} {
-			if _, ok := readWorkspaceMembers(t, file)["tasks"]; ok {
-				t.Errorf("%s carries a tasks key with no workspace-content hook installed", filepath.Base(file))
-			}
-		}
-	})
-
-	t.Run("HandsTheHookTheBeamSlugAndAnchorOfEachFile", func(t *testing.T) {
-		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-		hubforge.AddPairWith(t, h, "b", beamAddOptions)
-		type call struct{ hubPath, anchorPath string }
-		calls := map[string]call{}
-		t.Cleanup(fabricengine.InstallWorkspaceContent(func(hubPath, beam, anchorPath string) map[string]json.RawMessage {
-			calls[beam] = call{hubPath, anchorPath}
-			return map[string]json.RawMessage{"tasks": json.RawMessage(strconv.Quote("for-" + beam))}
-		}))
-
-		path, _ := regenerateHub(t, h)
-
-		want := map[string]call{
-			"":  {h.Path, h.PrimeWorktree()},
-			"b": {h.Path, h.PairCodeWorktree("b")},
-		}
-		if !reflect.DeepEqual(calls, want) {
-			t.Errorf("hook calls = %v; want %v", calls, want)
-		}
-		files := map[string]string{path: `"for-"`, fabricengine.BeamWorkspacePath(h.Location, "b"): `"for-b"`}
-		for file, wantTasks := range files {
-			if got := string(readWorkspaceMembers(t, file)["tasks"]); got != wantTasks {
-				t.Errorf("%s tasks = %s; want %s", filepath.Base(file), got, wantTasks)
-			}
-		}
-	})
-
-	t.Run("RefusesAHookMemberOfABeamFileAndWritesNoFile", func(t *testing.T) {
-		for _, name := range []string{"lym.generated", "folders", "settings"} {
-			t.Run(name, func(t *testing.T) {
-				h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-				hubforge.AddPairWith(t, h, "b", beamAddOptions)
-				path, _ := regenerateHub(t, h)
-				beamPath := fabricengine.BeamWorkspacePath(h.Location, "b")
-				hubBefore, beamBefore := readFileBytes(t, path), readFileBytes(t, beamPath)
-				// A new pair changes the hub file's bytes, which the refusal must leave unwritten.
-				addRawWorktree(t, h, "extra")
-				t.Cleanup(fabricengine.InstallWorkspaceContent(func(_, beam, _ string) map[string]json.RawMessage {
-					if beam == "" {
-						return nil
-					}
-					return map[string]json.RawMessage{name: json.RawMessage("true")}
-				}))
-
-				_, err := fabricengine.RegenerateHubWorkspace(fabricengine.NewMutations(h.Path), h.Location)
-
-				if err == nil || !strings.Contains(err.Error(), "member") {
-					t.Fatalf("error = %v; want a refusal naming the member", err)
-				}
-				if got := readFileBytes(t, path); !slices.Equal(got, hubBefore) {
-					t.Errorf("hub file written despite the refusal:\n%s", got)
-				}
-				if got := readFileBytes(t, beamPath); !slices.Equal(got, beamBefore) {
-					t.Errorf("beam file written despite the refusal:\n%s", got)
-				}
-			})
-		}
-	})
-
 	t.Run("ListsFolderAddedWhileWaitingForTheLock", func(t *testing.T) {
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		l := *h.Location
-		hubScratch := fabriclayout.HubScratchDir(h.Path)
+		hubScratch := fabricengine.HubScratchDir(h.Path)
 		if err := os.MkdirAll(hubScratch, 0o755); err != nil {
 			t.Fatalf("create scratch dir: %v", err)
 		}
@@ -506,7 +411,7 @@ func TestRegenerateHubWorkspace(t *testing.T) {
 		t.Parallel()
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		hubforge.AddPairWith(t, h, "b", beamAddOptions)
-		if err := os.Remove(filepath.Join(h.BoardDir(), fabriclayout.ShortnameFileName)); err != nil {
+		if err := os.Remove(filepath.Join(h.BoardDir(), fabricengine.ShortnameFileName)); err != nil {
 			t.Fatalf("remove the shortname record: %v", err)
 		}
 
@@ -599,7 +504,7 @@ func TestRegenerateHubWorkspace(t *testing.T) {
 			t.Fatalf("delete the origin record by hand: %v", err)
 		}
 		rec := fabricengine.NewMutations(h.Path)
-		if err := fabricengine.WriteOrigin(rec, l, "emptyparent", fabriclayout.Origin{ParentBranch: primeBranch(t, h)}); err != nil {
+		if err := fabricengine.WriteOrigin(rec, l, "emptyparent", fabricengine.Origin{ParentBranch: primeBranch(t, h)}); err != nil {
 			t.Fatalf("rewrite the origin record with an empty parent worktree: %v", err)
 		}
 		if err := os.RemoveAll(filepath.Join(h.PairRecordsSibling("nolock"), ".weft")); err != nil {
@@ -708,7 +613,7 @@ func TestRegenerateHubWorkspace(t *testing.T) {
 	t.Run("RecreatesTheScratchDirAndRecordsTheLockFileOnce", func(t *testing.T) {
 		t.Parallel()
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-		if err := os.RemoveAll(fabriclayout.HubScratchDir(h.Path)); err != nil {
+		if err := os.RemoveAll(fabricengine.HubScratchDir(h.Path)); err != nil {
 			t.Fatalf("remove the scratch dir: %v", err)
 		}
 		lockPath := fabricengine.HubWorkspaceLockPath(h.Path)
@@ -764,7 +669,7 @@ func TestRegenerateHubWorkspace(t *testing.T) {
 		t.Parallel()
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		removeWorkspaceFile(t, h)
-		if err := os.MkdirAll(fabriclayout.HubScratchDir(h.Path), 0o755); err != nil {
+		if err := os.MkdirAll(fabricengine.HubScratchDir(h.Path), 0o755); err != nil {
 			t.Fatalf("create scratch dir: %v", err)
 		}
 		lockPath := fabricengine.HubWorkspaceLockPath(h.Path)

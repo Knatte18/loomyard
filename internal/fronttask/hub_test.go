@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -105,7 +105,7 @@ func TestStartAction(t *testing.T) {
 			if got, want := started.Dir, prime.AnchorPath(); got != want {
 				t.Errorf("spawned directory = %q; want %q", got, want)
 			}
-			outPath := filepath.Join(fabriclayout.FrontTaskScratchDir(hub), tt.key+".out")
+			outPath := filepath.Join(fabricengine.FrontTaskScratchDir(hub), tt.key+".out")
 			if _, err := os.Stat(outPath); err != nil {
 				t.Errorf("output file %q: %v; want it created", outPath, err)
 			}

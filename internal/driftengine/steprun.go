@@ -277,7 +277,7 @@ func missingDirRefusal(run stepRun, cause error) error {
 	if run.Site == siteCapture {
 		again = "lym drift capture and lym loom resume"
 	}
-	return &stepRefusal{cause: fmt.Errorf("drift: the %s command cannot start: config key %q: %w; way forward: lym config drift --set %s.dir=<dir> from the prime, then %s", run.Site, keyName(run.Name+".dir"), cause, run.Name, again)}
+	return &stepRefusal{cause: fmt.Errorf("drift: the %s command cannot start: %s.yaml key %q: %w; way forward: lym config drift --set %s.dir=<dir> from the prime, then %s", run.Site, configModule, run.Name+".dir", cause, run.Name, again)}
 }
 
 // acquireSlot returns the slot the run's command runs in.
@@ -333,15 +333,15 @@ func renderCommand(run stepRun) (string, error) {
 const skipFilePlaceholder = "{skip_file}"
 
 // refuseSkipFilePlaceholder returns the stepRefusal of a command at the site that holds the {skip_file} placeholder.
-// The refusal names the hand edit of the step that removes the placeholder.
-// That edit is a hub-wide write, refused from a task or beam session,
-// so the way forward hands it to the operator or the hub orch.
+// The refusal names the reconcile and the edit of the step that clear it.
+// Both are hub-wide writes, refused from a task or beam session,
+// so the way forward hands them to the operator or the hub orch.
 // It returns nil for a command holding none.
 func refuseSkipFilePlaceholder(site, step, command string) error {
 	if !strings.Contains(command, skipFilePlaceholder) {
 		return nil
 	}
-	return &stepRefusal{cause: fmt.Errorf("drift: the %s command holds %s, which drift no longer renders; way forward: the operator or the hub orch removes every use of it, such as an -e NAME=%s argument, from %s with lym config drift --set from the hub's prime worktree, since a hub-wide config write is refused from any other session, then lym loom resume", site, skipFilePlaceholder, skipFilePlaceholder, keyName(step))}
+	return &stepRefusal{cause: fmt.Errorf("drift: the %s command holds %s, which drift no longer renders; way forward: the operator or the hub orch runs lym config reconcile --layer default --apply from the hub's prime worktree, which removes an -e NAME=%s argument, and removes any other use of it from %s with lym config drift --set, since a hub-wide config write is refused from any other session, then lym loom resume", site, skipFilePlaceholder, skipFilePlaceholder, step)}
 }
 
 // renderEnv returns env as KEY=VALUE entries in key order.

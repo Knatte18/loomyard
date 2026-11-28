@@ -10,7 +10,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -54,7 +54,7 @@ func TestFinalize_CommitStatus(t *testing.T) {
 		wantEvents []string
 		wantMerges int
 	}{
-		{"runs before the merge-in and again after it", nil, false, []string{"commit", "merge", "commit"}, 1},
+		{"runs before the merge-in", nil, false, []string{"commit", "merge"}, 1},
 		{"failure is an error and never merges", sentinel, false, []string{"commit"}, 0},
 		{"nil seam is not an error", nil, true, []string{"merge"}, 1},
 	}
@@ -67,7 +67,7 @@ func TestFinalize_CommitStatus(t *testing.T) {
 				deps.CommitStatus = nil
 			}
 			res := &orderRecordingResolver{events: &events, result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
-			merger := &recordingParentMerger{results: []mergeCallResult{{result: fabriclayout.MergeResult{Committed: true}}}}
+			merger := &recordingParentMerger{results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}}}
 			fz := &Finalize{deps: deps, resolver: res, parentOpener: func() (parentMerger, error) { return merger, nil }}
 
 			outcome, ptr, err := fz.Call(context.Background())

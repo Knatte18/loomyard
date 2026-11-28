@@ -13,7 +13,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -37,19 +36,19 @@ type SeamOptions struct {
 	PrimeParentLockFree func() (bool, error)
 	WakeHeld            func(slug string) (bool, error)
 	LiftWakeHold        func(slug string) error
-	Machine             func() (machinename.Identity, error)
+	Machine             func() (string, error)
 	ParentOf            func(slug string) (string, error)
 }
 
 // HubSeamOptions returns the options a call site with only the prime's location needs.
 // HubPaused reads the hub's pause record at each call.
 // PrimeParentLockFree lists the parent lock store once for the prime's branch.
-// Machine reads this machine's identity.
+// Machine reads the machine's name.
 // ParentOf resolves an entry's parent slug through hubgeom.ParentOf over the prime's location.
 // WakeHeld and LiftWakeHold are left nil, which read as no wake hold, for the call site that knows one to fill.
 func HubSeamOptions(prime *lymcwd.Location) SeamOptions {
 	return SeamOptions{
-		Machine: machinename.ReadIdentity,
+		Machine: machinename.Name,
 		ParentOf: func(slug string) (string, error) {
 			return hubgeom.ParentOf(prime, slug)
 		},
@@ -70,7 +69,7 @@ func HubSeamOptions(prime *lymcwd.Location) SeamOptions {
 			if err != nil {
 				return false, fmt.Errorf("read the prime's branch: %w", err)
 			}
-			store := &parentlock.Store{Dir: parentlock.Dir(fabriclayout.BoltDir(prime.HubPath))}
+			store := &parentlock.Store{Dir: parentlock.Dir(fabricengine.BoltDir(prime.HubPath))}
 			entries, err := store.List()
 			if err != nil {
 				return false, err
@@ -87,13 +86,12 @@ func HubSeamOptions(prime *lymcwd.Location) SeamOptions {
 
 // OwnerReader builds the reader of a slug's owner from one `board.json`:
 // the effective owner, the subject `lym adopt` takes to move it, and whether that owner is another machine.
-// The owner is compared with this machine's identity through the board's machine registry.
-// An identity error, an empty hostname included, a parentOf error and undecodable board bytes are returned,
+// A machine error, an empty hostname included, a parentOf error and undecodable board bytes are returned,
 // so no owner is ever compared with an empty name.
 // parentOf names the slug of a pair's parent in the hub at hubPath, or "" for the prime.
-func OwnerReader(identity func() (machinename.Identity, error), parentOf func(hubPath, slug string) (string, error)) fabricengine.OwnerReader {
+func OwnerReader(machine func() (string, error), parentOf func(hubPath, slug string) (string, error)) fabricengine.OwnerReader {
 	return func(hubPath string, boardJSON []byte, slug string) (string, string, bool, error) {
-		here, err := identity()
+		here, err := machine()
 		if err != nil {
 			return "", "", false, fmt.Errorf("read this machine's name: %w", err)
 		}
@@ -110,7 +108,7 @@ func OwnerReader(identity func() (machinename.Identity, error), parentOf func(hu
 		if err != nil {
 			return "", "", false, fmt.Errorf("read what adopt takes for %s: %w", slug, err)
 		}
-		return owner, subject, boardengine.OwnedElsewhere(owner, owners.Registry, here), nil
+		return owner, subject, boardengine.OwnedElsewhere(owner, here), nil
 	}
 }
 
@@ -152,23 +150,23 @@ func (t *Teardown) OriginSeams(opts SeamOptions) fabricengine.OriginSeams {
 			return !state.quiet, nil
 		},
 		PrimeParentLockFree: opts.PrimeParentLockFree,
-		Teardown: func(request fabriclayout.EndedTeardown) (fabriclayout.TeardownReport, error) {
+		Teardown: func(request fabricengine.EndedTeardown) (fabricengine.TeardownReport, error) {
 			return t.teardownEnded(opts, request)
 		},
 	}
 }
 
 // teardownEnded runs the local removal of one ended entry's pair.
-func (t *Teardown) teardownEnded(opts SeamOptions, ended fabriclayout.EndedTeardown) (fabriclayout.TeardownReport, error) {
+func (t *Teardown) teardownEnded(opts SeamOptions, ended fabricengine.EndedTeardown) (fabricengine.TeardownReport, error) {
 	wakeHeld := false
 	if opts.WakeHeld != nil {
 		var err error
 		if wakeHeld, err = opts.WakeHeld(ended.Slug); err != nil {
-			return fabriclayout.TeardownReport{}, err
+			return fabricengine.TeardownReport{}, err
 		}
 	}
 
-	request := Request{Slug: ended.Slug, Local: true, RefuseWhenBusy: true, Verdict: fabriclayout.EntryEnded}
+	request := Request{Slug: ended.Slug, Local: true, RefuseWhenBusy: true, Verdict: fabricengine.EntryEnded}
 	if wakeHeld || ended.EarlierSnapshot {
 		request.RefuseWhenBusy = false
 		request.Force = true
@@ -182,7 +180,7 @@ func (t *Teardown) teardownEnded(opts SeamOptions, ended fabriclayout.EndedTeard
 	if len(result.Session.Survivors) > 0 {
 		logger.Warn("pairteardown: a forced teardown went on past surviving processes", "slug", ended.Slug, "survivors", survivorNames(result.Session.Survivors))
 	}
-	report := fabriclayout.TeardownReport{MutationRecord: result.Removal.MutationRecord}
+	report := fabricengine.TeardownReport{MutationRecord: result.Removal.MutationRecord}
 	if result.Removal.SnapshotTag != "" {
 		report.Tags = append(report.Tags, result.Removal.SnapshotTag)
 	}
@@ -195,10 +193,10 @@ func (t *Teardown) teardownEnded(opts SeamOptions, ended fabriclayout.EndedTeard
 
 	switch {
 	case errors.Is(err, ErrDriverBusy):
-		report.Busy, report.BusyOn = true, fabriclayout.BusyOnDriver
+		report.Busy, report.BusyOn = true, fabricengine.BusyOnDriver
 		return report, nil
 	case errors.Is(err, fabricengine.ErrPairBusy):
-		report.Busy, report.BusyOn = true, fabriclayout.BusyOnLock
+		report.Busy, report.BusyOn = true, fabricengine.BusyOnLock
 		return report, nil
 	}
 	return report, err

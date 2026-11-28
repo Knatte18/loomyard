@@ -70,8 +70,7 @@ func checkVerifyNestedModule(plan *Plan, worktreeRoot string) []ValidationError 
 // A `go test` must also not select the `tier2` or `tier3` tier.
 // An agent's settings deny such a command, so it can never run under a fork.
 // The way forward is a `lym gate test` call over the card's scope.
-// The call runs in the foreground under the gate rule in the agent's standing instructions.
-// The wording holds on every engine, since the finding reaches the plan writer on any of them.
+// The call runs in the foreground under the gate rule in the agent's system prompt.
 // The overview's verify chain is not read.
 // It matches static shapes only: a command built from a variable or behind `bash -c` passes.
 func checkVerifyModuleWide(plan *Plan) []ValidationError {
@@ -83,7 +82,7 @@ func checkVerifyModuleWide(plan *Plan) []ValidationError {
 				Check: "verify-module-wide",
 				Card:  cardID(c),
 				Detail: fmt.Sprintf(
-					"card %d Verify: `%s` is module-wide or runs the tier2 or tier3 tier, which no fork may run raw; use `lym gate test --wait --tier <n> --card <id>` over the card's own scope, run in the foreground under the gate rule in your standing instructions",
+					"card %d Verify: `%s` is module-wide or runs the tier2 or tier3 tier, which no fork may run raw; use `lym gate test --wait --tier <n> --card <id>` over the card's own scope, run in the foreground under the gate rule in your system prompt",
 					c.Number, cmd,
 				),
 			})

@@ -1,4 +1,4 @@
-// tmuxconf.go validates the `reed.tmux_conf` key and runs the boot guard that sources the operator's tmux config.
+// tmuxconf.go validates the `tmux_conf` key and runs the boot guard that sources the operator's tmux config.
 
 package reedengine
 
@@ -14,7 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
-// tmuxConfEnv is the environment variable the `reed.tmux_conf` template line reads.
+// tmuxConfEnv is the environment variable the `tmux_conf` template line reads.
 const tmuxConfEnv = "LYM_REED_TMUX_CONF"
 
 // tmuxConfForbiddenChars are the non-whitespace characters a tmux config path may not hold.
@@ -22,13 +22,13 @@ const tmuxConfEnv = "LYM_REED_TMUX_CONF"
 // and the boot nests the path in a command string that tmux parses a second time.
 const tmuxConfForbiddenChars = `*?[\'";#{}$`
 
-// tmuxConfPath validates the `reed.tmux_conf` value and returns the path to source.
+// tmuxConfPath validates the `tmux_conf` value and returns the path to source.
 // An empty raw returns the empty string.
 // A leading `~/` expands to home when home is non-empty.
 // With an empty home, the `~/` stays unexpanded and is refused as not absolute.
 // The result is an absolute path to an existing regular file.
 // It holds no whitespace and none of the characters tmux would reinterpret.
-// Every error names the key `reed.tmux_conf`, the variable tmuxConfEnv and the path.
+// Every error names the key `tmux_conf`, the variable tmuxConfEnv and the path.
 func tmuxConfPath(raw, home string) (string, error) {
 	if raw == "" {
 		return "", nil
@@ -38,7 +38,7 @@ func tmuxConfPath(raw, home string) (string, error) {
 		path = home + path[1:]
 	}
 	refuse := func(reason string) (string, error) {
-		return "", fmt.Errorf("reed: the configured tmux config %q (key %s, variable %s) %s; set %s in reed.yaml to an absolute path to an existing regular file, or leave it empty", path, keyName("tmux_conf"), tmuxConfEnv, reason, keyName("tmux_conf"))
+		return "", fmt.Errorf("reed: the configured tmux config %q (key tmux_conf, variable %s) %s; set tmux_conf in reed.yaml to an absolute path to an existing regular file, or leave it empty", path, tmuxConfEnv, reason)
 	}
 	if !filepath.IsAbs(path) {
 		return refuse("is not an absolute path")
@@ -108,7 +108,7 @@ func (e *Engine) guardBootSessionLocked(identityBefore, confPath string) error {
 	if err := e.tmux.run(bootGuardArgv(candidate, confPath)...); err != nil {
 		if candidate && confPath != "" {
 			logger.Warn("reed: the tmux config did not source cleanly", "socket", e.Socket(), "path", confPath, "err", err)
-			fmt.Fprintf(e.warnOut, "reed: warning: sourcing %s %s failed: %v\n", keyName("tmux_conf"), confPath, err)
+			fmt.Fprintf(e.warnOut, "reed: warning: sourcing tmux_conf %s failed: %v\n", confPath, err)
 		} else {
 			logger.Warn("reed: the boot guard did not run cleanly", "socket", e.Socket(), "err", err)
 		}
@@ -120,7 +120,7 @@ func (e *Engine) guardBootSessionLocked(identityBefore, confPath string) error {
 	}
 	if !up {
 		e.endServerWithoutReedSessionLocked()
-		return fmt.Errorf("reed: session %q ended while the tmux config %q (key %s, variable %s) was sourced; remove from the file the command that ends the session, such as an untargeted `set destroy-unattached on` or a `kill-session`", e.SessionName(), confPath, keyName("tmux_conf"), tmuxConfEnv)
+		return fmt.Errorf("reed: session %q ended while the tmux config %q (key tmux_conf, variable %s) was sourced; remove from the file the command that ends the session, such as an untargeted `set destroy-unattached on` or a `kill-session`", e.SessionName(), confPath, tmuxConfEnv)
 	}
 
 	out, err := e.tmux.output("show-options", "-gv", "destroy-unattached", ";", "show-options", "-sv", "exit-unattached")
@@ -128,7 +128,7 @@ func (e *Engine) guardBootSessionLocked(identityBefore, confPath string) error {
 		return fmt.Errorf("read back the boot guard pins: %w", err)
 	}
 	if lines := strings.Fields(out); len(lines) != 2 || lines[0] != "off" || lines[1] != "off" {
-		return fmt.Errorf("reed: destroy-unattached and exit-unattached must read off after the boot guard, got %q (key %s, variable %s, path %q)", strings.TrimSpace(out), keyName("tmux_conf"), tmuxConfEnv, confPath)
+		return fmt.Errorf("reed: destroy-unattached and exit-unattached must read off after the boot guard, got %q (key tmux_conf, variable %s, path %q)", strings.TrimSpace(out), tmuxConfEnv, confPath)
 	}
 	return nil
 }

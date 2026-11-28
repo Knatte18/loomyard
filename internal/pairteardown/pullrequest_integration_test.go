@@ -12,8 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestClosePairPullRequest_NamesTheBareSlugBranchOfAPairMadeBeforeAPrefix pins the gone-worktree warning.
-// The warning names the pair's bare slug when fabric.branch_prefix is set over a pair made under the empty prefix.
+// TestClosePairPullRequest_NamesTheBareSlugBranchOfAPairMadeBeforeAPrefix pins that, with branch_prefix set over a live pair made under the empty prefix, the gone-worktree warning names the pair's bare slug.
 // It captures the process-global logger, so it is not parallel.
 func TestClosePairPullRequest_NamesTheBareSlugBranchOfAPairMadeBeforeAPrefix(t *testing.T) {
 	tiergate.Require(t, 1)

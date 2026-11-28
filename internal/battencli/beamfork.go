@@ -11,7 +11,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
@@ -22,7 +21,7 @@ import (
 // beamForkParent returns the slug of the beam that slug's pair forks from, or "" for the prime.
 // It returns a *battenshed.PreconditionError when that beam cannot take slug.
 func beamForkParent(prime *lymcwd.Location, slug string, branchOnOrigin func(beam string) (bool, error)) (string, error) {
-	tasks, err := boardengine.ReadTasks(fabriclayout.BoardDir(prime.HubPath))
+	tasks, err := boardengine.ReadTasks(fabricengine.BoardDir(prime.HubPath))
 	if err != nil {
 		return "", err
 	}
@@ -125,7 +124,7 @@ func memberHoldRefusal(slug, beam, status string) error {
 // readBeamHold reads beam's board entry over the hub of prime: its status, and whether its run holds the entry.
 // A beam with no entry reads as not held.
 func readBeamHold(prime *lymcwd.Location, beam string) (status string, held bool, err error) {
-	tasks, err := boardengine.ReadTasks(fabriclayout.BoardDir(prime.HubPath))
+	tasks, err := boardengine.ReadTasks(fabricengine.BoardDir(prime.HubPath))
 	if err != nil {
 		return "", false, err
 	}
@@ -150,7 +149,7 @@ func readBeamHold(prime *lymcwd.Location, beam string) (status string, held bool
 // The removal runs under holdPrime, since it writes the hub's worktree registry.
 // A slug outside a beam is never refused.
 func (c *battenCLI) refuseHeldMember(ctx context.Context, prime *lymcwd.Location, slug string, holdPrime battenshed.HoldPrimeLock) error {
-	tasks, err := boardengine.ReadTasks(fabriclayout.BoardDir(prime.HubPath))
+	tasks, err := boardengine.ReadTasks(fabricengine.BoardDir(prime.HubPath))
 	if err != nil {
 		return err
 	}

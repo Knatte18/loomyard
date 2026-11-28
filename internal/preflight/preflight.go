@@ -8,7 +8,6 @@ import (
 	"errors"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -20,19 +19,12 @@ import (
 // settle records, tackler and arbiter attempts, and stop markers.
 // The friction directory holds the halt and crash-resume notes lym writes and the notes agents write.
 // A reflection moves the notes it covered into a timestamped archive sibling.
-// The usage directory holds the usage record lym writes when each agent session ends,
-// and a session can end between the run's records commit and the check.
 // Those writes, deletions and moves stay uncommitted until a later records commit or the run's removal.
 // The check ignores them because they are lym's own bookkeeping in flight, never work a run could lose.
 // Counting them would let one halt's note cause the next halt.
 // It is the one place that decides which lym state the check skips.
 func runStateExemptRels() []string {
-	return []string{
-		shedrun.RunsRootRel(),
-		shedrun.UsageDirRel(),
-		loomengine.LoomFrictionDirRel(),
-		loomengine.LoomFrictionArchivesRelPattern(),
-	}
+	return []string{shedrun.RunsRootRel(), loomengine.LoomFrictionDirRel(), loomengine.LoomFrictionArchivesRelPattern()}
 }
 
 // Check resolves cwd into a *lymcwd.Location and validates the tier-1 and tier-2 preconditions against it.
@@ -111,7 +103,7 @@ func CheckResolved(l *lymcwd.Location) (Report, error) {
 			// and every other cause is CheckJunction.
 			var check CheckID
 			switch reason.Cause {
-			case fabriclayout.CauseBranchMismatch:
+			case fabricengine.CauseBranchMismatch:
 				check = CheckFabricSync
 			default:
 				check = CheckJunction

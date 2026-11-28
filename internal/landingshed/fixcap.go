@@ -8,7 +8,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 )
 
 // FixCap bounds one fixer change: its size, and the kinds of path and line it may touch.
@@ -36,7 +36,7 @@ var buildConstraintPrefixes = []string{"//go:build", "// +build", "#if"}
 // Otherwise it is over when it touches a test file, a testdata path, or a gate or build configuration file.
 // It is also over when an added line skips a test or adds a build constraint.
 // The reason names the first offending path or line.
-func (c FixCap) Exceeded(change fabriclayout.LineChange) string {
+func (c FixCap) Exceeded(change fabricengine.LineChange) string {
 	if change.Lines > c.MaxLines {
 		return fmt.Sprintf("the change holds %d lines, over the cap of %d", change.Lines, c.MaxLines)
 	}

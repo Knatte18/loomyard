@@ -10,7 +10,6 @@ import (
 	"github.com/google/go-cmp/cmp"
 
 	"github.com/Knatte18/loomyard/internal/dotgit"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -24,18 +23,18 @@ func TestParseWorktreePorcelain(t *testing.T) {
 	tests := []struct {
 		name    string
 		out     string
-		want    []fabriclayout.WorktreeEntry
+		want    []WorktreeEntry
 		wantErr string
 	}{
 		{
 			name: "SingleWorktreeIsMain",
 			out:  "worktree /hub/main\nHEAD aaa\nbranch refs/heads/main\n\n",
-			want: []fabriclayout.WorktreeEntry{{Path: "/hub/main", Head: "aaa", Branch: "main", Main: true}},
+			want: []WorktreeEntry{{Path: "/hub/main", Head: "aaa", Branch: "main", Main: true}},
 		},
 		{
 			name: "LaterWorktreesAreNotMain",
 			out:  "worktree /hub/main\nHEAD aaa\nbranch refs/heads/main\n\nworktree /hub/wt1\nHEAD bbb\nbranch refs/heads/feature/x\n",
-			want: []fabriclayout.WorktreeEntry{
+			want: []WorktreeEntry{
 				{Path: "/hub/main", Head: "aaa", Branch: "main", Main: true},
 				{Path: "/hub/wt1", Head: "bbb", Branch: "feature/x"},
 			},
@@ -43,7 +42,7 @@ func TestParseWorktreePorcelain(t *testing.T) {
 		{
 			name: "DetachedHead",
 			out:  "worktree /hub/main\nHEAD aaa\nbranch refs/heads/main\n\nworktree /hub/wt1\nHEAD bbb\ndetached\n",
-			want: []fabriclayout.WorktreeEntry{
+			want: []WorktreeEntry{
 				{Path: "/hub/main", Head: "aaa", Branch: "main", Main: true},
 				{Path: "/hub/wt1", Head: "bbb", Branch: detachedBranch},
 			},
@@ -51,7 +50,7 @@ func TestParseWorktreePorcelain(t *testing.T) {
 		{
 			name: "PrunableWithReason",
 			out:  "worktree /hub/main\nHEAD aaa\nbranch refs/heads/main\n\nworktree /hub/gone\nHEAD bbb\nbranch refs/heads/gone\nprunable gitdir file points to non-existent location\n",
-			want: []fabriclayout.WorktreeEntry{
+			want: []WorktreeEntry{
 				{Path: "/hub/main", Head: "aaa", Branch: "main", Main: true},
 				{Path: "/hub/gone", Head: "bbb", Branch: "gone", Prunable: true},
 			},
@@ -100,12 +99,12 @@ func TestEntriesFromWorktrees(t *testing.T) {
 	tests := []struct {
 		name      string
 		worktrees []dotgit.Worktree
-		want      []fabriclayout.WorktreeEntry
+		want      []WorktreeEntry
 	}{
 		{
 			name:      "SingleWorktreeIsMain",
 			worktrees: []dotgit.Worktree{{Path: "/hub/main", Head: "aaa", Branch: "refs/heads/main"}},
-			want:      []fabriclayout.WorktreeEntry{{Path: "/hub/main", Head: "aaa", Branch: "main", Main: true}},
+			want:      []WorktreeEntry{{Path: "/hub/main", Head: "aaa", Branch: "main", Main: true}},
 		},
 		{
 			name: "LaterWorktreesAreNotMainAndCarryPrunable",
@@ -113,7 +112,7 @@ func TestEntriesFromWorktrees(t *testing.T) {
 				{Path: "/hub/main", Head: "aaa", Branch: "refs/heads/main"},
 				{Path: "/hub/gone", Head: "bbb", Branch: "refs/heads/feature/x", Prunable: true},
 			},
-			want: []fabriclayout.WorktreeEntry{
+			want: []WorktreeEntry{
 				{Path: "/hub/main", Head: "aaa", Branch: "main", Main: true},
 				{Path: "/hub/gone", Head: "bbb", Branch: "feature/x", Prunable: true},
 			},
@@ -121,7 +120,7 @@ func TestEntriesFromWorktrees(t *testing.T) {
 		{
 			name:      "EmptyBranchIsDetached",
 			worktrees: []dotgit.Worktree{{Path: "/hub/main", Head: "aaa", Branch: "refs/heads/main"}, {Path: "/hub/wt1", Head: "bbb"}},
-			want: []fabriclayout.WorktreeEntry{
+			want: []WorktreeEntry{
 				{Path: "/hub/main", Head: "aaa", Branch: "main", Main: true},
 				{Path: "/hub/wt1", Head: "bbb", Branch: detachedBranch},
 			},

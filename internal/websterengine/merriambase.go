@@ -16,7 +16,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/runplan"
-	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
 // merriamFixedContext is the context, in tokens, of Merriam's system prompt, tools and the skills loaded at launch.
@@ -64,8 +63,7 @@ func MerriamBase(geom Geometry, instructionFiles []string) (batcher.StartBase, e
 		texts = append(texts, string(data))
 	}
 
-	// Read raw, with the engine blocks unresolved: the count needs no engine, and each include line counts as one line.
-	template, err := stencilstore.Read(geom.StencilsDir, "webster-template-master")
+	template, err := MasterTemplate(geom.StencilsDir)
 	if err != nil {
 		return batcher.StartBase{}, merriamBaseError("webster-template-master", err)
 	}

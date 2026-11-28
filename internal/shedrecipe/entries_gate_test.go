@@ -1,10 +1,8 @@
 package shedrecipe
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
 
@@ -61,7 +59,7 @@ func TestResolveGateSpec_AbsentKeyIsUngated(t *testing.T) {
 
 func TestResolveGateSpec_ValidOneEntryPerVocabularyName(t *testing.T) {
 	tiergate.Require(t, 0)
-	for _, name := range []string{"clean", "discussion", "plan", "parts", "description", "drift", "expectation", "judgement", "red-first"} {
+	for _, name := range []string{"clean", "discussion", "plan", "parts", "description", "drift", "expectation", "judgement"} {
 		t.Run(name, func(t *testing.T) {
 			env := reworkTestEnv(t)
 			env.DescriptionPath = filepath.Join(t.TempDir(), "summary.md")
@@ -108,34 +106,6 @@ func TestResolveGateSpec_ValidOneEntryPerVocabularyName(t *testing.T) {
 			}
 		})
 	}
-
-	// The description gate refuses a line the env's forbidden terms match, so a site passing no pattern fails here.
-	t.Run("description with a forbidden term", func(t *testing.T) {
-		env := reworkTestEnv(t)
-		env.DescriptionPath = filepath.Join(t.TempDir(), "summary.md")
-		env.DescriptionTerms = func() ([]*regexp.Regexp, error) {
-			return []*regexp.Regexp{regexp.MustCompile(`\blym\b`)}, nil
-		}
-		content := "# Title\n\nRun lym.\n\n## Merge danger\n\n**Door:** two-way\n**Blast radius:** loom\n"
-		if err := os.WriteFile(env.DescriptionPath, []byte(content), 0o644); err != nil {
-			t.Fatalf("WriteFile() error = %v", err)
-		}
-		spec, err := resolveGateSpec("Row", gatesCfg("description", 4), env)
-		if err != nil {
-			t.Fatalf("resolveGateSpec() error = %v; want nil", err)
-		}
-		result, err := spec[0].Gate()
-		if err != nil || result.Passed || !strings.Contains(result.Findings, `forbidden-term: line 3 names "lym"`) {
-			t.Errorf("Gate() = %+v, %v; want a forbidden-term finding on line 3", result, err)
-		}
-	})
-	t.Run("description whose forbidden terms cannot be read", func(t *testing.T) {
-		env := reworkTestEnv(t)
-		env.DescriptionPath = filepath.Join(t.TempDir(), "summary.md")
-		env.DescriptionTerms = func() ([]*regexp.Regexp, error) { return nil, errors.New("bad yaml") }
-		_, err := resolveGateSpec("Row", gatesCfg("description", 4), env)
-		assertErrContains(t, err, "read the forbidden terms: bad yaml")
-	})
 
 	// The "verify" gate reads the call of the row's own gate key: its name in lower case, else the "gate_key" the row names.
 	for _, tt := range []struct {
@@ -292,10 +262,10 @@ func TestResolveGateSpec_Rejections(t *testing.T) {
 		{"PartsEmptyDecisionRecordPath", gatesCfg("parts", 1), "DecisionRecordPath"},
 		{"PartsRelativeWorktreeRoot", gatesCfg("parts", 1), "WorktreeRoot"},
 		{"PartsNilSetting", gatesCfg("parts", 1), "Setting"},
-		{"PartsMaxBelowOne", gatesCfg("parts", 1), "tapestry.parts.max"},
+		{"PartsMaxBelowOne", gatesCfg("parts", 1), "tapestry.parts_max"},
 		{"DriftNilCaptureCurrent", gatesCfg("drift", 1), "Drift.CaptureCurrent"},
 		{"DriftNilHead", gatesCfg("drift", 1), "Drift.Head"},
-		{"FixerOnARowThatReadsNone", Config{"gates": []any{map[string]any{"name": "plan", "attempts": 1, "fixer": "tapestry.plan.gate_fixer"}}}, "fixer"},
+		{"FixerOnARowThatReadsNone", Config{"gates": []any{map[string]any{"name": "plan", "attempts": 1, "fixer": "tapestry.plan_gate_fixer"}}}, "fixer"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -377,60 +347,10 @@ func TestResolveGateSpec_UnknownNameListsTheLegalValues(t *testing.T) {
 	for _, unknown := range []string{"bogus", "rework-plan", "parent-review"} {
 		t.Run(unknown, func(t *testing.T) {
 			_, err := resolveGateSpec("Row", gatesCfg(unknown, 1), newTestEnv(t))
-			for _, want := range []string{"clean", "discussion", "plan", "parts", "raddle", "description", "verify", "drift", "expectation", "judgement", "red-first"} {
+			for _, want := range []string{"clean", "discussion", "plan", "parts", "raddle", "description", "verify", "drift", "expectation", "judgement"} {
 				assertErrContains(t, err, want)
 			}
 		})
-	}
-}
-
-func TestResolveGateSpec_RedFirstRequiresItsEnv(t *testing.T) {
-	tiergate.Require(t, 0)
-	for _, field := range []string{"WorktreeRoot", "VerifyDir", "DecisionRecordPath", "EntryLabels", "RedFirstCommand"} {
-		t.Run(field, func(t *testing.T) {
-			env := newTestEnv(t)
-			switch field {
-			case "WorktreeRoot":
-				env.WorktreeRoot = "relative/worktree"
-			case "VerifyDir":
-				env.VerifyDir = ""
-			case "DecisionRecordPath":
-				env.DecisionRecordPath = "relative/decision-record.md"
-			case "EntryLabels":
-				env.EntryLabels = nil
-			case "RedFirstCommand":
-				env.RedFirstCommand = nil
-			}
-			_, err := resolveGateSpec("Row", gatesCfg("red-first", 3), env)
-			assertErrContains(t, err, field)
-		})
-	}
-}
-
-func TestResolveGateSpec_RedFirstRendersTheCallOfTheRowsOwnGateKey(t *testing.T) {
-	tiergate.Require(t, 0)
-	env := newTestEnv(t)
-	var asked []string
-	env.RedFirstCommand = func(gateKey string) string {
-		asked = append(asked, gateKey)
-		return "exit 0"
-	}
-	if _, err := resolveRowGateSpec("DarnWrite", "Darn-Write", gatesCfg("red-first", 3), env); err != nil {
-		t.Fatalf("resolveRowGateSpec() error = %v; want nil", err)
-	}
-	if len(asked) != 1 || asked[0] != "darn-write" {
-		t.Errorf("RedFirstCommand asked for %q; want one ask for %q, the gate key of the Darn-Write row", asked, "darn-write")
-	}
-}
-
-func TestResolveGateSpec_RedFirstEntryMayHoldAndCarriesAFinal(t *testing.T) {
-	tiergate.Require(t, 0)
-	spec, err := resolveGateSpec("Row", gatesCfg("red-first", 3), newTestEnv(t))
-	if err != nil {
-		t.Fatalf("resolveGateSpec() error = %v; want nil", err)
-	}
-	if !spec[0].MayHold || spec[0].Final == nil {
-		t.Errorf("resolveGateSpec()[0] MayHold = %v, Final set = %v; want true, true, since the gate holds the run on a refusal its writer may not lift", spec[0].MayHold, spec[0].Final != nil)
 	}
 }
 

@@ -48,6 +48,14 @@ type bouncerFixtureSpec struct {
 
 type bouncerFixtureOpt func(*bouncerFixtureSpec)
 
+// withRubric names the rubric stencil and sets its body.
+func withRubric(name, body string) bouncerFixtureOpt {
+	return func(s *bouncerFixtureSpec) {
+		s.rubricName = name
+		s.rubricBody = body
+	}
+}
+
 // withRubricName names the rubric stencil and keeps the default body.
 func withRubricName(name string) bouncerFixtureOpt {
 	return func(s *bouncerFixtureSpec) { s.rubricName = name }
@@ -112,7 +120,7 @@ func newBouncerFixture(t *testing.T, opts ...bouncerFixtureOpt) *bouncerFixture 
 		}
 	}
 	stencilsDir := stencilkit.Seed(t)
-	stencilkit.SeedEngineBlockCopies(t, stencilsDir, "s", "j")
+	stencilkit.SeedEditDirectiveCopies(t, stencilsDir, "s", "j")
 	files := map[string]string{spec.rubricName: spec.rubricBody}
 	for name, body := range spec.overrides {
 		files[name] = body

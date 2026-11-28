@@ -58,9 +58,8 @@ func TestHelpSchema_LeafCommands(t *testing.T) {
 				"labels",
 				"recipe",
 				"priority",
-				"beam.pull_request",
-				"beam.land_notice",
-				"beam.run_watch",
+				"pull_request",
+				"notify_on_land",
 				"notice",
 				"Example",
 			},
@@ -132,6 +131,11 @@ func TestHelpSchema_LeafCommands(t *testing.T) {
 			name:        "prune",
 			args:        []string{"prune"},
 			mustContain: []string{"done", "depends_on", "--apply"},
+		},
+		{
+			name:        "retire-legacy",
+			args:        []string{"retire-legacy"},
+			mustContain: []string{"--apply", "tasks.json", "notes.json"},
 		},
 		{
 			name: "intake import",

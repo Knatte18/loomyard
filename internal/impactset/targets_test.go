@@ -51,14 +51,13 @@ func TestTargetsFor(t *testing.T) {
 		want    Targets
 	}{
 		{
-			name:    "one changed package yields it and its reverse dependencies, tmux and llm test imports included, and splits the guards at the set",
+			name:    "one changed package yields it and its reverse dependencies, tmux and llm test imports included",
 			changed: []string{"internal/a/a.go"},
 			guards:  guards,
 			want: Targets{
-				Modules:      fromA(),
-				Guards:       map[string][]GuardTest{"internal/d": guardsD},
-				InsideGuards: map[string][]GuardTest{"internal/a": {{Name: "TestGuardA", Tier: 1}}},
-				BinaryTests:  binaryTests,
+				Modules:     fromA(),
+				Guards:      map[string][]GuardTest{"internal/d": guardsD},
+				BinaryTests: binaryTests,
 			},
 		},
 		{
@@ -179,18 +178,14 @@ func TestTargetsFor(t *testing.T) {
 			want:    Targets{Modules: root("./internal/d"), Guards: map[string][]GuardTest{}, BinaryTests: binaryTests},
 		},
 		{
-			name:    "an unwatched guard is dropped from the guards on either side of the set and a sibling guard stays",
+			name:    "an unwatched guard outside the set is dropped from the guards and a sibling guard stays",
 			changed: []string{"internal/a/a.go"},
 			guards:  guards,
-			watched: map[string][]WatchedTest{
-				"internal/d": {{Name: "TestGuardD2", File: "internal/d/d_test.go", Patterns: []string{"*.sql"}}},
-				"internal/a": {{Name: "TestGuardA", File: "internal/a/a_test.go", Patterns: []string{"*.sql"}}},
-			},
+			watched: map[string][]WatchedTest{"internal/d": {{Name: "TestGuardD2", File: "internal/d/d_test.go", Patterns: []string{"*.sql"}}}},
 			want: Targets{
 				Modules:     fromA(),
 				Guards:      map[string][]GuardTest{"internal/d": {{Name: "TestGuardD", Tier: 0}}},
 				BinaryTests: binaryTests,
-				Unwatched:   map[string][]string{"internal/a": {"TestGuardA"}},
 			},
 		},
 		{

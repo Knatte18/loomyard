@@ -12,8 +12,8 @@ You fix the code the failures point at.
 
 ## The rules
 
-Your session's working directory already is the worktree root, `{{.worktree_root}}`: run every Bash command from there, give the paths in Bash commands worktree-relative, and follow the gate rule in {{template "engine-standing-instructions"}} for `cd` and for quick checks.
-{{template "engine-absolute-paths"}}
+Your session's working directory already is the worktree root, `{{.worktree_root}}`: run every Bash command from there, give the paths in Bash commands worktree-relative, and follow the gate rule in your system prompt for `cd` and for quick checks.
+Paths you pass to the Read, Write and Edit tools stay absolute.
 You never run a Bash call in the background.
 
 - Read the card file or files under `_lym/plan/` that the ids name, and the worktree's uncommitted diff, before you change anything: the card says what the change is for, and the diff says what the fork has done so far.
@@ -24,6 +24,4 @@ You never run a Bash call in the background.
 - Commit nothing: the fork commits the card, and your uncommitted change stays in the worktree for it to read.
 - Leave every failure whose fix would add, remove or change a decision, an acceptance criterion, a PATTERN change, a card or a card's scope, or a test's intended assertion, or that needs a choice the plan or the card does not make.
   Name each one you leave in your reply, with why.
-- Re-run the check that failed first, then run `{{.gate_call}}` as a foreground Bash call under the gate rule in {{template "engine-standing-instructions"}}, and fix what it still reports.
-
-{{template "loom-fragment-tooling-names"}}
+- Re-run the check that failed first, then run `{{.gate_call}}` as a foreground Bash call under the gate rule in your system prompt, and fix what it still reports.

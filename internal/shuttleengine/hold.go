@@ -1,15 +1,12 @@
 // hold.go builds the notice an autonomous run sends its parent when a turn ends held.
 // It also holds the optional UsageLimitReader capability and the checks that suppress that notice.
 // The checks cover a usage limit, background work a session wakes from, and a turn the operator typed.
-// A turn the operator typed sends no notice; the agent instead gets one line per run naming its missing output files.
 // A deferred prompt line whose own turn never started is typed in place of the notice.
 // It is typed when a turn ends held, and when Attach reconstructs a run.
-// A typed line that no turn followed within the submit window is typed once more.
 
 package shuttleengine
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -96,18 +93,6 @@ type UsageLimitReader interface {
 	TurnEndUsageLimited(turnEnd Event) bool
 }
 
-// AccountSwitcher is an optional capability of an engine that spreads its sessions over accounts.
-// It records a usage limit against the account a session launched under and moves the worktree to another account.
-// Without it, a usage limit is handled by waiting it out.
-type AccountSwitcher interface {
-	// SwitchAccount records the usage limit the session turnEnd names hit on the account the run in runDir launched under.
-	// It reports whether the worktree now resolves to another account than the launched one,
-	// so the caller relaunches the session under it.
-	// False means the limit is handled by waiting it out, as when no other account can take the worktree.
-	// A session that launched on a directory no account lists records nothing and reports false.
-	SwitchAccount(runDir string, turnEnd Event) (relaunch bool, err error)
-}
-
 // holdNoticePending reports whether a held turn end would be notified or queued for notice now.
 // It is false for a run notifyHeld never notifies, and for a deferred-hold run whose next turn already started.
 // A pause covering the run discards the notice only when no hold is deferred;
@@ -126,100 +111,6 @@ func (run *Run) holdNoticePending() bool {
 func (run *Run) usageLimited(held *heldTurnEnd) bool {
 	reader, ok := run.engine.(UsageLimitReader)
 	return ok && reader.TurnEndUsageLimited(Event{Raw: held.raw})
-}
-
-// handleHeldTurnEnd acts on a held turn end whose usage limit, if any, no account switch took.
-// It first gives an API-error stall across a machine sleep its one continue line.
-// It then shows the hold, and sends the parent one notice unless a case below skips it:
-// a deferred prompt typed in its place, a usage limit, a turn the operator started, or background work it wakes from.
-// A turn the operator started has the agent reminded of its missing output files instead.
-// A Spec.HoldDeferral run queues the notice instead.
-func (run *Run) handleHeldTurnEnd(held *heldTurnEnd) {
-	continued := run.continueAPIErrorStall(held)
-	// A turn start read past this turn end in the same batch means the next turn is already under way, so no hold shows.
-	if !run.turnStartRead {
-		run.beginHeldWait(held.offset)
-	}
-	switch {
-	case continued:
-	case run.deliverPromptAtHold(held):
-		// The agent never got its task; the turn its prompt now starts is the work, so the parent has nothing to answer.
-	case run.holdNoticePending() && run.usageLimited(held):
-		// The parent cannot act while the account is limited,
-		// and a notice sent now lands in its context as stale clutter after the reset.
-		logger.Info("shuttle: held turn end stopped on the usage limit; no hold notice", "strandGUID", run.state.StrandGUID, "offset", held.offset)
-	case !run.spec.Interactive && run.operatorStartedTurn(held):
-		// The operator is talking to the agent in its pane, so the turn end is no stall for the parent.
-		logger.Info("shuttle: held turn end of a turn the operator started; no hold notice", "strandGUID", run.state.StrandGUID, "offset", held.offset)
-		run.remindOfMissingOutputs(held)
-	case run.holdNoticePending() && run.wakesOnBackground(held):
-		// The session wakes when its own background work completes, so the parent has nothing to answer.
-		logger.Info("shuttle: held turn end left background work running; no hold notice", "strandGUID", run.state.StrandGUID, "offset", held.offset)
-	case run.spec.HoldDeferral == nil:
-		run.notifyHeld(held)
-	case !run.turnStartRead:
-		run.pendingHold, run.pendingHoldAt = held, run.clock.Now()
-	}
-}
-
-// missingOutputsLine is the line an agent gets when a turn the operator started left output files unwritten.
-// It names the missing paths.
-const missingOutputsLine = "[lym] Your turn ended without these output files: %s. If the operator asked you to wait or is still talking with you, do as they say; otherwise carry on with your task and write them."
-
-// remindOfMissingOutputs types missingOutputsLine into the pane for held, a turn end of a turn the operator started,
-// so the hold does not wait in silence until the run's deadline.
-// It types nothing under a covering pause or on a usage-limited turn end.
-// Nor does it when a turn start was read past held or the session wakes on background work.
-// Nor when no output file is missing or the run was reminded before.
-// RunState.OperatorHoldReminded is persisted before typing.
-// A failed send is logged at Info and clears it, so the next such turn end tries again.
-// The turn the line starts is no operator's turn, so its own held end is notified as any other.
-func (run *Run) remindOfMissingOutputs(held *heldTurnEnd) {
-	if run.covered || run.turnStartRead || run.state.OperatorHoldReminded || run.usageLimited(held) || run.wakesOnBackground(held) {
-		return
-	}
-	// An agent whose typed prompt line has started no turn has no task to carry on with yet.
-	if run.typedPromptUnstarted() {
-		return
-	}
-	var missing []string
-	for _, path := range run.spec.OutputFiles {
-		if !allOutputFilesExist([]string{path}) {
-			missing = append(missing, path)
-		}
-	}
-	if len(missing) == 0 {
-		return
-	}
-	if !run.setOperatorHoldReminded(true) {
-		return
-	}
-	if err := run.Send(fmt.Sprintf(missingOutputsLine, strings.Join(missing, ", "))); err != nil {
-		logger.Info("shuttle: missing-outputs reminder not sent", "strandGUID", run.state.StrandGUID, "offset", held.offset, "error", err)
-		run.setOperatorHoldReminded(false)
-	}
-}
-
-// typedPromptUnstarted reports whether the prompt line was typed through this handle and no turn start followed it.
-func (run *Run) typedPromptUnstarted() bool {
-	run.sendMu.Lock()
-	defer run.sendMu.Unlock()
-	return !run.promptSentAt.IsZero() && !turnStartedSince(run.engine, run.state.EventsPath, run.promptSendOffset)
-}
-
-// setOperatorHoldReminded records value as RunState.OperatorHoldReminded and reports whether the record holds it.
-// A failed write leaves the previous value and is logged at Warn.
-func (run *Run) setOperatorHoldReminded(value bool) bool {
-	run.recordMu.Lock()
-	defer run.recordMu.Unlock()
-	previous := run.state.OperatorHoldReminded
-	run.state.OperatorHoldReminded = value
-	if err := run.saveState(); err != nil {
-		run.state.OperatorHoldReminded = previous
-		logger.Warn("shuttle: persist the missing-outputs reminder flag failed", "runDir", run.runDir, "strandGUID", run.state.StrandGUID, "error", err)
-		return false
-	}
-	return true
 }
 
 // operatorStartedTurn reports whether the held turn began with an instruction the operator typed into the pane.
@@ -282,49 +173,6 @@ func (run *Run) deliverPromptOnAttach() {
 	}
 	if sent {
 		logger.Warn("shuttle: attach: the deferred prompt never started a turn; typed it", "strandGUID", run.state.StrandGUID)
-	}
-}
-
-// retypeLostPrompt types the deferred prompt line once more when it was typed through this handle and no turn followed.
-// A provider can drop a submitted line and leave its input box empty, which the send reads as landed;
-// the idle session then ends no turn, so no held turn end types the line again.
-// It acts only for an engine that parses session signals.
-// It acts only while no pause covers the run and the run's deadline has not passed.
-// The line must have gone out at least the submit window ago.
-// No turn start of any instruction may lie past the events offset the line was last typed at.
-// A turn start past that offset ends the watch, so later ticks read nothing for it.
-// The send judges the prompt's turn again before it types, and its idle wait and submit window end by the run's deadline.
-// It acts at most once per handle:
-// a send held busy before it typed leaves the retype unused and is tried again at the next tick,
-// and any other failed send is logged at Warn and uses the retype up.
-func (run *Run) retypeLostPrompt() {
-	if run.covered || !run.clock.Now().Before(run.deadline) {
-		return
-	}
-	if _, parses := run.engine.(SessionSignalParser); !parses {
-		return
-	}
-	run.sendMu.Lock()
-	defer run.sendMu.Unlock()
-	if run.lostPromptRetyped || run.promptSentAt.IsZero() || run.clock.Now().Sub(run.promptSentAt) < submitConfirmTimeout(run.runner.cfg) {
-		return
-	}
-	if turnStartedSince(run.engine, run.state.EventsPath, run.promptSendOffset) {
-		run.promptSentAt = time.Time{}
-		return
-	}
-	sent, err := run.typePendingPrompt(run.deadline)
-	var busy *SessionBusyError
-	if errors.As(err, &busy) {
-		logger.Info("shuttle: the prompt line started no turn and the session was held busy, trying again at the next tick", "strandGUID", run.state.StrandGUID, "reason", busy.Reason)
-		return
-	}
-	run.lostPromptRetyped = true
-	switch {
-	case err != nil:
-		logger.Warn("shuttle: the prompt line started no turn and could not be typed again", "strandGUID", run.state.StrandGUID, "error", err)
-	case sent:
-		logger.Warn("shuttle: the prompt line started no turn within the submit window, typed it again", "strandGUID", run.state.StrandGUID)
 	}
 }
 

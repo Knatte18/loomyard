@@ -1,5 +1,4 @@
-// overview.go renders HEDDLE.md at the Bolt checkout's root for a reader.
-// It shows every entry heddle holds, by the place it lands in.
+// overview.go renders HEDDLE.md at the Bolt checkout's root: every entry heddle holds, by the place it lands in, for a reader.
 
 package heddleengine
 
@@ -25,7 +24,6 @@ const OverviewFileName = "HEDDLE.md"
 // overviewIntro opens the overview under its title and names the sources the overview labels entries with.
 const overviewIntro = "What heddle delivers to every worktree and session in this hub.\n" +
 	"lym rewrites this file whole at every heddle write; change an entry with `lym heddle set`, never this file.\n" +
-	"Two targets are shared: `agents-file` lands in both agent files, and `agents-prompt` in the prompt of every Claude and Codex session.\n" +
 	"\n" +
 	"Sources:\n" +
 	"\n" +
@@ -53,8 +51,8 @@ var overviewGroups = []overviewGroup{
 	{heading: "From lym", collapsed: true, holds: func(entry LayeredEntry) bool { return entry.Layer == LayerShipped && !entry.Overridden }},
 }
 
-// overviewPlace is one place entries land in: a file target, a JSON-object target or a prompt target.
-// It holds the entries that reach the place in render order.
+// overviewPlace is one place entries land in: a file target, a JSON-object target or a prompt target,
+// with the entries that reach it in render order.
 type overviewPlace struct {
 	target  Target
 	entries []LayeredEntry

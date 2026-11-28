@@ -1,6 +1,6 @@
 // seamchild.go implements NewSeedChild, the producer that seeds the task worktree's own inner shed run.
 // The recipe comes from the Board task's type.
-// The driver comes from the prime seed's typed child_driver, else the recipe's driver_kind, else shed.driver_kind.
+// The driver comes from the prime seed's typed child_driver, else from the recipe's driver_kind, else from shed.yaml.
 
 package battenshed
 
@@ -16,7 +16,7 @@ import (
 
 // seedChildProducer writes, commits and pushes the child worktree's own seed file.
 // It derives the recipe from the Board task's type.
-// The driver comes from the prime seed's typed child_driver, else the recipe's driver_kind, else shed.driver_kind.
+// The driver comes from the prime seed's typed child_driver, else from the recipe's driver_kind, else from shed.yaml.
 type seedChildProducer struct {
 	name       string
 	slug       string
@@ -48,7 +48,7 @@ func NewSeedChild(name, slug string, deps SeedChildDeps, scratchDir string) shed
 // It reads the Board task's type fresh at each Call, never a value captured at wiring time,
 // so a type corrected after prime was seeded is still honoured.
 // It then writes the task worktree's local config overrides from the Board task's run settings.
-// It reads the driver after them, so a shed.driver_kind in those settings is seen.
+// It reads the driver after them, so a driver_kind in those settings is seen.
 // Then it writes, commits and pushes the seed, in that order.
 //
 // Verdicts: Done on a successful write-and-commit.

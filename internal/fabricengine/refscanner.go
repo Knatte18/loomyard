@@ -9,7 +9,6 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
@@ -208,6 +207,14 @@ func blankQuotedSpans(cmd string, singleOnly bool) string {
 // readOnlyCommands is the closed list of readers a read-only command is built from.
 var readOnlyCommands = map[string]bool{
 	"cat": true, "head": true, "tail": true, "ls": true, "wc": true, "grep": true, "jq": true, "cut": true,
+}
+
+// FabricReaderVerbs returns the names of the `lym fabric` verbs that only read:
+// list, pairs, status, diff, shortname, prune and cleanup.
+// It declares names only; the arguments each verb may take without mutating stay with the consumer that applies them.
+// Every call returns a fresh slice, so no caller can change another's set.
+func FabricReaderVerbs() []string {
+	return []string{"list", "pairs", "status", "diff", "shortname", "prune", "cleanup"}
 }
 
 // substitutionMarkers are the spellings of command and process substitution.
@@ -480,7 +487,7 @@ func readOnlyLymSegment(words []shellWord) bool {
 	if trailingJSON {
 		return allCommandWords(rest)
 	}
-	if len(rest) < 2 || !isLymCommandWord(rest[0]) || rest[0].text != "fabric" || !isLymCommandWord(rest[1]) || !slices.Contains(fabriclayout.FabricReaderVerbs(), rest[1].text) {
+	if len(rest) < 2 || !isLymCommandWord(rest[0]) || rest[0].text != "fabric" || !isLymCommandWord(rest[1]) || !slices.Contains(FabricReaderVerbs(), rest[1].text) {
 		return false
 	}
 	args := rest[2:]

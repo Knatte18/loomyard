@@ -267,10 +267,7 @@ func dispatchOps() []dispatchOp {
 		{"Runner.LoadSkills", func(r *dispatchRig) error { return r.fx.Runner.LoadSkills("strand-1", []string{"s"}) }, "SkillLoadMessage", ""},
 		{"Runner.TypeColor", func(r *dispatchRig) error { return r.fx.Runner.TypeColor("strand-1", segmentcolor.Green) }, "ColorSequence", ""},
 		{"Runner.ClearSession", func(r *dispatchRig) error { return r.fx.Runner.ClearSession("strand-1") }, "ClearSessionSequence", ""},
-		{"Runner.TurnOnRemoteControl", func(r *dispatchRig) error {
-			_, err := r.fx.Runner.TurnOnRemoteControl("strand-1", "name")
-			return err
-		}, "RemoteControlSequence", ""},
+		{"Runner.TurnOnRemoteControl", func(r *dispatchRig) error { return r.fx.Runner.TurnOnRemoteControl("strand-1", "name") }, "RemoteControlSequence", ""},
 		{"Runner.InterruptSettle", func(r *dispatchRig) error {
 			got, err := r.fx.Runner.InterruptSettle("strand-1")
 			if err == nil && got != 9*time.Millisecond {
@@ -349,7 +346,7 @@ func TestRunner_EngineSetDispatch(t *testing.T) {
 		rig.start("b")
 		_, runDir := rig.record()
 		root := runDirRoot(rig.fx.Runner.cfg, rig.fx.Anchor)
-		removed, err := sweepOrphans(root, map[string]bool{}, time.Minute, time.Now().Add(time.Hour), time.Minute)
+		removed, err := sweepOrphans(root, map[string]bool{}, time.Minute, time.Now().Add(time.Hour))
 		if err != nil || !slices.Equal(removed, []string{runDir}) {
 			t.Fatalf("sweepOrphans() = %v, %v; want only the run dir %q removed", removed, err, runDir)
 		}

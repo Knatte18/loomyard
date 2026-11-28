@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
@@ -108,10 +108,10 @@ func writeBeamBoard(t *testing.T, hub string) {
 		`{"id":2,"slug":"inner","title":"Inner","kind":"project","labels":["bug"],"beam":true,"project":"outer"},` +
 		`{"id":3,"slug":"member","title":"Member","kind":"task","labels":["bug"],"project":"inner"},` +
 		`{"id":4,"slug":"loose","title":"Loose","kind":"task","labels":["bug"]}]}`
-	if err := os.MkdirAll(fabriclayout.BoardDir(hub), 0o755); err != nil {
+	if err := os.MkdirAll(fabricengine.BoardDir(hub), 0o755); err != nil {
 		t.Fatalf("mkdir board: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(fabriclayout.BoardDir(hub), "board.json"), []byte(board), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(fabricengine.BoardDir(hub), "board.json"), []byte(board), 0o644); err != nil {
 		t.Fatalf("write board.json: %v", err)
 	}
 }

@@ -17,7 +17,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/heddleengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -169,7 +168,7 @@ func seedStore(t *testing.T, h *hubforge.Hub, entries map[string][]string) {
 			t.Fatalf("Set(%s): %v", slug, err)
 		}
 	}
-	if err := heddleengine.Save(fabriclayout.BoltDir(h.Path), store); err != nil {
+	if err := heddleengine.Save(fabricengine.BoltDir(h.Path), store); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
 }
@@ -203,10 +202,10 @@ func listedEntry(t *testing.T, env envelope.Envelope, slug string) map[string]an
 	return nil
 }
 
-// setHubOverride writes the hub's heddle.yaml with heddle.lym_override set to on.
+// setHubOverride writes the hub's heddle.yaml with lym_override set to on.
 func setHubOverride(t *testing.T, h *hubforge.Hub, on bool) {
 	t.Helper()
-	path := configengine.ConfigFile(fabriclayout.BoltDir(h.Path), "heddle")
+	path := configengine.ConfigFile(fabricengine.BoltDir(h.Path), "heddle")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatalf("MkdirAll: %v", err)
 	}
@@ -248,7 +247,7 @@ func TestHeddleCLI(t *testing.T) {
 		requireOK(t, runVerb(c, cwd, "", "set", "rules", "--text-file", textFile, "--order", "20", "--targets", "claude-file"))
 		requireOK(t, runVerb(c, cwd, "text from stdin", "set", "intro", "--text-file", "-", "--order", "10", "--targets", "claude-prompt,claude-file"))
 
-		overview, err := os.ReadFile(filepath.Join(fabriclayout.BoltDir(h.Path), heddleengine.OverviewFileName))
+		overview, err := os.ReadFile(filepath.Join(fabricengine.BoltDir(h.Path), heddleengine.OverviewFileName))
 		if err != nil {
 			t.Fatalf("read %s: %v; want a set to render it beside heddle.json", heddleengine.OverviewFileName, err)
 		}
@@ -311,7 +310,7 @@ func TestHeddleCLI(t *testing.T) {
 		c := (&recorder{}).cli()
 		shipped := shippedSlugs()[0]
 		colliding := heddleengine.Store{Entries: []heddleengine.Entry{{Slug: shipped, Text: "mine", Order: 1, Targets: []string{"claude-file"}}}}
-		if err := heddleengine.Save(fabriclayout.BoltDir(h.Path), colliding); err != nil {
+		if err := heddleengine.Save(fabricengine.BoltDir(h.Path), colliding); err != nil {
 			t.Fatalf("Save: %v", err)
 		}
 
@@ -338,7 +337,7 @@ func TestHeddleCLI(t *testing.T) {
 		cwd := primeCwd(h)
 		c := (&recorder{}).cli()
 		setHubOverride(t, h, true)
-		writeFile(t, filepath.Join(fabriclayout.BoltDir(h.Path), heddleengine.OverrideFileName), `{"entries": [`)
+		writeFile(t, filepath.Join(fabricengine.BoltDir(h.Path), heddleengine.OverrideFileName), `{"entries": [`)
 
 		listed := requireOK(t, runVerb(c, cwd, "", "list"))
 		if got, want := strings.Join(entrySlugs(t, listed), ","), listedWithShipped(); got != want {
@@ -357,7 +356,7 @@ func TestHeddleCLI(t *testing.T) {
 		rec := &recorder{}
 		c := rec.cli()
 		shipped := shippedSlugs()[0]
-		overridePath := filepath.Join(fabriclayout.BoltDir(h.Path), heddleengine.OverrideFileName)
+		overridePath := filepath.Join(fabricengine.BoltDir(h.Path), heddleengine.OverrideFileName)
 
 		requireRefusal(t, runVerb(c, cwd, "t", "set", shipped, "--text-file", "-", "--order", "1", "--targets", "claude-file"), "ships with lym", "--layer lym")
 		requireRefusal(t, runVerb(c, cwd, "", "remove", shipped), "ships with lym")
@@ -412,7 +411,7 @@ func TestHeddleCLI(t *testing.T) {
 		t.Parallel()
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		cwd := primeCwd(h)
-		storePath := filepath.Join(fabriclayout.BoltDir(h.Path), heddleengine.FileName)
+		storePath := filepath.Join(fabricengine.BoltDir(h.Path), heddleengine.FileName)
 		rec := &recorder{}
 		c := rec.cli()
 
@@ -451,7 +450,7 @@ func TestHeddleCLI(t *testing.T) {
 		if warning, _ := env.Raw["warning"].(string); !strings.Contains(warning, "lym board sync") {
 			t.Errorf("warning = %q; want it to name lym board sync", warning)
 		}
-		store, err := heddleengine.Load(fabriclayout.BoltDir(h.Path))
+		store, err := heddleengine.Load(fabricengine.BoltDir(h.Path))
 		if err != nil {
 			t.Fatalf("Load: %v", err)
 		}
@@ -493,7 +492,7 @@ func TestHeddleCLI(t *testing.T) {
 		if !strings.Contains(warning, "lym board sync") {
 			t.Errorf("changeStore warning = %q; want it to name lym board sync", warning)
 		}
-		store, err := heddleengine.Load(fabriclayout.BoltDir(h.Path))
+		store, err := heddleengine.Load(fabricengine.BoltDir(h.Path))
 		if err != nil {
 			t.Fatalf("Load: %v", err)
 		}
@@ -506,8 +505,8 @@ func TestHeddleCLI(t *testing.T) {
 		t.Parallel()
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		cwd := primeCwd(h)
-		boltDir := fabriclayout.BoltDir(h.Path)
-		lockPath, err := fabricengine.BoltLockPath(boltDir, fabriclayout.BoardWriteLockFile)
+		boltDir := fabricengine.BoltDir(h.Path)
+		lockPath, err := fabricengine.BoltLockPath(boltDir, fabricengine.BoardWriteLockFile)
 		if err != nil {
 			t.Fatalf("BoltLockPath: %v", err)
 		}
@@ -571,7 +570,7 @@ func TestHeddleCLI(t *testing.T) {
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		rec := &recorder{}
 		c := rec.cli()
-		boltDir := fabriclayout.BoltDir(h.Path)
+		boltDir := fabricengine.BoltDir(h.Path)
 
 		requireRefusal(t, runVerb(c, t.TempDir(), "", "list"), "run lym heddle from a code worktree of a hub")
 
@@ -670,7 +669,7 @@ func TestHeddleCLI(t *testing.T) {
 		}
 
 		setHubOverride(t, h, true)
-		writeFile(t, filepath.Join(fabriclayout.BoltDir(h.Path), heddleengine.OverrideFileName), `{"entries": [`)
+		writeFile(t, filepath.Join(fabricengine.BoltDir(h.Path), heddleengine.OverrideFileName), `{"entries": [`)
 		writeFile(t, filepath.Join(h.PairRecordsSibling(hubforge.TemplatePairSlug), lymcwd.AnchorFileName), "../out\n")
 		env = requireOK(t, runVerb(c, cwd, "broken rule", "set", "rules", "--text-file", "-", "--order", "1", "--targets", "claude-file"))
 		if got := renderedNames(t, env); got != prime {
@@ -781,29 +780,6 @@ func TestHeddleCLI(t *testing.T) {
 		}
 	})
 
-	t.Run("RenderRecordsTheImportsInsideTheWorktreeRoot", func(t *testing.T) {
-		t.Parallel()
-		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-		cwd := primeCwd(h)
-		seedStore(t, h, map[string][]string{"rules": {"codex-file"}})
-		writeFile(t, filepath.Join(h.PrimeWorktree(), "CLAUDE.md"), "@docs/imported.md\n")
-		if err := os.MkdirAll(filepath.Join(h.PrimeWorktree(), "docs"), 0o755); err != nil {
-			t.Fatalf("MkdirAll: %v", err)
-		}
-		writeFile(t, filepath.Join(h.PrimeWorktree(), "docs", "imported.md"), "imported text\n")
-
-		requireOK(t, runVerb((&recorder{}).cli(), cwd, "", "render"))
-
-		event, err := fabricengine.EventFor(h.Location, nil)
-		if err != nil {
-			t.Fatalf("EventFor: %v", err)
-		}
-		record, err := os.ReadFile(filepath.Join(event.ScratchDir, "heddle", "codex-file-imports.json"))
-		if err != nil || !strings.Contains(string(record), `"docs/imported.md"`) {
-			t.Errorf("import record = %q, %v; want it to list docs/imported.md, which only a render given the worktree root records", record, err)
-		}
-	})
-
 	t.Run("RenderWarnsOfAnUnmarkedFile", func(t *testing.T) {
 		t.Parallel()
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -826,7 +802,7 @@ func TestHeddleCLI(t *testing.T) {
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		cwd := primeCwd(h)
 		seedStore(t, h, map[string][]string{"rules": {"claude-file"}})
-		boltLockPath, err := fabricengine.BoltLockPath(fabriclayout.BoltDir(h.Path), fabriclayout.BoardWriteLockFile)
+		boltLockPath, err := fabricengine.BoltLockPath(fabricengine.BoltDir(h.Path), fabricengine.BoardWriteLockFile)
 		if err != nil {
 			t.Fatalf("BoltLockPath: %v", err)
 		}

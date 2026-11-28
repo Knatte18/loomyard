@@ -351,29 +351,20 @@ func TestRunWithFixer(t *testing.T) {
 		}
 	})
 
-	for _, unjudged := range []struct {
-		name    string
-		code    int
-		closing string
-	}{
-		{name: "RunnerCrashLineSpawnsNone", code: 134, closing: gateslot.RunnerCrashLine("tier1 (exit 134, SIGABRT)")},
-		{name: "MemoryPressureLineSpawnsNone", code: 1, closing: gateslot.MemoryPressureLine("tier1 (exit 1)")},
-	} {
-		t.Run(unjudged.name, func(t *testing.T) {
-			t.Parallel()
-			rig := newFixerRig(t, unjudged.code)
-			rig.closing = unjudged.closing + "\n"
-			if exit := rig.runRequest(request); exit != (detachExit{Code: unjudged.code}) {
-				t.Errorf("exit = %+v; want the first exit %d", exit, unjudged.code)
-			}
-			if len(rig.fixer.specs) != 0 || rig.calls.Load() != 1 {
-				t.Errorf("spawned %d fixers over %d gate calls; want none over one", len(rig.fixer.specs), rig.calls.Load())
-			}
-			if stderr := rig.stderr(); strings.Contains(stderr, "Cold fixer reply") {
-				t.Errorf("stderr = %q; want no fixer reply for a run that judged no code", stderr)
-			}
-		})
-	}
+	t.Run("RunnerCrashLineSpawnsNone", func(t *testing.T) {
+		t.Parallel()
+		rig := newFixerRig(t, 134)
+		rig.closing = gateslot.RunnerCrashLine("tier1 (exit 134, SIGABRT)") + "\n"
+		if exit := rig.runRequest(request); exit != (detachExit{Code: 134}) {
+			t.Errorf("exit = %+v; want the first exit 134", exit)
+		}
+		if len(rig.fixer.specs) != 0 || rig.calls.Load() != 1 {
+			t.Errorf("spawned %d fixers over %d gate calls; want none over one", len(rig.fixer.specs), rig.calls.Load())
+		}
+		if stderr := rig.stderr(); strings.Contains(stderr, "Cold fixer reply") {
+			t.Errorf("stderr = %q; want no fixer reply for a crash", stderr)
+		}
+	})
 
 	t.Run("DeadFixerCarriesTheDeadNote", func(t *testing.T) {
 		t.Parallel()

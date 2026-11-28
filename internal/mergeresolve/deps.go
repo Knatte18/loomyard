@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -19,22 +18,22 @@ import (
 type MergeSurface interface {
 	// MergeIn merges source into the current pair.
 	// A conflict comes back as a result state, not an error.
-	MergeIn(source string) (fabriclayout.MergeResult, error)
+	MergeIn(source string) (fabricengine.MergeResult, error)
 	// MergeInAt merges the commit at tip from source into the current pair.
 	// It merges tip rather than the freshness rule's pick, and conflicts come back as a result state, not an error.
-	MergeInAt(source, tip string) (fabriclayout.MergeResult, error)
+	MergeInAt(source, tip string) (fabricengine.MergeResult, error)
 	// MergeStageResolved stages the given conflict paths, which are already resolved.
 	// It lets the merge's concluding step pass its index guard.
-	MergeStageResolved(paths []string) (fabriclayout.StageResult, error)
+	MergeStageResolved(paths []string) (fabricengine.StageResult, error)
 	// MergeStageTracked stages every tracked modification and deletion,
 	// so edits the conflict session made outside the conflicted paths land in the merge commit.
-	MergeStageTracked() (fabriclayout.StageResult, error)
+	MergeStageTracked() (fabricengine.StageResult, error)
 	// MergeUntrackedFiles lists the untracked, non-ignored worktree-relative paths, which a merge commit never carries.
 	MergeUntrackedFiles() ([]string, error)
 	// MergeContinue concludes an in-progress merge once every conflict has been resolved.
-	MergeContinue(msg string) (fabriclayout.MergeResult, error)
+	MergeContinue(msg string) (fabricengine.MergeResult, error)
 	// MergeAbort discards an in-progress merge, restoring the pair to its pre-merge state.
-	MergeAbort() (fabriclayout.MergeResult, error)
+	MergeAbort() (fabricengine.MergeResult, error)
 	// MergeInProgress reports whether a merge is currently in progress on the pair.
 	MergeInProgress() (bool, error)
 }

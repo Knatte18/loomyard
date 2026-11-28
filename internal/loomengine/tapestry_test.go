@@ -4,7 +4,6 @@
 package loomengine
 
 import (
-	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -33,87 +32,64 @@ func seedTapestryConfig(t *testing.T, baseDir, contents string) {
 	}
 }
 
+// tapestryTemplateWith returns the shipped tapestry template with each key in values replaced by its value.
+func tapestryTemplateWith(t *testing.T, values map[string]string) string {
+	t.Helper()
+	var b strings.Builder
+	replaced := map[string]bool{}
+	for _, line := range strings.Split(strings.TrimSuffix(TapestryConfigTemplate(), "\n"), "\n") {
+		matched := false
+		for key, value := range values {
+			if strings.HasPrefix(line, key+":") {
+				b.WriteString(key + ": " + value + "\n")
+				replaced[key] = true
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			b.WriteString(line + "\n")
+		}
+	}
+	for key := range values {
+		if !replaced[key] {
+			t.Fatalf("key %q not present in TapestryConfigTemplate(); the fixture would silently test nothing", key)
+		}
+	}
+	return b.String()
+}
+
 // seedLoomAndTapestry seeds baseDir's worktree layer with a loom.yaml and a tapestry.yaml.
 // The loom.yaml is built from the shipped template with loomValues applied,
 // and the tapestry.yaml is built from its template with tapestryValues applied.
 func seedLoomAndTapestry(t *testing.T, baseDir string, loomValues, tapestryValues map[string]string) {
 	t.Helper()
-	seedLoomConfig(t, baseDir, loomTemplateWith(t, loomValues))
-	seedTapestryConfig(t, baseDir, templateWith(t, TapestryConfigTemplate(), tapestryValues))
+	if len(loomValues) == 0 {
+		seedLoomConfig(t, baseDir, ConfigTemplate())
+	} else {
+		writeLoomConfigWithKeys(t, baseDir, loomValues)
+	}
+	seedTapestryConfig(t, baseDir, tapestryTemplateWith(t, tapestryValues))
 }
 
 // TestLoadTapestryConfig verifies that the plan perch's values load from tapestry.yaml.
 // They resolve against loom.yaml's run-wide keys, and Config.WithTapestry applies them.
-// A null tapestry.plan.max_bounces and a zero tapestry.plan.hard_max_bounces take loom.yaml's budget and hard cap.
+// A null plan_max_bounces and a zero plan_hard_max_bounces take loom.yaml's budget and hard cap.
 // An empty model list, judge and seed take the shared ones.
 // Every malformed or out-of-bound value is refused, and the error names the tapestry key.
 func TestLoadTapestryConfig(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	t.Run("every moved key's new path is in the template and its old name is gone", func(t *testing.T) {
-		t.Parallel()
-		requireMovesIntoTemplate(t, tapestryMovedKeys(), TapestryConfigTemplate())
-	})
-
-	t.Run("the move table holds every renamed key", func(t *testing.T) {
-		t.Parallel()
-		want := map[string]string{
-			"plan":                       "plan.model",
-			"plan_timeout_min":           "plan.timeout_min",
-			"plan_lenses":                "plan.lenses",
-			"plan_gate_fixer":            "plan.gate_fixer",
-			"plan_split":                 "plan.split",
-			"plan_reviewer_model":        "plan.reviewer_model",
-			"plan_fixer_model":           "plan.fixer_model",
-			"plan_reviewer_fan":          "plan.reviewer_fan",
-			"plan_fixer_fan":             "plan.fixer_fan",
-			"plan_assist_reviewer_model": "plan.assist_reviewer_model",
-			"plan_assist_reviewer_fan":   "plan.assist_reviewer_fan",
-			"plan_judge":                 "plan.judge",
-			"plan_seed":                  "plan.seed",
-			"plan_max_bounces":           "plan.max_bounces",
-			"plan_hard_max_bounces":      "plan.hard_max_bounces",
-			"plan_auto_accept":           "plan.auto_accept",
-			"parts":                      "parts.model",
-			"parts_depth":                "parts.depth",
-			"parts_max":                  "parts.max",
-			"parts_chair":                "parts.chair",
-			"parts_chair_timeout_min":    "parts.chair_timeout_min",
-			"part_writer":                "parts.writer",
-		}
-		if got := tapestryMovedKeys(); !maps.Equal(got, want) {
-			t.Errorf("tapestryMovedKeys() = %v; want %v", got, want)
-		}
-	})
-
-	t.Run("an old key name in a local file is refused naming its new path", func(t *testing.T) {
-		t.Parallel()
-		dir := t.TempDir()
-		seedLoomAndTapestry(t, dir, nil, nil)
-		path := configengine.LocalFile(dir, "tapestry")
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(path), err)
-		}
-		if err := os.WriteFile(path, []byte("part_writer: opus\n"), 0o644); err != nil {
-			t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
-		}
-
-		_, err := LoadTapestryConfig(configengine.Dirs{Anchor: dir}, "tapestry")
-		if err == nil || !strings.Contains(err.Error(), "tapestry.parts.writer") {
-			t.Errorf("LoadTapestryConfig() error = %v; want a refusal naming tapestry.parts.writer", err)
-		}
-	})
-
 	t.Run("the template loads and WithTapestry applies every plan value", func(t *testing.T) {
 		t.Parallel()
 		dir := t.TempDir()
 		seedLoomAndTapestry(t, dir, nil, map[string]string{
-			"plan.model": "opus[effort=high]", "plan.timeout_min": "7", "plan.lenses": `""`,
-			"plan.reviewer_model": "sonnet[low]", "plan.fixer_model": "sonnet[high]",
-			"plan.reviewer_fan": "full", "plan.fixer_fan": "fix-plan",
-			"plan.judge": "opus[low]", "plan.seed": "haiku[low]",
-			"plan.max_bounces": "2", "plan.hard_max_bounces": "3", "plan.auto_accept": "true",
+			"plan": "opus[effort=high]", "plan_timeout_min": "7", "plan_lenses": `""`,
+			"plan_reviewer_model": "sonnet[low]", "plan_fixer_model": "sonnet[high]",
+			"plan_reviewer_fan": "full", "plan_fixer_fan": "fix-plan",
+			"plan_judge": "opus[low]", "plan_seed": "haiku[low]",
+			"plan_max_bounces": "2", "plan_hard_max_bounces": "3", "plan_auto_accept": "true",
 		})
 		dirs := configengine.Dirs{Anchor: dir}
 
@@ -122,16 +98,14 @@ func TestLoadTapestryConfig(t *testing.T) {
 			t.Fatalf("LoadTapestryConfig() = _, %v; want nil error", err)
 		}
 		want := TapestryConfig{
-			Plan: PlanConfig{
-				Model: "opus[effort=high]", TimeoutMin: 7, Lenses: "", GateFixer: "sonnet[medium]",
-				ReviewerModel: burlerengine.ModelSpecList{"sonnet[low]"}, FixerModel: burlerengine.ModelSpecList{"sonnet[high]"},
-				ReviewerFan: lenses.FanList{"full"}, FixerFan: lenses.FanList{"fix-plan"},
-				AssistReviewerModel: burlerengine.ModelSpecList{""}, AssistReviewerFan: lenses.FanList{""},
-				Judge: "opus[low]", Seed: "haiku[low]",
-				MaxBounces: intPtr(2), HardMaxBounces: 3, AutoAccept: true,
-				Split: false,
-			},
-			Parts: PartsConfig{Depth: "light", Max: 6, Model: "opus[medium]", Writer: "opus[medium]", Chair: "opus[medium]"},
+			Plan: "opus[effort=high]", PlanTimeoutMin: 7, PlanLenses: "", PlanGateFixer: "sonnet[medium]",
+			PlanReviewerModel: burlerengine.ModelSpecList{"sonnet[low]"}, PlanFixerModel: burlerengine.ModelSpecList{"sonnet[high]"},
+			PlanReviewerFan: lenses.FanList{"full"}, PlanFixerFan: lenses.FanList{"fix-plan"},
+			PlanAssistReviewerModel: burlerengine.ModelSpecList{""}, PlanAssistReviewerFan: lenses.FanList{""},
+			PlanJudge: "opus[low]", PlanSeed: "haiku[low]",
+			PlanMaxBounces: intPtr(2), PlanHardMaxBounces: 3, PlanAutoAccept: true,
+			PlanSplit: false, PartsDepth: "light", PartsMax: 6,
+			Parts: "opus[medium]", PartWriter: "opus[medium]", PartsChair: "opus[medium]", PartsChairTimeoutMin: nil,
 		}
 		if !reflect.DeepEqual(loaded, want) {
 			t.Errorf("LoadTapestryConfig() = %+v; want %+v", loaded, want)
@@ -141,58 +115,31 @@ func TestLoadTapestryConfig(t *testing.T) {
 		if err != nil {
 			t.Fatalf("LoadConfig() = _, %v; want nil error", err)
 		}
-		if !reflect.DeepEqual(loom.Plan, PlanConfig{}) || !reflect.DeepEqual(loom.Parts, PartsConfig{}) {
-			t.Errorf("LoadConfig() plan and parts areas = %+v/%+v; want the zero values, since loom.yaml never reads tapestry.yaml", loom.Plan, loom.Parts)
+		if loom.Plan != "" || loom.PlanMaxBounces != nil || loom.PlanReviewerModel != nil {
+			t.Errorf("LoadConfig() plan fields = %q/%v/%v; want the zero values, since loom.yaml never reads tapestry.yaml", loom.Plan, loom.PlanMaxBounces, loom.PlanReviewerModel)
 		}
 		applied := loom.WithTapestry(loaded)
-		if !reflect.DeepEqual(applied.Plan, want.Plan) || !reflect.DeepEqual(applied.Parts, want.Parts) {
-			t.Errorf("WithTapestry() = %+v; want the plan and parts areas copied from %+v", applied, want)
+		if applied.Plan != want.Plan || applied.PlanTimeoutMin != 7 || applied.PlanLenses != "" || !reflect.DeepEqual(applied.PlanReviewerFan, want.PlanReviewerFan) ||
+			!reflect.DeepEqual(applied.PlanFixerFan, want.PlanFixerFan) || applied.PlanJudge != want.PlanJudge || applied.PlanSeed != want.PlanSeed || !applied.PlanAutoAccept ||
+			applied.PlanSplit || applied.PartsDepth != "light" || applied.PartsMax != 6 || applied.Parts != "opus[medium]" || applied.PartWriter != "opus[medium]" || applied.PartsChair != "opus[medium]" || applied.PartsChairTimeoutMin != nil {
+			t.Errorf("WithTapestry() = %+v; want every plan field copied from %+v", applied, want)
 		}
-		if caps := applied.Caps(PerchPlan); caps.Soft != 2 || caps.SoftKey != "plan.max_bounces" || caps.Hard != 3 || caps.HardKey != "plan.hard_max_bounces" {
+		if caps := applied.Caps(PerchPlan); caps.Soft != 2 || caps.SoftKey != "plan_max_bounces" || caps.Hard != 3 || caps.HardKey != "plan_hard_max_bounces" {
 			t.Errorf("WithTapestry().Caps(PerchPlan) = %+v; want the plan perch's own budget and hard cap", caps)
 		}
 	})
 
-	t.Run("the plan perch's own budget wins over loom.yaml's run-wide one", func(t *testing.T) {
-		t.Parallel()
-		for _, tt := range []struct {
-			tapestry string
-			want     int
-		}{
-			{"plan: {max_bounces: 2}\n", 2},
-			{"plan: {}\n", 4},
-		} {
-			board, anchor := t.TempDir(), t.TempDir()
-			seedLoomConfig(t, board, "review: {max_bounces: 4}\n")
-			seedTapestryConfig(t, anchor, tt.tapestry)
-			dirs := configengine.Dirs{Anchor: anchor, Board: board}
-			seedTapestryConfig(t, board, "")
-
-			tapestry, err := LoadTapestryConfig(dirs, "tapestry")
-			if err != nil {
-				t.Fatalf("LoadTapestryConfig(%q) = _, %v; want nil error", tt.tapestry, err)
-			}
-			loom, err := LoadConfig(dirs, "loom")
-			if err != nil {
-				t.Fatalf("LoadConfig() = _, %v; want nil error", err)
-			}
-			if got := loom.WithTapestry(tapestry).Caps(PerchPlan).Soft; got != tt.want {
-				t.Errorf("Caps(PerchPlan).Soft with %q = %d; want %d", tt.tapestry, got, tt.want)
-			}
-		}
-	})
-
-	t.Run("an empty plan.gate_fixer loads the fixer off", func(t *testing.T) {
+	t.Run("an empty plan_gate_fixer loads the fixer off", func(t *testing.T) {
 		t.Parallel()
 		dir := t.TempDir()
-		seedLoomAndTapestry(t, dir, nil, map[string]string{"plan.gate_fixer": `""`})
+		seedLoomAndTapestry(t, dir, nil, map[string]string{"plan_gate_fixer": `""`})
 
 		loaded, err := LoadTapestryConfig(configengine.Dirs{Anchor: dir}, "tapestry")
 		if err != nil {
 			t.Fatalf("LoadTapestryConfig() = _, %v; want nil error", err)
 		}
-		if loaded.Plan.GateFixer != "" {
-			t.Errorf("LoadTapestryConfig().Plan.GateFixer = %q; want empty, the fixer off", loaded.Plan.GateFixer)
+		if loaded.PlanGateFixer != "" {
+			t.Errorf("LoadTapestryConfig().PlanGateFixer = %q; want empty, the fixer off", loaded.PlanGateFixer)
 		}
 	})
 
@@ -200,7 +147,7 @@ func TestLoadTapestryConfig(t *testing.T) {
 		t.Parallel()
 		dir := t.TempDir()
 		seedLoomAndTapestry(t, dir, nil, map[string]string{
-			"plan.assist_reviewer_model": `["luna[low]", ""]`, "plan.assist_reviewer_fan": `["full", ""]`,
+			"plan_assist_reviewer_model": `["luna[low]", ""]`, "plan_assist_reviewer_fan": `["full", ""]`,
 		})
 		dirs := configengine.Dirs{Anchor: dir}
 
@@ -209,16 +156,16 @@ func TestLoadTapestryConfig(t *testing.T) {
 			t.Fatalf("LoadTapestryConfig() = _, %v; want nil error", err)
 		}
 		wantModels, wantFans := burlerengine.ModelSpecList{"luna[low]", ""}, lenses.FanList{"full", ""}
-		if !reflect.DeepEqual(loaded.Plan.AssistReviewerModel, wantModels) || !reflect.DeepEqual(loaded.Plan.AssistReviewerFan, wantFans) {
-			t.Errorf("LoadTapestryConfig() assist lists = %v, %v; want %v, %v", loaded.Plan.AssistReviewerModel, loaded.Plan.AssistReviewerFan, wantModels, wantFans)
+		if !reflect.DeepEqual(loaded.PlanAssistReviewerModel, wantModels) || !reflect.DeepEqual(loaded.PlanAssistReviewerFan, wantFans) {
+			t.Errorf("LoadTapestryConfig() assist lists = %v, %v; want %v, %v", loaded.PlanAssistReviewerModel, loaded.PlanAssistReviewerFan, wantModels, wantFans)
 		}
 		loom, err := LoadConfig(dirs, "loom")
 		if err != nil {
 			t.Fatalf("LoadConfig() = _, %v; want nil error", err)
 		}
 		applied := loom.WithTapestry(loaded)
-		if !reflect.DeepEqual(applied.Plan.AssistReviewerModel, wantModels) || !reflect.DeepEqual(applied.Plan.AssistReviewerFan, wantFans) {
-			t.Errorf("WithTapestry() assist lists = %v, %v; want %v, %v", applied.Plan.AssistReviewerModel, applied.Plan.AssistReviewerFan, wantModels, wantFans)
+		if !reflect.DeepEqual(applied.PlanAssistReviewerModel, wantModels) || !reflect.DeepEqual(applied.PlanAssistReviewerFan, wantFans) {
+			t.Errorf("WithTapestry() assist lists = %v, %v; want %v, %v", applied.PlanAssistReviewerModel, applied.PlanAssistReviewerFan, wantModels, wantFans)
 		}
 	})
 
@@ -257,8 +204,8 @@ func TestLoadTapestryConfig(t *testing.T) {
 		t.Parallel()
 		dir := t.TempDir()
 		seedLoomAndTapestry(t, dir,
-			map[string]string{"review.max_bounces": "5", "review.hard_max_bounces": "6"},
-			map[string]string{"plan.reviewer_model": `""`})
+			map[string]string{"review_max_bounces": "5", "review_hard_max_bounces": "6"},
+			map[string]string{"plan_reviewer_model": `""`})
 		dirs := configengine.Dirs{Anchor: dir}
 
 		tapestry, err := LoadTapestryConfig(dirs, "tapestry")
@@ -270,8 +217,8 @@ func TestLoadTapestryConfig(t *testing.T) {
 			t.Fatalf("LoadConfig() = _, %v; want nil error", err)
 		}
 		cfg := loom.WithTapestry(tapestry)
-		if caps := cfg.Caps(PerchPlan); caps.Soft != 5 || caps.SoftKey != "review.max_bounces" || caps.Hard != 6 || caps.HardKey != "review.hard_max_bounces" {
-			t.Errorf("Caps(PerchPlan) = %+v; want review.max_bounces 5 and review.hard_max_bounces 6", caps)
+		if caps := cfg.Caps(PerchPlan); caps.Soft != 5 || caps.SoftKey != "review_max_bounces" || caps.Hard != 6 || caps.HardKey != "review_hard_max_bounces" {
+			t.Errorf("Caps(PerchPlan) = %+v; want review_max_bounces 5 and review_hard_max_bounces 6", caps)
 		}
 
 		reg, err := modelspec.LoadRegistry(configengine.Dirs{Anchor: t.TempDir()})
@@ -293,15 +240,15 @@ func TestLoadTapestryConfig(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ResolveJudge() = _, %v; want nil error", err)
 		}
-		sharedJudge, err := resolveKeyedModelChoice("review.judge", cfg.Review.Judge, reg)
+		sharedJudge, err := resolveKeyedModelChoice("judge", cfg.Judge, reg)
 		if err != nil {
 			t.Fatalf("resolveKeyedModelChoice() = _, %v; want nil error", err)
 		}
 		if judge.Plan.Judge != sharedJudge || judge.Plan.Seed != sharedJudge {
 			t.Errorf("ResolveJudge().Plan = %+v; want loom.yaml's judge %+v for both passes", judge.Plan, sharedJudge)
 		}
-		if got := review.PlanKeys.Review; got != (shuttleengine.ModelKey{Module: "loom", Key: "review.reviewer_model"}) {
-			t.Errorf("ResolveReview().PlanKeys.Review = %+v; want loom's shared review.reviewer_model", got)
+		if got := review.PlanKeys.Review; got != (shuttleengine.ModelKey{Module: "loom", Key: "reviewer_model"}) {
+			t.Errorf("ResolveReview().PlanKeys.Review = %+v; want loom's shared reviewer_model", got)
 		}
 	})
 
@@ -312,33 +259,33 @@ func TestLoadTapestryConfig(t *testing.T) {
 		value  string
 		wantIn []string
 	}{
-		{name: "malformed plan spec", key: "plan.model", value: `"opus[effort"`},
-		{name: "malformed plan.reviewer_model spec", key: "plan.reviewer_model", value: `"opus[effort"`, wantIn: []string{"entry 1", "a non-empty list of model-specs"}},
-		{name: "malformed plan.fixer_model spec", key: "plan.fixer_model", value: `"opus[effort"`, wantIn: []string{"entry 1", "a non-empty list of model-specs"}},
-		{name: "malformed plan.assist_reviewer_model spec", key: "plan.assist_reviewer_model", value: `"opus[effort"`, wantIn: []string{"entry 1", "no assistant that round"}},
-		{name: "malformed later plan.assist_reviewer_model entry", key: "plan.assist_reviewer_model", value: `["luna[low]", "opus[effort"]`, wantIn: []string{"entry 2", "no assistant that round"}},
-		{name: "unknown plan.assist_reviewer_fan", key: "plan.assist_reviewer_fan", value: "nosuchfan", wantIn: []string{`"nosuchfan"`, "known fans: ", "entry 1"}},
-		{name: "unknown plan.reviewer_fan", key: "plan.reviewer_fan", value: "nosuchfan", wantIn: []string{`"nosuchfan"`, "known fans: ", "full", "entry 1", `set the entry to ""`}},
-		{name: "empty plan.reviewer_fan list", key: "plan.reviewer_fan", value: "[]", wantIn: []string{"the list is empty", `write ""`}},
-		{name: "empty plan.fixer_fan list", key: "plan.fixer_fan", value: "[]", wantIn: []string{"the list is empty", `write ""`}},
-		{name: "mapping inside a plan.reviewer_fan list", key: "plan.reviewer_fan", value: "[full, {model: opus}]", wantIn: []string{"line ", "neither a fan name nor a list of fan names", "a list of fan names"}},
-		{name: "malformed plan.gate_fixer spec", key: "plan.gate_fixer", value: `"opus[effort"`, wantIn: []string{"lym config tapestry"}},
-		{name: "malformed plan.judge spec", key: "plan.judge", value: `"opus[effort"`},
-		{name: "malformed plan.seed spec", key: "plan.seed", value: `"opus[effort"`},
-		{name: "negative plan.max_bounces", key: "plan.max_bounces", value: "-1", wantIn: []string{"must not be negative", "or to null to take loom.review.max_bounces"}},
-		{name: "negative plan.hard_max_bounces", key: "plan.hard_max_bounces", value: "-1", wantIn: []string{"set it to 0 to take loom.review.hard_max_bounces", "lym config tapestry --set plan.hard_max_bounces=<n>", `lym loom resume`}},
-		{name: "negative plan.timeout_min", key: "plan.timeout_min", value: "-1", wantIn: []string{"must not be negative"}},
-		{name: "malformed parts spec", key: "parts.model", value: `"opus[effort"`},
-		{name: "malformed parts.writer spec", key: "parts.writer", value: `"opus[effort"`},
-		{name: "malformed parts.chair spec", key: "parts.chair", value: `"opus[effort"`},
-		{name: "unknown parts.depth", key: "parts.depth", value: "deep", wantIn: []string{"light", "medium"}},
-		{name: "zero parts.max", key: "parts.max", value: "0", wantIn: []string{"set it to 1 or more"}},
-		{name: "parts.chair_timeout_min not above plan.timeout_min", key: "parts.chair_timeout_min", value: "120", wantIn: []string{"120", "not above tapestry.plan.timeout_min", "set it above that key", "null"}},
+		{name: "malformed plan spec", key: "plan", value: `"opus[effort"`},
+		{name: "malformed plan_reviewer_model spec", key: "plan_reviewer_model", value: `"opus[effort"`, wantIn: []string{"entry 1", "a non-empty list of model-specs"}},
+		{name: "malformed plan_fixer_model spec", key: "plan_fixer_model", value: `"opus[effort"`, wantIn: []string{"entry 1", "a non-empty list of model-specs"}},
+		{name: "malformed plan_assist_reviewer_model spec", key: "plan_assist_reviewer_model", value: `"opus[effort"`, wantIn: []string{"entry 1", "no assistant that round"}},
+		{name: "malformed later plan_assist_reviewer_model entry", key: "plan_assist_reviewer_model", value: `["luna[low]", "opus[effort"]`, wantIn: []string{"entry 2", "no assistant that round"}},
+		{name: "unknown plan_assist_reviewer_fan", key: "plan_assist_reviewer_fan", value: "nosuchfan", wantIn: []string{`"nosuchfan"`, "known fans: ", "entry 1"}},
+		{name: "unknown plan_reviewer_fan", key: "plan_reviewer_fan", value: "nosuchfan", wantIn: []string{`"nosuchfan"`, "known fans: ", "full", "entry 1", `set the entry to ""`}},
+		{name: "empty plan_reviewer_fan list", key: "plan_reviewer_fan", value: "[]", wantIn: []string{"the list is empty", `write ""`}},
+		{name: "empty plan_fixer_fan list", key: "plan_fixer_fan", value: "[]", wantIn: []string{"the list is empty", `write ""`}},
+		{name: "mapping inside a plan_reviewer_fan list", key: "plan_reviewer_fan", value: "\n  - full\n  - model: opus", wantIn: []string{"line ", "neither a fan name nor a list of fan names", "a list of fan names"}},
+		{name: "malformed plan_gate_fixer spec", key: "plan_gate_fixer", value: `"opus[effort"`, wantIn: []string{"lym config tapestry"}},
+		{name: "malformed plan_judge spec", key: "plan_judge", value: `"opus[effort"`},
+		{name: "malformed plan_seed spec", key: "plan_seed", value: `"opus[effort"`},
+		{name: "negative plan_max_bounces", key: "plan_max_bounces", value: "-1", wantIn: []string{"must not be negative", "or to null to take review_max_bounces"}},
+		{name: "negative plan_hard_max_bounces", key: "plan_hard_max_bounces", value: "-1", wantIn: []string{"set it to 0 to take review_hard_max_bounces", "lym config tapestry --set plan_hard_max_bounces=<n>", `lym loom resume`}},
+		{name: "negative plan_timeout_min", key: "plan_timeout_min", value: "-1", wantIn: []string{"must not be negative"}},
+		{name: "malformed parts spec", key: "parts", value: `"opus[effort"`},
+		{name: "malformed part_writer spec", key: "part_writer", value: `"opus[effort"`},
+		{name: "malformed parts_chair spec", key: "parts_chair", value: `"opus[effort"`},
+		{name: "unknown parts_depth", key: "parts_depth", value: "deep", wantIn: []string{"light", "medium"}},
+		{name: "zero parts_max", key: "parts_max", value: "0", wantIn: []string{"set it to 1 or more"}},
+		{name: "parts_chair_timeout_min not above plan_timeout_min", key: "parts_chair_timeout_min", value: "120", wantIn: []string{"120", "set it above plan_timeout_min", "null"}},
 		{
-			name: "plan.hard_max_bounces below the budget inherited from loom.yaml",
-			loom: map[string]string{"review.max_bounces": "5", "review.hard_max_bounces": "6"},
-			key:  "plan.hard_max_bounces", value: "2",
-			wantIn: []string{"resolved hard cap 2", `"loom.review.max_bounces"'s resolved soft cap 5`, "lym config tapestry --set plan.hard_max_bounces=<n>", "lym config loom --set review.max_bounces=<n>"},
+			name: "plan_hard_max_bounces below the budget inherited from loom.yaml",
+			loom: map[string]string{"review_max_bounces": "5", "review_hard_max_bounces": "6"},
+			key:  "plan_hard_max_bounces", value: "2",
+			wantIn: []string{"resolved hard cap 2", `"review_max_bounces"'s resolved soft cap 5`, "lym config tapestry --set plan_hard_max_bounces=<n>", "lym config loom --set review_max_bounces=<n>"},
 		},
 	}
 	for _, tt := range refusals {
@@ -359,11 +306,11 @@ func TestLoadTapestryConfig(t *testing.T) {
 		})
 	}
 
-	t.Run("a set parts.chair_timeout_min loads with a zero plan.timeout_min and above a set one", func(t *testing.T) {
+	t.Run("a set parts_chair_timeout_min loads with a zero plan_timeout_min and above a set one", func(t *testing.T) {
 		t.Parallel()
 		for _, values := range []map[string]string{
-			{"plan.timeout_min": "0", "parts.chair_timeout_min": "30"},
-			{"plan.timeout_min": "60", "parts.chair_timeout_min": "61"},
+			{"plan_timeout_min": "0", "parts_chair_timeout_min": "30"},
+			{"plan_timeout_min": "60", "parts_chair_timeout_min": "61"},
 		} {
 			dir := t.TempDir()
 			seedLoomAndTapestry(t, dir, nil, values)
@@ -371,8 +318,8 @@ func TestLoadTapestryConfig(t *testing.T) {
 			if err != nil {
 				t.Fatalf("LoadTapestryConfig(%v) = _, %v; want nil error", values, err)
 			}
-			if loaded.Parts.ChairTimeoutMin == nil {
-				t.Errorf("LoadTapestryConfig(%v).Parts.ChairTimeoutMin = nil; want the set value", values)
+			if loaded.PartsChairTimeoutMin == nil {
+				t.Errorf("LoadTapestryConfig(%v).PartsChairTimeoutMin = nil; want the set value", values)
 			}
 		}
 	})
@@ -396,14 +343,14 @@ func TestLoadTapestryConfig(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
-				cfg := Config{Plan: PlanConfig{TimeoutMin: tt.planMin}, Parts: PartsConfig{ChairTimeoutMin: tt.chairMin}}
+				cfg := Config{PlanTimeoutMin: tt.planMin, PartsChairTimeoutMin: tt.chairMin}
 				if got := cfg.PlanTimeout(runTimeout); got != tt.wantPlan {
 					t.Errorf("PlanTimeout(%s) = %s; want %s", runTimeout, got, tt.wantPlan)
 				}
 				got, err := cfg.PartsChairTimeout(runTimeout)
 				if tt.wantChairErr {
-					if err == nil || !strings.Contains(err.Error(), "parts.chair_timeout_min") {
-						t.Errorf("PartsChairTimeout(%s) = %s, %v; want an error naming parts.chair_timeout_min", runTimeout, got, err)
+					if err == nil || !strings.Contains(err.Error(), "parts_chair_timeout_min") {
+						t.Errorf("PartsChairTimeout(%s) = %s, %v; want an error naming parts_chair_timeout_min", runTimeout, got, err)
 					}
 					return
 				}

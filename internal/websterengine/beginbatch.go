@@ -45,7 +45,7 @@ func fingerprintMismatchWayForward(st *State, planDir, websterDir, reentry strin
 	indexChanged := false
 	for _, name := range changed {
 		if name == runplan.PlanOverviewFile {
-			recorded, _, _, err := runplan.RecordedOverviewFrame(&st.State, websterDir)
+			recorded, _, _, err := recordedOverviewFrame(st, websterDir)
 			indexOnly := false
 			if err == nil {
 				indexOnly, err = overviewIndexOnly(recorded, planDir)
@@ -116,9 +116,6 @@ type BeginDeps struct {
 
 	// CardFixer reports whether a failed card gate call goes through a cold fixer first.
 	CardFixer bool
-
-	// Engine is the engine Master runs on, which its forks inherit; the fork prompt is worded for it.
-	Engine string
 }
 
 // BeginResult is what one successful BeginBatch call returns to its caller.
@@ -155,7 +152,7 @@ func renameToolRefusal(plan *planparser.Plan, batch batcher.Batch, renameTools [
 		if len(pairs) == 0 {
 			continue
 		}
-		return fmt.Errorf("%w: batch %02d-%s, symbol pair %s -> %s on card %s; way forward: set %s with \"lym config language\" from the prime, or recast the card, then re-run `lym webster %s %d`", ErrRenameToolMissing, number, slug, pairs[0].Old, pairs[0].New, card.ID(), renameToolsKeyName(), verb, number)
+		return fmt.Errorf("%w: batch %02d-%s, symbol pair %s -> %s on card %s; way forward: set rename_tools with \"lym config language\" from the prime, or recast the card, then re-run `lym webster %s %d`", ErrRenameToolMissing, number, slug, pairs[0].Old, pairs[0].New, card.ID(), verb, number)
 	}
 	return nil
 }
@@ -215,9 +212,6 @@ func predecessorDigestLine(batches []batcher.Batch, st *State, batchNumber int) 
 // Then come a dead recovery with a retry, any other dead recovery, and a stuck or failed record.
 func existingReportRemedy(number int, recorded *BatchState, retry bool) (string, bool) {
 	if !recorded.Terminal {
-		if waitsOnParent(recorded) && recorded.Kind == "recovery" {
-			return fmt.Sprintf("`%s`, once the parent has answered", resumeStep(recorded, number)), false
-		}
 		if recorded.Kind == "recovery" {
 			return fmt.Sprintf("`lym webster recover-batch %d`", number), false
 		}
@@ -359,7 +353,7 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("webster: resolve prompt path: %w", err)
 	}
-	prompt, err := RenderForkPrompt(batch, cardGates, batchGate, prevDigest, reportPath, deps.Geom.PlanDir, deps.Geom.PaneCwd, deps.Geom.StencilsDir, deps.Engine, deps.Geom.SpecsDir, deps.GateTiers, deps.RenameTools, OutcomePath(deps.Geom.WebsterDir), summaryparser.Path(deps.Geom.WebsterDir), deps.Config.SelfFixCap, notePath, deps.CardFixer)
+	prompt, err := RenderForkPrompt(batch, cardGates, batchGate, prevDigest, reportPath, deps.Geom.PlanDir, deps.Geom.PaneCwd, deps.Geom.StencilsDir, deps.Geom.SpecsDir, deps.GateTiers, deps.RenameTools, OutcomePath(deps.Geom.WebsterDir), summaryparser.Path(deps.Geom.WebsterDir), deps.Config.SelfFixCap, notePath, deps.CardFixer)
 	if err != nil {
 		return nil, err
 	}
@@ -402,16 +396,13 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	// so the run-exit audit still knows which report each of those forks owns.
 	// The recovery count and its start commit carry over as well,
 	// so a re-begin does not hand a batch a fresh pair of recoveries.
-	// The parent's answers carry over, so a later recovery still renders them.
 	var priorWarnings []AuditWarning
 	var priorTranscripts []string
 	var priorRecoveries int
 	var priorRecoveryStart string
 	var priorRecoverySessions []string
 	var priorRecoveryEngines map[string]string
-	var priorAnswers []ParentAnswer
 	if prior != nil {
-		priorAnswers = prior.ParentAnswers
 		priorRecoverySessions = prior.RecoverySessions
 		priorRecoveryEngines = prior.RecoveryEngines
 		priorWarnings = prior.AuditWarnings
@@ -432,7 +423,6 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 		RecoverySessions: priorRecoverySessions,
 		RecoveryEngines:  priorRecoveryEngines,
 		RecoveryStartSHA: priorRecoveryStart,
-		ParentAnswers:    priorAnswers,
 		SpawnedAt:        time.Now().UTC().Format(time.RFC3339),
 		// Stamp the opening Master session.
 		// The run-exit audit cross-check scopes its begun-batch count to that session;

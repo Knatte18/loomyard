@@ -81,45 +81,20 @@ func TestDirective_EmptyNameRendersNoParentVariant(t *testing.T) {
 	}
 }
 
-// TestHandBack covers the hand-back variant naming the parent and the no-parent variant for an empty name.
-func TestHandBack(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-	dir := stencilkit.Seed(t)
-
-	got, err := HandBack(dir, "ab:beam-b:orch")
-	if err != nil {
-		t.Fatalf("HandBack = _, %v; want nil error", err)
-	}
-	if !strings.Contains(got, "`ab:beam-b:orch`") || strings.Contains(got, "{{") {
-		t.Errorf("HandBack = %q; want the parent name filled in and no marker left", got)
-	}
-	none, err := HandBack(dir, "")
-	if err != nil {
-		t.Fatalf("HandBack(no parent) = _, %v; want nil error", err)
-	}
-	if !strings.Contains(none, "No parent is recorded for this run.") {
-		t.Errorf("HandBack(no parent) = %q; want the no-parent variant", none)
-	}
-}
-
 // TestDirective_MissingStencilNamesIt covers a missing stencil: each variant's error names the stencil it could not read.
 func TestDirective_MissingStencilNamesIt(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	directive := func(parentName string, interactive bool) func(string) (string, error) {
-		return func(dir string) (string, error) { return Directive(dir, parentName, interactive) }
-	}
 	tests := []struct {
-		name    string
-		render  func(stencilsDir string) (string, error)
-		missing string
+		name        string
+		parentName  string
+		interactive bool
+		missing     string
 	}{
-		{"None", directive("", false), noneStencil},
-		{"Parent", directive("ab:cd:webster", true), parentStencil},
-		{"OperatorBan", directive("ab:cd:webster", false), operatorBanStencil},
-		{"HandBack", func(dir string) (string, error) { return HandBack(dir, "ab:orch") }, handBackStencil},
+		{"None", "", false, noneStencil},
+		{"Parent", "ab:cd:webster", true, parentStencil},
+		{"OperatorBan", "ab:cd:webster", false, operatorBanStencil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -129,12 +104,12 @@ func TestDirective_MissingStencilNamesIt(t *testing.T) {
 				t.Fatalf("os.Remove = %v; want nil error", err)
 			}
 
-			got, err := tt.render(dir)
+			got, err := Directive(dir, tt.parentName, tt.interactive)
 			if err == nil {
-				t.Fatalf("render = %q, nil; want an error", got)
+				t.Fatalf("Directive = %q, nil; want an error", got)
 			}
 			if !strings.Contains(err.Error(), tt.missing) {
-				t.Errorf("render error = %v; want it to name %q", err, tt.missing)
+				t.Errorf("Directive error = %v; want it to name %q", err, tt.missing)
 			}
 		})
 	}

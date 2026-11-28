@@ -17,7 +17,7 @@ type KeepWarmAnswer struct {
 	Cap time.Duration
 	// LongCap is the cap a long gate wait uses.
 	LongCap time.Duration
-	// MaxReruns is shuttle.keep_warm_max_reruns, the number of re-runs one long wait is worth; 0 takes no long wait.
+	// MaxReruns is shuttle.yaml's keep_warm_max_reruns, the number of re-runs one long wait is worth; 0 takes no long wait.
 	MaxReruns int
 	// Fallback is why the answer is the fallback, and nil when the engine answered.
 	Fallback error
@@ -29,7 +29,11 @@ type KeepWarmAnswer struct {
 // both caps are shuttleengine.DefaultAwaitCap, MaxReruns is 0 and Fallback holds the cause.
 // It never logs; the caller logs a fallback at its own level.
 func KeepWarm(dirs configengine.Dirs, strand string) KeepWarmAnswer {
-	return keepWarmWith(dirs, strand, registeredConstructors())
+	constructors := make(map[string]constructor, len(registry))
+	for name, registered := range registry {
+		constructors[name] = registered.constructor
+	}
+	return keepWarmWith(dirs, strand, constructors)
 }
 
 // keepWarmWith resolves the keep-warm caps of strand from the engines that constructors build.
@@ -46,7 +50,7 @@ func keepWarmWith(dirs configengine.Dirs, strand string, constructors map[string
 	if err != nil {
 		return fallback(err)
 	}
-	set, err := build(cfg, dirs, constructors, LaunchSeams{}, shuttleengine.Worktree{})
+	set, err := build(cfg, dirs, constructors)
 	if err != nil {
 		return fallback(err)
 	}

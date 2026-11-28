@@ -1,4 +1,4 @@
-// serverlog.go maps the reed.debug_log config value to tmux verbose-logging flags.
+// serverlog.go maps the debug_log config value to tmux verbose-logging flags.
 // It also plans the boot-time pruning of the per-hub server's log files under the Bolt checkout's .lym/logs/.
 // Both functions are pure planning helpers with no filesystem or process I/O;
 // the caller in lifecycle.go performs the tmux spawn and the file removals.
@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-// debugLogArgs maps a validated reed.debug_log config value to tmux global flags:
+// debugLogArgs maps a validated debug_log config value to tmux global flags:
 // "0" yields none, "1" yields -v, "2" yields -vv.
 func debugLogArgs(level string) ([]string, error) {
 	switch strings.TrimSpace(level) {
@@ -23,7 +23,7 @@ func debugLogArgs(level string) ([]string, error) {
 	case "2":
 		return []string{"-vv"}, nil
 	default:
-		return nil, fmt.Errorf("invalid %s %q: must be 0, 1 or 2", keyName("debug_log"), level)
+		return nil, fmt.Errorf("invalid debug_log %q: must be 0, 1 or 2", level)
 	}
 }
 

@@ -3,56 +3,98 @@
 // Package slackengine is the Slack transport of the hub relay.
 // It holds the only calls to Slack and the files the relay and `lym slack` read and write.
 //
-// The machine's own files sit in the per-user lym directory `githubclient.CredentialDir` names, shared by every hub:
-// the credentials, the presence (`Presence`), the socket lock and the peers record (`Peers`).
-// The hub's own files sit in its `.lym/slack/` directory, beside the setup file (`Setup`).
-// No config template, layer or env file holds the credentials.
-// An orch gets a channel, and its mail and the operator's reach each other, only while its slack button is on.
+// The files sit in two places.
+// The machine's own files sit in the per-user lym directory `githubclient.CredentialDir` names.
+// Every hub of the machine shares them.
+// They are the credentials, `slack.json`, with the bot token, the app-level token and the app id;
+// the presence (`Presence`), which is the operator's being away for every orch at once; and the socket lock.
+// `WriteCredentials` writes the credentials and `ReadCredentials` reads them.
+// No config template, layer or env file holds them.
+// The hub's own files sit in its `.lym/slack/` directory.
+// They are the setup file with the operator alone (`Setup`), the forwarding record and the channel map.
+// The forwarding record holds whether each orch's slack button is on (`ReadForwarding`, `WriteForwarding`).
+// An orch gets a channel, and its mail and the operator's reach each other, only while its button is on.
+// The channel map (`ChannelMap`) holds the channel of each orch whose button was ever on, with its read cursors.
+// A channel is named `<machine>-<shortname>-<project handle>-<project slug>` (`ChannelName`).
+// The project is the root project for the hub's own orch and the beam's project for a beam's.
+// The map an older relay kept under another file name is never read, so its channels are left alone.
+// They also include the inbox of wake hints, the outbound record and the relay state (`RelayState`).
+// The relay lock and the relay log sit there too.
 // Every record is written through `internal/state`, so a key an older binary does not know survives its rewrite.
+// Each record's lock file sits in a `locks` directory beside it.
 // A directory the package creates is private to the user, and so is each file it writes.
 //
-// The package is told its `Geometry` and derives no path of its own, and it imports no `*cli` package.
-// It also owns the hub-wide `slack` config module, whose one key is `slack.remind_after_min`.
+// The package is told its `Geometry` and derives no path of its own.
+// `hubgeom.SlackGeometry` builds it, and the package imports no `*cli` package.
+// The package also owns the hub-wide `slack` config module.
+// Its one key, `remind_after_min`, is the minutes between dobby's reminders.
+// Dobby sends them for a run waiting on the operator while presence is slack.
 // The channels, the operator and the tokens are never config.
+// `RequireConfigured` refuses a machine missing either token and a hub with no setup file.
+// Each refusal names the `lym slack` verb that writes the missing piece.
 //
 // `API` is the Web API client, over `net/http` alone.
+// Each call posts a form to the method's URL with the bot token as a bearer header and a bounded timeout.
+// Every answer is read first for its `ok` and `error` alone;
+// each method then decodes only the fields it uses, in the shape that method's answer has.
+// `PostAs` reads nothing past `ok`, so a post Slack accepted never reads as a failure.
 // No error or log line carries the token.
-// A rate-limited call is a `*RateLimitError`, any other `ok: false` is an `*APIError`,
-// and a transport failure or a `5xx` is a plain wrapped error.
+// A call Slack refused for its rate limit is a `*RateLimitError` carrying the wait Slack asked for.
+// Any other `ok: false` is an `*APIError` carrying Slack's code.
+// A transport failure or a `5xx` is a plain wrapped error.
 // The app-level token is used only by `OpenConnection`, which opens the Socket Mode connection.
 //
-// A bridge message is mail between the orchs of two machines, posted in a bridge channel.
-// Its first line is the envelope: `[lym-bridge] from=<machine>::<name> to=<machine>::<name> id=<id>`.
-// A reply has ` reply-to=<id>` added, and the body follows.
-// `FormatBridgeMessage` writes the envelope, and `ParseBridgeMessage` is its sole parser.
-//
-// # The relay
-//
+// The relay is told its seams: a `Clock`, a `SlackClient`, a Socket Mode `Dialer` and a `Hub`.
+// The `Hub` reads the hub's beams, its pauses and the board project each orch runs.
+// It is also told a creel `Mailbox` signing as `<shortname>:SLACK`.
 // The machine's one Socket Mode connection is held by the relay that takes the machine's socket lock.
-// While no orch of the hub has its button on, no start spawns a relay.
-//
-// Inbound, the relay hands each message of the configured operator, once, to the orch of the channel as mail.
-// Every relay command opens with `lym`: `lym away`, `lym back` and `lym status` are presence commands,
-// and `lym approve` and `lym revoke` are peer commands; both kinds are answered in Slack and sent to no orch.
-// Every other message, a bare `status` or `approve it` included, goes to the orch as written.
+// It turns each Slack event into a wake hint in the inbox of the hub whose channel map holds the event's channel.
+// The inbound read of a channel is made on a wake hint, on a resync and at the relay's start.
+// It reads the configured operator's messages after the channel's cursor.
+// It hands each, once, to the orch of the channel it was written in as mail whose body is the operator's text alone.
+// `away`, `back` and `status` are presence commands answered in Slack and sent to no orch.
 // Any other message of the operator first sets the presence to slack: writing in Slack shows the operator is away.
 // A message in the channel of an orch whose button is off is answered in Slack and forwarded to no orch.
+// No orch is mailed a change of the presence.
+// A message that cannot be handled holds the later ones until it succeeds or is five minutes old.
+// The relay then answers in Slack and moves past it.
 //
-// Outbound, the relay posts each message of its mailbox to the channel of its sender's orch.
-// It posts each under the sender's name in the form `<machine>::<sender>`.
+// The outbound read waits on the relay's own mailbox.
+// It posts each message to the channel of its sender's orch, under the sender's icon.
 // It drops the mail of an orch whose button is off.
+// The name it posts under is the sender's in the cross-machine address form `<machine>::<sender>`,
+// so the operator sees which machine wrote; the relay's own lines carry its program name in the same form.
 // Posting is at least once, and a message Slack accepted is not posted again.
-// A record that fails to write stays in memory and is lost when the relay ends,
-// so a restart before a good write can post that mail again.
+// An outbox record keeps each message already posted.
+// It also keeps the count of stale mail whose line is not yet posted, until creel confirms the acknowledgement.
+// A record that fails to write stays in memory in the file's place:
+// the read still acknowledges the mail, and the relay log names the failed write.
+// That record is lost when the relay process ends, so a restart before a good write can post that mail again.
+// A read stops posting before creel's acknowledgement window ends and releases the rest.
+// Mail over a day old is acknowledged unposted.
+// A message Slack refuses with an error code five times is dropped with a line that names it.
 //
-// The bridge posts the machine mail creel holds for an orch of another machine in the bridge channel of its pair.
-// It also delivers a message of an approved peer machine to creel for the orch of the channel, once.
-// A message of a machine the operator has not approved waits, with one notice in the channel.
-// A message for an orch whose button is off waits without a notice.
-// A message is written to a post record before creel settles it delivered, so no restart posts it twice.
-//
+// `RunRelay` is the relay process: it holds the relay lock and makes its first creel read before any Slack call.
+// It then checks the tokens and the setup and ensures the channel of each orch whose button is on.
+// It runs the socket holder, the outbound read and a wake loop.
+// The outbound read is a long poll of the relay's mailbox, bounded at sixty seconds.
+// A poll that found no mail once it had waited out the five-second floor is followed at once by the next.
+// So mail posted while the relay is idle reaches Slack when it is posted.
+// After mail the read waits the floor, and after a failure, or a poll that found nothing sooner, it doubles to sixty.
+// The wake loop wakes on a file event in the inbox or on the forwarding record.
+// So a press of an orch's button makes its channel at the next wake.
+// It never wakes within a second of its previous wake.
+// It also wakes at the end of each outbound read.
+// That wake retries the work that failed and checks for a replaced binary.
 // A channel is archived only when its orch retires, never by `lym slack stop` or a button switched off.
-// The relay starts through a double fork, so no pane's tree holds it.
+// The relay starts through a double fork, so no pane's tree holds it:
+// `EnsureRelay` and `EnsureRelayWhileAway` spawn an intermediate process that runs `SpawnRelayFromIntermediate`.
+// That process exits at once, and the relay reparents itself away from it.
 // A start made while the operator is away is capped by how long each spawned relay lived,
 // so a relay that dies young is not restarted without end.
+// While no orch of the hub has its button on, no start spawns a relay,
+// so the machine's connection runs only while some orch of the machine has its button on.
+// `Connected` reports whether a relay holds the machine's Socket Mode connection.
+// `StopRelay` ends the relay through the run-process records.
+// `AwaitFirstRead` is how a start learns the relay's first creel read was accepted.
 package slackengine

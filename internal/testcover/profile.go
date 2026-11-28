@@ -85,6 +85,17 @@ func PackageBlocks(blocks []ProfileBlock, importPath string) []ProfileBlock {
 	return own
 }
 
+// ProfileByPackage groups blocks by the import path of the package whose own files hold each, in one pass.
+// Each group keeps the blocks' order, and a block of a nested package joins that package's group.
+func ProfileByPackage(blocks []ProfileBlock) map[string][]ProfileBlock {
+	groups := map[string][]ProfileBlock{}
+	for _, b := range blocks {
+		pkg := path.Dir(b.File)
+		groups[pkg] = append(groups[pkg], b)
+	}
+	return groups
+}
+
 // CoveredPositions returns the positions of the blocks with a non-zero count.
 func CoveredPositions(blocks []ProfileBlock) BlockSet {
 	covered := BlockSet{}

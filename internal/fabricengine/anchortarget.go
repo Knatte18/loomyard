@@ -11,7 +11,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -38,7 +37,7 @@ func validateAnchorTarget(pair *lymcwd.Location, target string, names []string) 
 	warp := WorktreePath(pair, pair.WorktreeName)
 
 	if anchor != "." {
-		reserved := slices.Concat(names, []string{lymdirs.DotLymDirName, scratchDirName}, fabriclayout.HubReservedNames())
+		reserved := slices.Concat(names, []string{lymdirs.DotLymDirName, scratchDirName}, HubReservedNames())
 		prefix := warp
 		for _, segment := range strings.Split(filepath.ToSlash(anchor), "/") {
 			prefix = filepath.Join(prefix, segment)

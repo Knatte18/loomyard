@@ -64,7 +64,7 @@ from a fixer that moved HEAD or left a new uncommitted change, with a
 warning.
 On "fixed", Master calls begin-batch again; on "plan_writer" it ends its run
 stuck, so the conflict goes to the plan writer. A fixer whose turn ended
-without a reply, whose strand is gone or that outlived ` + recoveryTimeoutName() + `
+without a reply, whose strand is gone or that outlived recovery_timeout_min
 returns {"status": "dead", "dead_reason": "..."} and exits non-zero. If
 --wait elapses first it returns {"status": "running", "elapsed_s": N}.
 
@@ -142,7 +142,7 @@ Example:
 			}
 
 			if spawned {
-				if _, syncErr := fabricSync(c.openFabric, c.anchorRel, c.syncOptions, "fix-plan spawn"); syncErr != nil {
+				if _, syncErr := fabricSync(c.openFabric, c.anchorRel, "fix-plan spawn"); syncErr != nil {
 					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: the plan fixer spawned but the fabric sync failed: %v; %s", syncErr, fabricSyncWayForward)))
 					return nil
 				}
@@ -165,7 +165,7 @@ Example:
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
-			if _, syncErr := fabricSync(c.openFabric, c.anchorRel, c.syncOptions, "fix-plan "+result.Status); syncErr != nil {
+			if _, syncErr := fabricSync(c.openFabric, c.anchorRel, "fix-plan "+result.Status); syncErr != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: the plan fixer ended %s but the fabric sync failed: %v; %s", result.Status, syncErr, fabricSyncWayForward)))
 				return nil
 			}
@@ -183,7 +183,7 @@ Example:
 		},
 	}
 
-	cmd.Flags().DurationVar(&wait, "wait", 0, "operator override of the wait budget; a shorter wait can return a running snapshot; 0 blocks until the fixer ends or "+recoveryTimeoutName())
+	cmd.Flags().DurationVar(&wait, "wait", 0, "operator override of the wait budget; a shorter wait can return a running snapshot; 0 blocks until the fixer ends or recovery_timeout_min")
 
 	return cmd
 }

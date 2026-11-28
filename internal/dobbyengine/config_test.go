@@ -30,8 +30,7 @@ func writeBeamLayer(t *testing.T, baseDir, document string) {
 func defaultsWith(change func(*Config)) Config {
 	cfg := Config{
 		MaxRuns: 3, BoardTidyEvery: 5, BoardTidyTimeoutMin: 30,
-		TaskHeadroom: 500, AdoptFixTries: 3,
-		GateHoldFactor: 1.5, GateHoldMin: 90,
+		TaskHeadroom: 500, PullRequest: "on", LandNotice: "per-task", AdoptFixTries: 3,
 	}
 	change(&cfg)
 	return cfg
@@ -50,19 +49,13 @@ func TestLoadConfig(t *testing.T) {
 	}{
 		{name: "the template defaults", want: defaultsWith(func(*Config) {})},
 		{name: "a worktree layer's max_runs of 0 starts none", worktree: "max_runs: 0\n", want: defaultsWith(func(c *Config) { c.MaxRuns = 0 })},
-		{name: "a worktree layer's pull_request of merge-in loads", worktree: "pull_request: merge-in\n", want: defaultsWith(func(*Config) {})},
-		{name: "a local layer's pull_request of merge-in loads", local: "pull_request: merge-in\n", want: defaultsWith(func(*Config) {})},
-		{name: "a worktree layer's land_notice of on loads", worktree: "land_notice: \"on\"\n", want: defaultsWith(func(*Config) {})},
-		{name: "a local layer's land_notice of on loads", local: "land_notice: \"on\"\n", want: defaultsWith(func(*Config) {})},
-		{name: "a retired pull_request of required is refused naming the key and the way forward", worktree: "pull_request: required\n", wantErr: []string{"pull_request", "required", "lym config beam --set pull_request="}},
-		{name: "a pull_request of review loads", worktree: "pull_request: review\n", want: defaultsWith(func(*Config) {})},
-		{name: "a pull_request of trail loads", local: "pull_request: trail\n", want: defaultsWith(func(*Config) {})},
-		{name: "a renamed pull_request of on is refused naming the key and the way forward", worktree: "pull_request: \"on\"\n", wantErr: []string{"pull_request", "on", "lym config beam --set pull_request="}},
-		{name: "a renamed pull_request of merge is refused naming the key and the way forward", local: "pull_request: merge\n", wantErr: []string{"pull_request", "merge", "lym config beam --set pull_request="}},
-		{name: "an unknown pull_request is refused naming the key and the way forward", worktree: "pull_request: maybe\n", wantErr: []string{"pull_request", "maybe", "lym config beam --set pull_request="}},
-		{name: "a retired land_notice of all is refused naming the key and the way forward", worktree: "land_notice: all\n", wantErr: []string{"land_notice", "all", "lym config beam --set land_notice="}},
-		{name: "a retired land_notice of per-task is refused naming the key and the way forward", local: "land_notice: per-task\n", wantErr: []string{"land_notice", "per-task", "lym config beam --set land_notice="}},
-		{name: "a non-boolean autonomy is refused naming the key and the way forward", worktree: "autonomy: maybe\n", wantErr: []string{"autonomy", "true or false", "lym config beam --set autonomy="}},
+		{name: "a worktree layer's pull_request of required resolves as set", worktree: "pull_request: required\n", want: defaultsWith(func(c *Config) { c.PullRequest = "required" })},
+		{name: "a worktree layer's pull_request of off resolves as set", worktree: "pull_request: \"off\"\n", want: defaultsWith(func(c *Config) { c.PullRequest = "off" })},
+		{name: "a worktree layer's pull_request of merge resolves as set", worktree: "pull_request: merge\n", want: defaultsWith(func(c *Config) { c.PullRequest = "merge" })},
+		{name: "an unknown pull_request is refused naming the key and the way forward", worktree: "pull_request: maybe\n", wantErr: []string{"pull_request", "must be on, off, required or merge", "lym config beam --set pull_request="}},
+		{name: "a worktree layer's land_notice of all resolves as set", worktree: "land_notice: all\n", want: defaultsWith(func(c *Config) { c.LandNotice = "all" })},
+		{name: "a worktree layer's land_notice of off resolves as set", worktree: "land_notice: \"off\"\n", want: defaultsWith(func(c *Config) { c.LandNotice = "off" })},
+		{name: "an unknown land_notice is refused naming the key and the way forward", worktree: "land_notice: some\n", wantErr: []string{"land_notice", "must be all, per-task or off", "lym config beam --set land_notice="}},
 		{name: "a negative board_tidy_every is refused naming the key", worktree: "board_tidy_every: -1\n", wantErr: []string{"board_tidy_every", "lym config beam --set"}},
 		{name: "a negative task_headroom is refused naming the key", worktree: "task_headroom: -1\n", wantErr: []string{"task_headroom", "lym config beam --set"}},
 		{name: "a worktree layer's adopt_fix_tries resolves as set", worktree: "adopt_fix_tries: 1\n", want: defaultsWith(func(c *Config) { c.AdoptFixTries = 1 })},
@@ -70,15 +63,6 @@ func TestLoadConfig(t *testing.T) {
 		{name: "a worktree layer's retired test_map_upkeep loads and changes nothing", worktree: "test_map_upkeep: false\n", want: defaultsWith(func(*Config) {})},
 		{name: "a local layer's retired test_map_every of 0 loads and changes nothing", local: "test_map_every: 0\n", want: defaultsWith(func(*Config) {})},
 		{name: "a retired test_map_every other than 0 and a retired test_map_batch load and change nothing", worktree: "test_map_every: 3\ntest_map_batch: 0\n", want: defaultsWith(func(*Config) {})},
-		{name: "a worktree layer's run_watch of rows loads", worktree: "run_watch: rows\n", want: defaultsWith(func(*Config) {})},
-		{name: "a local layer's run_watch of off loads", local: "run_watch: \"off\"\n", want: defaultsWith(func(*Config) {})},
-		{name: "an unknown run_watch is refused naming the key, the values and the way forward", worktree: "run_watch: all\n", wantErr: []string{"run_watch", "all", "[stops rows off]", "lym config beam --set run_watch="}},
-		{name: "a gate_hold_factor of 0 resolves as set", worktree: "gate_hold_factor: 0\n", want: defaultsWith(func(c *Config) { c.GateHoldFactor = 0 })},
-		{name: "a gate_hold_min of 30 resolves as set", worktree: "gate_hold_min: 30\n", want: defaultsWith(func(c *Config) { c.GateHoldMin = 30 })},
-		{name: "a negative gate_hold_factor is refused naming the key", worktree: "gate_hold_factor: -0.5\n", wantErr: []string{"gate_hold_factor", "must be a finite number that is not negative", "lym config beam --set"}},
-		{name: "a gate_hold_factor that is not a number is refused", worktree: "gate_hold_factor: .nan\n", wantErr: []string{"gate_hold_factor", "NaN", "must be a finite number"}},
-		{name: "an infinite gate_hold_factor is refused", worktree: "gate_hold_factor: .inf\n", wantErr: []string{"gate_hold_factor", "+Inf", "must be a finite number"}},
-		{name: "a gate_hold_min of 0 is refused naming the key", worktree: "gate_hold_min: 0\n", wantErr: []string{"gate_hold_min", "at least 1", "lym config beam --set"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

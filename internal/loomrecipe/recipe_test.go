@@ -102,11 +102,9 @@ func TestNew_ShapeMatchesRecipe(t *testing.T) {
 // This goes through Parse/Build rather than through New: it needs the parsed Recipe value, which New does not return,
 // so it must not be "simplified" back onto New.
 // The tapestry recipe holds a block row, so its parsed recipe is expanded before it is built.
-//
-//testtiming:keep pins the structural check of every embedded recipe, which TestAmendmentTarget never asserts
 func TestRecipe_StructuralCheckHasNoFindings(t *testing.T) {
 	tiergate.Require(t, 0)
-	for name, source := range map[string][]byte{"tapestry": recipes.TapestryRecipe, "darn": recipes.DarnRecipe, "pawl": recipes.PawlRecipe, "motif": recipes.MotifRecipe, "arras": recipes.ArrasRecipe, "hardener": recipes.HardenerRecipe} {
+	for name, source := range map[string][]byte{"tapestry": recipes.TapestryRecipe, "darn": recipes.DarnRecipe, "pawl": recipes.PawlRecipe, "motif": recipes.MotifRecipe, "arras": recipes.ArrasRecipe} {
 		t.Run(name, func(t *testing.T) {
 			env, _ := testEnv(t)
 
@@ -197,9 +195,9 @@ func TestRecipeEngines_ReportsExactlyLoomsOwnEngineSet(t *testing.T) {
 	tiergate.Require(t, 0)
 	// The literal lists the engines a loom row can reach from other recipes:
 	// the darn recipe's record row and writer, the sampler recipe's session row, and the pawl recipe's rows;
-	// the raddle recipe's writer and file follow, and the hardener recipe's fix row.
+	// the raddle recipe's writer and file follow.
 	// The motif recipe's rows are all tapestry's.
-	want := []string{"DarnWrite", "RecordWrite", "SamplerSession", "BeamUp", "BeamAwait", "BeamDown", "RaddleWrite", "RaddleFile", "HardenFix"}
+	want := []string{"DarnWrite", "RecordWrite", "SamplerSession", "BeamUp", "BeamAwait", "BeamDown", "RaddleWrite", "RaddleFile"}
 	seen := map[string]bool{}
 	for _, engine := range want {
 		seen[engine] = true
@@ -242,7 +240,6 @@ func TestRowNames_FollowEachRecipesRowOrder(t *testing.T) {
 		{shedrun.RecipeMotif, recipes.MotifRecipe},
 		{shedrun.RecipeRaddle, recipes.RaddleRecipe},
 		{shedrun.RecipeArras, recipes.ArrasRecipe},
-		{shedrun.RecipeHardener, recipes.HardenerRecipe},
 	} {
 		t.Run(tt.recipe, func(t *testing.T) {
 			parsed, err := shedbuild.Parse(tt.source)
@@ -418,36 +415,6 @@ func TestRecipe_FinalizeDeclaresNoReroute(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("tapestry recipe has no %s row", loomshed.NameFinalize)
-	}
-}
-
-// TestRecipe_PRReviewDeclaresNoReroute pins that the PR-Review row declares no reroute edge.
-// It checks the tapestry, darn and sampler recipes.
-//
-//testtiming:keep pins PR-Review's missing on_reroute edge in the tapestry, darn and sampler recipes, which the covering tests do not assert
-func TestRecipe_PRReviewDeclaresNoReroute(t *testing.T) {
-	tiergate.Require(t, 0)
-	for _, recipe := range []string{shedrun.RecipeTapestry, shedrun.RecipeDarn, shedrun.RecipeSampler} {
-		t.Run(recipe, func(t *testing.T) {
-			env, paths := testEnv(t)
-			shed, err := New(recipe, env, paths)
-			if err != nil {
-				t.Fatalf("New(%q) error = %v; want nil", recipe, err)
-			}
-			found := false
-			for _, p := range shed.Producers {
-				if p.Name != loomshed.NamePRReview {
-					continue
-				}
-				found = true
-				if p.OnReroute != "" {
-					t.Errorf("PR-Review.OnReroute = %q; want none", p.OnReroute)
-				}
-			}
-			if !found {
-				t.Errorf("%s recipe has no %s row", recipe, loomshed.NamePRReview)
-			}
-		})
 	}
 }
 

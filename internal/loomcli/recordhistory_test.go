@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/discussionparser"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -24,13 +24,13 @@ const (
 )
 
 // historyVersion is a record version at a first-parent position.
-func historyVersion(position int, data string) fabriclayout.AnchoredFileVersion {
-	return fabriclayout.AnchoredFileVersion{Position: position, Data: []byte(data)}
+func historyVersion(position int, data string) fabricengine.AnchoredFileVersion {
+	return fabricengine.AnchoredFileVersion{Position: position, Data: []byte(data)}
 }
 
 // replaceTrailerAt is a replace trailer commit at position naming the record at rel with the sha256 of written.
-func replaceTrailerAt(position int, rel, written string) fabriclayout.TrailerCommit {
-	return fabriclayout.TrailerCommit{Position: position, Value: recordReplacedValue(decisionByParent, rel, []byte(written))}
+func replaceTrailerAt(position int, rel, written string) fabricengine.TrailerCommit {
+	return fabricengine.TrailerCommit{Position: position, Value: recordReplacedValue(decisionByParent, rel, []byte(written))}
 }
 
 // TestRecordHistoryCut asserts which versions the dropped-entry check reads after a replace.
@@ -43,8 +43,8 @@ func TestRecordHistoryCut(t *testing.T) {
 		// record is the record checked, and versions its first-parent history newest first.
 		// trailers are the replace trailers, newest first.
 		record   string
-		versions []fabriclayout.AnchoredFileVersion
-		trailers []fabriclayout.TrailerCommit
+		versions []fabricengine.AnchoredFileVersion
+		trailers []fabricengine.TrailerCommit
 		// wantCut is whether the history is cut; wantDropped lists the titles the check reports dropped from the read history.
 		wantCut     bool
 		wantDropped []string
@@ -52,48 +52,48 @@ func TestRecordHistoryCut(t *testing.T) {
 		{
 			name:     "AReplaceThatDropsAnEntry_ReportsNoDrop",
 			record:   historyX,
-			versions: []fabriclayout.AnchoredFileVersion{historyVersion(4, historyX), historyVersion(2, historyWithE)},
-			trailers: []fabriclayout.TrailerCommit{replaceTrailerAt(4, historyRel, historyX)},
+			versions: []fabricengine.AnchoredFileVersion{historyVersion(4, historyX), historyVersion(2, historyWithE)},
+			trailers: []fabricengine.TrailerCommit{replaceTrailerAt(4, historyRel, historyX)},
 			wantCut:  true,
 		},
 		{
 			name:     "ReplacedBytesLandedBeforeTheTrailerCommit_ReportsNoDrop",
 			record:   historyX,
-			versions: []fabriclayout.AnchoredFileVersion{historyVersion(3, historyX), historyVersion(1, historyWithE)},
-			trailers: []fabriclayout.TrailerCommit{replaceTrailerAt(5, historyRel, historyX)},
+			versions: []fabricengine.AnchoredFileVersion{historyVersion(3, historyX), historyVersion(1, historyWithE)},
+			trailers: []fabricengine.TrailerCommit{replaceTrailerAt(5, historyRel, historyX)},
 			wantCut:  true,
 		},
 		{
 			name:   "AnEntryAddedAfterTheReplaceThenDropped_IsReported",
 			record: historyX,
-			versions: []fabriclayout.AnchoredFileVersion{
+			versions: []fabricengine.AnchoredFileVersion{
 				historyVersion(8, historyX), historyVersion(6, historyY), historyVersion(4, historyX), historyVersion(2, historyWithE),
 			},
-			trailers:    []fabriclayout.TrailerCommit{replaceTrailerAt(4, historyRel, historyX)},
+			trailers:    []fabricengine.TrailerCommit{replaceTrailerAt(4, historyRel, historyX)},
 			wantCut:     true,
 			wantDropped: []string{"Y"},
 		},
 		{
 			name:   "AnEmptyTrailerCommitOverASweptReplace_StillReportsALaterDrop",
 			record: historyX,
-			versions: []fabriclayout.AnchoredFileVersion{
+			versions: []fabricengine.AnchoredFileVersion{
 				historyVersion(8, historyX), historyVersion(6, historyY), historyVersion(3, historyX), historyVersion(1, historyWithE),
 			},
-			trailers:    []fabriclayout.TrailerCommit{replaceTrailerAt(4, historyRel, historyX)},
+			trailers:    []fabricengine.TrailerCommit{replaceTrailerAt(4, historyRel, historyX)},
 			wantCut:     true,
 			wantDropped: []string{"Y"},
 		},
 		{
 			name:     "ATrailerNamingAnotherRecord_CutsNothing",
 			record:   historyX,
-			versions: []fabriclayout.AnchoredFileVersion{historyVersion(4, historyX), historyVersion(2, historyWithE)},
-			trailers: []fabriclayout.TrailerCommit{replaceTrailerAt(4, "_lym/projects/the-beam/decision-record.md", historyX)},
+			versions: []fabricengine.AnchoredFileVersion{historyVersion(4, historyX), historyVersion(2, historyWithE)},
+			trailers: []fabricengine.TrailerCommit{replaceTrailerAt(4, "_lym/projects/the-beam/decision-record.md", historyX)},
 		},
 		{
 			name:     "TheNewestTrailerOfThisRecordCuts_PastAnotherRecordsNewerOne",
 			record:   historyX,
-			versions: []fabriclayout.AnchoredFileVersion{historyVersion(4, historyX), historyVersion(2, historyWithE)},
-			trailers: []fabriclayout.TrailerCommit{
+			versions: []fabricengine.AnchoredFileVersion{historyVersion(4, historyX), historyVersion(2, historyWithE)},
+			trailers: []fabricengine.TrailerCommit{
 				replaceTrailerAt(6, "_lym/projects/the-beam/decision-record.md", historyWithE), replaceTrailerAt(4, historyRel, historyX),
 			},
 			wantCut: true,
@@ -101,8 +101,8 @@ func TestRecordHistoryCut(t *testing.T) {
 		{
 			name:     "ATrailerWhoseSumMatchesNoEarlierVersion_CutsNothing",
 			record:   historyX,
-			versions: []fabriclayout.AnchoredFileVersion{historyVersion(6, historyX), historyVersion(2, historyWithE)},
-			trailers: []fabriclayout.TrailerCommit{replaceTrailerAt(4, historyRel, historyX)},
+			versions: []fabricengine.AnchoredFileVersion{historyVersion(6, historyX), historyVersion(2, historyWithE)},
+			trailers: []fabricengine.TrailerCommit{replaceTrailerAt(4, historyRel, historyX)},
 		},
 	}
 	for _, tt := range tests {
@@ -114,7 +114,7 @@ func TestRecordHistoryCut(t *testing.T) {
 			}
 			readWhole := false
 			history, err := recordHistoryFrom(historyRel, tt.trailers,
-				func() ([]fabriclayout.AnchoredFileVersion, error) { return tt.versions, nil },
+				func() ([]fabricengine.AnchoredFileVersion, error) { return tt.versions, nil },
 				func() ([][]byte, error) { readWhole = true; return whole, nil })
 			if err != nil {
 				t.Fatalf("recordHistoryFrom() error = %v; want nil", err)

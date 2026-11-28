@@ -5,10 +5,12 @@
 package landingshed
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -17,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
 // fixReviewStencilName is the registered name of the fix review's prompt.
@@ -55,12 +58,31 @@ type FixReviewReport struct {
 // A missing file is an error wrapping fs.ErrNotExist.
 // A first line that is no known verdict, and a rejected report with no finding, are errors naming the line and the spec.
 func ParseFixReviewReport(path string) (FixReviewReport, error) {
-	parsed, err := parseVerdictReport(path, "fix review", fixReviewSpecName, string(FixReviewApproved), string(FixReviewRejected))
+	data, err := os.ReadFile(path)
 	if err != nil {
-		return FixReviewReport{}, err
+		return FixReviewReport{}, fmt.Errorf("landingshed: read fix review report %s: %w", path, err)
 	}
-	report := FixReviewReport{Verdict: FixReviewVerdict(parsed.verdict), Findings: bullets(parsed.sections["Findings"])}
-	if report.Verdict == FixReviewRejected && len(report.Findings) == 0 {
+
+	lines := strings.Split(string(data), "\n")
+	first := strings.TrimSpace(lines[0])
+	verdict := FixReviewVerdict(strings.TrimPrefix(first, fixerVerdictPrefix))
+	if !strings.HasPrefix(first, fixerVerdictPrefix) || (verdict != FixReviewApproved && verdict != FixReviewRejected) {
+		return FixReviewReport{}, fmt.Errorf("landingshed: fix review report %s: line 1 %q is no known verdict; the first line is %q or %q, per %s",
+			path, first, fixerVerdictPrefix+string(FixReviewApproved), fixerVerdictPrefix+string(FixReviewRejected), fixReviewSpecName)
+	}
+
+	report := FixReviewReport{Verdict: verdict}
+	inFindings := false
+	for _, line := range lines[1:] {
+		if heading, ok := strings.CutPrefix(line, "## "); ok {
+			inFindings = strings.TrimSpace(heading) == "Findings"
+			continue
+		}
+		if bullet, ok := strings.CutPrefix(strings.TrimSpace(line), "- "); ok && inFindings {
+			report.Findings = append(report.Findings, bullet)
+		}
+	}
+	if verdict == FixReviewRejected && len(report.Findings) == 0 {
 		return FixReviewReport{}, fmt.Errorf("landingshed: fix review report %s: a rejected report needs at least one \"## Findings\" bullet, per %s", path, fixReviewSpecName)
 	}
 	return report, nil
@@ -97,7 +119,7 @@ type fixReviewInputs struct {
 // It runs on the merge fixer's model-spec and timeout.
 // An empty required input field is an error naming the field, and so is a stencil missing from in.StencilsDir.
 func fixReviewTable(in fixReviewInputs, cfg Config, reg modelspec.Registry) (seatengine.Table, error) {
-	if err := requireValues("fixReviewTable", [][2]string{
+	required := []struct{ name, value string }{
 		{"StencilsDir", in.StencilsDir},
 		{"DecisionRecordPath", in.DecisionRecordPath},
 		{"Baseline", in.Baseline},
@@ -107,21 +129,29 @@ func fixReviewTable(in fixReviewInputs, cfg Config, reg modelspec.Registry) (sea
 		{"TaskBranch", in.TaskBranch},
 		{"ParentBranch", in.ParentBranch},
 		{"Slug", in.Slug},
-	}); err != nil {
-		return seatengine.Table{}, err
 	}
-	table, err := soloSession{
-		stencilsDir: in.StencilsDir,
-		stencil:     fixReviewStencilName,
-		role:        fixReviewRole,
-		segment:     segmentcolor.Landing,
-		configRole:  agentconfig.RoleFixReview,
-		modelKey:    "fixer",
-		modelSpec:   cfg.Fixer,
-		timeoutMin:  cfg.FixerTimeoutMin,
-		output:      in.ReportPath,
-		skills:      in.LanguageSkills,
-		values: map[string]string{
+	for _, r := range required {
+		if r.value == "" {
+			return seatengine.Table{}, fmt.Errorf("landingshed: fixReviewTable: %s is empty", r.name)
+		}
+	}
+	if _, err := stencilstore.Read(in.StencilsDir, fixReviewStencilName); err != nil {
+		return seatengine.Table{}, fmt.Errorf("landingshed: fixReviewTable: %w", err)
+	}
+	parsed, err := modelspec.Parse(cfg.Fixer)
+	if err != nil {
+		return seatengine.Table{}, fmt.Errorf("landingshed: fixReviewTable: fixer model-spec: %w", err)
+	}
+	resolved, err := reg.Resolve(parsed)
+	if err != nil {
+		return seatengine.Table{}, fmt.Errorf("landingshed: fixReviewTable: fixer model-spec: %w", err)
+	}
+
+	return seatengine.Table{
+		RolePrefix: fixReviewRole,
+		Segment:    segmentcolor.Landing,
+		Timeout:    time.Duration(cfg.FixerTimeoutMin) * time.Minute,
+		Values: map[string]string{
 			"slug":                 in.Slug,
 			"decision_record_path": in.DecisionRecordPath,
 			"fixer_report_path":    in.FixerReportPath,
@@ -132,31 +162,15 @@ func fixReviewTable(in fixReviewInputs, cfg Config, reg modelspec.Registry) (sea
 			"task_branch":          in.TaskBranch,
 			"parent_branch":        in.ParentBranch,
 		},
-		optional: []string{"fixer_report_path"},
-	}.table(reg)
-	if err != nil {
-		return seatengine.Table{}, fmt.Errorf("landingshed: fixReviewTable: %w", err)
-	}
-	return table, nil
-}
-
-// FixReviewSeatTable builds the seatengine.Table of the fix review session over stand-in values for a run's own inputs.
-// The stand-in paths, refs and slug fill the prompt's markers, and no file is read or written there.
-// The table runs on cfg's fixer model-spec and carries languageSkills after the role's own, as a run's does.
-// stencilsDir is the directory the fix review's stencil is read from.
-func FixReviewSeatTable(stencilsDir string, languageSkills []string, cfg Config, reg modelspec.Registry) (seatengine.Table, error) {
-	return fixReviewTable(fixReviewInputs{
-		StencilsDir:        stencilsDir,
-		DecisionRecordPath: filepath.Join(stencilsDir, "decision-record.md"),
-		Baseline:           "baseline",
-		Head:               "head",
-		CapReason:          "the change is over the caps",
-		ReportPath:         filepath.Join(stencilsDir, "fix-review.md"),
-		TaskBranch:         "task",
-		ParentBranch:       "parent",
-		Slug:               "stand-in",
-		LanguageSkills:     languageSkills,
-	}, cfg, reg)
+		Optional: []string{"fixer_report_path"},
+		Seats: []seatengine.Seat{{
+			Stencil:     fixReviewStencilName,
+			ModelChoice: shuttleengine.NewModelChoice(resolved),
+			Outputs:     []string{in.ReportPath},
+			ConfigRole:  agentconfig.RoleFixReview,
+			Skills:      in.LanguageSkills,
+		}},
+	}, nil
 }
 
 // fixReviewEnd names how one fix review session ended.
@@ -173,14 +187,14 @@ const (
 	fixReviewEndChanged fixReviewEnd = "changed"
 )
 
-// fixReviewOutcome is how a fix review session ended, with the report it wrote and the session that wrote it.
+// fixReviewOutcome is how a fix review session ended, with the report it wrote and the run directory holding its log.
 // It also carries a rejected report's findings, and the cause of a no-verdict or changed end.
 type fixReviewOutcome struct {
 	end fixReviewEnd
 	// reportPath is the report the session writes.
 	reportPath string
-	// session names the session by its engine session id, and by its run directory while that survives.
-	session string
+	// sessionLog is the session's run directory, which holds its log.
+	sessionLog string
 	// findings are the rejected report's findings.
 	findings []string
 	// cause is why a no-verdict or changed session ended so.
@@ -223,14 +237,18 @@ func runFixReview(deps Deps, gate verifyGate, row, baseline, head, capReason str
 	}}}
 
 	result, runErr := deps.FixerSeats.Run(table)
-	if cause := startFailure(result, runErr); cause != nil {
+	if (runErr != nil && errors.Is(runErr, shuttleengine.ErrNotStarted)) || (runErr == nil && result.Chair.NotStarted) {
+		cause := runErr
+		if cause == nil {
+			cause = errors.New(result.Chair.StartError)
+		}
 		return fixReviewOutcome{}, shedengine.MarkTransient(shedengine.TransientAgentStart, fmt.Errorf("landingshed: %s: the fix review session did not start: %w", row, cause))
 	}
 	if runErr != nil {
 		return fixReviewOutcome{}, fmt.Errorf("landingshed: %s: run the fix review session: %w", row, runErr)
 	}
 
-	outcome := fixReviewOutcome{reportPath: reportPath, session: sessionRef(result.Chair)}
+	outcome := fixReviewOutcome{reportPath: reportPath, sessionLog: result.Chair.RunDir}
 	defer func() {
 		logger.Info("landingshed: fix review ended", "row", row, "end", string(outcome.end), "range", baseline+".."+head)
 	}()
@@ -251,7 +269,7 @@ func runFixReview(deps Deps, gate verifyGate, row, baseline, head, capReason str
 		outcome.end, outcome.cause = fixReviewEndChanged, fmt.Sprintf("the task head moved from %s to %s", head, after)
 		return outcome, nil
 	case result.Chair.Outcome == shuttleengine.OutcomeTimeout:
-		outcome.end, outcome.cause = fixReviewEndNoVerdict, "the session ran past "+keyName(fixerTimeoutMinKey)
+		outcome.end, outcome.cause = fixReviewEndNoVerdict, "the session ran past fixer_timeout_min"
 		return outcome, nil
 	}
 	report, err := ParseFixReviewReport(reportPath)
@@ -271,7 +289,7 @@ func (o fixReviewOutcome) verdictSummary() string {
 	if o.end == fixReviewEndRejected {
 		return fmt.Sprintf("the fix review rejected it: %s; review: %s", singleLine(strings.Join(o.findings, "; ")), o.reportPath)
 	}
-	return fmt.Sprintf("the fix review gave no verdict (%s); session: %s", o.cause, o.session)
+	return fmt.Sprintf("the fix review gave no verdict (%s); session log: %s", o.cause, o.sessionLog)
 }
 
 // openFindings returns what a rejected or verdict-less review left open.

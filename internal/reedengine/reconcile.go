@@ -213,9 +213,7 @@ func clearConflictingPaneBindings(st *ReedState) []string {
 // Those windows are not in killed, since no window 0 pane went.
 // A viewer on any other window is never moved.
 func (e *Engine) reconcileLocked(st *ReedState, live []LivePane, windows []windowPane) (killed []string, err error) {
-	// A pane whose placement could not be looked up is planned as one found nowhere.
-	elsewhere, _ := e.strandsElsewhereLocked(st.Strands, windows)
-	plan := planReconcile(st.Strands, live, windows, newReapPolicy(st, live), elsewhere)
+	plan := planReconcile(st.Strands, live, windows, newReapPolicy(st, live), e.strandsElsewhereLocked(st.Strands, windows))
 
 	// deadKilled and untrackedKilled collect the ids actually destroyed, one list per kill reason.
 	// The plan's kill lists name what was scheduled, not what a partial kill-pane failure reached,

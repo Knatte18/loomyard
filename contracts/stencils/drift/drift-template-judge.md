@@ -5,7 +5,7 @@
      It then hands the result to shuttle as the agent's whole prompt.
      Every marker below is a top-level substitution, and the file has no conditionals.
      The engine fills the parent and edit directives, and `driftengine.JudgeTable` fills the rest;
-     mode_rules holds the autonomous or the operator text, chosen by drift.judge_interactive. -->
+     mode_rules holds the autonomous or the operator text, chosen by drift.yaml's judge_interactive. -->
 
 # Drift judge — rule on each change the task made
 
@@ -20,8 +20,6 @@ You change no code, no expectation and no record: your one output is the judgeme
 - The request: `{{.request_path}}`, a JSON file.
   Its `spawn_id` names this spawn and its `mode` says which of the two parts of Step 2 applies.
   Its `expectation` and `amendments` are the expectation and the parent's amendments as text.
-  Its `files` and `commit_messages`, present under either mode, are the changed files of the task's range with their diffs
-  and the whole messages of its commits, newest first.
 - The task's subject: {{.subject_reading}}.
 
 ## Step 2 — Rule
@@ -48,24 +46,6 @@ Read the log, the expectation and the capture files the failing cases name, and 
 - `does not match` when the expectation says the case differs but the difference is not the expected one.
 - `unexpected` when the failure is of a case the expectation does not explain.
 
-Under either mode, rule on every file of the request's `files` once.
-Decide from the diffs and the tests you read what is a test and what is loosened; no language or path tells you.
-
-An assertion the diff removes from one file is not loosened when a test in another file holds the same check on the same behaviour, no looser.
-That file may be one of the request's `files` whose diff adds the check, or one `files` does not list,
-so search the repository's tests for a removed check before you rule on it.
-Leave a check carried this way out of the file's checks, name the file that carries it in the file's `reason`,
-and list that file's repository-relative path under the file's `carried_by`: lym judges the file again when the range changes.
-A widened check, and a removed one that no test carries, is loosened.
-
-- `none` when the diff widens no assertion, tolerance or limit in a test, and removes none that no other test carries.
-- `loosened` otherwise, with one check per loosened assertion, naming the test and what was loosened.
-
-Rule each check:
-
-- `caused` when a `Loosened-Check:` trailer in `commit_messages` names that check with a measured cause; copy the cause into `cause`.
-- `uncaused` otherwise, a cause that is no measurement, such as "flaky", included.
-
 ## Step 3 — Write the judgement
 
 Write your rulings to `{{.judgement_path}}`, copying the request's `spawn_id` into it:
@@ -86,24 +66,10 @@ cases:
   - case: <the case's name>
     ruling: matches   # or: does not match, or: unexpected
     reason: <why>
-# either mode
-files:
-  - id: <the file's id>
-    ruling: loosened  # or: none
-    reason: <what you read in the diff>
-    carried_by:       # under either ruling, only when another file holds a removed check
-      - <that file's path>
-    checks:           # only under loosened, one per loosened assertion
-      - test: <the test holding the check>
-        loosened: <what was loosened>
-        ruling: caused  # or: uncaused
-        cause: <the measured cause from the trailer; only under caused>
-        reason: <why>
 ```
 
 Rule on every listed cell once and list every listed open range, and write only the keys of the request's mode.
-Rule on every listed file once, and write `files` under either mode.
-Every `reason` and `checked`, and every file and check `reason`, must be non-empty.
+Every `reason` and `checked` must be non-empty.
 
 ## Step 4 — End your turn
 

@@ -8,12 +8,9 @@ package boardengine
 
 import (
 	"fmt"
-	"regexp"
 	"slices"
 	"strings"
 	"time"
-
-	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
 // InboxIssue is the part of a GitHub issue that intake reads.
@@ -50,15 +47,10 @@ type ImportRequest struct {
 // Recorded is non-empty when the issue was already recorded and the import was a no-op;
 // then it holds the recording entries' slugs.
 // Dropped holds the issue labels that were not carried over.
-// EmptyBody reports that the issue body was blank, so the entry holds only the title and the comments.
-// LocalPaths lists the paths under a worktree's never-tracked directory that the issue body and comments name.
-// Those files are deleted with their worktree, so the entry holds only what the issue quotes or attaches of them.
 type ImportResult struct {
-	Entry      Task
-	Recorded   []string
-	Dropped    []string
-	EmptyBody  bool
-	LocalPaths []string
+	Entry    Task
+	Recorded []string
+	Dropped  []string
 }
 
 // RecordingEntries returns the slugs of the entries whose issues list number, in board order.
@@ -126,8 +118,6 @@ func (s *Store) importIssue(req ImportRequest) (ImportResult, error) {
 		return ImportResult{}, fmt.Errorf("issue #%d is closed and no entry records it: reopen it on GitHub to import it, or leave it closed", issue.Number)
 	}
 
-	var res ImportResult
-	var err error
 	if req.Into != "" {
 		if req.Title != "" || req.Brief != "" || req.Labels != nil {
 			return ImportResult{}, fmt.Errorf("into folds issue #%d into an existing entry and takes no title, brief or labels: drop them, or import as a new note with slug", issue.Number)
@@ -135,57 +125,12 @@ func (s *Store) importIssue(req ImportRequest) (ImportResult, error) {
 		if req.Slug != "" {
 			return ImportResult{}, fmt.Errorf("slug and into both given for issue #%d: pass slug to import as a new note, or into to fold into an existing entry", issue.Number)
 		}
-		res, err = s.foldIssue(issue, req.Into)
-	} else {
-		if req.Slug == "" {
-			return ImportResult{}, fmt.Errorf("neither slug nor into given for issue #%d: pass slug to import as a new note, or into to fold into an existing entry", issue.Number)
-		}
-		res, err = s.importNote(req)
+		return s.foldIssue(issue, req.Into)
 	}
-	if err != nil {
-		return ImportResult{}, err
+	if req.Slug == "" {
+		return ImportResult{}, fmt.Errorf("neither slug nor into given for issue #%d: pass slug to import as a new note, or into to fold into an existing entry", issue.Number)
 	}
-	res.EmptyBody = issueBodyEmpty(issue)
-	res.LocalPaths = localPathsNamed(issue)
-	return res, nil
-}
-
-// pathStopChars are the characters that end a path mentioned in markdown text, as a regexp character-class body.
-const pathStopChars = "\\s`'\"()\\[\\]<>|={}"
-
-// pathLeadChars are the characters that may precede a path: the stop characters and the emphasis and key-value markers.
-// They may also occur inside a path, so they end no path.
-const pathLeadChars = pathStopChars + "*_:"
-
-// localPathPattern matches a path that starts with, or has as a component, a worktree's never-tracked directory.
-// A path separates its components with a slash or a backslash.
-// Its first group is the path.
-var localPathPattern = regexp.MustCompile(`(?:^|[` + pathLeadChars + `])((?:[^` + pathStopChars + `]*[/\\])?` +
-	regexp.QuoteMeta(lymdirs.DotLymDirName) + `[/\\][^` + pathStopChars + `]*)`)
-
-// issueBodyEmpty reports whether the issue body holds nothing but white space.
-func issueBodyEmpty(issue InboxIssue) bool {
-	return strings.TrimSpace(issue.Body) == ""
-}
-
-// localPathsNamed returns the distinct local paths that the issue body and comments name.
-// A local path lies under a worktree's never-tracked directory.
-// They come in first-mention order, each without trailing sentence punctuation or emphasis markers.
-func localPathsNamed(issue InboxIssue) []string {
-	texts := []string{issue.Body}
-	for _, comment := range issue.Comments {
-		texts = append(texts, comment.Body)
-	}
-	var paths []string
-	for _, text := range texts {
-		for _, match := range localPathPattern.FindAllStringSubmatch(text, -1) {
-			path := strings.TrimRight(match[1], ".,;:!?*_")
-			if !slices.Contains(paths, path) {
-				paths = append(paths, path)
-			}
-		}
-	}
-	return paths
+	return s.importNote(req)
 }
 
 // vocabulary returns the store's vocabulary, the zero value when it has none.
@@ -197,21 +142,11 @@ func (s *Store) vocabulary() Vocabulary {
 }
 
 // issueContent is the link-back line followed by the issue body, then one section per comment, in order.
-// An import note follows the link-back line when the body is blank, naming the title the body leaves as the only content.
-// Another follows when the issue names paths under a worktree's never-tracked directory,
-// so a reader knows those files may be gone and the board holds only what the issue quotes.
 // Each comment section is a commentHeading-prefixed heading naming the comment's UTC creation date;
 // the comment body follows verbatim.
 func issueContent(issue InboxIssue, commentHeading string) string {
 	content := fmt.Sprintf("Imported from [issue #%d](%s).", issue.Number, issue.URL)
-	if issueBodyEmpty(issue) {
-		content += fmt.Sprintf("\n\nImport note: the issue body was empty; the title \"%s\" and any comments below are all the issue carried.", issue.Title)
-	}
-	if paths := localPathsNamed(issue); len(paths) > 0 {
-		content += fmt.Sprintf("\n\nImport note: the issue names files under `%s/`, which is deleted with its worktree,"+
-			" so only what the issue quotes of them reached the board: `%s`.", lymdirs.DotLymDirName, strings.Join(paths, "`, `"))
-	}
-	if !issueBodyEmpty(issue) {
+	if issue.Body != "" {
 		content += "\n\n" + issue.Body
 	}
 	for _, comment := range issue.Comments {
@@ -250,7 +185,7 @@ func (s *Store) importNote(req ImportRequest) (ImportResult, error) {
 		case len(typeLabels) > 1:
 			return ImportResult{}, fmt.Errorf("issue #%d carries more than one type label (%s), and a note takes exactly one: pass labels naming the one to use", issue.Number, strings.Join(typeLabels, ", "))
 		case len(typeLabels) == 0:
-			return ImportResult{}, fmt.Errorf("issue #%d carries no type label the board knows (%s): pass labels with one type label of %s in board.yaml", issue.Number, strings.Join(vocab.Types, ", "), typesName())
+			return ImportResult{}, fmt.Errorf("issue #%d carries no type label the board knows (%s): pass labels with one type label from the types list of board.yaml", issue.Number, strings.Join(vocab.Types, ", "))
 		}
 	}
 

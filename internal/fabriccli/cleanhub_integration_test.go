@@ -23,7 +23,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/configsync"
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
@@ -76,8 +75,8 @@ func runShortnameVerb(t *testing.T, h *hubforge.Hub, args ...string) (exit int, 
 func removeShortnameRecord(t *testing.T, h *hubforge.Hub) {
 	t.Helper()
 	board := h.BoardDir()
-	if err := os.Remove(filepath.Join(board, fabriclayout.ShortnameFileName)); err != nil {
-		t.Fatalf("remove %s: %v", fabriclayout.ShortnameFileName, err)
+	if err := os.Remove(filepath.Join(board, fabricengine.ShortnameFileName)); err != nil {
+		t.Fatalf("remove %s: %v", fabricengine.ShortnameFileName, err)
 	}
 	if _, _, err := fabricengine.NewBolt(board).Commit("test: remove the shortname record", fabricengine.SyncOptions{}); err != nil {
 		t.Fatalf("commit the removal: %v", err)
@@ -124,6 +123,11 @@ func TestCommand_CleanHubScenario(t *testing.T) {
 					t.Errorf("git ls-files in the board does not contain %q; got %v", want, tracked)
 				}
 			}
+
+			// The clone's walk migrated the prime, so it tracks the sparse marker.
+			if primeTracked := gitkit.LsFiles(t, h.PrimeRecords()); !slices.Contains(primeTracked, filepath.ToSlash(configengine.SparseMarkerRel())) {
+				t.Errorf("git ls-files in the weft prime does not contain the sparse marker; got %v", primeTracked)
+			}
 		}},
 		{"CloneConfigCommit_OneCommitNotOnePerModule", func(t *testing.T) {
 			// A fresh clone's weft prime carries no per-module config commit.
@@ -159,7 +163,7 @@ func TestCommand_CleanHubScenario(t *testing.T) {
 				wantTarget := boardPrefix + configengine.ConfigFileRel(name)
 				written := 0
 				for _, e := range entries {
-					if e.Kind == fabriclayout.KindFileWritten && e.Target == wantTarget {
+					if e.Kind == fabricengine.KindFileWritten && e.Target == wantTarget {
 						written++
 					}
 				}
@@ -167,10 +171,19 @@ func TestCommand_CleanHubScenario(t *testing.T) {
 					t.Errorf("mutation record holds %d KindFileWritten entries targeting %q; want exactly 1\nentries: %+v", written, wantTarget, entries)
 				}
 			}
+			markerWritten := 0
+			for _, e := range entries {
+				if e.Kind == fabricengine.KindFileWritten && strings.HasSuffix(e.Target, "/"+filepath.ToSlash(configengine.SparseMarkerRel())) {
+					markerWritten++
+				}
+			}
+			if markerWritten != 1 {
+				t.Errorf("mutation record holds %d KindFileWritten entries for the sparse marker; want exactly 1\nentries: %+v", markerWritten, entries)
+			}
 			weftTarget := hubRelativeWeftTarget(t, h)
 			weftCommits := 0
 			for _, e := range entries {
-				if e.Kind == fabriclayout.KindCommitCreated && e.Target == weftTarget {
+				if e.Kind == fabricengine.KindCommitCreated && e.Target == weftTarget {
 					weftCommits++
 				}
 			}
@@ -389,6 +402,9 @@ func TestCommand_CleanHubScenario(t *testing.T) {
 			if _, err := os.Stat(loomConfigPath); !os.IsNotExist(err) {
 				t.Errorf("pair worktree loom config %s: stat err = %v; want it absent", loomConfigPath, err)
 			}
+			if _, err := os.Stat(configengine.SparseMarker(pairLocation.AnchorPath())); err != nil {
+				t.Errorf("pair worktree sparse marker: %v; want it inherited from the migrated prime", err)
+			}
 			if _, err := loomengine.LoadConfig(fabricengine.ConfigDirs(pairLocation), "loom"); err != nil {
 				t.Errorf("loomengine.LoadConfig over the pair: %v; want the board's repo default to load", err)
 			}
@@ -436,8 +452,8 @@ func TestCommand_CleanHubScenario(t *testing.T) {
 			if exit != 0 || env["shortname"] != "zz" || env["partial"] != false {
 				t.Fatalf("record = %d, %v; want exit 0 with shortname zz", exit, env)
 			}
-			if got := boardGit(t, h, "show", "HEAD:"+fabriclayout.ShortnameFileName); got != "zz" {
-				t.Errorf("%s at weft:main's tip = %q; want zz", fabriclayout.ShortnameFileName, got)
+			if got := boardGit(t, h, "show", "HEAD:"+fabricengine.ShortnameFileName); got != "zz" {
+				t.Errorf("%s at weft:main's tip = %q; want zz", fabricengine.ShortnameFileName, got)
 			}
 		}},
 		{"ShortnameVerb_CommitsTheRecordAlone", func(t *testing.T) {
@@ -452,8 +468,8 @@ func TestCommand_CleanHubScenario(t *testing.T) {
 			if exit, env := runShortnameVerb(t, h, "zz"); exit != 0 {
 				t.Fatalf("record = %d, %v; want exit 0", exit, env)
 			}
-			if got := boardGit(t, h, "show", "--name-only", "--format=", "HEAD"); got != fabriclayout.ShortnameFileName {
-				t.Errorf("files in the shortname commit = %q; want only %s", got, fabriclayout.ShortnameFileName)
+			if got := boardGit(t, h, "show", "--name-only", "--format=", "HEAD"); got != fabricengine.ShortnameFileName {
+				t.Errorf("files in the shortname commit = %q; want only %s", got, fabricengine.ShortnameFileName)
 			}
 			if got := boardGit(t, h, "status", "--porcelain", "--", "pending-board-write.md"); got == "" {
 				t.Errorf("the pending board file was committed; want it left uncommitted")

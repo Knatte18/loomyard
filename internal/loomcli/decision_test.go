@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -17,7 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gatefixer"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/loomshed"
@@ -53,13 +52,7 @@ type decisionFake struct {
 	// strandName is the caller's exported strand name, empty for an unnamed shell.
 	strandName string
 	parent     hubgeom.Parent
-	// parentErr is returned by both the parent and the orch chain resolvers.
-	parentErr error
-	// chainErr, when set, fails the orch chain resolver alone.
-	chainErr error
-	// orchChain, when set, is the run's beam chain.
-	// Otherwise the chain holds the parent alone, or nothing for a nameless one.
-	orchChain []hubgeom.Parent
+	parentErr  error
 	// arbiterName is the one strand name the run's arbiter check accepts.
 	arbiterName string
 	// samplerName is the one strand name the sampler session check accepts; samplerErr is returned instead of its answer.
@@ -167,12 +160,6 @@ type decisionFake struct {
 	// implementerRows reports, per row, whether the run stands in its Webster span; implementerErr makes the read fail.
 	implementerRows map[string]bool
 	implementerErr  error
-	// closedRows reports, per row, whether the run's scope is closed there; closedErr makes the read fail.
-	closedRows map[string]bool
-	closedErr  error
-	// labels are the labels of the run's board entry, and labelsErr makes their read fail.
-	labels    []string
-	labelsErr error
 	// boardStored is whether the run's board entry carries a stored record; boardStoredErr makes the read fail.
 	boardStored    bool
 	boardStoredErr error
@@ -203,9 +190,6 @@ type decisionFake struct {
 	recordWrites int
 	// writeFirstErr makes only the first record write fail; writeAllErr makes every record write fail.
 	writeFirstErr, writeAllErr error
-	// judgeOpen makes the drift judge session read as open, and judgeOpenErr makes the read fail.
-	judgeOpen    bool
-	judgeOpenErr error
 }
 
 // decisionPost is one notice the verb posted.
@@ -280,18 +264,9 @@ func newDarnDecisionFake(t *testing.T) *decisionFake {
 
 func (f *decisionFake) deps() decisionDeps {
 	return decisionDeps{
-		strandName:  f.strandName,
-		programName: func() (string, error) { return "hub:LOOM", f.programNameErr },
-		parent:      func() (hubgeom.Parent, error) { return f.parent, f.parentErr },
-		orchChain: func() ([]hubgeom.Parent, error) {
-			if f.chainErr != nil {
-				return nil, f.chainErr
-			}
-			if f.orchChain != nil || f.parent.Name == "" {
-				return f.orchChain, f.parentErr
-			}
-			return []hubgeom.Parent{f.parent}, f.parentErr
-		},
+		strandName:     f.strandName,
+		programName:    func() (string, error) { return "hub:LOOM", f.programNameErr },
+		parent:         func() (hubgeom.Parent, error) { return f.parent, f.parentErr },
 		arbiterStrand:  func(name string) bool { return name == f.arbiterName },
 		samplerStrand:  func(name string) (bool, error) { return f.samplerName != "" && name == f.samplerName, f.samplerErr },
 		readStatus:     func() (shedengine.Status, bool, error) { return f.status, f.found, f.statusErr },
@@ -434,8 +409,7 @@ func (f *decisionFake) deps() decisionDeps {
 		raddleBoardFiling: func() ([]string, bool, error) {
 			return f.boardFilingParts, f.boardFilingHeld, nil
 		},
-		judgeSessionOpen: func() (bool, error) { return f.judgeOpen, f.judgeOpenErr },
-		recordRel:        "_lym/discussion/decision-record.md",
+		recordRel: "_lym/discussion/decision-record.md",
 		lockRecord: func() (func() error, error) {
 			if f.lockOverride != nil {
 				return f.lockOverride()
@@ -456,7 +430,7 @@ func (f *decisionFake) deps() decisionDeps {
 			}
 			return os.WriteFile(f.path, data, 0o644)
 		},
-		commitReplace: func(_ string, trailers []fabriclayout.Trailer) (bool, error) {
+		commitReplace: func(_ string, trailers []fabricengine.Trailer) (bool, error) {
 			f.replaceCommits++
 			if f.commitEntered != nil {
 				close(f.commitEntered)
@@ -484,7 +458,7 @@ func (f *decisionFake) deps() decisionDeps {
 			f.committedCopy, f.committedFound, f.headTrailer = data, true, trailers[0].Value
 			return true, nil
 		},
-		commitEmpty: func(_ string, trailers []fabriclayout.Trailer) error {
+		commitEmpty: func(_ string, trailers []fabricengine.Trailer) error {
 			f.emptyCommits++
 			if f.emptyErr != nil {
 				return f.emptyErr
@@ -499,8 +473,6 @@ func (f *decisionFake) deps() decisionDeps {
 			return f.headTrailer == value, nil
 		},
 		implementerSpan:   func(row string) (bool, error) { return f.implementerRows[row], f.implementerErr },
-		scopeClosed:       func(row string) (bool, error) { return f.closedRows[row], f.closedErr },
-		entryLabels:       func() ([]string, error) { return f.labels, f.labelsErr },
 		boardRecordStored: func() (bool, error) { return f.boardStored, f.boardStoredErr },
 	}
 }
@@ -559,12 +531,8 @@ func TestDecisionVerb_AppendsAndCommits(t *testing.T) {
 		parentName  string
 		arbiterName string
 		samplerName string
-		// beamOrch, when set, puts that orch on the run's beam chain below the parent.
-		beamOrch string
 		// samplerErr makes the read of the run's sampler record fail.
 		samplerErr error
-		// chainErr makes the read of the run's beam chain fail while the parent still resolves.
-		chainErr error
 		// recordRow runs the case on a Record-Write record that is committed and unchanged.
 		recordRow bool
 		// pattern sets the three PATTERN-change flags.
@@ -581,13 +549,7 @@ func TestDecisionVerb_AppendsAndCommits(t *testing.T) {
 		perchAtRaddleWrite bool
 		// perchWithoutFileRow runs a perch-mode raddle state over a recipe with no RaddleFile row.
 		perchWithoutFileRow bool
-		// judgeOpen makes the run's drift judge session read as open.
-		judgeOpen bool
-		// dropsCreate sets the --drops-create targets.
-		dropsCreate []string
 	}{
-		{name: "parent label dropping two Create targets", by: "parent", dropsCreate: []string{"a.go", "b.go"}},
-		{name: "a plain entry while a drift judge session is open", by: "parent", judgeOpen: true},
 		{name: "a raddle run outside perch mode at its Raddle-File row", by: "parent", atRaddleFile: true},
 		{name: "a perch-mode raddle run at its Raddle-Write row", by: "parent", perchAtRaddleWrite: true},
 		{name: "a perch-mode raddle state over a recipe with no Raddle-File row", by: "parent", perchWithoutFileRow: true},
@@ -602,8 +564,6 @@ func TestDecisionVerb_AppendsAndCommits(t *testing.T) {
 		{name: "program name unresolvable", by: "parent", programNameFails: true},
 		{name: "recorded parent's own name", by: "parent", strandName: "hub:orch", parentName: "hub:orch"},
 		{name: "slug-bearing recorded parent's own name", by: "parent", strandName: "hub:other:orch", parentName: "hub:other:orch"},
-		{name: "a beam's orch on the run's chain while the prime's orch resolves as the parent", by: "parent", strandName: "hub:beam-b:orch", parentName: "hub:orch", beamOrch: "hub:beam-b:orch"},
-		{name: "the resolved parent while the beam chain cannot be read", by: "parent", strandName: "hub:orch", parentName: "hub:orch", chainErr: errors.New("origin record unreadable")},
 		{name: "the run's arbiter strand with the arbiter label", by: "arbiter", strandName: "hub:slug:arbiter", parentName: "hub:orch", arbiterName: "hub:slug:arbiter"},
 		{name: "the run's sampler session with the operator label on a Record-Write record", by: "operator", strandName: "hub:slug:sampler", parentName: "hub:orch", samplerName: "hub:slug:sampler", recordRow: true},
 		{name: "the recorded parent with an unreadable sampler record", by: "parent", strandName: "hub:orch", parentName: "hub:orch", samplerErr: errors.New("record boom")},
@@ -619,8 +579,6 @@ func TestDecisionVerb_AppendsAndCommits(t *testing.T) {
 			f.arbiterName = tc.arbiterName
 			f.samplerName = tc.samplerName
 			f.samplerErr = tc.samplerErr
-			f.chainErr = tc.chainErr
-			f.judgeOpen = tc.judgeOpen
 			if tc.programNameFails {
 				f.programNameErr = errors.New("geometry boom")
 			}
@@ -634,12 +592,8 @@ func TestDecisionVerb_AppendsAndCommits(t *testing.T) {
 				f.raddlePerch = true
 			}
 			f.parent = hubgeom.Parent{Name: tc.parentName}
-			if tc.beamOrch != "" {
-				f.orchChain = []hubgeom.Parent{{Name: tc.beamOrch, Worktree: "beam-b"}, f.parent}
-			}
 			input := goodDecisionInput()
 			input.by = by
-			input.dropsCreate = tc.dropsCreate
 			if tc.pattern {
 				input.patternEntry, input.patternAction, input.patternText = "PATTERN-x", "adds", "New rule."
 			}
@@ -655,9 +609,6 @@ func TestDecisionVerb_AppendsAndCommits(t *testing.T) {
 			}
 
 			data := envelope.RequireOK(t, out.String()).Raw
-			if !slices.Equal(f.lastAdded.DroppedCreates, tc.dropsCreate) {
-				t.Errorf("appended DroppedCreates = %q; want %q", f.lastAdded.DroppedCreates, tc.dropsCreate)
-			}
 			if tc.withdraw {
 				if f.lastAdded.WithdrawnPattern != "PATTERN-x" {
 					t.Errorf("appended WithdrawnPattern = %q; want PATTERN-x", f.lastAdded.WithdrawnPattern)
@@ -718,19 +669,6 @@ func TestDecisionVerb_Refusals(t *testing.T) {
 		afterCommit bool
 	}
 	tests := []refusalCase{
-		{
-			name:         "--drops-create on a call recording several entries",
-			from:         decisionBatchJSON,
-			setup:        func(_ *decisionFake, in *decisionInput) { in.dropsCreate = []string{"a.go"} },
-			inputRefusal: true,
-			want:         []string{"--drops-create applies to one entry", "way forward: record the dropping decision as its own call"},
-		},
-		{
-			name:         "--drops-create target holding a backtick",
-			setup:        func(_ *decisionFake, in *decisionInput) { in.dropsCreate = []string{"a`b.go"} },
-			inputRefusal: true,
-			want:         []string{"--drops-create target", "way forward:", "without backticks"},
-		},
 		{
 			name:    "no decision record",
 			setup:   func(f *decisionFake, _ *decisionInput) { f.appendErr = fmt.Errorf("read: %w", fs.ErrNotExist) },
@@ -1035,24 +973,6 @@ func TestDecisionVerb_Refusals(t *testing.T) {
 				f.findings = []discussionparser.Finding{{Check: "sections", Detail: "missing ## Scope"}}
 			},
 			want: []string{"discussion check flags the record", "sections: missing ## Scope", "way forward:", "the record is restored"},
-		},
-		{
-			name: "PATTERN change while a judge session is open",
-			setup: func(f *decisionFake, in *decisionInput) {
-				in.patternEntry, in.patternAction, in.patternText = "PATTERN-x", "adds", "New rule."
-				f.judgeOpen = true
-			},
-			inputRefusal: true,
-			want:         []string{"a Drift-Verify judge session is open", "PATTERN change", "way forward:", "once Drift-Verify has ended its judge session", "nothing was written"},
-		},
-		{
-			name: "judge session read failure with a PATTERN change",
-			setup: func(f *decisionFake, in *decisionInput) {
-				in.patternEntry, in.patternAction, in.patternText = "PATTERN-x", "adds", "New rule."
-				f.judgeOpenErr = errors.New("scope boom")
-			},
-			inputRefusal: true,
-			want:         []string{"scope boom", "way forward:", "nothing is appended"},
 		},
 		{
 			name:         "pattern action without an entry",
@@ -1844,13 +1764,6 @@ func TestDecisionStoreVerb(t *testing.T) {
 				reachStore(f).strandName, f.parent = "hub:orch", hubgeom.Parent{Name: "hub:orch"}
 			},
 		},
-		{
-			name: "BeamOrchOnTheChain_StoresWhileThePrimeResolvesAsTheParent",
-			setup: func(f *decisionFake) {
-				reachStore(f).strandName, f.parent = "hub:beam-b:orch", hubgeom.Parent{Name: "hub:orch"}
-				f.orchChain = []hubgeom.Parent{{Name: "hub:beam-b:orch", Worktree: "beam-b"}, f.parent}
-			},
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -2051,11 +1964,6 @@ func TestDecisionVerb_AmendsPlan(t *testing.T) {
 			name:  "UnapprovedPlan_Refused",
 			setup: func(_ *testing.T, f *decisionFake) { f.planApproved = false },
 			want:  []string{"no approved plan to amend", "way forward:", "without --amends-plan", "Plan-Write and Plan-Review read the decision record"},
-		},
-		{
-			name:  "JudgeSessionOpen_Refused",
-			setup: func(_ *testing.T, f *decisionFake) { f.judgeOpen = true },
-			want:  []string{"a Drift-Verify judge session is open", "--amends-plan", "way forward:", "once Drift-Verify has ended its judge session"},
 		},
 		{
 			name:  "PlanReadError_RefusedWithRetry",

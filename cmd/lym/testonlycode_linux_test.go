@@ -44,32 +44,21 @@ var testSupportPackages = []scankit.Entry{
 // a _test.go file of its package cannot serve them, and a kit cannot hold it.
 // A kit cannot hold it because it reads its package's own state or writes a record its package alone writes.
 // The reason names the tests that use it.
-// A second, temporary kind of entry is a function of a fabric-core chain part that only tests reach so far.
-// A named later part adds its first production caller.
-// Its reason names that part's slug, and that part removes the entry in the change that adds the caller.
 var testOnlyCodeAllowed = []scankit.Entry{
 	{Key: "internal/loomrecipe.RecipeEngines", Why: "oracle of internal/shedrecipe's coverage guard test"},
 	{Key: "internal/shedrecipe.Names", Why: "oracle of internal/shedbuild's engine test and internal/shedrecipe's coverage guard test"},
 	{Key: "internal/driftengine.UpdateScope", Why: "writes the scope record driftengine alone writes, for internal/driftcli's and internal/loomcli's tests"},
-	{Key: "internal/boardengine.WriteHold", Why: "writes the hold record boardengine alone writes, for internal/adoptcli's, internal/beamcli's, internal/orchcli's, internal/pairteardown's and internal/tendercli's tests"},
+	{Key: "internal/fabricengine.RecordPushFailure", Why: "writes the failed-push record fabric alone writes, for internal/fabriccli's, internal/orchcli's and internal/tendercli's tests"},
 	{Key: "internal/fabricvocab.SideTokens", Why: "the fabric vocabulary the enforcement tests of internal/planparser, internal/partsparser and internal/reportengine check against"},
 	{Key: "internal/fabricvocab.BareTokenInRootDoc", Why: "the fabric vocabulary check internal/lymcwd's enforcement test runs"},
 	{Key: "internal/fabricvocab.IsOwner", Why: "the fabric vocabulary check internal/lymcwd's enforcement test runs"},
 	{Key: "internal/hibernateengine.TerminalPhases", Why: "reads the package's terminal phase list for internal/fabriccli's hibernate daemon test"},
+	{Key: "internal/seatengine.Prompts", Why: "oracle of the seat prompts for the tests of the packages that start seats"},
 	{Key: "internal/shortcutcli.Load", Why: "reads the embedded shortcut file for cmd/lym's shortcut test"},
 	{Key: "internal/shuttleengine/claudeengine.New", Why: "builds the engine, unexported state included, for the tests of the packages that drive it"},
+	{Key: "internal/runfsm.Order", Why: "no caller until the board displays a run's state from the FSM; that card removes this entry"},
 	{Key: "internal/slackengine.WriteSetup", Why: "writes the credentials file slackengine alone writes, for internal/slackcli's and internal/beamcli's tests"},
 	{Key: "internal/websterengine.ConflictRecordRel", Why: "oracle of the conflict record path in internal/loomrecipe's recipe test"},
-	{Key: "internal/fabricengine.IsPushRejected", Why: "classifies a rejected push for internal/fabricengine's push tests, its last production caller having left with commit-records' push"},
-	{Key: "internal/proc.MemoryCapCoversTree", Why: "reads the package's memory scope probe for the scope-only tests of internal/proc, internal/gatecli and internal/reedengine"},
-	{Key: "internal/proc.memoryCapCoversTreePlatform", Why: "the per-platform half of internal/proc.MemoryCapCoversTree, for the same tests"},
-	{Key: "internal/fabriccore.Refusal.Error", Why: "run by TestRefusal_Error; fabric-core-push-origin adds its first production caller and removes this entry"},
-	{Key: "internal/fabricengine.runRule", Why: "run by TestRunRule; fabric-core-push-origin adds its first production caller and removes this entry"},
-	{Key: "internal/fabricengine.outcomeClassOf", Why: "run by TestOutcomeClassOf; fabric-core-push-origin adds its first production caller and removes this entry"},
-	{Key: "internal/fabricengine.fieldReadError.Error", Why: "run by TestRunRule; fabric-core-push-origin adds its first production caller and removes this entry"},
-	{Key: "internal/fabricengine.fieldReadError.Unwrap", Why: "run by TestRunRule; fabric-core-push-origin adds its first production caller and removes this entry"},
-	{Key: "internal/fabricengine.snapshotReader.read", Why: "run by TestSnapshotReader_ReadsAHub and TestSnapshotReader_RefStorage; fabric-core-push-origin adds its first production caller and removes this entry"},
-	{Key: "internal/fabricengine.readLocalRefs", Why: "run by TestSnapshotReader_ReadsAHub and TestSnapshotReader_RefStorage; fabric-core-push-origin adds its first production caller and removes this entry"},
 }
 
 // testOnlyCodeMinFunctions is the vacuous-scan floor for the functions of production files the guard examines.
@@ -88,7 +77,6 @@ type unreachableFunction struct {
 // It also fails for an allowlist entry that matches no unreachable function, so the list tracks the tree.
 //
 //lym:guard
-//lym:only upkeep
 func TestTestOnlyCode_EveryProductionFunctionIsReachableFromAMain(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

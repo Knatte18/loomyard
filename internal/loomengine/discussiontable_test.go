@@ -17,7 +17,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/friction"
-	"github.com/Knatte18/loomyard/internal/heddleengine"
 	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/lensreport"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -72,13 +71,11 @@ var discussionTableAdvisors = DiscussionAdvisorList{{Name: "critic", Model: "son
 // discussionTableConfig returns a config with the first advisors entries of discussionTableAdvisors and no lens forks.
 func discussionTableConfig(advisors int, interactive bool) Config {
 	return Config{
-		Discussion: DiscussionConfig{
-			Model:       "opus[effort=high]",
-			TimeoutMin:  480,
-			Interactive: interactive,
-			Advisors:    discussionTableAdvisors[:advisors],
-		},
-		SubagentModel: "haiku",
+		Discussion:            "opus[effort=high]",
+		DiscussionTimeoutMin:  480,
+		DiscussionInteractive: interactive,
+		DiscussionAdvisors:    discussionTableAdvisors[:advisors],
+		SubagentModel:         "haiku",
 	}
 }
 
@@ -104,22 +101,6 @@ func unboundedAskOperator(prompt string) bool {
 		}
 	}
 	return false
-}
-
-// requireCodexForkWording fails the test unless the lens-fork wording of prompt is Codex's:
-// it spawns and waits through spawn_agent and wait_agent, and names no Claude fork spawn or fork wait.
-func requireCodexForkWording(t *testing.T, prompt string) {
-	t.Helper()
-	for _, want := range []string{"spawn_agent", "wait_agent"} {
-		if !strings.Contains(prompt, want) {
-			t.Errorf("codex lead prompt lacks %q; want the twill directive worded for the lead's engine", want)
-		}
-	}
-	for _, unwanted := range []string{`subagent_type: "fork"`, "lym shuttle await-forks"} {
-		if strings.Contains(prompt, unwanted) {
-			t.Errorf("codex lead prompt carries %q; want the Claude fork wording left out", unwanted)
-		}
-	}
 }
 
 // TestDiscussionTable verifies the table DiscussionTable builds for zero, one and two advisors in both modes.
@@ -174,12 +155,12 @@ func TestDiscussionTable(t *testing.T) {
 				if role := seatengine.SeatRole(table.RolePrefix, chair.Name); chair.Name != "" || role != "discussion" {
 					t.Errorf("lead name %q and role %q; want no name and the role discussion", chair.Name, role)
 				}
-				if want := (shuttleengine.ModelKey{Module: "loom", Key: "discussion.model"}); chair.ModelKey != want {
+				if want := (shuttleengine.ModelKey{Module: "loom", Key: "discussion"}); chair.ModelKey != want {
 					t.Errorf("chair ModelKey = %+v; want %+v", chair.ModelKey, want)
 				}
 				for n, want := range discussionTableAdvisors[:advisors] {
 					advisor := table.Seats[n+1]
-					if wantKey := (shuttleengine.ModelKey{Module: "loom", Key: "discussion.advisors", Entry: want.Name}); advisor.ModelKey != wantKey {
+					if wantKey := (shuttleengine.ModelKey{Module: "loom", Key: "discussion_advisors", Entry: want.Name}); advisor.ModelKey != wantKey {
 						t.Errorf("advisor %q ModelKey = %+v; want %+v", want.Name, advisor.ModelKey, wantKey)
 					}
 					if advisor.Name != want.Name || advisor.Stencil != discussionAdvisorStencil || !slices.Equal(advisor.Outputs, []string{DiscussionAdvisorNotes(layout, want.Name)}) || advisor.ConfigRole != agentconfig.RoleDiscussionAdvisor || len(advisor.Skills) != 0 || advisor.Engine != "claude" || advisor.Model == "" || advisor.ForkSubagents {
@@ -210,7 +191,7 @@ func TestDiscussionTable(t *testing.T) {
 					t.Fatalf("seatengine.Prompts() = _, %v; want nil error", err)
 				}
 
-				chairWants := []string{strings.TrimSpace(heddleengine.Glossary()), "`ly:orch`", discussionTableSlug, DiscussionDecisionRecord(layout), DiscussionSupportLog(layout), discussionTableSpecsDir, modeRules(!interactive), `model: "haiku"`}
+				chairWants := []string{"`ly:orch`", discussionTableSlug, DiscussionDecisionRecord(layout), DiscussionSupportLog(layout), discussionTableSpecsDir, modeRules(!interactive), `model: "haiku"`}
 				for n, notes := range wantNotes {
 					chairWants = append(chairWants, "ly:"+discussionTableSlug+":discussion-"+discussionTableAdvisors[n].Name, notes)
 				}
@@ -265,7 +246,7 @@ func TestDiscussionTable(t *testing.T) {
 				layout := discussionTableLayout(t)
 				stencilsDir := newMinimalStencilsDir(t)
 				cfg := discussionTableConfig(1, false)
-				cfg.Friction.Model = tt.friction
+				cfg.Friction = tt.friction
 
 				table, err := DiscussionTable(layout, discussionTableDirs(layout), stencilsDir, discussionTableSpecsDir, cfg, reg, discussionTableSlug, false)
 				if err != nil {
@@ -347,7 +328,7 @@ func TestDiscussionTable(t *testing.T) {
 		layout := discussionTableLayout(t)
 		stencilsDir := newTestStencilsDir(t)
 		cfg := discussionTableConfig(0, false)
-		cfg.Friction.Model = "sonnet[medium]"
+		cfg.Friction = "sonnet[medium]"
 
 		table, err := DiscussionTable(layout, discussionTableDirs(layout), stencilsDir, discussionTableSpecsDir, cfg, reg, discussionTableSlug, false)
 		if err != nil {
@@ -380,7 +361,7 @@ func TestDiscussionTable(t *testing.T) {
 			layout := discussionTableLayout(t)
 			stencilsDir := newTestStencilsDir(t)
 			cfg := discussionTableConfig(2, false)
-			cfg.Discussion.Lenses = tt.lenses
+			cfg.DiscussionLenses = tt.lenses
 
 			table, err := DiscussionTable(layout, discussionTableDirs(layout), stencilsDir, discussionTableSpecsDir, cfg, reg, discussionTableSlug, false)
 			if err != nil {
@@ -416,26 +397,6 @@ func TestDiscussionTable(t *testing.T) {
 		})
 	}
 
-	t.Run("a codex chair gets the twill directive worded for codex", func(t *testing.T) {
-		t.Parallel()
-		layout := discussionTableLayout(t)
-		stencilsDir := newTestStencilsDir(t)
-		// The advisors stay on Claude, so a producer that passed an advisor's engine would fail the row.
-		cfg := discussionTableConfig(2, false)
-		cfg.Discussion.Model = "sol"
-		cfg.Discussion.Lenses = "twill-discussion"
-
-		table, err := DiscussionTable(layout, discussionTableDirs(layout), stencilsDir, discussionTableSpecsDir, cfg, reg, discussionTableSlug, false)
-		if err != nil {
-			t.Fatalf("DiscussionTable(Discussion.Model=%q) = _, %v; want nil error", cfg.Discussion.Model, err)
-		}
-		prompts, err := seatengine.Prompts(discussionTableGeometry(layout, stencilsDir), table)
-		if err != nil {
-			t.Fatalf("seatengine.Prompts() = _, %v; want nil error", err)
-		}
-		requireCodexForkWording(t, prompts[""])
-	})
-
 	// A fixer clearing the discussion gate drops the validator loop from the lead's prompt.
 	// That covers the chair's prompt too, since the chair template wraps the discussion template:
 	// the self-check step's command block, the spawn point's validator clause and the closing step.
@@ -448,7 +409,7 @@ func TestDiscussionTable(t *testing.T) {
 				layout := discussionTableLayout(t)
 				stencilsDir := newTestStencilsDir(t)
 				cfg := discussionTableConfig(2, false)
-				cfg.Discussion.Lenses = "twill-discussion"
+				cfg.DiscussionLenses = "twill-discussion"
 
 				table, err := DiscussionTable(layout, discussionTableDirs(layout), stencilsDir, discussionTableSpecsDir, cfg, reg, discussionTableSlug, fixerOn)
 				if err != nil {
@@ -485,7 +446,7 @@ func TestDiscussionTable(t *testing.T) {
 		}
 		tests := []struct {
 			name string
-			// fan is the loom.discussion.lenses value; empty takes the template's fan.
+			// fan is the discussion_lenses value; empty takes the template's fan.
 			fan        string
 			lensesYAML string
 			// defaultYAML, when non-empty, is planted as the lenses.yaml of a temp board dir,
@@ -518,11 +479,11 @@ func TestDiscussionTable(t *testing.T) {
 				}
 				stencilsDir := newTestStencilsDir(t)
 				cfg := discussionTableConfig(0, false)
-				cfg.Discussion.Lenses = cmp.Or(tt.fan, templateFanName)
+				cfg.DiscussionLenses = cmp.Or(tt.fan, templateFanName)
 
 				table, err := DiscussionTable(layout, dirs, stencilsDir, discussionTableSpecsDir, cfg, reg, discussionTableSlug, false)
 				if err != nil {
-					t.Fatalf("DiscussionTable(lenses=%q) = _, %v; want nil error", cfg.Discussion.Lenses, err)
+					t.Fatalf("DiscussionTable(lenses=%q) = _, %v; want nil error", cfg.DiscussionLenses, err)
 				}
 				prompts, err := seatengine.Prompts(discussionTableGeometry(layout, stencilsDir), table)
 				if err != nil {
@@ -600,14 +561,14 @@ func TestDiscussionTable_Refuses(t *testing.T) {
 		{name: "empty slug", slug: "", wantErrHold: []string{"slug must not be empty"}},
 		{name: "missing stencils directory", slug: discussionTableSlug, missingDir: true, wantErrHold: []string{"pattern-directive-designer"}},
 		{name: "malformed PATTERN changes section", slug: discussionTableSlug, malformedRecord: true, wantErrHold: []string{"lym loom validate-discussion", "lym loom start"}},
-		{name: "unparsable chair model", slug: discussionTableSlug, mutate: func(c *Config) { c.Discussion.Model = "opus[effort" }, wantErrHold: []string{"discussion role model-spec"}},
+		{name: "unparsable chair model", slug: discussionTableSlug, mutate: func(c *Config) { c.Discussion = "opus[effort" }, wantErrHold: []string{"discussion role model-spec"}},
 		{name: "advisor the registry does not define", slug: discussionTableSlug, mutate: func(c *Config) {
-			c.Discussion.Advisors = DiscussionAdvisorList{{Name: "critic", Model: "sonnet[low]"}, {Name: "skeptic", Model: "ghost"}}
-		}, wantErrHold: []string{"discussion.advisors", "entry 2", "ghost", "set the entry's model to a model-spec the registry defines"}},
-		{name: "lens fan with a lenses.yaml that does not parse", slug: discussionTableSlug, mutate: func(c *Config) { c.Discussion.Lenses = "twill-discussion" }, lensesYAML: "fans: [unterminated\n", wantErrHold: []string{"discussion.lenses", "twill-discussion", "lenses.yaml", `set the key to ""`}},
-		{name: "lens fan naming an undefined lens", slug: discussionTableSlug, mutate: func(c *Config) { c.Discussion.Lenses = "twill-discussion" }, lensesYAML: "fans:\n  twill-discussion:\n    - no-such-lens\n", wantErrHold: []string{"discussion.lenses", "twill-discussion", "no-such-lens", "lenses.yaml", `set the key to ""`}},
-		{name: "lens fan missing from lenses.yaml and the template", slug: discussionTableSlug, mutate: func(c *Config) { c.Discussion.Lenses = "no-such-fan" }, wantErrHold: []string{"discussion.lenses", "no-such-fan", "lenses.yaml", "define the fan and its lenses in lenses.yaml", `set the key to ""`}},
-		{name: "lens fan with no lenses", slug: discussionTableSlug, mutate: func(c *Config) { c.Discussion.Lenses = "twill-discussion" }, lensesYAML: "fans:\n  twill-discussion: []\n", wantErrHold: []string{"discussion.lenses", "twill-discussion", "lenses.yaml", `set the key to ""`}},
+			c.DiscussionAdvisors = DiscussionAdvisorList{{Name: "critic", Model: "sonnet[low]"}, {Name: "skeptic", Model: "ghost"}}
+		}, wantErrHold: []string{"discussion_advisors", "entry 2", "ghost", "set the entry's model to a model-spec the registry defines"}},
+		{name: "lens fan with a lenses.yaml that does not parse", slug: discussionTableSlug, mutate: func(c *Config) { c.DiscussionLenses = "twill-discussion" }, lensesYAML: "fans: [unterminated\n", wantErrHold: []string{"discussion_lenses", "twill-discussion", "lenses.yaml", `set the key to ""`}},
+		{name: "lens fan naming an undefined lens", slug: discussionTableSlug, mutate: func(c *Config) { c.DiscussionLenses = "twill-discussion" }, lensesYAML: "fans:\n  twill-discussion:\n    - no-such-lens\n", wantErrHold: []string{"discussion_lenses", "twill-discussion", "no-such-lens", "lenses.yaml", `set the key to ""`}},
+		{name: "lens fan missing from lenses.yaml and the template", slug: discussionTableSlug, mutate: func(c *Config) { c.DiscussionLenses = "no-such-fan" }, wantErrHold: []string{"discussion_lenses", "no-such-fan", "lenses.yaml", "define the fan and its lenses in lenses.yaml", `set the key to ""`}},
+		{name: "lens fan with no lenses", slug: discussionTableSlug, mutate: func(c *Config) { c.DiscussionLenses = "twill-discussion" }, lensesYAML: "fans:\n  twill-discussion: []\n", wantErrHold: []string{"discussion_lenses", "twill-discussion", "lenses.yaml", `set the key to ""`}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

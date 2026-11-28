@@ -12,7 +12,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -51,7 +50,7 @@ func validLandingDeps(t *testing.T) landingshed.Deps {
 			Store: &parentlock.Store{Dir: filepath.Join(dir, "locks")},
 			Owner: func() (parentlock.Owner, error) { return parentlock.Owner{Slug: "fixture", RunID: "fixture"}, nil },
 		},
-		ReadParentTips:  func(bool) (fabriclayout.ParentTips, error) { return fabriclayout.ParentTips{}, nil },
+		ReadParentTips:  func(bool) (fabricengine.ParentTips, error) { return fabricengine.ParentTips{}, nil },
 		ChangedPaths:    func(string, string) ([]string, error) { return nil, nil },
 		MergeBase:       func(string) (string, error) { return "base", nil },
 		TaskHead:        func() (string, error) { return "head", nil },
@@ -140,14 +139,6 @@ func zeroEnvField(env Env, field string) Env {
 		env.Pawl.Recheck = nil
 	case "Pawl.Notify":
 		env.Pawl.Notify = nil
-	case "Pawl.Paths.DrainMarker":
-		env.Pawl.Paths.DrainMarker = ""
-	case "Pawl.Autonomous":
-		env.Pawl.Autonomous = nil
-	case "Pawl.HoldsCommits":
-		env.Pawl.HoldsCommits = nil
-	case "Pawl.WorkRemains":
-		env.Pawl.WorkRemains = nil
 	case "Pawl.Down":
 		env.Pawl.Down = nil
 	case "Pawl.Now":
@@ -252,7 +243,6 @@ func simpleEntryCases() []simpleEntryCase {
 				"Pawl.Paths.LandRequest", "Pawl.Paths.DobbyStopMarker", "Pawl.Paths.AwaitMarker", "Pawl.Slug", "Pawl.RunID",
 				"Pawl.SetStatus", "Pawl.EntryProducer", "Pawl.OwnedElsewhere", "Pawl.StopDobby", "Pawl.StartDobby", "Pawl.DobbyLive",
 				"Pawl.Recheck", "Pawl.Notify", "Pawl.Now", "Pawl.Sleep",
-				"Pawl.Autonomous", "Pawl.HoldsCommits", "Pawl.WorkRemains", "Pawl.Paths.DrainMarker",
 			},
 			unreadField: "Pawl.Down",
 		},

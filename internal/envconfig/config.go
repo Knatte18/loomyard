@@ -53,7 +53,7 @@ func ConfigPerNameMaps() []string {
 }
 
 // ConfigSpec returns the env module's layered-load spec.
-// The module is hub-wide and `env.vars` is a machine key,
+// The module is hub-wide and `vars` is a machine key,
 // so the machine layer may set a variable and the local layer may not.
 func ConfigSpec() configengine.Spec {
 	return configengine.Spec{
@@ -83,7 +83,7 @@ func LoadConfig(dirs configengine.Dirs) (Config, error) {
 	for _, name := range slices.Sorted(maps.Keys(cfg.Vars)) {
 		upper := strings.ToUpper(name)
 		if !namePattern.MatchString(name) || upper == reservedPath || strings.HasPrefix(upper, reservedPrefix) {
-			return Config{}, configengine.MarkInvalid(fmt.Errorf("config key %q is no variable lym may export: a name is letters, digits and underscores, starts with no digit, is not %s and never starts with %s, in any letter case; way forward: remove it with lym config env, from the prime for the hub file or with --layer machine for this machine's file", configengine.KeyName(configModule, varsKey+"."+name), reservedPath, reservedPrefix))
+			return Config{}, configengine.MarkInvalid(fmt.Errorf("env config: key %q is no variable lym may export: a name is letters, digits and underscores, starts with no digit, is not %s and never starts with %s, in any letter case; way forward: remove it with lym config env, from the prime for the hub file or with --layer machine for this machine's file", varsKey+"."+name, reservedPath, reservedPrefix))
 		}
 	}
 	if cfg.Vars == nil {

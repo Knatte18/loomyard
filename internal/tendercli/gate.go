@@ -8,7 +8,7 @@ import (
 	"os"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -82,15 +82,16 @@ func InstallNetworkGate(ctx context.Context, pauseSlug *string, child DetachedCh
 	}
 	pid := os.Getpid()
 	startTime, _ := proc.StartTime(pid)
-	locks := &parentlock.Store{Dir: parentlock.Dir(fabriclayout.BoltDir(location.HubPath))}
+	locks := &parentlock.Store{Dir: parentlock.Dir(fabricengine.BoltDir(location.HubPath))}
 	strand := os.Getenv(agentname.StrandNameEnv)
 	pauserecord.InstallGate(pauserecord.Gate{
-		Geometry:  geometry,
-		Strand:    strand,
-		PID:       pid,
-		StartTime: startTime,
-		ExemptAll: !heldByPause(child, strand),
-		Defer:     child.Deferrable && !child.ParentLocked,
+		Geometry:         geometry,
+		Strand:           strand,
+		PID:              pid,
+		StartTime:        startTime,
+		ExemptAll:        !heldByPause(child, strand),
+		Defer:            child.Deferrable && !child.ParentLocked,
+		OwnerEntryExempt: child.ParentLocked,
 		HoldsParentLock: func(slug string) bool {
 			held, err := locks.HeldBy(slug)
 			if err != nil {

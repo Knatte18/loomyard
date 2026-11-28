@@ -16,7 +16,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -65,13 +64,13 @@ func TestAddRollback_AdoptedWeftBranchSurvives(t *testing.T) {
 	// and the repo-wide fabric.yaml is present for Add's eager RepoWiredNames load.
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
-	weftBranch := fabriclayout.RecordsBranchName(slug)
+	weftBranch := fabricengine.RecordsBranchName(slug)
 
 	// Pre-create the weft branch with a unique commit that predates the Add;
 	// the rollback must not destroy that history.
 	// The seeding worktree is removed again, so Add can adopt the branch.
 	seedDir := filepath.Join(t.TempDir(), "seed")
-	gitkit.MustRun(t, mustRecordsRepoRoot(t, l), "git", "worktree", "add", "-b", weftBranch, seedDir, fabriclayout.RecordsBranchName("main"))
+	gitkit.MustRun(t, mustRecordsRepoRoot(t, l), "git", "worktree", "add", "-b", weftBranch, seedDir, fabricengine.RecordsBranchName("main"))
 	preciousSHA := gitkit.CommitFile(t, seedDir, "precious.txt", "pre-existing weft work\n", "precious pre-existing weft work")
 	gitkit.MustRun(t, mustRecordsRepoRoot(t, l), "git", "worktree", "remove", seedDir)
 
@@ -132,7 +131,7 @@ func TestAddRollback_LiveWeftFromOrigin(t *testing.T) {
 			}
 			h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 			l := h.Location
-			weftBranch := fabriclayout.RecordsBranchName(slug)
+			weftBranch := fabricengine.RecordsBranchName(slug)
 			weftRoot := mustRecordsRepoRoot(t, l)
 
 			clone := t.TempDir()
@@ -189,7 +188,7 @@ func TestAddRollback_AdoptedWarpBranchLocalCopyDeleted(t *testing.T) {
 	h := removedPair(t, slug)
 	l := h.Location
 	// A weft branch on origin that moved past its archive tag makes the pair live, so Add adopts both branches from origin.
-	pushCommitToOrigin(t, h.RecordsBare, fabriclayout.RecordsBranchName(slug))
+	pushCommitToOrigin(t, h.RecordsBare, fabricengine.RecordsBranchName(slug))
 	originTip := gitkit.RevParse(t, h.CodeBare, slug)
 
 	failAddBeforeWiring(t, h.Topology, l, slug)

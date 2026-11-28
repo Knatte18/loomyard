@@ -14,13 +14,9 @@ import (
 // It takes only a run whose batten status reads done.
 // It runs after the landing count and the landing notices of the tick, and it clears a run only when all of these hold:
 // no pass of it is in flight and its driver lock is free;
-// its pair is gone, so the leftover teardown, which reads the run's records, takes a pair left standing first;
 // the landing-notice memory holds nothing of it, so its notice is decided and posted;
-// no watch line of it is owed, and with the run watch wired its beam.run_watch has been read;
-// the tick's run watch step recorded its memory;
 // and a landing it holds is counted.
-// A cleared run logs `run <slug>: done run cleared`.
-// Its run watch memory is dropped, and its slug leaves the counted landings,
+// A cleared run logs `run <slug>: done run cleared`, and its slug leaves the counted landings,
 // so a later run under the slug counts its own landing.
 // Every tick also drops the counted landings of a slug that is neither landed nor listed,
 // so a drop the state update missed is repaired at the next tick.
@@ -37,20 +33,15 @@ func (d *daemon) clearDoneRuns(now time.Time) {
 		logger.Warn("dobbyengine: the state record is unreadable, so no done run is cleared this tick", "worktree", d.geom.WorktreeName, "error", err)
 		return
 	}
-	watching := d.deps.RunWatch.Level != nil && d.deps.RunWatch.Post != nil
 	var cleared []string
 	for _, run := range d.listedRuns {
-		if run.State != runStateDone || run.DriverLockHeld || run.PairPresent {
+		if run.State != runStateDone || run.DriverLockHeld {
 			continue
 		}
 		if _, inFlight := d.flights[run.Slug]; inFlight {
 			continue
 		}
 		if _, remembered := current.LandNotices[run.Slug]; remembered {
-			continue
-		}
-		watch := current.Watches[run.Slug]
-		if d.watchRecordFailed || len(watch.Owed) > 0 || (watching && watch.Level == "") {
 			continue
 		}
 		if slices.Contains(d.landed, run.Slug) && !current.CountedLandings[run.Slug] {
@@ -80,9 +71,6 @@ func (d *daemon) clearDoneRuns(now time.Time) {
 	err = UpdateState(d.geom.StatePath, func(s *State) error {
 		for _, slug := range dropped {
 			delete(s.CountedLandings, slug)
-		}
-		for _, slug := range cleared {
-			delete(s.Watches, slug)
 		}
 		return nil
 	})

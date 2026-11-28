@@ -6,16 +6,11 @@ package shedrecipe
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
-	"github.com/Knatte18/loomyard/internal/hardenshed"
-	"github.com/Knatte18/loomyard/internal/loomshed"
-	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
-	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 // hasFanName reports whether any entry of the fan list names a fan; a nil list and a list of "" entries name none.
@@ -48,35 +43,14 @@ func burlerRowTimeout(timeoutS int, env Env) time.Duration {
 	return time.Duration(timeoutS) * time.Second
 }
 
-// reviewTargetSnapshot returns the target snapshot a review segment's rows read the review target through.
-// Its scope and paths are unset.
-// Its overlay target paths resolve against the anchor path, the root the round's reviewers and fixer read them under.
-// The id therefore hashes the files those agents edit, on a hub anchored to a subpath too.
-// Its overlay copies live in the anchor's `.lym`, one directory per run_subdir.
-// Its source reads come from the Env tree closures.
-func reviewTargetSnapshot(env Env, runSubdir string) shedadapters.TargetSnapshot {
-	return shedadapters.TargetSnapshot{
-		WorktreeRoot:  env.AnchorPath,
-		CacheDir:      filepath.Join(env.AnchorPath, lymdirs.DotLymDirName, lymdirs.ReviewSnapshotDirName, runSubdir),
-		SourceTreeID:  env.ReviewTreeID,
-		SourceChanges: env.ReviewTreeChanges,
-	}
-}
-
 // burlerReviewEntry is the Constructor for the "BurlerReview" registry row.
 // It takes no "gates" key: its only gate is the engine's review-parse entry.
-// The optional "stage_diff" key, set true, gives each spawned reviewer the task's committed diff from Env.CodeDiff.
-// burlerengine writes that diff out in per-package pieces.
-// A nil Env.CodeDiff then refuses the row when it is built.
-// Its producer records each round's target id, through a snapshot over the profile's fix scope and target paths.
 // Its models, review key, assistant and parent seat come from its segment's settings.
 // The fan lists come from the settings named by reviewer_fan_setting and fixer_fan_setting.
 // Without such a setting, they come from the recipe profile's cluster-fan and fix-fan.
 // A setting's list that names a fan beside the profile's own fan is a construction error.
 // A row that names a setting or sets a profile fan records its round's fans;
 // a row with neither runs solo and records nothing.
-// The optional bool key "harden_round", set true, refuses a nil Env.Harden.
-// It then wraps the producer in the campaign's round row.
 func burlerReviewEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	runSubdir, err := configString(cfg, "run_subdir", true)
 	if err != nil {
@@ -98,28 +72,8 @@ func burlerReviewEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedPro
 	if err != nil {
 		return nil, err
 	}
-	stageDiff, err := configBool(cfg, "stage_diff", false)
-	if err != nil {
+	if err := configRejectUnknown(cfg, "run_subdir", "profile", "timeout_s", "color_segment", "role_prefix", "reviewer_fan_setting", "fixer_fan_setting"); err != nil {
 		return nil, err
-	}
-	hardenRound, err := configBool(cfg, "harden_round", false)
-	if err != nil {
-		return nil, err
-	}
-	if err := configRejectUnknown(cfg, "run_subdir", "profile", "timeout_s", "color_segment", "role_prefix", "reviewer_fan_setting", "fixer_fan_setting", "stage_diff", "harden_round"); err != nil {
-		return nil, err
-	}
-	if hardenRound {
-		if err := requireHarden("BurlerReview", `config key "harden_round"`, env); err != nil {
-			return nil, err
-		}
-	}
-	var diff func() (string, error)
-	if stageDiff {
-		if err := requireSeam("BurlerReview", "CodeDiff", env.CodeDiff); err != nil {
-			return nil, err
-		}
-		diff = env.CodeDiff
 	}
 	segment, err := rowSegment("BurlerReview", row, env)
 	if err != nil {
@@ -138,27 +92,20 @@ func burlerReviewEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedPro
 	if err != nil {
 		return nil, err
 	}
-	notes, err := reviewRubricNotes(row, env, runDir)
-	if err != nil {
-		return nil, err
+	notes := shedadapters.RubricNotes{GateTiers: env.GateTiers, Amendment: shedadapters.AmendmentNote(runDir), RedundancyReport: env.RedundancyReport}
+	if env.WebsterRecord != nil {
+		notes.WebsterRecord = env.WebsterRecord()
+	}
+	if env.ReviewBase != nil {
+		base, err := env.ReviewBase()
+		if err != nil {
+			return nil, fmt.Errorf("shedrecipe: BurlerReview: row %q: read the review base: %w", row.Name, err)
+		}
+		notes.ReviewBase = base
 	}
 	profile, err := burlerRoundProfile(profileCfg, env.StencilsDir, env.SpecsDir, notes)
 	if err != nil {
 		return nil, err
-	}
-	rubricStencil, err := configString(profileCfg, "rubric_stencil", false)
-	if err != nil {
-		return nil, err
-	}
-	var rubric func() (string, error)
-	if rubricStencil != "" {
-		rubric = func() (string, error) {
-			roundNotes, err := reviewRubricNotes(row, env, runDir)
-			if err != nil {
-				return "", err
-			}
-			return shedadapters.ReadRubric(env.StencilsDir, rubricStencil, env.SpecsDir, roundNotes)
-		}
 	}
 	profile.Segment = colorSegment
 	profile.RolePrefix = rolePrefix
@@ -179,57 +126,12 @@ func burlerReviewEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedPro
 		profile.ClusterFan, profile.FixFan = "", ""
 	}
 
-	snapshot := reviewTargetSnapshot(env, runSubdir)
-	snapshot.Scope, snapshot.Paths = profile.FixScope, profile.Target.Paths
 	opts := burlerengine.RunOpts{Timeout: burlerRowTimeout(timeoutS, env), ReviewKey: segment.ReviewKey}
-	halfDeps := shedadapters.BurlerHalfDeps{Runner: env.Burler, Models: segment.Models, Fans: fans, Assist: segment.Assist, Parent: segment.Parent, GateFindingsPath: env.gateFindingsPath(row.Name), Snapshot: &snapshot, DecisionRecordPath: env.DecisionRecordPath, HardenerRound: hardenRound, Diff: diff, Rubric: rubric}
-	// Only the plan segment's review answers to the plan amendment record and the plan executor's halt reason.
-	if row.Name == loomshed.NamePlanBurlerReview {
-		halfDeps.AmendmentTitles, halfDeps.HaltConflictDir = amendmentTitlesAt(env.AmendmentPath), env.HaltConflictDir
-	}
-	producer, err := shedadapters.NewBurlerReviewProducer(row.Name, halfDeps, profile, opts, runDir, env.Now)
+	producer, err := shedadapters.NewBurlerReviewProducer(row.Name, shedadapters.BurlerHalfDeps{Runner: env.Burler, Models: segment.Models, Fans: fans, Assist: segment.Assist, Parent: segment.Parent, GateFindingsPath: env.gateFindingsPath(row.Name)}, profile, opts, runDir, env.Now)
 	if err != nil {
 		return nil, fmt.Errorf("shedrecipe: BurlerReview: %w", err)
 	}
-	if hardenRound {
-		return env.Harden.WrapRow(producer, row.Name, hardenshed.RowReview, runDir), nil
-	}
 	return producer, nil
-}
-
-// amendmentTitlesAt returns a reader of the pending amending decision titles the plan amendment record at path lists.
-// An empty path gives a nil reader, which reads none.
-func amendmentTitlesAt(path string) func() ([]string, error) {
-	if path == "" {
-		return nil
-	}
-	return func() ([]string, error) {
-		record, _, err := loomshed.ReadAmendment(path)
-		return record.Titles, err
-	}
-}
-
-// reviewRubricNotes gathers the notes that fill a review row's rubric stencil from env and the run directory's records.
-// The row calls it at build and again at each round.
-// The amendment and review input notes follow the generation record.
-// A failed review base read is an error naming row.
-func reviewRubricNotes(row RowIdentity, env Env, runDir string) (shedadapters.RubricNotes, error) {
-	notes := shedadapters.RubricNotes{
-		GateTiers:   env.GateTiers,
-		Amendment:   shedadapters.AmendmentNote(runDir),
-		ReviewInput: shedadapters.ReviewInputNote(runDir),
-	}
-	if env.WebsterRecord != nil {
-		notes.WebsterRecord = env.WebsterRecord()
-	}
-	if env.ReviewBase != nil {
-		base, err := env.ReviewBase()
-		if err != nil {
-			return shedadapters.RubricNotes{}, fmt.Errorf("shedrecipe: BurlerReview: row %q: read the review base: %w", row.Name, err)
-		}
-		notes.ReviewBase = base
-	}
-	return notes, nil
 }
 
 // burlerFixEntry is the Constructor for the "BurlerFix" registry row.
@@ -245,17 +147,6 @@ func reviewRubricNotes(row RowIdentity, env Env, runDir string) (shedadapters.Ru
 // A fixer fan reaches it through the review row's recorded round;
 // its fixer_fan_setting key, when it names a setting, is cited as the fan's source and requires that recorded round.
 func burlerFixEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
-	return newBurlerFixProducer(row, cfg, env, func() (shuttleengine.GateSpec, error) {
-		return resolveRowGateSpec("BurlerFix", row.Name, cfg, env)
-	}, burlerFixKeys)
-}
-
-// burlerFixKeys are the keys a BurlerFix row's config may carry.
-var burlerFixKeys = []string{"run_subdir", "review_row", "profile", "timeout_s", "gates", "gate_key", "color_segment", "role_prefix", "fixer_fan_setting", "decisions_escalated"}
-
-// newBurlerFixProducer builds a fix row from cfg: the producer of a BurlerFix row, whose gates resolveGate returns.
-// resolveGate is read once the row's own keys are, and keys are the only keys cfg may carry.
-func newBurlerFixProducer(row RowIdentity, cfg Config, env Env, resolveGate func() (shuttleengine.GateSpec, error), keys []string) (shedengine.ShedProducer, error) {
 	runSubdir, err := configString(cfg, "run_subdir", true)
 	if err != nil {
 		return nil, err
@@ -272,7 +163,7 @@ func newBurlerFixProducer(row RowIdentity, cfg Config, env Env, resolveGate func
 	if err != nil {
 		return nil, err
 	}
-	gate, err := resolveGate()
+	gate, err := resolveRowGateSpec("BurlerFix", row.Name, cfg, env)
 	if err != nil {
 		return nil, err
 	}
@@ -288,7 +179,7 @@ func newBurlerFixProducer(row RowIdentity, cfg Config, env Env, resolveGate func
 	if err != nil {
 		return nil, err
 	}
-	if err := configRejectUnknown(cfg, keys...); err != nil {
+	if err := configRejectUnknown(cfg, "run_subdir", "review_row", "profile", "timeout_s", "gates", "gate_key", "color_segment", "role_prefix", "fixer_fan_setting", "decisions_escalated"); err != nil {
 		return nil, err
 	}
 	segment, err := rowSegment("BurlerFix", row, env)
@@ -312,7 +203,7 @@ func newBurlerFixProducer(row RowIdentity, cfg Config, env Env, resolveGate func
 	}
 	opts := burlerengine.RunOpts{Timeout: burlerRowTimeout(timeoutS, env), Gate: gate, FixKey: segment.FixKey}
 	if fixFanNamed {
-		opts.FixFanKey = fixFanRef.Text
+		opts.FixFanKey = fixFanRef.Key
 	}
 	deps := shedadapters.BurlerHalfDeps{Runner: env.Burler, Models: segment.Models, RequiresFans: fixFanNamed, GateFindingsPath: env.gateFindingsPath(row.Name), NotifyParent: env.NotifyParent, DecisionsEscalated: decisionsEscalated}
 	producer, err := shedadapters.NewBurlerFixProducer(row.Name, reviewRow, deps, profile, opts, runDir, env.Now)
@@ -382,9 +273,6 @@ func burlerRoundFileSet(entry, field string, cfg Config) (burlerengine.FileSet, 
 //
 // rubric_stencil names a stencilstore rubric stencil, read and filled by shedadapters.ReadRubric.
 // Its filled text sets Profile.Rubric in place of a literal rubric string.
-// That text is the template's rubric.
-// A review row's producer sets the rubric among the round's own fields.
-// It takes the rubric from the answer of its Rubric seam, which refills the stencil at each round.
 // The stencil route fills specs_dir and the optional notes at read time;
 // the literal route passes rubric through unfilled.
 // That asymmetry is deliberate: a literal rubric is author-written prose.

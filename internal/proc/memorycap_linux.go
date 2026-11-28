@@ -41,24 +41,10 @@ const (
 	probeWaitDelay = time.Second
 )
 
-// scopeStartScript is what a scope runs ahead of its command.
-// Its first argument is the memory.max the scope must hold, and the rest are the command and its arguments.
-// A scope whose memory.max differs never runs the command: the script names both values on stderr and exits 125.
-// So does a scope whose PATH holds no setsid, which the holder needs to leave the command's process group.
-// Otherwise it writes the scope's cgroup to file descriptor 3, which tells the caller the scope started under the cap.
-// It then starts a holder that keeps the scope until file descriptor 4 reaches end of file,
-// so the scope and its memory events outlast the command until the caller has read them.
-// The holder leaves the shell's tree and process group at once, in a session of its own,
-// so the command never sees it as a child of its own and a signal to the command's group never reaches it.
-// Its subshell points stdin, stdout and stderr at /dev/null before it starts the holder,
-// so the holder never keeps a pipe of the command's open,
-// and a caller's wait for the command's output ends with the command.
-// The shell then becomes the command, so the command's process is the shell's.
-const scopeStartScript = `while IFS= read -r line; do case $line in 0::*) scope=${line#0::};; esac; done < ` + selfCgroupFile + `; ` +
-	`IFS= read -r max < "` + cgroupMount + `$scope/` + cgroupMemoryMaxFile + `" && [ "$max" = "$1" ] || ` +
-	`{ echo "memory cap: the scope $scope holds ` + cgroupMemoryMaxFile + ` ${max:-unread}, not $1" >&2; exit 125; }; ` +
-	`command -v setsid >/dev/null || { echo "memory cap: setsid is not on the scope's PATH" >&2; exit 125; }; ` +
-	`printf '0::%s\n' "$scope" >&3; exec 3>&-; ( exec </dev/null >/dev/null 2>&1; setsid sh -c 'read -r line' <&4 & ); exec 4<&-; shift; exec "$@"`
+// scopeStartScript is what a scope runs ahead of its command, with the command and its arguments as the script's own.
+// It writes its cgroup listing to file descriptor 3, which tells the caller the scope started and which cgroup it has.
+// It then closes the descriptor and becomes the command, so the command's process is the shell's.
+const scopeStartScript = "while IFS= read -r line; do echo \"$line\"; done < " + selfCgroupFile + ` >&3; exec 3>&-; exec "$@"`
 
 // markerReadBound bounds how long the read of the scope's cgroup listing may go on once the command has ended.
 // Every writer of the start pipe has closed by then, so the read ends at once unless a stray process holds the pipe.
@@ -134,13 +120,11 @@ func memoryCapCoversTreePlatform() bool {
 // It starts cmd through start and waits through the wait start returns.
 // In a scope, killed reports a command the kernel ended with SIGKILL when no cancel of cmd sent one.
 // treeKilled reports that the kernel killed a process in the scope at the scope's own limit.
-// The scope's count of kills at its own limit tells, read once the command has ended.
-// A holder process keeps the scope, and so the count, until that read is done.
+// The scope's count of kills at its own limit tells.
 // A SIGKILL sent from outside, to the command or to any other process, is no such kill.
 // Neither is a kill at the limit of a cgroup that encloses the scope.
 // After any SIGKILL of the command or kill at the cap, every process left in the scope is killed too.
-// A cap that could not be set returns an error wrapping ErrMemoryCap.
-// So does a scope that never ran the command, or whose memory.max is not limit rounded down to a whole page.
+// A cap that could not be set, a scope that never ran the command included, returns an error wrapping ErrMemoryCap.
 // That error is never an *exec.ExitError, so it never reads as a failing command.
 // The scope path uses cmd.ExtraFiles, so cmd must carry none.
 func runMemoryCapped(cmd *exec.Cmd, limit int64, scope memoryScope, start StartFunc) (killed, treeKilled bool, err error) {
@@ -152,21 +136,18 @@ func runMemoryCapped(cmd *exec.Cmd, limit int64, scope memoryScope, start StartF
 		return false, false, fmt.Errorf("%w: create the pipe that marks the scope's start: %w", ErrMemoryCap, err)
 	}
 	defer started.Close()
-	holderEnd, release, err := os.Pipe()
+	watchEnded, endWatch, err := os.Pipe()
 	if err != nil {
-		_ = marker.Close()
-		return false, false, fmt.Errorf("%w: create the pipe that holds the scope: %w", ErrMemoryCap, err)
+		return false, false, fmt.Errorf("%w: create the pipe that ends the watch of the scope: %w", ErrMemoryCap, err)
 	}
-	// Closing release ends the holder, after the scope's events are read and on every return.
-	defer release.Close()
-	// The kernel rounds a cgroup's memory.max down to a whole page.
-	wantMax := limit &^ int64(unix.Getpagesize()-1)
+	defer watchEnded.Close()
+	defer endWatch.Close()
 	// systemd-run moves itself into the scope and then becomes the shell, which becomes the command,
 	// so the pid and process group stay cmd's own.
-	shell := []string{"/bin/sh", "-c", scopeStartScript, "sh", strconv.FormatInt(wantMax, 10), cmd.Path}
+	shell := []string{"/bin/sh", "-c", scopeStartScript, "sh", cmd.Path}
 	cmd.Args = append([]string{systemdRun}, memoryScopeArgs(limit, append(shell, cmd.Args[1:]...)...)...)
 	cmd.Path = scope.starter
-	cmd.ExtraFiles = []*os.File{marker, holderEnd}
+	cmd.ExtraFiles = []*os.File{marker}
 	var cancelled atomic.Bool
 	if cancel := cmd.Cancel; cancel != nil {
 		cmd.Cancel = func() error {
@@ -176,22 +157,39 @@ func runMemoryCapped(cmd *exec.Cmd, limit int64, scope memoryScope, start StartF
 	}
 	wait, err := start(cmd)
 	marker.Close()
-	holderEnd.Close()
 	if err != nil {
 		return false, false, err
 	}
+	// A scope is removed once its last process exits, taking its OOM-kill count with it,
+	// so the count is watched while the command runs.
+	// The read of the scope's cgroup listing has no deadline while the command runs.
+	// systemd-run may take long to start the scope on a loaded host.
+	var sawOOMKill atomic.Bool
+	watched, cgroupFound := make(chan struct{}), make(chan string, 1)
+	go func() {
+		defer close(watched)
+		cgroup, ok := scopeCgroup(started)
+		if !ok {
+			cgroupFound <- ""
+			return
+		}
+		cgroupFound <- cgroup
+		sawOOMKill.Store(watchForOOMKill(cgroup, watchEnded))
+	}()
 	err = wait()
 	_ = started.SetReadDeadline(time.Now().Add(markerReadBound))
-	cgroup, ranUnderCap := scopeCgroup(started)
+	_ = endWatch.Close()
+	cgroup := <-cgroupFound
+	<-watched
 	if cmd.ProcessState == nil || cancelled.Load() {
 		return false, false, err
 	}
-	if !ranUnderCap {
-		return false, false, fmt.Errorf("%w: the scope did not run the command under a %s of %d bytes, and %s ended with: %v", ErrMemoryCap, cgroupMemoryMaxFile, wantMax, systemdRun, err)
+	if cgroup == "" {
+		return false, false, fmt.Errorf("%w: the scope did not run the command, and %s ended with: %v", ErrMemoryCap, systemdRun, err)
 	}
 	status, ok := cmd.ProcessState.Sys().(syscall.WaitStatus)
 	killed = ok && status.Signaled() && status.Signal() == syscall.SIGKILL
-	oomKilled := scopeHadOOMKill(cgroup)
+	oomKilled := sawOOMKill.Load() || scopeHadOOMKill(cgroup)
 	if !killed && !oomKilled {
 		return false, false, err
 	}
@@ -231,9 +229,43 @@ func killedAtOwnLimit(events string) bool {
 	return oomKills > 0 && ooms > 0
 }
 
+// watchForOOMKill blocks until the scope whose cgroup is cgroup shows a kill at its own limit, and reports true then.
+// It reports false once ended, the read end of a pipe, becomes readable or hangs up.
+// It also reports false when the scope's events cannot be read.
+// The kernel wakes a poll of memory.events on each change to it, so the watch wakes no more than the scope's events do.
+func watchForOOMKill(cgroup string, ended *os.File) bool {
+	events, err := os.Open(filepath.Join(cgroupMount, filepath.FromSlash(cgroup), cgroupMemoryEventsFile))
+	if err != nil {
+		return false
+	}
+	defer events.Close()
+	watched := []unix.PollFd{
+		{Fd: int32(events.Fd()), Events: unix.POLLPRI},
+		{Fd: int32(ended.Fd()), Events: unix.POLLIN},
+	}
+	buffer := make([]byte, 4096)
+	for {
+		// One read from the start re-arms the file's poll, so a change after it wakes the next one.
+		// A second read to fill the buffer would re-arm it again and could swallow a change between the two.
+		count, err := unix.Pread(int(events.Fd()), buffer, 0)
+		if err != nil {
+			return false
+		}
+		if killedAtOwnLimit(string(buffer[:count])) {
+			return true
+		}
+		if watched[1].Revents != 0 {
+			return false
+		}
+		if _, err := unix.Poll(watched, -1); err != nil && !errors.Is(err, unix.EINTR) {
+			return false
+		}
+	}
+}
+
 // scopeCgroup returns the cgroup the scope's shell wrote to started, the read end of the scope's start pipe.
 // It reads until every writer of the pipe has closed, so a caller bounds it with a read deadline when that must end.
-// ok is false when the shell wrote none, which means the scope never ran the command under its cap.
+// ok is false when the shell wrote none, which means the scope never ran it.
 func scopeCgroup(started *os.File) (cgroup string, ok bool) {
 	listing, err := io.ReadAll(started)
 	if err != nil {

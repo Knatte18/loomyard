@@ -1,4 +1,5 @@
-// green_test.go pins the green end of the adopt check over fake seams: the fix task's removal.
+// green_test.go pins the green end of the adopt check over fake seams and a temp subject directory:
+// the fix task's removal and the try count.
 
 package adoptcli
 
@@ -15,15 +16,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// greenFixtureRerun is the re-run of a two-subject hold, which the green end's way forward lines must name.
-const greenFixtureRerun = "lym adopt alpha beta"
-
-// greenFixture is a test fixture for the subject `alpha`.
+// greenFixture is a test fixture: a temp adopt directory holding the subject `alpha` and a second subject `beta`.
 // Every seam is faked to record its calls.
 type greenFixture struct {
-	t    *testing.T
-	deps greenDeps
-	root string
+	t        *testing.T
+	deps     greenDeps
+	root     string
+	dir      string
+	otherDir string
 
 	tasks []boardengine.Task
 
@@ -36,10 +36,10 @@ type greenFixture struct {
 func newGreenFixture(t *testing.T) *greenFixture {
 	t.Helper()
 	root := t.TempDir()
-	f := &greenFixture{t: t, root: root}
+	f := &greenFixture{t: t, root: root, dir: filepath.Join(root, "alpha"), otherDir: filepath.Join(root, "beta")}
 	f.deps = greenDeps{
 		Subject:  "alpha",
-		Rerun:    greenFixtureRerun,
+		Dir:      f.dir,
 		Worktree: "alpha",
 		Project:  "alpha",
 		Tasks:    func() ([]boardengine.Task, error) { return f.tasks, nil },
@@ -143,13 +143,22 @@ func TestGreenEnd(t *testing.T) {
 		})
 	})
 
-	t.Run("ABoardReadFailureNamesTheRerun", func(t *testing.T) {
+	t.Run("writes the try count to 0", func(t *testing.T) {
 		t.Parallel()
 		f := newGreenFixture(t)
-		f.deps.Tasks = func() ([]boardengine.Task, error) { return nil, errors.New("board unreadable") }
+		if err := writeTries(f.dir, 2); err != nil {
+			t.Fatal(err)
+		}
+		if err := writeTries(f.otherDir, 2); err != nil {
+			t.Fatal(err)
+		}
 
-		if lines := greenEnd(f.deps); !mentions(lines, "board unreadable", "re-run "+greenFixtureRerun) {
-			t.Errorf("greenEnd() = %q; want a line with the read's error and %q", lines, greenFixtureRerun)
+		greenEnd(f.deps)
+		if got, err := readTries(f.dir); err != nil || got != 0 {
+			t.Errorf("readTries(alpha) = %d, %v; want 0", got, err)
+		}
+		if got, err := readTries(f.otherDir); err != nil || got != 2 {
+			t.Errorf("readTries(beta) = %d, %v; want its 2 left", got, err)
 		}
 	})
 }

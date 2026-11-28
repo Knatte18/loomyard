@@ -12,7 +12,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -227,10 +226,10 @@ func TestMergeIn_OneSideAlreadyUpToDate_OtherMerges(t *testing.T) {
 	}
 
 	for _, e := range res.Mutated().Entries() {
-		if e.Kind == fabriclayout.KindMergeStaged && e.Target == hubRelForTest(t, f, h.PrimeRecords()) {
+		if e.Kind == fabricengine.KindMergeStaged && e.Target == hubRelForTest(t, f, h.PrimeRecords()) {
 			t.Errorf("mutation record carries a merge_staged entry for the already-up-to-date weft side: %+v", e)
 		}
-		if e.Kind == fabriclayout.KindMergeCommitted && e.Target == hubRelForTest(t, f, h.PrimeRecords()) {
+		if e.Kind == fabricengine.KindMergeCommitted && e.Target == hubRelForTest(t, f, h.PrimeRecords()) {
 			t.Errorf("mutation record carries a merge_committed entry for the already-up-to-date weft side: %+v", e)
 		}
 	}
@@ -271,6 +270,7 @@ func TestMergeContinue_UnresolvedConflictsRefuse(t *testing.T) {
 
 // TestMergeInAt_MergesTheGivenTipNotTheLocalOne covers MergeInAt's code-side SHA argument.
 // A tip behind the local branch merges only that tip.
+// A given tip that conflicts parks a merge-in of the named source, recording the given SHA.
 // A SHA naming no commit is refused by the source-not-found guard, with nothing merged.
 func TestMergeInAt_MergesTheGivenTipNotTheLocalOne(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -299,6 +299,34 @@ func TestMergeInAt_MergesTheGivenTipNotTheLocalOne(t *testing.T) {
 		}
 		if _, err := os.Stat(filepath.Join(warpDir, "local-only.txt")); !errors.Is(err, os.ErrNotExist) {
 			t.Errorf("local-only.txt after MergeInAt: err = %v; want it absent, the local-only commit is not the told tip", err)
+		}
+	})
+
+	t.Run("ConflictParksTheToldTip", func(t *testing.T) {
+		t.Parallel()
+
+		h, f, _, _, _, _ := newMergePairFixture(t, ".")
+		warpDir := h.PrimeWorktree()
+		setupConflictingDivergence(t, warpDir, "feature", "conflict.txt")
+		tip := gitkit.RevParse(t, warpDir, "feature")
+
+		res, err := f.MergeInAt("feature", tip)
+		if err != nil {
+			t.Fatalf("MergeInAt(feature, %s) error = %v", tip, err)
+		}
+		if len(res.Conflicts) == 0 {
+			t.Fatalf("MergeInAt(feature, %s).Conflicts is empty; want the conflicted path", tip)
+		}
+
+		state, err := f.MidMerge()
+		if err != nil {
+			t.Fatalf("MidMerge() error = %v", err)
+		}
+		if state.Kind != fabricengine.MidMergeParked || state.Verb != fabricengine.MergeVerbMergeIn {
+			t.Errorf("MidMerge() = kind %v verb %q; want a parked %q", state.Kind, state.Verb, fabricengine.MergeVerbMergeIn)
+		}
+		if state.Source != "feature" || state.SourceSHA != tip {
+			t.Errorf("MidMerge() source = %q at %q; want %q at %q", state.Source, state.SourceSHA, "feature", tip)
 		}
 	})
 

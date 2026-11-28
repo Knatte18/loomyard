@@ -6,14 +6,10 @@
 package planglyph
 
 import (
-	"errors"
 	"fmt"
-	"slices"
-	"strings"
 
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
-	"github.com/Knatte18/quarry/glyph"
 	"github.com/Knatte18/quarry/quarry"
 )
 
@@ -100,52 +96,6 @@ func Glyphs(worktreeRoot, target string) (quarry.GlyphsAnswer, error) {
 		return quarry.GlyphsAnswer{}, err
 	}
 	return repo.Glyphs(target)
-}
-
-// siblingMembers returns the members declared beside g's member, each spelled as a glyph's member half, sorted.
-// They are the members of g's owner type, or the unit's members with no owner when g has none.
-// An owner that is no type lists none, and so does a unit whose alphabet does not spell it as a path.
-// A Go external test unit has no directory of its own, so it lists from its package's directory.
-// A failed query is wrapped in ErrQuarryUnavailable.
-func siblingMembers(repo *quarry.Repo, g glyph.Glyph) ([]string, error) {
-	var symbols []quarry.Symbol
-	if n := len(g.Owner); n > 0 {
-		owner := glyph.Glyph{Lang: g.Lang, Unit: g.Unit, Owner: g.Owner[:n-1], Name: g.Owner[n-1]}
-		answer, err := repo.Expand(owner.String())
-		var notType *quarry.NotATypeError
-		if errors.As(err, &notType) {
-			return nil, nil
-		}
-		if err != nil {
-			return nil, fmt.Errorf("%w: expand %s: %v", ErrQuarryUnavailable, owner, err)
-		}
-		symbols = answer.Members
-	} else {
-		path, ok := glyph.Glyph{Lang: g.Lang, Unit: g.Unit}.UnitPath()
-		if !ok {
-			return nil, nil
-		}
-		answer, err := repo.Glyphs(path)
-		// The path is tried as spelled first, so a real directory named with the _test suffix still lists.
-		if dir := planparser.GoPackageDir(path); err != nil && g.Lang == glyph.Go && dir != path {
-			path = dir
-			answer, err = repo.Glyphs(path)
-		}
-		if err != nil {
-			return nil, fmt.Errorf("%w: glyphs %s: %v", ErrQuarryUnavailable, path, err)
-		}
-		symbols = answer.Symbols
-	}
-	var names []string
-	for _, s := range symbols {
-		if s.Glyph.Unit != g.Unit || !slices.Equal(s.Glyph.Owner, g.Owner) || s.Glyph.Name == "" {
-			continue
-		}
-		_, member, _ := strings.Cut(s.ID, "#")
-		names = append(names, member)
-	}
-	slices.Sort(names)
-	return slices.Compact(names), nil
 }
 
 // Resolve opens a quarry.Repo rooted at worktreeRoot and resolves every entry of targets,

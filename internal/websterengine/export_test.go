@@ -12,9 +12,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
-// ImplementerBodyTemplate returns the shared implementer job body read from stencilsDir, worded for Claude.
+// ImplementerBodyTemplate returns the shared implementer job body read from stencilsDir.
 func ImplementerBodyTemplate(stencilsDir string) ([]byte, error) {
-	return stencilstore.ReadForEngine(stencilsDir, "claude", "webster-body-implementer")
+	return stencilstore.Read(stencilsDir, "webster-body-implementer")
 }
 
 // ForkTemplate returns the composed thin in-session fork prompt template, read from stencilsDir.

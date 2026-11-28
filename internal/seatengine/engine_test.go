@@ -110,41 +110,6 @@ func TestEngine_Run_ChairEndStopsEverySeat(t *testing.T) {
 	}
 }
 
-// TestSpecs_MatchTheStartedSpecs pins that Specs returns, for each seat, the spec the engine starts the seat with.
-// The lead's held-turn deferral is the one field Specs leaves unset.
-func TestSpecs_MatchTheStartedSpecs(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-	shuttle := newFakeShuttle(t)
-	engine, geom := engineFixture(t, shuttle)
-	table := engineTable(geom.WorktreeRoot, 2)
-
-	ended := runAsync(engine, table)
-	shuttle.awaitStarts(len(table.Seats))
-	shuttle.handle(role("")).release(shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil)
-	await(t, ended)
-
-	specs, err := Specs(geom, table)
-	if err != nil {
-		t.Fatalf("Specs() error: %v", err)
-	}
-	if len(specs) != len(table.Seats) {
-		t.Errorf("Specs() returned %d specs; want one per seat (%d)", len(specs), len(table.Seats))
-	}
-	for _, seat := range table.Seats {
-		started := shuttle.spec(role(seat.Name))
-		if seat.Name == leadName && started.HoldDeferral == nil {
-			t.Error("the started lead's HoldDeferral = nil; want the deferral the engine sets")
-		}
-		started.HoldDeferral = nil
-		got := specs[seat.Name]
-		got.HoldDeferral = nil
-		if !reflect.DeepEqual(got, started) {
-			t.Errorf("Specs()[%q] = %+v; want the started spec %+v", seat.Name, got, started)
-		}
-	}
-}
-
 func TestEngine_Run_StartFailureEndingTheRunStopsEveryStartedSeat(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -218,9 +183,9 @@ func TestEngine_Run_StartFailureEndingTheRunStopsEveryStartedSeat(t *testing.T) 
 		key      shuttleengine.ModelKey
 		wantText string
 	}{
-		{name: "the discussion chair", forks: true, requires: forkWake, key: shuttleengine.ModelKey{Module: "loom", Key: "discussion.model"}, wantText: "set loom.discussion.model in loom.yaml to an alias whose engine meets them"},
-		{name: "the plan chair", forks: true, requires: forkWake, key: shuttleengine.ModelKey{Module: "tapestry", Key: "plan.model"}, wantText: "set tapestry.plan.model in tapestry.yaml to an alias whose engine meets them"},
-		{name: "the cluster-fan reviewer", forks: true, key: shuttleengine.ModelKey{Module: "loom", Key: "review.reviewer_model"}, wantText: "set loom.review.reviewer_model in loom.yaml to an alias whose engine meets them"},
+		{name: "the discussion chair", forks: true, requires: forkWake, key: shuttleengine.ModelKey{Module: "loom", Key: "discussion"}, wantText: "set discussion in loom.yaml to an alias whose engine meets them"},
+		{name: "the plan chair", forks: true, requires: forkWake, key: shuttleengine.ModelKey{Module: "loom", Key: "plan"}, wantText: "set plan in loom.yaml to an alias whose engine meets them"},
+		{name: "the cluster-fan reviewer", forks: true, key: shuttleengine.ModelKey{Module: "loom", Key: "discussion_reviewer_model"}, wantText: "set discussion_reviewer_model in loom.yaml to an alias whose engine meets them"},
 		{name: "a recipe seat of a two-seat table", advisors: 1, requires: forkWake, wantText: "set the seat's model to an alias whose engine meets them"},
 	}
 	for _, tt := range unmet {
@@ -302,7 +267,7 @@ func TestEngine_Run_AdvisorStartFailureIsRecordedAndNamedToTheChair(t *testing.T
 				t.Errorf("failed advisor result = %+v, want the start error %q, no strand and Notified", got, tt.wantError)
 			}
 			if tt.unmetKey {
-				if got, want := end.result.Advisors[0].StartError, "the model of "+advisorName(1)+" in loom.discussion_advisors"; !strings.Contains(got, want) {
+				if got, want := end.result.Advisors[0].StartError, "the model of "+advisorName(1)+" in discussion_advisors"; !strings.Contains(got, want) {
 					t.Errorf("failed advisor start error = %q, want it to contain %q", got, want)
 				}
 				if len(reed.AddedSpecs) != 0 {

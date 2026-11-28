@@ -1,7 +1,6 @@
 package agentname
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 
@@ -105,38 +104,6 @@ func TestValidationRejections(t *testing.T) {
 	}
 	if _, err := Format("ly", "ok", "Bad"); err == nil {
 		t.Error("Format accepted bad role")
-	}
-}
-
-func TestRoleFromText(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	tests := []struct {
-		name      string
-		text      string
-		want      string
-		wantValid bool
-	}{
-		{"SpacesBecomeDashes", "my agent", "my-agent", true},
-		{"UpperCaseIsLowered", "Review Helper", "review-helper", true},
-		{"SurroundingAndRepeatedSpaceCollapse", "  board \t tidy  ", "board-tidy", true},
-		{"ValidRoleIsKept", "agent-2", "agent-2", true},
-		{"RefusedCharacterStays", "my_agent", "my_agent", false},
-		{"LeadingDigitStays", "2 agents", "2-agents", false},
-		{"Empty", "   ", "", false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			got := RoleFromText(tt.text)
-			if got != tt.want {
-				t.Errorf("RoleFromText(%q) = %q; want %q", tt.text, got, tt.want)
-			}
-			if err := ValidateRole(got); (err == nil) != tt.wantValid {
-				t.Errorf("ValidateRole(%q) = %v; want valid %v", got, err, tt.wantValid)
-			}
-		})
 	}
 }
 
@@ -317,68 +284,6 @@ func TestFormatMachineAddress(t *testing.T) {
 	}
 	if MachineAddressSeparator != "::" {
 		t.Errorf("MachineAddressSeparator = %q; want %q", MachineAddressSeparator, "::")
-	}
-}
-
-func TestParseMachineAddress(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	acceptAll := func(string) error { return nil }
-	refuseAll := func(machine string) error { return fmt.Errorf("machine name %q refused by the checker", machine) }
-	failIfCalled := func(machine string) error {
-		t.Errorf("checkMachine called with %q; want no call", machine)
-		return nil
-	}
-	tests := []struct {
-		name     string
-		address  string
-		ownNames []string
-		check    func(string) error
-		want     MachineAddress
-		wantErr  string
-	}{
-		{name: "PrimeOrch", address: "osl-1046::ly:orch", check: acceptAll,
-			want: MachineAddress{Machine: "osl-1046", Name: Name{Shortname: "ly", Role: "orch"}}},
-		{name: "BeamOrch", address: "neve::ly:beam-x:orch", check: acceptAll,
-			want: MachineAddress{Machine: "neve", Name: Name{Shortname: "ly", Slug: "beam-x", Role: "orch"}}},
-		{name: "CheckerRefusal", address: "bad::ly:orch", check: refuseAll, wantErr: "refused by the checker"},
-		{name: "ProgramNamePart", address: "osl::ly:SLACK", check: acceptAll,
-			wantErr: "way forward: name a strand of that machine, such as osl::<shortname>:orch"},
-		{name: "OneSegmentNamePart", address: "osl::ly", check: acceptAll, wantErr: "way forward: name a strand of that machine"},
-		{name: "OwnName", address: "neve::ly:orch", ownNames: []string{"neve"}, check: acceptAll,
-			wantErr: "names this machine (neve); way forward: name the agent without the machine, as ly:orch"},
-		{name: "FormerOwnNameBeforeChecker", address: "Old_Box::ly:orch", ownNames: []string{"neve", "Old_Box"}, check: failIfCalled,
-			wantErr: "names this machine (Old_Box); way forward: name the agent without the machine, as ly:orch"},
-		{name: "NoSeparator", address: "ly:orch", check: acceptAll, wantErr: "want <machine>::<name>"},
-		{name: "EmptyMachine", address: "::ly:orch", check: acceptAll, wantErr: "want <machine>::<name>"},
-		{name: "EmptyName", address: "neve::", check: acceptAll, wantErr: "want <machine>::<name>"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			got, err := ParseMachineAddress(tt.address, tt.ownNames, tt.check)
-			if tt.wantErr != "" {
-				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-					t.Fatalf("ParseMachineAddress(%q) = %+v, %v; want an error containing %q", tt.address, got, err, tt.wantErr)
-				}
-				return
-			}
-			if err != nil || got != tt.want {
-				t.Fatalf("ParseMachineAddress(%q) = %+v, %v; want %+v", tt.address, got, err, tt.want)
-			}
-		})
-	}
-
-	routing := []struct {
-		name string
-		want bool
-	}{{"neve::ly:orch", true}, {"ly:orch", false}, {"ly::orch", true}}
-	for _, tt := range routing {
-		if got := IsMachineAddress(tt.name); got != tt.want {
-			t.Errorf("IsMachineAddress(%q) = %v; want %v", tt.name, got, tt.want)
-		}
 	}
 }
 

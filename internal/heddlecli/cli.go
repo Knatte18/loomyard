@@ -12,7 +12,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/heddleengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -52,8 +51,8 @@ lym ships in its binary, read-only, and the repository's own in heddle.json in
 the hub's Bolt checkout. It renders file targets into git-excluded files at a
 worktree's anchor directory, the shipped entries first, and it appends prompt targets to
 the system prompt of the Claude sessions launched in the hub: claude-prompt to
-every one, orch-prompt to an orch session alone. A hub that sets
-` + lymOverrideName() + ` may override a shipped entry's text with set --layer lym.
+every one, orch-prompt to an orch session alone. A hub whose heddle.yaml sets
+lym_override may override a shipped entry's text with set --layer lym.
 
 set and remove change the store under the Bolt write lock, render HEDDLE.md,
 the overview of every entry, beside it, render every file target into every
@@ -101,7 +100,7 @@ func (c *heddleCLI) wire(cwd string) error {
 	if err := fabricengine.RequireDrivableWorktree(location); err != nil {
 		return err
 	}
-	boltDir := fabriclayout.BoltDir(location.HubPath)
+	boltDir := fabricengine.BoltDir(location.HubPath)
 	if info, err := os.Stat(boltDir); err != nil || !info.IsDir() {
 		return fmt.Errorf("heddle: the hub's Bolt checkout %s is missing; way forward: lym heddle runs only in a hub `lym fabric clone` made, which creates one", boltDir)
 	}

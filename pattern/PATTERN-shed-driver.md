@@ -14,10 +14,6 @@ It spawns the tackler for a stop the table does not settle, and it hands back wh
 No `<module>cli` and no producer runs a step-until-stop loop of its own.
 That second clause is review discipline, not a scan, as the verb set's first clause below is.
 
-A `git-transport` or `github-api` stop is re-stepped with no cap on the re-steps.
-The waits start at 15 seconds and double up to `fabric.push_ceiling_s`,
-and the driver keeps a wait record while it waits.
-
 ### Told geometry
 
 - `sheddriver` is a told-geometry engine:
@@ -33,10 +29,9 @@ and the driver keeps a wait record while it waits.
 The arming module fills `Deps` and `TacklerDeps`; the optional groups are the recipe-specific part.
 
 - `Arbiter`, `Verify`, `HandOver` and `Tamper` are optional groups on `Deps`.
-  `Watched`, `CommitRecords`, `WriteFrictionNote` and `Wait` are optional closures.
+  `Watched`, `CommitRecords` and `WriteFrictionNote` are optional closures.
 - `TacklerDeps.Snapshot` and `GotoRoutedFrom` shape the tackler's tamper comparison and the rows its resume may name.
-- A nil group or closure, `Wait` excepted, only removes rows or agents from the rule table.
-  A nil `Wait` removes no row: the driver waits on the real clock before a re-step.
+- A nil group or closure only removes rows or agents from the rule table.
   A stop a removed row would have caught meets the later rows unchanged.
   It ends in the tackler under its spawn budget, a re-step under the repair cap, or a hand-back.
   No unwired seam adds a resume path.
@@ -133,6 +128,9 @@ It is also the sole parser and writer of `seed.json`.
 
 - `self` is an alias only `shedrun.ResolveRunID` interprets.
   It maps to the told location's worktree slug (`l.WorktreeName`), and a run's directory is named by that slug.
+- One exception: a read-only legacy fallback in `shedrun`'s directory-segment resolution.
+  When `_lym/shed/<slug>/` is absent and `_lym/shed/self/` exists, both spellings join `self`.
+  A run directory under the `self` spelling keeps working with no on-disk migration.
 - No other package resolves `self`, and none joins `SelfRunID` onto a path itself.
 
 #### Forked branches
@@ -143,7 +141,7 @@ and the adopt path drops nothing.
 
 ## Stop chain
 
-Rule: A shed run's stop: rule table, tackler, arbiter, then parent, for every recipe; a stop the driver's arbiter seam marks as judged first, by row and reason, skips the tackler; the `shed.arbiter`, `shed.arbiter_timeout_min` and `shed.arbiter_max_spawns` keys, batten's overridable by the `batten` keys of the same names, a loom recipe's own via its profile block.
+Rule: A shed run's stop: rule table, tackler, arbiter, then parent, for every recipe; a stop the driver's arbiter seam marks as judged first, by row and reason, skips the tackler; arbiter keys in shed.yaml, batten's overridable in batten.yaml, a loom recipe's own via its profile block.
 
 Held by review alone; no test enforces it.
 

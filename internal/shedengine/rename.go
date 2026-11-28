@@ -1,0 +1,102 @@
+// rename.go declares the status-file migration that carries a run across a row rename.
+// It lives beside the other status-file writes,
+// so a recipe that renames a row keeps an in-flight run resumable without writing the Shed-owned fields itself.
+
+package shedengine
+
+import (
+	"errors"
+	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+
+	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/state"
+)
+
+// RenameRequest describes one row-rename migration of a run's status file.
+// It carries the status file path, the two lock paths, the row renames, and the run-id a busy refusal names.
+type RenameRequest struct {
+	StatusPath     string
+	LockPath       string
+	StatusLockPath string
+	// Renames maps each retired row name to the name its row carries now.
+	Renames map[string]string
+	// RunID is the run-id a busy refusal addresses, empty when none is told.
+	RunID string
+}
+
+// RenameProducers rewrites every retired row name the status file carries onto its successor.
+// The rewritten fields are current_producer, entered_row, pause_before, pause_after and each history entry's producer.
+// It reports whether it wrote the file.
+// A status file that is absent, does not decode, or names no retired row is left untouched and takes no lock,
+// so a caller may run it before every verb.
+// A run lock held by a live driver refuses with ErrShedBusy and leaves the file unchanged.
+// It does not commit the file: the next step's persist commits it.
+func RenameProducers(req RenameRequest) (bool, error) {
+	st, found, err := state.ReadJSON[Status](req.StatusPath, req.StatusLockPath)
+	// A run directory not yet created fails the status lock open with not-exist; that is an absent status file too.
+	// A status file that does not decode names no retired row; the driver's own read gate diagnoses it.
+	if err != nil && !errors.Is(err, fs.ErrNotExist) && !errors.Is(err, state.ErrDecode) {
+		return false, fmt.Errorf("shedengine: read status file %q: %w", req.StatusPath, err)
+	}
+	if err != nil || !found || !namesRetiredRow(st, req.Renames) {
+		return false, nil
+	}
+
+	if err := os.MkdirAll(filepath.Dir(req.LockPath), 0o755); err != nil {
+		return false, fmt.Errorf("shedengine: create run lock parent dir: %w", err)
+	}
+	runLock, locked, err := lock.TryAcquireWriteLock(req.LockPath)
+	if err != nil {
+		return false, fmt.Errorf("shedengine: acquire run lock %q: %w", req.LockPath, err)
+	}
+	if !locked {
+		return false, fmt.Errorf("%w: %q; %s", ErrShedBusy, req.LockPath, busyWayForward(req.RunID, pauseCommandFor("", req.RunID, "")))
+	}
+	defer runLock.Release()
+
+	err = state.UpdateJSON(req.StatusPath, req.StatusLockPath, func(cur Status, found bool) (Status, error) {
+		if !found {
+			return Status{}, fmt.Errorf("shedengine: status file %q vanished mid-rename; Shed refuses to create one", req.StatusPath)
+		}
+		cur.CurrentProducer = renamed(cur.CurrentProducer, req.Renames)
+		cur.EnteredRow = renamed(cur.EnteredRow, req.Renames)
+		cur.PauseBefore = renamed(cur.PauseBefore, req.Renames)
+		cur.PauseAfter = renamed(cur.PauseAfter, req.Renames)
+		for i := range cur.History {
+			cur.History[i].Producer = renamed(cur.History[i].Producer, req.Renames)
+		}
+		return cur, nil
+	})
+	if err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
+// namesRetiredRow reports whether any field a rename rewrites holds a key of renames.
+func namesRetiredRow(st Status, renames map[string]string) bool {
+	names := []string{st.CurrentProducer, st.EnteredRow, st.PauseBefore, st.PauseAfter}
+	for _, entry := range st.History {
+		names = append(names, entry.Producer)
+	}
+	for _, name := range names {
+		if _, retired := renames[name]; retired {
+			return true
+		}
+	}
+
+	return false
+}
+
+// renamed returns the successor renames maps name to, or name itself when it is not retired.
+func renamed(name string, renames map[string]string) string {
+	if successor, retired := renames[name]; retired {
+		return successor
+	}
+
+	return name
+}

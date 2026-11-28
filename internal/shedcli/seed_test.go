@@ -13,7 +13,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -101,13 +100,10 @@ func TestWriteSeed_UnknownRecipeRefusesWithTheAvailableNames(t *testing.T) {
 			if !strings.Contains(err.Error(), "unknown recipe") {
 				t.Errorf("writeSeed(%q) error = %q; want it to say unknown recipe", recipe, err.Error())
 			}
-			for _, name := range shedrun.OfferedRecipeNames() {
+			for _, name := range names() {
 				if !strings.Contains(err.Error(), name) {
 					t.Errorf("writeSeed(%q) error = %q; want it to name recipe %q", recipe, err.Error(), name)
 				}
-			}
-			if strings.Contains(err.Error(), shedrun.RecipeArras) {
-				t.Errorf("writeSeed(%q) error = %q; want it not to offer %q", recipe, err.Error(), shedrun.RecipeArras)
 			}
 		})
 	}
@@ -258,7 +254,7 @@ func TestWriteSeed_RefusesFabricsOwnCheckouts(t *testing.T) {
 		name         string
 		worktreeName string
 	}{
-		{name: "BoardCheckout", worktreeName: fabriclayout.BoltDirName},
+		{name: "BoardCheckout", worktreeName: fabricengine.BoltDirName},
 		{name: "PairSibling", worktreeName: siblingName},
 	}
 	for _, tt := range tests {

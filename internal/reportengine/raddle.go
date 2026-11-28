@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/raddleparser"
 )
@@ -68,7 +68,7 @@ func ComputeRaddle(src Sources) (RaddleReport, error) {
 	}
 	tagsBySlug := map[string][]gitrepo.TagRef{}
 	for _, tag := range src.Tags {
-		if slug, named := fabriclayout.ArchiveTagSlug(tag.Name); named {
+		if slug, named := fabricengine.ArchiveTagSlug(tag.Name); named {
 			tagsBySlug[slug] = append(tagsBySlug[slug], tag)
 		}
 	}

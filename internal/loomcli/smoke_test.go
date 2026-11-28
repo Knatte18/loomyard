@@ -41,7 +41,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -78,7 +77,6 @@ func tmuxBinaryPath(t *testing.T) string {
 // registerBootstrapTeardown registers a cleanup that kills any surviving driver process for worktree
 // and the per-hub watchdog daemon, then tears the reed substrate down.
 // A failed assertion then never leaves a live tmux server, a detached driver, or a watchdog daemon behind.
-// Once those are gone, it ends every process still running under the test's temp dirs, such as a detached board sync.
 //
 // The watchdog reap is unconditional, not a branch.
 // The smoke tier builds and runs a real binary, so testing.Testing() is false there,
@@ -91,9 +89,6 @@ func registerBootstrapTeardown(t *testing.T, loc *lymcwd.Location, worktree stri
 	if err != nil {
 		t.Fatalf("reed geometry: %v", err)
 	}
-	// Registered before the kills below, so it runs after them:
-	// a git child of a killed process can still be writing into the hub when the temp dir is removed.
-	waitForFixtureProcessesToExit(t, fixtureProcessPatience)
 	// Registered before the first boot, so reed's boot finds the kit's hermetic server on the hub's key.
 	// The kill and socket-file removal run after the teardown below.
 	tmuxkit.KillOnCleanup(t, tmuxBinaryPath(t), reedGeom.SocketKey)
@@ -233,7 +228,7 @@ func lockFree(t *testing.T, path string) bool {
 // so an assertion about the row it was on races.
 //
 // The poll interval is short relative to that window.
-// The fixture's shuttle.startup_timeout_s is 2.
+// The fixture's startup_timeout_s is 2.
 // Discussion-Write is the current producer for roughly two seconds before its providerless launch is classified.
 // A 25ms poll cannot miss that window.
 func waitForCurrentProducer(t *testing.T, loc *lymcwd.Location, want string, timeout time.Duration) {
@@ -670,7 +665,7 @@ func TestSmokeBootstrapLifecycle(t *testing.T) {
 		killDriversAndClearLog(t)
 
 		recordsDir := fabricengine.RecordsWorktree(loc)
-		originRel := filepath.Join(loc.AnchorRel, fabriclayout.OriginRecordRel())
+		originRel := filepath.Join(loc.AnchorRel, fabricengine.OriginRecordRel())
 
 		// Roll the pair back to a legacy shape: no origin record tracked at all, as if the pair had been
 		// created before the record existed.
@@ -680,7 +675,7 @@ func TestSmokeBootstrapLifecycle(t *testing.T) {
 		// Simulate the crash: write the record to disk through the production primitive step 1 uses, without committing it.
 		// That is the state a process death between steps 1 and 3 leaves behind.
 		rec := fabricengine.NewMutations("")
-		if err := fabricengine.WriteOrigin(rec, loc, slug, fabriclayout.Origin{ParentBranch: "main"}); err != nil {
+		if err := fabricengine.WriteOrigin(rec, loc, slug, fabricengine.Origin{ParentBranch: "main"}); err != nil {
 			t.Fatalf("WriteOrigin (simulated crash write): %v", err)
 		}
 

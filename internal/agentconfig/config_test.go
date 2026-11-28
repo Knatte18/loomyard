@@ -16,9 +16,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// layerWayForward is the way forward a key naming no role lym starts ends with.
-const layerWayForward = "way forward: remove the key from that layer's agents.yaml with lym config agents"
-
 // loadHub writes content as the hub's agents.yaml under a fresh board dir, unless it is empty, and loads it.
 func loadHub(t *testing.T, content string) (agentconfig.Config, error) {
 	t.Helper()
@@ -88,20 +85,17 @@ func TestLoad_RefusesUnusableContent(t *testing.T) {
 		name    string
 		content string
 		wantKey string
-		// wantWayForward, when set, is the way forward the error must end with in place of the generic one.
-		wantWayForward string
 	}{
-		{"UnknownRole", "skills:\n  nobody: []\n", "", layerWayForward},
-		{"NullRole", "skills:\n  darn: null\n", "", ""},
-		{"NonStringEntry", "skills:\n  darn: [[a]]\n", "", ""},
-		{"EmptyEntry", "skills:\n  darn: [\"\"]\n", "", ""},
-		{"PaddedEntry", "skills:\n  darn: [\" scribe:x\"]\n", "", ""},
-		{"NoDefaultEffort", "efforts:\n  haiku: low\n", "", ""},
-		{"EmptyEffort", "efforts:\n  default: medium\n  haiku: \"\"\n", "", ""},
-		{"UnknownEffort", "efforts:\n  default: medium\n  haiku: turbo\n", "efforts.haiku", ""},
-		{"PairWithUnknownRole", "efforts:\n  default: medium\n  nobody/haiku: low\n", "", layerWayForward},
-		{"PairWithRetiredRole", "efforts:\n  default: medium\n  treadle-judge/opus: low\n", "efforts.treadle-judge/opus", layerWayForward},
-		{"PairWithoutModel", "efforts:\n  default: medium\n  darn/: low\n", "", ""},
+		{"UnknownRole", "skills:\n  nobody: []\n", ""},
+		{"NullRole", "skills:\n  darn: null\n", ""},
+		{"NonStringEntry", "skills:\n  darn: [[a]]\n", ""},
+		{"EmptyEntry", "skills:\n  darn: [\"\"]\n", ""},
+		{"PaddedEntry", "skills:\n  darn: [\" scribe:x\"]\n", ""},
+		{"NoDefaultEffort", "efforts:\n  haiku: low\n", ""},
+		{"EmptyEffort", "efforts:\n  default: medium\n  haiku: \"\"\n", ""},
+		{"UnknownEffort", "efforts:\n  default: medium\n  haiku: turbo\n", "efforts.haiku"},
+		{"PairWithUnknownRole", "efforts:\n  default: medium\n  nobody/haiku: low\n", ""},
+		{"PairWithoutModel", "efforts:\n  default: medium\n  darn/: low\n", ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -113,9 +107,6 @@ func TestLoad_RefusesUnusableContent(t *testing.T) {
 			}
 			if tt.wantKey != "" && !strings.Contains(err.Error(), tt.wantKey) {
 				t.Errorf("Load(%q) error = %v; want it to name %q", tt.content, err, tt.wantKey)
-			}
-			if tt.wantWayForward != "" && (!strings.HasSuffix(err.Error(), tt.wantWayForward) || strings.Contains(err.Error(), "from the prime")) {
-				t.Errorf("Load(%q) error = %v; want it to end with %q and not send the fix to the prime", tt.content, err, tt.wantWayForward)
 			}
 		})
 	}

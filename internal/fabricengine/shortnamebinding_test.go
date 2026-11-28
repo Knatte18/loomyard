@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -19,7 +18,7 @@ func TestShortnameRecord_RoundTrip(t *testing.T) {
 	if err := WriteShortname(dir, "lx"); err != nil {
 		t.Fatalf("WriteShortname() error = %v; want nil", err)
 	}
-	raw, err := os.ReadFile(filepath.Join(dir, fabriclayout.ShortnameFileName))
+	raw, err := os.ReadFile(filepath.Join(dir, ShortnameFileName))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +45,7 @@ func TestReadShortname_NotFound(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := t.TempDir()
 			if tt.content != nil {
-				if err := os.WriteFile(filepath.Join(dir, fabriclayout.ShortnameFileName), []byte(*tt.content), 0o644); err != nil {
+				if err := os.WriteFile(filepath.Join(dir, ShortnameFileName), []byte(*tt.content), 0o644); err != nil {
 					t.Fatal(err)
 				}
 			}

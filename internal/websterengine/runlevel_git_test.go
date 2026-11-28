@@ -14,7 +14,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
@@ -84,7 +84,7 @@ func (s *gateScenario) restart(t *testing.T, verify string) (*runFixture, string
 		t.Fatalf("marshal gate.yaml: %v", err)
 	}
 	// The parent directory holds the board, so the built `lym` reads the hub-wide gate.yaml outside the repository.
-	dirs := configengine.Dirs{Anchor: s.repo, Board: fabriclayout.BoardDir(filepath.Dir(s.repo))}
+	dirs := configengine.Dirs{Anchor: s.repo, Board: fabricengine.BoardDir(filepath.Dir(s.repo))}
 	configFile := configengine.ConfigFile(dirs.Board, "gate")
 	if err := os.MkdirAll(filepath.Dir(configFile), 0o755); err != nil {
 		t.Fatalf("create the config directory: %v", err)

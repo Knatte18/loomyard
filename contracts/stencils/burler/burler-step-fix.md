@@ -24,10 +24,6 @@
 Every finding in the review gets fixed — all severities, including LOW and NIT.
 Severity affects how a finding is reported, not whether it gets fixed.
 The files to change are the ones the findings' `location` keys name, or the gate findings name.
-A `fix` key that opens with `site not found —` marks a finding whose `location` names only where the defect shows:
-find the site the change belongs at before you edit.
-A `fix` key that names a fact as unverified rests on that fact:
-read it in the code before you apply the change, and give the finding its disposition below with what you read.
 Weigh each finding twice: its premise, and the change its `fix` key proposes.
 Give it exactly one of three dispositions, decided in this order.
 
@@ -45,7 +41,7 @@ Give it exactly one of three dispositions, decided in this order.
 3. **Fix as proposed**: otherwise.
    A `fix` key that is vague leaves the change to you and needs no mark.
 
-The other legitimate reason to leave a finding unfixed is something you genuinely cannot do alone this round (a decision on a real tradeoff that belongs to the run's parent,
+The other legitimate reason to leave a finding unfixed is something you genuinely cannot do alone this round (an operator decision on a real tradeoff,
 or a capability you do not have);
 even then you must say so explicitly, with the specific reason, in the fixer-report's deferred section.
 Never leave a finding unfixed just because it looked small — small findings are usually the cheapest to fix, not a reason to skip them.
@@ -78,26 +74,13 @@ one entry per ruling, naming the finding id, what the ruling asks, and either th
 {{.self_check}}## Fixer-report rule (write this to `{{.fixer_report_path}}`)
 
 Write `{{.fixer_report_path}}` unconditionally, every round — even when nothing needed fixing, in which case state "nothing fixed".
-Open the report with YAML frontmatter between two `---` lines, holding a `dispositions` list with one entry for each finding you own, in the order of the review.
-Each entry has an `id` and a `disposition`, which is exactly one of `fixed`, `fixed-differently`, `disputed`, `deferred` or `ruling`, and then the keys that disposition needs:
-
-- `disputed`: `ground` (`premise false` or `every fix worse`), a non-empty `rebuttal`, and `evidence`, a list of `<path>:<line>` items.
-  A dispute that rests on verify output cites the test file and line.
-- `fixed-differently`, `deferred` and `ruling`: a non-empty `reason`.
-- `ruling` is only for a parent ruling on a `decision`-class finding your parent routed to itself.
-
-Never write a `spawned` key; only the engine writes it.
-Below the frontmatter, include what you changed, a `Disputed` section (empty if you disputed nothing), a deferred-with-reason section (empty if nothing was deferred) and a `Rulings` section (empty if no parent ruling reached you).
+Include what you changed, a `Disputed` section (empty if you disputed nothing), a deferred-with-reason section (empty if nothing was deferred) and a `Rulings` section (empty if no parent ruling reached you).
 The review at `{{.review_path}}` is the reviewer's file: you never write it.
 The round is not done until `{{.fixer_report_path}}` exists on disk — a skipped fixer-report leaves the round looking unfinished.
-
-{{template "loom-fragment-loosened-check"}}
-
-{{template "loom-fragment-tooling-names"}}
 
 ## Never push, never touch `_lym`
 
 You must never push,
 and you must never run any git command against a `_lym` path — those are owned by the loop that spawned you, not by this round.
-If your fix-scope rules above have you commit on the repo, stay inside the working tree;
+If your fix-scope rules above name commit-per-fix on the repo, stay inside the working tree;
 nothing here ever authorizes an `_lym` commit.

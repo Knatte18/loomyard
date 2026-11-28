@@ -11,9 +11,44 @@ import (
 	"fmt"
 	"slices"
 	"sync/atomic"
-
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"time"
 )
+
+// ReplayFile is one Bolt file a local commit touches, with its bytes at the merge base, before the commit and after it.
+// Path is relative to the Bolt root and slash-separated,
+// and a nil slice means the file is absent at that point.
+type ReplayFile struct {
+	Path   string
+	Base   []byte
+	Before []byte
+	After  []byte
+}
+
+// ReplayRequest is one local commit's changes to a replayer's files, to re-apply onto origin's tip.
+// Dir is the Bolt checkout at origin's tip, and Files holds the commit's files that replayer claims.
+type ReplayRequest struct {
+	Dir   string
+	Files []ReplayFile
+}
+
+// ReplayFinding names one entry-level or file-level change a replay did not apply and why.
+// Field is empty when the whole entry is concerned.
+// Local is the local side's value of the field when it was lost to origin's.
+type ReplayFinding struct {
+	Entry  string
+	Field  string
+	Reason string
+	Local  string
+}
+
+// ReplayResult reports what a replayer applied.
+// Empty is true when no change survived, so nothing was written.
+// Lost holds the local values origin's side won, and Refused the changes the replayer's own checks refused.
+type ReplayResult struct {
+	Empty   bool
+	Lost    []ReplayFinding
+	Refused []ReplayFinding
+}
 
 // BoltReplayer re-applies, by entry, a local commit's changes to its own files onto the Bolt checkout at origin's tip.
 // Name identifies the replayer in the registry and in a set-aside tag.
@@ -22,7 +57,15 @@ import (
 type BoltReplayer interface {
 	Name() string
 	Claims(path string) bool
-	Apply(req fabriclayout.ReplayRequest) (fabriclayout.ReplayResult, error)
+	Apply(req ReplayRequest) (ReplayResult, error)
+}
+
+// LedgerRun is one run as the run ledger records it.
+// Created is the zero time when the run's creation is unknown.
+type LedgerRun struct {
+	Slug    string
+	Ended   bool
+	Created time.Time
 }
 
 // RunLedger is the part of a Bolt file that records the hub's runs, which one registered replayer may also implement.
@@ -32,7 +75,7 @@ type BoltReplayer interface {
 // It takes the ledger file's bytes before and after the commit, each nil when the commit leaves the file alone.
 type RunLedger interface {
 	File() string
-	Runs(data []byte) ([]fabriclayout.LedgerRun, error)
+	Runs(data []byte) ([]LedgerRun, error)
 	CommitRuns(before, after []byte, paths []string) ([]string, error)
 }
 

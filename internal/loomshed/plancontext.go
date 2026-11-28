@@ -12,7 +12,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/impactset"
 	"github.com/Knatte18/loomyard/internal/planindex"
@@ -25,7 +24,7 @@ const renameToolMissingCheck = "rename-tool-missing"
 // patternChangesMismatchCheck names the finding for a PATTERN change declared by only one of plan and record.
 const patternChangesMismatchCheck = "pattern-changes-mismatch"
 
-// verifyRawCommandCheck names the finding for a card Verify command that the hub's gate.refuse_raw list names.
+// verifyRawCommandCheck names the finding for a card Verify command that the hub's refuse_raw list names.
 const verifyRawCommandCheck = "verify-raw-command"
 
 // verifyGateNoWaitCheck names the finding for a `lym gate test` call in a card Verify line without `--wait`.
@@ -38,13 +37,13 @@ const planVerifyRetiredCheck = "plan-verify-retired"
 // The zero value compares no record and refuses no Verify command.
 // An empty RenameTools reports every symbol Rename pair as missing a rename tool.
 type PlanContext struct {
-	// RenameTools is the hub's language.rename_tools list.
+	// RenameTools is the hub's language.yaml rename_tools list.
 	// A symbol Rename pair needs it non-empty.
 	RenameTools []string
-	// RefuseRaw is the hub's gate.refuse_raw list.
+	// RefuseRaw is the hub's gate.yaml refuse_raw list.
 	// A card Verify command opening with an entry is refused.
 	RefuseRaw []string
-	// TierTags is the hub's gate.tiers keys, each a test build tag.
+	// TierTags is the hub's gate.yaml tier keys, each a test build tag.
 	// Nil skips the test-tier-unstated check, which is the state with no gate.yaml.
 	TierTags []string
 	// SeamTests returns the tests marked `//lym:seam` in the worktree, called once per plan check.
@@ -74,7 +73,7 @@ func planContextFindings(plan *planparser.Plan, cards []planparser.Card, worktre
 				findings = append(findings, planindex.Finding{
 					Check:    renameToolMissingCheck,
 					Card:     card.ID(),
-					Detail:   fmt.Sprintf("the symbol rename %s -> %s needs the hub's structure-aware rename tool, and %s lists none; way forward: set it with \"lym config language\" from the prime, or recast the card", pair.Old, pair.New, configengine.KeyName("language", "rename_tools")),
+					Detail:   fmt.Sprintf("the symbol rename %s -> %s needs the hub's structure-aware rename tool, and language.yaml lists none; way forward: set rename_tools with \"lym config language\" from the prime, or recast the card", pair.Old, pair.New),
 					Severity: planindex.SeverityBlocking,
 				})
 			}
@@ -139,7 +138,7 @@ func verifyLineFindings(cards []planparser.Card, refuseRaw []string) []planindex
 					findings = append(findings, planindex.Finding{
 						Check:    verifyRawCommandCheck,
 						Card:     card.ID(),
-						Detail:   fmt.Sprintf("card %d Verify: `%s` runs a command the hub's %s lists, and Go re-runs this line outside any agent hook; way forward: replace it with a `lym gate test --wait` call naming a tier list and a scope form, such as `lym gate test --wait --tier 1 --card <card id>`", card.Number, command, configengine.KeyName("gate", "refuse_raw")),
+						Detail:   fmt.Sprintf("card %d Verify: `%s` runs a command the hub's gate.yaml refuse_raw lists, and Go re-runs this line outside any agent hook; way forward: replace it with a `lym gate test --wait` call naming a tier list and a scope form, such as `lym gate test --wait --tier 1 --card <card id>`", card.Number, command),
 						Severity: planindex.SeverityBlocking,
 					})
 					break

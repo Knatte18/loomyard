@@ -215,11 +215,6 @@ func TestDescribe(t *testing.T) {
 			if edits := w.api.Calls(prkit.MethodEdit); !slices.Equal(edits, tt.wantEdits) {
 				t.Errorf("describe(%q) Edit calls = %v; want %v", tt.slug, edits, tt.wantEdits)
 			}
-			for _, from := range w.recordedFrom {
-				if from != "" {
-					t.Errorf("describe(%q) recorded from the draft %q; want the description recorded in place", tt.slug, from)
-				}
-			}
 			if len(tt.wantErr) > 0 {
 				if err == nil {
 					t.Fatalf("describe(%q) = nil; want a refusal naming %v", tt.slug, tt.wantErr)
@@ -237,70 +232,6 @@ func TestDescribe(t *testing.T) {
 			wayForward, _ := got["way_forward"].(string)
 			if got["description"] != descriptionPath || !strings.Contains(wayForward, tt.wantWayForward) {
 				t.Errorf("describe(%q) = %v; want the description's path and a way forward naming %q", tt.slug, got, tt.wantWayForward)
-			}
-		})
-	}
-}
-
-// TestRewriteDescription asserts the rewrite records the description from the describer agent's draft.
-// It also asserts a recorded pull request is updated, and a beam describe that refuses leaves nothing recorded.
-func TestRewriteDescription(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	const draftPath = "/hub/b/.lym/beam/describe/20261122T120000Z.md"
-	tests := []struct {
-		name  string
-		setup func(w *landWorld)
-		// wantErr is empty for a recorded draft, else every substring the refusal names.
-		wantErr []string
-		// wantFrom are the draft paths the RecordDescription seam is called with.
-		wantFrom  []string
-		wantEdits []string
-	}{
-		{
-			name: "DraftIsRecordedAndThePullRequestUpdated",
-			setup: func(w *landWorld) {
-				recordPullRequest(w)
-				w.api.Script(prkit.MethodStatus, prkit.Answer{Status: pullrequest.Status{State: pullrequest.StateOpen}})
-			},
-			wantFrom:  []string{draftPath},
-			wantEdits: []string{"5|Ship the beam|Groups the work."},
-		},
-		{
-			name:    "ReadyBeamIsRefusedWithNothingRecorded",
-			setup:   func(w *landWorld) { w.ready["b"] = true },
-			wantErr: []string{"lym beam describe:", "final", "lym batten status b"},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			w := newLandWorld()
-			w.ready["b"] = false
-			tt.setup(w)
-
-			_, err := rewriteDescription(context.Background(), w.deps(), "b", draftPath)
-
-			if !slices.Equal(w.recordedFrom, tt.wantFrom) {
-				t.Errorf("rewriteDescription() recorded from = %v; want %v", w.recordedFrom, tt.wantFrom)
-			}
-			if edits := w.api.Calls(prkit.MethodEdit); !slices.Equal(edits, tt.wantEdits) {
-				t.Errorf("rewriteDescription() Edit calls = %v; want %v", edits, tt.wantEdits)
-			}
-			if len(tt.wantErr) == 0 {
-				if err != nil {
-					t.Fatalf("rewriteDescription() = %v; want the draft recorded", err)
-				}
-				return
-			}
-			if err == nil {
-				t.Fatalf("rewriteDescription() = nil; want a refusal naming %v", tt.wantErr)
-			}
-			for _, want := range tt.wantErr {
-				if !strings.Contains(err.Error(), want) {
-					t.Errorf("rewriteDescription() error = %q; want it to name %q", err.Error(), want)
-				}
 			}
 		})
 	}

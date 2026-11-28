@@ -26,7 +26,7 @@
 // A second cancel reads them to finish an interrupted one.
 // The order is: end the registered processes; take batten's locks; stop the pair's strands and the tackler;
 // remove the pair and its task branches with --remove; remove the records; leave the claim draft;
-// lift the slug's own pauses; push; clear a beam's flag with --remove; notify; and release the cancel's lock last.
+// lift the slug's own pauses; push and notify; and release the cancel's lock last.
 // Without --remove, the pair is kept.
 // The cancel names "lym batten cancel <slug> --remove" as the step before the slug runs again.
 // Records already removed and untracked at the records HEAD count as removed.
@@ -34,17 +34,12 @@
 // An unreachable origin ends only the processes and strands.
 // It leaves the intent in the record and posts a notice naming the cancel to run once origin answers.
 // The cancel of a beam project first runs the hub's origin reconcile.
-// It refuses while work remains under the beam: a member, or a pair forked from it.
-// With --remove, a task member with neither a pair here nor a run status is no such work.
-// It names the way out for each blocker, which is to land or cancel it first.
-// Once the beam's pawl run holds its entry, the way out is to cancel it.
-// Without --remove, a member is then moved off the beam too.
+// It refuses while the beam has members, and names the way out for each one:
+// to land or cancel first, or, once the beam's pawl run holds its entry, to cancel and move off the beam.
 // With origin unreachable it refuses and names the reconcile's way forward.
-// A beam with nothing refusing it is ended like a task, its dobby with its run.
+// A beam with no members is ended like a task, its dobby with its run.
 // Its orch and watcher are then stopped; a failure there is only a warning on the report.
 // `lym beam create <slug>` starts the run again.
-// With --remove the beam's life ends too: the project's beam flag is cleared and its members are untouched.
-// A beam flag that is all that is left of the slug still counts as left for --remove.
 //
 // "lym batten overview" (overview.go) is the hidden pane verb that `lym beam start` runs.
 // `lym beam start` runs it in the runs strand of the prime and of each beam.
@@ -53,7 +48,7 @@
 // each run shows once, in the dobby section.
 // The dobby section lists the dobby's lines for the worktree the pane runs in (overviewdobby.go).
 // `DobbyLines` renders them from the `dobbyengine.View` that a `DobbyViewReader` reads.
-// Its first line is a header that says whether the dobby is alive, with its `beam.max_runs`;
+// Its first line is a header that says whether the dobby is alive, with its `max_runs` and `land_notice`;
 // or, when it is not running, `lym beam start` as the way forward.
 // It then has one line per run it drives that is not done, in slug order.
 // Each run line carries the run's cells that `DobbyRunCells` reads, then its pass cell.
@@ -63,8 +58,8 @@
 // That line reads `ready to start`, with the last refused start's text when one is recorded;
 // or it reads `waits on`, followed by each of these:
 // open dependencies; another machine's ownership; a pause; a start batten refuses, with its text;
-// a refused start, with its text and the minutes to its retry; and `beam.max_runs`.
-// A run that asks for a landing notice ends its line with `beam.land_notice`.
+// a refused start, with its text and the minutes to its retry; and `max_runs`.
+// A run or task whose board entry asks for a landing notice ends its line with `notify_on_land`.
 // A dobby view that does not read shows `dobby <label>: unreadable`.
 // A run's cells are batten's state, the stage and the time in that stage.
 // A run with a seed and no status shows as `starting`.
@@ -116,7 +111,7 @@
 // The start guard lets a beam project start or resume.
 // A fresh start with no marked pair here gets a task's dirty-source and left-parts checks.
 // The dirty-source check applies only when the start forks from the prime.
-// A marked beam pair or a resumed run's pair passes the checks.
+// A marked beam pair, a legacy beam's or a resumed run's, passes the checks.
 // A beam project skips the draft check, since a beam's cancel leaves its entry draft.
 // `lym beam create` starts its run again.
 // The guard reads a marked pair as the leftover of a stopped promote.
@@ -173,13 +168,11 @@ import (
 	"fmt"
 	"os/exec"
 	"testing"
-	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -187,7 +180,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/runfsm"
-	"github.com/Knatte18/loomyard/internal/runpusher"
 	"github.com/Knatte18/loomyard/internal/selfexec"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -233,7 +225,7 @@ type battenCLI struct {
 	driverFlag string
 	// childDriverFlag carries the --child-driver value.
 	// The auto-seeded seed records it as params.child_driver, and only when childDriverFlagSet is true.
-	// Empty means "unset": the child then takes its recipe's driver_kind, then shed.driver_kind.
+	// Empty means "unset": the child then takes its recipe's driver_kind, then shed.yaml's.
 	childDriverFlag string
 	// driverFlagSet records whether the operator typed --driver, rather than cobra filling in the default.
 	// The value alone cannot carry that distinction, since the default is itself a legal driver name.
@@ -259,33 +251,22 @@ type battenCLI struct {
 	pairStart func(parent string) error
 	// reconcile runs the run-scope origin reconcile of a slug that the pre-run resumes.
 	// Nil reads as no reconcile, which only a hand-populated receiver has.
-	reconcile func(slug string) (fabriclayout.OriginReport, error)
-	// catchUp runs the catch-up from origin over this pass's own run, before a pass that is not a continue pass resumes.
-	// Nil reads as no catch-up, which only a hand-populated receiver has.
-	catchUp func() (dobbyengine.CatchUpReport, error)
+	reconcile func(slug string) (fabricengine.OriginReport, error)
 	// readopt carries the seams that re-make a live pair whose task worktree is gone.
 	// A receiver that skips the arm leaves it zero, which reads as no re-adoption.
 	readopt readoptSeams
-	// backoffSleep sleeps for one delay of the backoff that the create of a pair waits out before it reads origin again.
-	// Nil sleeps for the delay.
-	backoffSleep func(time.Duration)
-	// reconcileOptions bounds the run-scope origin reconcile of a resume and of a gone pair's re-adoption.
-	// The zero value makes one attempt, which a hand-populated receiver keeps.
-	reconcileOptions fabricengine.ReconcileOptions
 	// continuePass carries the hidden --continue-pass value of "run".
 	// The pass is one that dobby schedules into a run it already drives,
 	// so the pre-run skips the resume's origin reconcile, the Open-Window re-run and the pause refusal.
 	continuePass bool
 	// noReopen carries "run"'s hidden --no-reopen value, which skips only the Open-Window re-run.
 	noReopen bool
+	// originReached records that this pass's resume reconcile reached origin, which lets a pass that exits 0 remove the origin-owed marker.
+	originReached bool
 	// owner carries the seams of the owner checks.
 	// The arm fills it with the hub's owner seams when it is zero.
 	// A receiver that skips the arm keeps it zero, which reads as no owner check.
 	owner ownerSeams
-	// pickAccount picks the Claude account of the task worktree slug, which the hub of the given prime location holds.
-	// Its last argument is whether a worktree that already holds an account keeps it.
-	// The wiring fills it; a pick failure is logged inside and never fails the create.
-	pickAccount func(prime *lymcwd.Location, slug string, keepEntry bool)
 	// guard carries the pre-run's refusals of a cancel under way, a dirty source and a left pair.
 	// The arm fills it with the hub's start guard when its Marker is nil.
 	// A hand-populated receiver leaves it zero, which checks nothing.
@@ -305,9 +286,6 @@ type battenCLI struct {
 	// preDrive re-reads the cancel's lock and the seed when an absent status is seeded, under the shed's run lock.
 	// Nil checks nothing, which only a hand-populated receiver has.
 	preDrive func() error
-	// commitStatus is the run's status-commit seam, which the fresh start calls for the Worktree-Create row it seeds.
-	// Nil commits nothing, which only a hand-populated receiver has.
-	commitStatus func(producer, st string) error
 	// runVerdict reads the act rule's verdict for the slug's run, with a shed pause set aside:
 	// batten's own verbs resume that pause themselves.
 	// The arm fills it over the run's records.
@@ -319,12 +297,6 @@ type battenCLI struct {
 	// machineName reads this machine's name, which is passed to the shed being built.
 	// Nil selects machinename.Name, which only a hand-populated receiver leaves nil.
 	machineName func() (string, error)
-	// startPusher starts the prime's pusher and the run's pair's, which a resume does before the run acts.
-	// Nil starts nothing, which only a hand-populated receiver has.
-	startPusher func()
-	// pusherStart is the pusher start startPusher runs for each worktree.
-	// Nil selects runpusher.Start.
-	pusherStart func(runpusher.Target) (bool, error)
 }
 
 // battenVerbTexts carries the Use, Short and Long text of batten's shedverbs-driven verbs.
@@ -346,8 +318,8 @@ already in progress, it resumes
 silently from the persisted current producer -- there is no re-seed flag,
 because every operator-fixable refusal this task raises lands as blocked,
 which is the everyday resume path. The dobby of the run's parent worktree
-removes a done run's record once its landing and run watch are settled.
-Before it drives anything it asks whether the run may act:
+removes a done run's record once it has counted its landing and decided its
+landing notice. Before it drives anything it asks whether the run may act:
 a covering pause, a paused run, a cancel under way and another machine's
 ownership each refuse it, naming the way forward. A slug whose done record still stands refuses,
 naming "lym batten cleanup --apply" and the leftover branches to delete,
@@ -360,12 +332,12 @@ first holds the driver lock.
 An omitted run-id refuses by name rather than defaulting to "self".
 
 The Open-Window, Seed-IDE and Open-IDE rows are Command rows: each runs its
-command (` + battenKeyName("open_window_command") + `, ` + battenKeyName("seed_ide_command") + `, ` + battenKeyName("open_ide_command") + `)
-only when its gate (` + battenKeyName("open_window") + `, ` + battenKeyName("seed_ide") + ` or ` + battenKeyName("open_ide") + `) is on.
+batten.yaml command (open_window_command, seed_ide_command, open_ide_command)
+only when its entry gate (the open_window, seed_ide or open_ide setting) is on.
 Open-Window's default command opens one desktop terminal window attached to the
 task worktree's reed session; Seed-IDE's writes the worktree's VS Code config,
 and Open-IDE's opens VS Code. A run resumed past that row opens a window again
-when no client is attached to that session and ` + battenKeyName("open_window") + ` is on.
+when no client is attached to that session and open_window is on.
 
 Example:
   lym batten run some-slug`,
@@ -462,10 +434,8 @@ Example:
 
 // Command returns the cobra command tree for the batten module.
 func Command() *cobra.Command {
-	c := &battenCLI{spec: &shedverbs.Spec{}, reconcileOptions: fabricengine.RunStartReconcileOptions()}
-	c.reconcile = func(slug string) (fabriclayout.OriginReport, error) {
-		return reconcileRun(c.location, slug, false, c.reconcileOptions)
-	}
+	c := &battenCLI{spec: &shedverbs.Spec{}}
+	c.reconcile = func(slug string) (fabricengine.OriginReport, error) { return reconcileRun(c.location, slug, false) }
 
 	parent := &cobra.Command{
 		Use:   "batten",
@@ -487,7 +457,7 @@ finish, and with --remove also removes its pair and task branches and deletes it
 
 Every verb runs from the hub's prime worktree and from any beam: they refuse when
 invoked from a task worktree that is not a beam, from the pair's fabric sibling, or
-from ` + fabriclayout.BoltDirName + `.
+from ` + fabricengine.BoltDirName + `.
 
 Example:
   lym batten run some-slug
@@ -520,14 +490,14 @@ Example:
 	// That is a fact about the worktree's recipe, not batten's, so both "go" and "llm" are accepted.
 	// The child's own recipe capability is checked when that child's seed is written.
 	runVerb.Flags().StringVar(&c.driverFlag, "driver", shedrun.DriverGo, "the run's own driver (batten has no bootstrap verb, so \"llm\" is refused)")
-	runVerb.Flags().StringVar(&c.childDriverFlag, "child-driver", "", "the driver the task worktree's own inner run uses; unset, "+childDriverFallback())
+	runVerb.Flags().StringVar(&c.childDriverFlag, "child-driver", "", "the driver the task worktree's own inner run uses; unset, the child recipe's driver_kind, then shed.yaml's")
 	runVerb.Flags().BoolVar(&c.continuePass, "continue-pass", false, "run the continue pass dobby schedules into a run it already drives: skip the origin reconcile, the Open-Window re-run and the pause refusal, and refuse a run that is not one dobby may continue")
 	runVerb.Flags().BoolVar(&c.noReopen, "no-reopen", false, "skip the Open-Window re-run of a resumed run")
 	_ = runVerb.Flags().MarkHidden("continue-pass")
 	_ = runVerb.Flags().MarkHidden("no-reopen")
 	runVerb.RunE = func(cmd *cobra.Command, args []string) error { return c.driveRun(cmd) }
 	stepVerb.Flags().StringVar(&c.driverFlag, "driver", shedrun.DriverGo, "the run's own driver (batten has no bootstrap verb, so \"llm\" is refused)")
-	stepVerb.Flags().StringVar(&c.childDriverFlag, "child-driver", "", "the driver the task worktree's own inner run uses; unset, "+childDriverFallback())
+	stepVerb.Flags().StringVar(&c.childDriverFlag, "child-driver", "", "the driver the task worktree's own inner run uses; unset, the child recipe's driver_kind, then shed.yaml's")
 
 	parent.AddCommand(runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb, lockCommand(), c.cleanupCmd(), c.cancelCmd(), c.overviewCmd())
 
@@ -761,7 +731,7 @@ func (c *battenCLI) otherMachineOwning(parent string) (string, error) {
 	if c.owner.Machine == nil {
 		return "", nil
 	}
-	identity, err := c.thisIdentity()
+	machine, err := c.thisMachine()
 	if err != nil {
 		return "", err
 	}
@@ -776,7 +746,7 @@ func (c *battenCLI) otherMachineOwning(parent string) (string, error) {
 			return "", err
 		}
 	}
-	if !boardengine.OwnedElsewhere(owner, owners.Registry, identity) {
+	if !boardengine.OwnedElsewhere(owner, machine) {
 		return "", nil
 	}
 	return owner, nil
@@ -799,10 +769,8 @@ type FirstPassOptions struct {
 // The returned error is reserved for a failure to arm the run or to read the envelope back.
 // The run's own driver lock, inside the pass, refuses a second driver.
 func StartFirstPass(location *lymcwd.Location, slug string, opts FirstPassOptions) (map[string]any, error) {
-	c := &battenCLI{spec: &shedverbs.Spec{}, firstPassAnchor: opts.Anchor, reconcileOptions: fabricengine.RunStartReconcileOptions()}
-	c.reconcile = func(slug string) (fabriclayout.OriginReport, error) {
-		return reconcileRun(c.location, slug, false, c.reconcileOptions)
-	}
+	c := &battenCLI{spec: &shedverbs.Spec{}, firstPassAnchor: opts.Anchor}
+	c.reconcile = func(slug string) (fabricengine.OriginReport, error) { return reconcileRun(c.location, slug, false) }
 	armed, err := c.armAt(location, slug, true, "run")
 	if err != nil {
 		return nil, err

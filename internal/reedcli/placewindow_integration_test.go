@@ -12,7 +12,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -24,7 +24,7 @@ func TestPlaceTerminalWindow(t *testing.T) {
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	board := fabriclayout.BoltDir(h.Location.HubPath)
+	board := fabricengine.BoltDir(h.Location.HubPath)
 	if err := os.MkdirAll(configengine.ScratchDir(board), 0o755); err != nil {
 		t.Fatalf("MkdirAll(%q) = %v; want nil", configengine.ScratchDir(board), err)
 	}

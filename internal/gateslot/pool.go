@@ -27,8 +27,7 @@ import (
 const InheritEnv = "LYM_GATE_SLOT"
 
 // PrebuiltLymEnv names the environment variable that carries the path of the `lym` binary.
-// A tagged gate run whose tests may use the binary builds it once for all packages,
-// and each test binary runs that build instead.
+// A tagged gate run builds it once for all packages, and each test binary runs that build instead.
 const PrebuiltLymEnv = "LYM_PREBUILT_LYM"
 
 // StripPrebuilt returns env without PrebuiltLymEnv.
@@ -82,11 +81,6 @@ type Holder struct {
 	Started time.Time `yaml:"started"`
 	// Tier is the tier key, such as tier0, of the tier run holding the slot; empty when the holder is not a tier run.
 	Tier string `yaml:"tier,omitempty"`
-	// Marker is the `NAME=value` entry every process the tier run starts carries in its environment;
-	// empty for a holder that is no tier run.
-	// A nested `lym gate test` run inside the slot replaces the entry for the processes it starts,
-	// so those do not carry this marker.
-	Marker string `yaml:"marker,omitempty"`
 	// Slot is the number of the held slot, read from the record's file name; the record never carries it.
 	Slot int `yaml:"-"`
 }
@@ -170,6 +164,25 @@ func (p *Pool) Acquire(ctx context.Context, h Holder) (*Lease, error) {
 		}
 		sleepPoll(ctx, poll)
 	}
+}
+
+// TryAcquire holds one slot for h until the lease is released, when one is free at once.
+// It returns a nil lease otherwise.
+// It takes none while a multi-slot acquire holds the drain lock, the state in which Acquire waits.
+// It never waits.
+func (p *Pool) TryAcquire(h Holder) (*Lease, error) {
+	if _, err := p.prepare(&h); err != nil {
+		return nil, err
+	}
+	limits, err := p.readLimits()
+	if err != nil {
+		return nil, err
+	}
+	draining, err := lockIsHeld(p.drainLockPath())
+	if err != nil || draining {
+		return nil, err
+	}
+	return p.tryAcquireAny(limits, h)
 }
 
 // AcquireSlots holds count slots for h until the lease is released.

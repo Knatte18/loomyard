@@ -1,10 +1,9 @@
 // text.go renders the compact listing that "list --text" and "find --text" print instead of JSON.
-// It also renders the prime-owner line that opens the "list --text" listing and places its root project row.
+// It also renders the prime-owner line that opens the "list --text" listing.
 
 package boardcli
 
 import (
-	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -21,8 +20,6 @@ const sketchesHeading = "sketches:"
 // RenderCompact renders the entries as a compact listing, one line per entry, in the order given.
 // Each line holds the handle, kind, priority, age, time since last revision, slug and title;
 // the labels follow, joined by commas.
-// An entry that waits on a dependency not yet met then shows "after" and those dependencies' slugs, joined by commas;
-// the column is left out when no entry waits.
 // Each column is padded to its widest value, and a line ends with "[<status>]" when the entry's status is set.
 // The Sketches follow every other entry, in the order given, under a sketches: line.
 // The handle column is left out when no entry has a handle.
@@ -31,7 +28,7 @@ const sketchesHeading = "sketches:"
 // The ages are as of now, blank for an unknown date, and each age column is left out when no entry has that date.
 // Empty input renders as the empty string.
 func RenderCompact(tasks []boardengine.BriefTask, now time.Time) string {
-	var handleWidth, kindWidth, priorityWidth, ageWidth, revisedWidth, slugWidth, titleWidth, labelsWidth, afterWidth int
+	var handleWidth, kindWidth, priorityWidth, ageWidth, revisedWidth, slugWidth, titleWidth, labelsWidth int
 	for _, t := range tasks {
 		handleWidth = max(handleWidth, utf8.RuneCountInString(t.Handle))
 		kindWidth = max(kindWidth, utf8.RuneCountInString(t.Kind))
@@ -41,7 +38,6 @@ func RenderCompact(tasks []boardengine.BriefTask, now time.Time) string {
 		slugWidth = max(slugWidth, utf8.RuneCountInString(t.Slug))
 		titleWidth = max(titleWidth, utf8.RuneCountInString(t.Title))
 		labelsWidth = max(labelsWidth, utf8.RuneCountInString(strings.Join(t.Labels, ",")))
-		afterWidth = max(afterWidth, utf8.RuneCountInString(afterText(t)))
 	}
 
 	var sb, sketches strings.Builder
@@ -63,9 +59,6 @@ func RenderCompact(tasks []boardengine.BriefTask, now time.Time) string {
 		line += pad(t.Slug, slugWidth) + columnGap +
 			pad(t.Title, titleWidth) + columnGap +
 			pad(strings.Join(t.Labels, ","), labelsWidth)
-		if afterWidth > 0 {
-			line += columnGap + pad(afterText(t), afterWidth)
-		}
 		if t.Status != nil && *t.Status != "" {
 			line += columnGap + "[" + *t.Status + "]"
 		}
@@ -83,15 +76,6 @@ func RenderCompact(tasks []boardengine.BriefTask, now time.Time) string {
 	return sb.String()
 }
 
-// afterText returns the listing's after cell of t:
-// "after" and the slugs of its unmet dependencies, or "" when it waits on none.
-func afterText(t boardengine.BriefTask) string {
-	if len(t.Pending) == 0 {
-		return ""
-	}
-	return "after " + strings.Join(t.Pending, ",")
-}
-
 // primeOwnerLine returns the line that opens the `list --text` listing, naming the machine that owns the hub's prime.
 // The line says none when the board records no owner.
 func primeOwnerLine(primeOwner string) string {
@@ -99,18 +83,6 @@ func primeOwnerLine(primeOwner string) string {
 		primeOwner = "none"
 	}
 	return "prime owner: " + primeOwner + "\n"
-}
-
-// withRootProjectRow returns tasks with the root project's P0 row inserted before the first project, note or done entry.
-// The row goes at the end when there is none, so that in README order it leads the projects.
-func withRootProjectRow(tasks []boardengine.BriefTask) []boardengine.BriefTask {
-	at := slices.IndexFunc(tasks, func(t boardengine.BriefTask) bool {
-		return t.Kind == boardengine.KindProject || t.Kind == boardengine.KindNote || t.IsDone()
-	})
-	if at < 0 {
-		at = len(tasks)
-	}
-	return slices.Insert(tasks, at, boardengine.RootProjectBrief())
 }
 
 // pad right-pads s with spaces to width characters, so a multi-byte character counts as one column.

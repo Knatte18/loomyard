@@ -167,9 +167,6 @@ func (f *SessionFold) Fold(signals []SessionSignal, facts SessionFacts) {
 // applySignal moves the signal-derived state by one signal.
 func (f *SessionFold) applySignal(signal SessionSignal, facts SessionFacts) {
 	switch signal.Kind {
-	case SessionSignalFileEdit:
-		// A file edit is no session fact, so it never stands as the newest signal an idle notice is judged against.
-		return
 	case SessionSignalSessionStart:
 		f.sessionStartAt = signal.At
 		if !f.sessionStartIdles(signal.Source) {

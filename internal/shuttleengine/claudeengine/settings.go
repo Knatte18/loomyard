@@ -55,8 +55,7 @@ type hookEntry struct {
 // settingsHooks is the "hooks" object of a Claude Code settings.json document.
 // Every event but PreToolUse and PostToolUse is a recording hook installed for every session.
 // PostToolUse, PreCompact and PostCompact touch the activity stamp.
-// PostToolUse also carries the batching hook while it is on.
-// It carries the edit hook while shuttle's edit-loop watch is on, and the creel mail hook in a hub.
+// PostToolUse also carries the batching hook while it is on and the creel mail hook in a hub.
 // In a hub, Stop carries two entries: the recording merged with creel's turn-end delivery, and creel's idle waiter;
 // in no hub it carries the recording alone.
 // PreToolUse is omitted when an autonomous run has every deny off;
@@ -261,34 +260,6 @@ func shQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
-// statusLineCommand returns the command Claude Code runs as a session's status line on the listed account account.
-// It is the lym binary at lymPath running `claude statusline` for the account, each value single-quoted.
-func statusLineCommand(lymPath, account string) string {
-	return shQuote(lymPath) + " claude statusline " + shQuote(account)
-}
-
-// addStatusLine returns the settings document with its `statusLine` key set to a command entry running command.
-// Every other key of the document is kept.
-func addStatusLine(settings []byte, command string) ([]byte, error) {
-	var doc map[string]json.RawMessage
-	if err := json.Unmarshal(settings, &doc); err != nil {
-		return nil, fmt.Errorf("decode the settings document: %w", err)
-	}
-	statusLine, err := json.Marshal(struct {
-		Type    string `json:"type"`
-		Command string `json:"command"`
-	}{Type: "command", Command: command})
-	if err != nil {
-		return nil, fmt.Errorf("marshal the status line: %w", err)
-	}
-	doc["statusLine"] = statusLine
-	data, err := json.Marshal(doc)
-	if err != nil {
-		return nil, fmt.Errorf("marshal the settings document: %w", err)
-	}
-	return data, nil
-}
-
 // denyJSON builds the `echo`-able deny-and-steer JSON payload for PreToolUse hooks.
 // steer must contain no single quotes, as it rides inside a single-quoted `echo` argument under git-bash.
 func denyJSON(steer string) string {
@@ -298,14 +269,13 @@ func denyJSON(steer string) string {
 	)
 }
 
-// denyInputs are the run inputs that decide which standing denies a run installs and announces.
+// denyInputs are the run inputs that decide which standing denies a run installs.
 type denyInputs struct {
 	interactive   bool
 	cfg           shuttleengine.Config
 	claude        Config
 	forkSubagents bool
 	denyPublish   bool
-	allowRawTmux  bool
 }
 
 // standingDeny is one PreToolUse deny lym installs, with the system-prompt sentence announcing it.
@@ -321,9 +291,6 @@ type standingDeny struct {
 	notice string
 	// installed reports whether a run with the given inputs installs this deny.
 	installed func(denyInputs) bool
-	// announced reports whether the system prompt of a run with the given inputs carries notice;
-	// nil announces the deny exactly when it is installed.
-	announced func(denyInputs) bool
 }
 
 // claudeDenies returns the denies keyed on Claude's own tools and payload fields, in the order their PreToolUse entries appear.
@@ -350,50 +317,19 @@ func claudeDenies() []standingDeny {
 // standingDeniesFor lists lym's denies in the order their PreToolUse entries appear:
 // the Claude denies, then every shell guard row, the refuse-raw row among them when refuseRaw is non-empty.
 // An interactive run's AskUserQuestion hook only records, never denies, so it stays outside the list.
-// A live check in a deny's command runs the lym binary at lymPath.
-func standingDeniesFor(refuseRaw []string, lymPath string) []standingDeny {
-	return append(claudeDenies(), shellGuardDenies(refuseRaw, lymPath)...)
+func standingDeniesFor(refuseRaw []string) []standingDeny {
+	return append(claudeDenies(), shellGuardDenies(refuseRaw)...)
 }
 
 // bashForegroundPhrase is Claude's phrase for running a long command in the foreground.
 // The `raw-go` row's steer and notice carry it.
 var bashForegroundPhrase = "with the Bash tool timeout set to " + bashMaxTimeoutMS
 
-// pythonAllowedCheck returns the command the python row's hook runs on a matching call.
-// It asks the lym binary at lymPath whether the shuttle config the launch read allows Python now.
-// It runs from the session's project directory.
-// The verb finds that config from the session's own worktree.
-// When no hub holds the worktree, it reads the standalone target's state directory.
-// The verb prints nothing, so the hook's output stays the deny alone.
-// A missing or failing lym, or a project directory it cannot enter, exits non-zero, so the hook keeps denying.
-func pythonAllowedCheck(lymPath string) string {
-	return `(cd "${CLAUDE_PROJECT_DIR:-.}" && ` + shQuote(lymPath) + ` shuttle ` + shuttleengine.PythonAllowedHookVerb + `) >/dev/null 2>&1`
-}
-
 // shellSwitchInstalled maps each shell guard switch to whether a run with the given inputs installs its rows.
-// The python rows are installed in every run, since their hook asks the hub on each matching call.
 var shellSwitchInstalled = map[shellguard.Switch]func(denyInputs) bool{
-	shellguard.SwitchNone:        func(denyInputs) bool { return true },
-	shellguard.SwitchDenyPython:  func(denyInputs) bool { return true },
-	shellguard.SwitchDenyPublish: func(in denyInputs) bool { return in.denyPublish },
-	shellguard.SwitchDenyRawTmux: func(in denyInputs) bool { return !in.allowRawTmux },
-}
-
-// shellSwitchAnnounced maps each shell guard switch to whether a run with the given inputs announces its rows.
-// The announcement is the row's sentence in the system prompt.
-// The python rows are announced as the shuttle config stands at launch.
-var shellSwitchAnnounced = map[shellguard.Switch]func(denyInputs) bool{
 	shellguard.SwitchNone:        func(denyInputs) bool { return true },
 	shellguard.SwitchDenyPython:  func(in denyInputs) bool { return in.cfg.DenyPython },
 	shellguard.SwitchDenyPublish: func(in denyInputs) bool { return in.denyPublish },
-	shellguard.SwitchDenyRawTmux: func(in denyInputs) bool { return !in.allowRawTmux },
-}
-
-// shellSwitchLiveCheck maps a shell guard switch whose hook decides on each matching call to the command it asks.
-// The command is rendered over the path of the lym binary that runs it.
-// The hook denies a matching call unless that command exits 0.
-var shellSwitchLiveCheck = map[shellguard.Switch]func(lymPath string) string{
-	shellguard.SwitchDenyPython: pythonAllowedCheck,
 }
 
 // shellGuardInstalled reports whether a run with the given inputs installs the shell guard rows hanging on sw;
@@ -403,19 +339,11 @@ func shellGuardInstalled(sw shellguard.Switch, in denyInputs) bool {
 	return known && installed(in)
 }
 
-// shellGuardAnnounced reports whether a run with the given inputs announces the shell guard rows hanging on sw;
-// a switch it does not know is not announced.
-func shellGuardAnnounced(sw shellguard.Switch, in denyInputs) bool {
-	announced, known := shellSwitchAnnounced[sw]
-	return known && announced(in)
-}
-
 // shellGuardDenies renders every shellguard row for the told refuse list as a standing deny, in table order.
-// A live check in a row's command runs the lym binary at lymPath.
-func shellGuardDenies(refuseRaw []string, lymPath string) []standingDeny {
+func shellGuardDenies(refuseRaw []string) []standingDeny {
 	var denies []standingDeny
 	for _, row := range shellguard.Rows(bashForegroundPhrase, refuseRaw) {
-		denies = append(denies, renderShellGuard(row, lymPath))
+		denies = append(denies, renderShellGuard(row))
 	}
 	return denies
 }
@@ -423,23 +351,18 @@ func shellGuardDenies(refuseRaw []string, lymPath string) []standingDeny {
 // renderShellGuard wraps a shell guard row as a PreToolUse(Bash) hook entry.
 // A one-pattern row greps the payload once;
 // a row of several patterns greps the payload once per pattern and denies only when all match.
-// A row whose switch has a live check denies a match only when that check, run through the lym binary at lymPath, fails.
 // Each pattern is shell-quoted, since a pattern may hold a single quote.
 // The command ends with `; true`, so a non-match exits 0 and allows the call.
-func renderShellGuard(row shellguard.Row, lymPath string) standingDeny {
-	deny := "echo '" + denyJSON(row.Steer) + "'"
-	if check, live := shellSwitchLiveCheck[row.Switch]; live {
-		deny = "! " + check(lymPath) + " && " + deny
-	}
+func renderShellGuard(row shellguard.Row) standingDeny {
 	var command string
 	if len(row.Patterns) == 1 {
-		command = "grep -Eq " + shQuote(row.Patterns[0]) + " && " + deny + "; true"
+		command = "grep -Eq " + shQuote(row.Patterns[0]) + " && echo '" + denyJSON(row.Steer) + "'; true"
 	} else {
 		greps := make([]string, len(row.Patterns))
 		for i, pattern := range row.Patterns {
 			greps[i] = "{ printf '%s' \"$in\" | grep -Eq " + shQuote(pattern) + "; }"
 		}
-		command = "in=$(cat); " + strings.Join(greps, " && ") + " && " + deny + "; true"
+		command = "in=$(cat); " + strings.Join(greps, " && ") + " && echo '" + denyJSON(row.Steer) + "'; true"
 	}
 	return standingDeny{
 		matcher:   "Bash",
@@ -447,22 +370,16 @@ func renderShellGuard(row shellguard.Row, lymPath string) standingDeny {
 		steer:     row.Steer,
 		notice:    row.Notice,
 		installed: func(in denyInputs) bool { return shellGuardInstalled(row.Switch, in) },
-		announced: func(in denyInputs) bool { return shellGuardAnnounced(row.Switch, in) },
 	}
 }
 
-// buildDenyNotice returns the one-line system-prompt notice that announces each deny the given inputs announce.
-// The notice is "" when they announce none.
-func buildDenyNotice(interactive bool, cfg shuttleengine.Config, claude Config, forkSubagents, denyPublish, allowRawTmux bool) string {
-	in := denyInputs{interactive: interactive, cfg: cfg, claude: claude, forkSubagents: forkSubagents, denyPublish: denyPublish, allowRawTmux: allowRawTmux}
+// buildDenyNotice returns the one-line system-prompt notice that announces each deny the given inputs install.
+// The notice is "" when they install none.
+func buildDenyNotice(interactive bool, cfg shuttleengine.Config, claude Config, forkSubagents, denyPublish bool) string {
+	in := denyInputs{interactive: interactive, cfg: cfg, claude: claude, forkSubagents: forkSubagents, denyPublish: denyPublish}
 	var sentences []string
-	// The notice reads no command, so the denies are rendered over no lym path.
-	for _, deny := range standingDeniesFor(cfg.RefuseRaw, "") {
-		announced := deny.installed
-		if deny.announced != nil {
-			announced = deny.announced
-		}
-		if deny.notice != "" && announced(in) {
+	for _, deny := range standingDeniesFor(cfg.RefuseRaw) {
+		if deny.notice != "" && deny.installed(in) {
 			sentences = append(sentences, deny.notice)
 		}
 	}
@@ -492,7 +409,6 @@ func activityStampHook(eventsPathPosix string) []hookEntry {
 // That path must be a git-bash POSIX path, and it is shell-quoted, so an apostrophe in it cannot break the command.
 // The PreToolUse guardrails follow from interactive, cfg, claude and forkSubagents.
 // denyPublish adds a deny of git push and of gh calls beyond reads, comments, and title and body edits.
-// allowRawTmux leaves out the deny of a raw tmux or script command, which every other run carries.
 // Every SessionStart source is recorded exactly once.
 // A non-empty contextAfterCompaction splits the SessionStart hook in two:
 // one entry records every source but compaction,
@@ -503,9 +419,6 @@ func activityStampHook(eventsPathPosix string) []hookEntry {
 // and the SessionStart recording adds nothing to the session's context.
 // claude's batching nudge, when on, adds a PostToolUse entry matched to the tools a breach is made of,
 // and it names the state file beside the events file.
-// A cfg whose EditLoopEdits is above 0 adds a PostToolUse entry matched to Edit and Write.
-// It adds the entry only for a run that is not interactive.
-// It records each edited file in the edit records file beside the events file.
 // A non-empty creelFlagDirPosix is a git-bash POSIX path like eventsPathPosix.
 // It adds the creel mail hook to PostToolUse,
 // and the hook tests the strand's flag in that directory.
@@ -517,9 +430,8 @@ func activityStampHook(eventsPathPosix string) []hookEntry {
 // the prompt command still exits 0, and the Stop command exits with its recording's status.
 // In a merged creel Stop command it runs first, before creel's delivery, whether or not mail is then handed out.
 // A non-empty advisorModel, an alias or a full model id, is written as `advisorModel`; an empty one leaves the key out.
-// lymPath is the lym binary the python row's live check runs, shell-quoted into its command.
 // scope is the session's scope, carried as the document's last keys; the zero scope adds none.
-func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.Config, claude Config, forkSubagents, denyPublish, allowRawTmux bool, contextAfterCompaction, turnHookCommand, creelFlagDirPosix, advisorModel, lymPath string, scope sessionScope) ([]byte, error) {
+func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.Config, claude Config, forkSubagents, denyPublish bool, contextAfterCompaction, turnHookCommand, creelFlagDirPosix, advisorModel string, scope sessionScope) ([]byte, error) {
 	quotedEventsPath := shQuote(eventsPathPosix)
 	recordingHook := func(hookEventName string, alwaysSucceeds bool) []hookEntry {
 		command := recordingCommand(hookEventName, quotedEventsPath)
@@ -564,8 +476,8 @@ func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.C
 		}
 	}
 
-	in := denyInputs{interactive: interactive, cfg: cfg, claude: claude, forkSubagents: forkSubagents, denyPublish: denyPublish, allowRawTmux: allowRawTmux}
-	for _, deny := range standingDeniesFor(cfg.RefuseRaw, lymPath) {
+	in := denyInputs{interactive: interactive, cfg: cfg, claude: claude, forkSubagents: forkSubagents, denyPublish: denyPublish}
+	for _, deny := range standingDeniesFor(cfg.RefuseRaw) {
 		if deny.installed(in) {
 			doc.Hooks.PreToolUse = append(doc.Hooks.PreToolUse, hookEntry{
 				Matcher: deny.matcher,
@@ -585,14 +497,6 @@ func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.C
 		doc.Hooks.PostToolUse = append(doc.Hooks.PostToolUse, hookEntry{
 			Matcher: batchingNudgeMatcher,
 			Hooks:   []hookCommand{{Type: "command", Command: batchingNudgeHookCommand(shQuote(statePath))}},
-		})
-	}
-	// Only an autonomous run's wait notifies a parent of an edit loop, so an interactive session records no edits.
-	if cfg.EditLoopEdits > 0 && !interactive {
-		recordsPath := path.Join(path.Dir(eventsPathPosix), shuttleengine.EditRecordsFileName)
-		doc.Hooks.PostToolUse = append(doc.Hooks.PostToolUse, hookEntry{
-			Matcher: editRecordMatcher,
-			Hooks:   []hookCommand{{Type: "command", Command: editRecordHookCommand(shQuote(recordsPath))}},
 		})
 	}
 	if creelFlagDirPosix != "" {
@@ -648,11 +552,8 @@ func init() {
 		if _, known := shellSwitchInstalled[row.Switch]; !known {
 			panic(fmt.Sprintf("claudeengine: shellguard row %q hangs on switch %q, which shellGuardInstalled does not know, so the row would stay uninstalled", row.Name, row.Switch))
 		}
-		if _, known := shellSwitchAnnounced[row.Switch]; !known {
-			panic(fmt.Sprintf("claudeengine: shellguard row %q hangs on switch %q, which shellGuardAnnounced does not know, so the row would stay unannounced", row.Name, row.Switch))
-		}
 	}
-	for _, deny := range standingDeniesFor(sampleRefuseRaw, "") {
+	for _, deny := range standingDeniesFor(sampleRefuseRaw) {
 		if strings.ContainsAny(deny.steer, steerTextForbiddenChars) {
 			panic(fmt.Sprintf("claudeengine: steer text contains a forbidden character (one of %q), which would break the JSON payload or the echo hook command: %q", steerTextForbiddenChars, deny.steer))
 		}

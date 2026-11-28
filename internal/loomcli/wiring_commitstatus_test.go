@@ -1,6 +1,6 @@
 // wiring_commitstatus_test.go pins loom's side of the per-transition status seam:
 // its board status write, both ShedPaths fill sites, and the status pathspec.
-// The core's skip and commit dispositions and its start of the pusher live in internal/statuscommit, which pins them.
+// The seam's three dispositions live in internal/statuscommit, which pins them.
 // Every test here drives newCommitStatusSeam against injected commitStatusDeps stub closures.
 // It spawns no git and no process, so the file stays Tier 1 with no hub fixture.
 
@@ -31,11 +31,11 @@ func selfStatusRel(location *lymcwd.Location) string {
 }
 
 // TestNewCommitStatusSeam_OrdinaryPath checks the seam with MergeActive false and no board-status writer.
-// A commit that landed something is followed by one StartPush, in that order;
-// a commit that landed nothing starts no pusher.
+// A commit that landed something is followed by one Spawn, in that order;
+// a commit that landed nothing spawns nothing.
 // Both return nil.
 //
-//testtiming:keep pins the seam with no board-status writer calling commit then StartPush once each, in that order, and starting no pusher for a no-op commit; the board-status test always installs a writer
+//testtiming:keep pins the seam with no board-status writer calling commit then spawn once each, in that order, and spawning nothing for a no-op commit; the board-status test always installs a writer
 func TestNewCommitStatusSeam_OrdinaryPath(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -45,8 +45,8 @@ func TestNewCommitStatusSeam_OrdinaryPath(t *testing.T) {
 		committed bool
 		want      []string
 	}{
-		{"committed transition starts the pusher once", true, []string{"commit", "start-push"}},
-		{"no-op transition starts none", false, []string{"commit"}},
+		{"committed transition spawns once", true, []string{"commit", "spawn"}},
+		{"no-op transition spawns none", false, []string{"commit"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -59,9 +59,9 @@ func TestNewCommitStatusSeam_OrdinaryPath(t *testing.T) {
 					calls = append(calls, "commit")
 					return tt.committed, nil
 				},
-				StartPush: func() bool {
-					calls = append(calls, "start-push")
-					return true
+				Spawn: func() error {
+					calls = append(calls, "spawn")
+					return nil
 				},
 			}
 
@@ -86,7 +86,7 @@ func TestNewCommitStatusSeam_BoardStatus(t *testing.T) {
 	t.Parallel()
 
 	var written []string
-	commits, starts := 0, 0
+	commits, spawns := 0, 0
 	failNext := false
 	deps := commitStatusDeps{
 		MergeActive: func() (bool, error) { return false, nil },
@@ -94,9 +94,9 @@ func TestNewCommitStatusSeam_BoardStatus(t *testing.T) {
 			commits++
 			return true, nil
 		},
-		StartPush: func() bool {
-			starts++
-			return true
+		Spawn: func() error {
+			spawns++
+			return nil
 		},
 		SetBoardStatus: func(status string) error {
 			if failNext {
@@ -136,8 +136,8 @@ func TestNewCommitStatusSeam_BoardStatus(t *testing.T) {
 	if commits != len(steps) {
 		t.Errorf("commits = %d; want %d", commits, len(steps))
 	}
-	if starts != len(steps) {
-		t.Errorf("pusher starts = %d; want %d -- one per committed transition", starts, len(steps))
+	if spawns != len(steps) {
+		t.Errorf("spawns = %d; want %d -- one per committed transition", spawns, len(steps))
 	}
 }
 
@@ -190,7 +190,7 @@ func TestNewCommitStatusSeam_Finish(t *testing.T) {
 	seam := newCommitStatusSeam(commitStatusDeps{
 		MergeActive: func() (bool, error) { return false, nil },
 		Commit:      func(string) (bool, error) { return false, nil },
-		StartPush:   func() bool { return true },
+		Spawn:       func() error { return nil },
 		SetBoardStatus: func(status string) error {
 			written = append(written, status)
 			return nil

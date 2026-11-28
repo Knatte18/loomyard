@@ -14,7 +14,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gatefixer"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/landingshed"
@@ -25,13 +24,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
-	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
-	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 	"github.com/Knatte18/loomyard/internal/weaverengine"
@@ -42,186 +39,175 @@ import (
 // Seams whose nil is a documented default are already skipped, so only wire's own gaps are listed.
 // batten wires only its own producers, so every loom seam of shedrecipe.Env stays nil here.
 var intentionallyNil = map[string]string{
-	"VerifyCommand":                       "loom-only seam, batten runs no verify gate",
-	"VerifyHold":                          "loom-only seam, batten runs no verify gate",
-	"GateFindingsFile":                    "loom-only seam, batten has no gated row that keeps findings",
-	"Shuttle":                             "loom-only seam, batten drives no agent itself",
-	"Burler":                              "loom-only seam, batten runs no review round",
-	"Pawl.SetStatus":                      "loom-only seam, batten runs no pawl row",
-	"Pawl.EntryProducer":                  "loom-only seam, batten runs no pawl row",
-	"Pawl.OwnedElsewhere":                 "loom-only seam, batten runs no pawl row",
-	"Pawl.MarkBeam":                       "loom-only seam, batten runs no pawl row",
-	"Pawl.SpawnPush":                      "loom-only seam, batten runs no pawl row",
-	"Pawl.RegenerateWorkspace":            "loom-only seam, batten runs no pawl row",
-	"Pawl.StopDobby":                      "loom-only seam, batten runs no pawl row",
-	"Pawl.StartDobby":                     "loom-only seam, batten runs no pawl row",
-	"Pawl.DobbyLive":                      "loom-only seam, batten runs no pawl row",
-	"Pawl.Recheck":                        "loom-only seam, batten runs no pawl row",
-	"Pawl.HandOff":                        "loom-only seam, batten runs no pawl row",
-	"Pawl.ReadyStands":                    "loom-only seam, batten runs no pawl row",
-	"Pawl.StampWake":                      "loom-only seam, batten runs no pawl row",
-	"Pawl.Notify":                         "loom-only seam, batten runs no pawl row",
-	"Pawl.Autonomous":                     "loom-only seam, batten runs no pawl row",
-	"Pawl.HoldsCommits":                   "loom-only seam, batten runs no pawl row",
-	"Pawl.WorkRemains":                    "loom-only seam, batten runs no pawl row",
-	"Pawl.Down":                           "loom-only seam, batten runs no pawl row",
-	"Pawl.Now":                            "loom-only seam, batten runs no pawl row",
-	"Pawl.Sleep":                          "loom-only seam, batten runs no pawl row",
-	"Seats":                               "loom-only seam, batten runs no seat table",
-	"Models":                              "loom-only seam, batten resolves no seat model",
-	"WebsterRun":                          "loom-only seam, batten runs no webster",
-	"WebsterDeps.Starter":                 "loom-only seam, batten runs no webster",
-	"WebsterDeps.Stopper":                 "loom-only seam, batten runs no webster",
-	"WebsterDeps.Engines":                 "loom-only seam, batten runs no webster",
-	"WebsterDeps.RefMatcher":              "loom-only seam, batten runs no webster",
-	"WebsterDeps.ReadOnly":                "loom-only seam, batten runs no webster",
-	"WebsterDeps.Geom.Index":              "loom-only seam, batten runs no webster",
-	"WebsterDeps.Geom.VerifyHold":         "loom-only seam, batten runs no webster",
-	"WeaverRun":                           "loom-only seam, batten runs no weaver",
-	"WeaverDeps.Runner":                   "loom-only seam, batten runs no weaver",
-	"WeaverDeps.Fixer":                    "loom-only seam, batten runs no weaver",
-	"WeaverDeps.Deliver":                  "loom-only seam, batten runs no weaver",
-	"WeaverDeps.Reed":                     "loom-only seam, batten runs no weaver",
-	"WeaverDeps.CommitRecords":            "loom-only seam, batten runs no weaver",
-	"WeaverDeps.RecordsHead":              "loom-only seam, batten runs no weaver",
-	"WeaverDeps.Geom.Index":               "loom-only seam, batten runs no weaver",
-	"WeaverDeps.Geom.VerifyHold":          "loom-only seam, batten runs no weaver",
-	"ImplementerSeam.Setting":             "loom-only seam, batten runs no implementer",
-	"ImplementerSeam.StateHistory":        "loom-only seam, batten runs no implementer",
-	"ImplementerSeam.TaskHead":            "loom-only seam, batten runs no implementer",
-	"ImplementerSeam.LiveStrands":         "loom-only seam, batten runs no implementer",
-	"PlanIndex":                           "loom-only seam, batten has no plan segment",
-	"CommitWebster":                       "loom-only seam, batten runs no webster",
-	"ApproveDiscussion":                   "loom-only seam, batten has no discussion segment",
-	"SeedDiscussedRecord":                 "loom-only seam, batten has no Motif block",
-	"Landing.BaseCommand":                 "loom-only seam, batten lands no branch",
-	"Landing.VerifyHold":                  "loom-only seam, batten lands no branch",
-	"Landing.GateTiers":                   "loom-only seam, batten lands no branch",
-	"Landing.OpenFabric":                  "loom-only seam, batten lands no branch",
-	"Landing.OpenParentFabric":            "loom-only seam, batten lands no branch",
-	"Landing.TaskHead":                    "loom-only seam, batten lands no branch",
-	"Landing.Shuttle":                     "loom-only seam, batten lands no branch",
-	"Landing.DriftVerdict":                "loom-only seam, batten lands no branch",
-	"Landing.EnginesRun":                  "loom-only seam, batten lands no branch",
-	"Landing.Lock.Store":                  "loom-only seam, batten lands no branch",
-	"Landing.Lock.Owner":                  "loom-only seam, batten lands no branch",
-	"Landing.Lock.PauseRequested":         "loom-only seam, batten lands no branch",
-	"Landing.ReadParentTips":              "loom-only seam, batten lands no branch",
-	"Landing.HoldsWork":                   "loom-only seam, batten lands no branch",
-	"Landing.ChangedPaths":                "loom-only seam, batten lands no branch",
-	"Landing.MergeBase":                   "loom-only seam, batten lands no branch",
-	"Landing.FixerSeats":                  "loom-only seam, batten lands no branch",
-	"Landing.LineChange":                  "loom-only seam, batten lands no branch",
-	"Landing.IsTestFile":                  "loom-only seam, batten lands no branch",
-	"Landing.RowEntry":                    "loom-only seam, batten lands no branch",
-	"Landing.TaskRemoteTip":               "loom-only seam, batten lands no branch",
-	"Landing.IsAncestor":                  "loom-only seam, batten lands no branch",
-	"Landing.CodeReviewOff":               "loom-only seam, batten lands no branch",
-	"Landing.PullRequest.Mode":            "loom-only seam, batten lands no branch",
-	"Landing.PullRequest.Origin":          "loom-only seam, batten lands no branch",
-	"Landing.PullRequest.API":             "loom-only seam, batten lands no branch",
-	"Landing.PullRequest.PushTask":        "loom-only seam, batten lands no branch",
-	"Landing.PullRequest.CommitsMissing":  "loom-only seam, batten lands no branch",
-	"Landing.PullRequest.TaskHasCommits":  "loom-only seam, batten lands no branch",
-	"Landing.PullRequest.DirtyPaths":      "loom-only seam, batten lands no branch",
-	"Landing.PullRequest.PauseCovered":    "loom-only seam, batten lands no branch",
-	"Landing.PullRequest.Now":             "loom-only seam, batten lands no branch",
-	"Landing.PullRequest.Sleep":           "loom-only seam, batten lands no branch",
-	"Landing.PullRequest.RecordChanges":   "loom-only seam, batten lands no branch",
-	"Landing.PullRequest.CommitRecord":    "loom-only seam, batten lands no branch",
-	"Landing.PullRequest.BeamRecord":      "beam-only seam, batten lands no branch",
-	"Landing.PullRequest.DropBeamRecord":  "beam-only seam, batten lands no branch",
-	"Landing.PullRequest.MailAgent":       "loom-only seam, batten lands no branch",
-	"Landing.PullRequest.Sessions":        "loom-only seam, batten lands no branch",
-	"Landing.PullRequest.SessionLive":     "loom-only seam, batten lands no branch",
-	"Landing.PullRequest.RegisterSession": "loom-only seam, batten lands no branch",
-	"DiscussionTable":                     "loom-only seam, batten has no discussion segment",
-	"CommitDiscussion":                    "loom-only seam, batten has no discussion segment",
-	"DescribeTable":                       "loom-only seam, batten has no describe segment",
-	"DescriptionTerms":                    "loom-only seam, batten has no describe segment",
-	"CommitDescription":                   "loom-only seam, batten has no describe segment",
-	"PlanTable":                           "loom-only seam, batten has no plan segment",
-	"CommitPlan":                          "loom-only seam, batten has no plan segment",
-	"PartsTable":                          "loom-only seam, batten has no plan segment",
-	"PartsPlanTable":                      "loom-only seam, batten has no plan segment",
-	"CommitParts":                         "loom-only seam, batten has no plan segment",
-	"CommitPartsPlan":                     "loom-only seam, batten has no plan segment",
-	"ApprovePlan":                         "loom-only seam, batten has no plan segment",
-	"SkipPlanReview":                      "loom-only seam, batten has no plan segment",
-	"CarryOver":                           "loom-only seam, batten runs no review segment",
-	"ReflectFriction":                     "loom-only seam, batten has no reflect segment",
-	"Rework.ReadCommitted":                "loom-only seam, batten has no rework segment",
-	"Rework.ArchiveWebster":               "loom-only seam, batten has no rework segment",
-	"DarnTable":                           "darn-only seam, batten has no darn segment",
-	"Darn.Commit":                         "darn-only seam, batten has no darn segment",
-	"Darn.LatestOutcome":                  "darn-only seam, batten has no darn segment",
-	"Darn.CheckRecord":                    "darn-only seam, batten has no darn segment",
-	"Darn.BranchCommits":                  "darn-only seam, batten has no darn segment",
-	"Darn.CommittedRecord":                "darn-only seam, batten has no darn segment",
-	"EntryLabels":                         "darn-only seam, batten has no red-first gate",
-	"RedFirstCommand":                     "darn-only seam, batten has no red-first gate",
-	"DiscussionHistory":                   "loom-only seam, batten wires no loom record",
-	"RecordWrite.ReadBody":                "loom-only seam, batten wires no loom record",
-	"RecordWrite.ReadStored":              "loom-only seam, batten wires no loom record",
-	"RecordWrite.Commit":                  "loom-only seam, batten wires no loom record",
-	"RaddleWrite.Deps.SplitPerch":         "raddle-only seam, batten runs no raddle row",
-	"RaddleWrite.Deps.AutoApprove":        "raddle-only seam, batten runs no raddle row",
-	"RaddleWrite.Deps.FreshEntry":         "raddle-only seam, batten runs no raddle row",
-	"RaddleWrite.Deps.StoreCold":          "raddle-only seam, batten runs no raddle row",
-	"RaddleWrite.Deps.Commit":             "raddle-only seam, batten runs no raddle row",
-	"RaddleWrite.Table":                   "raddle-only seam, batten runs no raddle row",
-	"RaddleWrite.Check.Board":             "raddle-only seam, batten runs no raddle row",
-	"RaddleFile.PartRecordPath":           "raddle-only seam, batten runs no raddle row",
-	"RaddleFile.Check":                    "raddle-only seam, batten runs no raddle row",
-	"RaddleFile.Recheck":                  "raddle-only seam, batten runs no raddle row",
-	"RaddleFile.Entry":                    "raddle-only seam, batten runs no raddle row",
-	"RaddleFile.StoreDone":                "raddle-only seam, batten runs no raddle row",
-	"RaddleFile.AlreadyFiled":             "raddle-only seam, batten runs no raddle row",
-	"RaddleFile.ClaimStatus":              "raddle-only seam, batten runs no raddle row",
-	"RaddleFile.MarkFiled":                "raddle-only seam, batten runs no raddle row",
-	"RaddleFile.ClearStatus":              "raddle-only seam, batten runs no raddle row",
-	"RaddleFile.File":                     "raddle-only seam, batten runs no raddle row",
-	"RaddleFile.CreateBeam":               "raddle-only seam, batten runs no raddle row",
-	"RaddleFile.Notify":                   "raddle-only seam, batten runs no raddle row",
-	"RaddleFile.EndEntry":                 "raddle-only seam, batten runs no raddle row",
-	"RaddleFile.Commit":                   "raddle-only seam, batten runs no raddle row",
-	"Drift.Config":                        "loom- and darn-only seam, batten has no Drift row",
-	"Drift.Status":                        "loom- and darn-only seam, batten has no Drift row",
-	"Drift.Head":                          "loom- and darn-only seam, batten has no Drift row",
-	"Drift.BranchPoint":                   "loom- and darn-only seam, batten has no Drift row",
-	"Drift.DirtyPaths":                    "loom- and darn-only seam, batten has no Drift row",
-	"Drift.Commit":                        "loom- and darn-only seam, batten has no Drift row",
-	"Drift.CommitWithTrailers":            "loom- and darn-only seam, batten has no Drift row",
-	"Drift.TrailerCommit":                 "loom- and darn-only seam, batten has no Drift row",
-	"Drift.FileAt":                        "loom- and darn-only seam, batten has no Drift row",
-	"Drift.CommitsSince":                  "loom- and darn-only seam, batten has no Drift row",
-	"Drift.ChangedFiles":                  "loom- and darn-only seam, batten has no Drift row",
-	"Drift.CommitMessages":                "loom- and darn-only seam, batten has no Drift row",
-	"Drift.RangeDiff":                     "loom- and darn-only seam, batten has no Drift row",
-	"Drift.ExpectTable":                   "loom- and darn-only seam, batten has no Drift row",
-	"Drift.StartCapture":                  "loom- and darn-only seam, batten has no Drift row",
-	"Drift.RunCapture":                    "loom- and darn-only seam, batten has no Drift row",
-	"Drift.CaptureCurrent":                "loom- and darn-only seam, batten has no Drift row",
-	"Drift.Sleep":                         "loom- and darn-only seam, batten has no Drift row",
-	"Drift.Compare":                       "loom- and darn-only seam, batten has no Drift row",
-	"Drift.JudgeTable":                    "loom- and darn-only seam, batten has no Drift row",
-	"Drift.Checkouts":                     "loom- and darn-only seam, batten has no Drift row",
-	"Drift.RecordsChangedSince":           "loom- and darn-only seam, batten has no Drift row",
-	"Drift.LockDecisionRecord":            "loom- and darn-only seam, batten has no Drift row",
-	"Drift.ReplacedDecisionRecord":        "loom- and darn-only seam, batten has no Drift row",
-	"Drift.EndRoles":                      "loom- and darn-only seam, batten has no Drift row",
-	"Drift.JudgeParent":                   "loom- and darn-only seam, batten has no Drift row",
-	"Sampler.Spec":                        "sampler-only seam, batten runs no sampler row",
-	"Sampler.Sessions":                    "sampler-only seam, batten runs no sampler row",
-	"Sampler.SessionLive":                 "sampler-only seam, batten runs no sampler row",
-	"Sampler.RegisterSession":             "sampler-only seam, batten runs no sampler row",
-	"Sampler.Stamp":                       "sampler-only seam, batten runs no sampler row",
-	"Sampler.DirtyPaths":                  "sampler-only seam, batten runs no sampler row",
-	"Sampler.CheckRecord":                 "sampler-only seam, batten runs no sampler row",
-	"Sampler.MailAgent":                   "sampler-only seam, batten runs no sampler row",
-	"Sampler.PauseCovered":                "sampler-only seam, batten runs no sampler row",
-	"Sampler.Now":                         "sampler-only seam, batten runs no sampler row",
-	"Sampler.Sleep":                       "sampler-only seam, batten runs no sampler row",
+	"VerifyCommand":                          "loom-only seam, batten runs no verify gate",
+	"VerifyHold":                             "loom-only seam, batten runs no verify gate",
+	"GateFindingsFile":                       "loom-only seam, batten has no gated row that keeps findings",
+	"Shuttle":                                "loom-only seam, batten drives no agent itself",
+	"Burler":                                 "loom-only seam, batten runs no review round",
+	"Pawl.SetStatus":                         "loom-only seam, batten runs no pawl row",
+	"Pawl.EntryProducer":                     "loom-only seam, batten runs no pawl row",
+	"Pawl.OwnedElsewhere":                    "loom-only seam, batten runs no pawl row",
+	"Pawl.MarkBeam":                          "loom-only seam, batten runs no pawl row",
+	"Pawl.SpawnPush":                         "loom-only seam, batten runs no pawl row",
+	"Pawl.RegenerateWorkspace":               "loom-only seam, batten runs no pawl row",
+	"Pawl.StopDobby":                         "loom-only seam, batten runs no pawl row",
+	"Pawl.StartDobby":                        "loom-only seam, batten runs no pawl row",
+	"Pawl.DobbyLive":                         "loom-only seam, batten runs no pawl row",
+	"Pawl.Recheck":                           "loom-only seam, batten runs no pawl row",
+	"Pawl.HandOff":                           "loom-only seam, batten runs no pawl row",
+	"Pawl.ReadyStands":                       "loom-only seam, batten runs no pawl row",
+	"Pawl.StampWake":                         "loom-only seam, batten runs no pawl row",
+	"Pawl.Notify":                            "loom-only seam, batten runs no pawl row",
+	"Pawl.Down":                              "loom-only seam, batten runs no pawl row",
+	"Pawl.Now":                               "loom-only seam, batten runs no pawl row",
+	"Pawl.Sleep":                             "loom-only seam, batten runs no pawl row",
+	"Seats":                                  "loom-only seam, batten runs no seat table",
+	"Models":                                 "loom-only seam, batten resolves no seat model",
+	"WebsterRun":                             "loom-only seam, batten runs no webster",
+	"WebsterDeps.Starter":                    "loom-only seam, batten runs no webster",
+	"WebsterDeps.Stopper":                    "loom-only seam, batten runs no webster",
+	"WebsterDeps.Engines":                    "loom-only seam, batten runs no webster",
+	"WebsterDeps.RefMatcher":                 "loom-only seam, batten runs no webster",
+	"WebsterDeps.ReadOnly":                   "loom-only seam, batten runs no webster",
+	"WebsterDeps.Geom.Index":                 "loom-only seam, batten runs no webster",
+	"WebsterDeps.Geom.VerifyHold":            "loom-only seam, batten runs no webster",
+	"WeaverRun":                              "loom-only seam, batten runs no weaver",
+	"WeaverDeps.Runner":                      "loom-only seam, batten runs no weaver",
+	"WeaverDeps.Fixer":                       "loom-only seam, batten runs no weaver",
+	"WeaverDeps.Deliver":                     "loom-only seam, batten runs no weaver",
+	"WeaverDeps.Reed":                        "loom-only seam, batten runs no weaver",
+	"WeaverDeps.CommitRecords":               "loom-only seam, batten runs no weaver",
+	"WeaverDeps.RecordsHead":                 "loom-only seam, batten runs no weaver",
+	"WeaverDeps.Geom.Index":                  "loom-only seam, batten runs no weaver",
+	"WeaverDeps.Geom.VerifyHold":             "loom-only seam, batten runs no weaver",
+	"ImplementerSeam.Setting":                "loom-only seam, batten runs no implementer",
+	"ImplementerSeam.StateHistory":           "loom-only seam, batten runs no implementer",
+	"ImplementerSeam.TaskHead":               "loom-only seam, batten runs no implementer",
+	"ImplementerSeam.LiveStrands":            "loom-only seam, batten runs no implementer",
+	"PlanIndex":                              "loom-only seam, batten has no plan segment",
+	"CommitWebster":                          "loom-only seam, batten runs no webster",
+	"ApproveDiscussion":                      "loom-only seam, batten has no discussion segment",
+	"SeedDiscussedRecord":                    "loom-only seam, batten has no Motif block",
+	"Landing.BaseCommand":                    "loom-only seam, batten lands no branch",
+	"Landing.VerifyHold":                     "loom-only seam, batten lands no branch",
+	"Landing.GateTiers":                      "loom-only seam, batten lands no branch",
+	"Landing.OpenFabric":                     "loom-only seam, batten lands no branch",
+	"Landing.OpenParentFabric":               "loom-only seam, batten lands no branch",
+	"Landing.TaskHead":                       "loom-only seam, batten lands no branch",
+	"Landing.Shuttle":                        "loom-only seam, batten lands no branch",
+	"Landing.DriftVerdict":                   "loom-only seam, batten lands no branch",
+	"Landing.EnginesRun":                     "loom-only seam, batten lands no branch",
+	"Landing.Lock.Store":                     "loom-only seam, batten lands no branch",
+	"Landing.Lock.Owner":                     "loom-only seam, batten lands no branch",
+	"Landing.Lock.PauseRequested":            "loom-only seam, batten lands no branch",
+	"Landing.ReadParentTips":                 "loom-only seam, batten lands no branch",
+	"Landing.HoldsWork":                      "loom-only seam, batten lands no branch",
+	"Landing.ChangedPaths":                   "loom-only seam, batten lands no branch",
+	"Landing.MergeBase":                      "loom-only seam, batten lands no branch",
+	"Landing.FixerSeats":                     "loom-only seam, batten lands no branch",
+	"Landing.LineChange":                     "loom-only seam, batten lands no branch",
+	"Landing.IsTestFile":                     "loom-only seam, batten lands no branch",
+	"Landing.RowEntry":                       "loom-only seam, batten lands no branch",
+	"Landing.TaskRemoteTip":                  "loom-only seam, batten lands no branch",
+	"Landing.CodeReviewOff":                  "loom-only seam, batten lands no branch",
+	"Landing.PullRequest.ParentMode":         "loom-only seam, batten lands no branch",
+	"Landing.PullRequest.EntryField":         "loom-only seam, batten lands no branch",
+	"Landing.PullRequest.Origin":             "loom-only seam, batten lands no branch",
+	"Landing.PullRequest.API":                "loom-only seam, batten lands no branch",
+	"Landing.PullRequest.PushTask":           "loom-only seam, batten lands no branch",
+	"Landing.PullRequest.CommitsMissing":     "loom-only seam, batten lands no branch",
+	"Landing.PullRequest.TaskHasCommits":     "loom-only seam, batten lands no branch",
+	"Landing.PullRequest.DirtyPaths":         "loom-only seam, batten lands no branch",
+	"Landing.PullRequest.MailAgent":          "loom-only seam, batten lands no branch",
+	"Landing.PullRequest.PauseCovered":       "loom-only seam, batten lands no branch",
+	"Landing.PullRequest.ParentReviewWanted": "loom-only seam, batten lands no branch",
+	"Landing.PullRequest.AskParent":          "loom-only seam, batten lands no branch",
+	"Landing.PullRequest.Now":                "loom-only seam, batten lands no branch",
+	"Landing.PullRequest.Sleep":              "loom-only seam, batten lands no branch",
+	"Landing.PullRequest.RecordChanges":      "loom-only seam, batten lands no branch",
+	"Landing.PullRequest.CommitRecord":       "loom-only seam, batten lands no branch",
+	"Landing.PullRequest.Sessions":           "loom-only seam, batten lands no branch",
+	"Landing.PullRequest.SessionLive":        "loom-only seam, batten lands no branch",
+	"Landing.PullRequest.RegisterSession":    "loom-only seam, batten lands no branch",
+	"Landing.PullRequest.BeamRecord":         "beam-only seam, batten lands no branch",
+	"Landing.PullRequest.DropBeamRecord":     "beam-only seam, batten lands no branch",
+	"DiscussionTable":                        "loom-only seam, batten has no discussion segment",
+	"CommitDiscussion":                       "loom-only seam, batten has no discussion segment",
+	"DescribeTable":                          "loom-only seam, batten has no describe segment",
+	"CommitDescription":                      "loom-only seam, batten has no describe segment",
+	"PlanTable":                              "loom-only seam, batten has no plan segment",
+	"CommitPlan":                             "loom-only seam, batten has no plan segment",
+	"PartsTable":                             "loom-only seam, batten has no plan segment",
+	"PartsPlanTable":                         "loom-only seam, batten has no plan segment",
+	"CommitParts":                            "loom-only seam, batten has no plan segment",
+	"CommitPartsPlan":                        "loom-only seam, batten has no plan segment",
+	"ApprovePlan":                            "loom-only seam, batten has no plan segment",
+	"SkipPlanReview":                         "loom-only seam, batten has no plan segment",
+	"CarryOver":                              "loom-only seam, batten runs no review segment",
+	"ReflectFriction":                        "loom-only seam, batten has no reflect segment",
+	"Rework.ReadCommitted":                   "loom-only seam, batten has no rework segment",
+	"Rework.ArchiveWebster":                  "loom-only seam, batten has no rework segment",
+	"DarnTable":                              "darn-only seam, batten has no darn segment",
+	"Darn.Commit":                            "darn-only seam, batten has no darn segment",
+	"Darn.LatestOutcome":                     "darn-only seam, batten has no darn segment",
+	"Darn.CheckRecord":                       "darn-only seam, batten has no darn segment",
+	"Darn.CommittedRecord":                   "darn-only seam, batten has no darn segment",
+	"DiscussionHistory":                      "loom-only seam, batten wires no loom record",
+	"RecordWrite.ReadBody":                   "loom-only seam, batten wires no loom record",
+	"RecordWrite.ReadStored":                 "loom-only seam, batten wires no loom record",
+	"RecordWrite.Commit":                     "loom-only seam, batten wires no loom record",
+	"RaddleWrite.Deps.SplitPerch":            "raddle-only seam, batten runs no raddle row",
+	"RaddleWrite.Deps.AutoApprove":           "raddle-only seam, batten runs no raddle row",
+	"RaddleWrite.Deps.FreshEntry":            "raddle-only seam, batten runs no raddle row",
+	"RaddleWrite.Deps.StoreCold":             "raddle-only seam, batten runs no raddle row",
+	"RaddleWrite.Deps.Commit":                "raddle-only seam, batten runs no raddle row",
+	"RaddleWrite.Table":                      "raddle-only seam, batten runs no raddle row",
+	"RaddleWrite.Check.Board":                "raddle-only seam, batten runs no raddle row",
+	"RaddleFile.PartRecordPath":              "raddle-only seam, batten runs no raddle row",
+	"RaddleFile.Check":                       "raddle-only seam, batten runs no raddle row",
+	"RaddleFile.Recheck":                     "raddle-only seam, batten runs no raddle row",
+	"RaddleFile.Entry":                       "raddle-only seam, batten runs no raddle row",
+	"RaddleFile.StoreDone":                   "raddle-only seam, batten runs no raddle row",
+	"RaddleFile.AlreadyFiled":                "raddle-only seam, batten runs no raddle row",
+	"RaddleFile.ClaimStatus":                 "raddle-only seam, batten runs no raddle row",
+	"RaddleFile.MarkFiled":                   "raddle-only seam, batten runs no raddle row",
+	"RaddleFile.ClearStatus":                 "raddle-only seam, batten runs no raddle row",
+	"RaddleFile.File":                        "raddle-only seam, batten runs no raddle row",
+	"RaddleFile.CreateBeam":                  "raddle-only seam, batten runs no raddle row",
+	"RaddleFile.Notify":                      "raddle-only seam, batten runs no raddle row",
+	"RaddleFile.EndEntry":                    "raddle-only seam, batten runs no raddle row",
+	"RaddleFile.Commit":                      "raddle-only seam, batten runs no raddle row",
+	"Drift.Config":                           "loom- and darn-only seam, batten has no Drift row",
+	"Drift.Status":                           "loom- and darn-only seam, batten has no Drift row",
+	"Drift.Head":                             "loom- and darn-only seam, batten has no Drift row",
+	"Drift.BranchPoint":                      "loom- and darn-only seam, batten has no Drift row",
+	"Drift.DirtyPaths":                       "loom- and darn-only seam, batten has no Drift row",
+	"Drift.Commit":                           "loom- and darn-only seam, batten has no Drift row",
+	"Drift.CommitWithTrailers":               "loom- and darn-only seam, batten has no Drift row",
+	"Drift.TrailerCommit":                    "loom- and darn-only seam, batten has no Drift row",
+	"Drift.FileAt":                           "loom- and darn-only seam, batten has no Drift row",
+	"Drift.CommitsSince":                     "loom- and darn-only seam, batten has no Drift row",
+	"Drift.ExpectTable":                      "loom- and darn-only seam, batten has no Drift row",
+	"Drift.StartCapture":                     "loom- and darn-only seam, batten has no Drift row",
+	"Drift.RunCapture":                       "loom- and darn-only seam, batten has no Drift row",
+	"Drift.CaptureCurrent":                   "loom- and darn-only seam, batten has no Drift row",
+	"Drift.Sleep":                            "loom- and darn-only seam, batten has no Drift row",
+	"Drift.Compare":                          "loom- and darn-only seam, batten has no Drift row",
+	"Drift.JudgeTable":                       "loom- and darn-only seam, batten has no Drift row",
+	"Drift.Checkouts":                        "loom- and darn-only seam, batten has no Drift row",
+	"Drift.RecordsChangedSince":              "loom- and darn-only seam, batten has no Drift row",
+	"Drift.EndRoles":                         "loom- and darn-only seam, batten has no Drift row",
+	"Sampler.Spec":                           "sampler-only seam, batten runs no sampler row",
+	"Sampler.Sessions":                       "sampler-only seam, batten runs no sampler row",
+	"Sampler.SessionLive":                    "sampler-only seam, batten runs no sampler row",
+	"Sampler.RegisterSession":                "sampler-only seam, batten runs no sampler row",
+	"Sampler.Stamp":                          "sampler-only seam, batten runs no sampler row",
+	"Sampler.DirtyPaths":                     "sampler-only seam, batten runs no sampler row",
+	"Sampler.CheckRecord":                    "sampler-only seam, batten runs no sampler row",
+	"Sampler.MailAgent":                      "sampler-only seam, batten runs no sampler row",
+	"Sampler.PauseCovered":                   "sampler-only seam, batten runs no sampler row",
+	"Sampler.Now":                            "sampler-only seam, batten runs no sampler row",
+	"Sampler.Sleep":                          "sampler-only seam, batten runs no sampler row",
 }
 
 //lym:seam internal/agentconfig#Config
@@ -295,43 +281,6 @@ func TestWire_EverySeamFilled(t *testing.T) {
 	escalated := shedengine.Status{State: shedengine.StateBlocked, CurrentProducer: "Finalize", Error: landingshed.EscalateStopPrefix + "the fixer escalated"}
 	if !c.env.InnerRun.HandBack(escalated) {
 		t.Errorf("InnerRun.HandBack(%+v) = false; want true, so the binary re-step leaves a tapestry or darn escalate halt alone", escalated)
-	}
-}
-
-// TestPrimeShuttle_WiresTheReplyProbe pins that the prime's runner holds a reply probe.
-// The tackler and the arbiter run through that runner.
-// It also pins that building the runner before the task worktree exists logs no failure to locate it.
-// It does not call t.Parallel: logcapture redirects the process-global logger.
-func TestPrimeShuttle_WiresTheReplyProbe(t *testing.T) {
-	tiergate.Require(t, 0)
-
-	hub := t.TempDir()
-	// A .git directory marks the worktree as the prime.
-	if err := os.MkdirAll(filepath.Join(hub, "hub-repo", ".git"), 0o755); err != nil {
-		t.Fatalf("MkdirAll(.git) = %v; want nil", err)
-	}
-	location := &lymcwd.Location{
-		RepoName:     "example",
-		HubPath:      hub,
-		WorktreeName: "hub-repo",
-		AnchorRel:    ".",
-	}
-	c := &battenCLI{location: location, slug: "a-slug"}
-	logs := logcapture.Capture(t)
-
-	shuttle, err := c.primeShuttle(fabricengine.ConfigDirs(location))
-	if got := logs.String(); strings.Contains(got, "locate the task worktree") {
-		t.Errorf("primeShuttle() with no task worktree logged %q; want no failure to locate it", got)
-	}
-	if err != nil {
-		t.Fatalf("primeShuttle() error = %v; want nil", err)
-	}
-	runnerShuttle, ok := shuttle.(sheddriver.RunnerShuttle)
-	if !ok {
-		t.Fatalf("primeShuttle() = %T; want a sheddriver.RunnerShuttle", shuttle)
-	}
-	if !runnerShuttle.Runner.HasReplyProbe() {
-		t.Error("Runner.HasReplyProbe() = false; want the reply probe wired on the prime's runner")
 	}
 }
 
@@ -663,7 +612,7 @@ func TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker(t *testing.T) {
 		}
 	}
 
-	runProcDir := fabriclayout.RunProcDir(taskLocation.HubPath)
+	runProcDir := fabricengine.RunProcDir(taskLocation.HubPath)
 	if err := runproc.Register(runProcDir, "another-slug", runproc.SelfRecord(runproc.RoleGate)); err != nil {
 		t.Fatal(err)
 	}
@@ -704,7 +653,7 @@ func TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker(t *testing.T) {
 		}
 	}
 
-	// A Weaver run's verify fixer is bounded by weaver.fixer_timeout_min, 10 minutes here, below Webster's 60.
+	// A Weaver run's verify fixer is bounded by weaver.yaml's fixer_timeout_min, 10 minutes here, below Webster's 60.
 	// A fixer 30 minutes old is past Weaver's bound and within Webster's, so it tells the two bounds apart.
 	writeConfigLayer := func(baseDir, module, content string) {
 		path := configengine.ConfigFile(baseDir, module)
@@ -750,7 +699,7 @@ func TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker(t *testing.T) {
 	if err := os.WriteFile(websterStatePath, []byte("{not json"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	writeConfigLayer(fabriclayout.BoltDir(taskLocation.HubPath), "tapestry", strings.Replace(loomengine.TapestryConfigTemplate(), "implementer: webster", "implementer: weaver", 1))
+	writeConfigLayer(fabricengine.BoltDir(taskLocation.HubPath), "tapestry", strings.Replace(loomengine.TapestryConfigTemplate(), "implementer: webster", "implementer: weaver", 1))
 	checkWeaverVerifyFixerBound("beside a corrupt Webster state with the setting naming weaver")
 }
 
@@ -868,7 +817,7 @@ func TestWire_CreateWorktreeClaimsTheBoardEntry(t *testing.T) {
 			}
 			wantErr := tt.wantErr
 			if len(wantErr) == 0 {
-				wantErr = []string{configengine.ConfigFile(fabriclayout.BoardDir(hub), "fabric")}
+				wantErr = []string{configengine.ConfigFile(fabricengine.BoardDir(hub), "fabric")}
 			}
 			for _, want := range wantErr {
 				if !strings.Contains(err.Error(), want) {

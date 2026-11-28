@@ -32,7 +32,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -88,10 +87,18 @@ type peersDeps struct {
 
 // recipeRow returns the 1-based position of status's producer among rows.
 // It returns 0 when status is no run status or its producer names no row.
+// A producer holding a retired row name counts as the row that replaced it.
 func recipeRow(status *string, rows []string) int {
 	producer, ok := boardengine.RunStatusProducer(status)
 	if !ok {
 		return 0
+	}
+	// A peer's status file is read unrenamed,
+	// so a peer parked on a retired row name is listed at its successor's position.
+	if successor, retired := loomrecipe.RetiredRows(shedrun.RecipeTapestry)[producer]; retired {
+		producer = successor
+	} else if successor, retired := loomrecipe.RetiredRows(shedrun.RecipeDarn)[producer]; retired {
+		producer = successor
 	}
 	if index := slices.Index(rows, producer); index >= 0 {
 		return index + 1
@@ -247,7 +254,7 @@ func recordExists(path string) (bool, error) {
 // peerRecipe returns the name of the recipe a peer's run follows, the tapestry recipe's for an empty name.
 // A peer whose worktree is on this machine and holds a self-run seed follows the seed's recipe.
 // Otherwise it follows the recipe Seed-Child seeds for a board entry, and pawl for a project entry.
-// Any other entry follows its recipe field, which board.default_recipe fills where the entry names none.
+// Any other entry follows its recipe field, which the board's default_recipe fills where the entry names none.
 // A cli package never imports another, so this rule is restated here rather than shared.
 // A nil peer is a worktree that is not on this machine.
 func peerRecipe(peer *lymcwd.Location, task boardengine.Task) string {
@@ -281,7 +288,7 @@ func hubPeersDeps(location *lymcwd.Location) peersDeps {
 			return names
 		},
 		board: func() ([]boardengine.Task, bool, error) {
-			info, err := os.Stat(fabriclayout.BoltDir(location.HubPath))
+			info, err := os.Stat(fabricengine.BoltDir(location.HubPath))
 			if errors.Is(err, fs.ErrNotExist) || (err == nil && !info.IsDir()) {
 				return nil, false, nil
 			}

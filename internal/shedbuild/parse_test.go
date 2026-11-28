@@ -4,6 +4,7 @@
 package shedbuild
 
 import (
+	"maps"
 	"strings"
 	"testing"
 
@@ -20,6 +21,7 @@ func TestParse_ValueAndErrorCases(t *testing.T) {
 		wantRecipe  *Recipe
 		wantErrSub  string
 		wantLineNum bool
+		wantRetired map[string]string
 	}{
 		{
 			name: "minimal well-formed document with one row setting every field",
@@ -601,10 +603,28 @@ producers:
 			wantLineNum: true,
 		},
 		{
-			name:        "a retired map is refused as an unknown key",
-			yaml:        retiredYAML("Old-Row: row2"),
-			wantErrSub:  "retired",
-			wantLineNum: true,
+			name: "a retired map decodes into the field",
+			yaml: retiredYAML("Old-Row: row2"),
+			wantRecipe: &Recipe{
+				Version:   1,
+				Entry:     "row1",
+				Terminals: []string{"row2"},
+				Producers: []Row{
+					{Name: "row1", Engine: "bouncer", OnDone: "row2"},
+					{Name: "row2", Engine: "bouncer"},
+				},
+			},
+			wantRetired: map[string]string{"Old-Row": "row2"},
+		},
+		{
+			name:       "a retired key that is also a row is refused naming the key",
+			yaml:       retiredYAML("row1: row2"),
+			wantErrSub: `retired row "row1" is also a row of the recipe`,
+		},
+		{
+			name:       "a retired target naming no row is refused naming the key and the target",
+			yaml:       retiredYAML("Old-Row: nowhere"),
+			wantErrSub: `retired row "Old-Row" moves to "nowhere", which names no row of the recipe`,
 		},
 		{
 			// Parse refuses a stray "---" mid-recipe.
@@ -656,6 +676,9 @@ producers:
 			if !recipeEqual(got, *tt.wantRecipe) {
 				t.Errorf("Parse(%q) = %+v; want %+v", tt.name, got, *tt.wantRecipe)
 			}
+			if !maps.Equal(got.Retired, tt.wantRetired) {
+				t.Errorf("Parse(%q) Retired = %v; want %v", tt.name, got.Retired, tt.wantRetired)
+			}
 			for i, row := range got.Producers {
 				if want := tt.wantRecipe.Producers[i]; row.Block != want.Block || row.BlockGate != want.BlockGate {
 					t.Errorf("Parse(%q) row %d Block, BlockGate = %q, %q; want %q, %q", tt.name, i, row.Block, row.BlockGate, want.Block, want.BlockGate)
@@ -665,7 +688,7 @@ producers:
 	}
 }
 
-// retiredYAML returns a two-row recipe that also holds a top-level retired map with the one entry given.
+// retiredYAML returns a two-row recipe whose retired map holds the one entry given.
 func retiredYAML(entry string) string {
 	return `version: 1
 entry: row1

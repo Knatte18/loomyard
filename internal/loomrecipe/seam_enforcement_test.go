@@ -25,6 +25,7 @@ var loomrecipeAllowedImports = []string{
 	// internal/loomengine gives the raddle proposal's path, which the split-perch rows test matches.
 	// It resolves no geometry.
 	"github.com/Knatte18/loomyard/internal/loomengine",
+	"github.com/Knatte18/loomyard/internal/loomshed",
 	"github.com/Knatte18/loomyard/internal/shedbuild",
 	"github.com/Knatte18/loomyard/internal/shedrecipe",
 	"github.com/Knatte18/loomyard/internal/shedengine",

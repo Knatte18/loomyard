@@ -19,7 +19,6 @@ import (
 	"io"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/output"
 )
 
@@ -27,7 +26,7 @@ import (
 // It sets fields["mutations"] from rec and fields["partial"] to false.
 // partial is always false on this path, because its rule needs a non-nil error and there is none here.
 // It overrides any caller-supplied "ok", "mutations" or "partial" key, then delegates to output.Ok.
-func okWithRecord(w io.Writer, rec fabriclayout.Mutations, fields map[string]any) int {
+func okWithRecord(w io.Writer, rec fabricengine.Mutations, fields map[string]any) int {
 	fields["mutations"] = rec.Entries()
 	fields["partial"] = false
 	return output.Ok(w, fields)
@@ -35,7 +34,7 @@ func okWithRecord(w io.Writer, rec fabriclayout.Mutations, fields map[string]any
 
 // errWithRecord emits a failure envelope carrying rec's accumulated mutations and the flattened err string.
 // It carries no fields of the verb's own, because most failing handlers have nothing to report beyond the error.
-func errWithRecord(w io.Writer, rec fabriclayout.Mutations, err error) int {
+func errWithRecord(w io.Writer, rec fabricengine.Mutations, err error) int {
 	return errWithRecordFields(w, rec, err, nil)
 }
 
@@ -50,7 +49,7 @@ func errWithRecord(w io.Writer, rec fabriclayout.Mutations, err error) int {
 // Its per-pair outcomes must reach the caller on the failure path just as on the success path:
 // a caller told only that one pair failed cannot tell which.
 // A nil fields map yields the envelope with the mutations and partial keys and no field of the verb's own.
-func errWithRecordFields(w io.Writer, rec fabriclayout.Mutations, err error, fields map[string]any) int {
+func errWithRecordFields(w io.Writer, rec fabricengine.Mutations, err error, fields map[string]any) int {
 	if fields == nil {
 		fields = map[string]any{}
 	}
@@ -79,7 +78,7 @@ func errWithRecordFields(w io.Writer, rec fabriclayout.Mutations, err error, fie
 //
 // warnings adds a "warnings" string array only when non-empty,
 // so a nil or empty slice leaves the envelope unchanged.
-func errConflictsWithRecord(w io.Writer, rec fabriclayout.Mutations, conflicts []string, warnings []string) int {
+func errConflictsWithRecord(w io.Writer, rec fabricengine.Mutations, conflicts []string, warnings []string) int {
 	fields := map[string]any{
 		"mutations": rec.Entries(),
 		"partial":   false,

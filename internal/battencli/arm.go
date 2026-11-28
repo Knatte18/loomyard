@@ -18,9 +18,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
-	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -97,7 +96,7 @@ func battenDriver(flagVal string) string {
 // A driver the operator typed cannot take effect on a seeded run, so it is refused rather than dropped.
 // A driver left at its cobra default carries no intent to contradict, so it is ignored.
 // A typed --child-driver is refused against a seed that records a different child driver or none.
-// An untyped one passes a seed that records none: the child then takes its recipe's driver_kind, then shed.driver_kind.
+// An untyped one passes a seed that records none: the child then takes its recipe's driver_kind, then shed.yaml's.
 func refuseAdoptedSeed(seed shedrun.Seed, runID string, driverFlag string, driverSet bool, childDriverFlag string, childDriverSet bool) error {
 	if seed.Recipe != shedrun.RecipeBatten {
 		return fmt.Errorf(
@@ -115,8 +114,8 @@ func refuseAdoptedSeed(seed shedrun.Seed, runID string, driverFlag string, drive
 		recorded, has := childDriverOf(seed)
 		if !has {
 			return fmt.Errorf(
-				"battencli: run %q is already seeded with no child driver; --child-driver %q cannot be recorded on a seeded run -- delete the run's seed to re-seed it with the flag, or drop the flag to take %s",
-				runID, childDriverFlag, childDriverFallback(),
+				"battencli: run %q is already seeded with no child driver; --child-driver %q cannot be recorded on a seeded run -- delete the run's seed to re-seed it with the flag, or drop the flag to take the child recipe's driver_kind, then shed.yaml's",
+				runID, childDriverFlag,
 			)
 		}
 		if childDriverFlag != recorded {
@@ -152,7 +151,7 @@ func childDriverFrom(seed shedrun.Seed, found bool, resolveKind func() (string, 
 }
 
 // childDriverKind resolves the driver of a child run from the config layers under dirs.
-// It reads shed.driver_kind, else llm, regardless of the child's recipe.
+// It reads shed.yaml's driver_kind, else llm, regardless of the child's recipe.
 func childDriverKind(dirs configengine.Dirs, _ string) (string, error) {
 	shed, err := sheddriver.LoadConfig(dirs)
 	if err != nil {
@@ -233,7 +232,7 @@ func (c *battenCLI) armSeed(location *lymcwd.Location, runID, verb string) error
 
 	// The run-id is the slug; no param repeats it.
 	// child_driver is recorded only when the operator typed it;
-	// Seed-Child resolves the rest from the child recipe's driver_kind, then shed.driver_kind.
+	// Seed-Child resolves the rest from the child recipe's driver_kind, then shed.yaml's.
 	// anchor is recorded only by a first pass that names one, and Worktree-Create reads it back.
 	var params map[string]string
 	if c.childDriverFlagSet {
@@ -268,7 +267,7 @@ func (c *battenCLI) registerSeededRun(location *lymcwd.Location, runID, verb str
 	if verb != "run" {
 		return
 	}
-	if err := runproc.Register(fabriclayout.RunProcDir(location.HubPath), runID, runproc.SelfRecord(runproc.RoleBatten)); err != nil {
+	if err := runproc.Register(fabricengine.RunProcDir(location.HubPath), runID, runproc.SelfRecord(runproc.RoleBatten)); err != nil {
 		logger.Warn("battencli: could not register the batten process", "slug", runID, "error", err.Error())
 	}
 }
@@ -288,7 +287,6 @@ func refuseBattenOwnDriverLLM(driver string) error {
 
 // arm resolves cwd into a *lymcwd.Location, then delegates to armAt with the run-id from args.
 // The run-id is args[0] when present and counts as explicit; otherwise it is shedrun.SelfRunID and does not.
-// Every verb first reconciles the hub's config after a binary change.
 func (c *battenCLI) arm(cwd string, verb string, args []string) (shedverbs.Spec, error) {
 	location, err := lymcwd.Resolve(cwd)
 	if err != nil {
@@ -296,9 +294,13 @@ func (c *battenCLI) arm(cwd string, verb string, args []string) (shedverbs.Spec,
 		return shedverbs.Spec{}, err
 	}
 
-	// The reconcile must precede a config load and a run's seeding.
-	// It must also precede the Worktree-Create row's fork of the pair from the prime.
-	hubgeom.ReconcileBeforeLoad(location)
+	// A run reconciles the hub's config after a binary change;
+	// that must happen before the run is seeded and before the Worktree-Create row forks the pair from the prime.
+	if verb == "run" {
+		if geometry, inHub := hubgeom.ReconcileGeometry(location); inHub {
+			hubreconcile.EnsureOrWarn(geometry, hubreconcile.Options{})
+		}
+	}
 
 	runID, explicit := resolveBattenRunID(args)
 	return c.armAt(location, runID, explicit, verb)
@@ -342,7 +344,7 @@ func (c *battenCLI) armAt(location *lymcwd.Location, runID string, explicit bool
 		c.runVerdict = hubRunVerdict(location, runID)
 	}
 	if verb == "run" && c.readopt.Add == nil {
-		c.readopt = hubReadoptSeams(location, c.reconcileOptions)
+		c.readopt = hubReadoptSeams(location)
 	}
 	c.preDrive = c.preDriveCheck
 
@@ -491,7 +493,7 @@ func battenLoopSpec(location *lymcwd.Location, slug string) shedverbs.LoopSpec {
 		LoopTraceFile: logger.TraceFile,
 		Executable:    executable,
 		OnStart: func() {
-			if err := runproc.Register(fabriclayout.RunProcDir(location.HubPath), slug, runproc.SelfRecord(runproc.RoleLoop)); err != nil {
+			if err := runproc.Register(fabricengine.RunProcDir(location.HubPath), slug, runproc.SelfRecord(runproc.RoleLoop)); err != nil {
 				logger.Warn("battencli: could not register the loop process", "slug", slug, "error", err.Error())
 			}
 		},
@@ -514,7 +516,7 @@ func battenInterruptPolicy(row string) string {
 // The caller needs the location before it can read the seed that picks the recipe;
 // resolving the location again here would cost a second `git rev-parse` on every call.
 func ArmAt(location *lymcwd.Location, verb string, runID string) (shedverbs.Spec, error) {
-	c := &battenCLI{reconcileOptions: fabricengine.RunStartReconcileOptions()}
+	c := &battenCLI{}
 	return c.armAt(location, runID, true, verb)
 }
 
@@ -574,6 +576,7 @@ func (r *continueRefusal) Error() string {
 // refuseContinuePass refuses a continue pass unless dobby may continue the run.
 // Batten's status must read running at Run-Shed, and the task worktree must be present.
 // The dobby state record of the parent worktree must name the run as driven, with no full pass owed.
+// No origin-owed marker may stand.
 // A gone task worktree owes a full pass, whose resume re-adopts a live pair.
 // The dobby state record is read through the parent worktree's geometry.
 // A record that is absent, or does not name the run, reads as a run that dobby does not drive.
@@ -619,6 +622,14 @@ func (c *battenCLI) refuseContinuePass() error {
 	if run.FullPassOwed {
 		return refuse("its parent's dobby owes it a full pass")
 	}
+
+	owed, err := OriginOwed(c.location, c.slug)
+	if err != nil {
+		return refuse(fmt.Sprintf("its origin-owed marker does not read: %v", err))
+	}
+	if owed {
+		return refuse("a resume judged it without origin and origin has not been reached since")
+	}
 	return nil
 }
 
@@ -626,46 +637,17 @@ func (c *battenCLI) refuseContinuePass() error {
 // They resume a shed pause themselves, so a shed state of paused never makes them wait.
 var runAside = runfsm.Aside{ShedPause: true}
 
-// hubRunVerdict returns a reader of the act rule's verdict for slug's run over the hub of the prime location.
+// hubRunVerdict returns a reader of the act rule's verdict for slug's run over the hub of location.
 // The verdict is judged over the run's tracked records and this machine's inputs, with runAside set aside.
-// A code-tip wait fetches the run's records and code refs from origin and is judged again.
 func hubRunVerdict(location *lymcwd.Location, slug string) func() (runfsm.Verdict, error) {
-	read := func() (runfsm.Records, runfsm.Inputs, error) { return pairteardown.ReadRun(location, slug) }
-	fetch := func() error {
-		if err := fetchRunForCatchUp(location, slug); err != nil {
-			return err
-		}
-		if err := gitrepo.New(location.WorktreePath()).Fetch(); err != nil {
-			return fmt.Errorf("%w: %v", dobbyengine.ErrOriginUnreachable, err)
-		}
-		return nil
-	}
-	return func() (runfsm.Verdict, error) { return judgeAfterCodeTipFetch(read, fetch) }
-}
-
-// judgeAfterCodeTipFetch judges the run read returns, with runAside set aside.
-// A code-tip wait is read from the refs the last fetch left, which can keep a records branch origin has deleted,
-// so it calls fetch and judges a fresh read; the fetch prunes such a branch's ref.
-// A failed fetch keeps the first verdict, whose refusal names the way forward.
-// It returns the error of a failed read.
-func judgeAfterCodeTipFetch(read func() (runfsm.Records, runfsm.Inputs, error), fetch func() error) (runfsm.Verdict, error) {
-	judge := func() (runfsm.Verdict, error) {
-		records, inputs, err := read()
+	return func() (runfsm.Verdict, error) {
+		records, inputs, err := pairteardown.ReadRun(location, slug)
 		if err != nil {
 			return runfsm.Verdict{}, err
 		}
 		_, verdict := runfsm.Judge(records, inputs, runAside)
 		return verdict, nil
 	}
-	verdict, err := judge()
-	if err != nil || verdict.Reason != runfsm.ReasonCodeTip {
-		return verdict, err
-	}
-	if err := fetch(); err != nil {
-		logger.Debug("battencli: the fetch before judging a code-tip wait again failed, so the wait stands", "error", err)
-		return verdict, nil
-	}
-	return judge()
 }
 
 // refuseByAct asks the act rule whether this run may act and returns its refusal when it may not.
@@ -737,14 +719,11 @@ func (c *battenCLI) pausedExtras() map[string]any {
 // that pre-flight is the run-scope origin reconcile (reconcileResume) for every run but these:
 // a run still at Worktree-Create, or at Worktree-Teardown whose pair is absent.
 // A fresh start runs no reconcile, and armAt has already run its owner check.
-// After the owner pre-flight lets a found status resume, startPusher starts the run's pushers.
-// It does so with or without --no-reopen.
-// reopenWindow then reopens the terminal window;
+// Once the owner pre-flight lets a found status resume, reopenWindow reopens the terminal window;
 // it does so when no client is attached, unless --no-reopen is set.
 // Under --continue-pass, refuseContinuePass runs first,
-// and a run it lets through skips the catch-up, the act rule, the owner pre-flight and the reopening:
+// and a run it lets through skips the act rule, the owner pre-flight and the reopening:
 // the run is one dobby already drives, and the pass is not a resume.
-// Any other pass runs the catch-up of its own run before the act rule answers.
 //
 // This seed-when-absent behaviour is batten's alone and must stay out of the generic body:
 // loom refuses in exactly the situation batten seeds here, because only "lym loom start" may seed loom's status file.
@@ -753,13 +732,8 @@ func (c *battenCLI) battenPreRun(ctx context.Context) error {
 		if err := c.refuseContinuePass(); err != nil {
 			return err
 		}
-	} else {
-		if err := c.catchUpRun(); err != nil {
-			return err
-		}
-		if err := c.refuseByAct(); err != nil {
-			return err
-		}
+	} else if err := c.refuseByAct(); err != nil {
+		return err
 	}
 	found, err := c.checkRunStatus()
 	if err != nil {
@@ -771,9 +745,6 @@ func (c *battenCLI) battenPreRun(ctx context.Context) error {
 		}
 		if err := c.preflightRunOwner(); err != nil {
 			return err
-		}
-		if c.startPusher != nil {
-			c.startPusher()
 		}
 		if c.noReopen {
 			return nil
@@ -792,36 +763,8 @@ func (c *battenCLI) battenPreRun(ctx context.Context) error {
 	// it leaves an already-present status untouched rather than overwriting it.
 	// The pre-drive check and the marker clear run inside it, under the status lock,
 	// so a refused seeding writes no status and clears no marker.
-	return c.seedFreshStatus()
+	return state.UpdateJSON(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, c.seedAbsentStatus)
 }
-
-// seedFreshStatus seeds the absent status.
-// Once it seeded one, it commits the Worktree-Create running row through the seam, as it commits any transition.
-// The seeding writes that row without a shed transition, so no seam call would otherwise carry it;
-// a run that found its status makes no such commit.
-// The commit runs after the status lock is released.
-func (c *battenCLI) seedFreshStatus() error {
-	seeded := false
-	err := state.UpdateJSON(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, func(cur shedengine.Status, found bool) (shedengine.Status, error) {
-		next, err := c.seedAbsentStatus(cur, found)
-		seeded = err == nil && !found
-		return next, err
-	})
-	if err != nil || !seeded || c.commitStatus == nil {
-		return err
-	}
-	if err := c.commitStatus(battenrecipe.NameWorktreeCreate, string(shedengine.StateRunning)); err != nil {
-		return seedCommitFailure{err}
-	}
-	return nil
-}
-
-// seedCommitFailure marks a failed commit of the seeded status, so a caller can tell it from a failed seeding:
-// the status is durable, and the next run resumes it.
-type seedCommitFailure struct{ error }
-
-// Unwrap returns the seam's failure.
-func (e seedCommitFailure) Unwrap() error { return e.error }
 
 // preDriveRefusal marks the refusal of the pre-drive check inside seedAbsentStatus,
 // so a caller can tell it from a failed marker clear or write.
@@ -879,7 +822,7 @@ const openWindowTimeout = 30 * time.Second
 // It does so only when no client is attached to the task worktree's reed session:
 // the window the first run opened is gone with that client.
 // It opens nothing when batten.open_window is off, read through Env.Setting as the row's entry gate reads it;
-// a forced run and a task's batten.open_window: false apply as in the row.
+// a forced run and a task's open_window: false apply as in the row.
 // Otherwise it runs the batten.open_window_command command through a command producer.
 // A status whose history holds no Open-Window entry opens nothing;
 // so does one whose current producer is still at or before the row, and so does an attached client.
@@ -1016,14 +959,10 @@ func (c *battenCLI) battenPreStepUnmarked(ctx context.Context) (string, error) {
 		return "", nil
 	}
 
-	if err := c.seedFreshStatus(); err != nil {
+	if err := state.UpdateJSON(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, c.seedAbsentStatus); err != nil {
 		var refused preDriveRefusal
 		if errors.As(err, &refused) {
 			return shedverbs.KindBusy, refused.error
-		}
-		var commitFailed seedCommitFailure
-		if errors.As(err, &commitFailed) {
-			return shedverbs.KindBootstrap, commitFailed.error
 		}
 		return shedverbs.KindUnseeded, err
 	}

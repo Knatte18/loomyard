@@ -15,7 +15,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -70,7 +69,7 @@ func TestTrailerCommitsListsKeyCarriers(t *testing.T) {
 	const probe = "_lym/trailer-list/probe.txt"
 	const other = "_lym/trailer-list/other.txt"
 
-	commit := func(rel, content, msg string, trailers ...fabriclayout.Trailer) string {
+	commit := func(rel, content, msg string, trailers ...fabricengine.Trailer) string {
 		t.Helper()
 		writeAnchored(t, l, rel, content)
 		sha, committed, err := fabricengine.CommitAnchoredPathsWithTrailers(rec, l, []string{rel}, msg, trailers, fabricengine.SyncOptions{})
@@ -79,17 +78,17 @@ func TestTrailerCommitsListsKeyCarriers(t *testing.T) {
 		}
 		return sha
 	}
-	olderSHA := commit(probe, "one", "older", fabriclayout.Trailer{Key: "Drift-Seal", Value: "seal-1"})
+	olderSHA := commit(probe, "one", "older", fabricengine.Trailer{Key: "Drift-Seal", Value: "seal-1"})
 	olderWarp := warpHead(t, l)
 	commit(other, "two", "unmarked")
-	newerSHA := commit(probe, "three", "newer", fabriclayout.Trailer{Key: "Drift-Seal", Value: "seal-2"})
+	newerSHA := commit(probe, "three", "newer", fabricengine.Trailer{Key: "Drift-Seal", Value: "seal-2"})
 	newerWarp := warpHead(t, l)
 
 	got, err := fabricengine.TrailerCommits(l, "Drift-Seal")
 	if err != nil {
 		t.Fatalf("TrailerCommits error = %v", err)
 	}
-	want := []fabriclayout.TrailerCommit{
+	want := []fabricengine.TrailerCommit{
 		{SHA: newerSHA, Value: "seal-2", CodeHead: newerWarp, Position: firstParentPosition(t, l, newerSHA)},
 		{SHA: olderSHA, Value: "seal-1", CodeHead: olderWarp, Position: firstParentPosition(t, l, olderSHA)},
 	}
@@ -133,7 +132,7 @@ func TestCommitEmptyWithTrailers(t *testing.T) {
 	if _, committed, err := fabricengine.CommitAnchoredPaths(rec, l, []string{probe}, "seed", fabricengine.SyncOptions{}); err != nil || !committed {
 		t.Fatalf("seed commit committed = %v, err = %v", committed, err)
 	}
-	trailers := []fabriclayout.Trailer{{Key: "Drift-Seal", Value: "seal-9"}}
+	trailers := []fabricengine.Trailer{{Key: "Drift-Seal", Value: "seal-9"}}
 
 	tests := []struct {
 		name        string
@@ -174,7 +173,7 @@ func TestCommitEmptyWithTrailers(t *testing.T) {
 	t.Run("InvalidTrailerKeyIsRefused", func(t *testing.T) {
 		before := gitkit.RevParse(t, weft, "HEAD")
 
-		sha, committed, err := fabricengine.CommitEmptyWithTrailers(rec, l, probe, "refused", []fabriclayout.Trailer{{Key: "Drift Seal", Value: "a"}}, fabricengine.SyncOptions{})
+		sha, committed, err := fabricengine.CommitEmptyWithTrailers(rec, l, probe, "refused", []fabricengine.Trailer{{Key: "Drift Seal", Value: "a"}}, fabricengine.SyncOptions{})
 		if err == nil || !strings.Contains(err.Error(), "Drift Seal") {
 			t.Fatalf("CommitEmptyWithTrailers error = %v; want one naming the key", err)
 		}
@@ -201,7 +200,7 @@ func TestTrailerCommits(t *testing.T) {
 	writeAnchored(t, l, probe, "old")
 	firstWarp := warpHead(t, l)
 	firstSHA, committed, err := fabricengine.CommitAnchoredPathsWithTrailers(rec, l, []string{probe}, "first",
-		[]fabriclayout.Trailer{{Key: "Drift-Seal", Value: "seal-1"}, {Key: "Drift-Records", Value: "records-1"}}, fabricengine.SyncOptions{})
+		[]fabricengine.Trailer{{Key: "Drift-Seal", Value: "seal-1"}, {Key: "Drift-Records", Value: "records-1"}}, fabricengine.SyncOptions{})
 	if err != nil || !committed {
 		t.Fatalf("first commit committed = %v, err = %v", committed, err)
 	}
@@ -211,7 +210,7 @@ func TestTrailerCommits(t *testing.T) {
 	writeAnchored(t, l, probe, "new")
 	secondWarp := warpHead(t, l)
 	secondSHA, committed, err := fabricengine.CommitAnchoredPathsWithTrailers(rec, l, []string{probe}, "second",
-		[]fabriclayout.Trailer{{Key: "Drift-Records", Value: "records-2"}}, fabricengine.SyncOptions{})
+		[]fabricengine.Trailer{{Key: "Drift-Records", Value: "records-2"}}, fabricengine.SyncOptions{})
 	if err != nil || !committed {
 		t.Fatalf("second commit committed = %v, err = %v", committed, err)
 	}
@@ -221,12 +220,12 @@ func TestTrailerCommits(t *testing.T) {
 			name   string
 			key    string
 			newest bool
-			want   fabriclayout.TrailerCommit
+			want   fabricengine.TrailerCommit
 		}{
-			{"RecordsNewest", "Drift-Records", true, fabriclayout.TrailerCommit{SHA: secondSHA, Value: "records-2", CodeHead: secondWarp, Position: firstParentPosition(t, l, secondSHA)}},
-			{"RecordsOldest", "Drift-Records", false, fabriclayout.TrailerCommit{SHA: firstSHA, Value: "records-1", CodeHead: firstWarp, Position: firstParentPosition(t, l, firstSHA)}},
-			{"SealNewest", "Drift-Seal", true, fabriclayout.TrailerCommit{SHA: firstSHA, Value: "seal-1", CodeHead: firstWarp, Position: firstParentPosition(t, l, firstSHA)}},
-			{"SealOldest", "Drift-Seal", false, fabriclayout.TrailerCommit{SHA: firstSHA, Value: "seal-1", CodeHead: firstWarp, Position: firstParentPosition(t, l, firstSHA)}},
+			{"RecordsNewest", "Drift-Records", true, fabricengine.TrailerCommit{SHA: secondSHA, Value: "records-2", CodeHead: secondWarp, Position: firstParentPosition(t, l, secondSHA)}},
+			{"RecordsOldest", "Drift-Records", false, fabricengine.TrailerCommit{SHA: firstSHA, Value: "records-1", CodeHead: firstWarp, Position: firstParentPosition(t, l, firstSHA)}},
+			{"SealNewest", "Drift-Seal", true, fabricengine.TrailerCommit{SHA: firstSHA, Value: "seal-1", CodeHead: firstWarp, Position: firstParentPosition(t, l, firstSHA)}},
+			{"SealOldest", "Drift-Seal", false, fabricengine.TrailerCommit{SHA: firstSHA, Value: "seal-1", CodeHead: firstWarp, Position: firstParentPosition(t, l, firstSHA)}},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -278,16 +277,16 @@ func TestTrailerCommits(t *testing.T) {
 		before := gitkit.RevParse(t, fabricengine.RecordsWorktree(l), "HEAD")
 		tests := []struct {
 			name    string
-			trailer fabriclayout.Trailer
+			trailer fabricengine.Trailer
 			want    string
 		}{
-			{"ValueWithNewline", fabriclayout.Trailer{Key: "Drift-Seal", Value: "a\nWarp-SHA: forged"}, "Drift-Seal"},
-			{"EmptyValue", fabriclayout.Trailer{Key: "Drift-Seal", Value: ""}, "Drift-Seal"},
-			{"KeyOutsideCharset", fabriclayout.Trailer{Key: "Drift Seal", Value: "a"}, "Drift Seal"},
+			{"ValueWithNewline", fabricengine.Trailer{Key: "Drift-Seal", Value: "a\nWarp-SHA: forged"}, "Drift-Seal"},
+			{"EmptyValue", fabricengine.Trailer{Key: "Drift-Seal", Value: ""}, "Drift-Seal"},
+			{"KeyOutsideCharset", fabricengine.Trailer{Key: "Drift Seal", Value: "a"}, "Drift Seal"},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				sha, committed, err := fabricengine.CommitAnchoredPathsWithTrailers(rec, l, []string{probe}, "refused", []fabriclayout.Trailer{tt.trailer}, fabricengine.SyncOptions{})
+				sha, committed, err := fabricengine.CommitAnchoredPathsWithTrailers(rec, l, []string{probe}, "refused", []fabricengine.Trailer{tt.trailer}, fabricengine.SyncOptions{})
 				if err == nil || !strings.Contains(err.Error(), tt.want) {
 					t.Fatalf("CommitAnchoredPathsWithTrailers error = %v; want one naming %q", err, tt.want)
 				}

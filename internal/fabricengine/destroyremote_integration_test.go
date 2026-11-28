@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -29,7 +28,7 @@ func TestDeleteRemoteBranchGate_PrimaryWeftBranchRefused(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RecordsRepoRoot: %v", err)
 	}
-	primary := fabriclayout.RecordsBranchName("main")
+	primary := fabricengine.RecordsBranchName("main")
 
 	err = fabricengine.CheckRemoteBranchRequestForTest(h.Location, weftRoot, "origin", primary)
 	if !RefusedByGate(err, fabricengine.CheckOwnership) {
@@ -61,7 +60,7 @@ func TestDeleteRemoteBranchGate_CheckedOutBranchRefused(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RecordsRepoRoot: %v", err)
 	}
-	checkedOut := fabriclayout.RecordsBranchName(slug)
+	checkedOut := fabricengine.RecordsBranchName(slug)
 
 	err = fabricengine.CheckRemoteBranchRequestForTest(h.Location, weftRoot, "origin", checkedOut)
 	if !RefusedByGate(err, fabricengine.CheckOwnership) {
@@ -80,7 +79,7 @@ func archivedDeleteFixture(t *testing.T, slug string) (*hubforge.Hub, string, st
 	if err != nil {
 		t.Fatalf("RecordsRepoRoot: %v", err)
 	}
-	branch := fabriclayout.RecordsBranchName(slug)
+	branch := fabricengine.RecordsBranchName(slug)
 	tip := gitkit.RevParse(t, h.RecordsBare, branch)
 	if tip == "" {
 		t.Fatalf("weft branch %s is not on origin after Add", branch)
@@ -109,8 +108,8 @@ func TestDeleteArchivedWeftBranch_CheckedOutBranchDeleted(t *testing.T) {
 		t.Errorf("origin still has %s at %s; want it deleted", branch, gitkit.RevParse(t, h.RecordsBare, branch))
 	}
 	entries := rec.Entries()
-	if len(entries) != 1 || entries[0].Kind != fabriclayout.KindRemoteBranchDeleted {
-		t.Errorf("record = %+v; want exactly one %s entry", entries, fabriclayout.KindRemoteBranchDeleted)
+	if len(entries) != 1 || entries[0].Kind != fabricengine.KindRemoteBranchDeleted {
+		t.Errorf("record = %+v; want exactly one %s entry", entries, fabricengine.KindRemoteBranchDeleted)
 	}
 }
 
@@ -120,7 +119,7 @@ func TestDeleteArchivedWeftBranch_PrimaryRefused(t *testing.T) {
 	t.Parallel()
 
 	h, weftRoot, _, _ := archivedDeleteFixture(t, "archprimary")
-	primary := fabriclayout.RecordsBranchName("main")
+	primary := fabricengine.RecordsBranchName("main")
 	tip := gitkit.RevParse(t, weftRoot, primary)
 	onOriginBefore := gitkit.BranchExists(t, h.RecordsBare, primary)
 

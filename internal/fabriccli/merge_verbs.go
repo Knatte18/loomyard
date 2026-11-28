@@ -11,8 +11,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
-	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -73,7 +71,7 @@ func websterInFlightWarnings(l *lymcwd.Location) []string {
 //
 // warnings is added to the ok and conflict envelopes only, under a "warnings" key present only when non-empty;
 // a hard failure never carries it.
-func setMergeExit(cmd *cobra.Command, out io.Writer, res fabriclayout.MergeResult, err error, warnings []string) {
+func setMergeExit(cmd *cobra.Command, out io.Writer, res fabricengine.MergeResult, err error, warnings []string) {
 	if err != nil {
 		// A failing verb that still knows its conflicted paths reports them under "unresolved", never under "conflicts".
 		// Only a conflict result carries "conflicts", which is how a script tells a conflict from a hard failure.
@@ -108,9 +106,7 @@ func setMergeExit(cmd *cobra.Command, out io.Writer, res fabriclayout.MergeResul
 // Each RunE body calls fabric() after the handle is resolved.
 //
 // loc is a getter for the same reason, returning the location resolved at run time.
-// merge-in first reconciles the hub's config there.
-// The order matters: a merge may leave the worktree mid-merge, which a reconcile skips.
-// It also reads it to check whether an implementer's run is in flight in this worktree.
+// merge-in reads it to check whether an implementer's run is in flight in this worktree.
 func addMergeVerbs(cmd *cobra.Command, fabric func() *fabricengine.Fabric, loc func() *lymcwd.Location) {
 	mergeInCmd := &cobra.Command{
 		Use:         "merge-in <branch>",
@@ -147,7 +143,6 @@ Example:
 				return nil
 			}
 			out := cmd.OutOrStdout()
-			hubgeom.ReconcileBeforeLoad(loc())
 			res, err := fabric().MergeIn(args[0])
 			var warnings []string
 			if err == nil && (!res.AlreadyUpToDate || len(res.Conflicts) > 0) {
@@ -235,7 +230,7 @@ Example:
 				setMergeExit(cmd, out, res, err, nil)
 				return nil
 			default:
-				res, err := fabric().Merge(args[0], fabriclayout.MergeOptions{Squash: squash, Message: message})
+				res, err := fabric().Merge(args[0], fabricengine.MergeOptions{Squash: squash, Message: message})
 				setMergeExit(cmd, out, res, err, nil)
 				return nil
 			}

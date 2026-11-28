@@ -11,7 +11,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -185,9 +184,9 @@ func (c *AnchorChange) start() error {
 	}
 	switch {
 	case integrate:
-		c.kind, c.upstream = fabriclayout.MoveKindIntegrate, upstream
+		c.kind, c.upstream = MoveKindIntegrate, upstream
 	case c.movesLymDir():
-		c.kind = fabriclayout.MoveKindMove
+		c.kind = MoveKindMove
 	}
 	if c.NoOp() || !c.movesLymDir() {
 		return nil
@@ -229,7 +228,7 @@ func (c *AnchorChange) upstreamCarriesAnotherAnchor() (bool, string, error) {
 
 // resume takes up the change a standing record names, which a killed run left, and recovers it when it did not land.
 // The record's anchors, kind and upstream tip govern; a target other than the record's is refused.
-func (c *AnchorChange) resume(record fabriclayout.MoveRecord) error {
+func (c *AnchorChange) resume(record MoveRecord) error {
 	slug := c.pair.WorktreeName
 	if filepath.Clean(record.B) != filepath.Clean(c.to) {
 		return fmt.Errorf("a change of the anchor of %s from %s to %s was interrupted, so a change to %s is refused; run `lym fabric anchor %s --set %s` to finish it",
@@ -258,7 +257,7 @@ func (c *AnchorChange) changeLanded() (bool, error) {
 	if err != nil || !found || filepath.Clean(marker) != filepath.Clean(c.to) {
 		return false, err
 	}
-	if c.kind != fabriclayout.MoveKindIntegrate {
+	if c.kind != MoveKindIntegrate {
 		return true, nil
 	}
 	if c.upstream == "" {
@@ -332,7 +331,7 @@ func (c *AnchorChange) moveLymDir(rec *Mutations, src, dst string) error {
 	if err := root.Rename(oldPath, newPath); err != nil {
 		return fmt.Errorf("move %s to %s in %s: %w", oldPath, newPath, c.weftPath, err)
 	}
-	rec.Append(fabriclayout.KindPathRenamed, filepath.Join(c.weftPath, filepath.FromSlash(newPath)), renamedFrom(c.weftPath, oldPath))
+	rec.Append(KindPathRenamed, filepath.Join(c.weftPath, filepath.FromSlash(newPath)), renamedFrom(c.weftPath, oldPath))
 	return nil
 }
 
@@ -345,8 +344,8 @@ func renamedFrom(weftPath, rel string) string {
 // A standing record's anchors, kind and upstream tip are kept;
 // a new record takes the change's own anchors and kind, with no upstream tip;
 // the upstream tip is written when the weft integrates.
-func (c *AnchorChange) writeRecord(standing fabriclayout.MoveRecord, hadRecord bool) error {
-	record := fabriclayout.MoveRecord{A: c.from, B: c.to, Kind: c.kind}
+func (c *AnchorChange) writeRecord(standing MoveRecord, hadRecord bool) error {
+	record := MoveRecord{A: c.from, B: c.to, Kind: c.kind}
 	if hadRecord {
 		record = standing
 	}
@@ -362,8 +361,8 @@ func ownStartTime() string {
 }
 
 // writeMoveRecordFile writes record as the move record of the weft worktree at weftPath.
-func writeMoveRecordFile(weftPath string, record fabriclayout.MoveRecord) error {
-	if err := state.WriteJSON(fabriclayout.MoveRecordPath(weftPath), moveRecordStateLockPath(weftPath), record); err != nil {
+func writeMoveRecordFile(weftPath string, record MoveRecord) error {
+	if err := state.WriteJSON(MoveRecordPath(weftPath), moveRecordStateLockPath(weftPath), record); err != nil {
 		return fmt.Errorf("fabricengine: write the move record in %s: %w", weftPath, err)
 	}
 	return nil
@@ -447,7 +446,7 @@ func (c *AnchorChange) moveWeft(rec *Mutations) (committed bool, err error) {
 	if err := c.unwireAtSource(rec); err != nil {
 		return false, c.rollback(rec, err)
 	}
-	if c.kind == fabriclayout.MoveKindIntegrate {
+	if c.kind == MoveKindIntegrate {
 		return c.integrate(rec)
 	}
 	committed, err = moveWeftContent(rec, c.weftPath, c.from, c.to, c.names, c.seams)
@@ -471,7 +470,7 @@ func (c *AnchorChange) integrate(rec *Mutations) (committed bool, err error) {
 		}
 		c.upstream = upstream
 	}
-	record := fabriclayout.MoveRecord{A: c.from, B: c.to, Kind: c.kind, U: c.upstream, PID: os.Getpid(), StartTime: ownStartTime()}
+	record := MoveRecord{A: c.from, B: c.to, Kind: c.kind, U: c.upstream, PID: os.Getpid(), StartTime: ownStartTime()}
 	if err := writeMoveRecordFile(c.weftPath, record); err != nil {
 		return false, c.rollback(rec, err)
 	}
@@ -562,7 +561,7 @@ func (c *AnchorChange) Finish(rec *Mutations) error {
 	if spawn.Spawned {
 		for _, side := range []string{spawn.Request.WarpPath, spawn.Request.WeftPath} {
 			if side != "" {
-				rec.Append(fabriclayout.KindPushSpawned, side, "detached")
+				rec.Append(KindPushSpawned, side, "detached")
 			}
 		}
 	}

@@ -12,16 +12,16 @@ Do these steps in place of running `{{.format_step}}` yourself, in this order:
 a. Explore per `{{.explore_step}}` until your context holds everything the reviewed files will name: every file, member, test, fake and fixture they will cite.
    Design none of their content, neither in a reply nor in a file.
 b. Do step 1 of the lens review below now, reading the rubric, so fork0 and every lens fork inherit it; when you run the lens review, skip its step 1.
-c. Spawn one fork, fork0, {{template "engine-fork-spawn"}}.
+c. Spawn one fork, fork0, through the Agent tool with `subagent_type: "fork"`, never passing a `name`.
    Its prompt is these lines, copied verbatim, and nothing else.
    Wait for it; ending your turn while it is outstanding is allowed.
    - You are fork0, the writer: your context holds {{.input_record}}, the exploration and the rubric.
    - Think the reviewed files through, then write them per `{{.format_step}}`, {{.last_file}} last.
    - Read only what your context lacks and the reviewed files need.
-   - Spawn no fork or subagent, never write {{.disposition_place}}, and run no git command.
+   - Never call the Agent tool, never write {{.disposition_place}}, and run no git command.
    - Return one line as your final message: the files you wrote.
      Add no reasoning, design note or summary.
-d. When fork0 has returned, read {{.reviewed_files}}, each in full, and take them as the files to review, not your own draft: you see them without fork0's reasoning.
+d. When fork0 has returned, read {{.reviewed_files}}, each in full with the Read tool, and take them as the files to review, not your own draft: you see them without fork0's reasoning.
 
 Then run the lens review below once; fork0 does not count against its one fork pass, and the writer it names is you.
 This session spawns fork0 at most once and the lens forks at most once: a fresh session is a new writer, and a resumed one is not.

@@ -18,7 +18,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -31,10 +30,6 @@ const (
 	endedDone    = "done"
 	endedRemoved = "removed"
 )
-
-// EndedHandedOver marks, in the EndedSet a prime's records replay reads, a run this machine handed over to another.
-// Its commits go under local set-aside tags like an ended run's, and the other runs' commits replay in order.
-const EndedHandedOver = "handed-over"
 
 // setAsideTagPrefix is the short-name prefix of the local tag that keeps a commit a replay set aside.
 // No archive reader matches it.
@@ -95,12 +90,12 @@ type ReplayOutcome struct {
 	Dropped   []string
 	SetAside  []SetAsideCommit
 	Conflicts []string
-	Lost      []fabriclayout.ReplayFinding
-	Refused   []fabriclayout.ReplayFinding
+	Lost      []ReplayFinding
+	Refused   []ReplayFinding
 }
 
 // ledgerRunsAt reads the runs the ledger's file holds at rev, none when the file is absent there.
-func ledgerRunsAt(repo *gitrepo.Repo, ledger RunLedger, rev string) ([]fabriclayout.LedgerRun, error) {
+func ledgerRunsAt(repo *gitrepo.Repo, ledger RunLedger, rev string) ([]LedgerRun, error) {
 	data, err := blobAt(repo, rev, ledger.File())
 	if err != nil {
 		return nil, err
@@ -129,13 +124,13 @@ func readEndedSet(recordsRoot, boltRef string, slugs []string, localCreated map[
 	if err != nil {
 		return nil, fmt.Errorf("read the ended set: %w", err)
 	}
-	findRun := func(runs []fabriclayout.LedgerRun, slug string) (fabriclayout.LedgerRun, bool) {
+	findRun := func(runs []LedgerRun, slug string) (LedgerRun, bool) {
 		for _, run := range runs {
 			if run.Slug == slug {
 				return run, true
 			}
 		}
-		return fabriclayout.LedgerRun{}, false
+		return LedgerRun{}, false
 	}
 
 	tipRuns, err := ledgerRunsAt(repo, ledger, tip)
@@ -186,7 +181,7 @@ func readEndedSet(recordsRoot, boltRef string, slugs []string, localCreated map[
 
 // createdStampMatches reports whether run carries the created stamp, an RFC 3339 time as the ledger stores it.
 // An empty stamp matches every run.
-func createdStampMatches(run fabriclayout.LedgerRun, stamp string) bool {
+func createdStampMatches(run LedgerRun, stamp string) bool {
 	if stamp == "" {
 		return true
 	}
@@ -359,14 +354,13 @@ func ParentHoldsTaskWork(l, pairLocation *lymcwd.Location, slug string) (bool, e
 
 // withoutFinalizeEntered returns the part of ended whose slugs this machine's own landing has not reached,
 // so a replay never sets aside the commits of a run this machine landed.
-// A run marked EndedHandedOver stays, since its commits are never replayed here.
 func withoutFinalizeEntered(l *lymcwd.Location, ended EndedSet) EndedSet {
 	if len(ended) == 0 {
 		return ended
 	}
 	live := EndedSet{}
 	for slug, how := range ended {
-		if how != EndedHandedOver && finalizeEntered(l, slug, how) {
+		if finalizeEntered(l, slug, how) {
 			logger.Info("fabricengine: a run origin has ended is left to this machine's own landing", "slug", slug)
 			continue
 		}
@@ -545,7 +539,7 @@ func setAsideTag(rec *Mutations, repo *gitrepo.Repo, slug, sha string) (string, 
 		}
 		slug = "replayer/" + ledgerName
 	}
-	tag := setAsideTagPrefix + slug + "/" + sha[:fabriclayout.ArchiveTagSHALen]
+	tag := setAsideTagPrefix + slug + "/" + sha[:ArchiveTagSHALen]
 	commonDir, err := repo.CommonDir()
 	if err != nil {
 		return "", fmt.Errorf("tag set-aside commit %s: %w", sha, err)
@@ -562,7 +556,7 @@ func setAsideTag(rec *Mutations, repo *gitrepo.Repo, slug, sha string) (string, 
 	case existing != sha:
 		return "", fmt.Errorf("set-aside tag %q already exists at %s, not %s", tag, existing, sha)
 	}
-	rec.Append(fabriclayout.KindTagCreated, filepath.Dir(commonDir), tag)
+	rec.Append(KindTagCreated, filepath.Dir(commonDir), tag)
 	return tag, nil
 }
 
@@ -670,7 +664,7 @@ func hubLocationOfBolt(boltDir string) (*lymcwd.Location, error) {
 		if !entry.Main {
 			continue
 		}
-		slug, ok := fabriclayout.WeftWarpSlug(filepath.Base(filepath.Clean(filepath.FromSlash(entry.Path))))
+		slug, ok := WeftWarpSlug(filepath.Base(filepath.Clean(filepath.FromSlash(entry.Path))))
 		if !ok {
 			return nil, fmt.Errorf("the main worktree %s of the records repository is no weft sibling", entry.Path)
 		}
@@ -815,14 +809,14 @@ func replayBolt(rec *Mutations, l *lymcwd.Location, boltDir, upstream string, en
 	}
 
 	if len(seed) > 0 {
-		rec.Append(fabriclayout.KindCommitsDropped, boltDir, strings.Join(seed, " "))
+		rec.Append(KindCommitsDropped, boltDir, strings.Join(seed, " "))
 	}
 	endTip, err := repo.CurrentSHA()
 	if err != nil {
 		return restoreOnFailure(err)
 	}
 	if endTip != afterPicks {
-		rec.Append(fabriclayout.KindRepoAdvanced, boltDir, endTip)
+		rec.Append(KindRepoAdvanced, boltDir, endTip)
 	}
 	return outcome, nil
 }
@@ -847,7 +841,7 @@ func replayClaimedCommit(rec *Mutations, repo *gitrepo.Repo, boltDir, mergeBase 
 
 	type replayerFiles struct {
 		replayer BoltReplayer
-		files    []fabriclayout.ReplayFile
+		files    []ReplayFile
 	}
 	var groups []*replayerFiles
 	for _, path := range step.paths {
@@ -855,7 +849,7 @@ func replayClaimedCommit(rec *Mutations, repo *gitrepo.Repo, boltDir, mergeBase 
 		if skipLedger && replayer.Name() == ledgerName {
 			continue
 		}
-		file := fabriclayout.ReplayFile{Path: path}
+		file := ReplayFile{Path: path}
 		if file.Base, err = blobAt(repo, mergeBase, path); err != nil {
 			return err
 		}
@@ -877,7 +871,7 @@ func replayClaimedCommit(rec *Mutations, repo *gitrepo.Repo, boltDir, mergeBase 
 	if skipLedger {
 		aside = &SetAsideCommit{Commit: step.sha, Slug: step.runs[0]}
 	}
-	asideFor := func(name string, finding fabriclayout.ReplayFinding) {
+	asideFor := func(name string, finding ReplayFinding) {
 		if aside != nil {
 			return
 		}
@@ -889,7 +883,7 @@ func replayClaimedCommit(rec *Mutations, repo *gitrepo.Repo, boltDir, mergeBase 
 	}
 	allEmpty := true
 	for _, group := range groups {
-		result, err := group.replayer.Apply(fabriclayout.ReplayRequest{Dir: boltDir, Files: group.files})
+		result, err := group.replayer.Apply(ReplayRequest{Dir: boltDir, Files: group.files})
 		if err != nil {
 			return fmt.Errorf("replay Bolt commit %s by entry with %s: %w", step.sha, group.replayer.Name(), err)
 		}

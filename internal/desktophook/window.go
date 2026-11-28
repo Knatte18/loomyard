@@ -1,9 +1,9 @@
 // Package desktophook runs the machine's configured window command after lym opens a desktop window.
 // An operator's own script, such as one that snaps the new window into the active desktop's tiling grid, can place it.
 // It knows no window manager or desktop.
-// It waits desktop.window_wait_ms for the new window to appear.
-// It then runs desktop.window_command through the platform shell in the window's directory.
-// With desktop.window_command empty, the template default, it waits for nothing and runs nothing.
+// It waits desktop.yaml's window_wait_ms for the new window to appear.
+// It then runs window_command through the platform shell in the window's directory.
+// With window_command empty, the template default, it waits for nothing and runs nothing.
 // Both keys are machine keys, read from the hub's never-tracked machine override, so each machine names its own command.
 package desktophook
 
@@ -23,7 +23,7 @@ import (
 
 // timing is the waiting and bounding applied after a window opens, held as a value so a test can shorten it.
 type timing struct {
-	// sleep waits the configured desktop.window_wait_ms before the command runs.
+	// sleep waits the configured window_wait_ms before the command runs.
 	sleep func(time.Duration)
 	// commandTimeout bounds one run of the window command, so a hung script cannot hold up the verb that opened the window.
 	commandTimeout time.Duration
@@ -35,10 +35,9 @@ type timing struct {
 var productionTiming = timing{sleep: time.Sleep, commandTimeout: 30 * time.Second, commandWaitDelay: 5 * time.Second}
 
 // AfterWindow runs the window command the stack under dirs configures, once a window on dir has been opened.
-// It waits desktop.window_wait_ms first, so the command sees the new window.
-// It then runs desktop.window_command through the platform shell with dir as its working directory.
-// The run is bounded by a timeout.
-// With desktop.window_command empty or blank it returns nil at once.
+// It waits window_wait_ms first, so the command sees the new window.
+// It then runs window_command through the platform shell with dir as its working directory, bounded by a timeout.
+// With window_command empty or blank it returns nil at once.
 // A config that fails to load returns an error.
 // So does a command that fails to start, exits nonzero or times out; that error carries the command's output.
 // The window is already open by then, so a caller only reports it.

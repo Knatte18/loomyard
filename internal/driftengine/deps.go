@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -32,22 +32,13 @@ type Deps struct {
 	Head        func() (string, error)
 	BranchPoint func() (string, error)
 	DirtyPaths  func() ([]string, error)
-	// ReviewBase reads the review base the task's review range starts from: the merge base with the last merged parent tip.
-	// Nil lists no file, since a standalone run records no parent branch and has no review range.
-	ReviewBase func() (string, error)
-	// ChangedFiles lists the files that exist at base and that the commits from base to HEAD change, each with its diff.
-	ChangedFiles func(base string) ([]fabriclayout.FileDiff, error)
-	// RangeDiff reads the full diff of the commits from base to HEAD, added files included.
-	RangeDiff func(base string) (string, error)
-	// CommitMessages lists the whole message of every commit from base to HEAD.
-	CommitMessages func(base string) ([]string, error)
 	// Commit commits the told anchor-relative paths under the durable drift directory with the run's records.
 	Commit func(relPaths []string) error
 	// CommitWithTrailers commits the told anchor-relative paths as one records commit.
 	// The told trailers follow the commit's own code-head trailer.
-	CommitWithTrailers func(relPaths []string, trailers []fabriclayout.Trailer) error
+	CommitWithTrailers func(relPaths []string, trailers []fabricengine.Trailer) error
 	// TrailerCommit finds the newest records commit carrying the trailer key when newest is true, and the oldest otherwise; found is false when none carries it.
-	TrailerCommit func(key string, newest bool) (fabriclayout.TrailerCommit, bool, error)
+	TrailerCommit func(key string, newest bool) (fabricengine.TrailerCommit, bool, error)
 	// FileAt reads an anchor-relative file as stored in the records commit rev; found is false when the commit lacks it.
 	FileAt func(rev, relPath string) ([]byte, bool, error)
 	// Seats and Now are the seat runner and the clock the registry entry fills from the recipe's environment.
@@ -59,12 +50,8 @@ type Deps struct {
 	ExpectTable func(listing string) (seatengine.Table, error)
 	// JudgeTable builds the judge's table over the request file Drift-Verify wrote before the spawn.
 	JudgeTable func(request string) (seatengine.Table, error)
-	// JudgeParent is the judge's seat for asking the run's parent orch to agree with its rulings.
-	// It asks under drift.judge_ask_parent.
-	// Nil asks the parent nothing.
-	JudgeParent *JudgeParentSeat
 	// Checkouts reads the state of the code checkout and of the records checkout.
-	Checkouts func() (code, records fabriclayout.CheckoutState, err error)
+	Checkouts func() (code, records fabricengine.CheckoutState, err error)
 	// RecordsChangedSince lists the records paths committed since the revision rev.
 	RecordsChangedSince func(rev string) ([]string, error)
 	// EndRoles ends every live strand of this worktree whose role is exactly one of the told roles, and none of any other role.
@@ -74,21 +61,6 @@ type Deps struct {
 	// LoomRecordsDirs are the records paths loom itself writes during a row, relative to the records checkout's root:
 	// each a directory or, ending in `-`, a path prefix.
 	LoomRecordsDirs []string
-	// DecisionRecord is the task's decision record in the worktree.
-	// The parent may append entries to it while a judge runs.
-	// A committed change made only of such entries, with every entry and carry-over block it held kept, is no judge's edit.
-	// Empty exempts no change of it.
-	DecisionRecord string
-	// LockDecisionRecord takes the run's decision lock, which every `lym loom decision` verb holds through its commit.
-	// It waits while another holder has the lock, and returns its release.
-	// The judge snapshot holds it while it reads the decision record, so it never reads a verb's write half-done.
-	// Nil takes no lock.
-	LockDecisionRecord func() (release func() error, err error)
-	// ReplacedDecisionRecord reads the decision record as the newest `lym loom decision replace` commit of it wrote it.
-	// Only a commit made after the records commit sinceHead counts, and an empty sinceHead admits any commit.
-	// found is false when no such commit exists.
-	// Nil reads none, so no replace is exempt.
-	ReplacedDecisionRecord func(sinceHead string) (record []byte, found bool, err error)
 	// StartCapture starts the detached capture and returns once its record exists.
 	StartCapture func() error
 	// RunCapture runs the capture in the calling process and returns its final record.
@@ -98,7 +70,7 @@ type Deps struct {
 	CaptureCurrent func(ctx context.Context) (CurrentCapture, error)
 	// Sleep waits d or until ctx ends; it is the clock of the capture wait.
 	Sleep func(ctx context.Context, d time.Duration) error
-	// Compare runs the mechanical compare against the baseline and returns how it ended.
+	// Compare runs the mechanical compare against the baseline over the scope's skip list and returns how it ended.
 	Compare func(ctx context.Context) (CompareResult, error)
 	// GateFindingsFile is the file an exhausted gate entry's findings are kept in; empty keeps none.
 	GateFindingsFile string

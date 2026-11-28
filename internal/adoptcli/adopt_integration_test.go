@@ -1,5 +1,5 @@
-// adopt_integration_test.go drives the foreground adopt over two hubforge clones of one remote:
-// a task's run moves from the first clone's machine to the second clone, which runs the adopt check green.
+// adopt_integration_test.go drives the takeover over two hubforge clones of one remote:
+// a task's run moves from the first clone to the second and back.
 
 package adoptcli_test
 
@@ -8,43 +8,52 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
-	"gopkg.in/yaml.v3"
-
 	"github.com/Knatte18/loomyard/internal/adoptcli"
+	"github.com/Knatte18/loomyard/internal/adoptrecord"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
-	"github.com/Knatte18/loomyard/internal/pairteardown"
-	"github.com/Knatte18/loomyard/internal/runfsm"
-	"github.com/Knatte18/loomyard/internal/runpusher"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
-	"github.com/Knatte18/loomyard/internal/statuscommit"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const (
-	firstMachine = "otherbox"
-	taskSlug     = "alpha"
+	firstMachine  = "otherbox"
+	secondMachine = "secondbox"
+	taskSlug      = "alpha"
 )
 
-// TestAdoptIntegration_SecondCloneTakesOver moves a run from the first clone's machine to the second clone.
-// The first clone commits one more transition of the run after its last push.
-// Under go test that commit starts no pusher, so origin lacks it.
-// The second clone reads the run at the last transition origin holds.
-// Its resume re-runs that row.
+// holdOwnerPause records a live owner pause of the slug's own scope in the hub's pause record.
+func holdOwnerPause(t *testing.T, location *lymcwd.Location) {
+	t.Helper()
+	geometry, err := hubgeom.PauseGeometry(location)
+	if err != nil {
+		t.Fatalf("PauseGeometry: %v", err)
+	}
+	now := time.Now()
+	if _, err := pauserecord.Update(geometry.RecordPath, now, func(record *pauserecord.Record) error {
+		record.Live = append(record.Live, pauserecord.Entry{Scope: taskSlug, PausedAt: now, GraceEnd: now, Caller: pauserecord.OwnerCaller})
+		return nil
+	}); err != nil {
+		t.Fatalf("record the owner pause: %v", err)
+	}
+}
+
 func TestAdoptIntegration_SecondCloneTakesOver(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -68,7 +77,9 @@ func TestAdoptIntegration_SecondCloneTakesOver(t *testing.T) {
 		t.Fatalf("record the first machine as the prime's owner: %v", err)
 	}
 
-	// The adopt moves only a run whose record at origin is not done, on the prime's records branch and on the pair's own.
+	// The reconcile judges only pairs with a batten run record,
+	// and an adopt moves only a run whose record is not done,
+	// so the first clone records a running one before the second clone exists.
 	status, err := json.Marshal(shedengine.Status{CurrentProducer: "Worktree-Create", State: shedengine.StateRunning, History: []shedengine.HistoryEntry{}})
 	if err != nil {
 		t.Fatalf("marshal the run status: %v", err)
@@ -85,120 +96,124 @@ func TestAdoptIntegration_SecondCloneTakesOver(t *testing.T) {
 	if _, committed, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), first.Location, rels, "test: run record", fabricengine.EnvSyncOptions()); err != nil || !committed {
 		t.Fatalf("commit the run record: committed=%v err=%v", committed, err)
 	}
-	if _, err := fabricengine.PushPairAnchored(first.Location, fabricengine.EnvSyncOptions(), fabriclayout.PairPush{LockWait: fabriclayout.StatusPushLockWait}); err != nil {
+	if _, err := fabricengine.PushPairAnchored(first.Location, fabricengine.EnvSyncOptions(), fabricengine.StatusPushLockWait); err != nil {
 		t.Fatalf("push the run record: %v", err)
 	}
-	_, pairStatusRel, err := shedrun.TreeRunFileRels(taskSlug)
-	if err != nil {
-		t.Fatalf("TreeRunFileRels(%q): %v", taskSlug, err)
-	}
-	pairRecords := first.PairRecordsSibling(taskSlug)
-	gitkit.CommitFile(t, pairRecords, pairStatusRel, string(status), "test: the pair's own run record")
-	gitkit.MustRun(t, pairRecords, "git", "push", "origin", gitkit.CurrentBranch(t, pairRecords))
 
 	second := hubforge.CloneSecond(t, first)
-	seedAdoptGate(t, second)
-	firstState := runStateOf(t, first)
-	commitTransitionLocally(t, first.Location)
-	if ahead, err := fabricengine.RunCommitsAhead(first.Location); err != nil || !ahead {
-		t.Fatalf("RunCommitsAhead(first clone) = %v, %v; want true, since the transition's pusher did not start and origin lacks the commit", ahead, err)
+	// The first clone pushes a commit to the prime's code branch and the task's pair branch after the second clone exists.
+	// Only the second clone's reconcile can bring them.
+	for _, dir := range []string{first.PrimeWorktree(), first.PairCodeWorktree(taskSlug)} {
+		gitkit.CommitFile(t, dir, "pushed.txt", "pushed", "pushed work")
+		gitkit.MustRun(t, dir, "git", "push", "origin", gitkit.CurrentBranch(t, dir))
 	}
+	holdOwnerPause(t, second.Location)
 
-	machine, err := machinename.Name()
-	if err != nil {
-		t.Fatalf("machine name: %v", err)
-	}
-	// The task is moved with root, which the first machine owns, so the second clone adopts root.
-	got, err := adoptcli.AdoptAs(second.Location, machinename.Name, []string{boardengine.RootSubject}, false)
+	// The task is moved with root, which the first machine owns,
+	// so the second clone adopts root and records no owner of the task's own.
+	got, err := adoptcli.AdoptAs(second.Location, secondMachine, []string{boardengine.RootSubject}, false, false)
 	if err != nil {
 		t.Fatalf("the second clone's adopt: %v", err)
 	}
-
-	moved := slugOutcomeOf(t, got, taskSlug)
-	if !moved.PairAdded || moved.Run != "taken over" || moved.OwnerRecorded || moved.Error != "" || !got.PrimeRecorded || got.PrimeCheck != "green" {
-		t.Errorf("second clone's outcome = %+v, prime recorded = %v, prime check = %q; want the pair added, the run taken over, no owner of the task's own and a green check of root", moved, got.PrimeRecorded, got.PrimeCheck)
+	adopted := slugOutcomeOf(t, got, taskSlug)
+	if !adopted.PairAdded || adopted.OwnerRecorded || !adopted.AdoptPaused || adopted.Error != "" || !got.PrimeRecorded {
+		t.Errorf("second clone's outcome = %+v, prime recorded = %v, want the pair added, the run paused by adopt, no owner of the task's own and the prime recorded", adopted, got.PrimeRecorded)
 	}
-	if got.Hold != nil {
-		t.Errorf("second clone's outcome holds %+v; want the hold cleared by the green check", got.Hold)
+	secondRecord, found, err := adoptrecord.Read(second.Path)
+	if err != nil || !found || secondRecord.State != adoptrecord.StateDone {
+		t.Fatalf("second clone's adopt record = %+v, found %v, %v; want a done record", secondRecord, found, err)
 	}
-	owners, err := boardengine.ReadOwners(second.BoardDir())
-	if err != nil || owners.Prime != machine || owners.Entries[taskSlug].Owner != "" || len(owners.Holds) != 0 {
-		t.Errorf("second clone's owners = %+v, %v; want the prime owned by %s, no owner on %s and no hold left", owners, err, machine, taskSlug)
+	var listed []string
+	for _, step := range secondRecord.Steps {
+		listed = append(listed, step.Name)
+	}
+	if !slices.Equal(listed, adoptrecord.Steps) {
+		t.Errorf("second clone's adopt record lists steps %v, want every step of %v", listed, adoptrecord.Steps)
+	}
+	geometry, err := hubgeom.PauseGeometry(second.Location)
+	if err != nil {
+		t.Fatalf("PauseGeometry: %v", err)
+	}
+	record, err := pauserecord.Read(geometry.RecordPath)
+	if err != nil || len(record.Live) != 1 || record.Live[0].Scope != taskSlug || record.Live[0].Caller != pauserecord.AdoptCaller {
+		t.Errorf("second clone's pause record = %+v, %v; want the owner entry turned into the one adopt entry", record.Live, err)
+	}
+	if _, err := os.Stat(filepath.Join(fabricengine.AdoptScratchDir(second.Path), boardengine.RootSubject, "holds.json")); !os.IsNotExist(err) {
+		t.Errorf("Stat(holds.json) error = %v; want no holds file written", err)
+	}
+	// The adopt runs no fabric pull, so the reconcile alone brought both branches to the tip the first clone pushed.
+	for name, dirs := range map[string][2]string{
+		"prime":     {first.PrimeWorktree(), second.PrimeWorktree()},
+		"task pair": {first.PairCodeWorktree(taskSlug), second.PairCodeWorktree(taskSlug)},
+	} {
+		if want, got := gitkit.RevParse(t, dirs[0], "HEAD"), gitkit.RevParse(t, dirs[1], "HEAD"); got != want {
+			t.Errorf("second clone's %s branch is at %s, want origin's tip %s", name, got, want)
+		}
 	}
 	if _, err := os.Stat(second.PairCodeWorktree(taskSlug)); err != nil {
 		t.Errorf("the second clone has no pair worktree for %s: %v", taskSlug, err)
 	}
-	gitkit.MustRun(t, second.PrimeRecords(), "git", "fetch", "origin")
-	entry, found, err := fabricengine.ReadUpstreamTakeover(second.Location, second.PrimeRecords(), taskSlug)
-	if err != nil || !found || entry.Machine != machine || entry.Subject != boardengine.RootSubject {
-		t.Errorf("origin's takeover entry of %s = %+v, found %v, %v; want one naming %s and root", taskSlug, entry, found, err, machine)
+	owners, err := boardengine.ReadOwners(second.BoardDir())
+	if err != nil || owners.Prime != secondMachine || owners.Entries[taskSlug].Owner != "" {
+		t.Errorf("second clone's owners = %+v, %v; want the prime owned by %s and no owner on %s", owners, err, secondMachine, taskSlug)
 	}
-	if secondState := runStateOf(t, second); secondState != firstState {
-		t.Errorf("the run reads %v on the second clone, want the %v it read on the first", secondState, firstState)
-	}
-}
 
-// commitTransitionLocally commits one more running transition of the task's run at the prime l.
-// It goes through the status commit core, as a batten transition does.
-// The core commits and starts the pusher, which under go test spawns nothing.
-func commitTransitionLocally(t *testing.T, l *lymcwd.Location) {
-	t.Helper()
-	status, err := json.Marshal(shedengine.Status{CurrentProducer: "Seed-Child", State: shedengine.StateRunning, History: []shedengine.HistoryEntry{}})
+	// The first clone holds local code commits origin lacks, and its run lock is held under a slug-scope owner pause.
+	pair := first.PairCodeWorktree(taskSlug)
+	if err := os.WriteFile(filepath.Join(pair, "local.txt"), []byte("local work"), 0o644); err != nil {
+		t.Fatalf("write the local file: %v", err)
+	}
+	gitkit.MustRun(t, pair, "git", "add", "local.txt")
+	gitkit.MustRun(t, pair, "git", "commit", "-m", "local work origin lacks")
+	holdOwnerPause(t, first.Location)
+	task, err := lymcwd.ResolveWorktree(pair)
 	if err != nil {
-		t.Fatalf("marshal the run status: %v", err)
+		t.Fatalf("resolve the first clone's pair: %v", err)
 	}
-	if err := os.WriteFile(shedrun.StatusFile(l, taskSlug), status, 0o644); err != nil {
-		t.Fatalf("write the run status: %v", err)
+	runLock := shedrun.RunLock(task, shedrun.SelfRunID)
+	if err := os.MkdirAll(filepath.Dir(runLock), 0o755); err != nil {
+		t.Fatalf("create the run lock directory: %v", err)
 	}
-	target, err := runpusher.TargetOf(l, taskSlug)
+	held, err := lock.AcquireWriteLock(runLock)
 	if err != nil {
-		t.Fatalf("TargetOf(%q): %v", taskSlug, err)
+		t.Fatalf("hold the run lock: %v", err)
 	}
-	seam := statuscommit.New(statuscommit.Deps{
-		MergeActive: func() (bool, error) { return fabricengine.MergeStateActive(l) },
-		Commit: func(msg string) (bool, error) {
-			trailers := []fabriclayout.Trailer{{Key: fabriclayout.TransitionTrailerKey, Value: taskSlug}}
-			_, committed, err := fabricengine.CommitAnchoredPathsWithTrailers(fabricengine.NewMutations(""), l, []string{shedrun.StatusRel(l, taskSlug)}, msg, trailers, fabricengine.EnvSyncOptions())
-			return committed, err
-		},
-		StartPush: func() bool {
-			started, err := runpusher.Start(target)
-			return err == nil && started
-		},
-	}, "batten", "adopttest", nil)
-	if err := seam("Seed-Child", "running"); err != nil {
-		t.Fatalf("commit the transition: %v", err)
-	}
-}
+	t.Cleanup(func() { _ = held.Release() })
 
-// seedAdoptGate commits a gate config to h's Bolt whose adopt key runs one tier that holds no test.
-// The check then goes green.
-func seedAdoptGate(t *testing.T, h *hubforge.Hub) {
-	t.Helper()
-	tier := map[string]any{"command": "true", "all_targets": ".", "timeout_min": 1, "counter": "go-json"}
-	gate, err := yaml.Marshal(map[string]any{
-		"slots":  1,
-		"scoper": "none",
-		"tiers":  map[string]any{"tier0": tier},
-		"gates": map[string]any{
-			"finalize": map[string]any{"tiers": []int{0}, "scope": "all"},
-			"adopt":    map[string]any{"tiers": []int{0}, "scope": "all"},
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
+	// The second machine took root over with the task, so taking them back names root.
+	got, err = adoptcli.AdoptAs(first.Location, firstMachine, []string{boardengine.RootSubject}, false, false)
+	if err == nil || !strings.Contains(err.Error(), "--keep-local") || !strings.Contains(err.Error(), "--drop-local") {
+		t.Fatalf("the first clone's adopt back error = %v, want the held-back stop naming --keep-local and --drop-local", err)
 	}
-	gitkit.CommitFile(t, h.BoardDir(), configengine.ConfigFileRel("gate"), string(gate), "fixture: a gate whose adopt tier holds no test")
-}
+	if stopped := slugOutcomeOf(t, got, taskSlug); !stopped.Stopped || !stopped.Live || !strings.Contains(stopped.WayForward, "`lym adopt root --keep-local`") || got.PrimeRecorded {
+		t.Errorf("adopt back = %+v, prime recorded = %v, want a stop on the live pair naming both ways forward under root and the prime left", stopped, got.PrimeRecorded)
+	}
+	if firstRecord, found, err := adoptrecord.Read(first.Path); err != nil || !found || firstRecord.State != adoptrecord.StateStopped || firstRecord.InFlight != adoptrecord.StepDone {
+		t.Errorf("first clone's adopt record = %+v, found %v, %v; want it stopped at done", firstRecord, found, err)
+	}
 
-// runStateOf returns the state of the task's run as the hub's records and machine-local facts read.
-func runStateOf(t *testing.T, h *hubforge.Hub) runfsm.State {
-	t.Helper()
-	records, _, err := pairteardown.ReadRun(h.Location, taskSlug)
-	if err != nil {
-		t.Fatalf("read the run of %s: %v", taskSlug, err)
+	got, err = adoptcli.AdoptAs(first.Location, firstMachine, []string{boardengine.RootSubject}, false, true)
+	if err == nil {
+		t.Fatalf("the first clone's --drop-local over a live pair ended ok, want the held-back stop")
 	}
-	return runfsm.Derive(records).State
+	if refused := slugOutcomeOf(t, got, taskSlug); !strings.Contains(refused.Error, "--keep-local") || got.PrimeRecorded {
+		t.Errorf("--drop-local over a live pair = %+v, prime recorded = %v, want a refusal naming --keep-local and the prime left", refused, got.PrimeRecorded)
+	}
+
+	got, err = adoptcli.AdoptAs(first.Location, firstMachine, []string{boardengine.RootSubject}, true, false)
+	if err != nil {
+		t.Fatalf("the first clone's --keep-local: %v", err)
+	}
+	if kept := slugOutcomeOf(t, got, taskSlug); kept.Stopped || !got.PrimeRecorded {
+		t.Errorf("--keep-local = %+v, prime recorded = %v, want no stop and the prime recorded", kept, got.PrimeRecorded)
+	}
+	owners, err = boardengine.ReadOwners(first.BoardDir())
+	if err != nil || owners.Prime != firstMachine {
+		t.Errorf("first clone's owners = %+v, %v; want the prime owned by %s again", owners, err, firstMachine)
+	}
+	if firstRecord, found, err := adoptrecord.Read(first.Path); err != nil || !found || firstRecord.State != adoptrecord.StateDone || !firstRecord.Request.KeepLocal || firstRecord.Request.DropLocal {
+		t.Errorf("first clone's adopt record = %+v, found %v, %v; want it done with --keep-local alone", firstRecord, found, err)
+	}
 }
 
 // slugOutcomeOf returns the outcome of slug in the verb's result, failing the test when the result lacks it.
@@ -273,8 +288,8 @@ func TestCommand_HereAdoptsTheSubjectOfItsWorktree(t *testing.T) {
 		if exit != 0 || got.Raw["outcome"] != "owned_here" || got.Raw["subject"] != tt.wantSubject {
 			t.Errorf("%s: lym adopt --here = exit %d, envelope %+v; want exit 0, outcome owned_here and subject %q", tt.name, exit, got, tt.wantSubject)
 		}
-		if owners, err := boardengine.ReadOwners(h.BoardDir()); err != nil || len(owners.Holds) != 0 {
-			t.Errorf("%s: the hub's holds = %+v, %v; want none written", tt.name, owners.Holds, err)
+		if _, found, err := adoptrecord.Read(h.Path); found || err != nil {
+			t.Errorf("%s: adopt record found %v, error %v; want none written", tt.name, found, err)
 		}
 	}
 }
@@ -286,7 +301,7 @@ func TestCheckCmd_FromABeamExitsZeroWhileOneRuns(t *testing.T) {
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	hubforge.AddPairWith(t, h, "b", fabricengine.AddOptions{Beam: true})
-	scratch := filepath.Join(fabriclayout.AdoptScratchDir(h.Path), "root")
+	scratch := filepath.Join(fabricengine.AdoptScratchDir(h.Path), "root")
 	if err := os.MkdirAll(scratch, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -295,15 +310,6 @@ func TestCheckCmd_FromABeamExitsZeroWhileOneRuns(t *testing.T) {
 		t.Fatalf("hold the check lock: %v", err)
 	}
 	t.Cleanup(func() { _ = held.Release() })
-
-	here, err := machinename.ReadIdentity()
-	if err != nil {
-		t.Fatalf("read this machine's identity: %v", err)
-	}
-	hold := boardengine.Hold{Kind: boardengine.HoldKindAdopt, Machine: here.Name, At: time.Now(), Subjects: []boardengine.HoldSubject{{Subject: boardengine.RootSubject}}}
-	if _, err := boardengine.WriteHold(h.BoardDir(), hold); err != nil {
-		t.Fatalf("plant this machine's hold over root: %v", err)
-	}
 
 	var out bytes.Buffer
 	exit := clihelp.ExecuteIn(adoptcli.Command(), h.PairCodeWorktree("b"), &out, []string{"check", "root"})

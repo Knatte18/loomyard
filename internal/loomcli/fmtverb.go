@@ -102,8 +102,8 @@ func (c *loomCLI) fmtCmd() *cobra.Command {
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `fmt rewrites each named .go file in place to its go/format form, in-process,
 with no gofmt binary. It is the sanctioned way to fix the formatting
-internal/testkit/gofmt_test.go fails. A relative path resolves against the
-current directory. Every file is checked and formatted before any is written: one
+cmd/lym/gofmt_test.go fails. A relative path resolves against the current
+directory. Every file is checked and formatted before any is written: one
 path that does not exist, lies outside this worktree, is not a .go file or
 does not parse refuses the whole call and writes nothing. The envelope's
 "changed" lists the files it rewrote; a file already formatted is left

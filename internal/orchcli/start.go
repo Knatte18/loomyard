@@ -19,7 +19,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -37,9 +36,6 @@ import (
 // orchStrandName is the role the orchestrator strand is added and addressed by in the prime's reed session.
 const orchStrandName = agentname.RoleOrch
 
-// dobbyStartProgram is the program name a notice about a dobby start signs with.
-const dobbyStartProgram = "DOBBY"
-
 // Report "action" values.
 const (
 	actionAlreadyRunning = "already-running"
@@ -53,10 +49,8 @@ const stoppingWatcherHint = `the watcher is stopping; run "lym beam start" again
 // BeamUpOptions tunes one BeamUp.
 type BeamUpOptions struct {
 	// Prepare runs, before the beam steps, the hub-scope origin reconcile, the failed-push read, and the prime claim.
-	// It also ends the processes of each run another machine owns; a caller that already judged origin leaves it false.
+	// It also runs the owner pauses; a caller that already judged origin leaves it false.
 	Prepare bool
-	// NoPrimeClaim leaves the prime claim out of Prepare, for a caller that must claim no prime.
-	NoPrimeClaim bool
 	// Here names this machine for the owner refusal; empty reads machinename.Name.
 	Here string
 	// SkipOrch brings the beam up without its orch:
@@ -90,12 +84,11 @@ type BeamUpReport struct {
 	Hint            string `json:"hint,omitempty"`
 	WatcherStopping bool   `json:"watcher_stopping,omitempty"`
 	// Reconcile, FailedPushes and OwnerPauses are what Prepare gathered.
-	// OwnerPauses names each owned run whose processes it ended.
-	Reconcile    fabriclayout.OriginReport `json:"reconcile"`
+	Reconcile    fabricengine.OriginReport `json:"reconcile"`
 	FailedPushes []map[string]any          `json:"failed_pushes"`
 	OwnerPauses  []map[string]string       `json:"owner_pauses"`
 	// Mutations is what the reconcile changed, and Partial whether a failure left that change standing.
-	Mutations []fabriclayout.Mutation `json:"mutations"`
+	Mutations []fabricengine.Mutation `json:"mutations"`
 	Partial   bool                    `json:"partial"`
 	// Warnings are the notes that did not stop the start.
 	Warnings []string `json:"warnings,omitempty"`
@@ -283,7 +276,7 @@ func (c *orchCLI) orchReceiver(listed reedengine.StrandStatus, hasStrand bool) (
 	if hasStrand {
 		return orchStrandFullName(listed, true, ""), nil
 	}
-	shortname, found := fabricengine.ReadShortname(fabriclayout.BoltDir(c.location.HubPath))
+	shortname, found := fabricengine.ReadShortname(fabricengine.BoltDir(c.location.HubPath))
 	if !found {
 		return "", fmt.Errorf("orch: the hub of %s has no usable shortname record to name the orch strand; way forward: run `lym fabric shortname <shortname>`, then run `lym beam start` again", c.location.WorktreePath())
 	}
@@ -374,16 +367,16 @@ func (c *orchCLI) saveFreshLaunch(next orchengine.State, firstFailure string, cr
 // reconcileHub runs the hub-scope origin reconcile from the prime of the hub that location belongs to.
 // Any bring-up of `lym beam start` runs it.
 // It passes the seams pairteardown builds for the hub, and zero ReconcileScope and ReconcileOptions.
-func reconcileHub(location *lymcwd.Location) (fabriclayout.OriginReport, error) {
+func reconcileHub(location *lymcwd.Location) (fabricengine.OriginReport, error) {
 	prime, err := resolvePrime(location)
 	if err != nil {
-		return fabriclayout.OriginReport{}, err
+		return fabricengine.OriginReport{}, err
 	}
 	teardown, err := pairteardown.New(prime)
 	if err != nil {
-		return fabriclayout.OriginReport{}, err
+		return fabricengine.OriginReport{}, err
 	}
-	return fabricengine.ReconcileOrigin(prime, fabriclayout.ReconcileScope{}, teardown.OriginSeams(pairteardown.HubSeamOptions(prime)), fabricengine.ReconcileOptions{})
+	return fabricengine.ReconcileOrigin(prime, fabricengine.ReconcileScope{}, teardown.OriginSeams(pairteardown.HubSeamOptions(prime)), fabricengine.ReconcileOptions{})
 }
 
 // ensureDobbies starts the dobby of the worktree at location when it is not live already.
@@ -422,44 +415,33 @@ func (c *orchCLI) claimPrimeNotes() []string {
 	return nil
 }
 
-// pauseOwnedRuns ends the processes of each owned_elsewhere entry of report, its dobby too when the entry is a beam.
-// It returns the slugs it ended with their owners, and a warning line per entry whose processes could not be ended.
-// An unwired end names every such entry in a warning, since nothing ended it.
-// A failed read of whether an entry is a beam ends nothing for that entry,
-// so a beam's dobby is never left running by a guess.
-func (c *orchCLI) pauseOwnedRuns(report fabriclayout.OriginReport) ([]map[string]string, []string) {
-	ended := []map[string]string{}
+// pauseOwnedRuns pauses the pair of each owned_elsewhere entry of report.
+// It returns the paused slugs with their owners, and a warning line per entry that could not be paused.
+// An unwired pause names every such entry in a warning, since nothing holds it.
+func (c *orchCLI) pauseOwnedRuns(report fabricengine.OriginReport) ([]map[string]string, []string) {
+	paused := []map[string]string{}
 	var warnings []string
 	for _, entry := range report.Entries {
-		if entry.State != fabriclayout.EntryOwnedElsewhere {
+		if entry.State != fabricengine.EntryOwnedElsewhere {
 			continue
 		}
-		if c.endOwned == nil {
-			warnings = append(warnings, fmt.Sprintf("%s is owned by machine %s and was not ended; re-run `lym beam start`, which ends it again", entry.Slug, entry.Owner))
+		if c.pauseOwned == nil {
+			warnings = append(warnings, fmt.Sprintf("%s is owned by machine %s and was not paused; re-run `lym beam start`, which pauses it again", entry.Slug, entry.Owner))
 			continue
 		}
-		endDobby := false
-		if c.isBeam != nil {
-			beam, err := c.isBeam(entry.Slug)
-			if err != nil {
-				warnings = append(warnings, fmt.Sprintf("%s is owned by machine %s and could not be ended (%v); re-run `lym beam start`, which ends it again", entry.Slug, entry.Owner, err))
-				continue
-			}
-			endDobby = beam
-		}
-		if err := c.endOwned(c.location, entry.Slug, endDobby); err != nil {
-			warnings = append(warnings, fmt.Sprintf("%s is owned by machine %s and could not be ended (%v); re-run `lym beam start`, which ends it again", entry.Slug, entry.Owner, err))
+		if err := c.pauseOwned(c.location, entry.Slug); err != nil {
+			warnings = append(warnings, fmt.Sprintf("%s is owned by machine %s and could not be paused (%v); re-run `lym beam start`, which pauses it again", entry.Slug, entry.Owner, err))
 			continue
 		}
-		ended = append(ended, map[string]string{"slug": entry.Slug, "owner": entry.Owner})
+		paused = append(paused, map[string]string{"slug": entry.Slug, "owner": entry.Owner})
 	}
-	return ended, warnings
+	return paused, warnings
 }
 
 // reconcileNote renders the note a fresh launch's prompt gains.
 // It holds the report's summary and the outstanding failed pushes with their branches.
 // It is empty when the reconcile moved, stopped and ended nothing, and no push is outstanding.
-func reconcileNote(report fabriclayout.OriginReport, failedPushes []map[string]any) string {
+func reconcileNote(report fabricengine.OriginReport, failedPushes []map[string]any) string {
 	var parts []string
 	if summary := report.Summary(); summary != "" {
 		parts = append(parts, "origin reconcile at start: "+summary)
@@ -474,16 +456,15 @@ func reconcileNote(report fabriclayout.OriginReport, failedPushes []map[string]a
 	return strings.Join(parts, "\n")
 }
 
-// prepare records on report the origin reconcile, the failed-push read, the prime claim and the ends of owned runs.
-// The prime is claimed only when claimPrime is set.
+// prepare records on report the origin reconcile, the failed-push read, the prime claim and the owner pauses.
 // The reconcile never refuses the start: the orch is the session that resolves what it reports.
 // It returns the note a fresh launch's prompt gains.
-func (c *orchCLI) prepare(report *BeamUpReport, claimPrime bool) string {
+func (c *orchCLI) prepare(report *BeamUpReport) string {
 	reconciled, reconcileErr := c.reconcile()
 	report.Reconcile = reconciled
 	report.Mutations = reconciled.Mutations.Entries()
 	if report.Mutations == nil {
-		report.Mutations = []fabriclayout.Mutation{}
+		report.Mutations = []fabricengine.Mutation{}
 	}
 	if reconcileErr != nil {
 		report.Warnings = append(report.Warnings, fmt.Sprintf("origin reconcile failed: %v", reconcileErr))
@@ -498,12 +479,10 @@ func (c *orchCLI) prepare(report *BeamUpReport, claimPrime bool) string {
 	}
 	report.FailedPushes = failedPushes
 
-	if claimPrime {
-		report.Warnings = append(report.Warnings, c.claimPrimeNotes()...)
-	}
-	ended, endWarnings := c.pauseOwnedRuns(reconciled)
-	report.OwnerPauses = ended
-	report.Warnings = append(report.Warnings, endWarnings...)
+	report.Warnings = append(report.Warnings, c.claimPrimeNotes()...)
+	paused, pauseWarnings := c.pauseOwnedRuns(reconciled)
+	report.OwnerPauses = paused
+	report.Warnings = append(report.Warnings, pauseWarnings...)
 	return reconcileNote(reconciled, failedPushes)
 }
 
@@ -515,7 +494,7 @@ func (c *orchCLI) beamUp(opts BeamUpOptions) (report BeamUpReport, err error) {
 		Worktree:     c.location.WorktreeName,
 		FailedPushes: []map[string]any{},
 		OwnerPauses:  []map[string]string{},
-		Mutations:    []fabriclayout.Mutation{},
+		Mutations:    []fabricengine.Mutation{},
 	}
 	defer func() { report.Partial = err != nil && len(report.Mutations) > 0 }()
 	if err := os.MkdirAll(c.paths.Dir, 0o755); err != nil {
@@ -529,7 +508,7 @@ func (c *orchCLI) beamUp(opts BeamUpOptions) (report BeamUpReport, err error) {
 
 	note := ""
 	if opts.Prepare {
-		note = c.prepare(&report, !opts.NoPrimeClaim)
+		note = c.prepare(&report)
 	}
 
 	ownLandingOf := ""
@@ -542,8 +521,8 @@ func (c *orchCLI) beamUp(opts BeamUpOptions) (report BeamUpReport, err error) {
 		if opts.Here != "" {
 			here = opts.Here
 		}
-		if err := beamUpRefusal(facts.slug, here, facts.owner, facts.elsewhere, facts.moveWayForward, facts.held, facts.ownLanding, facts.status); err != nil {
-			return report, archiveBeforeOwnerRefusal(err, facts.owner, facts.elsewhere, opts.ArchiveOwned)
+		if err := beamUpRefusal(facts.slug, here, facts.owner, facts.moveWayForward, facts.held, facts.ownLanding, facts.status); err != nil {
+			return report, archiveBeforeOwnerRefusal(err, facts.owner, here, opts.ArchiveOwned)
 		}
 		if facts.held && facts.ownLanding {
 			ownLandingOf = facts.slug
@@ -576,11 +555,10 @@ func (c *orchCLI) beamUp(opts BeamUpOptions) (report BeamUpReport, err error) {
 	return report, err
 }
 
-// archiveBeforeOwnerRefusal runs archive before refusal stands when elsewhere is set.
-// elsewhere says the registry reads owner as a machine other than this one.
+// archiveBeforeOwnerRefusal runs archive before refusal stands when owner is a machine other than here.
 // A failed archive joins the refusal with its retry; any other refusal, or a nil archive, returns refusal as it is.
-func archiveBeforeOwnerRefusal(refusal error, owner string, elsewhere bool, archive func() error) error {
-	if archive == nil || !elsewhere {
+func archiveBeforeOwnerRefusal(refusal error, owner, here string, archive func() error) error {
+	if archive == nil || !boardengine.OwnedElsewhere(owner, here) {
 		return refusal
 	}
 	if err := archive(); err != nil {
@@ -605,23 +583,6 @@ func (c *orchCLI) startDobbyStep(report *BeamUpReport) {
 		return
 	}
 	report.Warnings = append(report.Warnings, fmt.Sprintf("the dobby was not started (%s); way forward: fix the cause it names, then run `lym beam start`", cause))
-	if entry.Outcome == dobbyengine.OutcomeRefused {
-		postMachineRefusal(c.location, report, entry.Detail)
-	}
-}
-
-// postMachineRefusal posts the refusal of a dobby start whose machine identity does not resolve to the prime's orch.
-// detail is the refused entry's detail.
-// Only the refusal `boardengine.IdentityRefusal` reads is posted, once per bring-up.
-// A post that fails adds a warning to report, and the bring-up goes on.
-func postMachineRefusal(location *lymcwd.Location, report *BeamUpReport, detail string) {
-	refusal := boardengine.IdentityRefusal()
-	if refusal == nil || detail != refusal.Error() {
-		return
-	}
-	if _, err := NotifyPrime(location, dobbyStartProgram, refusal.Error()); err != nil {
-		report.Warnings = append(report.Warnings, fmt.Sprintf("the machine refusal was not posted to the prime's orch (%v); way forward: read it in this warning and in `lym beam status`", err))
-	}
 }
 
 // startRelayStep starts the hub's Slack relay when it is down, and records on report only a failure.
@@ -663,9 +624,18 @@ func (c *orchCLI) startOrch(note string) (BeamUpReport, error) {
 	if err != nil {
 		return report, err
 	}
-	strand, hasStrand, err := soleOrchStrand(strands)
-	if err != nil {
-		return report, err
+	named := orchStrands(strands)
+	if len(named) > 1 {
+		guids := make([]string, len(named))
+		for i, s := range named {
+			guids[i] = s.GUID
+		}
+		return report, fmt.Errorf("orch: %d strands are named %q (%s); remove the extras with `lym reed remove` and re-run", len(named), orchStrandName, strings.Join(guids, ", "))
+	}
+	var strand reedengine.StrandStatus
+	hasStrand := len(named) == 1
+	if hasStrand {
+		strand = named[0]
 	}
 	strandLive := hasStrand && strand.Live
 
@@ -682,14 +652,58 @@ func (c *orchCLI) startOrch(note string) (BeamUpReport, error) {
 	report.Strand = strand.GUID
 	switch orchengine.DecideStart(strandLive, watcherLive) {
 	case orchengine.StartRelaunch:
-		_, source, err := c.relaunchStrand(st, strand, hasStrand, note, false, &report)
+		receiver, err := c.orchReceiver(strand, hasStrand)
 		if err != nil {
 			return report, err
 		}
+		creel, err := c.newCreel()
+		if err != nil {
+			return report, fmt.Errorf("orch: reach creel: %w; %s", err, withdrawWayForward)
+		}
+		firstFailure, err := c.withdrawFirst(creel, receiver, hasStrand)
+		if err != nil {
+			return report, err
+		}
+		if hasStrand {
+			if err := c.strands.RemoveStrand(strand.GUID); err != nil {
+				return report, err
+			}
+		}
+		if err := orchengine.RenderRoleFile(c.paths.RolePath); err != nil {
+			return report, err
+		}
+		remoteControlName := c.launchRemoteControlName(strand, hasStrand)
+		started, source, abandoned, err := c.launchOrch(st, note, remoteControlName)
+		report.AbandonedSession = abandoned
+		if err != nil {
+			return report, err
+		}
+		if remoteControlName != "" {
+			c.markLaunchedRemoteControl(started.GUID)
+		}
+		report.Strand = started.GUID
+		if started.Warning != "" {
+			report.Warnings = append(report.Warnings, started.Warning)
+		}
+		if abandoned != "" {
+			report.Warnings = append(report.Warnings, freshLaunchNote(abandoned, started.Carried))
+		}
+		if warning := c.registerOrchProcess(started); warning != "" {
+			report.Warnings = append(report.Warnings, warning)
+		}
+		next := orchengine.ResetForFreshLaunch(st, started.GUID, time.Now())
+		next.SessionID = started.SessionID
+		if err := c.saveFreshLaunch(next, firstFailure, creel, receiver); err != nil {
+			return report, err
+		}
+		logger.Info("orch: launched orchestrator session", "strandGUID", started.GUID, "sessionID", started.SessionID, "promptSource", source, "abandonedSessionID", abandoned)
 		if err := c.spawnWatcher(); err != nil {
 			return report, err
 		}
 		report.Action, report.PromptSource = actionRelaunched, source
+		if source == orchengine.SourceResume {
+			report.SessionID = started.SessionID
+		}
 	case orchengine.StartSpawnWatcher:
 		if err := c.adoptListedStrand(st, strand); err != nil {
 			return report, err
@@ -710,108 +724,6 @@ func (c *orchCLI) startOrch(note string) (BeamUpReport, error) {
 		report.Hint = stoppingWatcherHint
 	}
 	return report, nil
-}
-
-// soleOrchStrand returns the orch strand among strands and whether one is listed.
-// It refuses a listing that names more than one.
-func soleOrchStrand(strands []reedengine.StrandStatus) (strand reedengine.StrandStatus, listed bool, err error) {
-	named := orchStrands(strands)
-	if len(named) > 1 {
-		guids := make([]string, len(named))
-		for i, s := range named {
-			guids[i] = s.GUID
-		}
-		return strand, false, fmt.Errorf("orch: %d strands are named %q (%s); remove the extras with `lym reed remove` and re-run", len(named), orchStrandName, strings.Join(guids, ", "))
-	}
-	if len(named) == 1 {
-		return named[0], true, nil
-	}
-	return strand, false, nil
-}
-
-// relaunchOrch relaunches the orch session over the orch strand reed lists, live or not.
-// It returns the new strand's GUID.
-// It runs directly, deciding nothing about whether the orch is already running and waiting for no watcher to go.
-// The live strand and the watcher calling it would read as a running orch.
-// The session st records is resumed; with fresh set the recorded session id is cleared and the launch starts fresh.
-// It spawns no watcher.
-func (c *orchCLI) relaunchOrch(st orchengine.State, fresh bool) (string, error) {
-	strands, err := c.strands.Strands()
-	if err != nil {
-		return "", err
-	}
-	strand, hasStrand, err := soleOrchStrand(strands)
-	if err != nil {
-		return "", err
-	}
-	var report BeamUpReport
-	guid, _, err := c.relaunchStrand(st, strand, hasStrand, "", fresh, &report)
-	for _, warning := range report.Warnings {
-		logger.Warn("orch: the restart's launch reported a warning", "strandGUID", guid, "warning", warning)
-	}
-	return guid, err
-}
-
-// relaunchStrand relaunches the orch session under a withdraw round on each side.
-// It removes the strand listed and launches through launchOrch.
-// It then registers the new process as the worktree's orch and saves st reset onto the new strand.
-// It records the launch's strand, abandoned session and warnings in report, and the session id when the launch resumed.
-// It returns the new strand's GUID and the prompt source of the launch.
-// With fresh set the recorded session id is cleared first, so the launch starts fresh.
-func (c *orchCLI) relaunchStrand(st orchengine.State, strand reedengine.StrandStatus, hasStrand bool, note string, fresh bool, report *BeamUpReport) (guid, source string, err error) {
-	if fresh {
-		st.SessionID = ""
-	}
-	receiver, err := c.orchReceiver(strand, hasStrand)
-	if err != nil {
-		return "", "", err
-	}
-	creel, err := c.newCreel()
-	if err != nil {
-		return "", "", fmt.Errorf("orch: reach creel: %w; %s", err, withdrawWayForward)
-	}
-	firstFailure, err := c.withdrawFirst(creel, receiver, hasStrand)
-	if err != nil {
-		return "", "", err
-	}
-	if hasStrand {
-		if err := c.strands.RemoveStrand(strand.GUID); err != nil {
-			return "", "", err
-		}
-	}
-	if err := orchengine.RenderRoleFile(c.paths.RolePath); err != nil {
-		return "", "", err
-	}
-	remoteControlName := c.launchRemoteControlName(strand, hasStrand)
-	checkpoint, checkpointRead := c.launchRemoteControlCheckpoint(st.SessionID, remoteControlName)
-	started, source, abandoned, err := c.launchOrch(st, note, remoteControlName)
-	report.AbandonedSession = abandoned
-	if err != nil {
-		return "", "", err
-	}
-	report.Strand = started.GUID
-	if started.Warning != "" {
-		report.Warnings = append(report.Warnings, started.Warning)
-	}
-	if abandoned != "" {
-		report.Warnings = append(report.Warnings, freshLaunchNote(abandoned, started.Carried))
-	}
-	if warning := c.registerOrchProcess(started); warning != "" {
-		report.Warnings = append(report.Warnings, warning)
-	}
-	next := orchengine.ResetForFreshLaunch(st, started.GUID, time.Now())
-	next.SessionID = started.SessionID
-	if err := c.saveFreshLaunch(next, firstFailure, creel, receiver); err != nil {
-		return "", "", err
-	}
-	if remoteControlName != "" && checkpointRead {
-		c.markLaunchedRemoteControl(started, st.SessionID, checkpoint)
-	}
-	logger.Info("orch: launched orchestrator session", "strandGUID", started.GUID, "sessionID", started.SessionID, "promptSource", source, "abandonedSessionID", abandoned)
-	if source == orchengine.SourceResume {
-		report.SessionID = started.SessionID
-	}
-	return started.GUID, source, nil
 }
 
 // launchOrch starts the orch session: the session st records, resumed with the reload pointer, else a fresh launch.
@@ -835,7 +747,7 @@ func (c *orchCLI) launchOrch(st orchengine.State, note, remoteControlName string
 	if err != nil {
 		return startedSession{}, "", abandoned, err
 	}
-	prompt = orchengine.WithLaunchFacts(c.paths, prompt)
+	prompt = orchengine.WithPresence(c.paths, prompt)
 	if note != "" {
 		prompt += "\n\n" + note
 	}
@@ -853,7 +765,7 @@ func (c *orchCLI) resumeOrch(sessionID, remoteControlName string) (startedSessio
 	if err != nil {
 		return startedSession{}, err
 	}
-	spec := c.orchSpec(orchengine.WithLaunchFacts(c.paths, reload), time.Now(), remoteControlName)
+	spec := c.orchSpec(orchengine.WithPresence(c.paths, reload), time.Now(), remoteControlName)
 	spec.ResumeSessionID = sessionID
 	started, err := c.starter.StartSession(spec)
 	var held *shuttleengine.SessionHeldError
@@ -863,7 +775,6 @@ func (c *orchCLI) resumeOrch(sessionID, remoteControlName string) (startedSessio
 	if err := c.endOwnHolder(sessionID, held.PID); err != nil {
 		return startedSession{}, err
 	}
-	spec.TranscriptCopied = held.TranscriptCopied
 	started, err = c.starter.StartSession(spec)
 	return started, resumeFailure(sessionID, err)
 }

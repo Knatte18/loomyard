@@ -23,20 +23,10 @@ const (
 	RulingNoMatch Ruling = "does not match"
 	// RulingUnexpected says a failing compare is not a change the expectation explains, under DiffCommand only.
 	RulingUnexpected Ruling = "unexpected"
-	// RulingNone says a file's diff widens no assertion, tolerance or limit in a test.
-	// It also says that another test holds each one the diff removes.
-	RulingNone Ruling = "none"
-	// RulingLoosened says a file's diff loosens at least one check in a test.
-	RulingLoosened Ruling = "loosened"
-	// RulingCaused says a loosened check has a measured cause that a Loosened-Check trailer names.
-	RulingCaused Ruling = "caused"
-	// RulingUncaused says a loosened check has no measured cause.
-	RulingUncaused Ruling = "uncaused"
 )
 
 // Judgement is the rulings one judge spawn wrote.
 // Under DiffLines it holds Cells and OpenRanges, and under DiffCommand Cases.
-// Under either mode it holds Files.
 type Judgement struct {
 	// SpawnID names the spawn the judge was handed these cells or cases in.
 	SpawnID string `yaml:"spawn_id"`
@@ -46,36 +36,6 @@ type Judgement struct {
 	OpenRanges []OpenRangeNote `yaml:"open_ranges"`
 	// Cases are the rulings on the failing compare, one per case.
 	Cases []CaseRuling `yaml:"cases"`
-	// Files are the rulings on the listed files, one per file id.
-	Files []FileRuling `yaml:"files"`
-}
-
-// FileRuling is the judge's ruling on one listed file.
-type FileRuling struct {
-	// ID is the file id the spawn handed the judge.
-	ID string `yaml:"id"`
-	// Ruling is RulingNone or RulingLoosened.
-	Ruling Ruling `yaml:"ruling"`
-	// Reason is why the judge ruled so.
-	Reason string `yaml:"reason"`
-	// Checks are the loosened checks of the file, one per loosened assertion, and empty under RulingNone.
-	Checks []LoosenedRuling `yaml:"checks"`
-	// CarriedBy are the paths of the other files whose tests hold an assertion this file's diff removes.
-	CarriedBy []string `yaml:"carried_by"`
-}
-
-// LoosenedRuling is the judge's ruling on one loosened check of a file.
-type LoosenedRuling struct {
-	// Test names the test holding the check.
-	Test string `yaml:"test"`
-	// Loosened says what the diff loosened.
-	Loosened string `yaml:"loosened"`
-	// Ruling is RulingCaused or RulingUncaused.
-	Ruling Ruling `yaml:"ruling"`
-	// Cause is the measured cause a Loosened-Check trailer names, and empty under RulingUncaused.
-	Cause string `yaml:"cause"`
-	// Reason is why the judge ruled so.
-	Reason string `yaml:"reason"`
 }
 
 // CellRuling is the judge's ruling on one cell.
@@ -120,8 +80,6 @@ type JudgementWant struct {
 	OpenRanges []OpenRangeNote
 	// CompareFailed reports that the compare failed, under DiffCommand, so the judgement must rule on at least one case.
 	CompareFailed bool
-	// FileIDs are the ids of the files the judge must rule on, under either mode.
-	FileIDs []string
 }
 
 // ParseJudgement parses judgement.yaml's bytes against what the spawn handed the judge.
@@ -133,11 +91,6 @@ type JudgementWant struct {
 // It also refuses an open range covering a judged cell that open_ranges does not list.
 // Under DiffCommand it refuses a ruling outside the three rulings, an empty reason or a repeated case;
 // it also refuses no case at all when the compare failed, and a cells or open_ranges list.
-// Under either mode it refuses a missing, duplicate or unknown file id.
-// It also refuses a file ruling outside none and loosened, and an empty file reason.
-// It also refuses a none file carrying checks and a loosened file carrying none.
-// It also refuses a check with an empty test, loosened text or reason.
-// It also refuses a check ruling outside caused and uncaused, and a caused check with an empty cause.
 // The error lists every finding, one per line, each naming its entry.
 // The judge's gate hands that error back as the findings to fix.
 func ParseJudgement(data []byte, want JudgementWant) (Judgement, error) {
@@ -160,7 +113,6 @@ func ParseJudgement(data []byte, want JudgementWant) (Judgement, error) {
 	} else {
 		findings = append(findings, commandFindings(judgement, want)...)
 	}
-	findings = append(findings, filesFindings(judgement, want)...)
 	if len(findings) > 0 {
 		return Judgement{}, errors.New("judgement.yaml: " + strings.Join(findings, "\njudgement.yaml: "))
 	}
@@ -209,71 +161,6 @@ func linesFindings(judgement Judgement, want JudgementWant) []string {
 		if !listed[[2]string{open.Case, open.Range}] {
 			findings = append(findings, fmt.Sprintf("open range %s of case %q covers a judged cell but open_ranges does not list it", open.Range, open.Case))
 		}
-	}
-	return findings
-}
-
-// filesFindings returns what is wrong with a judgement's file rulings, which both modes share.
-func filesFindings(judgement Judgement, want JudgementWant) []string {
-	var findings []string
-	wanted := make(map[string]bool, len(want.FileIDs))
-	for _, id := range want.FileIDs {
-		wanted[id] = true
-	}
-	ruled := make(map[string]bool, len(judgement.Files))
-	for _, file := range judgement.Files {
-		switch {
-		case !wanted[file.ID]:
-			findings = append(findings, fmt.Sprintf("file %q is not a file of this spawn", file.ID))
-			continue
-		case ruled[file.ID]:
-			findings = append(findings, fmt.Sprintf("file %q is ruled on more than once", file.ID))
-			continue
-		}
-		ruled[file.ID] = true
-		if file.Ruling != RulingNone && file.Ruling != RulingLoosened {
-			findings = append(findings, fmt.Sprintf("file %q has ruling %q, which is neither %q nor %q", file.ID, file.Ruling, RulingNone, RulingLoosened))
-		}
-		if strings.TrimSpace(file.Reason) == "" {
-			findings = append(findings, fmt.Sprintf("file %q has an empty reason", file.ID))
-		}
-		if file.Ruling == RulingNone && len(file.Checks) > 0 {
-			findings = append(findings, fmt.Sprintf("file %q is ruled %q but carries checks", file.ID, RulingNone))
-		}
-		if file.Ruling == RulingLoosened && len(file.Checks) == 0 {
-			findings = append(findings, fmt.Sprintf("file %q is ruled %q but carries no checks", file.ID, RulingLoosened))
-		}
-		for position, check := range file.Checks {
-			findings = append(findings, checkFindings(file.ID, position+1, check)...)
-		}
-	}
-	for _, id := range want.FileIDs {
-		if !ruled[id] {
-			findings = append(findings, fmt.Sprintf("file %q has no ruling", id))
-		}
-	}
-	return findings
-}
-
-// checkFindings returns what is wrong with one loosened check ruling of the file fileID, listed at position.
-func checkFindings(fileID string, position int, check LoosenedRuling) []string {
-	var findings []string
-	name := fmt.Sprintf("check %q of file %q", check.Test, fileID)
-	if strings.TrimSpace(check.Test) == "" {
-		findings = append(findings, fmt.Sprintf("check %d of file %q has an empty test", position, fileID))
-		name = fmt.Sprintf("check %d of file %q", position, fileID)
-	}
-	if strings.TrimSpace(check.Loosened) == "" {
-		findings = append(findings, name+" has an empty loosened text")
-	}
-	if strings.TrimSpace(check.Reason) == "" {
-		findings = append(findings, name+" has an empty reason")
-	}
-	if check.Ruling != RulingCaused && check.Ruling != RulingUncaused {
-		findings = append(findings, fmt.Sprintf("%s has ruling %q, which is neither %q nor %q", name, check.Ruling, RulingCaused, RulingUncaused))
-	}
-	if check.Ruling == RulingCaused && strings.TrimSpace(check.Cause) == "" {
-		findings = append(findings, fmt.Sprintf("%s is %q but has an empty cause", name, RulingCaused))
 	}
 	return findings
 }

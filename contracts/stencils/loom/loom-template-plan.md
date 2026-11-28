@@ -18,7 +18,7 @@
      edit_directive is a required marker, rendered unconditionally by internal/editdirective.
      self_check is a required marker, the body of Step 5, filled by internal/loomengine's PlanTable.
      It carries the fragment that has the writer run the validator or, when the row's gate has a cold fixer, the one that has it run none.
-     The subagent_model marker is declared by the Claude engine block the stencil includes, and filled from loom.subagent_model. -->
+     subagent_model is a required marker, filled from loom.yaml's subagent_model. -->
 
 # Plan — read the decision record, write a plan-format flat-card plan
 
@@ -60,8 +60,8 @@ A follow-up a card files goes on the board as a note, never as a task, and no ca
 
 Before planning, start from the code the relevant list names, then read the other relevant parts of the codebase: check recent commits, and follow existing patterns and any PATTERN entries in this prompt rather than inventing new ones.
 
-List the lookups the plan needs, such as where a symbol is used or which files follow a pattern.
-{{template "engine-subagent-lookups"}}
+Hand a batch of independent lookups, such as where a symbol is used or which files follow a pattern, to fresh subagents through the Agent tool, each with `subagent_type: "general-purpose"` and `model: "{{.subagent_model}}"`, all launched together in one message.
+Give each Agent call the `effort` that the subagent passage of your system prompt names.
 A fresh subagent sees none of this session, so each prompt carries its whole question and asks for a short answer naming files and members.
 Keep in this session the reading the plan's design needs: the decision record, the relevant list and the code your cards change.
 
@@ -90,7 +90,7 @@ Write `{{.overview_path}}` only after every `NN-<card-slug>.md` card file alread
 
 {{.self_check}}
 
-## Never use {{template "engine-question-tool"}}
+## Never use `AskUserQuestion`
 
-Never call the {{template "engine-question-tool"}} tool at any point in this session — this session is autonomous, no operator is present.
+Never call the `AskUserQuestion` tool at any point in this session — this session is autonomous, no operator is present.
 Make best-judgment calls and never block on a dialog.

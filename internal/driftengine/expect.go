@@ -15,7 +15,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -279,13 +279,13 @@ func (p *DriftExpect) seal(unguarded bool) (shedengine.Outcome, shedengine.Outpu
 			return "", shedengine.OutputPointer{}, err
 		}
 	}
-	var extra []fabriclayout.Trailer
+	var extra []fabricengine.Trailer
 	if unguarded {
 		digest, err := BaselineDigest(d.Paths.BaselineDir)
 		if err != nil {
 			return "", shedengine.OutputPointer{}, err
 		}
-		extra = append(extra, fabriclayout.Trailer{Key: BaselineTrailerKey, Value: digest})
+		extra = append(extra, fabricengine.Trailer{Key: BaselineTrailerKey, Value: digest})
 	}
 	if err := SealExpectation(d, extra...); err != nil {
 		return "", shedengine.OutputPointer{}, err

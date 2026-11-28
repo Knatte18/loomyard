@@ -4,10 +4,8 @@ package shedadapters
 
 import (
 	"bytes"
-	"cmp"
 	"errors"
 	"os"
-	"slices"
 	"strings"
 	"testing"
 
@@ -42,6 +40,26 @@ func TestRecordCirclingDecision_WritesPendingFile(t *testing.T) {
 		wantRound int
 		wantCause EscalationCause
 	}{
+		{
+			name:     "accept over a circling verdict",
+			decision: CirclingAccept,
+			layout: func(t *testing.T, dir string) {
+				layoutCirclingRun(t, dir, 1, "CONTINUE")
+				layoutCirclingRun(t, dir, 2, "CIRCLING")
+			},
+			wantRound: 2,
+			wantCause: EscalationCircling,
+		},
+		{
+			name:     "continue over a circling verdict",
+			decision: CirclingContinue,
+			layout: func(t *testing.T, dir string) {
+				layoutCirclingRun(t, dir, 1, "CONTINUE")
+				layoutCirclingRun(t, dir, 2, "CIRCLING")
+			},
+			wantRound: 2,
+			wantCause: EscalationCircling,
+		},
 		{
 			name:     "accept over a budget escalation on a continue verdict",
 			decision: CirclingAccept,
@@ -92,16 +110,6 @@ func TestRecordCirclingDecision_WritesPendingFile(t *testing.T) {
 			wantRound: 1,
 			wantCause: EscalationDecision,
 		},
-		{
-			name:     "accept over a stalemate escalation record",
-			decision: CirclingAccept,
-			layout: func(t *testing.T, dir string) {
-				layoutCirclingRun(t, dir, 1, "CONTINUE")
-				writeEscalationRecord(t, dir, EscalationStalemate)
-			},
-			wantRound: 1,
-			wantCause: EscalationStalemate,
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -132,110 +140,10 @@ func writeEscalationRecord(t *testing.T, dir string, cause EscalationCause) {
 	}
 }
 
-// recordCirclingDecisionOverEscalation escalates round with cause circling, then records d as the decision on it.
-func recordCirclingDecisionOverEscalation(t *testing.T, runDir string, round int, d CirclingDecision) {
-	t.Helper()
-	if err := writeEscalation(runDir, round, EscalationCircling, "brief\n", "notice"); err != nil {
-		t.Fatalf("writeEscalation(round %d) = %v; want nil", round, err)
-	}
-	if _, _, err := RecordCirclingDecision(runDir, d); err != nil {
-		t.Fatalf("RecordCirclingDecision(%s) = %v; want nil", d, err)
-	}
-}
-
-// TestRecordInScopeContinue pins the pending continue an in-scope ruling records, and its refusals, which write nothing.
-func TestRecordInScopeContinue(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-	review := decisionReviewContent(reviewFixtureFinding{"D1", "LOW", "decision"}, reviewFixtureFinding{"F1", "BLOCKING", "design"})
-	tests := []struct {
-		name string
-		// cause is the round's escalation cause, empty for a round that is not escalated.
-		cause EscalationCause
-		ids   []string
-		// review replaces the round's review text, and noRound leaves the run directory without a review.
-		review  string
-		noRound bool
-		// decided puts a decision file in place before the ruling.
-		decided bool
-		wantErr error
-		// wantMsg is the text of a refusal that has no sentinel.
-		wantMsg string
-	}{
-		{name: "RulesADecisionFindingInScope", cause: EscalationDecision, ids: []string{"D1"}},
-		{name: "AnotherCauseIsRefused", cause: EscalationBudget, ids: []string{"D1"}, wantErr: ErrInScopeCause},
-		{name: "AFindingOfAnotherClassIsRefused", cause: EscalationDecision, ids: []string{"D1", "F1"}, wantErr: ErrInScopeFinding},
-		{name: "AnIdTheReviewLacksIsRefused", cause: EscalationDecision, ids: []string{"D9"}, wantErr: ErrInScopeFinding},
-		{name: "ARoundNotEscalatedIsRefused", ids: []string{"D1"}, wantErr: ErrNotEscalated},
-		{name: "ARunDirectoryWithNoRoundIsRefused", noRound: true, ids: []string{"D1"}, wantErr: ErrNotEscalated},
-		{name: "AnUnparseableReviewIsRefused", cause: EscalationDecision, review: "no frontmatter\n", ids: []string{"D1"}, wantMsg: "parse round 1's review"},
-		{name: "ASecondDecisionIsRefused", cause: EscalationDecision, decided: true, ids: []string{"D1"}, wantErr: ErrCirclingDecided},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			dir := t.TempDir()
-			if !tt.noRound {
-				if err := os.WriteFile(roundReviewPath(dir, 1), []byte(cmp.Or(tt.review, review)), 0o644); err != nil {
-					t.Fatalf("WriteFile(review) = %v; want nil", err)
-				}
-			}
-			if tt.cause != "" {
-				if err := writeEscalation(dir, 1, tt.cause, "brief\n", "notice"); err != nil {
-					t.Fatalf("writeEscalation() = %v; want nil", err)
-				}
-			}
-			earlier := ""
-			if tt.decided {
-				earlier = "earlier decision\n"
-				if err := os.WriteFile(circlingDecisionPath(dir, 1), []byte(earlier), 0o644); err != nil {
-					t.Fatalf("WriteFile(decision) = %v; want nil", err)
-				}
-			}
-
-			round, err := RecordInScopeContinue(dir, tt.ids)
-			if tt.wantErr != nil || tt.wantMsg != "" {
-				if err == nil || (tt.wantErr != nil && !errors.Is(err, tt.wantErr)) || !strings.Contains(err.Error(), tt.wantMsg) {
-					t.Errorf("RecordInScopeContinue(%v) error = %v; want %v %q", tt.ids, err, tt.wantErr, tt.wantMsg)
-				}
-				got, readErr := os.ReadFile(circlingDecisionPath(dir, 1))
-				if string(got) != earlier || (readErr == nil) != tt.decided {
-					t.Errorf("decision file = %q, %v; want %q, present %v", got, readErr, earlier, tt.decided)
-				}
-				return
-			}
-			if err != nil || round != 1 {
-				t.Fatalf("RecordInScopeContinue(%v) = %d, %v; want 1, nil", tt.ids, round, err)
-			}
-			decision, cause, settled, exists, err := readCirclingDecision(dir, 1)
-			if err != nil || !exists || settled || decision != CirclingContinue || cause != EscalationDecision {
-				t.Errorf("decision file = %q, %q, settled %v, exists %v, %v; want a pending continue with cause decision", decision, cause, settled, exists, err)
-			}
-			if got, err := InScopeFindings(dir, 1); err != nil || !slices.Equal(got, []string{"D1"}) {
-				t.Errorf("InScopeFindings() = %v, %v; want [D1]", got, err)
-			}
-		})
-	}
-}
-
-func TestInScopeFindings_RefusesAMalformedDecisionFile(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-	dir := t.TempDir()
-	if err := os.WriteFile(circlingDecisionPath(dir, 1), []byte("no frontmatter\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile(decision) = %v; want nil", err)
-	}
-
-	if got, err := InScopeFindings(dir, 1); err == nil {
-		t.Errorf("InScopeFindings() = %v, nil; want an error", got)
-	}
-}
-
 func TestRecordCirclingDecision_SecondRecordIsRefused(t *testing.T) {
 	tiergate.Require(t, 0)
 	dir := t.TempDir()
 	layoutCirclingRun(t, dir, 1, "CIRCLING")
-	writeEscalationRecord(t, dir, EscalationCircling)
 	if _, _, err := RecordCirclingDecision(dir, CirclingAccept); err != nil {
 		t.Fatalf("first RecordCirclingDecision error = %v; want nil", err)
 	}
@@ -264,7 +172,6 @@ func TestRecordCirclingDecision_NotEscalatedWritesNothing(t *testing.T) {
 	}{
 		{"converged", func(t *testing.T, dir string) { layoutCirclingRun(t, dir, 1, "CONVERGED") }},
 		{"continue", func(t *testing.T, dir string) { layoutCirclingRun(t, dir, 1, "CONTINUE") }},
-		{"circling verdict with no escalation record", func(t *testing.T, dir string) { layoutCirclingRun(t, dir, 1, "CIRCLING") }},
 		{"unjudged", func(t *testing.T, dir string) { layoutCirclingRun(t, dir, 1, "") }},
 		{"earlier circling, later continue", func(t *testing.T, dir string) {
 			layoutCirclingRun(t, dir, 1, "CIRCLING")
@@ -301,7 +208,13 @@ func TestReadCirclingDecision(t *testing.T) {
 		wantCause    EscalationCause
 	}{
 		{name: "absent file"},
-		{name: "no cause", content: "---\nround: 1\ndecision: accept\nsettled: false\n---\n", wantExists: true, wantErr: true},
+		{
+			name:         "a legacy file without a cause reads as circling",
+			content:      "---\nround: 1\ndecision: accept\nsettled: false\n---\n",
+			wantExists:   true,
+			wantDecision: CirclingAccept,
+			wantCause:    EscalationCircling,
+		},
 		{
 			name:         "a hard-cap cause is legal",
 			content:      "---\nround: 1\ndecision: accept\ncause: hard-cap\nsettled: false\n---\n",
