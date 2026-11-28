@@ -29,7 +29,9 @@ A run whose two implementers both hold begun batches is refused, and the refusal
 - The task branch, checked out in the task's worktree, with the plan committed on it.
 
 How the cards are grouped into units of work is the implementer's own call, configured by the implementer's own config:
-webster batches through `batcher.yaml`, and weaver forms each batch from the cards that remain.
+each names a `batcher.yaml` profile under its `batch_profile` key, `webster.batch_profile` and `weaver.batch_profile`.
+Webster's template names the `wide` cost profile, and weaver's names `identity`, one card per batch,
+which weaver forms from the cards that remain.
 The plan writer writes a flat plan and never groups its cards.
 
 ## Out
@@ -53,7 +55,7 @@ The plan writer writes a flat plan and never groups its cards.
 
 A Stuck reason follows [refusal-spec.md](refusal-spec.md).
 A fault in the implementer's own config is a Stuck the operator fixes before re-stepping the row.
-A `batcher.yaml` that does not resolve is such a fault.
+A `batcher.yaml` that does not resolve, or a `batch_profile` naming no profile in it, is such a fault.
 
 ## See also
 

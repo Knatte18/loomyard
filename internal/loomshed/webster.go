@@ -1,4 +1,4 @@
-// webster.go holds the lazy Webster producer, which resolves the active batchifier inside Call.
+// webster.go holds the lazy Webster producer, which resolves the batchifier its config names inside Call.
 // It commits webster's durable run record once the run reports Done.
 
 package loomshed
@@ -16,20 +16,22 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// batchifierReasonPrefix opens the Stuck reason of every row that resolves the active batchifier,
+// batchifierReasonPrefix opens the Stuck reason of every row that resolves its batchifier,
 // so each row words the fault the same way; the error text follows.
-const batchifierReasonPrefix = "active batchifier did not resolve: "
+const batchifierReasonPrefix = "batchifier did not resolve: "
 
 // batchifierWayForward closes the Stuck reason with the next step for the operator.
-// The fault sits in batcher.yaml, so that is where the operator fixes it.
-var batchifierWayForward = "; way forward: fix batcher.yaml (" + configengine.KeyName("batcher", "active") + " or the profile it names), then re-step"
+// The fault sits in the implementer's profile choice or in batcher.yaml, so the step names both.
+func batchifierWayForward(chooser string) string {
+	return "; way forward: fix " + chooser + " or the batcher.yaml profile it names, then re-step"
+}
 
 // websterProducer is the lazy Webster producer.
-// It resolves the active batchifier on every Call and then delegates to shedadapters.WebsterProducer.
+// It resolves the batchifier webster.yaml names on every Call and then delegates to shedadapters.WebsterProducer.
 //
 // The batchifier is resolved at the start of every Call rather than at construction:
 // a resumed run re-resolves it in the new process,
-// and a config edited after an earlier load is the config Webster partitions the plan with.
+// and a batcher.yaml edited after an earlier load is the config Webster partitions the plan with.
 type websterProducer struct {
 	name   string
 	dirs   configengine.Dirs
@@ -42,7 +44,8 @@ type websterProducer struct {
 var _ shedengine.ShedProducer = (*websterProducer)(nil)
 
 // NewWebsterProducer returns a producer identified as name.
-// On every Call it runs the implementer guard over active and resolves the active batchifier from dirs.
+// On every Call it runs the implementer guard over active,
+// and resolves from dirs the batchifier of the profile deps.Config names.
 // It then drives run with a copy of deps that carries the resolved value; the caller leaves deps.Batcher nil,
 // and every Call overwrites it.
 // The commit function commits webster's durable run directory and is invoked once the run reports Done.
@@ -52,16 +55,17 @@ func NewWebsterProducer(name string, dirs configengine.Dirs, run shedadapters.We
 	return &websterProducer{name: name, dirs: dirs, run: run, deps: deps, commit: commit, active: active}
 }
 
-// resolveActiveBatchifier resolves batcher.Active(dirs) for the row named name.
-// A batcher.Active error maps to a non-empty stuckReason, never to a returned error, so the run blocks for a human.
+// resolveBatchifier resolves batcher.Named(dirs, profile, chooser) for the row named name.
+// chooser is the full name of the implementer key that named profile.
+// A batcher.Named error maps to a non-empty stuckReason, never to a returned error, so the run blocks for a human.
 // Stuck with an empty OnStuck persists the run as blocked and returns RunBlocked;
 // a human resumes the run after fixing the config.
 // Returning the error would instead persist the run as failed and abort it.
 // The only returned error is a cancellation, which replaces the verdict.
-func resolveActiveBatchifier(ctx context.Context, name string, dirs configengine.Dirs) (batcher.Batcher, string, error) {
-	active, err := batcher.Active(dirs)
+func resolveBatchifier(ctx context.Context, name string, dirs configengine.Dirs, profile, chooser string) (batcher.Batcher, string, error) {
+	resolved, err := batcher.Named(dirs, profile, chooser)
 	if err == nil {
-		return active, "", nil
+		return resolved, "", nil
 	}
 	if cerr := cancelErr(ctx, name); cerr != nil {
 		return nil, "", cerr
@@ -71,15 +75,15 @@ func resolveActiveBatchifier(ctx context.Context, name string, dirs configengine
 	// The fault reaches the row only when the config changed after an earlier check passed,
 	// and an operator would not guess that without being told.
 	// The cause is returned as the row's reason, which reaches the persisted error and activity.wait, and also logged.
-	logger.Warn("loomshed: active batchifier did not resolve", "producer", name, "anchorPath", dirs.Anchor, "cause", err)
-	return nil, batchifierReasonPrefix + err.Error() + batchifierWayForward, nil
+	logger.Warn("loomshed: batchifier did not resolve", "producer", name, "anchorPath", dirs.Anchor, "profile", profile, "cause", err)
+	return nil, batchifierReasonPrefix + err.Error() + batchifierWayForward(chooser), nil
 }
 
-// Call implements shedengine.ShedProducer: it runs the implementer guard, resolves the active batchifier itself, fills
+// Call implements shedengine.ShedProducer: it runs the implementer guard, resolves the batchifier itself, fills
 // the resolved value into a copy of w.deps, constructs a shedadapters.WebsterProducer over the
 // result, and delegates to that producer's own Call.
 //
-// A guard refusal and a batcher.Active error each map to shedengine.Stuck, never to a returned error,
+// A guard refusal and a batcher.Named error each map to shedengine.Stuck, never to a returned error,
 // so the run blocks for a human and nothing is spawned.
 // A guard wiring fault is a returned error.
 func (w *websterProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
@@ -98,7 +102,7 @@ func (w *websterProducer) Call(ctx context.Context) (shedengine.Outcome, shedeng
 		return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil
 	}
 
-	active, stuckReason, err := resolveActiveBatchifier(ctx, w.name, w.dirs)
+	resolved, stuckReason, err := resolveBatchifier(ctx, w.name, w.dirs, w.deps.Config.BatchProfile, websterengine.BatchProfileKeyName())
 	if err != nil {
 		return "", shedengine.OutputPointer{}, err
 	}
@@ -107,7 +111,7 @@ func (w *websterProducer) Call(ctx context.Context) (shedengine.Outcome, shedeng
 	}
 
 	deps := w.deps
-	deps.Batcher = active
+	deps.Batcher = resolved
 
 	outcome, pointer, err := shedadapters.NewWebsterProducer(w.name, w.run, deps).Call(ctx)
 	if err != nil || outcome != shedengine.Done {

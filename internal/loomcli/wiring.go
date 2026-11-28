@@ -688,7 +688,7 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 	if err != nil {
 		return err
 	}
-	activeBatcher, err := batcher.Active(fabricengine.ConfigDirs(location))
+	activeBatcher, err := batcher.Named(fabricengine.ConfigDirs(location), websterCfg.BatchProfile, websterengine.BatchProfileKeyName())
 	if err != nil {
 		return err
 	}
@@ -812,7 +812,8 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		return fmt.Errorf("loomcli: stat the origin record: %w", err)
 	}
 
-	// Preflight loads batcher.yaml for a recipe with an Implementer row, so a broken file fails the first row.
+	// Preflight resolves each implementer's batch profile for a recipe with an Implementer row,
+	// so a broken batcher.yaml or a profile choice naming no profile fails the first row.
 	// A darn or pawl run leaves it nil and skips the load.
 	var preflightBatcher func() error
 	holdsImplementer, err := loomrecipe.HasEngine(c.recipe, "Implementer")
@@ -821,8 +822,16 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 	}
 	if holdsImplementer {
 		configDirs := fabricengine.ConfigDirs(location)
+		websterProfile := websterCfg.BatchProfile
 		preflightBatcher = func() error {
-			_, err := batcher.Active(configDirs)
+			weaverCfg, err := weaverengine.LoadConfig(configDirs, "weaver")
+			if err != nil {
+				return err
+			}
+			if _, err := batcher.Named(configDirs, websterProfile, websterengine.BatchProfileKeyName()); err != nil {
+				return err
+			}
+			_, err = batcher.Named(configDirs, weaverCfg.BatchProfile, weaverengine.BatchProfileKeyName())
 			return err
 		}
 	}

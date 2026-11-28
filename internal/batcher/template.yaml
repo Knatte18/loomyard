@@ -1,5 +1,4 @@
-active: "wide"  # name of the active profile under batcher.profiles (internal/batcher.Active); the template default is the wide profile, and an empty value resolves to the identity batchifier (one card, one batch)
-profiles:   # named batchifier settings, each chosen by batcher.active; the operator may add profiles of their own
+profiles:   # named batchifier settings; each implementer names the one it batches with in its own config (webster.batch_profile, weaver.batch_profile); the operator may add profiles of their own
   identity:   # one card, one batch
     batchifier: identity
   wide:   # the cost batchifier: the fewest contiguous batches whose estimated peak fork context fits the budget

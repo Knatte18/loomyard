@@ -19,7 +19,7 @@ Its package documentation holds that design.
 Webster consumes the pinned flat card-list plan-format via `internal/planparser`, the sole parser of `_lym/plan/`.
 The format itself is pinned in the plan-format blocks that `contracts/stencils/loom/loom-template-plan.md` includes;
 there is no separate reference doc.
-Webster groups a plan's cards into execution batches via a batcher configured through `batcher.yaml`.
+Webster groups a plan's cards into execution batches via the `batcher.yaml` profile `webster.batch_profile` names.
 The grouping is computed once per run and recorded in `state.json`, and every verb reads the recorded partition,
 so a file the batches change never regroups the cards mid-run.
 

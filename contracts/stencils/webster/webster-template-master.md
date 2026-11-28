@@ -53,7 +53,7 @@ You never run git against `_lym` or the plan directory; they are committed for y
 {{.batch_index}}
 
 This is one line per execution batch, in the order webster derived from the cards' own declared dependencies — number, slug, one-line intent.
-It is your navigation source, not the execution unit: `lym webster` groups this flat list into execution batches via the batchifier `batcher.active` names (one or more cards per batch; the identity batchifier gives one card per batch) — you drive the loop below by BATCH number, not by reasoning about grouping yourself.
+It is your navigation source, not the execution unit: `lym webster` groups this flat list into execution batches via the batcher profile `webster.batch_profile` names (one or more cards per batch; the identity batchifier gives one card per batch) — you drive the loop below by BATCH number, not by reasoning about grouping yourself.
 Drive it STRICTLY in order: "in order" means the order listed above, top to bottom — NOT necessarily ascending batch number, since a batch's number is its identity, never its position, so the list may legitimately run `03` before `02`.
 Each entry assumes every entry ABOVE it in the list is already committed,
 and no batch is ever skipped or reordered because it "looks independent."

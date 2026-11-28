@@ -47,7 +47,7 @@ var masterAwaitedShellPrefixes = []string{"lym webster recover-batch", fixVerify
 var ErrRunBusy = errors.New("webster: run is already in progress")
 
 // ErrNilBatcher is returned by Run when RunDeps.Batcher was never populated.
-// webstercli populates it in PersistentPreRunE, which resolves batcher.Active.
+// webstercli populates it in PersistentPreRunE, which resolves the profile webster.batch_profile names.
 // A nil interface would panic inside Batch instead of surfacing a diagnosable error.
 var ErrNilBatcher = errors.New("webster: RunDeps.Batcher not populated")
 
@@ -121,7 +121,7 @@ type RunDeps struct {
 	ShuttleCfg shuttleengine.Config
 	Roles      map[Role]shuttleengine.ModelChoice
 	Config     Config
-	// Batcher is the active batchifier, resolved by the CLI through batcher.Active.
+	// Batcher is the batchifier of the profile Config.BatchProfile names, resolved by the CLI through batcher.Named.
 	// webstercli's PersistentPreRunE populates it before Run is called.
 	// Run returns ErrNilBatcher when it is nil.
 	Batcher    batcher.Batcher

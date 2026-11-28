@@ -16,7 +16,8 @@
 // internal/planparser is the sole parser of the on-disk `_lym/plan/` tree.
 // RenderForkPrompt and RenderRecoveryPrompt take no *planparser.Plan;
 // both render a card's content from its SourcePath pointer, per the fork-context-hygiene Shared Decision.
-// internal/batcher groups the plan's flat, unordered cards into execution batches.
+// internal/batcher groups the plan's flat, unordered cards into execution batches,
+// through the profile `webster.batch_profile` names.
 // internal/webstercli hands the resolved batcher to Run via RunDeps.Batcher.
 // BatchState is keyed by execution-batch number, not card number:
 // a grouping batchifier puts several cards in one batch.

@@ -8,6 +8,8 @@
 // `weaver.fixer_timeout_min` is the minutes a plan-level verify fixer may run.
 // `weaver.verify_gate` is the gate key of the plan-level verify its Done rests on.
 // The local override layer cannot change `weaver.verify_gate`, since a narrower key would hollow that guard.
+// `weaver.batch_profile` names the batcher.yaml profile that groups the cards into batches;
+// the template names identity, one card per batch, and its ladder starts on Haiku, which a one-card session suits.
 //
 // Weaver's durable run directory is `_lym/weaver/`.
 // It holds the state file, the per-attempt reports, `journal.md`, `summary.md` and `outcome.yaml`.

@@ -8,6 +8,7 @@ import (
 	_ "embed"
 	"fmt"
 
+	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -29,6 +30,13 @@ type Config struct {
 	FixerTimeoutMin int `yaml:"fixer_timeout_min"`
 	// VerifyGate is the gate key of the plan-level verify Weaver's Done rests on.
 	VerifyGate string `yaml:"verify_gate"`
+	// BatchProfile names the batcher.yaml profile Weaver groups its cards with; empty means one card per batch.
+	BatchProfile string `yaml:"batch_profile"`
+}
+
+// BatchProfileKeyName returns the full name of the weaver.yaml key naming Weaver's batch profile.
+func BatchProfileKeyName() string {
+	return keyName(batcher.ChoiceKey)
 }
 
 // ConfigTemplate returns the default YAML template for weaver configuration.
@@ -53,6 +61,7 @@ func ConfigSpec() configengine.Spec {
 			"attempt_timeout_min": configengine.CategoryNone,
 			"fixer_timeout_min":   configengine.CategoryNone,
 			"verify_gate":         configengine.CategoryGuard,
+			batcher.ChoiceKey:     configengine.CategoryNone,
 		},
 		OpenMaps: ConfigOpenMaps(),
 	}

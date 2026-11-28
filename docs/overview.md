@@ -770,7 +770,7 @@ User-facing modules each get one `lym <module>` namespace:
   bracket verbs (`begin-batch`/`record-batch`) drive each in-session fork (Master ends its turn while a backgrounded fork works and records the batch on the fork's completion notification, shuttle reading that turn end as waiting rather than done),
   and a model escalation (recovery after a stuck/report-less fork) spawns a cold strand.
   Consumes the flat card-list plan (pinned in the plan-format blocks `contracts/stencils/loom/loom-block-plan-*.md`, which `contracts/stencils/loom/loom-template-plan.md`, the Plan producer's own stencil, includes) via its own sole parser, `internal/planparser`.
-  It groups cards into execution batches via `internal/batcher`, a separate config-selected registry module webster consumes (the `batcher.profiles` entries, the `wide` cost profile by default), then runs those batches in card order, refusing a backward dependency derived from the cards' own `Targets`/`Uses` refs.
+  It groups cards into execution batches via `internal/batcher`, a separate registry module webster consumes (the `batcher.profiles` entry `webster.batch_profile` names, the `wide` cost profile by default), then runs those batches in card order, refusing a backward dependency derived from the cards' own `Targets`/`Uses` refs.
   It records the partition in `state.json` at first init.
   The run-plan part of `state.json` and the batch machinery around it (report contract, plan fingerprint and conflict refusal, post-batch checks, suspect-path checks, digest, card gates, report await and verify-failure record) live in `internal/runplan`, which webster's `State` embeds and which names webster's way forward in each refusal only through what webster passes it.
   It also carries the plan's `## verify:` command as a must-pass gate on Merriam's strand:
@@ -1031,10 +1031,10 @@ User-facing modules each get one `lym <module>` namespace:
   `internal/landingshed`'s `Finalize` and `internal/websterengine` consume it;
   so do the `description` gate on loom's `Describe` row and the `lym loom validate-description` verb.
   ✅ Implemented.
-- **batcher** — the batchifier registry that groups a plan's flat card list into webster's execution batches.
-  The named `batcher.profiles` define the groupings, and `batcher.active` picks one.
-  The template default is the `wide` profile, the cost batchifier;
-  an empty value resolves to identity, one card per batch.
+- **batcher** — the batchifier registry that groups a plan's flat card list into an implementer's execution batches.
+  The named `batcher.profiles` define the groupings, and each implementer picks one in its own config:
+  `webster.batch_profile` defaults to `wide`, the cost batchifier, and `weaver.batch_profile` to `identity`, one card per batch;
+  an empty value resolves to identity.
   It is its own standalone configreg module, separate from webster's (`internal/batcher`).
   ✅ Implemented.
 - **stencil** — the operator surface over the hub's producer-prompt stencils:

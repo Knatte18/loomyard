@@ -1,24 +1,27 @@
-// Package batcher groups a plan's flat card list into the execution units webster forks each run.
+// Package batcher groups a plan's flat card list into the execution units an implementer runs.
 // The Batcher interface fronts a library of batchifier implementations.
-// A registry maps each batchifier kind to its constructor, and Active is the config entry point.
+// A registry maps each batchifier kind to its constructor, and Named is the config entry point.
 // Batching, meaning how many cards land in one fork and in what grouping, is a standalone step webster consumes.
 // The plan does not decide it, since a plan-format card carries no batch-membership field.
 // No LLM decides it either: grouping is pure orchestrator-side logic over the parsed Card list.
 //
 // batcher.yaml holds named profiles under profiles:.
 // Each profile is a batchifier kind (identity or cost) with that kind's parameters.
-// The active: key names the profile in force (see contracts/specs/loom-plan-spec.md).
+// Which profile batches a run is the implementer's own config, not this module's:
+// each implementer names one under the ChoiceKey key of its own file, webster.batch_profile and weaver.batch_profile.
 // profiles: is a per-name map, keyed by names the operator chooses.
 // A layer's profiles add to or override the template's by name, each profile merging key by key,
 // so a layer holds only the profiles and keys it tunes.
 // `lym config batcher --set profiles.<name>.<key>=<value>` sets one key of any profile.
-// Active resolves the active profile at config-load time and builds it through the registry.
+// Named resolves the profile an implementer names at config-load time and builds it through the registry;
+// LoadProfiles builds every profile, so a config check refuses a profile no implementer names yet.
 // A load error names batcher.yaml and the offending profile or key.
 // A cost profile's budget must be present and positive;
 // max_cards must be at least 2;
 // and every weights coefficient must be present, non-negative and known.
-// The retired keys are alone_above, and master_base and startup_context in weights:.
-// A retired-key error wraps ErrRetiredKey and names the highest layer file holding the profile.
+// The retired keys are the top-level active, a profile's alone_above, and master_base and startup_context in weights:.
+// A retired-key error wraps ErrRetiredKey and names the highest layer file holding the key or its profile.
+// The active refusal's way forward opens with the implementer keys that choose a profile now.
 // It ends with the way forward that file calls for.
 // For a worktree or local file the way forward is deleting the key by hand or running "lym config reconcile --apply".
 // For the repo default, only a reconcile of the default layer rewrites it.
@@ -27,10 +30,11 @@
 // A session lym refuses that verb and reports status: FAILED, so the orch runs it.
 // Reconcile keeps a profile the template does not name whole.
 // For such a profile the way forward is the hand delete alone.
-// Any layer may hold the active: and profiles: keys, so a retired key in any layer reaches the retired-key refusal.
-// The template ships active: wide, so a fresh repo groups cards with the cost batchifier without configuring it.
-// Its cautious profile is the same cost batchifier at a tighter budget, kept for a repo that chooses it.
-// An operator who wants one card per batch sets active: to identity or to an empty value.
+// Any layer may hold the profiles: key, so a retired key in any layer reaches the retired-key refusal.
+// A hub's base file loses its active key through RetireActive, which the hub-wide reconcile applies once.
+// An empty profile name and identity both resolve to the identity batchifier, one card per batch.
+// The template's wide profile is the cost batchifier at the budget a webster fork holds;
+// its cautious profile is the same cost batchifier at a tighter budget, kept for a repo that chooses it.
 //
 // The identity batcher (identity.go), one card per batch, is a production library entry.
 //
@@ -92,7 +96,7 @@
 // and every grouping batchifier applies them.
 // The rules' bound is that a file-level old side over-splits from a package-unit target in that file's directory.
 //
-// Webster's execution unit is always the batch the active profile derives,
+// An implementer's execution unit is always the batch its named profile derives,
 // and this package's registry is the one place a batchifier kind is chosen.
 // The partition is recorded in state.json at first init;
 // a later run reads the recorded partition and does not derive it again, and only a rebaseline replaces it.

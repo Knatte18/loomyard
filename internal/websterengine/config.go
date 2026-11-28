@@ -9,6 +9,7 @@ package websterengine
 import (
 	"fmt"
 
+	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"gopkg.in/yaml.v3"
@@ -39,6 +40,13 @@ type Config struct {
 	RecoveryTimeoutMin int `yaml:"recovery_timeout_min"`
 	// VerifyGateAttempts is how many attempts the plan-level verify gate gives the Master session before the run stops.
 	VerifyGateAttempts int `yaml:"verify_gate_attempts"`
+	// BatchProfile names the batcher.yaml profile Webster groups its cards with; empty means one card per batch.
+	BatchProfile string `yaml:"batch_profile"`
+}
+
+// BatchProfileKeyName returns the full name of the webster.yaml key naming Webster's batch profile.
+func BatchProfileKeyName() string {
+	return keyName(batcher.ChoiceKey)
 }
 
 // ConfigSpec returns webster's layered-load spec.
@@ -54,6 +62,7 @@ func ConfigSpec() configengine.Spec {
 			"master_timeout_min":   configengine.CategoryNone,
 			"recovery_timeout_min": configengine.CategoryNone,
 			"verify_gate_attempts": configengine.CategoryNone,
+			batcher.ChoiceKey:      configengine.CategoryNone,
 		},
 		RetiredKeys: map[string]configengine.Category{
 			"kickstart_pack":          configengine.CategoryNone,

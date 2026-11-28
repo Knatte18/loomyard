@@ -8,7 +8,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 )
 
-// DefaultName is the profile name that an empty batcher.active key resolves to.
+// DefaultName is the profile name that an empty profile choice resolves to.
 const DefaultName = "identity"
 
 // constructors maps a profile's batchifier kind to the constructor that builds it, given the profile's name and settings.
@@ -24,7 +24,7 @@ var constructors = map[string]func(name string, p profile) (Batcher, error){
 // It also refuses a profile that still sets the retired alone_above key.
 func newCostFromProfile(name string, p profile) (Batcher, error) {
 	if p.AloneAbove != nil {
-		return nil, retiredKeyError(p.file, p.layer, name, "alone_above")
+		return nil, retiredProfileKeyError(p.file, p.layer, name, "alone_above")
 	}
 	if p.Budget == nil {
 		return nil, configengine.MarkInvalid(fmt.Errorf("batcher.yaml: %s is missing", profileKeyName(name, budgetLeaf)))

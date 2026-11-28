@@ -46,7 +46,7 @@ func implementerGuard(this weaverengine.Implementer, active weaverengine.ActiveD
 }
 
 // weaverProducer is the lazy Weaver producer.
-// On every Call it runs the implementer guard and resolves the active batchifier.
+// On every Call it runs the implementer guard and resolves the batchifier weaver.yaml names.
 // It then delegates to shedadapters.WeaverProducer.
 type weaverProducer struct {
 	name   string
@@ -59,7 +59,8 @@ type weaverProducer struct {
 var _ shedengine.ShedProducer = (*weaverProducer)(nil)
 
 // NewWeaverProducer returns a producer identified as name.
-// On every Call it runs the implementer guard over active and resolves the active batchifier from dirs.
+// On every Call it runs the implementer guard over active,
+// and resolves from dirs the batchifier of the profile deps.Config names.
 // It then drives run with a copy of deps that carries the resolved batchifier; the caller leaves deps.Batcher nil.
 // Weaver commits its run record itself, so the producer takes no commit seam.
 // The result is typed as shedengine.ShedProducer.
@@ -88,7 +89,7 @@ func (w *weaverProducer) Call(ctx context.Context) (shedengine.Outcome, shedengi
 		return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil
 	}
 
-	active, stuckReason, err := resolveActiveBatchifier(ctx, w.name, w.dirs)
+	resolved, stuckReason, err := resolveBatchifier(ctx, w.name, w.dirs, w.deps.Config.BatchProfile, weaverengine.BatchProfileKeyName())
 	if err != nil {
 		return "", shedengine.OutputPointer{}, err
 	}
@@ -97,6 +98,6 @@ func (w *weaverProducer) Call(ctx context.Context) (shedengine.Outcome, shedengi
 	}
 
 	deps := w.deps
-	deps.Batcher = active
+	deps.Batcher = resolved
 	return shedadapters.NewWeaverProducer(w.name, w.run, deps).Call(ctx)
 }

@@ -164,7 +164,7 @@ func ProfileWeights(dirs configengine.Dirs, profileName string) (Weights, error)
 func profileWeights(profileName string, prof profile) (Weights, error) {
 	for _, retired := range []string{"master_base", "startup_context"} {
 		if _, ok := prof.Weights[retired]; ok {
-			return Weights{}, retiredKeyError(prof.file, prof.layer, profileName, weightsLeaf+"."+retired)
+			return Weights{}, retiredProfileKeyError(prof.file, prof.layer, profileName, weightsLeaf+"."+retired)
 		}
 	}
 	known := make(map[string]bool, len(coefficients))
