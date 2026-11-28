@@ -1276,6 +1276,7 @@ func pendingFindingsText(engines AuditEngines, st *State, geom Geometry, items [
 // restore-plan for plan paths that differ;
 // a restore to st.MasterRecordsBase for a records-side path changed since that commit;
 // rm for a contract path that a fork, recovery or verify-fixer session wrote last.
+// A changed records-side path that exists under geom.FrictionDir takes no restore: the note is kept as written.
 // The error is a link-resolution or git probe failure.
 func pendingPathsWayForward(geom Geometry, st *State, writes RunWrites, paths []string, pathless bool, reentry string) (steps []string, notes map[string]string, err error) {
 	notes = map[string]string{}
@@ -1301,15 +1302,24 @@ func pendingPathsWayForward(geom Geometry, st *State, writes RunWrites, paths []
 		if err != nil {
 			return nil, nil, err
 		}
-		switch {
-		case !onRecords:
+		if !onRecords {
 			tracked = append(tracked, p)
-		case clean:
-			notes[p] = noteClearedRecords
-		default:
-			notes[p] = noteChangedRecords
-			recordsChanged = append(recordsChanged, p)
+			continue
 		}
+		if clean {
+			notes[p] = noteClearedRecords
+			continue
+		}
+		keep, err := isKeptFrictionNote(geom, p)
+		if err != nil {
+			return nil, nil, err
+		}
+		if keep {
+			notes[p] = noteKeptFriction
+			continue
+		}
+		notes[p] = noteChangedRecords
+		recordsChanged = append(recordsChanged, p)
 	}
 	rest = tracked
 	unchecked := pathless

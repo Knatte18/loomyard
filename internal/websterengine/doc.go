@@ -149,6 +149,9 @@
 // A path on the run's records side, outside webster's own run state, has evidence of its own.
 // State.MasterRecordsBase is the records side's HEAD from before Master spawned.
 // Such a path clears when it is unchanged since that commit, absence included.
+// A changed friction note (Geometry.FrictionDir) that exists clears as written:
+// the way forward never restores one, since the restore could delete a note that commit lacks.
+// A deleted note is restored like any other path.
 // Without that commit such a path cannot be checked.
 // Run entry refuses with ErrPendingAuditFindings meanwhile.
 // The paths that do not clear that way clear only through `lym webster reset --to start` and then `lym webster run`.

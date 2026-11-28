@@ -29,19 +29,18 @@ It checks every suspect path against the last batch head and refuses, changing
 nothing, while any differs or cannot be checked.
 It also refuses while HEAD carries a commit past the last batch head other
 than a clean parent merge or a verify-gate fixer's commit the gate passed at;
-run lym webster reset --to last-batch-head first, which moves HEAD back to
-that head.
+run lym webster reset --to last-batch-head first.
 Restore the named paths with git first, then run it.
 A path on the run's records side, outside webster's own run state, clears
 when it is unchanged, absence included, since Master spawned.
+A new/edited friction note there clears as written; never restore it.
 A contract file (outcome.yaml or summary.md) clears when it is absent or when
 Master wrote it after every fork, recovery and verify-fixer session did; a file
 a fork, recovery or verify-fixer session wrote last refuses, naming
 rm as the way forward. Accepting on an absent contract file adds next, the
 step that has Master write both files again.
 It only edits state.json and never changes the task worktree.
-With nothing pending it succeeds with an empty accepted list, so a repeated
-call is harmless.
+With nothing pending it succeeds with an empty accepted list.
 On success the envelope carries accepted: each finding's class, detail and
 paths.
 

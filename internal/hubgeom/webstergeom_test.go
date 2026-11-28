@@ -89,6 +89,9 @@ func TestWebsterGeometry(t *testing.T) {
 			if want := verifytree.Dir(anchorPath); got.VerifyDir != want {
 				t.Errorf("WebsterGeometry(l).VerifyDir = %q; want %q", got.VerifyDir, want)
 			}
+			if want := loomengine.LoomFrictionDir(l); got.FrictionDir != want {
+				t.Errorf("WebsterGeometry(l).FrictionDir = %q; want %q", got.FrictionDir, want)
+			}
 			if want := loomengine.DiscussionDecisionRecord(l); got.DecisionRecordPath != want {
 				t.Errorf("WebsterGeometry(l).DecisionRecordPath = %q; want %q", got.DecisionRecordPath, want)
 			}

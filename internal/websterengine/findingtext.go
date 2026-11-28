@@ -36,6 +36,9 @@ const (
 	noteClearedRecords = "cleared: unchanged since Master spawned"
 	// noteChangedRecords is the note of a records-side path that differs from what it held when Master spawned.
 	noteChangedRecords = "changed since Master spawned"
+	// noteKeptFriction is the note of a changed records-side path that exists under the friction directory.
+	// Such a path is kept as written, never restored: the restore could delete a note the base commit lacks.
+	noteKeptFriction = "a friction note changed since Master spawned, kept as written"
 
 	// stepAcceptAudit is the step that accepts the pending findings.
 	stepAcceptAudit = "lym webster accept-audit"
@@ -216,21 +219,59 @@ func recordsSideStatus(geom Geometry, base, path string) (onRecords, clean bool,
 }
 
 // splitRecordsSidePaths drops every clean records-side path from paths, judged against base.
-// It returns the changed records-side paths apart from the rest, each in input order.
-func splitRecordsSidePaths(geom Geometry, base string, paths []string) (rest, changed []string, err error) {
+// It returns apart from the rest the changed records-side paths to restore,
+// and those kept as written because they are friction notes, each list in input order.
+// The error is a link-resolution, stat or git probe failure.
+func splitRecordsSidePaths(geom Geometry, base string, paths []string) (rest, changed, kept []string, err error) {
 	for _, p := range paths {
 		onRecords, clean, err := recordsSideStatus(geom, base, p)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
-		switch {
-		case !onRecords:
+		if !onRecords {
 			rest = append(rest, p)
-		case !clean:
+			continue
+		}
+		if clean {
+			continue
+		}
+		keep, err := isKeptFrictionNote(geom, p)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		if keep {
+			kept = append(kept, p)
+		} else {
 			changed = append(changed, p)
 		}
 	}
-	return rest, changed, nil
+	return rest, changed, kept, nil
+}
+
+// isKeptFrictionNote reports whether path lies under geom.FrictionDir, compared in link-resolved form, and exists.
+// It reports false when geom names no friction directory.
+// The error is a link-resolution or stat failure.
+func isKeptFrictionNote(geom Geometry, path string) (bool, error) {
+	if geom.FrictionDir == "" {
+		return false, nil
+	}
+	canon, err := runplan.CanonicalPath(runplan.ResolveWritePath(geom.PaneCwd, path))
+	if err != nil {
+		return false, err
+	}
+	dir, err := runplan.CanonicalPath(geom.FrictionDir)
+	if err != nil {
+		return false, err
+	}
+	if !runplan.PathWithin(dir, canon) {
+		return false, nil
+	}
+	if _, err := os.Lstat(canon); errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	} else if err != nil {
+		return false, fmt.Errorf("webster: stat %s: %w", canon, err)
+	}
+	return true, nil
 }
 
 // recordsRestoreStep is the step that restores records-side paths to the records side's commit base.

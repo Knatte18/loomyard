@@ -466,24 +466,41 @@ func TestAcceptPendingAudit_RefusesUnverifiablePath(t *testing.T) {
 // TestAcceptPendingAudit_RecordsSidePath proves how a path on the run's records side is judged.
 // It clears when unchanged since the recorded base commit, absence included.
 // A changed one refuses toward restoring it.
+// A changed friction note is the exception: it clears as written and is never restored.
+// A deleted one is restored like any other path, and a refusal over a second path names the note as kept.
 // The records side is a subdirectory of a second repository, which the worktree's `_lym` links to.
 func TestAcceptPendingAudit_RecordsSidePath(t *testing.T) {
 	tiergate.Require(t, 1)
 	const restore = "1) restore %s to records-side commit %s"
 	const reset = "1) lym webster reset --to start"
+	const kept = ": a friction note changed since Master spawned, kept as written)"
+	deleteCommittedNote := func(t *testing.T, repo string) {
+		if err := os.Remove(filepath.Join(repo, "anchor", "_lym", "loom", "friction", "committed.md")); err != nil {
+			t.Fatal(err)
+		}
+	}
 	tests := []struct {
 		name string
 		path string
+		// extra is a second path of the finding, a friction note written like path; empty adds none.
+		extra string
 		// write is the content written to path before the call; empty writes nothing.
 		write string
 		// after changes the records side once the base commit is recorded.
 		after func(t *testing.T, repo string)
 		// noBase leaves the state without a base commit.
 		noBase bool
+		// frictionDir sets the geometry's friction directory to `_lym/loom/friction`.
+		frictionDir bool
 		// wantRefusal is a fragment the refusal and the pending way forward hold; empty means accepted.
 		// A restore fragment takes the path and the base commit.
 		wantRefusal string
+		// wantNote is a fragment the accepted path's pending way forward holds.
+		wantNote string
 	}{
+		{name: "EditedFrictionNote", path: "_lym/loom/friction/committed.md", write: "edited", frictionDir: true, wantNote: kept},
+		{name: "UncommittedFrictionNote", path: "_lym/loom/friction/webster-master.md", write: "new", frictionDir: true, wantNote: kept},
+		{name: "UncommittedRecordOutsideTheFrictionDir", path: "_lym/loom/new.md", write: "new", frictionDir: true, wantRefusal: restore},
 		{name: "AbsentNote", path: "_lym/loom/friction/webster-master.md"},
 		{name: "CommittedNote", path: "_lym/loom/friction/committed.md"},
 		{name: "EditedNote", path: "_lym/loom/friction/committed.md", write: "edited", wantRefusal: restore},
@@ -491,11 +508,10 @@ func TestAcceptPendingAudit_RecordsSidePath(t *testing.T) {
 		{name: "CommittedAfterTheBase", path: "_lym/loom/friction/late.md", wantRefusal: restore, after: func(t *testing.T, repo string) {
 			gitkit.CommitFile(t, repo, "anchor/_lym/loom/friction/late.md", "late", "sync")
 		}},
-		{name: "DeletedAfterTheBase", path: "_lym/loom/friction/committed.md", wantRefusal: restore, after: func(t *testing.T, repo string) {
-			if err := os.Remove(filepath.Join(repo, "anchor", "_lym", "loom", "friction", "committed.md")); err != nil {
-				t.Fatal(err)
-			}
-		}},
+		{name: "DeletedAfterTheBase", path: "_lym/loom/friction/committed.md", wantRefusal: restore, after: deleteCommittedNote},
+		{name: "DeletedFrictionNote", path: "_lym/loom/friction/committed.md", frictionDir: true, wantRefusal: restore, after: deleteCommittedNote},
+		{name: "MixedFrictionAndRecord", path: "_lym/loom/new.md", extra: "_lym/loom/friction/webster-master.md", write: "new", frictionDir: true, wantRefusal: restore},
+		{name: "NoBaseFrictionNote", path: "_lym/loom/friction/committed.md", write: "edited", noBase: true, frictionDir: true, wantRefusal: reset},
 		{name: "Ignored", path: "_lym/loom/friction/note.tmp", write: "x", wantRefusal: restore},
 		{name: "NoBase", path: "_lym/loom/friction/committed.md", noBase: true, wantRefusal: reset},
 		{name: "RunState", path: "_lym/webster/state.json", wantRefusal: reset},
@@ -512,6 +528,9 @@ func TestAcceptPendingAudit_RecordsSidePath(t *testing.T) {
 				fx.st.MasterRecordsBase = base
 			}
 			fx.geom.ReportsDir = filepath.Join(fx.geom.WorktreeRoot, "_lym", "reports")
+			if tt.frictionDir {
+				fx.geom.FrictionDir = filepath.Join(fx.geom.WorktreeRoot, "_lym", "loom", "friction")
+			}
 			// The fixture's run state moves to the records side, so the link can take the directory's place.
 			lym := filepath.Join(fx.geom.WorktreeRoot, "_lym")
 			if err := os.Rename(filepath.Join(lym, "webster"), filepath.Join(records, "webster")); err != nil {
@@ -523,15 +542,21 @@ func TestAcceptPendingAudit_RecordsSidePath(t *testing.T) {
 			if err := fslink.CreateDirLink(lym, records); err != nil {
 				t.Fatal(err)
 			}
+			paths := []string{tt.path}
+			if tt.extra != "" {
+				paths = append(paths, tt.extra)
+			}
 			if tt.write != "" {
-				if err := os.WriteFile(filepath.Join(fx.geom.WorktreeRoot, tt.path), []byte(tt.write), 0o644); err != nil {
-					t.Fatal(err)
+				for _, p := range paths {
+					if err := os.WriteFile(filepath.Join(fx.geom.WorktreeRoot, p), []byte(tt.write), 0o644); err != nil {
+						t.Fatal(err)
+					}
 				}
 			}
 			if tt.after != nil {
 				tt.after(t, repo)
 			}
-			fx.st.PendingAuditFindings = []PendingAuditFinding{{ID: "f1", Class: "parent-write", Detail: "d", Paths: []string{tt.path}}}
+			fx.st.PendingAuditFindings = []PendingAuditFinding{{ID: "f1", Class: "parent-write", Detail: "d", Paths: paths}}
 			wantRefusal := tt.wantRefusal
 			if wantRefusal == restore {
 				wantRefusal = fmt.Sprintf(restore, tt.path, base)
@@ -549,6 +574,9 @@ func TestAcceptPendingAudit_RecordsSidePath(t *testing.T) {
 				if want := "1) lym webster accept-audit"; !strings.Contains(wayForward, want) {
 					t.Errorf("pending way forward = %q; want it to contain %q", wayForward, want)
 				}
+				if want := tt.path + tt.wantNote; tt.wantNote != "" && !strings.Contains(wayForward, want) {
+					t.Errorf("pending way forward = %q; want it to contain %q", wayForward, want)
+				}
 				return
 			}
 			if !errors.Is(err, ErrAuditNotAcceptable) || !strings.Contains(err.Error(), wantRefusal) {
@@ -556,6 +584,14 @@ func TestAcceptPendingAudit_RecordsSidePath(t *testing.T) {
 			}
 			if !strings.Contains(wayForward, wantRefusal) {
 				t.Errorf("pending way forward = %q; want it to contain %q", wayForward, wantRefusal)
+			}
+			if tt.extra != "" {
+				if want := tt.extra + strings.TrimSuffix(kept, ")"); err == nil || !strings.Contains(err.Error(), want) {
+					t.Errorf("AcceptPendingAudit() error = %v; want it to contain %q", err, want)
+				}
+				if want := tt.extra + kept; !strings.Contains(wayForward, want) {
+					t.Errorf("pending way forward = %q; want it to contain %q", wayForward, want)
+				}
 			}
 			if len(fx.st.PendingAuditFindings) != 1 {
 				t.Errorf("PendingAuditFindings = %v; want unchanged", fx.st.PendingAuditFindings)

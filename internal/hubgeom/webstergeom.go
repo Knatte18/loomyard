@@ -21,6 +21,7 @@ import (
 // PaneCwd is l.AnchorPath(), the directory webster's sessions run in.
 // The two differ when the hub's anchor sits in a subdirectory of the worktree.
 // ParentName is the parent's name; when the parent cannot be resolved, a warning is logged and it stays empty.
+// FrictionDir is loom's friction directory, set whether or not friction notes are on.
 // DecisionRecordPath is the location's decision record, where the task's declared PATTERN changes are read from.
 // GateConfig loads the hub's gate config over the hub's config dirs at each call.
 func WebsterGeometry(l *lymcwd.Location) websterengine.Geometry {
@@ -37,6 +38,7 @@ func WebsterGeometry(l *lymcwd.Location) websterengine.Geometry {
 		SpecsDir:           fabriclayout.SpecsDir(l.HubPath),
 		PlanDir:            planparser.PlanDir(anchorPath),
 		VerifyDir:          verifytree.Dir(anchorPath),
+		FrictionDir:        loomengine.LoomFrictionDir(l),
 		GateSlots:          GateSlots(l),
 		GateWaitDir:        gateslot.WaitDir(anchorPath),
 		GateConfig:         func() (gateslot.Config, error) { return gateslot.LoadConfig(fabricengine.ConfigDirs(l)) },

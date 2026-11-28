@@ -55,6 +55,10 @@ type Geometry struct {
 	// VerifyDir is the told directory of the worktree's verified-tree record, running marker and verify log.
 	// The webster verify gate reads it.
 	VerifyDir string
+	// FrictionDir is the told absolute directory the run's sessions write their friction notes in.
+	// An audit's way forward keeps a changed note that exists there, since restoring it could delete a new note.
+	// Empty means no friction directory, as in standalone mode.
+	FrictionDir string
 	// GateSlots is the told pool every webster gate run acquires a gate slot from.
 	// Nil in standalone mode, where there is no hub, and runs unslotted.
 	GateSlots *gateslot.Pool

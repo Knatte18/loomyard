@@ -92,7 +92,9 @@ var acceptAuditHeadRefusal = headRefusal{resetStep: "lym webster reset --to last
 // Every pending path must then match that head.
 // That head cannot hold a path on the run's records side.
 // Such a path must be unchanged since the records side's commit st.MasterRecordsBase, absence included.
-// Without that commit it is unverifiable.
+// A path under geom.FrictionDir is the exception: a changed note that exists there is accepted as written.
+// A refusal names each such note as kept.
+// Without that commit a records-side path is unverifiable.
 // A differing or unverifiable path, or a finding with no path, refuses with ErrAuditNotAcceptable.
 // A refusal mutates nothing.
 // A missing recorded commit refuses first, with the way forward for it.
@@ -147,7 +149,7 @@ func AcceptPendingAudit(engines AuditEngines, st *State, geom Geometry, parentBr
 	if err != nil {
 		return nil, false, err
 	}
-	unverifiable, recordsChanged, err := splitRecordsSidePaths(geom, st.MasterRecordsBase, unverifiable)
+	unverifiable, recordsChanged, keptNotes, err := splitRecordsSidePaths(geom, st.MasterRecordsBase, unverifiable)
 	if err != nil {
 		return nil, false, err
 	}
@@ -168,6 +170,9 @@ func AcceptPendingAudit(engines AuditEngines, st *State, geom Geometry, parentBr
 	}
 	if len(gitDiffering) > 0 {
 		parts = append(parts, fmt.Sprintf("differs from the last batch head; %s", wayForwardSteps(restoreStep(head, gitDiffering), stepAcceptAudit)))
+	}
+	for _, p := range keptNotes {
+		parts = append(parts, p+": "+noteKeptFriction)
 	}
 	if len(recordsChanged) > 0 {
 		parts = append(parts, fmt.Sprintf("%s %s; %s", strings.Join(recordsChanged, ", "), noteChangedRecords, wayForwardSteps(recordsRestoreStep(st.MasterRecordsBase, recordsChanged), stepAcceptAudit)))
