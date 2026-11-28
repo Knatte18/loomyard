@@ -870,7 +870,7 @@ User-facing modules each get one `lym <module>` namespace:
   a cell under `report.cost_min_runs` reads "too few runs".
   The raddle report says, per Sketch a raddle run filed, the cost its approved proposal predicted against the summed cost of its filed parts' runs, the parts not yet landed and whether the operator changed the proposal, read from the raddle store on the board branch.
   The replies report counts, per receiver role over the creel journal's seven days, the replies creel was asked for, the replies it got, the chases it sent and the messages left unanswered.
-  Convergence and timing cover tapestry and darn runs, each tagged with its recipe, and read records lym already writes.
+  Convergence and timing cover tapestry, jacquard, darn and hardener runs, each tagged with its recipe, and read records lym already writes.
   ✅ Implemented. See the `internal/reportengine` package documentation.
 - **retro** — one command that audits recent runs and proposes fixes (`internal/retrocli` + `internal/retroengine`; `lym retro [<slug>...] [--since <date>] [--until <date>] [--max-runs <n>]`, prime only).
   It files one darn task on the `docs` profile from the `retro-template-task` stencil, with its writer set to Opus through `run_settings`, and releases it.

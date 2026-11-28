@@ -22,8 +22,8 @@
 // The runs of each counted recipe over one period then stand side by side.
 // A run's pair is torn down when it ends, which leaves an archive/<slug>/<sha> tag in the prime's fabric repository.
 // -weft names that repository and defaults to the current worktree's weft sibling.
-// A torn-down run is finished when the seed.json and status.json at its newest tag name the tapestry or the darn recipe,
-// and its status.json holds a Finalize history entry.
+// A torn-down run's seed.json and status.json are read at its newest tag.
+// It is finished when they name the tapestry, jacquard or darn recipe and status.json holds a Finalize history entry.
 // A run stopped partway, such as a bench pair parked after Discussion-Write, or a run of another recipe, is unfinished:
 // counted as one, its later steps would show no cost.
 // The report's header names the runs counted.

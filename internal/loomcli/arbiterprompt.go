@@ -32,7 +32,8 @@ const arbiterRepairVerbs = "Its repair verbs, run with `<slug>` the task named a
 // A recipe with a `RaddleFile` row alone is described as a run that splits a Sketch's stored decision record.
 // The record's parts become board entries the operator approves, and the run lands no code.
 // The `RaddleFile` cases are checked before the no-Finalize case, which they would otherwise match.
-// A recipe with a `PlanWrite` row is described as a task driven from discussion to landing, labelled with its name.
+// A recipe with a `PlanWrite` row is described as a task driven from discussion to landing, labelled with its name;
+// one with no `DiscussionWrite` row is driven from its stored decision record instead.
 // Its description carries implementerNote before the repair verbs.
 // The note is the sentence naming the active implementer's run files.
 // Any other recipe ignores implementerNote.
@@ -47,7 +48,11 @@ func arbiterRecipeDescription(recipe, implementerNote string) string {
 	}
 	if recipeHasEngine(recipe, planWriteEngine) {
 		label := recipeLabel(recipe)
-		return "This is " + indefiniteArticle(label) + " " + label + " run, a task driven from discussion to landing. " + implementerNote + " " + arbiterRepairVerbs
+		origin := "discussion"
+		if !recipeHasEngine(recipe, discussionWriteEngine) {
+			origin = "its stored decision record"
+		}
+		return "This is " + indefiniteArticle(label) + " " + label + " run, a task driven from " + origin + " to landing. " + implementerNote + " " + arbiterRepairVerbs
 	}
 	if recipeHasEngine(recipe, raddleFileEngine) && recipeHasEngine(recipe, discussionWriteEngine) {
 		label := recipeLabel(recipe)

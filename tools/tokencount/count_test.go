@@ -489,7 +489,8 @@ func TestRecentRuns(t *testing.T) {
 	touch("/other/newest", 0)
 	archive("newest", shedrun.RecipeTapestry, full...)
 
-	// Finished tapestry and darn runs count; a stopped run, a run of another recipe and a run in flight are skipped.
+	// Finished tapestry, jacquard and darn runs count;
+	// a stopped run, a run of another recipe and a run in flight are skipped.
 	tests := []struct {
 		name                  string
 		last                  int
@@ -515,10 +516,10 @@ func TestRecentRuns(t *testing.T) {
 		})
 	}
 
-	if got, want := recipeList("and"), "tapestry and darn"; got != want {
+	if got, want := recipeList("and"), "tapestry, jacquard and darn"; got != want {
 		t.Errorf("recipeList(and) = %q; want %q", got, want)
 	}
-	if got, want := recipeList("or"), "tapestry or darn"; got != want {
+	if got, want := recipeList("or"), "tapestry, jacquard or darn"; got != want {
 		t.Errorf("recipeList(or) = %q; want %q", got, want)
 	}
 }

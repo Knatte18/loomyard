@@ -64,13 +64,13 @@ func landedText(added, deleted int) string {
 }
 
 // tapestryRun adds a landed tapestry run of slug, which the timing report times over hours from startHour.
-// It holds one session costing usd and a landed diff of lines changed lines.
-func tapestryRun(w *world, slug string, startHour int, hours, usd float64, lines int, profile string) {
+// It holds one session costing usd and a landed diff of lines changed lines, and its run record carries storedRecord.
+func tapestryRun(w *world, slug string, startHour int, hours, usd float64, lines int, profile string, storedRecord bool) {
 	start := at(startHour)
 	finalized := start.Add(time.Duration(hours * float64(time.Hour)))
 	extra := usageFiles(
 		map[string]string{"a": sessionText(fmt.Sprint(usd), time.Time{}, time.Time{})},
-		runText("tapestry", profile, false),
+		runText("tapestry", profile, storedRecord),
 		landedText(lines-40, 40),
 	)
 	landedRunWith(w, slug, "sha-"+slug, startHour+5, seedStartedAt(start), []shedengine.HistoryEntry{entryAt(loomshed.NameFinalize, finalized)}, extra)
@@ -130,9 +130,9 @@ func TestComputeCost(t *testing.T) {
 			name:    "SizedRunsGiveTheFixedAndPer100LineFit",
 			minRuns: 3,
 			build: func(w *world) {
-				tapestryRun(w, "a1", 10, 1.5, 15, 100, "p")
-				tapestryRun(w, "a2", 20, 2.5, 25, 200, "p")
-				tapestryRun(w, "a3", 30, 3.5, 35, 300, "p")
+				tapestryRun(w, "a1", 10, 1.5, 15, 100, "p", false)
+				tapestryRun(w, "a2", 20, 2.5, 25, 200, "p", false)
+				tapestryRun(w, "a3", 30, 3.5, 35, 300, "p", false)
 			},
 			want: []CostCell{{
 				Recipe: "tapestry", Profile: "p", Runs: 3,
@@ -159,11 +159,23 @@ func TestComputeCost(t *testing.T) {
 			name:    "SizedRunsOfOneSizeGiveMeansAndNoFit",
 			minRuns: 3,
 			build: func(w *world) {
-				tapestryRun(w, "c1", 10, 1, 10, 100, "p")
-				tapestryRun(w, "c2", 20, 1, 20, 100, "p")
-				tapestryRun(w, "c3", 30, 1, 30, 100, "p")
+				tapestryRun(w, "c1", 10, 1, 10, 100, "p", false)
+				tapestryRun(w, "c2", 20, 1, 20, 100, "p", false)
+				tapestryRun(w, "c3", 30, 1, 30, 100, "p", false)
 			},
 			want: []CostCell{{Recipe: "tapestry", Profile: "p", Runs: 3, MeanUSD: figure(20), MeanHours: figure(1)}},
+		},
+		{
+			name:    "ATapestryRunWithAStoredRecordCountsUnderJacquard",
+			minRuns: 1,
+			build: func(w *world) {
+				tapestryRun(w, "k1", 10, 1, 10, 100, "p", true)
+				tapestryRun(w, "k2", 20, 2, 20, 100, "p", false)
+			},
+			want: []CostCell{
+				{Recipe: "jacquard", Profile: "p", StoredRecord: true, Runs: 1, MeanUSD: figure(10), MeanHours: figure(1)},
+				{Recipe: "tapestry", Profile: "p", StoredRecord: false, Runs: 1, MeanUSD: figure(20), MeanHours: figure(2)},
+			},
 		},
 		{
 			name:    "ACellUnderTheMinimumReadsTooFewRuns",

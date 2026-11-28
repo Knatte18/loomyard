@@ -114,6 +114,13 @@ func TestCompute_SelectsRuns(t *testing.T) {
 			},
 		},
 		{
+			name: "a finalized jacquard run is a full run carrying its recipe",
+			setup: func(w *world) expectation {
+				w.tag("jacquarded", "t1", at(1), seedText("jacquard"), statusText(w.t, "Record-Seed", "Finalize"))
+				return expectation{runs: []wantRun{{tag: tagName("jacquarded", "t1"), week: "2026-W02", recipe: "jacquard"}}}
+			},
+		},
+		{
 			name: "a finalized hardener run is a full run carrying its recipe",
 			setup: func(w *world) expectation {
 				w.tag("hardened", "t1", at(1), seedText("hardener"), statusText(w.t, "Harden-Bouncer", "Finalize"))

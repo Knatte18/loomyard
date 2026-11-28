@@ -104,6 +104,8 @@ type costRun struct {
 // A run is landed when its usage holds a landed-size record.
 // For a recipe with no Finalize row, a run is landed when its status at the tag is done.
 // Any other run is left out.
+// A tapestry run whose stored-record flag is set counts in the jacquard cell of its profile and flag.
+// Such a run walked jacquard's rows from a record stored before it started.
 // A run's dollars are the sum of its sessions' costs;
 // they are absent when it has no session or any session has an unknown cost.
 // A run's hours are its active time from the timing report when that report times the run;
@@ -160,7 +162,7 @@ func ComputeCost(src Sources, opts CostOptions) (CostReport, error) {
 			continue
 		}
 
-		key := costCellKey{recipe: usage.Run.Recipe, profile: usage.Run.Profile, storedRecord: usage.Run.StoredRecord}
+		key := costCellKey{recipe: costCellRecipe(usage.Run), profile: usage.Run.Profile, storedRecord: usage.Run.StoredRecord}
 		groups[key] = append(groups[key], priceRun(usage, activeSeconds, tag.Name))
 	}
 
@@ -182,6 +184,15 @@ func ComputeCost(src Sources, opts CostOptions) (CostReport, error) {
 		report.Cells = append(report.Cells, costCell(key, groups[key], opts.MinRuns))
 	}
 	return report, nil
+}
+
+// costCellRecipe returns the recipe of the cell that counts the run identified by rec.
+// It is jacquard for a tapestry run whose stored-record flag is set, and the run's own recipe otherwise.
+func costCellRecipe(rec shedrun.RunUsageRecord) string {
+	if rec.Recipe == shedrun.RecipeTapestry && rec.StoredRecord {
+		return shedrun.RecipeJacquard
+	}
+	return rec.Recipe
 }
 
 // readRunUsage reads the usage directory at tag's commit and parses it.

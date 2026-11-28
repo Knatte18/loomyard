@@ -706,6 +706,42 @@ func TestComputeTiming(t *testing.T) {
 			},
 		},
 		{
+			name: "a jacquard run and a tapestry run count the Jacquard block row and Record-Seed under setup, and jacquard holds no discussion phase",
+			setup: func(w *world) {
+				landedRun(w, "jacquarded", "t4", 22, fmt.Sprintf(`{"recipe":"jacquard","driver":"go","started_at":%q}`, run.Format(time.RFC3339)), []shedengine.HistoryEntry{
+					entryAt(loomshed.NamePreflight, secondsAfter(run, 300)),
+					entryAt(loomshed.NameRecordSeed, secondsAfter(run, 600)),
+					entryAt(loomshed.NamePlanWrite, secondsAfter(run, 1200)),
+					entryAt(loomshed.NameFinalize, secondsAfter(run, 1500)),
+				})
+				landedRun(w, "woven", "t5", 23, seedStartedAt(run), []shedengine.HistoryEntry{
+					entryAt(loomshed.NameDiscussionWrite, secondsAfter(run, 300)),
+					entryAt(loomshed.NameJacquard, secondsAfter(run, 600)),
+					entryAt(loomshed.NameRecordSeed, secondsAfter(run, 660)),
+					entryAt(loomshed.NamePlanWrite, secondsAfter(run, 960)),
+					entryAt(loomshed.NameFinalize, secondsAfter(run, 1260)),
+				})
+			},
+			check: func(t *testing.T, got TimingReport) {
+				jacquarded := runOf(t, got, "jacquarded")
+				if jacquarded.Recipe != shedrun.RecipeJacquard {
+					t.Errorf("recipe = %s; want %s", jacquarded.Recipe, shedrun.RecipeJacquard)
+				}
+				wantPhases(t, jacquarded, map[string]int64{PhaseSetup: 600, PhasePlan: 600, PhasePublishFinalize: 300})
+				wantPhases(t, runOf(t, got, "woven"), map[string]int64{PhaseDiscussion: 300, PhaseSetup: 360, PhasePlan: 300, PhasePublishFinalize: 300})
+				jacquardMedians := got.Phases[shedrun.RecipeJacquard]
+				if median := jacquardMedians[PhasePlan]; median == nil || median.Runs != 1 || median.Seconds == nil || *median.Seconds != 600 {
+					t.Errorf("jacquard plan median = %+v; want the jacquard run's 600 alone", median)
+				}
+				if _, held := jacquardMedians[PhaseDiscussion]; held {
+					t.Errorf("jacquard medians = %+v; want no discussion phase", jacquardMedians)
+				}
+				if len(got.Findings) != 0 {
+					t.Errorf("findings = %+v; want none, since every row names a phase", got.Findings)
+				}
+			},
+		},
+		{
 			name: "an interval across UTC midnight splits over two day buckets",
 			setup: func(w *world) {
 				start := at(23)

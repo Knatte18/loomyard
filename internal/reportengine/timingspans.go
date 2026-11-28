@@ -29,29 +29,40 @@ type phaseTable struct {
 // recipePhaseTables holds the phase table of every recipe a report selects.
 var recipePhaseTables = map[string]phaseTable{
 	shedrun.RecipeTapestry: tapestryPhaseTable(),
+	shedrun.RecipeJacquard: jacquardPhaseTable(),
 	shedrun.RecipeDarn:     {exact: darnPhases()},
 	shedrun.RecipeHardener: {exact: hardenerPhases()},
 }
 
-// tapestryPhaseTable returns the phase table of a tapestry run.
+// tapestryPhaseTable returns the phase table of a tapestry run:
+// its build rows map as a jacquard run's do, and its Discussion and Motif families count under discussion.
 func tapestryPhaseTable() phaseTable {
+	table := jacquardPhaseTable()
+	table.families[rowFamily(loomshed.NameDiscussionWrite)] = PhaseDiscussion
+	table.families[rowFamily(loomshed.NameMotif)] = PhaseDiscussion
+	return table
+}
+
+// jacquardPhaseTable returns the phase table of a jacquard run, which plans, builds and lands with no Discussion row.
+func jacquardPhaseTable() phaseTable {
 	return phaseTable{
 		exact: loomPhases(),
 		families: map[string]string{
-			rowFamily(loomshed.NameDiscussionWrite): PhaseDiscussion,
-			rowFamily(loomshed.NameMotif):           PhaseDiscussion,
-			rowFamily(loomshed.NamePlanWrite):       PhasePlan,
-			rowFamily(loomshed.NameWebster):         PhaseWebster,
-			rowFamily(loomshed.NameCodeBouncer):     PhaseWebster,
-			rowFamily(loomshed.NameParentAlign):     PhaseMerge,
+			rowFamily(loomshed.NamePlanWrite):   PhasePlan,
+			rowFamily(loomshed.NameWebster):     PhaseWebster,
+			rowFamily(loomshed.NameCodeBouncer): PhaseWebster,
+			rowFamily(loomshed.NameParentAlign): PhaseMerge,
 		},
 	}
 }
 
-// loomPhases maps every row of a tapestry run that a phase table names whole to its phase.
+// loomPhases maps every row of a tapestry or jacquard run that a phase table names whole to its phase.
+// The Jacquard block row and Record-Seed count under Preflight's phase.
 func loomPhases() map[string]string {
 	return map[string]string{
 		loomshed.NamePreflight:       PhaseSetup,
+		loomshed.NameJacquard:        PhaseSetup,
+		loomshed.NameRecordSeed:      PhaseSetup,
 		loomshed.NameDescribe:        PhaseWebster,
 		loomshed.NameDriftBaseline:   PhasePlan,
 		loomshed.NamePartsWrite:      PhasePlan,

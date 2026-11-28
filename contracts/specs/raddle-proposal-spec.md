@@ -60,6 +60,8 @@ A part holds:
 - `line` — one line saying what the figure rests on.
 - `next_best` — `{split, expected_usd, line}`: the next-best split in one line, its expected cost and the line that says what that figure rests on.
 - `cells` — the `lym report cost` cells both figures rest on, each `{recipe, profile, stored_record}`.
+  A tapestry part is filed as discussed, so its cost rests on the jacquard cell with `stored_record` true,
+  where `lym report cost` counts such runs.
 
 Shape `tapestry` has exactly one part, which builds every decision.
 Every filed slug, each part's and the project's, is new, and one the board's slug rules admit: free on the board and in the raddle store, and not the Sketch's.
@@ -153,14 +155,14 @@ Auto and perch mode file with no approval match, and `raddle-approve` refuses in
       "criteria": ["D1 and D2: every session leaves one record file"],
       "pattern_changes": [],
       "expected_cost_usd": null,
-      "cost_line": "the tapestry cell reads too few runs"
+      "cost_line": "the jacquard cell reads too few runs"
     }
   ],
   "cost": {
     "expected_usd": null,
     "line": "one tapestry part; its cell reads too few runs",
     "next_best": {"split": "two parts", "expected_usd": null, "line": "two tapestry parts; the same cell reads too few runs"},
-    "cells": [{"recipe": "tapestry", "profile": "standard", "stored_record": true}]
+    "cells": [{"recipe": "jacquard", "profile": "standard", "stored_record": true}]
   }
 }
 ```

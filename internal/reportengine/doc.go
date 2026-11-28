@@ -27,7 +27,7 @@
 //
 // Every archive tag whose slug parses is one run, so a reused slug yields one run per tag.
 // A tag committed before Options.Since is left out; a tag whose slug does not parse is a Finding.
-// A run is full when the seed at the tag names the tapestry, darn or hardener recipe;
+// A run is full when the seed at the tag names the tapestry, jacquard, darn or hardener recipe;
 // its status history must also hold a Finalize entry.
 // Any other tag is a PartialRun that enters no per-run figure.
 // A record that exists but does not decode is a Finding naming the tag and the file, and the tag is partial.
@@ -129,6 +129,7 @@
 // A run's span runs from its first batten or loom entry to its last stamp, or to Sources.SnapshotAt in flight.
 // Each interval between rows counts under one phase through a closed table per recipe;
 // a row the table lacks counts under other and adds a finding, so a new row shows up rather than vanishing.
+// The jacquard table is tapestry's without its Discussion rows.
 // TimingOptions.Sleeps, clipped to the span, is the run's sleep and comes out of every interval,
 // so the phases plus the sleep sum to the span.
 //
@@ -161,6 +162,8 @@
 // A cancelled or torn-down run is left out.
 // A run's dollars are absent when it has no session or any session's cost is unknown; such a run still enters the hours.
 // Runs group into cells by recipe, profile and stored-record flag.
+// A tapestry run with the stored-record flag set groups under jacquard, whose rows it walked;
+// the tapestry cell with that flag set stays empty.
 // A cell with fewer runs than CostOptions.MinRuns carries the note "too few runs" and no figure.
 // A cell's least-squares fit needs two sized runs of distinct sizes and is absent otherwise.
 //
