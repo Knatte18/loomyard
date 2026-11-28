@@ -28,11 +28,15 @@ type PushSummaryDeps struct {
 	// Waits lists every run of the hub whose driver waits on the network, with Slug, WaitProducer and WaitSince filled.
 	// A nil Waits lists none.
 	Waits func() ([]RunView, error)
+	// BeamCatchUpWaits lists the catch-up from origin each live beam dobby of the hub waits on, keyed by beam slug.
+	// A nil BeamCatchUpWaits lists none.
+	BeamCatchUpWaits func() (map[string]CatchUpWait, error)
 	// Threshold reads how long something stays owed before the summary reports it.
 	Threshold func() (time.Duration, error)
 }
 
 // pushSummary posts one summary once a push or a network wait has stayed owed for the threshold.
+// A catch-up waiting on origin, the dobby's own or a beam dobby's, counts as a network wait.
 // It posts one all-clear once nothing is owed after such a summary.
 // A failed read or post is logged once per episode and tried again on the next tick.
 func (d *daemon) pushSummary(ctx context.Context, now time.Time) {
@@ -59,6 +63,12 @@ func (d *daemon) summarisePushes(ctx context.Context, now time.Time) error {
 			return err
 		}
 	}
+	var beamCatchUps map[string]CatchUpWait
+	if seams.BeamCatchUpWaits != nil {
+		if beamCatchUps, err = seams.BeamCatchUpWaits(); err != nil {
+			return err
+		}
+	}
 
 	var since time.Time
 	earliest := func(at time.Time) {
@@ -82,15 +92,28 @@ func (d *daemon) summarisePushes(ctx context.Context, now time.Time) error {
 			held = append(held, targetName(key, entry))
 		}
 	}
+	record, _, err := ReadState(d.geom.StatePath)
+	if err != nil {
+		return err
+	}
 	var waiting []string
 	for _, wait := range waits {
 		earliest(wait.WaitSince)
 		waiting = append(waiting, fmt.Sprintf("%s at %s for %dm", wait.Slug, wait.WaitProducer, minutesSince(wait.WaitSince, now)))
 	}
-
-	record, _, err := ReadState(d.geom.StatePath)
-	if err != nil {
-		return err
+	addCatchUp := func(whose string, wait CatchUpWait) {
+		if wait.Reason != CatchUpWaitOrigin {
+			return
+		}
+		began := wait.waitingSince()
+		earliest(began)
+		waiting = append(waiting, fmt.Sprintf("%s catch-up from origin for %dm", whose, minutesSince(began, now)))
+	}
+	if record.CatchUp != nil {
+		addCatchUp("the dobby's", *record.CatchUp)
+	}
+	for _, beam := range slices.Sorted(maps.Keys(beamCatchUps)) {
+		addCatchUp(beam+"'s", beamCatchUps[beam])
 	}
 	period := record.PushPeriod
 	if len(owed) == 0 && len(waiting) == 0 {
@@ -98,7 +121,7 @@ func (d *daemon) summarisePushes(ctx context.Context, now time.Time) error {
 			return nil
 		}
 		if period.Posted {
-			if err := d.deps.Notice(ctx, d.geom.WorktreeName+": every branch is pushed to origin and no run waits on the network"); err != nil {
+			if err := d.deps.Notice(ctx, d.geom.WorktreeName+": every branch is pushed to origin and nothing waits on the network"); err != nil {
 				return err
 			}
 		}
@@ -129,7 +152,7 @@ func (d *daemon) summarisePushes(ctx context.Context, now time.Time) error {
 		parts = append(parts, "not yet on origin: "+strings.Join(owed, "; "))
 	}
 	if len(waiting) > 0 {
-		parts = append(parts, "runs waiting on the network: "+strings.Join(waiting, "; "))
+		parts = append(parts, "waiting on the network: "+strings.Join(waiting, "; "))
 	}
 	if len(held) > 0 {
 		parts = append(parts, "held, until its pair goes or its commit leaves the parent: "+strings.Join(held, "; "))

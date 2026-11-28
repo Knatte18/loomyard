@@ -362,6 +362,10 @@ type daemon struct {
 	catchUpReason string
 	// catchUpNoticed holds the failure classes whose notice went out this episode.
 	catchUpNoticed map[string]bool
+	// catchUpSuccesses counts the catch-ups from origin that succeeded in this process.
+	catchUpSuccesses int
+	// originStops holds, by slug, the last first pass the catch-up was owed for, in memory only.
+	originStops map[string]originStop
 	// handedOver holds the slugs whose hand-over verdict already owed the catch-up, until they stop answering hand over.
 	handedOver map[string]bool
 	// syncFailures is the failure episode of the bolt-hold sync; syncFailing reports whether its line was logged.
@@ -489,13 +493,18 @@ func (d *daemon) postRefusedReexec(ctx context.Context) {
 // A record with this pid and these start ticks owes nothing.
 // One with this pid and no ticks owes a full pass and gains the ticks.
 // Any other start owes the catch-up from origin and a full pass, and rewrites the pid, the start time and the ticks.
-// A re-exec follows no absence, so it owes no catch-up.
+// A re-exec follows no absence, so it owes the catch-up only while the record holds a wait, which only a success clears.
+// A fresh start drops the recorded wait, so a wait recorded after it counts from its own first failure.
 func (d *daemon) recordStart() error {
 	record, found, err := ReadState(d.geom.StatePath)
 	if err != nil {
 		return err
 	}
 	d.keptTidy, d.keptDescribe = record.Tidy, record.Describe
+	// A recorded wait is a catch-up that has not succeeded, and a re-exec forgets that it is owed.
+	if record.CatchUp != nil {
+		d.oweCatchUp()
+	}
 	own := found && record.PID == os.Getpid()
 	if own && record.StartTicks == d.startTicks {
 		return nil
@@ -511,6 +520,7 @@ func (d *daemon) recordStart() error {
 	now := d.deps.Now()
 	return UpdateState(d.geom.StatePath, func(s *State) error {
 		s.PID, s.StartTime, s.StartTicks = os.Getpid(), now.UTC().Format(time.RFC3339), d.startTicks
+		s.CatchUp = nil
 		return nil
 	})
 }

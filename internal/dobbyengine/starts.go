@@ -89,7 +89,11 @@ func readyToStart(task TaskView, here string, covered bool) bool {
 // While an open front task of the worktree stands, the step starts no other task.
 // It starts the front task itself once it is released, even when the runs in flight fill max_runs.
 // While the beam is flagged ready, the step starts no task at all.
+// Nor does it while the catch-up from origin is owed, which a first pass read earlier in the tick can owe.
 func (d *daemon) startReady(ctx context.Context, now time.Time) error {
+	if d.catchUpOwed {
+		return nil
+	}
 	cfg, err := d.deps.LoadConfig()
 	if err != nil {
 		return fmt.Errorf("load beam.yaml: %w", err)
@@ -338,12 +342,19 @@ func (d *daemon) startFirstPass(task TaskView, now time.Time) {
 
 // firstPassExited reads how a first pass exited.
 // A pass that left a status file claimed the task: its start record is cleared, and the exit is read as any pass's.
-// A covered pass is no refusal, and any other exit that left no status file is a refused start.
+// A covered pass is no refusal.
+// A pass whose catch-up could not reach origin is no refusal either while the dobby's catch-up can answer it:
+// it owes that catch-up, which retries on its own delay and lets the task start once it succeeds.
+// Any other exit that left no status file is a refused start.
 func (d *daemon) firstPassExited(slug string, f flight, exit PassExit, now time.Time) {
 	claimed, err := d.deps.StatusExists(slug)
 	if err != nil {
 		logger.Warn("dobbyengine: whether the first pass left a status file is unreadable; the exit is read as a pass's", "slug", slug, "error", err)
 		claimed = true
+	}
+	// A remembered stop speaks only of the entry's next exit, so any other exit forgets it.
+	if claimed || exit.Code != PassExitOriginWait {
+		delete(d.originStops, slug)
 	}
 	switch {
 	case claimed:
@@ -352,6 +363,7 @@ func (d *daemon) firstPassExited(slug string, f flight, exit PassExit, now time.
 		}
 		d.passExited(slug, f.full, exit.Code, exit.Error, now)
 	case exit.Code == PassExitCovered:
+	case exit.Code == PassExitOriginWait && d.oweCatchUpForStart(slug, f.fingerprint):
 	case exit.Code == 0:
 		if err := d.updateStart(slug, func(s *StartState) { *s = StartState{} }); err != nil {
 			logger.Warn("dobbyengine: the start record could not be cleared", "slug", slug, "error", err)
@@ -363,6 +375,31 @@ func (d *daemon) firstPassExited(slug string, f flight, exit PassExit, now time.
 		}
 		d.refusedStart(slug, f.fingerprint, text, now)
 	}
+}
+
+// originStop is a first pass that an unreachable origin stopped:
+// the board entry it started, and the count of successful catch-ups when it exited.
+type originStop struct {
+	fingerprint string
+	successes   int
+}
+
+// oweCatchUpForStart owes the catch-up from origin for a first pass of slug that an unreachable origin stopped.
+// It reports false, owing nothing, when the catch-up cannot answer that stop:
+// the dobby has none, or one succeeded since an earlier such stop of the same entry, so the failure is the start's own.
+func (d *daemon) oweCatchUpForStart(slug, fingerprint string) bool {
+	if stop, stopped := d.originStops[slug]; stopped && stop.fingerprint == fingerprint && d.catchUpSuccesses > stop.successes {
+		return false
+	}
+	d.oweCatchUp()
+	if !d.catchUpOwed {
+		return false
+	}
+	if d.originStops == nil {
+		d.originStops = map[string]originStop{}
+	}
+	d.originStops[slug] = originStop{fingerprint: fingerprint, successes: d.catchUpSuccesses}
+	return true
 }
 
 // refusedStart records a refused start of slug and schedules its retry backoff.

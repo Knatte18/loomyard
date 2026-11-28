@@ -425,7 +425,7 @@ func TestDrivePasses_ExitHandling(t *testing.T) {
 
 	t.Run("an origin-wait or owned-elsewhere exit owes the catch-up", func(t *testing.T) {
 		t.Parallel()
-		for _, code := range []int{PassExitOriginWait, PassExitOwnedElsewhere} {
+		for _, code := range []int{PassExitOriginWait, PassExitCatchUpRefused, PassExitOwnedElsewhere} {
 			h := newPassHarness(t, runningRun("task"))
 			catchUps := 0
 			h.d.deps.CatchUp = fakeCatchUpDeps(func() error { catchUps++; return nil })

@@ -332,7 +332,8 @@ func TestPreflightRunOwner_RemoveFollowUp(t *testing.T) {
 // A refusal of a run another machine owns that the pre-run reaches exits 77, wrapped or not.
 // A covered run exits 78.
 // A continue pass of a run dobby may not continue exits 79.
-// A pass whose catch-up failed exits 80, and any other error exits 1.
+// A pass whose catch-up could not reach origin exits 80, one whose catch-up failed otherwise exits 81,
+// and any other error exits 1.
 // A claim the Worktree-Create row loses is not a row here.
 // No pre-run wraps it, and its stop ends in the driver's own envelope.
 func TestPassExitCode(t *testing.T) {
@@ -358,9 +359,12 @@ func TestPassExitCode(t *testing.T) {
 		{"WrappedOwnedElsewhere", func() error { return fmt.Errorf("outer: %w", ownedElsewhereFor(slug, "there", "some-beam")) }, dobbyengine.PassExitOwnedElsewhere},
 		{"Covered", func() error { return &coveredRefusal{err: errors.New("pause: held")} }, dobbyengine.PassExitCovered},
 		{"ContinueRefused", func() error { return fmt.Errorf("outer: %w", &continueRefusal{reason: "no state", slug: slug}) }, dobbyengine.PassExitContinueRefused},
-		{"CatchUpRefused", func() error {
-			return fmt.Errorf("outer: %w", &catchUpRefusal{text: "origin is unreachable", err: errors.New("no route")})
+		{"CatchUpOriginUnreachable", func() error {
+			return fmt.Errorf("outer: %w", &catchUpRefusal{text: "origin is unreachable", err: fmt.Errorf("pull: %w", dobbyengine.ErrOriginUnreachable)})
 		}, dobbyengine.PassExitOriginWait},
+		{"CatchUpFailedOtherwise", func() error {
+			return fmt.Errorf("outer: %w", &catchUpRefusal{text: "the catch-up failed", err: errors.New("push refused")})
+		}, dobbyengine.PassExitCatchUpRefused},
 		{"PlainError", func() error { return errors.New("boom") }, 1},
 	}
 	for _, tt := range tests {

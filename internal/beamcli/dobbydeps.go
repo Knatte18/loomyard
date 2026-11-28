@@ -513,13 +513,16 @@ func hubDobbyDepsStarting(prime *lymcwd.Location, geom dobbyengine.Geometry, sta
 
 // hubPushSummary fills the reads of the push summary over the hub of prime.
 func hubPushSummary(prime *lymcwd.Location) dobbyengine.PushSummaryDeps {
-	var timingWarnings, unreadableWaits logger.EpisodeSet
+	var timingWarnings, unreadableWaits, unreadableBeams logger.EpisodeSet
 	return dobbyengine.PushSummaryDeps{
 		Ledger: func() (map[pushledger.Key]pushledger.Entry, error) { return pushledger.List(prime.HubPath) },
 		Refused: func(key pushledger.Key, entry pushledger.Entry) (string, bool, error) {
 			return refusedPushWayForward(prime, key, entry)
 		},
 		Waits: func() ([]dobbyengine.RunView, error) { return hubDriveWaits(prime, &unreadableWaits) },
+		BeamCatchUpWaits: func() (map[string]dobbyengine.CatchUpWait, error) {
+			return hubBeamCatchUpWaits(prime, &unreadableBeams)
+		},
 		Threshold: func() (time.Duration, error) {
 			config, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(prime))
 			if err != nil {
@@ -619,6 +622,43 @@ func hubDriveWaits(prime *lymcwd.Location, unreadable *logger.EpisodeSet) ([]dob
 		}
 	}
 	return waits, nil
+}
+
+// hubBeamCatchUpWaits returns the catch-up wait each live beam dobby of the hub of prime records, keyed by beam slug.
+// A beam whose dobby is not live is left out, since nothing retries or clears its record.
+// A beam whose record does not read is left out too, logged once per episode through unreadable.
+func hubBeamCatchUpWaits(prime *lymcwd.Location, unreadable *logger.EpisodeSet) (map[string]dobbyengine.CatchUpWait, error) {
+	beams, err := hubgeom.DobbyStart(prime).Beams()
+	if err != nil {
+		return nil, err
+	}
+	waits := map[string]dobbyengine.CatchUpWait{}
+	for _, beam := range beams {
+		wait, err := liveCatchUpWait(prime, beam.Slug)
+		if err != nil {
+			unreadable.Fail(beam.Slug, "beamcli: a beam dobby's catch-up wait is unreadable and is left out of the push summary", "beam", beam.Slug, "error", err)
+			continue
+		}
+		unreadable.Recover(beam.Slug, "beamcli: a beam dobby's catch-up wait reads again", "beam", beam.Slug)
+		if wait != nil {
+			waits[beam.Slug] = *wait
+		}
+	}
+	return waits, nil
+}
+
+// liveCatchUpWait returns the catch-up wait the dobby of the beam slug records while it is live, nil otherwise.
+func liveCatchUpWait(prime *lymcwd.Location, slug string) (*dobbyengine.CatchUpWait, error) {
+	geom, err := hubgeom.DobbyGeometry(prime, slug)
+	if err != nil {
+		return nil, err
+	}
+	live, err := dobbyengine.Live(geom)
+	if err != nil || !live {
+		return nil, err
+	}
+	record, _, err := dobbyengine.ReadState(geom.StatePath)
+	return record.CatchUp, err
 }
 
 // beamDescribeDeps fills the description rewrite's seams for the beam slug over the hub of prime.

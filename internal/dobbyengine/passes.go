@@ -417,7 +417,8 @@ func (d *daemon) collectExits(now time.Time) {
 // Exit 0 clears the run's failing-pass count and noticed texts.
 // It also clears the owed full pass when the pass was full.
 // A refused continue pass owes a full pass, and a covered pass counts as no failure.
-// The owned-elsewhere exit and the origin-wait exit are never a failing pass, and each owes the catch-up from origin.
+// The owned-elsewhere, origin-wait and refused-catch-up exits are never a failing pass.
+// Each of them owes the catch-up from origin.
 // Any other exit counts a failure by its error text.
 // Once the count reaches failingPassNoticeAfter, one notice per error text goes to the nearest live orch.
 func (d *daemon) passExited(slug string, full bool, code int, errText string, at time.Time) {
@@ -435,7 +436,7 @@ func (d *daemon) passExited(slug string, full bool, code int, errText string, at
 			}
 		case PassExitContinueRefused:
 			rs.FullPassOwed = true
-		case PassExitCovered, PassExitOwnedElsewhere, PassExitOriginWait:
+		case PassExitCovered, PassExitOwnedElsewhere, PassExitOriginWait, PassExitCatchUpRefused:
 		default:
 			if errText == rs.FailingPassError {
 				rs.FailingPassCount++
@@ -464,7 +465,7 @@ func (d *daemon) passExited(slug string, full bool, code int, errText string, at
 	if noticeDue {
 		d.noticeFailingPass(slug, errText)
 	}
-	if code == PassExitOriginWait {
+	if code == PassExitOriginWait || code == PassExitCatchUpRefused {
 		d.oweCatchUp()
 	}
 	if code == PassExitOwnedElsewhere {

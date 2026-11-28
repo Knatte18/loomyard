@@ -204,6 +204,113 @@ func TestStartReady_RefusalsAndBackoff(t *testing.T) {
 		}
 	})
 
+	t.Run("an origin-wait first pass is no refused start: it owes the catch-up and starts again once that succeeds", func(t *testing.T) {
+		t.Parallel()
+		h := newPassHarness(t)
+		h.fake.tasks = []TaskView{readyTask("a")}
+		h.fake.exits = []PassExit{{Code: PassExitOriginWait, Error: "batten run: origin is unreachable, so the catch-up acted on no run"}}
+		originDown := true
+		h.d.deps.CatchUp = fakeCatchUpDeps(func() error {
+			if originDown {
+				return ErrOriginUnreachable
+			}
+			return nil
+		})
+
+		for range 4 {
+			h.tick(true)
+		}
+		if len(h.fake.spawned) != 1 || len(h.fake.notices) != 0 {
+			t.Fatalf("passes, notices while origin is down = %d, %q; want 1 pass and no notice", len(h.fake.spawned), h.fake.notices)
+		}
+		if got, found := h.stateRecord().Starts["a"]; found {
+			t.Errorf("start record while origin is down = %+v; want none", got)
+		}
+		if got := h.stateRecord().CatchUp; got == nil || got.Reason != CatchUpWaitOrigin {
+			t.Errorf("catch-up wait while origin is down = %+v; want reason %q", got, CatchUpWaitOrigin)
+		}
+
+		originDown = false
+		h.tick(true)
+		if len(h.fake.spawned) != 2 || len(h.fake.notices) != 0 {
+			t.Errorf("passes, notices once origin answers = %d, %q; want the second start and no notice", len(h.fake.spawned), h.fake.notices)
+		}
+	})
+
+	t.Run("a first pass stopped by origin again after a catch-up succeeded is a refused start with one notice and a backoff", func(t *testing.T) {
+		t.Parallel()
+		h := newPassHarness(t)
+		h.fake.tasks = []TaskView{readyTask("a")}
+		stopped := PassExit{Code: PassExitOriginWait, Error: "origin is unreachable"}
+		h.fake.exits = []PassExit{stopped, stopped, stopped}
+		h.d.deps.CatchUp = fakeCatchUpDeps(func() error { return nil })
+
+		for range 4 {
+			h.tick(true)
+		}
+		if len(h.fake.spawned) != 2 || len(h.fake.notices) != 1 {
+			t.Fatalf("passes, notices after the second stop = %d, %q; want 2 passes and one notice", len(h.fake.spawned), h.fake.notices)
+		}
+		if got := h.stateRecord().Starts["a"]; !got.NextTry.After(h.clock.now()) {
+			t.Errorf("start record = %+v; want a backoff that has not run out", got)
+		}
+
+		for range 3 {
+			h.tick(true)
+		}
+		if got := h.stateRecord().Starts["a"]; len(h.fake.spawned) != 3 || len(h.fake.notices) != 1 || got.Interval != 20*time.Second {
+			t.Errorf("passes, notices, start record after the retry = %d, %q, %+v; want 3 passes, the one notice and a doubled backoff", len(h.fake.spawned), h.fake.notices, got)
+		}
+	})
+
+	t.Run("another exit between two origin stops forgets the first", func(t *testing.T) {
+		t.Parallel()
+		h := newPassHarness(t)
+		h.fake.tasks = []TaskView{readyTask("a")}
+		stopped := PassExit{Code: PassExitOriginWait}
+		h.fake.exits = []PassExit{stopped, {Code: PassExitCovered}, stopped}
+		h.d.deps.CatchUp = fakeCatchUpDeps(func() error { return nil })
+
+		for range 5 {
+			h.tick(true)
+		}
+
+		if len(h.fake.spawned) != 3 || len(h.fake.notices) != 0 {
+			t.Errorf("passes, notices = %d, %q; want 3 passes and no notice", len(h.fake.spawned), h.fake.notices)
+		}
+	})
+
+	t.Run("a first pass its catch-up stopped that no catch-up of the dobby answers is a refused start", func(t *testing.T) {
+		t.Parallel()
+		tests := []struct {
+			name    string
+			code    int
+			catchUp CatchUpDeps
+		}{
+			{"OriginWaitWithNoCatchUp", PassExitOriginWait, CatchUpDeps{}},
+			{"CatchUpRefused", PassExitCatchUpRefused, fakeCatchUpDeps(func() error { return nil })},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				h := newPassHarness(t)
+				h.fake.tasks = []TaskView{readyTask("a")}
+				h.fake.exits = []PassExit{{Code: tt.code, Error: "the catch-up failed"}}
+				h.d.deps.CatchUp = tt.catchUp
+
+				h.tick(true)
+				h.tick(true)
+
+				if len(h.fake.spawned) != 1 || len(h.fake.notices) != 1 {
+					t.Errorf("passes, notices = %d, %q; want 1 pass and one notice", len(h.fake.spawned), h.fake.notices)
+				}
+				if got := h.stateRecord().Starts["a"]; got.NextTry.IsZero() || got.Refusal != "the catch-up failed" {
+					t.Errorf("start record = %+v; want the refusal with a backoff", got)
+				}
+			})
+		}
+	})
+
 	t.Run("an owned-elsewhere first pass with no status file is a refused start with one notice", func(t *testing.T) {
 		t.Parallel()
 		h := newPassHarness(t)

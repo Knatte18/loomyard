@@ -122,7 +122,9 @@ func (c *battenCLI) driveRun(cmd *cobra.Command) error {
 // passExitCode returns the exit code of a pass that refused with err before the step loop:
 // the owned-elsewhere code for a run another machine owns; the covered code for a run a pause covers;
 // the continue-refused code for a continue pass of a run dobby may not continue;
-// the origin-wait code for a pass whose catch-up failed or was refused; and 1 for any other refusal.
+// the origin-wait code for a pass whose catch-up could not reach origin;
+// the refused-catch-up code for a pass whose catch-up failed otherwise or was refused;
+// and 1 for any other refusal.
 func passExitCode(err error) int {
 	var owned *OwnedElsewhereError
 	var covered *coveredRefusal
@@ -135,8 +137,10 @@ func passExitCode(err error) int {
 		return dobbyengine.PassExitCovered
 	case errors.As(err, &continueRefused):
 		return dobbyengine.PassExitContinueRefused
-	case errors.As(err, &catchUpRefused):
+	case errors.As(err, &catchUpRefused) && errors.Is(err, dobbyengine.ErrOriginUnreachable):
 		return dobbyengine.PassExitOriginWait
+	case errors.As(err, &catchUpRefused):
+		return dobbyengine.PassExitCatchUpRefused
 	default:
 		return 1
 	}

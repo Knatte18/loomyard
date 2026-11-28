@@ -220,6 +220,43 @@ func TestHubDobbyDeps_PushSummaryWaitsReadBattenAndPairRecords(t *testing.T) {
 	}
 }
 
+// TestHubDobbyDeps_PushSummaryBeamCatchUpWaitsReadLiveBeamDobbies pins the wired push summary's read of beam catch-ups.
+// A beam dobby's recorded wait counts only while the dobby holds its lock.
+func TestHubDobbyDeps_PushSummaryBeamCatchUpWaitsReadLiveBeamDobbies(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	hubforge.AddPairWith(t, h, "b", fabricengine.AddOptions{SkipPush: true, Beam: true})
+	geom, err := hubgeom.DobbyGeometry(h.Location, "b")
+	if err != nil {
+		t.Fatalf("DobbyGeometry(b) = %v; want nil", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(geom.StatePath), 0o755); err != nil {
+		t.Fatalf("mkdir the beam directory: %v", err)
+	}
+	err = dobbyengine.UpdateState(geom.StatePath, func(s *dobbyengine.State) error {
+		s.CatchUp = &dobbyengine.CatchUpWait{Reason: dobbyengine.CatchUpWaitOrigin}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("UpdateState() = %v; want nil", err)
+	}
+	read := hubPushSummary(h.Location).BeamCatchUpWaits
+
+	if waits, err := read(); err != nil || len(waits) != 0 {
+		t.Errorf("BeamCatchUpWaits() with the dobby lock free = %+v, %v; want none", waits, err)
+	}
+	held, err := lock.AcquireWriteLock(geom.LockPath)
+	if err != nil {
+		t.Fatalf("hold the dobby lock: %v", err)
+	}
+	t.Cleanup(func() { _ = held.Release() })
+	if waits, err := read(); err != nil || len(waits) != 1 || waits["b"].Reason != dobbyengine.CatchUpWaitOrigin {
+		t.Errorf("BeamCatchUpWaits() with the dobby lock held = %+v, %v; want the origin wait of b", waits, err)
+	}
+}
+
 // TestHubDobbyDeps_PushSummaryRefusedReadsThePrimeCodeRecord pins the wired push summary's refusal read:
 // the prime's code-branch record refuses the landing target alone, until it is cleared.
 func TestHubDobbyDeps_PushSummaryRefusedReadsThePrimeCodeRecord(t *testing.T) {

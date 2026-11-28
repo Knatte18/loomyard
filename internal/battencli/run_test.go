@@ -241,8 +241,9 @@ func writeStatus(t *testing.T, c *battenCLI, st shedengine.Status) {
 // An absent status file never runs the reconcile.
 // Over a fake catch-up, which runs before the reconcile:
 // an unreachable origin refuses with the origin-wait exit and the re-run;
-// a registration refusal passes its way forward;
-// any other failure names its error and the re-run, and a run handed over exits owned elsewhere;
+// a registration refusal passes its way forward with the refused-catch-up exit;
+// any other failure names its error and the re-run with the same exit;
+// a run handed over exits owned elsewhere;
 // a clean catch-up goes on to the reconcile.
 // Over fake owner seams:
 // an owned_elsewhere verdict refuses naming the owner and "lym adopt";
@@ -334,7 +335,7 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 			catchUp: func() (dobbyengine.CatchUpReport, error) {
 				return dobbyengine.CatchUpReport{}, &boardengine.RegistrationError{Reason: "the name is taken", WayForward: "rename this machine"}
 			},
-			wantCatchUps: 1, wantExit: dobbyengine.PassExitOriginWait,
+			wantCatchUps: 1, wantExit: dobbyengine.PassExitCatchUpRefused,
 			wantErrors: []string{"machine registration refused: the name is taken", "way forward: rename this machine"},
 		},
 		{
@@ -342,7 +343,7 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 			catchUp: func() (dobbyengine.CatchUpReport, error) {
 				return dobbyengine.CatchUpReport{}, errors.New("push refused")
 			},
-			wantCatchUps: 1, wantExit: dobbyengine.PassExitOriginWait,
+			wantCatchUps: 1, wantExit: dobbyengine.PassExitCatchUpRefused,
 			wantErrors: []string{"push refused", "fix the cause it names, then run lym batten run " + slug + " again"},
 		},
 		{

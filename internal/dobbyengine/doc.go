@@ -60,7 +60,7 @@
 //   - A pass that exits as owned by another machine keeps the run's full pass owed and marks it owned elsewhere.
 //     Dobby pauses nothing: it releases the parent lock record naming its child and owes the catch-up from origin.
 //     It posts one notice per owner episode naming `lym adopt <subject>`.
-//   - A covered pass or a pass that waits on origin counts as no failure.
+//   - A covered pass, or a pass its catch-up stopped, counts as no failure.
 //     The third failure in a row with one error text posts one notice to the nearest live orch.
 //   - A task waits on the board as `draft` until released, and dobby starts it from an empty status.
 //     A task starts only when its dependencies are done, its parent is this dobby's worktree,
@@ -70,6 +70,10 @@
 //     The hold only delays starts, never a pass of a run already started.
 //     `task_headroom: 0`, a nil seam and a limit that does not read hold nothing.
 //   - A first pass refused for a covering pause is no refused start and waits for the lift.
+//     A first pass whose catch-up could not reach origin is no refused start either:
+//     it owes the catch-up from origin, and the task starts once the catch-up succeeds.
+//     It is a refused start when the dobby has no catch-up,
+//     or when a catch-up has succeeded since an earlier such exit of the same entry.
 //     Any other first pass that exits non-zero and leaves no status file is a refused start:
 //     it gets one notice per refusal text and a retry backoff that doubles up to an hour.
 //   - A front task is a task entry whose `front` is true, filed ahead of the worktree's other starts.
@@ -260,21 +264,28 @@
 //   - An unreachable origin returns an error wrapping ErrOriginUnreachable before any run is acted on.
 //     A failed push or hand-over is joined into the returned error and the other runs go on.
 //     A nil seam is a wiring error returned at once.
-//   - The dobby owes the catch-up at a fresh start, never at a re-exec, after a sleep,
-//     and when a pass exits PassExitOriginWait or PassExitOwnedElsewhere.
+//   - The dobby owes the catch-up at a fresh start, after a sleep,
+//     at a re-exec only while State.CatchUp records a wait,
+//     when a run's pass exits PassExitOriginWait, PassExitCatchUpRefused or PassExitOwnedElsewhere,
+//     and when a first pass exits PassExitOriginWait that the catch-up can still answer.
 //     Deps.CatchUp with no PullBolt means no catch-up.
 //   - While the catch-up is owed the tick spawns no pass, starts no task, takes no landing step and runs no tidy step.
-//     A failure retries with a doubling delay and records State.CatchUp as a CatchUpWait.
+//     A failure retries with a doubling delay and records State.CatchUp as a CatchUpWait,
+//     which keeps when failures of its reason began.
+//     A wait on origin posts no notice of its own;
+//     the prime's push summary reports every live dobby's wait on origin past its threshold.
 //
 // The push summary:
 //
 //   - A failed push sends no mail of its own.
 //     The prime's dobby, the one wired with Deps.PushSummary.Ledger, reads each tick what is owed to origin:
-//     the push ledger's owed entries and every run of the hub whose driver waits on the network.
+//     the push ledger's owed entries, every run of the hub whose driver waits on the network,
+//     and the catch-up of its own and of every live beam dobby while it waits on origin.
 //     Only an anchor change stops the read.
 //   - The owed period starts at the earliest thing owed and lasts while anything is.
 //     Once it has lasted PushSummaryDeps.Threshold, one notice lists each owed branch with its minutes,
-//     a refused one with its way forward, and each waiting run with its producer.
+//     a refused one with its way forward, each waiting run with its producer,
+//     and each catch-up waiting on origin with its minutes.
 //     No further summary follows in that period.
 //   - An entry holding only held records, dropped landings or owed hand-overs is listed as held.
 //     It opens and holds no period, so it does not block the all-clear.

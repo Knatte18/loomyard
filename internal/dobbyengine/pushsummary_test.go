@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/pushledger"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -86,7 +87,7 @@ func (h *summaryHarness) wantNotice(n int, parts ...string) {
 	}
 }
 
-const allClear = "prime: every branch is pushed to origin and no run waits on the network"
+const allClear = "prime: every branch is pushed to origin and nothing waits on the network"
 
 func TestPushSummary(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -124,6 +125,86 @@ func TestPushSummary(t *testing.T) {
 		h.tickAt(0, 0)
 		h.tickAt(10, 1)
 		h.wantNotice(0, "member at Finalize for 10m")
+	})
+
+	t.Run("ACatchUpWaitingOnOriginIsSummarisedPastTheThreshold", func(t *testing.T) {
+		t.Parallel()
+		h := newSummaryHarness(t)
+		h.d.deps.CatchUp = fakeCatchUpDeps(func() error { return ErrOriginUnreachable })
+		h.d.oweCatchUp()
+		h.d.catchUp(h.t.Context(), h.start)
+		h.tickAt(9, 0)
+
+		h.d.catchUpNext = time.Time{}
+		h.d.catchUp(h.t.Context(), h.start.Add(10*time.Minute))
+		h.tickAt(10, 1)
+		h.wantNotice(0, "the dobby's catch-up from origin for 10m")
+
+		h.d.deps.CatchUp = fakeCatchUpDeps(func() error { return nil })
+		h.d.catchUpNext = time.Time{}
+		h.d.catchUp(h.t.Context(), h.start.Add(11*time.Minute))
+		h.tickAt(11, 2)
+		if h.notices[1] != allClear {
+			t.Errorf("second notice = %q; want %q", h.notices[1], allClear)
+		}
+	})
+
+	t.Run("ABeamsCatchUpWaitingOnOriginIsSummarised", func(t *testing.T) {
+		t.Parallel()
+		h := newSummaryHarness(t)
+		h.d.deps.PushSummary.BeamCatchUpWaits = func() (map[string]CatchUpWait, error) {
+			return map[string]CatchUpWait{
+				"beam":    {Reason: CatchUpWaitOrigin, At: h.start.Add(5 * time.Minute), Since: h.start},
+				"refused": {Reason: CatchUpWaitRefused, At: h.start, Since: h.start},
+			}, nil
+		}
+
+		h.tickAt(9, 0)
+		h.tickAt(10, 1)
+		want := "prime: waiting on the network: beam's catch-up from origin for 10m. lym retries by itself, so only a refused push needs a step"
+		if h.notices[0] != want {
+			t.Errorf("notice = %q; want %q", h.notices[0], want)
+		}
+	})
+
+	t.Run("AWaitRecordedWithoutItsStartCountsFromWhenItWasRead", func(t *testing.T) {
+		t.Parallel()
+		h := newSummaryHarness(t)
+		err := UpdateState(h.d.geom.StatePath, func(s *State) error {
+			s.CatchUp = &CatchUpWait{Reason: CatchUpWaitOrigin, At: h.start}
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("UpdateState() = %v; want nil", err)
+		}
+
+		h.tickAt(9, 0)
+		h.tickAt(10, 1)
+		h.wantNotice(0, "the dobby's catch-up from origin for 10m")
+	})
+
+	t.Run("ACatchUpRefusedOrFailedStaysOutOfTheSummary", func(t *testing.T) {
+		t.Parallel()
+		tests := []struct {
+			name string
+			err  error
+		}{
+			{"Refused", &boardengine.RegistrationError{Reason: "the name is taken", WayForward: "rename this machine"}},
+			{"Failed", errors.New("the board diverged")},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				h := newSummaryHarness(t)
+				h.d.deps.CatchUp = fakeCatchUpDeps(func() error { return tt.err })
+				h.d.oweCatchUp()
+				h.d.catchUp(h.t.Context(), h.start)
+
+				// The one notice is the catch-up's own.
+				h.tickAt(10, 1)
+				h.tickAt(60, 1)
+			})
+		}
 	})
 
 	t.Run("HeldEntriesAreListedAndBlockNoAllClear", func(t *testing.T) {

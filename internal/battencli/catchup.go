@@ -27,7 +27,8 @@ import (
 )
 
 // catchUpRefusal is the refusal of a pass whose catch-up failed or stopped before it acted on the run.
-// A pass exits with its own code on this refusal, and dobby reads that code as no failing pass.
+// A pass exits with one code on this refusal for an unreachable origin and another for any other cause.
+// Dobby reads neither as a failing pass of a run.
 type catchUpRefusal struct {
 	// text is the refusal's message, which ends in its way forward.
 	text string
