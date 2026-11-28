@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -214,6 +215,7 @@ func TestStoreDecisionRecord(t *testing.T) {
 
 // TestDiscussedPayload pins the discussed payload rule on the upsert, batch and merge paths.
 // The entry under test is one that StoreDecisionRecord flagged.
+// Every path shares each row's payload map, and each leaves it unchanged.
 func TestDiscussedPayload(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -244,6 +246,7 @@ func TestDiscussedPayload(t *testing.T) {
 	}
 	for path, write := range apply {
 		for _, tt := range tests {
+			wantFields := maps.Clone(tt.fields)
 			t.Run(path+"/"+tt.name, func(t *testing.T) {
 				t.Parallel()
 				now := time.Date(2026, 10, 1, 8, 0, 0, 0, time.UTC)
@@ -252,6 +255,9 @@ func TestDiscussedPayload(t *testing.T) {
 					t.Fatalf("StoreDecisionRecord: %v", err)
 				}
 				err := write(b, tt.fields)
+				if !reflect.DeepEqual(tt.fields, wantFields) {
+					t.Errorf("%s left the payload %v; want it unchanged: %v", path, tt.fields, wantFields)
+				}
 				switch {
 				case tt.wantErr == "" && err != nil:
 					t.Fatalf("%s(%v) error = %v; want none", path, tt.fields, err)

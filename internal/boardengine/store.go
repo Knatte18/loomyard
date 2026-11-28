@@ -669,8 +669,10 @@ func validateUpsertFields(fields map[string]any) error {
 
 // UpsertTask creates or updates the task identified by fields["slug"].
 // Unknown fields are rejected before any other processing.
-// An owner_machine key equal to the entry's effective owner is dropped from fields, and any other value is refused.
+// An owner_machine key equal to the entry's effective owner is dropped as a no-op, and any other value is refused.
+// The caller's fields map is never changed, so callers may share one payload across concurrent writes.
 func (s *Store) UpsertTask(fields map[string]any) (Task, error) {
+	fields = maps.Clone(fields)
 	if err := validateUpsertFields(fields); err != nil {
 		return Task{}, err
 	}
@@ -1066,7 +1068,13 @@ func (s *Store) ListTasksFull() []Task {
 
 // UpsertTasksBatch applies multiple upserts atomically: it validates all of them first, then applies all or none.
 // Each task's field map is checked against the upsert field allowlist before projection.
+// The caller's field maps are never changed, so callers may share one payload across concurrent writes.
 func (s *Store) UpsertTasksBatch(tasks []map[string]any) error {
+	payloads := make([]map[string]any, len(tasks))
+	for i, fields := range tasks {
+		payloads[i] = maps.Clone(fields)
+	}
+	tasks = payloads
 	for _, fields := range tasks {
 		if err := validateUpsertFields(fields); err != nil {
 			return err
@@ -1248,7 +1256,9 @@ func (s *Store) mergeOrders(removeSlugs []string, into string) {
 // A nil setStatus skips the status update.
 // If setStatus targets a missing task, MergeTasks returns an error after it has changed the store in memory,
 // so the caller must not save the store.
+// The caller's upsert map is never changed, so callers may share one payload across concurrent writes.
 func (s *Store) MergeTasks(removeSlugs []string, upsert map[string]any, setStatus *MergeStatusUpdate) (Task, error) {
+	upsert = maps.Clone(upsert)
 	projected := make([]Task, 0, len(s.tasks))
 	for _, t := range s.tasks {
 		shouldRemove := false
@@ -1311,7 +1321,6 @@ func (s *Store) MergeTasks(removeSlugs []string, upsert map[string]any, setStatu
 
 	incoming.Issues = s.carriedIssues(incoming.Issues, removeSlugs)
 	incoming.Created = s.oldestCreated(incoming.Created, removeSlugs)
-	upsert = maps.Clone(upsert)
 	upsert["issues"] = incoming.Issues
 	if !incoming.Created.IsZero() {
 		upsert["created"] = incoming.Created
