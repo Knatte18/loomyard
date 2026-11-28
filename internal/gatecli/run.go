@@ -633,8 +633,8 @@ func (e *execution) printReport(inHub bool) {
 
 // runListed runs one listed tier with its slots held, and returns how it ended.
 // A tier with no invocation takes no slot.
-// A tier the green record holds green for the current tree takes no slot either,
-// and is reported as carried, naming the earlier run it reuses.
+// A tier the green record holds green for the current tree takes no slot either.
+// It is reported as carried, naming the earlier run it reuses.
 // A tier the record holds green in part runs only the rest, and a pass is recorded.
 // A tier with only a build to run takes its slots for the build,
 // and a tier that opts into a build that failed is reported blocked.

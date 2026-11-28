@@ -350,7 +350,8 @@ type greenPlan struct {
 	reusedFrom []string
 }
 
-// inertCarry is a module an ancestor's whole entry carries over an inert-only diff, with the log path of that entry's run.
+// inertCarry is a module an ancestor's whole entry carries over an inert-only diff.
+// It holds the log path of that entry's run.
 type inertCarry struct {
 	key, run string
 }
