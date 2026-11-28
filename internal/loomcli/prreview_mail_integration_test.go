@@ -57,14 +57,10 @@ func refusedMail(head, log string) string {
 // A mail creel refuses halts the row and records no mailed head.
 // No row pushes the refused head, moves the record's gated head or takes a parent lock,
 // and every sleep of the wait lasts from a second to a minute.
-// It runs without t.Parallel: the strand and git environment variables are process-global.
+// It runs without t.Parallel: the strand environment variable is process-global.
 func TestPRReviewGateFailureMail(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Setenv(agentname.StrandNameEnv, "")
-	// The pair's origin is a GitHub URL, so a git command that reaches for it must fail at once and ask for no credentials.
-	t.Setenv("GIT_ALLOW_PROTOCOL", "file")
-	t.Setenv("GIT_TERMINAL_PROMPT", "0")
-	t.Setenv("GIT_ASKPASS", "")
 
 	h := hubforge.CopyHub(t, pairHubShape)
 	const slug = hubforge.TemplatePairSlug

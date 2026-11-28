@@ -34,6 +34,8 @@
 // so fixtures built by initRepo/initBareRemote and their Copy* copies are quiet by construction.
 // Layer B (HermeticGitEnv, hermetic.go) is a process-wide override a package's TestMain calls before m.Run().
 // It covers git spawned by raw `git init`/`git clone` inside tests, and any child process the test binary launches.
+// It also refuses the https and ssh transports and every credential prompt git or an askpass helper makes,
+// so a test that wires a real push to an https or ssh origin fails at once instead of opening a credential dialog.
 // The variables reach every `lym` child a test runs through lymbin.Run.
 // See PATTERN-test-isolation for the machine-enforced half of this contract.
 package gitkit

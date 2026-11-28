@@ -60,6 +60,32 @@ func TestHermeticGitEnv_QuietAndPinned(t *testing.T) {
 	}
 }
 
+// TestHermeticGitEnv_RefusesHostedOriginsAndPrompts verifies two properties of the test binary's git environment.
+// The transport and prompt variables hold their hermetic values, and git refuses an https origin before it connects.
+// The environment is checked first, so an environment that still allows a prompt fails before git reaches GitHub.
+func TestHermeticGitEnv_RefusesHostedOriginsAndPrompts(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	for name, want := range map[string]string{
+		"GIT_ALLOW_PROTOCOL":  "file:ext:http",
+		"GIT_TERMINAL_PROMPT": "0",
+		"GIT_ASKPASS":         "",
+		"SSH_ASKPASS":         "",
+	} {
+		if got, set := os.LookupEnv(name); !set || got != want {
+			t.Fatalf("os.LookupEnv(%q) = %q, %v; want %q, true", name, got, set, want)
+		}
+	}
+
+	cmd := exec.Command("git", "ls-remote", "https://github.com/example/unreachable.git")
+	cmd.Dir = t.TempDir()
+	output, err := cmd.CombinedOutput()
+	if err == nil || !strings.Contains(string(output), "transport 'https' not allowed") {
+		t.Errorf("git ls-remote over https = %v, %q; want the transport refused", err, output)
+	}
+}
+
 // TestCopiedRepoScenario drives one CopyRepo fixture through the fixture and query helpers.
 // The steps run serially in one order and share the fixture's repository state.
 // The query steps start on the fixture's main branch,

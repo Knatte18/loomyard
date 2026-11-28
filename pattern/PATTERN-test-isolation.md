@@ -7,6 +7,9 @@ A test package never reaches the operator's global gitconfig or default tmux soc
 - `TestMain` calls `gitkit.HermeticGitEnv()` before `m.Run()`, or the package is allowlisted (`internal/proc`).
 - A package is git-spawning when a test file references a gitkit spawn, by the same definition `PATTERN-test-speed` uses.
 - Enforced by `cmd/lym/hermeticenv_test.go`.
+- `HermeticGitEnv` also refuses the https and ssh transports and every credential prompt git or an askpass helper makes.
+  It does so in every test binary whose `TestMain` calls it, which the first bullet requires of git-spawning packages:
+  a test that wires a real push to an https or ssh origin fails at once and sets none of those variables itself.
 
 ## tmux isolation
 

@@ -1,5 +1,6 @@
-// hermetic.go implements Layer B of the two-layer hermetic git mechanism:
-// a process-wide override; every git spawned by a test process ignores the operator's global and system git config.
+// hermetic.go implements Layer B of the two-layer hermetic git mechanism: a process-wide override.
+// Every git spawned by a test process ignores the operator's global and system git config.
+// It also refuses the https, ssh and git transports and stops git prompting for credentials.
 
 package gitkit
 
@@ -16,6 +17,8 @@ var hermeticGitEnvOnce sync.Once
 
 // HermeticGitEnv makes every git process spawned by this test binary ignore the operator's global and system git config.
 // It replaces that config with a neutral one.
+// It also refuses the https and ssh transports and every credential prompt git or an askpass helper makes,
+// so a git that reaches for an https or ssh origin fails at once instead of hanging on a dialog.
 // Call it as the first line of TestMain, before m.Run().
 // The neutral config file lives in the process run directory of internal/lymtemp.
 // tmuxkit.Main removes that directory after the run.
@@ -60,6 +63,27 @@ func HermeticGitEnv() {
 		}
 		if err := os.Setenv("GIT_CONFIG_NOSYSTEM", "1"); err != nil {
 			panic(err)
+		}
+
+		// A test runs unattended, so git must neither use a hosted origin's https or ssh nor ask anyone for credentials.
+		// GIT_ALLOW_PROTOCOL refuses https and ssh, the transports of a hosted origin, before git connects,
+		// and it overrides every protocol.<name>.allow setting.
+		// It keeps the file transport.
+		// It also keeps ext, for tests that script an origin's answer.
+		// It keeps http, for tests that point origin at a refused loopback port.
+		// GIT_TERMINAL_PROMPT=0 stops git prompting on the terminal.
+		// An empty GIT_ASKPASS stops git running any askpass helper, the one SSH_ASKPASS names included;
+		// an empty SSH_ASKPASS stops an ssh that an ext transport starts from opening a desktop dialog.
+		promptlessTransportEnv := [][2]string{
+			{"GIT_ALLOW_PROTOCOL", "file:ext:http"},
+			{"GIT_TERMINAL_PROMPT", "0"},
+			{"GIT_ASKPASS", ""},
+			{"SSH_ASKPASS", ""},
+		}
+		for _, variable := range promptlessTransportEnv {
+			if err := os.Setenv(variable[0], variable[1]); err != nil {
+				panic(err)
+			}
 		}
 	})
 }
