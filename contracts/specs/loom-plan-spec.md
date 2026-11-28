@@ -328,7 +328,8 @@ The hub's tests run through `lym gate test`.
 It runs the numbered tiers `gate.yaml` declares over a scope lym computes.
 A gate key names a site's tiers and scope, `card`, `diff` or `all`.
 A Go site runs `lym gate test --wait --gate <key>`; an agent's card, batch and `webster-fix` calls carry no `--wait`.
-The `card` key runs per card and the `batch` key per batch, both over the cards' packages and the packages that depend on them;
+The `card` key runs per card over the cards' packages and the packages that depend on them,
+and the `batch` key per batch, scoped as its bullet below states;
 `webster-fix` in Webster's verify fixers;
 `webster` once for the whole plan;
 `parent-align` and `finalize` at Parent-Align and Finalize.
@@ -342,6 +343,9 @@ so a plan names no gate, tier list or target list.
   and a passing call names the declared tiers it did not run.
 - **Per batch.** The fork runs `lym gate test --gate batch` after its last card.
   The call carries one `--card <card id>` per card of the batch.
+  Its tier0 run holds the packages that depend on the cards' packages;
+  each tier above tier0 that does not cover tier0 runs the cards' packages alone.
+  A tier that runs whole is not narrowed.
 - **Per plan.** The `webster` gate runs once, a must-pass gate on Merriam that sends a failure back to Merriam.
 - Tier 3 tests drive a real LLM; no gate runs them.
 

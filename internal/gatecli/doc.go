@@ -151,6 +151,11 @@
 // So a test outside the cards that asserts on what they change runs at the card's gate;
 // a module `go list` cannot list keeps the cards' packages alone, which the call names on stderr.
 // With `--main-packages` it also holds every `package main` package of tier0's module.
+// Under `--gate batch` only tier0, and a listed tier that covers it, run that scope.
+// Each other listed tier runs the cards' packages alone, with the main packages when asked,
+// and the call names it on stderr.
+// A tier that runs whole is neither narrowed nor named there.
+// The gates that run the whole tree run the slower tests of the dependent packages once per plan.
 // A narrower scope runs each listed tier once per module, in that module's directory.
 // One slot hold and one `gate.tiers.<tier>.timeout_min` cover every invocation.
 // An empty scope, such as a diff of Markdown files only, runs no listed tier's command, bar a tier with `carry: false`:
@@ -234,6 +239,8 @@
 // It covers the module's `//lym:guard` tests outside the scope, so a narrower gate keeps full guard coverage.
 // It also covers a scope package's guard test whose tier no listed tier is or covers, which the listed runs skip:
 // under `--card` for the cards' scope, and under a computed or `--base` scope for each base's impacted set and tiers.
+// Under `--card` the step also takes a dependent package's guard test.
+// It does so when the listed run of the test's tier holds the cards' packages alone.
 // A guard test's tier comes from its file's `tierN` build tag, a file naming none counting as `tier0`.
 // The step plans one run per tier holding guard tests, ascending.
 // Each run is the tier's command with the group's packages as `{targets}`;

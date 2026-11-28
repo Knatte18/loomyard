@@ -81,9 +81,10 @@ type scope struct {
 	// guards maps a tier number to each directory that holds guard tests of it for the guard step, and to their names.
 	// The directories are relative to guardDir; nil when no scan has run.
 	guards map[int]map[string][]string
-	// listedTiers are the tiers a --card scope's listed runs run: each listed tier and every tier it covers.
-	// A guard test of any other tier is left to the guard step, even in a package of the scope.
-	listedTiers []int
+	// listedPackages maps a tier number to the guard module's packages in which a --card scope's listed runs run its tests.
+	// Each kept listed tier adds its share's packages under its own number and under every tier it covers.
+	// A guard test outside the packages of its tier is left to the guard step, even in a package of the scope.
+	listedPackages map[int]map[string]bool
 	// tagTiers are the declared tiers, ascending, whose build tag adds a file to a --card scope's package.
 	// A build without tags leaves that file out, so the vet step is planned over these tiers.
 	tagTiers []int
@@ -170,6 +171,9 @@ func skippedInside(cfg gateslot.Config, numbers []int, inside map[string][]impac
 // A --card scope is the cards' packages per module.
 // It holds every package of that module whose build or tests reach one of them too.
 // With request.mainPackages it also holds every package main of tier0's module, listed once.
+// Under the batch key, each listed tier above tier0 that does not cover tier0 runs the cards' packages alone.
+// A tier that runs whole is not narrowed.
+// That narrower set holds the main packages when asked, and request.stderr names the narrowed tiers.
 // It adds the declared tiers whose build tag brings a file into one of those packages.
 // A narrowed share, and a --card scope, skip the `//lym:watch` tests of their packages that no changed file concerns.
 // A --card scope reads its changed files as the diff from the merge base with the parent branch.
@@ -236,29 +240,35 @@ func computeScope(ctx context.Context, cfg gateslot.Config, location *lymcwd.Loc
 			}
 		}
 		modules := make([]moduleTargets, len(cardModules))
+		own := make([]moduleTargets, len(cardModules))
 		for i, module := range cardModules {
 			modules[i] = moduleTargets{dir: module.Dir, targets: cardDependents(ctx, root, module, request.stderr)}
+			own[i] = moduleTargets{dir: module.Dir, targets: slices.Clone(module.Packages)}
 		}
 		modules = withMainPackages(modules, mainsDir, mains)
-		var dirs []string
-		for _, module := range modules {
-			for _, target := range module.targets {
-				dir := path.Join(module.dir, strings.TrimPrefix(target, "./"))
-				// A card may name a package it has yet to create.
-				if info, err := os.Stat(filepath.Join(root, filepath.FromSlash(dir))); err == nil && info.IsDir() {
-					dirs = append(dirs, dir)
+		own = withMainPackages(own, mainsDir, mains)
+		sc := scope{form: form, modules: modules, guardStep: true, guardDir: tier0.Dir, tagTiers: tagTiers(cfg, root, modules)}
+		ownTiers := ownPackageTiers(cfg, request)
+		var ownSkip []string
+		sc.changed, sc.changesRead = cardChanges(ctx, location, root)
+		if sc.changesRead {
+			if sc.skip, err = watchedSkip(root, existingDirs(root, modules), sc.changed); err != nil {
+				return scope{}, err
+			}
+			if len(ownTiers) > 0 {
+				if ownSkip, err = watchedSkip(root, existingDirs(root, own), sc.changed); err != nil {
+					return scope{}, err
 				}
 			}
 		}
-		sc := scope{form: form, modules: modules, guardStep: true, guardDir: tier0.Dir, tagTiers: tagTiers(cfg, root, modules), listedTiers: coveredTiers(cfg, request)}
-		sc.changed, sc.changesRead = cardChanges(ctx, location, root)
-		if sc.changesRead {
-			watched, err := impactset.FindWatchedTests(root, dirs)
-			if err != nil {
-				return scope{}, errors.New(guardScanRefusal(root, err))
+		if len(ownTiers) > 0 {
+			sc.tiers = map[int]tierScope{}
+			for _, number := range ownTiers {
+				sc.tiers[number] = tierScope{modules: own, skip: ownSkip}
 			}
-			sc.skip = skipNames(impactset.UnwatchedTests(watched, sc.changed))
+			printLine(request.stderr, fmt.Sprintf("gate test: --gate %s runs %s over the cards' packages alone, not the packages that depend on them", request.gate, tierNames(ownTiers)))
 		}
+		sc.listedPackages = listedPackages(cfg, request, sc)
 		return sc, nil
 	}
 
@@ -326,6 +336,83 @@ func cardDependents(ctx context.Context, root string, module planparser.ModulePa
 		return module.Packages
 	}
 	return dependents
+}
+
+// ownPackageTiers returns the kept listed tiers of a batch key call that run the cards' packages alone, ascending.
+// They are the tiers above tier0 that do not cover tier0, so tier0 alone runs the packages that depend on the cards.
+// The slower tests of the dependent packages are left to the runs over the whole tree.
+// Those happen once per plan, not once per batch.
+// A tier that runs whole is not narrowed:
+// a `carry: false` tier, every tier of a --no-carry call, and one whose command takes no targets.
+// A call of any other key returns none.
+func ownPackageTiers(cfg gateslot.Config, request testRequest) []int {
+	if request.gate != gateslot.BatchGateKey {
+		return nil
+	}
+	var numbers []int
+	for _, number := range keptTiers(cfg, request) {
+		tier, err := cfg.Tier(number)
+		if err != nil || number == 0 || slices.Contains(tier.Covers, 0) {
+			continue
+		}
+		if !tier.NoCarry && !request.noCarry && gateslot.HoldsTargets(tier.Command) {
+			numbers = append(numbers, number)
+		}
+	}
+	return numbers
+}
+
+// listedPackages returns, per tier number, the guard module's packages in which the listed runs of sc run its tests.
+// A kept listed tier runs its own tests and those of every tier it covers, over its share of sc.
+// The packages are module-relative directories.
+func listedPackages(cfg gateslot.Config, request testRequest, sc scope) map[int]map[string]bool {
+	byTier := map[int]map[string]bool{}
+	for _, number := range keptTiers(cfg, request) {
+		run := []int{number}
+		if tier, err := cfg.Tier(number); err == nil {
+			run = append(run, tier.Covers...)
+		}
+		for _, module := range sc.forTier(number).modules {
+			if path.Clean(module.dir) != path.Clean(sc.guardDir) {
+				continue
+			}
+			for _, target := range module.targets {
+				dir := strings.TrimPrefix(path.Clean(target), "./")
+				for _, covered := range run {
+					if byTier[covered] == nil {
+						byTier[covered] = map[string]bool{}
+					}
+					byTier[covered][dir] = true
+				}
+			}
+		}
+	}
+	return byTier
+}
+
+// existingDirs returns the worktree-relative directories of the packages of modules that exist under root.
+// A card may name a package it has yet to create, which is left out.
+func existingDirs(root string, modules []moduleTargets) []string {
+	var dirs []string
+	for _, module := range modules {
+		for _, target := range module.targets {
+			dir := path.Join(module.dir, strings.TrimPrefix(target, "./"))
+			if info, err := os.Stat(filepath.Join(root, filepath.FromSlash(dir))); err == nil && info.IsDir() {
+				dirs = append(dirs, dir)
+			}
+		}
+	}
+	return dirs
+}
+
+// watchedSkip returns the sorted names of the `//lym:watch` tests in dirs that no path of changed concerns.
+// A watch scan error is returned as the refusal.
+func watchedSkip(root string, dirs, changed []string) ([]string, error) {
+	watched, err := impactset.FindWatchedTests(root, dirs)
+	if err != nil {
+		return nil, errors.New(guardScanRefusal(root, err))
+	}
+	return skipNames(impactset.UnwatchedTests(watched, changed)), nil
 }
 
 // withMainPackages returns modules with mains, the main packages of the module at dir, added to that module's targets.
@@ -498,18 +585,6 @@ func keptTiers(cfg gateslot.Config, request testRequest) []int {
 	return dropCovered(listed, declared, silent)
 }
 
-// coveredTiers returns the tiers the request's listed runs run: each kept listed tier and every tier it covers.
-func coveredTiers(cfg gateslot.Config, request testRequest) []int {
-	var numbers []int
-	for _, number := range keptTiers(cfg, request) {
-		numbers = append(numbers, number)
-		if tier, err := cfg.Tier(number); err == nil {
-			numbers = append(numbers, tier.Covers...)
-		}
-	}
-	return numbers
-}
-
 // tierNames returns the names of the tiers numbers, joined by commas.
 func tierNames(numbers []int) string {
 	names := make([]string, len(numbers))
@@ -613,7 +688,7 @@ func guardScanDir(cfg gateslot.Config, request testRequest, sc scope) (string, e
 }
 
 // scanGuards fills sc.guards with the guard tests the scope's listed runs leave out, grouped by their file's tier.
-// Those are the guard tests outside the scope's packages, and those inside one whose tier no listed run runs.
+// Those are the guard tests outside every package in which a listed run runs tests of their tier.
 // It scans the module at sc.guardDir.
 // A whole scope and an explicit-targets scope hold no package of that module, so every guard test counts as left out.
 // It scans the guard packages for `//lym:watch` markers too.
@@ -625,19 +700,10 @@ func scanGuards(sc scope, root string) (scope, error) {
 	if err != nil {
 		return scope{}, errors.New(guardScanRefusal(moduleDir, err))
 	}
-	inside := map[string]bool{}
-	for _, module := range sc.modules {
-		if path.Clean(module.dir) != path.Clean(sc.guardDir) {
-			continue
-		}
-		for _, target := range module.targets {
-			inside[strings.TrimPrefix(path.Clean(target), "./")] = true
-		}
-	}
 	leftOut := map[string][]impactset.GuardTest{}
 	for dir, tests := range all {
 		for _, test := range tests {
-			if !inside[path.Clean(dir)] || !slices.Contains(sc.listedTiers, test.Tier) {
+			if !sc.listedPackages[test.Tier][path.Clean(dir)] {
 				leftOut[dir] = append(leftOut[dir], test)
 			}
 		}

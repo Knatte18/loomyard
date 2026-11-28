@@ -73,7 +73,7 @@ func (c *websterCLI) loadGateConfig() (gateslot.Config, error) {
 	if err != nil {
 		return gateslot.Config{}, err
 	}
-	for _, name := range []string{"card", "batch"} {
+	for _, name := range []string{"card", gateslot.BatchGateKey} {
 		if _, err := gate.TierList(name); err != nil {
 			return gateslot.Config{}, err
 		}

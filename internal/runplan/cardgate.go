@@ -62,7 +62,7 @@ func RenderBatchGate(cards []planparser.Card, gate gateslot.Config, last bool) (
 	if last {
 		render = gate.AgentGateCallWithMainPackages
 	}
-	call, err := render("batch", ids...)
+	call, err := render(gateslot.BatchGateKey, ids...)
 	if err != nil {
 		return "", err
 	}

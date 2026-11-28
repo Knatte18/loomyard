@@ -122,7 +122,7 @@ Examples:
 	testCmd.Flags().StringVar(&gate, "gate", "", "key of "+keyName(gatesKey)+" whose tiers and scope the call runs; goes with none of --tier, --upto, --all and --base")
 	testCmd.Flags().IntSliceVar(&tiers, "tier", nil, "tier number to run; repeatable, default 0")
 	testCmd.Flags().IntVar(&upto, "upto", 0, "run every declared tier numbered 0 through N but the manual ones")
-	testCmd.Flags().StringArrayVar(&cards, "card", nil, "plan card id whose packages, and the packages that depend on them, are the scope; repeatable")
+	testCmd.Flags().StringArrayVar(&cards, "card", nil, "plan card id whose packages, and the packages that depend on them, are the scope; under --gate batch a tier above tier0 that does not cover tier0 runs the cards' packages alone; repeatable")
 	testCmd.Flags().BoolVar(&mainPackages, gateslot.MainPackagesFlag, false, "with --card under the go scoper, add every package main of tier0's module to the scope")
 	testCmd.Flags().StringVar(&base, "base", "", "revision whose diff to the working tree is the scope")
 	testCmd.Flags().BoolVar(&all, "all", false, "run every tier over its all_targets")

@@ -530,6 +530,51 @@ func TestGateTest_Scopes(t *testing.T) {
 		f.wantArgs(t, f.gate(t, f.pair, nil, "--card", "1", "--tier", "1"), scoped, []string{"."}, guardInvocation)
 	})
 
+	t.Run("--gate batch runs tier1 over the cards' and main packages alone, with their own watch skip, and its guard step takes a dependent's tier1 guard, unless tier1 covers tier0", func(t *testing.T) {
+		t.Parallel()
+		f := newScopesHub(t)
+		// A watched test runs when its own file changed, so this file sits at the merge base.
+		gitkit.CommitFile(t, f.prime, "consumer/c0_test.go",
+			"package consumer\n\nimport \"testing\"\n\n//lym:guard\nfunc TestConsumerTierZeroGuard(t *testing.T) {}\n\n"+
+				"//lym:watch *_linux.go\nfunc TestConsumerWatched(t *testing.T) {}\n",
+			"add the consumer tests")
+		gitkit.Git(t, f.pair, "merge", "--ff-only", "-q", "main")
+		plankit.WriteTree(t, f.pair, map[string]string{
+			"consumer/c.go":      "package consumer\n\nimport \"example.com/scopes/lib\"\n\nvar One = lib.One\n",
+			"consumer/c_test.go": "//go:build tier1\n\npackage consumer\n\nimport \"testing\"\n\n//lym:guard\nfunc TestConsumerGuard(t *testing.T) {}\n",
+			"tool/main.go":       "package main\n\nfunc main() {}\n",
+		})
+		writeCardKeys := func(tier1CoversTier0 bool) {
+			t.Helper()
+			config := scopesConfigWith(t, "go", func(cfg map[string]any) {
+				if !tier1CoversTier0 {
+					delete(cfg["tiers"].(map[string]any)["tier1"].(map[string]any), "covers")
+				}
+				cfg["gates"] = map[string]any{
+					"batch": map[string]any{"tiers": []int{0, 1}, "scope": "card"},
+					"card":  map[string]any{"tiers": []int{0, 1}, "scope": "card"},
+				}
+			})
+			if err := os.WriteFile(f.configPath, config, 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		scoped := []string{"./lib", "./consumer", "./user", "-skip", "^(TestConsumerWatched)$"}
+		nested := []string{".", "-skip", "^(TestConsumerWatched)$"}
+		scopedWithMain := []string{"./lib", "./consumer", "./user", "./tool", "-skip", "^(TestConsumerWatched)$"}
+
+		writeCardKeys(false)
+		batch := f.gate(t, f.pair, nil, "--gate", "batch", "--card", "1", "--main-packages")
+		f.wantArgs(t, batch, scopedWithMain, nested, []string{"./lib", "./tool"}, []string{"."}, guardInvocation, []string{"./consumer", "-run", "^(TestConsumerGuard)$"})
+		if want := "gate test: --gate batch runs tier1 over the cards' packages alone, not the packages that depend on them"; !strings.Contains(batch.stdout.String(), want) {
+			t.Errorf("stdout = %q; want it to hold %q", batch.stdout.String(), want)
+		}
+		f.wantArgs(t, f.gate(t, f.pair, nil, "--gate", "card", "--card", "1"), scoped, nested, scoped, nested, guardInvocation)
+
+		writeCardKeys(true)
+		f.wantArgs(t, f.gate(t, f.pair, nil, "--gate", "batch", "--card", "1"), scoped, nested, guardInvocation)
+	})
+
 	t.Run("a computed scope runs an impacted package's guard in the guard step unless a listed tier is or covers its tier", func(t *testing.T) {
 		t.Parallel()
 		f := newScopesHub(t)

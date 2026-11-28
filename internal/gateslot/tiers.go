@@ -124,6 +124,9 @@ type GateKey struct {
 // cardGateKey is the name of the gate.yaml key that runs a card's gate, the one key whose agent call may hold a fixer.
 const cardGateKey = "card"
 
+// BatchGateKey is the name of the gate.yaml key that runs an implementer batch's gate over the batch's cards.
+const BatchGateKey = "batch"
+
 // Scope values a gate key may hold.
 const (
 	scopeCard = "card"
@@ -151,7 +154,7 @@ const (
 )
 
 // goReadGates are the gate keys the Go verify sites read, in the order TiersValue lists them.
-var goReadGates = []string{"card", "batch", "webster", "parent-align", "finalize", "adopt", "webster-fix", "darn-write", "code-burler-fix", "harden-burler-fix", "harden-live", "pr-review"}
+var goReadGates = []string{"card", BatchGateKey, "webster", "parent-align", "finalize", "adopt", "webster-fix", "darn-write", "code-burler-fix", "harden-burler-fix", "harden-live", "pr-review"}
 
 var (
 	tierKeyPattern   = regexp.MustCompile(`^tier(0|[1-9][0-9]*)$`)

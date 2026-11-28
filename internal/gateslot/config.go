@@ -518,7 +518,7 @@ func decodeGates(entries map[string]yaml.Node) (map[string]GateKey, error) {
 		}
 		switch key.Scope {
 		case scopeCard:
-			if name != cardGateKey && name != "batch" {
+			if name != cardGateKey && name != BatchGateKey {
 				return nil, guidedError{fmt.Errorf("config key %q: scope card is only for the card and batch keys; fix it with \"lym config gate\" from the prime%s", path, roleClause)}
 			}
 		case scopeDiff, scopeAll, ScopeMarked:
