@@ -336,7 +336,7 @@
 // It renders with the handle `P0` and the title `Root: entries under no project`.
 // Board project handles start at 1, so `P0` names no board entry.
 // RootProjectBrief gives the root as one listing row, with the slug RootSubject.
-// Every write renders README.md, the overview of every project, and one board file per project.
+// Every write renders README.md, the overview of every project, one board file per project, board-data.js and board.html.
 // Every project, open or done, renders to project-<slug>.md beside it, and the root to project-root.md.
 // A render rewrites each board file in place rather than by temp file and rename,
 // so an open VS Code markdown preview, which refreshes only on a file change event, shows the new content.
@@ -442,6 +442,9 @@
 // Each entry carries a revision, the SHA-256 of the entry as stored.
 // The stored entry is hashed even where the render clears its discussed flag for a missing record file.
 // Board.View gives the same projection of the board as it stands, over entries migrated as a write migrates them.
+//
+// board.html is a fixed render output too, the viewer page embedded in the binary and the same for every board.
+// Opened from disk it shows board-data.js read-only, and served over http it reads and writes through its server.
 //
 // # Intake
 //
@@ -816,7 +819,7 @@
 // It is also the run ledger through which fabricengine reads the ended set and the owners.
 // The lym root pre-run registers it with `fabricengine.RegisterBoltReplayer`.
 // It claims these paths:
-// `board.json` and `README.md`;
+// `board.json`, `README.md`, `board-data.js` and `board.html`;
 // the `project-<slug>.md` files, of which `project-root.md` is the root project's and not a project's;
 // the `design-<slug>.md` and `decision-<slug>.md` files at the Bolt root;
 // the files directly in a raddle store directory, `raddle/<sketch>/<name>`.

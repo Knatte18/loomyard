@@ -152,6 +152,12 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 		if !slices.Contains(listed, "board-data.js") {
 			t.Errorf("manifest = %v; want it to list board-data.js", listed)
 		}
+		if _, err := os.Stat(filepath.Join(dir, "board.html")); err != nil {
+			t.Errorf("board.html not written: %v", err)
+		}
+		if !slices.Contains(listed, "board.html") {
+			t.Errorf("manifest = %v; want it to list board.html", listed)
+		}
 	})
 
 	t.Run("ReadmeRename", func(t *testing.T) {

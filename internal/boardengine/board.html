@@ -1,0 +1,687 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Board</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --back: #ffffff;
+  --panel: #f4f5f7;
+  --text: #1d2126;
+  --muted: #666d76;
+  --line: #d8dce1;
+  --accent: #1f6feb;
+  --warn: #9a3412;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --back: #15181c;
+    --panel: #1e2328;
+    --text: #e3e6ea;
+    --muted: #9aa2ac;
+    --line: #333a42;
+    --accent: #6ea8fe;
+    --warn: #fdba74;
+  }
+}
+[hidden] { display: none !important; }
+body { margin: 0 auto; max-width: 70rem; padding: 1rem; background: var(--back); color: var(--text); font: 14px/1.45 system-ui, sans-serif; }
+a { color: var(--accent); }
+h1 { margin: 0; font-size: 1.4rem; }
+h2 { margin: 1.2rem 0 0.3rem; font-size: 1.1rem; }
+h3 { margin: 0.7rem 0 0.2rem; font-size: 0.95rem; color: var(--muted); }
+input, select, textarea, button { font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 0.2rem 0.5rem; }
+button { cursor: pointer; }
+button.on { border-color: var(--accent); background: var(--accent); color: var(--back); }
+pre { overflow-x: auto; background: var(--panel); padding: 0.5rem; white-space: pre-wrap; }
+.muted { color: var(--muted); }
+.warn { color: var(--warn); font-weight: 600; }
+.bar { display: flex; flex-wrap: wrap; gap: 0.3rem; align-items: center; margin: 0.5rem 0; }
+.search { flex: 1 1 14rem; }
+.project .project { margin-left: 1.2rem; }
+.entry { border-top: 1px solid var(--line); }
+.row { display: flex; flex-wrap: wrap; gap: 0.6rem; width: 100%; text-align: left; border: 0; background: none; padding: 0.3rem 0; }
+.handle { min-width: 3rem; font-family: ui-monospace, monospace; }
+.title { flex: 1 1 12rem; }
+.detail { padding: 0 0 0.7rem 3.6rem; }
+.columns { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-start; }
+.form { display: flex; flex-direction: column; gap: 0.4rem; flex: 1 1 20rem; margin: 0.5rem 0; }
+.form label { display: flex; flex-direction: column; color: var(--muted); }
+.form textarea { min-height: 8rem; }
+.fresh { flex: 1 1 18rem; border: 1px solid var(--warn); border-radius: 4px; padding: 0 0.7rem; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Board</h1>
+  <p id="header" class="muted"></p>
+</header>
+<p id="notice" class="warn" hidden></p>
+<div id="filters" class="bar" hidden>
+  <input id="search" class="search" type="search" placeholder="Search" aria-label="Search">
+  <span id="toggles" class="bar"></span>
+</div>
+<div id="create" hidden></div>
+<main id="groups"></main>
+<div id="orphans"></div>
+<script src="board-data.js"></script>
+<script>
+"use strict";
+(function () {
+  // A page opened from disk shows the data file beside it, read-only; a served page reads and writes through its server.
+  const offline = location.protocol === "file:";
+  const tokenKey = "board-token";
+  const rootHandle = "P0";
+  const keepProject = "*keep*";
+  const retryFirst = 1000;
+  const retryLongest = 8000;
+  const retryBound = 60000;
+
+  let board = null;
+  let token = "";
+  let search = "";
+  let toggleSignature = "";
+  const chosen = { kind: new Set(), types: new Set(), areas: new Set() };
+  const expanded = new Set();
+  // Edit forms by slug, kept across renders so unsent text survives a refresh.
+  const forms = new Map();
+  // Refusals of the one-click actions by slug.
+  const refusals = new Map();
+  let createForm = null;
+
+  const byId = (id) => document.getElementById(id);
+
+  function element(tag, className, text) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined) node.textContent = text;
+    return node;
+  }
+
+  function button(text, onClick) {
+    const node = element("button", "", text);
+    node.type = "button";
+    node.addEventListener("click", onClick);
+    return node;
+  }
+
+  function showNotice(text) {
+    byId("notice").textContent = text;
+    byId("notice").hidden = !text;
+  }
+
+  // Markdown
+
+  function escapeHTML(text) {
+    const entities = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+    return text.replace(/[&<>"']/g, (character) => entities[character]);
+  }
+
+  // Returns the target a link may keep, or null. The trimming matches what a browser's URL parser does first.
+  function linkTarget(raw) {
+    if (raw.includes("\u0000")) return null;
+    const url = raw.replace(/^[\u0000- ]+|[\u0000- ]+$/g, "").replace(/[\t\n\r]/g, "");
+    const scheme = url.match(/^([A-Za-z][A-Za-z0-9+.\-]*):/);
+    if (scheme) return /^https?$/i.test(scheme[1]) ? url : null;
+    return /^[\/\\]{2}/.test(url) ? null : url;
+  }
+
+  function emphasis(text) {
+    return text
+      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+      .replace(/(^|\W)__([^_]+)__(?!\w)/g, "$1<strong>$2</strong>")
+      .replace(/\*([^*\s][^*]*)\*/g, "<em>$1</em>")
+      .replace(/(^|\W)_([^_]+)_(?!\w)/g, "$1<em>$2</em>");
+  }
+
+  // Takes escaped text. Code spans and links are set aside so emphasis never rewrites them.
+  function inlineMarkdown(text) {
+    const kept = [];
+    const keep = (html) => "\u0000" + (kept.push(html) - 1) + "\u0000";
+    const restore = (html) => html.replace(/\u0000(\d+)\u0000/g, (match, index) => restore(kept[index]));
+    text = text.replace(/(`+)([^`]|[^`][\s\S]*?[^`])\1(?!`)/g, (match, ticks, code) => keep("<code>" + code + "</code>"));
+    text = text.replace(/\[([^\[\]]*)\]\(((?:[^()]|\([^()]*\))*)\)/g, (match, label, target) => {
+      const url = linkTarget(target);
+      if (url === null) return match;
+      return keep('<a href="' + url + '" rel="noopener noreferrer">' + emphasis(label) + "</a>");
+    });
+    return restore(emphasis(text));
+  }
+
+  // Renders headings, paragraphs, lists, fenced code, code spans, bold, italic and links.
+  function renderMarkdown(source) {
+    const lines = escapeHTML(source.replace(/\u0000/g, "")).split(/\r\n|\r|\n/);
+    const out = [];
+    let paragraph = [];
+    let list = null;
+    const flush = () => {
+      if (paragraph.length) out.push("<p>" + inlineMarkdown(paragraph.join("\n")) + "</p>");
+      if (list) {
+        const items = list.items.map((item) => "<li>" + inlineMarkdown(item) + "</li>").join("");
+        out.push("<" + list.tag + ">" + items + "</" + list.tag + ">");
+      }
+      paragraph = [];
+      list = null;
+    };
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const fence = line.match(/^ {0,3}(`{3,}|~{3,})/);
+      const heading = line.match(/^ {0,3}(#{1,6})\s+(.*)$/);
+      const bullet = line.match(/^\s*[-*+]\s+(.*)$/);
+      const numbered = line.match(/^\s*\d+[.)]\s+(.*)$/);
+      if (fence) {
+        flush();
+        const code = [];
+        for (i++; i < lines.length; i++) {
+          const close = lines[i].match(/^ {0,3}(`{3,}|~{3,})\s*$/);
+          if (close && close[1][0] === fence[1][0] && close[1].length >= fence[1].length) break;
+          code.push(lines[i]);
+        }
+        out.push("<pre><code>" + code.join("\n") + "</code></pre>");
+      } else if (heading) {
+        flush();
+        const level = Math.min(heading[1].length + 2, 6);
+        out.push("<h" + level + ">" + inlineMarkdown(heading[2]) + "</h" + level + ">");
+      } else if (bullet || numbered) {
+        const tag = bullet ? "ul" : "ol";
+        if (paragraph.length || (list && list.tag !== tag)) flush();
+        if (!list) list = { tag: tag, items: [] };
+        list.items.push((bullet || numbered)[1]);
+      } else if (!line.trim()) {
+        flush();
+      } else if (list && /^\s/.test(line)) {
+        list.items[list.items.length - 1] += "\n" + line.trim();
+      } else {
+        if (list) flush();
+        paragraph.push(line);
+      }
+    }
+    flush();
+    return out.join("");
+  }
+
+  // Projection helpers
+
+  function isRunStatus(status) {
+    const at = status.indexOf(" · ");
+    return at > 0 && at + 3 < status.length;
+  }
+
+  function age(stamp) {
+    const minutes = Math.max(0, Math.floor((Date.now() - Date.parse(stamp)) / 60000));
+    if (minutes < 60) return minutes + "m";
+    if (minutes < 60 * 24) return Math.floor(minutes / 60) + "h";
+    const days = Math.floor(minutes / (60 * 24));
+    if (days < 14) return days + "d";
+    if (days < 365) return Math.floor(days / 7) + "w";
+    return Math.floor(days / 365) + "y";
+  }
+
+  function fileLink(label, name) {
+    const link = element("a", "", label);
+    link.href = offline
+      ? "./" + encodeURIComponent(name)
+      : "/file/" + encodeURIComponent(name) + "?t=" + encodeURIComponent(token);
+    link.target = "_blank";
+    link.rel = "noopener";
+    return link;
+  }
+
+  function findEntry(slug) {
+    return board.entries.find((entry) => entry.slug === slug);
+  }
+
+  function putEntry(slug, entry) {
+    const at = board.entries.findIndex((held) => held.slug === slug);
+    if (!entry) {
+      if (at >= 0) board.entries.splice(at, 1);
+      return;
+    }
+    if (at >= 0) board.entries[at] = entry;
+    else board.entries.push(entry);
+    if (!board.sections.includes(entry.section)) board.sections.push(entry.section);
+  }
+
+  // Requests
+
+  const pause = (duration) => new Promise((resolve) => setTimeout(resolve, duration));
+
+  // Resolves to the server's answer, a refusal included, or to null once requests have kept failing for the bound.
+  async function request(url, options) {
+    let delay = retryFirst;
+    let deadline = 0;
+    for (;;) {
+      try {
+        const headers = Object.assign({ Authorization: "Bearer " + token }, options.headers);
+        const response = await fetch(url, Object.assign({}, options, { headers: headers, cache: "no-store" }));
+        if (response.ok || [409, 413, 422].includes(response.status)) return await response.json();
+      } catch (failure) {
+        // An unreachable server is retried like any other failed request.
+      }
+      if (!deadline) deadline = Date.now() + retryBound;
+      if (Date.now() >= deadline) return null;
+      await pause(delay);
+      delay = Math.min(delay * 2, retryLongest);
+    }
+  }
+
+  function serverLost() {
+    showNotice("The board server does not answer: run lym board open.");
+  }
+
+  function write(body) {
+    return request("/api/write", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
+  // Follows the board: one read, then a long poll for each change.
+  async function follow() {
+    let answer = await request("/api/board", {});
+    while (answer && answer.ok) {
+      if (!answer.unchanged) {
+        board = answer.board;
+        render();
+      }
+      const asked = Date.now();
+      answer = await request("/api/board?after=" + encodeURIComponent(answer.revision), {});
+      // An immediate "unchanged" must not turn the poll into a busy loop.
+      if (answer && answer.unchanged && Date.now() - asked < retryFirst) await pause(retryFirst);
+    }
+    if (answer) showNotice(answer.error);
+    else serverLost();
+  }
+
+  // Forms
+
+  function freshPanel(entry) {
+    const panel = element("div", "fresh");
+    panel.append(element("h3", "", "The entry as it is now"));
+    panel.append(element("p", "", entry.handle + " " + entry.title));
+    const labels = entry.types.concat(entry.areas).join(", ");
+    panel.append(element("p", "muted", [entry.slug, entry.status, labels].filter(Boolean).join(" · ")));
+    panel.append(element("p", "", entry.brief));
+    panel.append(element("pre", "", entry.body));
+    return panel;
+  }
+
+  function showRefusal(target, refusal) {
+    target.replaceChildren();
+    if (!refusal) return;
+    target.append(element("p", "warn", refusal.message));
+    if (refusal.fresh) target.append(freshPanel(refusal.fresh));
+  }
+
+  function field(form, label, control) {
+    const wrapper = element("label", "", label);
+    wrapper.append(control);
+    form.append(wrapper);
+    return control;
+  }
+
+  const splitList = (text) => text.split(",").map((part) => part.trim()).filter(Boolean);
+
+  function fillProjects(select, keepLabel) {
+    const value = select.value;
+    select.replaceChildren();
+    if (keepLabel) select.add(new Option(keepLabel, keepProject));
+    for (const project of board.projects) {
+      const root = project.handle === rootHandle;
+      select.add(new Option(project.handle + " " + project.title, root ? "" : project.slug));
+    }
+    select.value = value;
+  }
+
+  function textInputs(form) {
+    return {
+      title: field(form, "Title", element("input")),
+      labels: field(form, "Labels, comma separated", element("input")),
+      brief: field(form, "Brief", element("input")),
+      body: field(form, "Body", element("textarea")),
+      project: field(form, "Project", element("select")),
+    };
+  }
+
+  function formShell(heading) {
+    const node = element("div", "columns");
+    const form = element("form", "form");
+    const outcome = element("div", "columns");
+    if (heading) form.append(element("h3", "", heading));
+    node.append(form, outcome);
+    return { node: node, form: form, outcome: outcome };
+  }
+
+  function makeCreateForm() {
+    const shell = formShell("");
+    const slug = field(shell.form, "Slug", element("input"));
+    const kind = field(shell.form, "Kind", element("select"));
+    kind.add(new Option("note", "note"));
+    kind.add(new Option("task", "task"));
+    const inputs = textInputs(shell.form);
+    const depends = field(shell.form, "Depends on, slugs, comma separated", element("input"));
+    const showDepends = () => { depends.parentElement.hidden = kind.value !== "task"; };
+    kind.addEventListener("change", showDepends);
+    showDepends();
+    const submit = element("button", "", "Create");
+    shell.form.append(submit);
+    shell.form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const fields = {
+        kind: kind.value,
+        title: inputs.title.value,
+        labels: splitList(inputs.labels.value),
+        brief: inputs.brief.value,
+        body: inputs.body.value,
+      };
+      if (inputs.project.value) fields.project = inputs.project.value;
+      if (kind.value === "task" && depends.value.trim()) fields.depends_on = splitList(depends.value);
+      const name = slug.value.trim();
+      submit.disabled = true;
+      const answer = await write({ op: "create", slug: name, fields: fields });
+      submit.disabled = false;
+      if (!answer) return serverLost();
+      if (answer.ok) {
+        shell.form.reset();
+        showDepends();
+        showRefusal(shell.outcome, null);
+        putEntry(answer.entry.slug, answer.entry);
+        expanded.add(answer.entry.slug);
+      } else {
+        showRefusal(shell.outcome, { message: answer.error, fresh: answer.entry });
+        if (answer.entry) putEntry(answer.entry.slug, answer.entry);
+      }
+      render();
+    });
+    const details = element("details");
+    details.append(element("summary", "", "New entry"), shell.node);
+    byId("create").append(details);
+    return { refresh: () => fillProjects(inputs.project, "") };
+  }
+
+  // An edit form sends only the fields the operator changed, against the revision of the entry it was filled from.
+  function makeEditForm(entry) {
+    const shell = formShell("Edit " + entry.handle + " " + entry.slug);
+    const inputs = textInputs(shell.form);
+    const held = { slug: entry.slug, node: shell.node, revision: entry.revision, dirty: false, project: inputs.project };
+    const listed = board.projects.some((project) => project.handle === entry.project);
+    held.keepLabel = listed ? "" : "(unchanged)";
+    fillProjects(inputs.project, held.keepLabel);
+    const current = board.projects.find((project) => project.handle === entry.project);
+    inputs.title.value = entry.title;
+    inputs.labels.value = entry.types.concat(entry.areas).join(", ");
+    inputs.brief.value = entry.brief;
+    inputs.body.value = entry.body;
+    inputs.project.value = !current ? keepProject : current.handle === rootHandle ? "" : current.slug;
+    const initial = {};
+    for (const name of Object.keys(inputs)) initial[name] = inputs[name].value;
+
+    let replaceDepends = null;
+    let depends = null;
+    if (entry.kind === "task") {
+      const choice = element("div");
+      replaceDepends = element("input");
+      replaceDepends.type = "checkbox";
+      choice.append(replaceDepends, " Replace the whole dependency list, met dependencies included");
+      shell.form.append(choice);
+      depends = field(shell.form, "Depends on, slugs, comma separated", element("input"));
+      depends.value = entry.waits_on
+        .map((name) => (board.entries.find((other) => other.handle === name) || { slug: name }).slug)
+        .join(", ");
+      depends.disabled = true;
+      replaceDepends.addEventListener("change", () => { depends.disabled = !replaceDepends.checked; });
+    }
+    const submit = element("button", "", "Save");
+    shell.form.append(submit);
+    shell.form.addEventListener("input", () => { held.dirty = true; });
+    shell.form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const fields = {};
+      for (const name of Object.keys(inputs)) {
+        const value = inputs[name].value;
+        if (value !== initial[name] && value !== keepProject) {
+          fields[name] = name === "labels" ? splitList(value) : value;
+        }
+      }
+      if (replaceDepends && replaceDepends.checked) fields.depends_on = splitList(depends.value);
+      submit.disabled = true;
+      const answer = await write({ op: "edit", slug: held.slug, revision: held.revision, fields: fields });
+      submit.disabled = false;
+      if (!answer) return serverLost();
+      if (answer.ok) {
+        forms.delete(held.slug);
+        refusals.delete(held.slug);
+        putEntry(held.slug, answer.entry);
+      } else {
+        held.dirty = true;
+        showRefusal(shell.outcome, { message: answer.error, fresh: answer.entry });
+        if (answer.entry !== undefined) {
+          if (answer.entry) held.revision = answer.entry.revision;
+          putEntry(held.slug, answer.entry);
+        }
+      }
+      render();
+    });
+    return held;
+  }
+
+  // The form of an entry, refilled when the entry moved on and the operator has typed nothing into it.
+  function editForm(entry) {
+    let held = forms.get(entry.slug);
+    if (!held || (!held.dirty && held.revision !== entry.revision)) {
+      held = makeEditForm(entry);
+      forms.set(entry.slug, held);
+    } else {
+      fillProjects(held.project, held.keepLabel);
+    }
+    return held;
+  }
+
+  // Actions
+
+  function offeredActions(entry) {
+    if (entry.kind === "note") return ["promote"];
+    if (entry.status === "") return ["draft"];
+    const actions = [];
+    if (!isRunStatus(entry.status)) actions.push("release");
+    if (entry.status === "draft") actions.push("undraft");
+    return actions;
+  }
+
+  async function act(op, entry) {
+    const answer = await write({ op: op, slug: entry.slug, revision: entry.revision });
+    if (!answer) return serverLost();
+    const held = forms.get(entry.slug);
+    if (answer.ok) {
+      refusals.delete(entry.slug);
+      if (held && held.dirty) held.revision = answer.entry.revision;
+      putEntry(entry.slug, answer.entry);
+    } else {
+      refusals.set(entry.slug, { message: answer.error, fresh: answer.entry });
+      if (answer.entry !== undefined) {
+        if (held && answer.entry) held.revision = answer.entry.revision;
+        putEntry(entry.slug, answer.entry);
+      }
+    }
+    render();
+  }
+
+  // Rendering
+
+  function entryDetail(entry) {
+    const detail = element("div", "detail");
+    if (entry.brief) detail.append(element("p", "", entry.brief));
+    const facts = [entry.slug, entry.kind];
+    if (entry.owner) facts.push("owner " + entry.owner);
+    if (entry.recipe) facts.push("recipe " + entry.recipe);
+    if (entry.created) facts.push("created " + age(entry.created) + " ago");
+    if (entry.revised) facts.push("revised " + age(entry.revised) + " ago");
+    if (entry.waits_on.length) facts.push("after " + entry.waits_on.join(", "));
+    detail.append(element("p", "muted", facts.join(" · ")));
+    const links = element("p", "bar");
+    if (entry.design_file) links.append(fileLink("Design", entry.design_file));
+    if (entry.decision_file) links.append(fileLink("Decision record", entry.decision_file));
+    detail.append(links);
+    const body = element("div");
+    body.innerHTML = renderMarkdown(entry.body);
+    detail.append(body);
+    if (offline) return detail;
+    const actions = element("div", "bar");
+    for (const op of offeredActions(entry)) actions.append(button(op, () => act(op, entry)));
+    detail.append(actions);
+    const outcome = element("div", "columns");
+    showRefusal(outcome, refusals.get(entry.slug));
+    detail.append(outcome, editForm(entry).node);
+    return detail;
+  }
+
+  function entryRow(entry) {
+    const node = element("div", "entry");
+    const row = button("", () => {
+      if (!expanded.delete(entry.slug)) expanded.add(entry.slug);
+      render();
+    });
+    row.className = "row";
+    row.id = "row-" + entry.slug;
+    row.setAttribute("aria-expanded", String(expanded.has(entry.slug)));
+    row.append(element("span", "handle", entry.handle), element("span", "title", entry.title));
+    row.append(element("span", "muted", entry.status));
+    row.append(element("span", "muted", entry.types.concat(entry.areas).join(", ")));
+    node.append(row);
+    if (expanded.has(entry.slug)) node.append(entryDetail(entry));
+    return node;
+  }
+
+  function matches(entry) {
+    if (chosen.kind.size && !chosen.kind.has(entry.kind)) return false;
+    if (chosen.types.size && !entry.types.some((label) => chosen.types.has(label))) return false;
+    if (chosen.areas.size && !entry.areas.some((label) => chosen.areas.has(label))) return false;
+    if (!search) return true;
+    return [entry.handle, entry.slug, entry.title, entry.brief, entry.body]
+      .some((text) => text.toLowerCase().includes(search));
+  }
+
+  // One project's group, or null when neither it nor any project below it has an entry to show.
+  function projectGroup(project, shown, level) {
+    const own = shown.get(project.handle) || [];
+    const root = project.handle === rootHandle;
+    const children = root ? [] : board.projects
+      .filter((child) => child.parent === project.handle && child.handle !== rootHandle)
+      .map((child) => projectGroup(child, shown, level + 1))
+      .filter(Boolean);
+    const count = children.reduce((sum, child) => sum + child.count, own.length);
+    if (!count) return null;
+    const node = element("section", "project");
+    node.append(element("h" + Math.min(level, 6), "", project.handle + " " + project.title + " (" + count + ")"));
+    const facts = [project.brief, project.labels.join(", ")].filter(Boolean).join(" · ");
+    if (facts) node.append(element("div", "muted", facts));
+    if (project.design_file) node.append(fileLink("Design", project.design_file));
+    for (const child of children) node.append(child.node);
+    for (const section of board.sections) {
+      const entries = own.filter((entry) => entry.section === section);
+      if (!entries.length) continue;
+      node.append(element("h3", "", section + " (" + entries.length + ")"));
+      for (const entry of entries) node.append(entryRow(entry));
+    }
+    return { node: node, count: count };
+  }
+
+  function renderGroups() {
+    const listed = new Set(board.projects.map((project) => project.handle));
+    const shown = new Map();
+    for (const entry of board.entries.filter(matches)) {
+      const handle = listed.has(entry.project) ? entry.project : rootHandle;
+      if (!shown.has(handle)) shown.set(handle, []);
+      shown.get(handle).push(entry);
+    }
+    // The root's projects stand beside it, and its own entries come last.
+    const top = board.projects.filter((project) => project.parent === rootHandle);
+    const root = board.projects.filter((project) => project.handle === rootHandle);
+    const groups = top.concat(root).map((project) => projectGroup(project, shown, 2)).filter(Boolean);
+    byId("groups").replaceChildren(...groups.map((group) => group.node));
+  }
+
+  // Unsent edits of entries the board no longer holds keep their forms here.
+  function renderOrphans() {
+    const orphans = [];
+    for (const [slug, held] of forms) {
+      if (findEntry(slug)) continue;
+      if (held.dirty) orphans.push(held.node);
+      else forms.delete(slug);
+    }
+    if (orphans.length) orphans.unshift(element("h2", "", "Unsent edits of removed entries"));
+    byId("orphans").replaceChildren(...orphans);
+  }
+
+  function renderToggles() {
+    const groups = [["kind", ["task", "note"]], ["types", board.types], ["areas", board.areas]];
+    const signature = JSON.stringify(groups);
+    if (signature === toggleSignature) return;
+    toggleSignature = signature;
+    const nodes = groups.map(([group, values]) => {
+      const node = element("span", "bar");
+      for (const value of values) {
+        const toggle = button(value, () => {
+          if (!chosen[group].delete(value)) chosen[group].add(value);
+          toggle.classList.toggle("on", chosen[group].has(value));
+          render();
+        });
+        toggle.classList.toggle("on", chosen[group].has(value));
+        node.append(toggle);
+      }
+      return node;
+    });
+    byId("toggles").replaceChildren(...nodes);
+  }
+
+  function render() {
+    const active = document.activeElement;
+    const start = active && active.selectionStart;
+    const end = active && active.selectionEnd;
+    const activeId = active && active.id;
+    byId("header").textContent =
+      "Rendered " + board.rendered + " · prime owner " + (board.prime_owner || "none recorded");
+    byId("filters").hidden = false;
+    renderToggles();
+    if (!offline) {
+      byId("create").hidden = false;
+      if (!createForm) createForm = makeCreateForm();
+      createForm.refresh();
+    }
+    renderGroups();
+    renderOrphans();
+    // Moving a form drops the focus, so it is given back.
+    const target = active && active.isConnected ? active : activeId && byId(activeId);
+    if (target && target !== document.activeElement && target !== document.body) {
+      target.focus({ preventScroll: true });
+      if (typeof start === "number") target.setSelectionRange(start, end);
+    }
+  }
+
+  byId("search").addEventListener("input", (event) => {
+    search = event.target.value.toLowerCase();
+    if (board) render();
+  });
+
+  if (offline) {
+    if (window.BOARD === undefined) {
+      showNotice("No board data: run lym board rerender.");
+      return;
+    }
+    board = window.BOARD;
+    render();
+    return;
+  }
+  if (location.hash.length > 1) {
+    sessionStorage.setItem(tokenKey, location.hash.slice(1));
+    history.replaceState(null, "", location.pathname + location.search);
+  }
+  token = sessionStorage.getItem(tokenKey) || "";
+  follow();
+})();
+</script>
+</body>
+</html>
