@@ -225,7 +225,7 @@ func (t *Topology) switchOrForkWeft(rec *Mutations, l *lymcwd.Location, branch s
 	weftWorktree := RecordsWorktree(l)
 	weftBranch := fabriclayout.RecordsBranchName(branch)
 
-	exists, fromOrigin, err := resolveWeftBranch(rec, l, weftBranch, true)
+	exists, fromOrigin, err := resolveWeftBranch(rec, l, weftBranch, true, readOriginOnce)
 	if err != nil {
 		return false, err
 	}

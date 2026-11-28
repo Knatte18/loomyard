@@ -173,6 +173,7 @@ import (
 	"fmt"
 	"os/exec"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
@@ -265,6 +266,9 @@ type battenCLI struct {
 	// readopt carries the seams that re-make a live pair whose task worktree is gone.
 	// A receiver that skips the arm leaves it zero, which reads as no re-adoption.
 	readopt readoptSeams
+	// backoffSleep sleeps for one delay of the backoff that the create of a pair waits out before it reads origin again.
+	// Nil sleeps for the delay.
+	backoffSleep func(time.Duration)
 	// reconcileOptions bounds the run-scope origin reconcile of a resume and of a gone pair's re-adoption.
 	// The zero value makes one attempt, which a hand-populated receiver keeps.
 	reconcileOptions fabricengine.ReconcileOptions

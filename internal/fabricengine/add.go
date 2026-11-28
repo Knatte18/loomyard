@@ -39,8 +39,9 @@ type AddOptions struct {
 	SkipGit bool
 	// SkipPush skips push operations if true.
 	SkipPush bool
-	// BackoffSleep sleeps for one delay of the backoff that a push waits out.
-	// A push waits it out before it records a branch gone from origin or an unreachable origin.
+	// BackoffSleep sleeps for one delay of the backoff that a push or an origin read waits out.
+	// A push waits it out before it records a branch gone from origin or an unreachable origin;
+	// a retried origin read waits it out before it runs again after a failure in transit.
 	// Nil sleeps for the delay.
 	BackoffSleep func(time.Duration)
 	// Parent is the slug of the hub pair the new pair forks from, its last commit and its records branch.
@@ -74,6 +75,32 @@ type AddOptions struct {
 // probesOrigins reports whether an add under these options consults origin: neither SkipGit nor SkipPush is set.
 func (o AddOptions) probesOrigins() bool {
 	return !o.SkipGit && !o.SkipPush
+}
+
+// originReadBackoffDelays are the delays an origin read waits out before each re-run after a failure in transit.
+var originReadBackoffDelays = []time.Duration{time.Second, 2 * time.Second, 4 * time.Second}
+
+// RetryOriginReadInTransit runs read, and while it fails in transit runs it again after each delay of a short backoff.
+// A dropped connection to origin is often gone seconds later, so one such failure is no answer about a pair.
+// read must be safe to run again, as a lookup or a fetch is.
+// It returns the first error that is no transport failure, nil included.
+// Once the delays are spent, it returns the last transport failure.
+// side names what is read in the retry's log line.
+func (o AddOptions) RetryOriginReadInTransit(side string, read func() error) error {
+	sleep := o.BackoffSleep
+	if sleep == nil {
+		sleep = time.Sleep
+	}
+	err := read()
+	for attempt, delay := range originReadBackoffDelays {
+		if !gitexec.IsTransportFailure(err) {
+			return err
+		}
+		logger.Warn("fabricengine: origin read failed in transit, retrying", "verb", "add", "side", side, "attempt", attempt+1, "error", err)
+		sleep(delay)
+		err = read()
+	}
+	return err
 }
 
 // syncOptions returns the options the records helpers take.
@@ -141,6 +168,11 @@ func SourceDirtyPaths(l *lymcwd.Location) ([]string, error) {
 // That error names re-running the command that made the pair.
 // The caller's push of the new pair runs after Add has released the lock, and it takes the lock shared.
 // The origin probes start in the background, and every return waits for them, a refusal before them included.
+// A probe that fails in transit runs again after each delay of a short backoff.
+// So do the fetches of an adopted warp branch and of a live weft branch, and the lookup of a weft branch only on origin.
+// Only the last failure of each fails the Add.
+// The lookup of the pair's branch name under opts.AdoptOnly runs once.
+// So does the lookup of the warp's default branch under opts.AdoptLocal.
 // A newly forked weft branch does not inherit the parent's shed run records.
 // The fork is no-checkout, so the run-records root never reaches the new worktree's disk,
 // and the pair's first weft commit, the origin record's, also records the root's deletion.
@@ -261,13 +293,21 @@ func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res fa
 		probes.Add(1)
 		go func() {
 			defer probes.Done()
-			warpTip, warpTipErr = remoteHeadTip(l.WorktreePath(), warpBranch)
+			warpTipErr = opts.RetryOriginReadInTransit("warp", func() error {
+				var err error
+				warpTip, err = remoteHeadTip(l.WorktreePath(), warpBranch)
+				return err
+			})
 		}()
 	}
 	probes.Add(1)
 	go func() {
 		defer probes.Done()
-		weftProbe, weftProbeErr = weftLiveness(l, slug, weftBranch, weftBranchAlreadyExists, opts)
+		weftProbeErr = opts.RetryOriginReadInTransit("weft", func() error {
+			var err error
+			weftProbe, err = weftLiveness(l, slug, weftBranch, weftBranchAlreadyExists, opts)
+			return err
+		})
 	}()
 	// No git call a probe started outlives Add.
 	defer probes.Wait()
@@ -487,8 +527,12 @@ func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res fa
 	warpStart, warpRemote := "", ""
 	if warpAdoptTip != "" {
 		warpStart, warpRemote = originRemoteName+"/"+warpBranch, originRemoteName
-		if _, err := gitrepo.New(l.WorktreePath()).FetchWithArgs("--no-tags", originRemoteName, "refs/heads/"+warpBranch+":refs/remotes/"+warpStart); err != nil {
-			return fabriclayout.AddResult{}, fmt.Errorf("fetch warp branch %q from %q: %w", warpBranch, originRemoteName, err)
+		fetchErr := opts.RetryOriginReadInTransit("warp", func() error {
+			_, err := gitrepo.New(l.WorktreePath()).FetchWithArgs("--no-tags", originRemoteName, "refs/heads/"+warpBranch+":refs/remotes/"+warpStart)
+			return err
+		})
+		if fetchErr != nil {
+			return fabriclayout.AddResult{}, fmt.Errorf("fetch warp branch %q from %q: %w", warpBranch, originRemoteName, fetchErr)
 		}
 	}
 	if deleteIgnoredLeftover {
@@ -555,9 +599,15 @@ func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res fa
 	// A branch a reused records worktree has checked out cannot be fetched into,
 	// so its tip is fetched by SHA and merged inside that worktree.
 	if weftOld.fastForwardTo != "" {
+		fetchWeft := func(refspec string) error {
+			return opts.RetryOriginReadInTransit("weft", func() error {
+				_, err := gitrepo.New(weftRepoRoot).FetchWithArgs("--no-tags", originRemoteName, refspec)
+				return err
+			})
+		}
 		var advanceErr error
 		if weftReused {
-			if _, advanceErr = gitrepo.New(weftRepoRoot).FetchWithArgs("--no-tags", originRemoteName, weftOld.fastForwardTo); advanceErr == nil {
+			if advanceErr = fetchWeft(weftOld.fastForwardTo); advanceErr == nil {
 				_, advanceErr = gitexec.Run([]string{"merge", "--ff-only", weftOld.fastForwardTo}, weftPath)
 			}
 		} else {
@@ -565,7 +615,7 @@ func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res fa
 			if nsErr != nil {
 				advanceErr = nsErr
 			} else {
-				_, advanceErr = gitrepo.New(weftRepoRoot).FetchWithArgs("--no-tags", originRemoteName, ns.Branch(weftBranch)+":refs/heads/"+weftBranch)
+				advanceErr = fetchWeft(ns.Branch(weftBranch) + ":refs/heads/" + weftBranch)
 			}
 		}
 		if advanceErr != nil {
@@ -577,7 +627,7 @@ func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res fa
 
 	weftAdopted := false
 	if weftOld.live {
-		weftAdopted, _, err = resolveWeftBranch(rec, l, weftBranch, !opts.SkipGit && !opts.SkipPush)
+		weftAdopted, _, err = resolveWeftBranch(rec, l, weftBranch, !opts.SkipGit && !opts.SkipPush, opts.RetryOriginReadInTransit)
 		if err != nil {
 			_ = t.rollbackAdd(rec, pairAt, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, weftReused, warpTok, &warpPush)
 			return fabriclayout.AddResult{}, err

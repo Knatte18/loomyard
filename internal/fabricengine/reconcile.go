@@ -308,7 +308,7 @@ func (t *Topology) reconcileMissingWeft(
 		return fabriclayout.ReconcileActionUnmanagedReported
 	}
 
-	exists, fromOrigin, resolveErr := resolveWeftBranch(rec, warpLayout, weftBranch, true)
+	exists, fromOrigin, resolveErr := resolveWeftBranch(rec, warpLayout, weftBranch, true, readOriginOnce)
 	if resolveErr != nil {
 		pr.Error = fmt.Sprintf("recreate weft worktree: %v", resolveErr)
 		return fabriclayout.ReconcileActionWeftRecreated

@@ -47,12 +47,15 @@ import (
 )
 
 // battenTacklerRecipe is the one-line description of a batten run the tackler's prompt names under its run heading.
-const battenTacklerRecipe = "batten: a task worktree's whole lifecycle run from the hub's prime (create the pair, seed and run the task's own run, tear the pair down and land it)"
+const battenTacklerRecipe = "batten: a task worktree's whole lifecycle run from the hub's prime (create the pair, seed and run the task's own run, tear the pair down and land it). " +
+	"A run whose Worktree-Create row never finished done has made no pair yet: " +
+	"its absent task worktree and the absence of its records branch on origin are its fresh state, never a pair to restore or abandon."
 
 // battenArbiterRecipe describes batten's rows and the arbiter's moves.
 // The arbiter's prompt names it under its run heading.
 const battenArbiterRecipe = "batten: a task worktree's whole lifecycle run from the hub's prime, in rows. " +
-	"Worktree-Create claims the task and makes the pair; " +
+	"Worktree-Create claims the task and makes the pair, " +
+	"so until it has finished done once, an absent task worktree and a records branch absent from origin are the fresh state, never a pair to restore; " +
 	"Seed-Child writes the child's seed and run settings; " +
 	"Open-Window, Seed-IDE and Open-IDE run the optional window and IDE commands; " +
 	"Run-Shed watches the child's own run; " +
@@ -529,10 +532,17 @@ func (c *battenCLI) primeShuttle(dirs configengine.Dirs) (sheddriver.AgentShuttl
 	runner.SetReplyProbe(creelcli.AwaitsReplyProbe(location, battenProgram))
 	// The tackler and the arbiter work for the task's run,
 	// so their sessions count toward the task worktree's usage records.
-	if taskLocation, err := taskWorktreeLocation(location, c.slug); err != nil {
+	// Before Worktree-Create has made the pair there is no task worktree to record them in, which is no failure.
+	present, err := taskWorktreePresent(location, c.slug)
+	if err == nil && present {
+		var taskLocation *lymcwd.Location
+		taskLocation, err = taskWorktreeLocation(location, c.slug)
+		if err == nil {
+			runner.SetSessionEnd(shedadapters.UsageRecorder(taskLocation, shuttleengines.RecordReaders(dirs)))
+		}
+	}
+	if err != nil {
 		logger.Warn("battencli: locate the task worktree to record its tackler and arbiter sessions failed; they stay unrecorded", "slug", c.slug, "error", err)
-	} else {
-		runner.SetSessionEnd(shedadapters.UsageRecorder(taskLocation, shuttleengines.RecordReaders(dirs)))
 	}
 	return sheddriver.RunnerShuttle{Runner: runner}, nil
 }

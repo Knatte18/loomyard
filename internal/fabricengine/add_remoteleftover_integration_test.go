@@ -2,6 +2,7 @@
 // a live pair's branches on origin are adopted,
 // and a leftover remote branch from a removed pair is refused with an *ErrRemoteLeftover before Add's first mutation.
 // A provably replaceable leftover does not block the add.
+// A probe that fails in transit is retried, so an origin that answers again within the backoff does not fail the add.
 //
 // Every hub here is built through hubforge.CopyHub with an empty branch_prefix,
 // so a slug's warp branch is the bare slug and its weft branch is <slug>-weft.
@@ -16,7 +17,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fabriclayout"
@@ -73,6 +77,91 @@ func requireNothingCreated(t *testing.T, h *hubforge.Hub, slug string) {
 	}
 	if gitkit.BranchExists(t, h.PrimeRecords(), fabriclayout.RecordsBranchName(slug)) {
 		t.Errorf("local weft branch %q exists after a refused Add", fabriclayout.RecordsBranchName(slug))
+	}
+}
+
+// TestAdd_RetriesOriginProbesThatFailInTransit pins that Add runs an origin probe again after a transport failure.
+// An origin that answers again during the backoff makes the pair.
+// An origin that stays unreachable fails the Add with the transport failure after three re-runs of each probe.
+// That Add leaves nothing created.
+// A probe failure that is not a transport failure, an origin that is no repository, fails the Add with no re-run.
+func TestAdd_RetriesOriginProbesThatFailInTransit(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	// git refuses this URL with `connection refused`, which reads as a transport failure.
+	const refused = "http://127.0.0.1:1/x"
+	tests := []struct {
+		name string
+		// brokenURL is both stores' origin when the Add starts; empty names a local path that does not exist.
+		brokenURL     string
+		originReturns bool
+		wantTransport bool
+		// wantSleeps is the exact count of backoff waits, and the least count when origin returns.
+		wantSleeps int32
+	}{
+		{"OriginAnswersAgain", refused, true, false, 1},
+		{"OriginStaysDown", refused, false, true, 6},
+		{"OriginNotARepository", "", false, false, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+			const slug = "transient"
+			stores := []string{h.PrimeWorktree(), h.PrimeRecords()}
+			brokenURL := tt.brokenURL
+			if brokenURL == "" {
+				brokenURL = filepath.Join(t.TempDir(), "missing.git")
+			}
+			urls := map[string]string{}
+			for _, store := range stores {
+				urls[store] = strings.TrimSpace(gitkit.Git(t, store, "config", "--get", "remote.origin.url"))
+				gitkit.Git(t, store, "remote", "set-url", "origin", brokenURL)
+			}
+
+			var sleeps atomic.Int32
+			var restore sync.Once
+			// The hook runs on Add's probe goroutines, where a test must not be failed fatally.
+			var restoreErr error
+			opts := fabricengine.AddOptions{BackoffSleep: func(time.Duration) {
+				sleeps.Add(1)
+				if tt.originReturns {
+					restore.Do(func() {
+						for store, url := range urls {
+							if _, err := gitexec.Run([]string{"remote", "set-url", "origin", url}, store); err != nil && restoreErr == nil {
+								restoreErr = err
+							}
+						}
+					})
+				}
+			}}
+
+			_, err := fabricengine.NewTopology(fabricengine.Config{}).Add(h.Location, slug, opts)
+			if restoreErr != nil {
+				t.Fatalf("restore origin: %v", restoreErr)
+			}
+			if tt.originReturns {
+				if err != nil {
+					t.Fatalf("Add() = %v; want nil once origin answers again", err)
+				}
+				if got := sleeps.Load(); got < tt.wantSleeps {
+					t.Errorf("backoff delays waited out = %d; want at least %d after the refused probe", got, tt.wantSleeps)
+				}
+				if _, statErr := os.Stat(fabricengine.WorktreePath(h.Location, slug)); statErr != nil {
+					t.Errorf("task worktree after Add() = %v; want it made", statErr)
+				}
+				return
+			}
+			if err == nil || gitexec.IsTransportFailure(err) != tt.wantTransport {
+				t.Fatalf("Add() = %v; want the probe's error with transport failure = %v", err, tt.wantTransport)
+			}
+			if got := sleeps.Load(); got != tt.wantSleeps {
+				t.Errorf("backoff delays waited out = %d; want %d", got, tt.wantSleeps)
+			}
+			requireNothingCreated(t, h, slug)
+		})
 	}
 }
 

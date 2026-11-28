@@ -1176,7 +1176,14 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 			top := fabricengine.NewTopology(cfg)
 			// A member of a beam forks from the beam's pair, whichever worktree started the run;
 			// every other task forks from the prime.
-			parent, err := beamForkParent(location, slug, func(beam string) (bool, error) { return top.TaskBranchOnOrigin(location, beam) })
+			parent, err := beamForkParent(location, slug, func(beam string) (onOrigin bool, err error) {
+				err = fabricengine.AddOptions{BackoffSleep: c.backoffSleep}.RetryOriginReadInTransit("beam", func() error {
+					var readErr error
+					onOrigin, readErr = top.TaskBranchOnOrigin(location, beam)
+					return readErr
+				})
+				return onOrigin, err
+			})
 			if err != nil {
 				return err
 			}
@@ -1192,7 +1199,7 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 					return err
 				}
 			}
-			_, err = top.Add(location, slug, fabricengine.AddOptions{Parent: parent, Anchor: anchor, Hold: holdPrime})
+			_, err = top.Add(location, slug, fabricengine.AddOptions{Parent: parent, Anchor: anchor, Hold: holdPrime, BackoffSleep: c.backoffSleep})
 			logger.Info("battencli: create worktree", "slug", slug)
 			if err != nil {
 				return createRefusal(err, slug, cfg.BranchPrefix+slug, func() bool { return fabricengine.PairWorktreeStands(location, slug) })

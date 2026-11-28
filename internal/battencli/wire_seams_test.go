@@ -31,6 +31,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 	"github.com/Knatte18/loomyard/internal/weaverengine"
@@ -299,9 +300,10 @@ func TestWire_EverySeamFilled(t *testing.T) {
 
 // TestPrimeShuttle_WiresTheReplyProbe pins that the prime's runner holds a reply probe.
 // The tackler and the arbiter run through that runner.
+// It also pins that building the runner before the task worktree exists logs no failure to locate it.
+// It does not call t.Parallel: logcapture redirects the process-global logger.
 func TestPrimeShuttle_WiresTheReplyProbe(t *testing.T) {
 	tiergate.Require(t, 0)
-	t.Parallel()
 
 	hub := t.TempDir()
 	// A .git directory marks the worktree as the prime.
@@ -314,9 +316,13 @@ func TestPrimeShuttle_WiresTheReplyProbe(t *testing.T) {
 		WorktreeName: "hub-repo",
 		AnchorRel:    ".",
 	}
-	c := &battenCLI{location: location}
+	c := &battenCLI{location: location, slug: "a-slug"}
+	logs := logcapture.Capture(t)
 
 	shuttle, err := c.primeShuttle(fabricengine.ConfigDirs(location))
+	if got := logs.String(); strings.Contains(got, "locate the task worktree") {
+		t.Errorf("primeShuttle() with no task worktree logged %q; want no failure to locate it", got)
+	}
 	if err != nil {
 		t.Fatalf("primeShuttle() error = %v; want nil", err)
 	}
