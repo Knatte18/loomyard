@@ -10,7 +10,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strconv"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
@@ -22,11 +21,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/pawlengine"
 )
 
-// The autonomy values the board files show, for beam.autonomy's true and false.
-const (
-	autonomyOnText  = "on"
-	autonomyOffText = "off"
-)
+// autonomyTexts are the autonomy values the board files show, by beam.autonomy level.
+var autonomyTexts = map[dobbyengine.AutonomyLevel]string{
+	dobbyengine.AutonomyOff:        "off",
+	dobbyengine.AutonomyOn:         "on",
+	dobbyengine.AutonomyUnattended: "unattended",
+}
 
 // errBeamWorktreeAbsent marks a beam whose worktree is not on this machine, which a hub that spans machines expects.
 var errBeamWorktreeAbsent = errors.New("the beam's worktree is not on this machine")
@@ -130,17 +130,13 @@ func readBeamMode(prime *lymcwd.Location, slug string) (boardengine.BeamMode, er
 }
 
 // readBeamSettings reads beam.autonomy and beam.pull_request over chain, each with the worktree whose own files set it.
-// Autonomy reads as on or off.
+// Autonomy reads as off, on or unattended.
 func readBeamSettings(chain dobbyengine.TaskSettingChain) (boardengine.BeamMode, error) {
 	autonomy, err := readBeamSetting(chain, dobbyengine.AutonomyKey)
 	if err != nil {
 		return boardengine.BeamMode{}, err
 	}
-	text := autonomyOffText
-	if autonomy.Value == strconv.FormatBool(true) {
-		text = autonomyOnText
-	}
-	autonomy.Value = text
+	autonomy.Value = autonomyTexts[dobbyengine.AutonomyLevel(autonomy.Value)]
 	pullRequest, err := readBeamSetting(chain, dobbyengine.PullRequestKey)
 	if err != nil {
 		return boardengine.BeamMode{}, err

@@ -151,7 +151,7 @@ func pawlDeps(location *lymcwd.Location, slug string) (pawlengine.Deps, error) {
 			return shedrun.WriteWakeStamp(shedrun.WakeRecord(location, shedrun.SelfRunID), pawlengine.NameBeamAwait, at)
 		},
 		Notify:     notifyPosted,
-		Autonomous: func() bool { return hubgeom.Autonomy(location, slug) },
+		Autonomous: func() bool { return hubgeom.Autonomy(location, slug).On() },
 		HoldsCommits: func() (bool, error) {
 			hub, err := prime()
 			if err != nil {

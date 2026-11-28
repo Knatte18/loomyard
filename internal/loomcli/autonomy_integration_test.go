@@ -33,7 +33,7 @@ func writeConfigFile(t *testing.T, path, content string) {
 // TestRunAutonomy_ForcesTheRunsKeysOverARealHub reads the run's autonomy from the task's beam.
 // The task sets nothing itself.
 // The layers hold the values autonomy forces away from.
-// With beam.autonomy true for the beam, every reader of a forced key reads the forced value.
+// With beam.autonomy true or unattended for the beam, every reader of a forced key reads the forced value.
 // With it false, every reader reads its layered value.
 // The rows rewrite the one hub's beam file, so they run serially.
 func TestRunAutonomy_ForcesTheRunsKeysOverARealHub(t *testing.T) {
@@ -74,6 +74,7 @@ func TestRunAutonomy_ForcesTheRunsKeysOverARealHub(t *testing.T) {
 		forced bool
 	}{
 		{name: "the beam's autonomy true forces the task's keys", beamFile: "autonomy: true\n", forced: true},
+		{name: "the beam's autonomy unattended forces the task's keys", beamFile: "autonomy: unattended\n", forced: true},
 		{name: "the beam's autonomy false reads the layered values", beamFile: "autonomy: false\n"},
 	}
 	for _, tt := range tests {

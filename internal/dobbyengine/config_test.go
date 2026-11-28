@@ -5,6 +5,7 @@
 package dobbyengine
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -62,7 +63,6 @@ func TestLoadConfig(t *testing.T) {
 		{name: "an unknown pull_request is refused naming the key and the way forward", worktree: "pull_request: maybe\n", wantErr: []string{"pull_request", "maybe", "lym config beam --set pull_request="}},
 		{name: "a retired land_notice of all is refused naming the key and the way forward", worktree: "land_notice: all\n", wantErr: []string{"land_notice", "all", "lym config beam --set land_notice="}},
 		{name: "a retired land_notice of per-task is refused naming the key and the way forward", local: "land_notice: per-task\n", wantErr: []string{"land_notice", "per-task", "lym config beam --set land_notice="}},
-		{name: "a non-boolean autonomy is refused naming the key and the way forward", worktree: "autonomy: maybe\n", wantErr: []string{"autonomy", "true or false", "lym config beam --set autonomy="}},
 		{name: "a negative board_tidy_every is refused naming the key", worktree: "board_tidy_every: -1\n", wantErr: []string{"board_tidy_every", "lym config beam --set"}},
 		{name: "a negative task_headroom is refused naming the key", worktree: "task_headroom: -1\n", wantErr: []string{"task_headroom", "lym config beam --set"}},
 		{name: "a worktree layer's adopt_fix_tries resolves as set", worktree: "adopt_fix_tries: 1\n", want: defaultsWith(func(c *Config) { c.AdoptFixTries = 1 })},
@@ -114,6 +114,72 @@ func TestLoadConfig(t *testing.T) {
 			}
 			if err != nil || got != tt.want {
 				t.Errorf("LoadConfig() = %+v, %v; want %+v", got, err, tt.want)
+			}
+		})
+	}
+}
+
+// TestAutonomyLevels_EveryCheckingPathTakesTheThreeLevels pins one value set for every checking path.
+// The lookup, the load's check and the local values check take false, true and unattended alike.
+// Each refuses any other value the same way.
+// The local values check is what a board run_settings goes through, so a boolean there still reads.
+func TestAutonomyLevels_EveryCheckingPathTakesTheThreeLevels(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		document string
+		// want is the level the lookup answers; wantOn is what that level's On reports.
+		want   AutonomyLevel
+		wantOn bool
+		// wantRefused says every path refuses the value, and the lookup then reads AutonomyOff.
+		wantRefused bool
+	}{
+		{name: "the boolean false reads off", document: "autonomy: false\n", want: AutonomyOff},
+		{name: "the boolean true reads on", document: "autonomy: true\n", want: AutonomyOn, wantOn: true},
+		{name: "unattended reads unattended", document: "autonomy: unattended\n", want: AutonomyUnattended, wantOn: true},
+		{name: "a quoted unattended reads unattended", document: "autonomy: \"unattended\"\n", want: AutonomyUnattended, wantOn: true},
+		{name: "an unknown text is refused", document: "autonomy: maybe\n", want: AutonomyOff, wantRefused: true},
+		{name: "the text true is refused", document: "autonomy: \"true\"\n", want: AutonomyOff, wantRefused: true},
+		{name: "a number is refused", document: "autonomy: 1\n", want: AutonomyOff, wantRefused: true},
+	}
+	checkRefusal := func(t *testing.T, path string, err error) {
+		t.Helper()
+		if err == nil {
+			t.Errorf("%s = nil; want a refusal", path)
+			return
+		}
+		if !errors.Is(err, configengine.ErrInvalid) {
+			t.Errorf("%s = %v; want it marked configengine.ErrInvalid", path, err)
+		}
+		for _, want := range []string{"[false true unattended]", "lym config beam --set autonomy=<false|true|unattended>"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("%s = %q; want it to contain %q", path, err.Error(), want)
+			}
+		}
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			board, anchor := t.TempDir(), t.TempDir()
+			writeBeamLayer(t, board, ConfigTemplate())
+			writeBeamLayer(t, anchor, tt.document)
+
+			got, lookupErr := LookupAutonomy(TaskSettingChain{Anchors: []string{anchor}, Board: board})
+			if got != tt.want || got.On() != tt.wantOn {
+				t.Errorf("LookupAutonomy() = %q with On %v; want %q with On %v", got, got.On(), tt.want, tt.wantOn)
+			}
+			_, loadErr := LoadConfig(configengine.Dirs{Anchor: anchor, Board: board})
+			localErr := CheckLocalValues([]byte(tt.document))
+			if tt.wantRefused {
+				checkRefusal(t, "LookupAutonomy()", lookupErr)
+				checkRefusal(t, "LoadConfig()", loadErr)
+				checkRefusal(t, "CheckLocalValues()", localErr)
+				return
+			}
+			if lookupErr != nil || loadErr != nil || localErr != nil {
+				t.Errorf("LookupAutonomy(), LoadConfig(), CheckLocalValues() = %v, %v, %v; want nil from each", lookupErr, loadErr, localErr)
 			}
 		})
 	}

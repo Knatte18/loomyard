@@ -39,9 +39,23 @@ type Paths struct {
 	// SlackPresencePath is the machine's presence record, which every rendered pointer reads; empty means no presence line.
 	SlackPresencePath string
 
-	// Autonomy reports whether the orch's autonomy is on, read each time a pointer is built; nil reads off.
-	Autonomy func() bool
+	// Autonomy answers the orch's autonomy level, read each time a pointer is built; nil reads off.
+	Autonomy func() AutonomyLevel
 }
+
+// AutonomyLevel is how far an orch settles halts without the operator.
+// The zero value is AutonomyOff.
+type AutonomyLevel int
+
+// The autonomy levels an orch runs under.
+const (
+	// AutonomyOff relays to the operator every halt the orch does not settle.
+	AutonomyOff AutonomyLevel = iota
+	// AutonomyOn settles halts and reaches the operator for the few cases the orch role names.
+	AutonomyOn
+	// AutonomyUnattended never asks the operator, and only a severe halt reaches them.
+	AutonomyUnattended
+)
 
 // PendingStep is one post or inject the watcher persisted before sending it to creel.
 type PendingStep struct {

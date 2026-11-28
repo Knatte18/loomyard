@@ -1,11 +1,12 @@
-// pawlwiring_integration_test.go drives the production closures of a beam's landing record.
-// It runs over a real beam pair and real git.
+// pawlwiring_integration_test.go drives the production closures of a pawl run over a real beam pair and real git:
+// its landing record seams and its autonomy seam.
 
 package loomcli
 
 import (
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -17,6 +18,29 @@ import (
 )
 
 const beamPullRequestURL = "https://github.com/o/r/pull/7"
+
+// TestPawlDeps_AutonomousReadsUnattendedAsOn pins that the seam asks whether the beam's autonomy is on.
+func TestPawlDeps_AutonomousReadsUnattendedAsOn(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	hubforge.AddPairWith(t, h, "b", fabricengine.AddOptions{SkipPush: true, Beam: true})
+	beam, err := lymcwd.ResolveWorktree(h.PairCodeWorktree("b"))
+	if err != nil {
+		t.Fatalf("lymcwd.ResolveWorktree(b) error = %v; want nil", err)
+	}
+	writeConfigFile(t, configengine.ConfigFile(beam.AnchorPath(), "beam"), "autonomy: unattended\n")
+
+	deps, err := pawlDeps(beam, "b")
+	if err != nil {
+		t.Fatalf("pawlDeps(b) error = %v; want nil", err)
+	}
+
+	if !deps.Autonomous() {
+		t.Error("Autonomous() = false under beam.autonomy unattended; want true")
+	}
+}
 
 // TestBeamLandingRecordSeams_DropRewritesTheRecordAndCommitsTheLandingDirectory asserts the seams:
 // the read seam names the pull request the landing record holds,

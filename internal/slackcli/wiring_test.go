@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -56,6 +57,34 @@ func TestReceiverPaused(t *testing.T) {
 				t.Errorf("receiverPaused(%q) = (%v, %v); want (%v, nil)", tt.receiver, got, err, tt.want)
 			}
 		})
+	}
+}
+
+// TestWireProduction_OrchAutonomousReadsUnattendedAsOn pins that the seam asks whether the orch's autonomy is on.
+func TestWireProduction_OrchAutonomousReadsUnattendedAsOn(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	prime, err := lymcwd.ResolveWorktree(hub.PrimeWorktree())
+	if err != nil {
+		t.Fatalf("ResolveWorktree(%q) = %v", hub.PrimeWorktree(), err)
+	}
+	path := configengine.ConfigFile(prime.AnchorPath(), "beam")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("MkdirAll = %v", err)
+	}
+	if err := os.WriteFile(path, []byte("autonomy: unattended\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(%q) = %v", path, err)
+	}
+
+	c := &slackCLI{}
+	if err := wireProduction(c, prime); err != nil {
+		t.Fatalf("wireProduction() = %v", err)
+	}
+
+	if !c.orchAutonomous() {
+		t.Error("orchAutonomous() = false under beam.autonomy unattended; want true")
 	}
 }
 

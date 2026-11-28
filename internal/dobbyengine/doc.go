@@ -148,6 +148,8 @@
 //     LookupWithSource also names the worktree of the chain whose own files set the value, or the hub-wide default.
 //     A task's value is the one its own worktree's files set, else each parent worktree's own value up to the prime,
 //     else the hub's default layer's, else the template's.
+//   - LookupAutonomy answers an AutonomyLevel: false, true or unattended.
+//     Every path that checks the key takes the three alike and refuses any other value, naming them.
 //   - Each tick reads Deps.LandNotice for each listed run ahead of its Land row and remembers the reading.
 //     A failed read keeps the last reading and is logged once per episode; a nil LandNotice reads every run as off.
 //   - A run seen past its Land row that dobby remembered ahead of it with `beam.land_notice` on owes one line

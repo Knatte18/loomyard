@@ -115,7 +115,11 @@ func TestResumeContext_RendersPointerPerPhaseAndWritesMark(t *testing.T) {
 				p.SlackPresencePath = presenceFileIn(t, tt.presence)
 			}
 			if tt.autonomyOn || tt.autonomyOff {
-				p.Autonomy = func() bool { return tt.autonomyOn }
+				level := AutonomyOff
+				if tt.autonomyOn {
+					level = AutonomyOn
+				}
+				p.Autonomy = func() AutonomyLevel { return level }
 			}
 			if err := SaveState(p, tt.state); err != nil {
 				t.Fatal(err)

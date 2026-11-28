@@ -213,6 +213,9 @@
 // so the pair teardown of a landed beam can end that beam's dobby.
 // It prints `already_running` when the lock stays held past the lock wait.
 //
+// Its gate-hold notices, run notices and watch lines carry the run's beam.autonomy level, read as each is built.
+// A run whose value is refused is stamped false, and the dobby posts the refusal to its orch once per episode.
+//
 // A path that is neither the prime nor a local pair whose origin record carries the beam mark is refused.
 // The refusal names `lym beam start` and comes before anything is registered or locked.
 // A hand invocation therefore can do no more than `lym beam start` does.

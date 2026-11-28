@@ -136,6 +136,59 @@ func requirePosted(posted bool, err error) error {
 	return nil
 }
 
+// runAutonomyStamps stamps a dobby's mails about a run with the run's beam.autonomy level, read as each mail is built.
+// A run whose value is refused is stamped false, and the refusal goes to the dobby's orch through post once per episode,
+// so a mistyped level does not pass unseen.
+// The episode ends at the run's next read that succeeds.
+// It is safe for concurrent use.
+type runAutonomyStamps struct {
+	worktree *lymcwd.Location
+	post     func(line string) error
+	mu       sync.Mutex
+	// told holds, for each run with an open episode, the refusal mail that episode has sent or is sending.
+	told map[string]*string
+}
+
+// stamp returns line stamped with the autonomy level of the run slug, telling the orch of a refused value first.
+func (s *runAutonomyStamps) stamp(slug, line string) string {
+	level, refusal, read := hubgeom.AutonomyWithRefusal(s.worktree, slug)
+	s.tellRefusal(slug, refusal, read)
+	return orchcli.StampAutonomy(line, level)
+}
+
+// tellRefusal posts the run slug's refusal unless the open episode already has.
+// A successful read ends the episode.
+// A failed read with no refusal leaves the episode as it is.
+// A post that fails leaves the episode untold, so the run's next refused read posts again.
+// The post runs unlocked, so a slow one holds up no other mail.
+// A mail of the same run stamped while the post runs may go out ahead of it.
+func (s *runAutonomyStamps) tellRefusal(slug string, refusal error, read bool) {
+	s.mu.Lock()
+	if read {
+		delete(s.told, slug)
+	}
+	if refusal == nil || s.told[slug] != nil {
+		s.mu.Unlock()
+		return
+	}
+	line := fmt.Sprintf("the %s of run %s is refused, so its notices carry autonomy: %s until it is fixed: %v", autonomyName(), slug, dobbyengine.AutonomyOff, refusal)
+	if s.told == nil {
+		s.told = map[string]*string{}
+	}
+	s.told[slug] = &line
+	s.mu.Unlock()
+
+	if err := s.post(line); err != nil {
+		s.mu.Lock()
+		// A successful read during the post may have ended this episode, and a later refusal opened another.
+		if s.told[slug] == &line {
+			delete(s.told, slug)
+		}
+		s.mu.Unlock()
+		logger.Warn("beamcli: a refused "+autonomyName()+" value was not posted to the orch", "run", slug, "error", err)
+	}
+}
+
 // registerDobby records this process as the dobby of geom in the run-process registry under runProcDir.
 // The owner is the beam's slug, so the pair teardown of a landed beam ends its dobby;
 // the prime's dobby has the hub owner instead.
@@ -325,9 +378,12 @@ func hubDobbyDepsStarting(prime *lymcwd.Location, geom dobbyengine.Geometry, sta
 		return battencli.DobbyPairSlugs(prime, geom, parents)
 	})
 	underHold := orchcli.UnderOwnHold(prime)
+	autonomy := &runAutonomyStamps{worktree: worktree, post: func(line string) error {
+		return requirePosted(orchcli.NotifyFromScoped(worktree, geom.Slug, dobbyProgram, line))
+	}}
 	runNotices := battencli.DobbyRunNotices(prime, pause.RecordPath, quiet)
 	runNotices.Post = func(_ context.Context, slug, line string) error {
-		stamped := orchcli.WithRunAutonomy(worktree, slug, line)
+		stamped := autonomy.stamp(slug, line)
 		return requirePosted(orchcli.NotifyRunFrom(worktree, geom.Slug, dobbyProgram, runNoticeTags(slug), stamped))
 	}
 	deps := dobbyengine.Deps{
@@ -417,7 +473,7 @@ func hubDobbyDepsStarting(prime *lymcwd.Location, geom dobbyengine.Geometry, sta
 			},
 			// Untagged, so no watch line replaces another unread one and a run's teardown drops none.
 			Post: func(_ context.Context, slug, line string) (bool, error) {
-				stamped := orchcli.WithRunAutonomy(worktree, slug, line)
+				stamped := autonomy.stamp(slug, line)
 				return orchcli.NotifyRunFrom(worktree, geom.Slug, dobbyProgram, creelengine.PostTags{}, stamped)
 			},
 		},
@@ -433,7 +489,7 @@ func hubDobbyDepsStarting(prime *lymcwd.Location, geom dobbyengine.Geometry, sta
 			Tree:       proc.TreeSample,
 			MarkedPIDs: proc.PIDsWithEnv,
 			Post: func(_ context.Context, slug, line string) error {
-				stamped := orchcli.WithRunAutonomy(worktree, slug, line)
+				stamped := autonomy.stamp(slug, line)
 				return requirePosted(orchcli.NotifyRunFrom(worktree, geom.Slug, dobbyProgram, gateHoldTags(slug), stamped))
 			},
 		},

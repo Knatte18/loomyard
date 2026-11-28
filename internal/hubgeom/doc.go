@@ -58,8 +58,11 @@
 // OrchChainAbove is that list without the told worktree's own orch.
 //
 // Autonomy is the reader of `beam.autonomy` for runs and orchs.
-// It answers for the worktree it is named, through TaskSettingChain and the per-task lookup, at the moment of the call.
+// It answers the level for the worktree it is named, through TaskSettingChain and the per-task lookup.
+// The level is false, true or unattended, read at the moment of the call.
 // A failed read answers false and warns once per episode.
+// AutonomyWithRefusal also hands back a refused value's refusal, for a caller that tells the orch of it.
+// It reports whether the read succeeded too.
 //
 // BeamModes is the board's beam mode reader.
 // It reads beam.autonomy and beam.pull_request for the root and each beam the way their runs read them.

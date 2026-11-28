@@ -97,8 +97,9 @@ func driftJudgeSessionOpen(location *lymcwd.Location) func() (bool, error) {
 }
 
 // runAutonomy reports whether autonomy is on for the run of l's worktree, read at the moment of the call.
+// Autonomy is on at the levels true and unattended.
 func runAutonomy(l *lymcwd.Location) bool {
-	return hubgeom.Autonomy(l, l.WorktreeName)
+	return hubgeom.Autonomy(l, l.WorktreeName).On()
 }
 
 // driftDeps builds the seams the Drift rows read over location's worktree.

@@ -28,7 +28,9 @@ import (
 // TestHubDobbyDeps_RunNoticePostCarriesTheRunsAutonomy pins the autonomy stamp on a dobby's mails about a run:
 // the gate-hold notice, the run notice and the watch line.
 // The prime's dobby signs unscoped and a beam's dobby signs in its own scope, and both stamp the run "task1".
-// The value is read from the run's beam.yaml when each mail is built.
+// The level is read from the run's beam.yaml when each mail is built.
+// A refused value stamps false, and the dobby tells its orch of the refusal once, before the first mail it stamps.
+// A read that succeeds ends that episode, so a later refusal is told again.
 // A watch line carries no tags, so no mail here replaces another unread one.
 // It runs without t.Parallel: the strand environment variable is process-global.
 func TestHubDobbyDeps_RunNoticePostCarriesTheRunsAutonomy(t *testing.T) {
@@ -56,14 +58,20 @@ func TestHubDobbyDeps_RunNoticePostCarriesTheRunsAutonomy(t *testing.T) {
 		t.Fatalf("lymcwd.ResolveWorktree(task1) = %v; want nil", err)
 	}
 
+	// refusalPrefix opens the dobby's mail telling its orch of the run's refused value.
+	// The rest names the setting file's path, so the mail is matched by its opening alone.
+	const refusalPrefix = "the beam.autonomy of run task1 is refused, so its notices carry autonomy: false"
 	tests := []struct {
-		name     string
-		dobby    string
-		autonomy string
-		wantFrom string
+		name string
+		// autonomy is the run's beam.yaml value, and wantStamp the level its mails carry.
+		dobby, autonomy, wantStamp, wantFrom string
+		// wantRefusal says the dobby tells its orch of the refused value once, before the first stamped mail.
+		wantRefusal bool
 	}{
-		{"PrimeDobbyOn", prime.WorktreeName, "true", slack.Shortname + ":DOBBY"},
-		{"BeamDobbyOff", "task1", "false", slack.Shortname + ":task1:DOBBY"},
+		{"PrimeDobbyOn", prime.WorktreeName, "true", "true", slack.Shortname + ":DOBBY", false},
+		{"BeamDobbyOff", "task1", "false", "false", slack.Shortname + ":task1:DOBBY", false},
+		{"PrimeDobbyUnattended", prime.WorktreeName, "unattended", "unattended", slack.Shortname + ":DOBBY", false},
+		{"BeamDobbyRefused", "task1", "maybe", "false", slack.Shortname + ":task1:DOBBY", true},
 	}
 	type mail struct{ from, subject string }
 	var want []mail
@@ -80,26 +88,55 @@ func TestHubDobbyDeps_RunNoticePostCarriesTheRunsAutonomy(t *testing.T) {
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(path), err)
 		}
-		if err := os.WriteFile(path, []byte("autonomy: "+tt.autonomy+"\n"), 0o644); err != nil {
-			t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
+		writeLevel := func(value string) {
+			t.Helper()
+			if err := os.WriteFile(path, []byte("autonomy: "+value+"\n"), 0o644); err != nil {
+				t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
+			}
+		}
+		writeLevel(tt.autonomy)
+		if tt.wantRefusal {
+			want = append(want, mail{tt.wantFrom, refusalPrefix})
 		}
 		holdLine := tt.name + ": a gate slot is held"
 		if err := deps.GateHolds.Post(t.Context(), "task1", holdLine); err != nil {
 			t.Fatalf("%s: GateHolds.Post = %v; want nil", tt.name, err)
 		}
-		want = append(want, mail{tt.wantFrom, holdLine + "; autonomy: " + tt.autonomy})
+		want = append(want, mail{tt.wantFrom, holdLine + "; autonomy: " + tt.wantStamp})
 
 		line := tt.name + ": the driver died"
 		if err := deps.RunNotices.Post(t.Context(), "task1", line); err != nil {
 			t.Fatalf("%s: RunNotices.Post = %v; want nil", tt.name, err)
 		}
-		want = append(want, mail{tt.wantFrom, line + "; autonomy: " + tt.autonomy})
+		want = append(want, mail{tt.wantFrom, line + "; autonomy: " + tt.wantStamp})
 
 		watchLine := tt.name + ": the run halted"
 		if posted, err := deps.RunWatch.Post(t.Context(), "task1", watchLine); !posted || err != nil {
 			t.Fatalf("%s: RunWatch.Post = %v, %v; want true, nil", tt.name, posted, err)
 		}
-		want = append(want, mail{tt.wantFrom, watchLine + "; autonomy: " + tt.autonomy})
+		want = append(want, mail{tt.wantFrom, watchLine + "; autonomy: " + tt.wantStamp})
+
+		if !tt.wantRefusal {
+			continue
+		}
+		// These reads go through the same deps, which hold the open episode.
+		// They post watch lines, since a second run notice would replace the unread one above.
+		for _, later := range []struct {
+			autonomy, line string
+			wantRefusal    bool
+		}{
+			{"false", tt.name + ": the value is fixed", false},
+			{tt.autonomy, tt.name + ": the value is refused again", true},
+		} {
+			writeLevel(later.autonomy)
+			if posted, err := deps.RunWatch.Post(t.Context(), "task1", later.line); !posted || err != nil {
+				t.Fatalf("%s: RunWatch.Post = %v, %v; want true, nil", later.line, posted, err)
+			}
+			if later.wantRefusal {
+				want = append(want, mail{tt.wantFrom, refusalPrefix})
+			}
+			want = append(want, mail{tt.wantFrom, later.line + "; autonomy: false"})
+		}
 	}
 
 	reader, err := creelcli.NewProgramClient(prime, "CHECK")
@@ -113,7 +150,11 @@ func TestHubDobbyDeps_RunNoticePostCarriesTheRunsAutonomy(t *testing.T) {
 	var got []mail
 	for _, entry := range entries {
 		if entry.Event == "posted" {
-			got = append(got, mail{entry.From, entry.Subject})
+			subject := entry.Subject
+			if strings.HasPrefix(subject, refusalPrefix) {
+				subject = refusalPrefix
+			}
+			got = append(got, mail{entry.From, subject})
 		}
 		if entry.Event == "undelivered" && entry.Reason == creelengine.SupersededReason {
 			t.Errorf("message %d was superseded; want every mail standing unread", entry.ID)

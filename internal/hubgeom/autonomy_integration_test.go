@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -74,34 +75,39 @@ func TestAutonomy(t *testing.T) {
 		taskValue, beamValue, primeValue string
 		// slug is the worktree the reader is named.
 		slug string
-		want bool
+		want dobbyengine.AutonomyLevel
 	}{
-		{name: "a task true under a beam false reads true", taskValue: "true", beamValue: "false", slug: task, want: true},
-		{name: "a task that sets nothing under a beam true reads true", beamValue: "true", slug: task, want: true},
-		{name: "a task false under a beam true reads false", taskValue: "false", beamValue: "true", slug: task, want: false},
-		{name: "the beam's own name starts at the beam, not at its parent", beamValue: "true", primeValue: "false", slug: beamPair, want: true},
-		{name: "the prime's own name reads the prime's chain", primeValue: "true", slug: l.WorktreeName, want: true},
+		{name: "a task true under a beam false reads true", taskValue: "true", beamValue: "false", slug: task, want: dobbyengine.AutonomyOn},
+		{name: "a task that sets nothing under a beam true reads true", beamValue: "true", slug: task, want: dobbyengine.AutonomyOn},
+		{name: "a task false under a beam true reads false", taskValue: "false", beamValue: "true", slug: task, want: dobbyengine.AutonomyOff},
+		{name: "a task unattended under a beam true reads unattended", taskValue: "unattended", beamValue: "true", slug: task, want: dobbyengine.AutonomyUnattended},
+		{name: "the beam's own name starts at the beam, not at its parent", beamValue: "true", primeValue: "false", slug: beamPair, want: dobbyengine.AutonomyOn},
+		{name: "the prime's own name reads the prime's chain", primeValue: "true", slug: l.WorktreeName, want: dobbyengine.AutonomyOn},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			writeAutonomy(t, taskAnchor, tt.taskValue)
 			writeAutonomy(t, beamAnchor, tt.beamValue)
 			writeAutonomy(t, l.AnchorPath(), tt.primeValue)
-			if got := hubgeom.Autonomy(l, tt.slug); got != tt.want {
-				t.Errorf("Autonomy(%q) = %v; want %v", tt.slug, got, tt.want)
+			if got, refusal, read := hubgeom.AutonomyWithRefusal(l, tt.slug); got != tt.want || refusal != nil || !read {
+				t.Errorf("AutonomyWithRefusal(%q) = %q, %v, %v; want %q, nil, true", tt.slug, got, refusal, read, tt.want)
 			}
 		})
 	}
 
 	const warning = "hubgeom: read autonomy failed"
-	t.Run("a refused value reads false and warns once", func(t *testing.T) {
+	t.Run("a refused value reads false, hands back its refusal and warns once", func(t *testing.T) {
 		logs := logcapture.Capture(t)
 		writeAutonomy(t, taskAnchor, "")
 		writeAutonomy(t, beamAnchor, `"yes"`)
 		writeAutonomy(t, l.AnchorPath(), "")
-		for read := 1; read <= 2; read++ {
-			if got := hubgeom.Autonomy(l, task); got {
-				t.Errorf("Autonomy(%q) read %d = true; want false", task, read)
+		for call := 1; call <= 2; call++ {
+			got, refusal, read := hubgeom.AutonomyWithRefusal(l, task)
+			if got != dobbyengine.AutonomyOff || read {
+				t.Errorf("AutonomyWithRefusal(%q) call %d = %q, read %v; want %q, false", task, call, got, read, dobbyengine.AutonomyOff)
+			}
+			if refusal == nil || !strings.Contains(refusal.Error(), "lym config beam --set autonomy=") {
+				t.Errorf("AutonomyWithRefusal(%q) call %d refusal = %v; want one naming the way forward", task, call, refusal)
 			}
 		}
 		if got := strings.Count(logs.String(), warning); got != 1 {
@@ -112,11 +118,11 @@ func TestAutonomy(t *testing.T) {
 		}
 	})
 
-	t.Run("a location that is no git worktree reads false with a warning", func(t *testing.T) {
+	t.Run("a location that is no git worktree reads false with a warning and no refusal", func(t *testing.T) {
 		logs := logcapture.Capture(t)
 		plain := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "au-plain", AnchorRel: "."}
-		if got := hubgeom.Autonomy(plain, ""); got {
-			t.Errorf("Autonomy(plain, \"\") = true; want false")
+		if got, refusal, read := hubgeom.AutonomyWithRefusal(plain, ""); got != dobbyengine.AutonomyOff || refusal != nil || read {
+			t.Errorf("AutonomyWithRefusal(plain, \"\") = %q, %v, %v; want %q, nil, false", got, refusal, read, dobbyengine.AutonomyOff)
 		}
 		if got := strings.Count(logs.String(), warning); got != 1 {
 			t.Errorf("warnings = %d; want 1 in %q", got, logs.String())

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 
@@ -30,10 +31,30 @@ const (
 	// LandNoticeKey decides whether dobby posts a line to the orch once a task's run lands or ends without landing.
 	// A landed motif run's line goes whatever it reads.
 	LandNoticeKey = beamsetting.LandNoticeKey
-	// AutonomyKey decides whether the orch settles every halt of a task's runs.
-	// Under it the orch reaches the operator only for a severe halt, a merge-ready beam or a raddle split's approval.
+	// AutonomyKey decides how far the orch settles the halts of a task's runs without the operator.
 	AutonomyKey = beamsetting.AutonomyKey
 )
+
+// AutonomyLevel is a beam.autonomy level: how far the orch settles the halts of a task's runs without the operator.
+// Its text is the value a layer sets, and a halt notice's autonomy stamp carries it.
+type AutonomyLevel string
+
+// The levels of beam.autonomy, declared once in beamsetting.
+const (
+	// AutonomyOff relays to the operator every halt the orch does not settle.
+	AutonomyOff AutonomyLevel = beamsetting.AutonomyOff
+	// AutonomyOn has the orch settle every halt.
+	// It reaches the operator only for a severe halt, a merge-ready beam or a raddle split's approval.
+	AutonomyOn AutonomyLevel = beamsetting.AutonomyOn
+	// AutonomyUnattended has the orch settle every halt and never ask the operator; only a severe halt reaches them.
+	AutonomyUnattended AutonomyLevel = beamsetting.AutonomyUnattended
+)
+
+// On reports whether the level is true or unattended, the two under which the orch settles halts itself.
+// A reader that asks only whether autonomy is on reads it through On.
+func (level AutonomyLevel) On() bool {
+	return level == AutonomyOn || level == AutonomyUnattended
+}
 
 // The values of beam.pull_request, declared once in beamsetting.
 const (
@@ -125,7 +146,7 @@ func ConfigSpec() configengine.Spec {
 // So is a beam.gate_hold_factor that is negative or not finite, and a beam.gate_hold_min below 1.
 // A resolved per-task key holding a value it does not take is refused too.
 // beam.pull_request takes review, off, trail or merge-in, and beam.land_notice takes on or off.
-// beam.run_watch takes stops, rows or off, and beam.autonomy takes a YAML boolean.
+// beam.run_watch takes stops, rows or off, and beam.autonomy takes false, true or unattended.
 // A write the per-task lookup would refuse is therefore refused when it is made.
 func LoadConfig(dirs configengine.Dirs) (Config, error) {
 	resolved, err := configengine.Load(dirs, ConfigSpec())
@@ -192,13 +213,17 @@ func CheckLocalValues(document []byte) error {
 // checkTaskSetting returns the per-task key's value as text, or refuses a value its key does not take.
 // where names the file or layer the value was read from, for the refusal.
 // A refusal is marked [configengine.ErrInvalid] and names the key, the values it takes and the way forward.
-// beam.autonomy takes a YAML boolean and answers "true" or "false".
+// beam.autonomy takes a YAML boolean, answered "true" or "false", or the text unattended.
 func checkTaskSetting(key string, value any, where string) (string, error) {
 	if key == AutonomyKey {
 		if flag, isBool := value.(bool); isBool {
 			return strconv.FormatBool(flag), nil
 		}
-		return "", configengine.MarkInvalid(fmt.Errorf("config key %q in %s is %v: must be true or false; way forward: fix it with `lym config beam --set %s=<true|false>` in that worktree, or in the task's run_settings for its next run", keyName(key), where, value, key))
+		if text, isText := value.(string); isText && text == beamsetting.AutonomyUnattended {
+			return text, nil
+		}
+		levels := beamsetting.AutonomyValues()
+		return "", configengine.MarkInvalid(fmt.Errorf("config key %q in %s is %v: must be one of %v; way forward: fix it with `lym config beam --set %s=<%s>` in that worktree, or in the task's run_settings for its next run", keyName(key), where, value, levels, key, strings.Join(levels, "|")))
 	}
 	allowed := beamsetting.LandNoticeValues()
 	switch key {

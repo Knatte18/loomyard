@@ -32,7 +32,10 @@ func lookupAsText(key string, chain TaskSettingChain) (string, error) {
 	if key == LandNoticeKey || key == AutonomyKey {
 		lookup := LookupLandNotice
 		if key == AutonomyKey {
-			lookup = LookupAutonomy
+			lookup = func(chain TaskSettingChain) (bool, error) {
+				level, err := LookupAutonomy(chain)
+				return level.On(), err
+			}
 		}
 		on, err := lookup(chain)
 		if err != nil {
@@ -186,8 +189,8 @@ func TestLookupTaskSettings(t *testing.T) {
 		if got, err := LookupLandNotice(chain); err != nil || got {
 			t.Errorf("LookupLandNotice() = %v, %v; want false", got, err)
 		}
-		if got, err := LookupAutonomy(chain); err != nil || got {
-			t.Errorf("LookupAutonomy() = %v, %v; want false", got, err)
+		if got, err := LookupAutonomy(chain); err != nil || got != AutonomyOff {
+			t.Errorf("LookupAutonomy() = %q, %v; want %q", got, err, AutonomyOff)
 		}
 		if got, source, err := LookupWithSource(chain, PullRequestKey); err != nil || got != "review" || source != HubWideSource {
 			t.Errorf("LookupWithSource(pull_request) = %q, %d, %v; want review, %d", got, source, err, HubWideSource)

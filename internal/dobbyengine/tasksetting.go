@@ -45,13 +45,16 @@ func LookupLandNotice(chain TaskSettingChain) (bool, error) {
 	return value == LandNoticeOn, err
 }
 
-// LookupAutonomy reports whether beam.autonomy is on for the task at the chain's head.
-// Under it the orch settles every halt of the task's runs.
-// It reaches the operator only for a severe halt, a merge-ready beam or a raddle split's approval.
+// LookupAutonomy returns the beam.autonomy level of the task at the chain's head: false, true or unattended.
+// It decides how far the orch settles the halts of the task's runs without the operator.
 // A value the key does not take is refused, naming the file that set it.
-func LookupAutonomy(chain TaskSettingChain) (bool, error) {
+// A refused value reads as AutonomyOff, the level at which the orch asks the operator.
+func LookupAutonomy(chain TaskSettingChain) (AutonomyLevel, error) {
 	value, err := lookupTaskSetting(chain, AutonomyKey)
-	return value == "true", err
+	if err != nil {
+		return AutonomyOff, err
+	}
+	return AutonomyLevel(value), nil
 }
 
 // LookupRunWatch returns the beam.run_watch of the task at the chain's head: stops, rows or off.
@@ -85,7 +88,7 @@ const HubWideSource = -1
 // and the first that sets the key decides.
 // With none set, the board's default layer decides, and then the template.
 // An envsource marker in the winning value is expanded the way a load of beam.yaml expands it.
-// beam.autonomy answers "true" or "false".
+// beam.autonomy answers "false", "true" or "unattended".
 // A value the key does not take is refused, naming the file that set it.
 func LookupWithSource(chain TaskSettingChain, key string) (value string, anchor int, err error) {
 	places := make([]configengine.Dirs, 0, len(chain.Anchors)+1)

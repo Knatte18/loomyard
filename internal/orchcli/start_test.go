@@ -1598,7 +1598,7 @@ func TestStart_ResumesTheRecordedSession(t *testing.T) {
 			}
 			h.cli.cfg.PermissionMode = "bypass"
 			if c.autonomous {
-				h.cli.paths.Autonomy = func() bool { return true }
+				h.cli.paths.Autonomy = func() orchengine.AutonomyLevel { return orchengine.AutonomyOn }
 			}
 			if c.presence {
 				h.cli.paths.SlackPresencePath = filepath.Join(t.TempDir(), "presence.json")
@@ -1692,6 +1692,30 @@ func TestStart_ResumesTheRecordedSession(t *testing.T) {
 			}
 			if st := h.state(t); st.Strand != "new-guid" || st.SessionID != c.wantSaved || st.LastHandoff != wantNote {
 				t.Errorf("state = %+v; want LastHandoff %q kept, strand new-guid and session id %q", st, wantNote, c.wantSaved)
+			}
+		})
+	}
+}
+
+// TestOrchAutonomy_KeepsEachLevel pins that each beam.autonomy level reaches the orch's pointers as the same level.
+func TestOrchAutonomy_KeepsEachLevel(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		level dobbyengine.AutonomyLevel
+		want  orchengine.AutonomyLevel
+	}{
+		{"Off", dobbyengine.AutonomyOff, orchengine.AutonomyOff},
+		{"On", dobbyengine.AutonomyOn, orchengine.AutonomyOn},
+		{"Unattended", dobbyengine.AutonomyUnattended, orchengine.AutonomyUnattended},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := orchAutonomy(tt.level); got != tt.want {
+				t.Errorf("orchAutonomy(%q) = %d; want %d", tt.level, got, tt.want)
 			}
 		})
 	}

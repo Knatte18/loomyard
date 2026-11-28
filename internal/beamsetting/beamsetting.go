@@ -13,8 +13,7 @@ const (
 	// LandNoticeKey decides whether dobby posts a line to the orch once a task's run lands or ends without landing.
 	// A landed motif run's line goes whatever it reads.
 	LandNoticeKey = "land_notice"
-	// AutonomyKey decides whether the orch settles every halt of a task's runs.
-	// Under it the orch reaches the operator only for a severe halt, a merge-ready beam or a raddle split's approval.
+	// AutonomyKey decides how far the orch settles the halts of a task's runs without the operator.
 	AutonomyKey = "autonomy"
 	// RunWatchKey decides which changes of a task's run dobby mails the orch as a watch line.
 	RunWatchKey = "run_watch"
@@ -53,6 +52,23 @@ const (
 	// LandNoticeOff sends none.
 	LandNoticeOff = "off"
 )
+
+// The values of beam.autonomy.
+// false and true are YAML booleans in a layer, and unattended is text.
+const (
+	// AutonomyOff relays to the operator every halt the orch does not settle.
+	AutonomyOff = "false"
+	// AutonomyOn has the orch settle every halt.
+	// It reaches the operator only for a severe halt, a merge-ready beam or a raddle split's approval.
+	AutonomyOn = "true"
+	// AutonomyUnattended has the orch settle every halt and never ask the operator; only a severe halt reaches them.
+	AutonomyUnattended = "unattended"
+)
+
+// AutonomyValues returns every value beam.autonomy takes.
+func AutonomyValues() []string {
+	return []string{AutonomyOff, AutonomyOn, AutonomyUnattended}
+}
 
 // PullRequestValues returns every value beam.pull_request takes.
 func PullRequestValues() []string {

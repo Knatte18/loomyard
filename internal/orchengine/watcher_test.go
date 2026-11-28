@@ -691,7 +691,7 @@ func TestWatcher_HandoffCompleteClearsThenResumes(t *testing.T) {
 			if slack {
 				e.paths.SlackPresencePath = presenceFileIn(t, slackengine.PresenceSlack)
 			}
-			e.paths.Autonomy = func() bool { return true }
+			e.paths.Autonomy = func() AutonomyLevel { return AutonomyOn }
 			e.w = e.newWatcher()
 			e.reachClearing()
 			handoff := e.state().PendingHandoff
@@ -1572,7 +1572,7 @@ func TestWatcher_HookDeliveredPointerIsSkippedAndAnythingElseIsTyped(t *testing.
 			if tt.slack {
 				e.paths.SlackPresencePath = presenceFileIn(t, slackengine.PresenceSlack)
 			}
-			e.paths.Autonomy = func() bool { return true }
+			e.paths.Autonomy = func() AutonomyLevel { return AutonomyOn }
 			baseline := e.clock.now.Add(-time.Minute)
 			e.setState(func(st *State) { st.CompactionBaseline = baseline })
 			e.w = e.newWatcher()
@@ -1652,7 +1652,7 @@ func TestWatcher_AutoCompactionReloadsPluginsThenPointer(t *testing.T) {
 
 	e := newWatchEnv(t)
 	e.withSkills()
-	e.paths.Autonomy = func() bool { return true }
+	e.paths.Autonomy = func() AutonomyLevel { return AutonomyOn }
 	e.w = e.newWatcher()
 	boundary := e.clock.now.Add(time.Second)
 	e.s.autoCompact = map[string]shuttleengine.CompactionBoundary{"a": freshBoundary(boundary)}

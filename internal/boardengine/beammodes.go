@@ -26,7 +26,7 @@ type BeamModes struct {
 
 // BeamMode is how one beam, or the root, runs its members.
 type BeamMode struct {
-	// Autonomy is on when the orch settles every halt of the members' runs, and off otherwise.
+	// Autonomy is the members' beam.autonomy level as the board shows it: off, on or unattended.
 	Autonomy SettingValue
 	// PullRequest is beam.pull_request as it resolves for the members.
 	PullRequest SettingValue

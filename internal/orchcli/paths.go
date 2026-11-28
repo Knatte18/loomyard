@@ -4,6 +4,7 @@
 package orchcli
 
 import (
+	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/orchengine"
@@ -20,13 +21,27 @@ func PrimePaths(location *lymcwd.Location) orchengine.Paths {
 
 // orchPaths returns every path orch operates on, rooted at location's anchor.
 // It also sets the machine's presence record, which the rendered pointers read,
-// and the autonomy of the orch's own worktree, read each time a pointer is built.
+// and the autonomy level of the orch's own worktree, read each time a pointer is built.
 // A hub whose Slack geometry cannot be built leaves the presence path empty, which reads as no presence line.
 func orchPaths(location *lymcwd.Location) orchengine.Paths {
 	paths := orchroute.Paths(location)
 	if geometry, err := hubgeom.SlackGeometry(location.HubPath); err == nil {
 		paths.SlackPresencePath = geometry.PresencePath
 	}
-	paths.Autonomy = func() bool { return hubgeom.Autonomy(location, location.WorktreeName) }
+	paths.Autonomy = func() orchengine.AutonomyLevel {
+		return orchAutonomy(hubgeom.Autonomy(location, location.WorktreeName))
+	}
 	return paths
+}
+
+// orchAutonomy returns the orch's autonomy level for a beam.autonomy level.
+// Any other value reads as off, the level at which the orch asks the operator.
+func orchAutonomy(level dobbyengine.AutonomyLevel) orchengine.AutonomyLevel {
+	switch level {
+	case dobbyengine.AutonomyOn:
+		return orchengine.AutonomyOn
+	case dobbyengine.AutonomyUnattended:
+		return orchengine.AutonomyUnattended
+	}
+	return orchengine.AutonomyOff
 }

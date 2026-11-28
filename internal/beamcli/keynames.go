@@ -12,6 +12,11 @@ func pullRequestName() string {
 	return configengine.KeyName(beamsetting.Module, beamsetting.PullRequestKey)
 }
 
+// autonomyName returns the full name of the beam key that decides how far the orch settles a run's halts.
+func autonomyName() string {
+	return configengine.KeyName(beamsetting.Module, beamsetting.AutonomyKey)
+}
+
 // maxRunsName returns the full name of the beam key bounding the runs a dobby drives at once.
 func maxRunsName() string {
 	return configengine.KeyName(beamsetting.Module, "max_runs")

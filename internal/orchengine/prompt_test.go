@@ -36,16 +36,18 @@ func TestWithLaunchFacts(t *testing.T) {
 		presence slackengine.Presence
 		noPath   bool
 		// autonomy is the seam's answer; nilSeam leaves the seam nil instead.
-		autonomy bool
+		autonomy AutonomyLevel
 		nilSeam  bool
 		want     string
 	}{
-		{name: "OnUnderSlack", presence: slackengine.PresenceSlack, autonomy: true, want: pointer + presenceLine + autonomyOnLine},
-		{name: "OffUnderSlack", presence: slackengine.PresenceSlack, want: pointer + presenceLine + autonomyOffLine},
-		{name: "OnUnderTerminal", presence: slackengine.PresenceTerminal, autonomy: true, want: pointer + autonomyOnLine},
-		{name: "OffUnderTerminal", presence: slackengine.PresenceTerminal, want: pointer + autonomyOffLine},
-		{name: "OnWithNoPresencePath", noPath: true, autonomy: true, want: pointer + autonomyOnLine},
-		{name: "OffWithNoPresencePath", noPath: true, want: pointer + autonomyOffLine},
+		{name: "OnUnderSlack", presence: slackengine.PresenceSlack, autonomy: AutonomyOn, want: pointer + presenceLine + autonomyOnLine},
+		{name: "OffUnderSlack", presence: slackengine.PresenceSlack, autonomy: AutonomyOff, want: pointer + presenceLine + autonomyOffLine},
+		{name: "UnattendedUnderSlack", presence: slackengine.PresenceSlack, autonomy: AutonomyUnattended, want: pointer + presenceLine + autonomyUnattendedLine},
+		{name: "OnUnderTerminal", presence: slackengine.PresenceTerminal, autonomy: AutonomyOn, want: pointer + autonomyOnLine},
+		{name: "OffUnderTerminal", presence: slackengine.PresenceTerminal, autonomy: AutonomyOff, want: pointer + autonomyOffLine},
+		{name: "UnattendedUnderTerminal", presence: slackengine.PresenceTerminal, autonomy: AutonomyUnattended, want: pointer + autonomyUnattendedLine},
+		{name: "OnWithNoPresencePath", noPath: true, autonomy: AutonomyOn, want: pointer + autonomyOnLine},
+		{name: "OffWithNoPresencePath", noPath: true, autonomy: AutonomyOff, want: pointer + autonomyOffLine},
 		{name: "NilSeamReadsOff", presence: slackengine.PresenceSlack, nilSeam: true, want: pointer + presenceLine + autonomyOffLine},
 	}
 	for _, tt := range tests {
@@ -56,7 +58,7 @@ func TestWithLaunchFacts(t *testing.T) {
 				p.SlackPresencePath = presenceFileIn(t, tt.presence)
 			}
 			if !tt.nilSeam {
-				p.Autonomy = func() bool { return tt.autonomy }
+				p.Autonomy = func() AutonomyLevel { return tt.autonomy }
 			}
 			got := WithLaunchFacts(p, pointer)
 			if got != tt.want {

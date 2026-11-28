@@ -53,7 +53,7 @@ func TestBeamModes(t *testing.T) {
 	}
 	writeBeamFile(t, h.BoardDir(), "autonomy: false\npull_request: \"off\"\n")
 	writeBeamFile(t, l.AnchorPath(), "autonomy: true\n")
-	writeBeamFile(t, beamLocation.AnchorPath(), "pull_request: \"trail\"\n")
+	writeBeamFile(t, beamLocation.AnchorPath(), "autonomy: unattended\npull_request: \"trail\"\n")
 	const pullRequestURL = "https://github.com/example/repo/pull/12"
 	setPullRequest := func(rec *pawlengine.LandingRecord) error {
 		rec.PullRequest = &pawlengine.LandingPullRequest{Number: 12, URL: pullRequestURL}
@@ -78,7 +78,7 @@ func TestBeamModes(t *testing.T) {
 			PullRequest: boardengine.SettingValue{Value: "off"},
 		},
 		Beams: map[string]boardengine.BeamMode{beam: {
-			Autonomy:          boardengine.SettingValue{Value: "on", SetBy: boardengine.RootSubject},
+			Autonomy:          boardengine.SettingValue{Value: "unattended", SetBy: beam},
 			PullRequest:       boardengine.SettingValue{Value: "trail", SetBy: beam},
 			ParentBranch:      primeBranch,
 			PullRequestNumber: 12,

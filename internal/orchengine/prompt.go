@@ -49,21 +49,29 @@ func WithPresence(p Paths, pointer string) string {
 	return pointer + presenceLine
 }
 
+// The autonomy lines appended to a pointer's own line, one per level of the orch's autonomy, each naming its level.
 const (
-	// autonomyOnLine is appended to a pointer's own line while the orch's autonomy is on.
+	// autonomyOnLine is appended while the orch's autonomy is true.
 	autonomyOnLine = " Autonomy is on: settle every halt yourself and reach the operator only for a severe halt, a merge-ready beam or a raddle split's approval, as role-autonomy.md beside your role says."
-	// autonomyOffLine is appended to a pointer's own line while the orch's autonomy is off.
+	// autonomyUnattendedLine is appended while the orch's autonomy is unattended.
+	autonomyUnattendedLine = " Autonomy is unattended: settle every halt yourself and never ask the operator; only a severe halt reaches them, as role-autonomy.md beside your role says."
+	// autonomyOffLine is appended while the orch's autonomy is false.
 	autonomyOffLine = " Autonomy is off."
 )
 
 // WithLaunchFacts returns WithPresence(p, pointer) with the orch's autonomy line appended to the same line.
-// The autonomy is read from p.Autonomy each time, and a nil seam reads off.
+// The autonomy level is read from p.Autonomy each time, and a nil seam reads off.
 // The line informs only.
 // It stands beside the presence step, never inside it, and appears under any presence.
 func WithLaunchFacts(p Paths, pointer string) string {
 	line := autonomyOffLine
-	if p.Autonomy != nil && p.Autonomy() {
-		line = autonomyOnLine
+	if p.Autonomy != nil {
+		switch p.Autonomy() {
+		case AutonomyOn:
+			line = autonomyOnLine
+		case AutonomyUnattended:
+			line = autonomyUnattendedLine
+		}
 	}
 	return WithPresence(p, pointer) + line
 }
