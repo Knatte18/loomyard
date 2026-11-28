@@ -48,6 +48,21 @@ const DiscardWorkFlag = "discard-work"
 // ignoredPathsNamed caps the ignored paths a refusal names for one store; the rest are counted.
 const ignoredPathsNamed = 5
 
+// earlierLayoutLockFiles names the lock files earlier layouts kept beside the files they guarded, in a checkout's tree.
+// No current code writes them, yet an older hub still holds them, hidden by its git exclude.
+// The reset's work check passes over a file of one of these names at any depth of the records store or the Bolt checkout.
+var earlierLayoutLockFiles = []string{
+	".gitrepo-push.lock",
+	fabriclayout.BoardWriteLockFile,
+	fabriclayout.BoardPushLockFile,
+	"board.json.swaplock",
+	"tasks.json.swaplock",
+	"notes.json.swaplock",
+	"generation-record.json.lock",
+	"settle-record.json.lock",
+	"settle-record.patch.lock",
+}
+
 // existingHubError refuses a clone into hubPath, which already exists.
 // A hub a clone finished is whole, and may hold work a replacement would lose:
 // its way forward is working in it, or moving it aside before the same clone.
@@ -1001,6 +1016,7 @@ func (w hubWork) all() []string {
 // So does each unfinished teardown, a running one included, whose tip this machine's tag alone may hold.
 // The work its stores hold is read from the prime code store, the prime's records store and the Bolt checkout:
 // in each, uncommitted or untracked changes and ignored files lym did not write;
+// in the records store and the Bolt checkout, the lock files earlier layouts left are no work;
 // in the code store and the records store, a stash and commits origin lacks.
 // The records store's commits include the board's branches, since the Bolt checkout is one of its worktrees;
 // commits only the Bolt checkout's HEAD holds are read there.
@@ -1032,15 +1048,15 @@ func hubWorkOriginLacks(hubPath string) (hubWork, error) {
 		ownsRefs bool
 		// written lists the paths lym itself writes in the store and git ignores.
 		written []string
+		// mayHoldEarlierLocks reports whether an earlier layout left ignored lock files in the store.
+		mayHoldEarlierLocks bool
 	}{
 		{dir: filepath.Join(hubPath, prime), ownsRefs: true, written: lymWrittenInPrime(hubPath, prime)},
-		{dir: weftname.SiblingPath(hubPath, prime), ownsRefs: true},
-		{dir: fabriclayout.BoltDir(hubPath), ownsRefs: false, written: []string{
-			fabriclayout.BoardWriteLockFile, fabriclayout.BoardPushLockFile, fabriclayout.BoardRenderManifestFile,
-		}},
+		{dir: weftname.SiblingPath(hubPath, prime), ownsRefs: true, mayHoldEarlierLocks: true},
+		{dir: fabriclayout.BoltDir(hubPath), written: []string{fabriclayout.BoardRenderManifestFile}, mayHoldEarlierLocks: true},
 	}
 	for _, store := range stores {
-		storeWork, err := storeWorkOriginLacks(store.dir, store.ownsRefs, store.written)
+		storeWork, err := storeWorkOriginLacks(store.dir, store.ownsRefs, store.written, store.mayHoldEarlierLocks)
 		if err != nil {
 			return hubWork{}, err
 		}
@@ -1077,8 +1093,9 @@ func lymWrittenInPrime(hubPath, prime string) []string {
 // storeWorkOriginLacks names the work in the checkout at dir that origin does not hold:
 // uncommitted or untracked changes, ignored files but the written ones, and commits origin lacks.
 // With ownsRefs those are a stash and every ref's commits; without, only the commits its HEAD alone holds.
+// With mayHoldEarlierLocks the ignored lock files earlier layouts left are no work.
 // A dir holding no repository names nothing.
-func storeWorkOriginLacks(dir string, ownsRefs bool, written []string) ([]string, error) {
+func storeWorkOriginLacks(dir string, ownsRefs bool, written []string, mayHoldEarlierLocks bool) ([]string, error) {
 	if _, err := os.Lstat(filepath.Join(dir, ".git")); errors.Is(err, os.ErrNotExist) {
 		return nil, nil
 	} else if err != nil {
@@ -1093,7 +1110,7 @@ func storeWorkOriginLacks(dir string, ownsRefs bool, written []string) ([]string
 	if strings.TrimSpace(status) != "" {
 		work = append(work, "uncommitted or untracked changes in "+dir)
 	}
-	ignored, err := ignoredWork(dir, written)
+	ignored, err := ignoredWork(dir, written, mayHoldEarlierLocks)
 	if err != nil {
 		return nil, err
 	}
@@ -1139,9 +1156,11 @@ func storeWorkOriginLacks(dir string, ownsRefs bool, written []string) ([]string
 // ignoredWork lists the ignored paths of the checkout at dir that may hold work, in git's order.
 // A wholly ignored directory is one entry ending in a slash.
 // One that holds a written path is replaced by its other files.
-// Git cannot tell a build output from a kept secret, so every ignored path counts but lym's own:
-// the written paths, a link, whose content lives at its target, and the never-tracked cache and records lock directories.
-func ignoredWork(dir string, written []string) ([]string, error) {
+// Git cannot tell a build output from a kept secret, so every ignored path counts but lym's own.
+// lym's own are the written paths and the never-tracked cache and records lock directories.
+// A link is left out too, since its content lives at its target.
+// With mayHoldEarlierLocks, so are the lock files earlier layouts left and a directory holding no other file.
+func ignoredWork(dir string, written []string, mayHoldEarlierLocks bool) ([]string, error) {
 	entries, err := ignoredPaths(dir, "--directory")
 	if err != nil {
 		return nil, err
@@ -1150,15 +1169,25 @@ func ignoredWork(dir string, written []string) ([]string, error) {
 	seen := map[string]bool{}
 	for _, entry := range entries {
 		candidates := []string{entry}
-		holdsWritten := strings.HasSuffix(entry, "/") &&
-			slices.ContainsFunc(written, func(own string) bool { return strings.HasPrefix(own, entry) })
-		if holdsWritten {
+		isDirectory := strings.HasSuffix(entry, "/")
+		switch {
+		case isDirectory && slices.ContainsFunc(written, func(own string) bool { return strings.HasPrefix(own, entry) }):
 			if candidates, err = ignoredPaths(dir, "--", ":(literal)"+entry); err != nil {
 				return nil, err
 			}
+		case isDirectory && mayHoldEarlierLocks && mayHoldWork(dir, entry, written, mayHoldEarlierLocks):
+			files, err := ignoredPaths(dir, "--", ":(literal)"+entry)
+			if err != nil {
+				return nil, err
+			}
+			holdsOther := slices.ContainsFunc(files, func(file string) bool { return !isEarlierLayoutLockFile(file) })
+			// An empty directory lists no file and stays named.
+			if len(files) > 0 && !holdsOther {
+				continue
+			}
 		}
 		for _, candidate := range candidates {
-			if !seen[candidate] && mayHoldWork(dir, candidate, written) {
+			if !seen[candidate] && mayHoldWork(dir, candidate, written, mayHoldEarlierLocks) {
 				seen[candidate] = true
 				paths = append(paths, candidate)
 			}
@@ -1176,9 +1205,19 @@ func ignoredPaths(dir string, args ...string) ([]string, error) {
 	return strings.FieldsFunc(out, func(r rune) bool { return r == 0 }), nil
 }
 
+// isEarlierLayoutLockFile reports whether the ignored path entry is a file named as a lock file an earlier layout left.
+// A directory of such a name is none.
+func isEarlierLayoutLockFile(entry string) bool {
+	return !strings.HasSuffix(entry, "/") && slices.Contains(earlierLayoutLockFiles, path.Base(entry))
+}
+
 // mayHoldWork reports whether the ignored path entry of the checkout at dir is none of lym's own.
-func mayHoldWork(dir, entry string, written []string) bool {
+// With mayHoldEarlierLocks a lock file an earlier layout left is lym's own.
+func mayHoldWork(dir, entry string, written []string, mayHoldEarlierLocks bool) bool {
 	trimmed := strings.TrimSuffix(entry, "/")
+	if mayHoldEarlierLocks && isEarlierLayoutLockFile(entry) {
+		return false
+	}
 	for _, segment := range strings.Split(trimmed, "/") {
 		if segment == lymdirs.DotLymDirName || segment == fabriclayout.RecordsLockDirName {
 			return false

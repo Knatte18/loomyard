@@ -382,6 +382,16 @@ func TestCloneOneURL_JoinsTheNamespacedHub(t *testing.T) {
 				writeFiles(t, h.PrimeWorktree(), "secret.env", ".vscode/launch.json")
 				return "ignored files in " + h.PrimeWorktree() + ": .vscode/launch.json, secret.env"
 			}},
+			{"EarlierLockFileNameInTheCodeStore", true, func(t *testing.T, h *hubforge.Hub) string {
+				ignoreInStore(t, h.PrimeWorktree(), "board.lock")
+				writeFiles(t, h.PrimeWorktree(), "board.lock")
+				return "ignored files in " + h.PrimeWorktree() + ": board.lock"
+			}},
+			{"IgnoredDirectoryOfAnEarlierLockFileName", true, func(t *testing.T, h *hubforge.Hub) string {
+				ignoreInStore(t, h.PrimeRecords(), "board.lock")
+				writeFiles(t, h.BoardDir(), "board.lock/kept.txt")
+				return "ignored files in " + h.BoardDir() + ": board.lock/"
+			}},
 			{"MoreIgnoredFilesThanARefusalNames", true, func(t *testing.T, h *hubforge.Hub) string {
 				ignoreInStore(t, h.PrimeWorktree(), "*.env")
 				writeFiles(t, h.PrimeWorktree(), "a.env", "b.env", "c.env", "d.env", "e.env", "f.env", "g.env")
@@ -487,6 +497,32 @@ func TestCloneOneURL_JoinsTheNamespacedHub(t *testing.T) {
 		})
 		if err != nil {
 			t.Errorf("CloneHub --reset error = %v; want the hub replaced, since no operator wrote its ignored files", err)
+		}
+	})
+
+	t.Run("ResetProceedsOverTheLockFilesAnEarlierLayoutLeft", func(t *testing.T) {
+		t.Parallel()
+
+		h := hubforge.NewOneRepoHub(t, hubforge.OneRepoOptions{})
+		// The tracked record makes git list the lock file beside it by itself.
+		writeFiles(t, h.PrimeRecords(), "_lym/runs/old/settle-record.json")
+		gitkit.Git(t, h.PrimeRecords(), "add", "_lym/runs/old/settle-record.json")
+		gitkit.Git(t, h.PrimeRecords(), "commit", "-m", "a run's record")
+		pushRecordsStore(t, h)
+		// An earlier layout kept these lock files beside the files they guarded and hid them with exclude lines.
+		ignoreInStore(t, h.PrimeRecords(), ".gitrepo-push.lock", "board.json.swaplock", "tasks.json.swaplock", "settle-record.json.lock")
+		writeFiles(t, h.BoardDir(), ".gitrepo-push.lock", "board.json.swaplock", "tasks.json.swaplock")
+		// The directory of the run "gone" holds no file but its lock, so git lists the directory alone.
+		writeFiles(t, h.PrimeRecords(), "settle-record.json.lock",
+			"_lym/runs/old/settle-record.json.lock", "_lym/runs/gone/settle-record.json.lock")
+
+		_, err := fabricengine.CloneHub(h.Container, fabriclayout.CloneOptions{
+			WeftURL:   filepath.ToSlash(h.CodeBare),
+			Reset:     true,
+			Shortname: hubforge.TestShortname,
+		})
+		if err != nil {
+			t.Errorf("CloneHub --reset error = %v; want the hub replaced, since no current code writes an earlier layout's lock files", err)
 		}
 	})
 

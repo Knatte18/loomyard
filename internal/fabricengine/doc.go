@@ -629,10 +629,13 @@
 // In each it is uncommitted or untracked changes and ignored files;
 // in the code store and the records store also a stash and commits origin lacks, the board's branches included;
 // in the Bolt checkout also the commits its HEAD alone holds.
-// Every ignored path counts, since git cannot tell output from work, except links and what lym writes itself.
+// Git cannot tell output from work.
+// So every ignored path counts except links, what lym writes itself and the lock files earlier layouts left.
 // lym writes its never-tracked directories, and in the prime the warp exclude list's files and the editor config.
-// In the Bolt checkout it skips the board's render manifest and the board lock files an earlier layout left at its root.
-// Other lock files left there are still named.
+// In the Bolt checkout it skips the board's render manifest.
+// Earlier layouts kept lock files beside the files they guarded.
+// In the records store and the Bolt checkout it skips those, and a directory holding no other file.
+// No current code writes those lock files.
 // A skipped file is skipped whole, so an operator's own keys in the editor or agent settings are removed unnamed.
 // So is whatever else the operator put on the warp exclude list.
 // A store that cannot be read refuses `--reset`, with or without `--discard-work`, naming the move aside.

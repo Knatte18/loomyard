@@ -434,7 +434,8 @@ In the one-argument form it comes from the binding recorded on the weft.
 The operator never sees the name being deleted.
 Then re-run `--reset` against a real hub that holds no work origin lacks:
 no pair, no unfinished teardown, and clean code store, records store and `_bolt` checkout,
-with no stash, no unpushed commit and no ignored file but links and the files and directories lym writes itself.
+with no stash, no unpushed commit and no ignored file but links, the files and directories lym writes itself,
+and, in the records store and the `_bolt` checkout, the lock files earlier layouts left.
 Confirm the idempotent re-clone still works.
 Then commit a file in `_bolt` without pushing it, and leave an ignored `secret.env` in the prime.
 Run `--reset` again.
