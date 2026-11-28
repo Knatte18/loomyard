@@ -3,9 +3,7 @@
 // config -> reed config -> reed engine -> claude engine -> shuttleengine.Runner exactly once per
 // invocation, into a receiver every verb (run.go, open.go, state.go) closes over, so no
 // subcommand re-resolves geometry, config, or engine construction itself.
-// The verbs are run, open, agent, manifest and the read-only state, which lists the session state of each running run.
-// agent, implemented in agent.go, starts the operator's agent session from the worktree's reed geometry.
-// The read-only manifest, which prints what each engine gives one seat's session, is implemented in manifest.go.
+// The verbs are run, open and the read-only state, which lists the session state of each running run.
 // The read-only await, the capped wait on one or more files, is implemented in await.go.
 // The read-only await-forks, the capped wait until the calling session's forks have finished, is implemented in awaitforks.go.
 // await-forks resolves its geometry from anywhere under the anchored directory or in the records sibling.
@@ -14,8 +12,6 @@
 // The hidden hook-batching, which a session's after-tool-call hook runs, is implemented in hookbatching.go; it skips the resolution too and reads only its hook input and the state file it is told.
 // The hidden hook-edit, which a session's after-edit hook runs, is implemented in hookedit.go.
 // It skips the resolution too and writes only the edit records file it is told.
-// The hidden hook-python-allowed, which a session's python guard hook runs, is implemented in hookpython.go.
-// It skips the shared resolution and resolves only the shuttle config, so its exit code alone answers the hook.
 
 package shuttlecli
 
@@ -29,7 +25,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
-	"github.com/Knatte18/loomyard/internal/shuttleparity"
 	"github.com/spf13/cobra"
 )
 
@@ -48,21 +43,15 @@ type shuttleCLI struct {
 	cfg        shuttleengine.Config
 	anchorPath string
 	engines    shuttleengine.EngineSet
-	// reedGeometry is the worktree's reed geometry, whose hub, worktree, entry and parent agent renders into its prompt.
-	reedGeometry reedengine.Geometry
 	// configDirs are the config layers both configs load from, set by PersistentPreRunE; open resolves its model registry through them.
 	configDirs configengine.Dirs
-	// manifestReport prepares the named seat on each engine for the current worktree and compares the manifests.
-	// PersistentPreRunE sets it.
-	manifestReport func(name string) (shuttleparity.ManifestReport, error)
 }
 
 // Command returns the cobra command tree for the shuttle module.
 // The parent command carries a PersistentPreRunE that resolves geometry and engines, skipping
 // resolution when the group command itself is invoked (no git repo required).
 // The await verb skips it too and needs no hub, reading only the keep-warm config inside a git worktree.
-// So do the hidden hook-batching and hook-edit verbs, and hook-python-allowed, which resolves its own config.
-// The manifest verb takes the strict cwd gate like run and open.
+// So do the hidden hook-batching and hook-edit verbs.
 func Command() *cobra.Command {
 	c := &shuttleCLI{}
 
@@ -81,7 +70,7 @@ provider specifics.`,
 			// listing or unknown-subcommand error path via GroupRunE), skip
 			// cwd/layout/config/engine resolution so that neither path
 			// requires a git repository to be present.
-			if cmd.Name() == "shuttle" || cmd.Name() == awaitVerb || cmd.Name() == shuttleengine.BatchingHookVerb || cmd.Name() == shuttleengine.EditHookVerb || cmd.Name() == shuttleengine.PythonAllowedHookVerb {
+			if cmd.Name() == "shuttle" || cmd.Name() == awaitVerb || cmd.Name() == shuttleengine.BatchingHookVerb || cmd.Name() == shuttleengine.EditHookVerb {
 				return nil
 			}
 
@@ -133,13 +122,13 @@ provider specifics.`,
 				return nil
 			}
 			reedEngine := reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub())
-			engines, err := shuttleengines.NewForWorktree(shuttleCfg, fabricengine.ConfigDirs(layout), hubgeom.EngineWorktree(layout))
+			engines, err := shuttleengines.New(shuttleCfg, fabricengine.ConfigDirs(layout))
 			if err != nil {
 				output.Err(out, err.Error())
 				clihelp.Abort(ctx, 1)
 				return nil
 			}
-			c.cfg, c.anchorPath, c.engines, c.reed, c.reedGeometry = shuttleCfg, reedGeom.AnchorPath, engines, reedEngine, reedGeom
+			c.cfg, c.anchorPath, c.engines, c.reed = shuttleCfg, reedGeom.AnchorPath, engines, reedEngine
 			c.runner = shuttleengine.NewRunner(reedEngine, c.engines, c.anchorPath, reedGeom.WorktreeRoot, c.cfg)
 			pauseGeom, err := hubgeom.PauseGeometry(layout)
 			if err != nil {
@@ -149,14 +138,11 @@ provider specifics.`,
 			}
 			c.runner.SetPause(pauseGeom)
 			c.configDirs = fabricengine.ConfigDirs(layout)
-			c.manifestReport = func(name string) (shuttleparity.ManifestReport, error) {
-				return manifestReportOf(layout, c.cfg, c.configDirs, name)
-			}
 			return nil
 		},
 	}
 
-	parent.AddCommand(c.runCmd(), c.openCmd(), c.agentCmd(), c.manifestCmd(), c.stateCmd(), c.awaitCmd(), c.awaitForksCmd(), hookBatchingCmd(), hookEditCmd(), hookPythonAllowedCmd())
+	parent.AddCommand(c.runCmd(), c.openCmd(), c.stateCmd(), c.awaitCmd(), c.awaitForksCmd(), hookBatchingCmd(), hookEditCmd())
 
 	return parent
 }

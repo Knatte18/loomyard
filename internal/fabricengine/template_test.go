@@ -10,24 +10,22 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 	"gopkg.in/yaml.v3"
 )
 
 // TestConfigTemplate covers the generated template, resolved against an empty environment:
-// it is valid YAML carrying the push timing keys;
-// it also carries fabric.branch_prefix, fabric.pathspec, fabric.warp_exclude and fabric.secret_paths;
-// fabric.branch_prefix and fabric.secret_paths resolve to an empty string;
-// fabric.pathspec resolves to an empty set, whatever the environment.
+// it is valid YAML carrying the branch_prefix, pathspec, warp_exclude and secret_paths keys;
+// branch_prefix and secret_paths resolve to an empty string;
+// pathspec resolves to an empty set, whatever the environment.
 // _lym and .lym are structural and injected in code, so the key never supplies them;
-// an empty default leaves fabric.pathspec free to name only the optional per-repo directories the operator adds.
+// an empty default leaves pathspec free to name only the optional per-repo directories the operator adds.
 // The resolved value is whitespace-split and compared name by name, so a splitting bug cannot pass silently;
-// fabric.warp_exclude resolves to exactly CLAUDE.local.md, AGENTS.override.md, .heddle and .claude/settings.local.json;
-// and an empty fabric.pathspec leaves the routing set at its structural set alone.
+// warp_exclude resolves to exactly CLAUDE.local.md, AGENTS.override.md, .heddle and .claude/settings.local.json;
+// and an empty pathspec leaves the routing set and the wired-name set at their structural sets alone.
 //
-//testtiming:keep the config template being valid YAML with its keys, resolving to an empty branch prefix, an empty fabric.pathspec, no added secret-file pattern and the default warp exclude paths, and degrading to the structural routing set alone; coverage of its blocks by other tests does not show an assertion of this
+//testtiming:keep the config template being valid YAML with its keys, resolving to an empty branch prefix, an empty pathspec, no added secret-file pattern and the default warp exclude paths, and degrading to the structural sets alone; coverage of its blocks by other tests does not show an assertion of this
 func TestConfigTemplate(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -38,7 +36,7 @@ func TestConfigTemplate(t *testing.T) {
 	if err := yaml.Unmarshal([]byte(got), &template); err != nil {
 		t.Fatalf("ConfigTemplate() is not valid YAML: %v", err)
 	}
-	for _, key := range []string{"branch_prefix", "pathspec", "warp_exclude", "secret_paths", "push_interval_s", "push_ceiling_s", "push_notice_after_min"} {
+	for _, key := range []string{"branch_prefix", "pathspec", "warp_exclude", "secret_paths"} {
 		if _, ok := template[key]; !ok {
 			t.Errorf("ConfigTemplate() missing expected key: %s", key)
 		}
@@ -91,8 +89,17 @@ func TestConfigTemplate(t *testing.T) {
 	}
 
 	gotPathspecNames := pathspecNames(cfg)
-	wantPathspecNames := fabriclayout.StructuralCommittedDirs()
+	wantPathspecNames := structuralCommittedDirs
 	if !reflect.DeepEqual(gotPathspecNames, wantPathspecNames) {
-		t.Errorf("pathspecNames(cfg) = %v; want %v (the committed structural set alone)", gotPathspecNames, wantPathspecNames)
+		t.Errorf("pathspecNames(cfg) = %v; want %v (structuralCommittedDirs alone)", gotPathspecNames, wantPathspecNames)
+	}
+
+	// junctionNames reads its config from disk, so the test applies its wired-name-set formula directly:
+	// dedupUnion(structuralCommittedDirs, structuralNeverCommittedDirs, filterHubReserved(cfg.Dirs())):
+	// over an empty pathspec it degrades to the two structural sets alone.
+	gotJunctionNames := dedupUnion(structuralCommittedDirs, structuralNeverCommittedDirs, filterHubReserved(cfg.Dirs()))
+	wantJunctionNames := dedupUnion(structuralCommittedDirs, structuralNeverCommittedDirs)
+	if !reflect.DeepEqual(gotJunctionNames, wantJunctionNames) {
+		t.Errorf("junctionNames formula over cfg.Dirs() = %v; want %v (both structural sets alone)", gotJunctionNames, wantJunctionNames)
 	}
 }

@@ -72,7 +72,7 @@ func TestReadMergeState(t *testing.T) {
 		{
 			name:       "HeadMismatchNamesBothHeads",
 			statuses:   []pullrequest.Status{with(open("clean"), func(s *pullrequest.Status) { s.HeadSHA = "other" })},
-			wantCauses: []string{"head other is not the expected head beam1"},
+			wantCauses: []string{"head other is not the beam's head beam1"},
 		},
 		{name: "DirtyNamesTheConflict", statuses: []pullrequest.Status{open("dirty")}, wantCauses: []string{"dirty"}},
 		{

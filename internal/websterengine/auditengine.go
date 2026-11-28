@@ -39,17 +39,17 @@ func roleAuditEngine(engines AuditEngines, role Role, choice shuttleengine.Model
 	const wayForward = "set %s in webster.yaml to an alias whose engine audits forks with lym config webster, then re-run the verb, or under the Webster row re-step the row"
 	engine, err := engines.Lookup(choice.Engine)
 	if err != nil {
-		return fmt.Errorf("webster: the %s role's engine %q is not held by this lym: %w; way forward: "+wayForward, role, name, err, keyName(string(role)))
+		return fmt.Errorf("webster: the %s role's engine %q is not held by this lym: %w; way forward: "+wayForward, role, name, err, role)
 	}
 	if _, ok := engine.(AuditEngine); !ok {
-		return fmt.Errorf("webster: the %s role's engine %q cannot audit forks, which webster needs; way forward: "+wayForward, role, name, keyName(string(role)))
+		return fmt.Errorf("webster: the %s role's engine %q cannot audit forks, which webster needs; way forward: "+wayForward, role, name, role)
 	}
 	return nil
 }
 
 // MasterInstructionFiles returns a function that lists the instruction files the master role's engine loads.
 // The lookup is lazy: it runs when the lister is called.
-// A verb that never calls it is never refused for the webster.master key.
+// A verb that never calls it is never refused for the master key.
 // An engine without the shuttleengine.InstructionFileLister capability lists none.
 // An engine engines does not hold is refused, wrapping the lookup's error.
 // The way forward is to set master in webster.yaml.
@@ -61,7 +61,7 @@ func MasterInstructionFiles(engines AuditEngines, master shuttleengine.ModelChoi
 			if name == "" {
 				name = engines.DefaultName()
 			}
-			return nil, fmt.Errorf("webster: the master role's engine %q is not held by this lym: %w; way forward: set %s in webster.yaml to an alias whose engine the set holds with lym config webster, then re-run the verb", name, err, keyName("master"))
+			return nil, fmt.Errorf("webster: the master role's engine %q is not held by this lym: %w; way forward: set master in webster.yaml to an alias whose engine the set holds with lym config webster, then re-run the verb", name, err)
 		}
 		lister, ok := engine.(shuttleengine.InstructionFileLister)
 		if !ok {
@@ -90,7 +90,7 @@ func sessionAuditEngine(engines AuditEngines, session, recorded string) (AuditEn
 		return auditEngine, nil
 	}
 	if recorded == "" {
-		return nil, fmt.Errorf("webster: session %s records no engine, and %s %q cannot audit forks, which webster needs; way forward: set %s in shuttle.yaml back to an engine with fork audit, then re-run the verb, or under the Webster row re-step the row", session, shuttleEngineKeyName(), engines.DefaultName(), shuttleEngineKeyName())
+		return nil, fmt.Errorf("webster: session %s records no engine, and shuttle.yaml's engine: %q cannot audit forks, which webster needs; way forward: set engine: in shuttle.yaml back to an engine with fork audit, then re-run the verb, or under the Webster row re-step the row", session, engines.DefaultName())
 	}
 	return nil, fmt.Errorf("webster: internal error: session %s ran under engine %q, which cannot audit forks", session, recorded)
 }

@@ -7,6 +7,7 @@ package creelcli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -22,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lymtemp"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/reedcli"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -63,11 +65,13 @@ func newSmokeHub(t *testing.T) *smokeHub {
 	}
 	smoke := &smokeHub{hub: hub, cwd: hub.PrimeWorktree(), reed: reedengine.New(reedConfig, reedGeometry, shuttleengines.EnvScrub())}
 
-	if _, err := smoke.reed.Up(); err != nil {
-		t.Fatalf("reed Up() = %v", err)
+	var up bytes.Buffer
+	if code := clihelp.ExecuteIn(reedcli.Command(), smoke.cwd, &up, []string{"up"}); code != 0 {
+		t.Fatalf("lym reed up = %d; output: %s", code, up.String())
 	}
 	t.Cleanup(func() {
-		smoke.reed.Down()
+		var down bytes.Buffer
+		clihelp.ExecuteIn(reedcli.Command(), smoke.cwd, &down, []string{"down"})
 	})
 
 	root, err := lymtemp.ProcessRoot()
@@ -81,15 +85,26 @@ func newSmokeHub(t *testing.T) *smokeHub {
 	return smoke
 }
 
-// addStrand adds a strand running command with no provider tag, as `lym reed add --cmd <command> --role <role>` does.
-// It returns the strand's name and guid.
+// addStrand runs `lym reed add --cmd <command> --role <role>` in the hub and returns the strand's name and guid.
 func (s *smokeHub) addStrand(t *testing.T, role, command string) (name, guid string) {
 	t.Helper()
-	return s.addProviderStrand(t, role, command, "")
+	var out bytes.Buffer
+	if code := clihelp.ExecuteIn(reedcli.Command(), s.cwd, &out, []string{"add", "--cmd", command, "--role", role}); code != 0 {
+		t.Fatalf("lym reed add --cmd %q = %d; output: %s", command, code, out.String())
+	}
+	var added struct {
+		Name string `json:"name"`
+		GUID string `json:"guid"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &added); err != nil || added.GUID == "" {
+		t.Fatalf("lym reed add printed %q; want the strand's name and guid: %v", out.String(), err)
+	}
+	return added.Name, added.GUID
 }
 
 // addProviderStrand adds a strand running command through the smoke hub's reed engine, with the provider tag set.
 // It returns the strand's name and guid.
+// `lym reed add` names no provider, so a strand that needs one is added here.
 func (s *smokeHub) addProviderStrand(t *testing.T, role, command, provider string) (name, guid string) {
 	t.Helper()
 	strand, err := s.reed.AddStrand(reedengine.AddSpec{Role: role, Cmd: command, Provider: provider, Display: render.Display{Anchor: render.AnchorOwnWindow}})

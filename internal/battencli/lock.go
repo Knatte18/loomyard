@@ -11,7 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/parentlock"
@@ -76,7 +76,7 @@ func lockStore(ctx context.Context) (*parentlock.Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &parentlock.Store{Dir: parentlock.Dir(fabriclayout.BoltDir(prime.HubPath))}, nil
+	return &parentlock.Store{Dir: parentlock.Dir(fabricengine.BoltDir(prime.HubPath))}, nil
 }
 
 // runLockList prints one entry per parent lock record.

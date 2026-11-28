@@ -27,7 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/driftengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -79,7 +79,7 @@ func newHubFixture(t *testing.T) hubFixture {
 	t.Helper()
 	hub := t.TempDir()
 	layout := &lymcwd.Location{HubPath: hub, WorktreeName: "wt", AnchorRel: "."}
-	fx := hubFixture{layout: layout, worktree: baseDirOf(layout), board: fabriclayout.BoardDir(hub)}
+	fx := hubFixture{layout: layout, worktree: baseDirOf(layout), board: fabricengine.BoardDir(hub)}
 	for _, dir := range []string{fx.worktree, fx.board} {
 		if err := os.MkdirAll(configengine.ConfigDir(dir), 0o755); err != nil {
 			t.Fatalf("failed to create config dir: %v", err)
@@ -112,7 +112,7 @@ func TestEditOne(t *testing.T) {
 		{
 			name:         "valid edit is synced and reported",
 			module:       "loom",
-			editor:       fakeEditor("discussion:\n  timeout_min: 1\n", nil),
+			editor:       fakeEditor("discussion_timeout_min: 1\n", nil),
 			wantCode:     0,
 			wantSynced:   true,
 			wantOut:      []string{"edited and synced"},
@@ -135,7 +135,7 @@ func TestEditOne(t *testing.T) {
 		{
 			name:       "failing sync is reported with its output",
 			module:     "loom",
-			editor:     fakeEditor("discussion:\n  timeout_min: 1\n", nil),
+			editor:     fakeEditor("discussion_timeout_min: 1\n", nil),
 			syncExit:   1,
 			syncOutput: "sync error: something went wrong",
 			wantCode:   1,
@@ -443,7 +443,7 @@ func assertJSONOkContains(t *testing.T, output string, wantFields map[string]any
 func TestPrint(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
-	const loomYAML = "discussion:\n  timeout_min: 60\n"
+	const loomYAML = "discussion_timeout_min: 60\n"
 	aggregateWants := []string{loomYAML[:len(loomYAML)-1]}
 	for _, name := range configreg.Names() {
 		aggregateWants = append(aggregateWants, "# "+name)
@@ -480,7 +480,7 @@ func TestPrint(t *testing.T) {
 			}
 
 			var out bytes.Buffer
-			code := dispatch(makeLayoutAt(baseDir), &out, tt.args, makeNeverCalledEditor(t), nil, nil, true, nil, nil, "", nil, true)
+			code := dispatch(makeLayoutAt(baseDir), &out, tt.args, makeNeverCalledEditor(t), nil, nil, true, nil, "", nil, true)
 
 			if code != tt.wantCode {
 				t.Errorf("dispatch(print=true, %v) = %d; want %d; output: %q", tt.args, code, tt.wantCode, out.String())
@@ -503,48 +503,44 @@ func TestPrint(t *testing.T) {
 	}
 }
 
-// TestDispatchSet pins the --set and --unset paths on a per-worktree module.
-// They never open the editor, and they sync once for a successful write but never for a refused one.
-// --set keeps an orphan key of a sparse worktree file and omits the "preserved" field.
+// TestDispatchSet pins the --set path on a per-worktree module.
+// It never opens the editor, and it syncs once for a successful write but never for a refused one.
+// It keeps an orphan key of a sparse worktree file and omits the "preserved" field.
 // It refuses an unknown key, a --print/--set pair, a missing module, and a value without '='.
-// --unset is refused beside --set or --print.
 func TestDispatchSet(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string
 		// seed is the loom.yaml content; empty seeds nothing.
-		seed       string
-		args       []string
-		printOnly  bool
-		setFlags   []string
-		unsetFlags []string
-		wantCode   int
-		wantSyncs  int
+		seed      string
+		args      []string
+		printOnly bool
+		setFlags  []string
+		wantCode  int
+		wantSyncs int
 		// wantErr is a substring of the error envelope; empty means a success envelope naming loom.
 		wantErr string
 		// wantPreserved is the "preserved" field; nil means the field must be absent.
 		wantPreserved []string
-		// wantGone is a key the loom.yaml must no longer hold after a successful write.
-		wantGone string
 	}{
 		{
 			name:      "set on a clean file syncs once and reports nothing preserved",
-			seed:      "discussion:\n  timeout_min: 480\n",
+			seed:      "discussion_timeout_min: 480\n",
 			args:      []string{"loom"},
-			setFlags:  []string{"discussion.timeout_min=60"},
+			setFlags:  []string{"discussion_timeout_min=60"},
 			wantSyncs: 1,
 		},
 		{
 			name:      "orphan key in a sparse worktree file is kept and left to reconcile to report",
-			seed:      "discussion:\n  timeout_min: 480\nlegacy_key: keepme\n",
+			seed:      "discussion_timeout_min: 480\nlegacy_key: keepme\n",
 			args:      []string{"loom"},
-			setFlags:  []string{"discussion.timeout_min=60"},
+			setFlags:  []string{"discussion_timeout_min=60"},
 			wantSyncs: 1,
 		},
 		{
 			name:     "unknown key never syncs",
-			seed:     "discussion:\n  timeout_min: 480\n",
+			seed:     "discussion_timeout_min: 480\n",
 			args:     []string{"loom"},
 			setFlags: []string{"bogus_key=x"},
 			wantCode: 1,
@@ -554,13 +550,13 @@ func TestDispatchSet(t *testing.T) {
 			name:      "print and set are mutually exclusive",
 			args:      []string{"loom"},
 			printOnly: true,
-			setFlags:  []string{"discussion.timeout_min=60"},
+			setFlags:  []string{"discussion_timeout_min=60"},
 			wantCode:  1,
 			wantErr:   "mutually exclusive",
 		},
 		{
 			name:     "set with no module is refused",
-			setFlags: []string{"discussion.timeout_min=60"},
+			setFlags: []string{"discussion_timeout_min=60"},
 			wantCode: 1,
 			wantErr:  "module required with --set",
 		},
@@ -570,66 +566,6 @@ func TestDispatchSet(t *testing.T) {
 			setFlags: []string{"no-equals-sign"},
 			wantCode: 1,
 			wantErr:  "expected key=value",
-		},
-		{
-			name:       "unset on a worktree file syncs once",
-			seed:       "discussion:\n  timeout_min: 480\n",
-			args:       []string{"loom"},
-			unsetFlags: []string{"discussion.timeout_min"},
-			wantSyncs:  1,
-			wantGone:   "timeout_min",
-		},
-		{
-			name:     "set of a moved key is refused naming the set of its new path",
-			seed:     "discussion:\n  timeout_min: 480\n",
-			args:     []string{"loom"},
-			setFlags: []string{"code_max_bounces=2"},
-			wantCode: 1,
-			wantErr:  "--set code.max_bounces=2",
-		},
-		{
-			name:       "unset removes a moved key from the file that holds it",
-			seed:       "discussion:\n  timeout_min: 480\ncode_max_bounces: 2\n",
-			args:       []string{"loom"},
-			unsetFlags: []string{"code_max_bounces"},
-			wantGone:   "code_",
-		},
-		{
-			name:       "one unset removes every old key of a file holding two",
-			seed:       "discussion:\n  timeout_min: 480\ncode_max_bounces: 2\ncode_judge: opus\n",
-			args:       []string{"loom"},
-			unsetFlags: []string{"code_max_bounces", "code_judge"},
-			wantGone:   "code_",
-		},
-		{
-			name:       "unset with no module is refused",
-			unsetFlags: []string{"discussion.timeout_min"},
-			wantCode:   1,
-			wantErr:    "module required with --unset",
-		},
-		{
-			name:       "unset of a key the worktree file does not hold is refused",
-			seed:       "# no units\n",
-			args:       []string{"loom"},
-			unsetFlags: []string{"discussion.timeout_min"},
-			wantCode:   1,
-			wantErr:    "no key discussion.timeout_min",
-		},
-		{
-			name:       "set and unset are mutually exclusive",
-			args:       []string{"loom"},
-			setFlags:   []string{"discussion.timeout_min=60"},
-			unsetFlags: []string{"discussion.timeout_min"},
-			wantCode:   1,
-			wantErr:    "--set and --unset are mutually exclusive",
-		},
-		{
-			name:       "print and unset are mutually exclusive",
-			args:       []string{"loom"},
-			printOnly:  true,
-			unsetFlags: []string{"discussion.timeout_min"},
-			wantCode:   1,
-			wantErr:    "--print and --unset are mutually exclusive",
 		},
 	}
 
@@ -644,7 +580,7 @@ func TestDispatchSet(t *testing.T) {
 			// A board dir marks the worktree as a hub, and a hub keeps its fabric sync.
 			layout := makeLayoutAt(baseDir)
 			if tt.wantSyncs > 0 {
-				if err := os.MkdirAll(fabriclayout.BoardDir(layout.HubPath), 0o755); err != nil {
+				if err := os.MkdirAll(fabricengine.BoardDir(layout.HubPath), 0o755); err != nil {
 					t.Fatalf("create the hub's board dir: %v", err)
 				}
 			}
@@ -655,7 +591,7 @@ func TestDispatchSet(t *testing.T) {
 				syncCalls++
 				return 0
 			}
-			code := dispatch(layout, &out, tt.args, countingEditor(&editorCalls), sync, nil, tt.printOnly, tt.setFlags, tt.unsetFlags, "", nil, true)
+			code := dispatch(layout, &out, tt.args, countingEditor(&editorCalls), sync, nil, tt.printOnly, tt.setFlags, "", nil, true)
 
 			if code != tt.wantCode {
 				t.Fatalf("dispatch(--set) = %d; want %d; output: %q", code, tt.wantCode, out.String())
@@ -671,15 +607,6 @@ func TestDispatchSet(t *testing.T) {
 				return
 			}
 			assertJSONOkContains(t, out.String(), map[string]any{"module": "loom"})
-			if tt.wantGone != "" {
-				data, err := os.ReadFile(configengine.ConfigFile(baseDir, "loom"))
-				if err != nil && !os.IsNotExist(err) {
-					t.Fatalf("read loom.yaml: %v", err)
-				}
-				if strings.Contains(string(data), tt.wantGone) {
-					t.Errorf("loom.yaml = %q; want %q removed", data, tt.wantGone)
-				}
-			}
 
 			var env map[string]any
 			if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
@@ -726,7 +653,7 @@ func TestDispatchHubWideBoard(t *testing.T) {
 	const invalid = "readme: [a]\ndesign_prefix: d-\ntypes:\n  bug: a defect\nlabels:\n  old: kept\n"
 	const unresolved = "readme: ${env:LYM_CONFIGCLI_TEST_UNSET}\ndesign_prefix: d-\ntypes:\n  bug: a defect\nlabels:\n  old: kept\n"
 	const listShaped = "types:\n  bug: a defect\nlabels:\n  - old\n"
-	loomRival := configengine.SparseBaseHeader + "review:\n  max_bounces: 3\n"
+	loomRival := configengine.SparseBaseHeader + "review_max_bounces: 3\n"
 
 	darnSeeded := darnWithTreeScope("\n  tools: ./tools/...")
 
@@ -739,12 +666,11 @@ func TestDispatchHubWideBoard(t *testing.T) {
 		// absent leaves the board dir file unwritten before the dispatch.
 		absent bool
 		// layer is the --layer value the row dispatches with.
-		layer      string
-		printOnly  bool
-		setFlags   []string
-		unsetFlags []string
-		editor     func(fx hubFixture) configengine.EditorFunc
-		commitErr  error
+		layer     string
+		printOnly bool
+		setFlags  []string
+		editor    func(fx hubFixture) configengine.EditorFunc
+		commitErr error
 		// guard is the hub-wide write guard; nil allows the write.
 		guard       func() (string, error)
 		wantCode    int
@@ -802,7 +728,7 @@ func TestDispatchHubWideBoard(t *testing.T) {
 				if !strings.Contains(hubFile, "x: desc") || !strings.Contains(hubFile, "old: kept") {
 					t.Errorf("hub file lacks the new and the existing label; got %q", hubFile)
 				}
-				assertJSONOkContains(t, out, map[string]any{"module": "board", "message": "edited and committed " + configengine.ConfigFile(fx.board, "board") + " in " + fabriclayout.BoltDirName})
+				assertJSONOkContains(t, out, map[string]any{"module": "board", "message": "edited and committed " + configengine.ConfigFile(fx.board, "board") + " in " + fabricengine.BoltDirName})
 			},
 		},
 		{
@@ -951,12 +877,12 @@ func TestDispatchHubWideBoard(t *testing.T) {
 					if err != nil {
 						return err
 					}
-					return os.WriteFile(path, append(shown, "review:\n  max_bounces: 2\n"...), 0o644)
+					return os.WriteFile(path, append(shown, "review_max_bounces: 2\n"...), 0o644)
 				}
 			},
 			wantCommits: 1,
 			check: func(t *testing.T, fx hubFixture, hubFile, out string) {
-				if want := configengine.SparseBaseHeader + "review:\n  max_bounces: 2\n"; hubFile != want {
+				if want := configengine.SparseBaseHeader + "review_max_bounces: 2\n"; hubFile != want {
 					t.Errorf("hub file = %q; want %q", hubFile, want)
 				}
 			},
@@ -975,7 +901,7 @@ func TestDispatchHubWideBoard(t *testing.T) {
 					t.Errorf("hub file = %q; want the header alone %q", hubFile, configengine.SparseBaseHeader)
 				}
 				var printed bytes.Buffer
-				code := dispatch(fx.layout, &printed, []string{"loom"}, makeNeverCalledEditor(t), (&fakeSyncTracker{}).syncFunc(), (&fakeHubCommit{}).commitFunc(), true, nil, nil, "default", nil, true)
+				code := dispatch(fx.layout, &printed, []string{"loom"}, makeNeverCalledEditor(t), (&fakeSyncTracker{}).syncFunc(), (&fakeHubCommit{}).commitFunc(), true, nil, "default", nil, true)
 				if code != 0 || printed.String() != configengine.SparseBaseHeader {
 					t.Errorf("print --layer default = %d, %q; want 0, %q", code, printed.String(), configengine.SparseBaseHeader)
 				}
@@ -1005,7 +931,7 @@ func TestDispatchHubWideBoard(t *testing.T) {
 					if err := os.WriteFile(configengine.ConfigFile(fx.board, "loom"), []byte(loomRival), 0o644); err != nil {
 						return err
 					}
-					return os.WriteFile(path, []byte(configengine.SparseBaseHeader+"review:\n  max_bounces: 2\n"), 0o644)
+					return os.WriteFile(path, []byte(configengine.SparseBaseHeader+"review_max_bounces: 2\n"), 0o644)
 				}
 			},
 			wantCode:    1,
@@ -1028,7 +954,7 @@ func TestDispatchHubWideBoard(t *testing.T) {
 				if hubFile != driftengine.ConfigTemplate() {
 					t.Errorf("hub file changed on a refused set; got %q", hubFile)
 				}
-				assertJSONErrContains(t, out, `config key "drift.capture.dir"`)
+				assertJSONErrContains(t, out, `drift config key "capture.dir"`)
 				assertJSONErrContains(t, out, filepath.Join(fx.layout.WorktreePath(), "dotnet"))
 			},
 		},
@@ -1055,67 +981,8 @@ func TestDispatchHubWideBoard(t *testing.T) {
 				if hubFile != gateslot.ConfigTemplate() {
 					t.Errorf("hub file changed on a refused set; got %q", hubFile)
 				}
-				assertJSONErrContains(t, out, `key "gate.build.dir"`)
+				assertJSONErrContains(t, out, `key "build.dir"`)
 				assertJSONErrContains(t, out, filepath.Join(fx.layout.WorktreePath(), "gone"))
-			},
-		},
-		{
-			name:        "unset of a scope-less gate key the load refuses writes a file that loads",
-			module:      "gate",
-			seed:        "gates:\n  harden-live-copies:\n    tiers: [1]\n  darn-write: {tiers: [0], scope: diff}\n",
-			unsetFlags:  []string{"gates.harden-live-copies"},
-			wantCommits: 1,
-			check: func(t *testing.T, fx hubFixture, hubFile, out string) {
-				if strings.Contains(hubFile, "harden-live-copies") || !strings.Contains(hubFile, "darn-write: {tiers: [0], scope: diff}") {
-					t.Errorf("hub file = %q; want darn-write alone", hubFile)
-				}
-				if _, err := gateslot.LoadConfig(configengine.Dirs{Board: fx.board}); err != nil {
-					t.Errorf("LoadConfig() after the unset error = %v; want nil", err)
-				}
-			},
-		},
-		{
-			name:        "unset of the last entry of a map drops the emptied map",
-			unsetFlags:  []string{"labels.old"},
-			wantCommits: 1,
-			check: func(t *testing.T, fx hubFixture, hubFile, out string) {
-				if strings.Contains(hubFile, "labels") || !strings.Contains(hubFile, "readme: Home.md") {
-					t.Errorf("hub file = %q; want readme kept and labels gone", hubFile)
-				}
-			},
-		},
-		{
-			name:        "unset of a key the file does not hold is refused and leaves the file",
-			unsetFlags:  []string{"labels.absent"},
-			wantCode:    1,
-			wantCommits: 1,
-			check: func(t *testing.T, fx hubFixture, hubFile, out string) {
-				if hubFile != seeded {
-					t.Errorf("hub file changed on a refused unset; got %q", hubFile)
-				}
-				assertJSONErrContains(t, out, "no key labels.absent")
-			},
-		},
-		{
-			name:        "unset of a present key beside an absent one removes nothing",
-			unsetFlags:  []string{"labels.old", "labels.absent"},
-			wantCode:    1,
-			wantCommits: 1,
-			check: func(t *testing.T, fx hubFixture, hubFile, out string) {
-				if hubFile != seeded {
-					t.Errorf("hub file changed on a refused unset; got %q", hubFile)
-				}
-				assertJSONErrContains(t, out, "no key labels.absent")
-			},
-		},
-		{
-			name:        "unset of a key named twice removes it once",
-			unsetFlags:  []string{"labels.old", "labels.old"},
-			wantCommits: 1,
-			check: func(t *testing.T, fx hubFixture, hubFile, out string) {
-				if strings.Contains(hubFile, "labels") || !strings.Contains(hubFile, "readme: Home.md") {
-					t.Errorf("hub file = %q; want readme kept and labels gone", hubFile)
-				}
 			},
 		},
 		{
@@ -1129,7 +996,7 @@ func TestDispatchHubWideBoard(t *testing.T) {
 			wantCommits: 1,
 			check: func(t *testing.T, fx hubFixture, hubFile, out string) {
 				assertSaveRefused(t, fx, "drift", hubFile, out, driftengine.ConfigTemplate(), driftWithCaptureDir("dotnet"),
-					[]string{`config key "drift.capture.dir"`, filepath.Join(fx.layout.WorktreePath(), "dotnet")}, nil)
+					[]string{`drift config key "capture.dir"`, filepath.Join(fx.layout.WorktreePath(), "dotnet")}, nil)
 			},
 		},
 		{
@@ -1225,7 +1092,7 @@ func TestDispatchHubWideBoard(t *testing.T) {
 			sync := &fakeSyncTracker{}
 			var out bytes.Buffer
 
-			code := dispatch(fx.layout, &out, []string{module}, edit, sync.syncFunc(), commit.commitFunc(), row.printOnly, row.setFlags, row.unsetFlags, row.layer, row.guard, true)
+			code := dispatch(fx.layout, &out, []string{module}, edit, sync.syncFunc(), commit.commitFunc(), row.printOnly, row.setFlags, row.layer, row.guard, true)
 
 			if code != row.wantCode {
 				t.Errorf("dispatch = %d; want %d; output: %q", code, row.wantCode, out.String())
@@ -1248,7 +1115,7 @@ func TestDispatchHubWideBoard(t *testing.T) {
 	}
 }
 
-// darnWithTreeScope returns darn's template with its darn.tree_scope replaced by the given text after the key.
+// darnWithTreeScope returns darn's template with its tree_scope replaced by the given text after the key.
 func darnWithTreeScope(trees string) string {
 	return strings.Replace(darnengine.ConfigTemplate(), "tree_scope: {}", "tree_scope:"+trees, 1)
 }
@@ -1305,13 +1172,11 @@ func assertDarnSaveWritten(t *testing.T, fx hubFixture, hubFile, saved string) {
 // A JSON object adds a profile or replaces one whole, leaving the others,
 // and an absent hub file starts from the template's profiles.
 // A value that is not an object, or a profile no module takes, is refused with the file left as it was.
-//
-//testtiming:keep pins the profiles module's written bytes and its profile validation refusals, which TestDispatchLayers does not assert
 func TestDispatchSetProfiles(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	const seeded = "# operator notes\nlight:\n  tapestry:\n    tapestry: {plan: {max_bounces: 1}}\n"
+	const seeded = "# operator notes\nlight:\n  loom:\n    loom: {plan_max_bounces: 1}\n"
 	rows := []struct {
 		name string
 		// absent leaves the hub file unwritten instead of seeded.
@@ -1325,7 +1190,7 @@ func TestDispatchSetProfiles(t *testing.T) {
 	}{
 		{
 			name:     "a local write is refused because no profile key is open to the local layer",
-			setFlag:  `broad={"loom":{"loom":{"code":{"max_bounces":2}}}}`,
+			setFlag:  `broad={"loom":{"loom":{"code_max_bounces":2}}}`,
 			layer:    "local",
 			wantCode: 1,
 			wantFile: seeded,
@@ -1333,19 +1198,19 @@ func TestDispatchSetProfiles(t *testing.T) {
 		},
 		{
 			name:     "a new profile is added beside the existing one",
-			setFlag:  `broad={"loom":{"loom":{"code":{"max_bounces":2}}}}`,
-			wantFile: "# operator notes\nlight:\n    tapestry:\n        tapestry: {plan: {max_bounces: 1}}\nbroad:\n    loom: {loom: {code: {max_bounces: 2}}}\n",
+			setFlag:  `broad={"loom":{"loom":{"code_max_bounces":2}}}`,
+			wantFile: "# operator notes\nlight:\n    loom:\n        loom: {plan_max_bounces: 1}\nbroad:\n    loom: {loom: {code_max_bounces: 2}}\n",
 		},
 		{
 			name:     "an existing profile is replaced whole",
-			setFlag:  `light={"darn":{"loom":{"code":{"max_bounces":1}}}}`,
-			wantFile: "# operator notes\nlight:\n    darn: {loom: {code: {max_bounces: 1}}}\n",
+			setFlag:  `light={"darn":{"loom":{"code_max_bounces":1}}}`,
+			wantFile: "# operator notes\nlight:\n    darn: {loom: {code_max_bounces: 1}}\n",
 		},
 		{
 			name:        "an absent hub file starts from the template's profiles",
 			absent:      true,
-			setFlag:     `broad={"loom":{"loom":{"code":{"max_bounces":2}}}}`,
-			wantContain: []string{"defaults:", "light:", "solid:", "docs:", "broad:\n    loom: {loom: {code: {max_bounces: 2}}}"},
+			setFlag:     `broad={"loom":{"loom":{"code_max_bounces":2}}}`,
+			wantContain: []string{"defaults:", "light:", "solid:", "docs:", "broad:\n    loom: {loom: {code_max_bounces: 2}}"},
 		},
 		{
 			name:     "a default naming an unknown profile is refused",
@@ -1370,12 +1235,12 @@ func TestDispatchSetProfiles(t *testing.T) {
 		},
 		{
 			name:     "a dotted key changes one value and keeps the rest of the profile",
-			setFlag:  `light.tapestry.tapestry.plan.max_bounces=2`,
-			wantFile: "# operator notes\nlight:\n    tapestry:\n        tapestry: {plan: {max_bounces: 2}}\n",
+			setFlag:  `light.loom.loom.plan_max_bounces=2`,
+			wantFile: "# operator notes\nlight:\n    loom:\n        loom: {plan_max_bounces: 2}\n",
 		},
 		{
 			name:     "a dotted key leaving the profile in a wrong shape is refused and the file restored",
-			setFlag:  `light.tapestry.loom.no_such_key=1`,
+			setFlag:  `light.loom.loom.no_such_key=1`,
 			wantCode: 1,
 			wantFile: seeded,
 			wantErr:  `run profile "light"`,
@@ -1393,7 +1258,7 @@ func TestDispatchSetProfiles(t *testing.T) {
 			sync := &fakeSyncTracker{}
 			var out bytes.Buffer
 
-			code := dispatch(fx.layout, &out, []string{"profiles"}, makeNeverCalledEditor(t), sync.syncFunc(), commit.commitFunc(), false, []string{row.setFlag}, nil, row.layer, nil, true)
+			code := dispatch(fx.layout, &out, []string{"profiles"}, makeNeverCalledEditor(t), sync.syncFunc(), commit.commitFunc(), false, []string{row.setFlag}, row.layer, nil, true)
 
 			if code != row.wantCode {
 				t.Errorf("dispatch = %d; want %d; output: %q", code, row.wantCode, out.String())
@@ -1440,7 +1305,7 @@ func TestDispatchLayers(t *testing.T) {
 		t.Fatalf("agentname.Format: %v", err)
 	}
 	const refused = "refused: write from the prime"
-	const loadWayForward = "way forward: --set the keys it leaves invalid to values the loader takes, or leave the key as it is"
+	const loadWayForward = "way forward: --set the key to a value it takes"
 	refusingGuard := func(hubFixture) func() (string, error) {
 		return func() (string, error) { return refused, nil }
 	}
@@ -1486,7 +1351,7 @@ func TestDispatchLayers(t *testing.T) {
 	}{
 		{
 			name: "an unknown layer is refused naming the four and writes nothing", module: "loom", layer: "bogus",
-			setFlags: []string{"review.max_bounces=2"}, wantCode: 1, wantErr: "default, worktree, machine or local",
+			setFlags: []string{"review_max_bounces=2"}, wantCode: 1, wantErr: "default, worktree, machine or local",
 			check: func(t *testing.T, fx hubFixture, out string) {
 				for _, path := range []string{configengine.ConfigFile(fx.worktree, "loom"), configengine.ConfigFile(fx.board, "loom"), configengine.LocalFile(fx.worktree, "loom")} {
 					if _, err := os.Stat(path); !os.IsNotExist(err) {
@@ -1497,17 +1362,17 @@ func TestDispatchLayers(t *testing.T) {
 		},
 		{
 			name: "default layer writes and commits the repo default from the prime", module: "loom", layer: "default",
-			setFlags: []string{"review.max_bounces=2"}, seedBoard: loomTemplate(), wantCommits: 1,
+			setFlags: []string{"review_max_bounces=2"}, seedBoard: loomTemplate(), wantCommits: 1,
 			check: func(t *testing.T, fx hubFixture, out string) {
 				data, err := os.ReadFile(configengine.ConfigFile(fx.board, "loom"))
-				if err != nil || !strings.Contains(string(data), "max_bounces: 2") {
-					t.Errorf("board loom.yaml = %q, %v; want review.max_bounces: 2", data, err)
+				if err != nil || !strings.Contains(string(data), "review_max_bounces: 2") {
+					t.Errorf("board loom.yaml = %q, %v; want review_max_bounces: 2", data, err)
 				}
 			},
 		},
 		{
 			name: "default layer is refused from a pair", module: "loom", layer: "default",
-			setFlags: []string{"review.max_bounces=2"}, seedBoard: loomTemplate(), wantCode: 1, wantErr: refused,
+			setFlags: []string{"review_max_bounces=2"}, seedBoard: loomTemplate(), wantCode: 1, wantErr: refused,
 			guard: func(hubFixture) func() (string, error) { return func() (string, error) { return refused, nil } },
 			check: func(t *testing.T, fx hubFixture, out string) {
 				data, _ := os.ReadFile(configengine.ConfigFile(fx.board, "loom"))
@@ -1518,7 +1383,7 @@ func TestDispatchLayers(t *testing.T) {
 		},
 		{
 			name: "default layer is refused from a slug-named session", module: "loom", layer: "default",
-			setFlags: []string{"review.max_bounces=2"}, seedBoard: loomTemplate(), wantCode: 1, wantErr: taskSession,
+			setFlags: []string{"review_max_bounces=2"}, seedBoard: loomTemplate(), wantCode: 1, wantErr: taskSession,
 			guard: func(fx hubFixture) func() (string, error) {
 				return func() (string, error) { return hubWriteRefusal(fx.layout, taskSession) }
 			},
@@ -1551,17 +1416,17 @@ func TestDispatchLayers(t *testing.T) {
 		},
 		{
 			name: "set into an absent worktree file writes only that key", module: "loom",
-			setFlags: []string{"review.max_bounces=2"}, wantSyncs: 1,
+			setFlags: []string{"review_max_bounces=2"}, wantSyncs: 1,
 			check: func(t *testing.T, fx hubFixture, out string) {
 				data, err := os.ReadFile(configengine.ConfigFile(fx.worktree, "loom"))
-				if err != nil || string(data) != "review:\n    max_bounces: 2\n" {
+				if err != nil || string(data) != "review_max_bounces: 2\n" {
 					t.Errorf("worktree loom.yaml = %q, %v; want only the key set", data, err)
 				}
 			},
 		},
 		{
 			name: "local layer refuses a value the loader rejects naming the key and leaves no file", module: "tapestry", layer: "local",
-			setFlags: []string{`plan.model=["opus[medium]", "sonnet[high]"]`}, seedBoard: tapestryTemplate, seedLoomBoard: loomBoard, wantCode: 1, wantErr: `config key "tapestry.plan.model"`,
+			setFlags: []string{`plan=["opus[medium]", "sonnet[high]"]`}, seedBoard: tapestryTemplate, seedLoomBoard: loomBoard, wantCode: 1, wantErr: `tapestry config key "plan"`,
 			check: func(t *testing.T, fx hubFixture, out string) {
 				if _, err := os.Stat(configengine.LocalFile(fx.worktree, "tapestry")); !os.IsNotExist(err) {
 					t.Errorf("local tapestry.yaml exists after a refused value; stat err = %v", err)
@@ -1570,37 +1435,37 @@ func TestDispatchLayers(t *testing.T) {
 		},
 		{
 			name: "local layer refusing a value puts the present file back", module: "tapestry", layer: "local",
-			setFlags: []string{"plan.model=opus[medium] x"}, seedBoard: tapestryTemplate, seedLoomBoard: loomBoard, seedLocal: "plan:\n  timeout_min: 5\n", wantCode: 1, wantErr: `config key "tapestry.plan.model"`,
+			setFlags: []string{"plan=opus[medium] x"}, seedBoard: tapestryTemplate, seedLoomBoard: loomBoard, seedLocal: "plan_timeout_min: 5\n", wantCode: 1, wantErr: `tapestry config key "plan"`,
 			check: func(t *testing.T, fx hubFixture, out string) {
 				data, err := os.ReadFile(configengine.LocalFile(fx.worktree, "tapestry"))
-				if err != nil || string(data) != "plan:\n  timeout_min: 5\n" {
+				if err != nil || string(data) != "plan_timeout_min: 5\n" {
 					t.Errorf("local tapestry.yaml = %q, %v; want the file as seeded", data, err)
 				}
 			},
 		},
 		{
 			name: "local layer still writes a per-round list the loader takes", module: "tapestry", layer: "local",
-			setFlags: []string{`plan.reviewer_model=["opus[medium]", "sonnet[high]"]`}, seedBoard: tapestryTemplate, seedLoomBoard: loomBoard,
+			setFlags: []string{`plan_reviewer_model=["opus[medium]", "sonnet[high]"]`}, seedBoard: tapestryTemplate, seedLoomBoard: loomBoard,
 			check: func(t *testing.T, fx hubFixture, out string) {
 				data, err := os.ReadFile(configengine.LocalFile(fx.worktree, "tapestry"))
-				if err != nil || !strings.Contains(string(data), "reviewer_model: [\"opus[medium]\", \"sonnet[high]\"]\n") {
-					t.Errorf("local tapestry.yaml = %q, %v; want plan.reviewer_model as a list", data, err)
+				if err != nil || string(data) != "plan_reviewer_model: [\"opus[medium]\", \"sonnet[high]\"]\n" {
+					t.Errorf("local tapestry.yaml = %q, %v; want plan_reviewer_model as a list", data, err)
 				}
 			},
 		},
 		{
 			name: "a write onto a stack already failing to load the same way still goes through", module: "tapestry", layer: "local",
-			setFlags: []string{"plan.timeout_min=2"}, seedBoard: tapestryTemplate, seedLoomBoard: loomBoard, seedLocal: "plan:\n  model: opus[medium] x\n",
+			setFlags: []string{"plan_timeout_min=2"}, seedBoard: tapestryTemplate, seedLoomBoard: loomBoard, seedLocal: "plan: opus[medium] x\n",
 			check: func(t *testing.T, fx hubFixture, out string) {
 				data, err := os.ReadFile(configengine.LocalFile(fx.worktree, "tapestry"))
-				if err != nil || !strings.Contains(string(data), "timeout_min: 2") {
-					t.Errorf("local tapestry.yaml = %q, %v; want plan.timeout_min: 2", data, err)
+				if err != nil || !strings.Contains(string(data), "plan_timeout_min: 2") {
+					t.Errorf("local tapestry.yaml = %q, %v; want plan_timeout_min: 2", data, err)
 				}
 			},
 		},
 		{
 			name: "worktree layer refuses a value the loader rejects and never syncs", module: "tapestry",
-			setFlags: []string{`plan.model=["opus[medium]", "sonnet[high]"]`}, seedBoard: tapestryTemplate, seedLoomBoard: loomBoard, wantCode: 1, wantErr: `config key "tapestry.plan.model"`,
+			setFlags: []string{`plan=["opus[medium]", "sonnet[high]"]`}, seedBoard: tapestryTemplate, seedLoomBoard: loomBoard, wantCode: 1, wantErr: `tapestry config key "plan"`,
 			check: func(t *testing.T, fx hubFixture, out string) {
 				if _, err := os.Stat(configengine.ConfigFile(fx.worktree, "tapestry")); !os.IsNotExist(err) {
 					t.Errorf("worktree tapestry.yaml exists after a refused value; stat err = %v", err)
@@ -1609,7 +1474,7 @@ func TestDispatchLayers(t *testing.T) {
 		},
 		{
 			name: "default layer refuses a value the loader rejects and leaves the board file as it was", module: "tapestry", layer: "default",
-			setFlags: []string{`plan.model=["opus[medium]", "sonnet[high]"]`}, seedBoard: tapestryTemplate, seedLoomBoard: loomBoard, wantCode: 1, wantErr: `config key "tapestry.plan.model"`, wantCommits: 1,
+			setFlags: []string{`plan=["opus[medium]", "sonnet[high]"]`}, seedBoard: tapestryTemplate, seedLoomBoard: loomBoard, wantCode: 1, wantErr: `tapestry config key "plan"`, wantCommits: 1,
 			check: func(t *testing.T, fx hubFixture, out string) {
 				data, _ := os.ReadFile(configengine.ConfigFile(fx.board, "tapestry"))
 				if string(data) != tapestryTemplate {
@@ -1619,9 +1484,9 @@ func TestDispatchLayers(t *testing.T) {
 		},
 		{
 			name: "print reads the selected layer's file", module: "loom", layer: "local", printOnly: true,
-			seedLocal: "review:\n  max_bounces: 5\n",
+			seedLocal: "review_max_bounces: 5\n",
 			check: func(t *testing.T, fx hubFixture, out string) {
-				if out != "review:\n  max_bounces: 5\n" {
+				if out != "review_max_bounces: 5\n" {
 					t.Errorf("print output = %q; want the local file", out)
 				}
 			},
@@ -1630,7 +1495,7 @@ func TestDispatchLayers(t *testing.T) {
 			// The refusal is before layer dispatch, so one row stands for every layer.
 			// The failing guard pins that it also precedes the hub-write guard.
 			name: "no terminal refuses the editor and writes nothing", module: "loom", layer: "default", noTerminal: true,
-			seedBoard: loomTemplate(), seedLocal: "review:\n  max_bounces: 5\n", wantCode: 1, wantErr: "--print",
+			seedBoard: loomTemplate(), seedLocal: "review_max_bounces: 5\n", wantCode: 1, wantErr: "--print",
 			guard: func(hubFixture) func() (string, error) {
 				return func() (string, error) {
 					t.Error("the hub-write guard ran before the no-terminal refusal")
@@ -1642,7 +1507,7 @@ func TestDispatchLayers(t *testing.T) {
 				if data, _ := os.ReadFile(configengine.ConfigFile(fx.board, "loom")); string(data) != loomTemplate() {
 					t.Errorf("board loom.yaml = %q; want it unchanged", data)
 				}
-				if data, _ := os.ReadFile(configengine.LocalFile(fx.worktree, "loom")); string(data) != "review:\n  max_bounces: 5\n" {
+				if data, _ := os.ReadFile(configengine.LocalFile(fx.worktree, "loom")); string(data) != "review_max_bounces: 5\n" {
 					t.Errorf("local loom.yaml = %q; want it unchanged", data)
 				}
 				if _, err := os.Stat(configengine.ConfigFile(fx.worktree, "loom")); !os.IsNotExist(err) {
@@ -1674,7 +1539,7 @@ func TestDispatchLayers(t *testing.T) {
 			setFlags: []string{"tree_scope.tools/=x"}, seedBoard: darnWithTreeScope("\n  tools: ./tools/..."), wantCode: 1, wantCommits: 1,
 			wantErr: `"tools" and "tools/"`,
 			check: func(t *testing.T, fx hubFixture, out string) {
-				assertJSONErrContains(t, out, loadWayForward)
+				assertJSONErrContains(t, out, "way forward: --set the key to a value it takes")
 				if data, _ := os.ReadFile(configengine.ConfigFile(fx.board, "darn")); string(data) != darnWithTreeScope("\n  tools: ./tools/...") {
 					t.Errorf("board darn.yaml = %q; want it unchanged", data)
 				}
@@ -1813,7 +1678,7 @@ func TestDispatchLayers(t *testing.T) {
 		},
 		{
 			name: "machine layer of a per-worktree module with no machine key is refused naming the local layer", module: "loom", layer: "machine",
-			setFlags: []string{"review.max_bounces=2"}, seedBoard: loomTemplate(), wantCode: 1, wantErr: "--layer local",
+			setFlags: []string{"review_max_bounces=2"}, seedBoard: loomTemplate(), wantCode: 1, wantErr: "--layer local",
 			check: func(t *testing.T, fx hubFixture, out string) {
 				assertFile(t, configengine.MachineFile(fx.board, "loom"), "", true)
 			},
@@ -1941,10 +1806,10 @@ func TestDispatchLayers(t *testing.T) {
 		},
 		{
 			name: "no terminal still sets", module: "loom", noTerminal: true,
-			setFlags: []string{"discussion.timeout_min=60"}, wantSyncs: 1,
+			setFlags: []string{"discussion_timeout_min=60"}, wantSyncs: 1,
 			check: func(t *testing.T, fx hubFixture, out string) {
 				data, err := os.ReadFile(configengine.ConfigFile(fx.worktree, "loom"))
-				if err != nil || string(data) != "discussion:\n    timeout_min: 60\n" {
+				if err != nil || string(data) != "discussion_timeout_min: 60\n" {
 					t.Errorf("worktree loom.yaml = %q, %v; want the value written", data, err)
 				}
 			},
@@ -1995,7 +1860,7 @@ func TestDispatchLayers(t *testing.T) {
 			sync := func(io.Writer) int { syncs++; return 0 }
 			var out bytes.Buffer
 
-			code := dispatch(fx.layout, &out, []string{row.module}, editor, sync, commit.commitFunc(), row.printOnly, row.setFlags, nil, row.layer, guard, !row.noTerminal)
+			code := dispatch(fx.layout, &out, []string{row.module}, editor, sync, commit.commitFunc(), row.printOnly, row.setFlags, row.layer, guard, !row.noTerminal)
 
 			if code != row.wantCode {
 				t.Errorf("dispatch = %d; want %d; output: %q", code, row.wantCode, out.String())
@@ -2019,7 +1884,7 @@ func TestDispatchLayers(t *testing.T) {
 // TestPrintResolved pins that --resolved prints a module's resolved configuration.
 // Each unit is annotated by the layer it came from.
 // It refuses an unknown module and an absent base layer with an error envelope,
-// and it refuses --resolved beside --print, --set, --unset or --layer, or without a module.
+// and it refuses --resolved beside --print, --set or --layer, or without a module.
 func TestPrintResolved(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -2029,12 +1894,12 @@ func TestPrintResolved(t *testing.T) {
 		t.Parallel()
 		fx := newHubFixture(t)
 		seedModuleConfig(t, fx.board, "loom", loomTemplate())
-		seedModuleConfig(t, fx.worktree, "loom", "review:\n  max_bounces: 2\n")
+		seedModuleConfig(t, fx.worktree, "loom", "review_max_bounces: 2\n")
 		localFile := configengine.LocalFile(fx.worktree, "loom")
 		if err := os.MkdirAll(filepath.Dir(localFile), 0o755); err != nil {
 			t.Fatalf("mkdir local dir: %v", err)
 		}
-		if err := os.WriteFile(localFile, []byte("discussion: {timeout_min: 7}\n"), 0o644); err != nil {
+		if err := os.WriteFile(localFile, []byte("discussion_timeout_min: 7\n"), 0o644); err != nil {
 			t.Fatalf("write local file: %v", err)
 		}
 
@@ -2042,7 +1907,7 @@ func TestPrintResolved(t *testing.T) {
 		if code := printResolved(configDirs{worktree: fx.worktree, board: fx.board}, &out, "loom"); code != 0 {
 			t.Fatalf("printResolved = %d; output: %s", code, out.String())
 		}
-		for _, want := range []string{"max_bounces: 2 # worktree", "timeout_min: 7 # local", "step_idle_timeout_min:"} {
+		for _, want := range []string{"review_max_bounces: 2 # worktree", "discussion_timeout_min: 7 # local", "step_idle_timeout_min:"} {
 			if !strings.Contains(out.String(), want) {
 				t.Errorf("output missing %q; output:\n%s", want, out.String())
 			}
@@ -2057,8 +1922,8 @@ func TestPrintResolved(t *testing.T) {
 		if code := printResolved(configDirs{worktree: fx.worktree, board: fx.board}, &out, "tapestry"); code != 0 {
 			t.Fatalf("printResolved(tapestry) = %d; output: %s", code, out.String())
 		}
-		if !strings.Contains(out.String(), "chair_timeout_min:") {
-			t.Errorf("tapestry listing missing parts.chair_timeout_min; output:\n%s", out.String())
+		if !strings.Contains(out.String(), "plan_timeout_min:") {
+			t.Errorf("tapestry listing missing plan_timeout_min; output:\n%s", out.String())
 		}
 	})
 
@@ -2087,8 +1952,7 @@ func TestPrintResolved(t *testing.T) {
 		args    []string
 		wantErr string
 	}{
-		{name: "beside --set", args: []string{"loom", "--resolved", "--set", "review.max_bounces=2"}, wantErr: "--resolved and --set are mutually exclusive"},
-		{name: "beside --unset", args: []string{"loom", "--resolved", "--unset", "review.max_bounces"}, wantErr: "--resolved and --unset are mutually exclusive"},
+		{name: "beside --set", args: []string{"loom", "--resolved", "--set", "review_max_bounces=2"}, wantErr: "--resolved and --set are mutually exclusive"},
 		{name: "beside --print", args: []string{"loom", "--resolved", "--print"}, wantErr: "--resolved and --print are mutually exclusive"},
 		{name: "beside --layer", args: []string{"loom", "--resolved", "--layer", "local"}, wantErr: "--resolved and --layer are mutually exclusive"},
 		{name: "without a module", args: []string{"--resolved"}, wantErr: "module required with --resolved"},

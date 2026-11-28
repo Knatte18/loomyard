@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -19,7 +19,7 @@ func TestCheckView(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	dir := filepath.Join("hub", fabriclayout.BoltDirName, ".lym", "adopt", "alpha")
+	dir := filepath.Join("hub", fabricengine.BoltDirName, ".lym", "adopt", "alpha")
 	logPath, outPath := filepath.Join(dir, suiteLogName), filepath.Join(dir, checkOutName)
 	one, two := 1, 2
 	ended := time.Date(2026, 10, 27, 12, 30, 0, 0, time.UTC)
@@ -54,10 +54,10 @@ func TestCheckView(t *testing.T) {
 			wantLines: []string{"adopt check of alpha: failed at 2026-10-27T12:30:00Z", "tier1 failed", logPath},
 		},
 		{
-			name:      "RunningReadDeadShowsEndedWithoutAVerdictNamingTheRerunBeamStatusShows",
+			name:      "RunningReadDeadShowsEndedWithoutAVerdictNamingTheSubjectsAdopt",
 			record:    CheckRecord{Subject: "alpha", State: checkRunning, Running: &one, Tiers: done[:1]},
 			wantState: "ended without a verdict",
-			wantLines: []string{"adopt check of alpha: ended without a verdict", outPath, logPath, "re-run the adopt that lym beam status shows under the adopt hold", "starts a fresh check"},
+			wantLines: []string{"adopt check of alpha: ended without a verdict", outPath, logPath, "re-run lym adopt alpha", "next lym adopt with an owner write", "starts a fresh check"},
 		},
 	}
 	for _, tt := range tests {
@@ -77,8 +77,8 @@ func TestCheckView(t *testing.T) {
 					t.Errorf("checkView() lines = %q; want them to hold %q", text, want)
 				}
 			}
-			if strings.Contains(text, "lym gate test --gate adopt") || strings.Contains(text, "lym adopt alpha") {
-				t.Errorf("checkView() lines = %q; want no re-run of lym gate test --gate adopt or of lym adopt alpha", text)
+			if strings.Contains(text, "lym gate test --gate adopt") {
+				t.Errorf("checkView() lines = %q; want no re-run of lym gate test --gate adopt", text)
 			}
 		})
 	}
@@ -95,7 +95,7 @@ func TestReadCheckViews(t *testing.T) {
 		if err != nil || len(views) != 0 {
 			t.Errorf("ReadCheckViews() = %+v, %v; want none", views, err)
 		}
-		if _, err := os.Stat(fabriclayout.AdoptScratchDir(hub)); !os.IsNotExist(err) {
+		if _, err := os.Stat(fabricengine.AdoptScratchDir(hub)); !os.IsNotExist(err) {
 			t.Errorf("Stat(adopt scratch directory) error = %v; want it still absent", err)
 		}
 	})
@@ -103,7 +103,7 @@ func TestReadCheckViews(t *testing.T) {
 	t.Run("OneViewPerSubjectSortedAndATopLevelRecordIsNotRead", func(t *testing.T) {
 		t.Parallel()
 		hub := t.TempDir()
-		adoptDir := fabriclayout.AdoptScratchDir(hub)
+		adoptDir := fabricengine.AdoptScratchDir(hub)
 		for subject, record := range map[string]CheckRecord{
 			"root":  {Subject: "root", State: checkGreen},
 			"alpha": {Subject: "alpha", State: checkFailed},

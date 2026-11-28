@@ -14,7 +14,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -46,14 +45,14 @@ func TestCleanup_ApplyArchivesEachOrphanBeforeDeleting(t *testing.T) {
 		weftRoot := mustRecordsRepoRoot(t, l)
 		tips := make(map[string]string, len(slugs))
 		for _, slug := range slugs {
-			branch := fabriclayout.RecordsBranchName(slug)
+			branch := fabricengine.RecordsBranchName(slug)
 			mustCreateOrphanWeftBranch(t, weftRoot, branch)
 			tips[slug] = gitkit.RevParse(t, weftRoot, branch)
 		}
 
 		// A diverged orphan: origin's weft tip and the local one each hold a commit the other lacks.
 		const divergedSlug = "cleanup-archive-diverged"
-		divergedBranch := fabriclayout.RecordsBranchName(divergedSlug)
+		divergedBranch := fabricengine.RecordsBranchName(divergedSlug)
 		mustCreateOrphanWeftBranch(t, weftRoot, divergedBranch)
 		mustPushBranch(t, weftRoot, divergedBranch)
 		pushCommitToOrigin(t, h.RecordsBare, divergedBranch)
@@ -88,7 +87,7 @@ func TestCleanup_ApplyArchivesEachOrphanBeforeDeleting(t *testing.T) {
 		}
 
 		for _, slug := range slugs {
-			branch := fabriclayout.RecordsBranchName(slug)
+			branch := fabricengine.RecordsBranchName(slug)
 			wantTag := wantArchiveTag(slug, tips[slug])
 			entry := findCleanupEntry(t, res.Entries, branch)
 			if !entry.Deleted || entry.ArchiveTag != wantTag {
@@ -111,7 +110,7 @@ func TestCleanup_ApplyArchivesEachOrphanBeforeDeleting(t *testing.T) {
 
 	t.Run("OriginMovedBeforeTheDeleteKeepsItsBranch", func(t *testing.T) {
 		const slug = "cleanup-archive-moved"
-		branch := fabriclayout.RecordsBranchName(slug)
+		branch := fabricengine.RecordsBranchName(slug)
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		weftRoot := mustRecordsRepoRoot(t, h.Location)
 		mustCreateOrphanWeftBranch(t, weftRoot, branch)
@@ -140,7 +139,7 @@ func TestCleanup_ApplyArchivesEachOrphanBeforeDeleting(t *testing.T) {
 		t.Parallel()
 
 		const heldSlug, freeSlug = "cleanup-lock-held", "cleanup-lock-free"
-		heldBranch, freeBranch := fabriclayout.RecordsBranchName(heldSlug), fabriclayout.RecordsBranchName(freeSlug)
+		heldBranch, freeBranch := fabricengine.RecordsBranchName(heldSlug), fabricengine.RecordsBranchName(freeSlug)
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		weftRoot := mustRecordsRepoRoot(t, h.Location)
 		for _, branch := range []string{heldBranch, freeBranch} {
@@ -176,7 +175,7 @@ func TestCleanup_ApplyArchivesEachOrphanBeforeDeleting(t *testing.T) {
 		t.Parallel()
 
 		const slug = "cleanup-turned-live"
-		branch := fabriclayout.RecordsBranchName(slug)
+		branch := fabricengine.RecordsBranchName(slug)
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		weftRoot := mustRecordsRepoRoot(t, h.Location)
 		mustCreateOrphanWeftBranch(t, weftRoot, branch)
@@ -207,12 +206,12 @@ func TestCleanup_ApplyArchivesEachOrphanBeforeDeleting(t *testing.T) {
 		t.Parallel()
 
 		const slug = "cleanup-lock-dir-blocked"
-		branch := fabriclayout.RecordsBranchName(slug)
+		branch := fabricengine.RecordsBranchName(slug)
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		weftRoot := mustRecordsRepoRoot(t, h.Location)
 		mustCreateOrphanWeftBranch(t, weftRoot, branch)
 		mustPushBranch(t, weftRoot, branch)
-		scratch := fabriclayout.HubScratchDir(h.Path)
+		scratch := fabricengine.HubScratchDir(h.Path)
 		if err := os.MkdirAll(scratch, 0o755); err != nil {
 			t.Fatalf("mkdir %s: %v", scratch, err)
 		}
@@ -259,8 +258,8 @@ func TestCleanup_ArchiveFailureKeepsTheLocalTagAndContinuesSweep(t *testing.T) {
 	if entry.Error == "" || !entry.Deleted {
 		t.Errorf("entry = %+v; want Error set and Deleted true", *entry)
 	}
-	slug, _ := fabriclayout.WeftWarpSlug(branch)
-	if got := gitkit.RevParse(t, weftRoot, "refs/tags/"+fabriclayout.ArchiveTagName(slug, tip)); got != tip {
+	slug, _ := fabricengine.WeftWarpSlug(branch)
+	if got := gitkit.RevParse(t, weftRoot, "refs/tags/"+fabricengine.ArchiveTagName(slug, tip)); got != tip {
 		t.Errorf("local archive tag points at %s; want the orphan's tip %s kept", got, tip)
 	}
 }

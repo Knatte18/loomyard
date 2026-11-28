@@ -2,11 +2,7 @@
 
 package fabricengine
 
-import (
-	"time"
-
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
-)
+import "time"
 
 // Topology is the high-level facade over hub-scoped worktree-topology operations.
 // It holds the configuration needed by all topology methods.
@@ -29,9 +25,6 @@ type Topology struct {
 	beforeWire func()
 	// cleanupAfterEnumerate runs in Cleanup once per orphan right before the slug's teardown lock is taken; nil in production.
 	cleanupAfterEnumerate func()
-	// teardownChildEnds makes an in-process teardown record its remote job as pending and drop it unrun.
-	// That is what a detached child that ended before its first remote step leaves; false in production.
-	teardownChildEnds bool
 }
 
 // SetInFlightProbe sets the probe that a removal's store housekeeping consults before it runs gc.
@@ -43,7 +36,7 @@ func (t *Topology) SetInFlightProbe(probe InFlightProbe) {
 func NewTopology(cfg Config) *Topology {
 	return &Topology{
 		cfg:             cfg,
-		teardownWait:    fabriclayout.StatusPushLockWait,
+		teardownWait:    StatusPushLockWait,
 		gcAutoThreshold: defaultGCAutoThreshold,
 	}
 }

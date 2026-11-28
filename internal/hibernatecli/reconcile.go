@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hibernateengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
@@ -30,9 +29,9 @@ const (
 
 // stopsEntries reports whether a shared branch in this state stops every entry;
 // a busy one does not, since a lock holder ends on its own.
-func stopsEntries(state fabriclayout.BranchState) bool {
+func stopsEntries(state fabricengine.BranchState) bool {
 	switch state {
-	case fabriclayout.BranchRewound, fabriclayout.BranchRewritten, fabriclayout.BranchDiverged, fabriclayout.BranchGone, fabriclayout.BranchDirty, fabriclayout.BranchLive, fabriclayout.BranchAnchorStopped:
+	case fabricengine.BranchRewound, fabricengine.BranchRewritten, fabricengine.BranchDiverged, fabricengine.BranchGone, fabricengine.BranchDirty, fabricengine.BranchLive, fabricengine.BranchAnchorStopped:
 		return true
 	}
 	return false
@@ -46,7 +45,7 @@ func wakeReconcile(location *lymcwd.Location) (hibernateengine.WakeReconcile, er
 		return hibernateengine.WakeReconcile{}, err
 	}
 	options := fabricengine.ReconcileOptions{RetryBound: wakeRetryBound, RetryInterval: wakeRetryInterval, AttemptDeadline: wakeAttemptDeadline}
-	report, err := fabricengine.ReconcileOrigin(location, fabriclayout.ReconcileScope{}, teardown.OriginSeams(pairteardown.HubSeamOptions(location)), options)
+	report, err := fabricengine.ReconcileOrigin(location, fabricengine.ReconcileScope{}, teardown.OriginSeams(pairteardown.HubSeamOptions(location)), options)
 	return wakeReconcileFromReport(report), err
 }
 
@@ -57,7 +56,7 @@ func wakeReconcile(location *lymcwd.Location) (hibernateengine.WakeReconcile, er
 // An owned_elsewhere entry always has a local pair.
 // Its way forward is the report's; it is never composed here.
 // Mutations are rendered as kind and target, with the detail in parentheses when there is one.
-func wakeReconcileFromReport(report fabriclayout.OriginReport) hibernateengine.WakeReconcile {
+func wakeReconcileFromReport(report fabricengine.OriginReport) hibernateengine.WakeReconcile {
 	wake := hibernateengine.WakeReconcile{Unreachable: report.Unreachable}
 	for _, branch := range report.Branches {
 		shared := branch.Repo == sideBolt || (branch.Repo == sideRecords && branch.Prime)
@@ -70,25 +69,25 @@ func wakeReconcileFromReport(report fabriclayout.OriginReport) hibernateengine.W
 	for _, entry := range report.Entries {
 		run := hibernateengine.WakeRun{Slug: entry.Slug, WayForward: entry.WayForward}
 		switch entry.State {
-		case fabriclayout.EntryEnded:
+		case fabricengine.EntryEnded:
 			if !entry.Local {
 				continue
 			}
 			run.Ended, run.Busy = true, entry.Busy
-		case fabriclayout.EntryStopped:
+		case fabricengine.EntryStopped:
 			for _, branch := range report.Branches {
 				if branch.Slug != entry.Slug {
 					continue
 				}
 				switch branch.State {
-				case fabriclayout.BranchBusy:
+				case fabricengine.BranchBusy:
 					run.Busy = true
 					run.ParkedPush = run.ParkedPush || branch.PushLockHeld
-				case fabriclayout.BranchGone:
+				case fabricengine.BranchGone:
 					run.Gone = true
 				}
 			}
-		case fabriclayout.EntryOwnedElsewhere:
+		case fabricengine.EntryOwnedElsewhere:
 			run.Owner, run.AdoptSubject = entry.Owner, entry.AdoptSubject
 		default:
 			continue

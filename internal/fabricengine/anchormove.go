@@ -9,9 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -62,7 +60,7 @@ func moveWeftContent(rec *Mutations, weftPath, from, to string, names []string, 
 	defer func() { _ = root.Close() }()
 
 	fromSlash, toSlash := filepath.ToSlash(from), filepath.ToSlash(to)
-	var moved, stagedOnly []string
+	var moved []string
 	for _, name := range names {
 		if name == lymdirs.DotLymDirName {
 			continue
@@ -72,14 +70,6 @@ func moveWeftContent(rec *Mutations, weftPath, from, to string, names []string, 
 			return false, err
 		}
 		if !tracked {
-			// A name whose last tracked files the caller staged for deletion still belongs to this commit.
-			staged, err := gitexec.Run([]string{"diff", "--cached", "--name-only", "--", anchorJoin(fromSlash, name)}, weftPath)
-			if err != nil {
-				return false, fmt.Errorf("fabricengine: read the staged paths under %s in %s: %w", anchorJoin(fromSlash, name), weftPath, err)
-			}
-			if strings.TrimSpace(staged) != "" {
-				stagedOnly = append(stagedOnly, anchorJoin(fromSlash, name))
-			}
 			continue
 		}
 		if err := requireAbsent(root, anchorJoin(toSlash, name)); err != nil {
@@ -105,25 +95,25 @@ func moveWeftContent(rec *Mutations, weftPath, from, to string, names []string, 
 			return false, fmt.Errorf("fabricengine: create %s in %s: %w", toSlash, weftPath, err)
 		}
 	}
-	specs := append([]string{lymcwd.AnchorFileName}, stagedOnly...)
+	specs := []string{lymcwd.AnchorFileName}
 	for _, name := range moved {
 		src, dst := anchorJoin(fromSlash, name), anchorJoin(toSlash, name)
 		if _, err := gitexec.Run([]string{"mv", "--", src, dst}, weftPath); err != nil {
 			return false, fmt.Errorf("fabricengine: move %s to %s in %s: %w", src, dst, weftPath, err)
 		}
-		rec.Append(fabriclayout.KindPathRenamed, filepath.Join(weftPath, filepath.FromSlash(dst)), renamedFrom(weftPath, src))
+		rec.Append(KindPathRenamed, filepath.Join(weftPath, filepath.FromSlash(dst)), renamedFrom(weftPath, src))
 		specs = append(specs, src, dst)
 	}
 	if lymPresent {
 		if err := root.Rename(lymFrom, lymTo); err != nil {
 			return false, fmt.Errorf("fabricengine: move %s to %s in %s: %w", lymFrom, lymTo, weftPath, err)
 		}
-		rec.Append(fabriclayout.KindPathRenamed, filepath.Join(weftPath, filepath.FromSlash(lymTo)), renamedFrom(weftPath, lymFrom))
+		rec.Append(KindPathRenamed, filepath.Join(weftPath, filepath.FromSlash(lymTo)), renamedFrom(weftPath, lymFrom))
 	}
 	if err := root.WriteFile(lymcwd.AnchorFileName, []byte(to+"\n"), 0o644); err != nil {
 		return false, fmt.Errorf("fabricengine: write %s in %s: %w", lymcwd.AnchorFileName, weftPath, err)
 	}
-	rec.Append(fabriclayout.KindFileWritten, filepath.Join(weftPath, lymcwd.AnchorFileName), "")
+	rec.Append(KindFileWritten, filepath.Join(weftPath, lymcwd.AnchorFileName), "")
 
 	if err := seams.runFail(false); err != nil {
 		return false, err
@@ -136,7 +126,7 @@ func moveWeftContent(rec *Mutations, weftPath, from, to string, names []string, 
 	if err != nil {
 		return true, fmt.Errorf("fabricengine: read the weft's commit after the move of the weft from %s to %s: %w", from, to, err)
 	}
-	rec.Append(fabriclayout.KindCommitCreated, weftPath, sha)
+	rec.Append(KindCommitCreated, weftPath, sha)
 	return true, seams.runFail(true)
 }
 

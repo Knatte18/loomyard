@@ -27,17 +27,6 @@ const (
 	AnomalyBudgetExhausted AnomalyKind = "bounce-budget-exhausted"
 	// AnomalyProducerFailure marks a failed halt, an engine-level producer error.
 	AnomalyProducerFailure AnomalyKind = "producer-hard-failure"
-	// AnomalyBuildSkew marks a failed halt of a step whose lym build is older than a board stencil it read.
-	// The driver hands such a run to a fresh driver when a newer build is on disk,
-	// so no producer is at fault.
-	AnomalyBuildSkew AnomalyKind = "build-skew"
-	// AnomalyTransientStop marks a failed halt whose error carries a transient class:
-	// an infrastructure failure classed transient, which a re-step can clear, so no producer is at fault.
-	// A step loop re-steps it once.
-	// The Go driver re-steps only a git-transport or GitHub API stop with waits, for as long as it stays network-class.
-	// It sends every other class to the tackler;
-	// the prompt-driven driver repairs what outlasts the loop's re-step under its repair cap.
-	AnomalyTransientStop AnomalyKind = "transient-stop"
 	// AnomalyInterrupted marks a non-blocked halt of a step that ended without an envelope, from outside its producer.
 	// That covers a killed or crashed step, a stalled one the watchdog killed, or a loop that died under it.
 	AnomalyInterrupted AnomalyKind = "interrupted-stop"
@@ -88,15 +77,10 @@ func DetectCrashResume(entry EntryObservation) bool {
 
 // ClassifyHalt names the kind of a run's final halt, and reports whether one applies.
 // It reads the final state, the reason the state was persisted with, and whether the stop was interrupted.
-// buildSkew reports whether the failure is a board stencil that a lym build newer than the running one wrote.
-// transient reports whether the failure carries a transient class.
 // At most one kind fires, since the cases partition the state.
 // A blocked state with shedengine.ReasonBounceBudgetExhausted is budget-exhausted.
 // Any other blocked state is an escalation, and the interrupted flag changes no blocked kind.
-// Otherwise an interrupted stop is AnomalyInterrupted.
-// A failed state is AnomalyBuildSkew when buildSkew is set.
-// With buildSkew unset, a failed state is AnomalyTransientStop when transient is set.
-// With both unset, a failed state is AnomalyProducerFailure.
+// Otherwise an interrupted stop is AnomalyInterrupted, and a failed state is AnomalyProducerFailure.
 // Any other state reports no kind.
 // An interrupted step can leave any state its failed write could reach.
 // For example, a paused run died before its resume write, or a running run was found busy by the failed write.
@@ -106,7 +90,7 @@ func DetectCrashResume(entry EntryObservation) bool {
 // The budget prefix is the one text still matched, with strings.HasPrefix.
 // The persisted reason carries the exhausted row and the way forward after it.
 // A producer reason starting with the prefix would read as budget exhaustion, and no shipped producer returns one.
-func ClassifyHalt(state shedengine.State, reason string, interrupted, buildSkew, transient bool) (AnomalyKind, bool) {
+func ClassifyHalt(state shedengine.State, reason string, interrupted bool) (AnomalyKind, bool) {
 	switch {
 	case state == shedengine.StateBlocked && strings.HasPrefix(reason, shedengine.ReasonBounceBudgetExhausted):
 		return AnomalyBudgetExhausted, true
@@ -114,10 +98,6 @@ func ClassifyHalt(state shedengine.State, reason string, interrupted, buildSkew,
 		return AnomalyEscalation, true
 	case interrupted:
 		return AnomalyInterrupted, true
-	case state == shedengine.StateFailed && buildSkew:
-		return AnomalyBuildSkew, true
-	case state == shedengine.StateFailed && transient:
-		return AnomalyTransientStop, true
 	case state == shedengine.StateFailed:
 		return AnomalyProducerFailure, true
 	default:

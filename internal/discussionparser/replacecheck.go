@@ -22,22 +22,6 @@ const (
 // A record with no `## Open risks` heading holds no blocks.
 // A malformed marker set in current or in next yields one Finding carrying the scan error, for each record that has one.
 func CheckCarryOversKept(current, next []byte) []Finding {
-	return carryOverFindings(current, next, true)
-}
-
-// CheckCarryOversNotLost returns one Finding per carry-over block that next drops or changes.
-// It reads the blocks of the `## Open risks` section.
-// A block that next adds is no finding.
-// A block is its lines from the opening marker through the closing marker, compared byte for byte.
-// Findings come sorted by segment, and each Detail names the segment.
-// A malformed marker set in current or in next yields one Finding carrying the scan error, for each record that has one.
-func CheckCarryOversNotLost(current, next []byte) []Finding {
-	return carryOverFindings(current, next, false)
-}
-
-// carryOverFindings compares the carry-over blocks of current and next.
-// It reports a block that next adds only when includeAdded is set.
-func carryOverFindings(current, next []byte, includeAdded bool) []Finding {
 	currentBlocks, currentErr := carryOverBlockTexts(current)
 	nextBlocks, nextErr := carryOverBlockTexts(next)
 	var findings []Finding
@@ -71,8 +55,6 @@ func carryOverFindings(current, next []byte, includeAdded bool) []Finding {
 		switch {
 		case !inNext:
 			what = "dropped"
-		case !inCurrent && !includeAdded:
-			continue
 		case !inCurrent:
 			what = "added"
 		case currentText != nextText:

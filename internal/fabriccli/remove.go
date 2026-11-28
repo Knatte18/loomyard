@@ -5,12 +5,10 @@ package fabriccli
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -37,16 +35,12 @@ type localReading struct {
 // reconcile runs the run-scope origin reconcile of the slug.
 // local reads what the local board says about the slug.
 // teardown removes the pair.
-// settle drops the slug's pending-teardown record once nothing of its pair remains.
-// It reports whether it dropped one, with the removal result of that settling,
-// and its refusal of a held lock names rerun.
 type remover struct {
 	exemptAll func() (restore func())
 	gone      func(slug string) (bool, error)
-	reconcile func(slug string) (fabriclayout.OriginReport, error)
+	reconcile func(slug string) (fabricengine.OriginReport, error)
 	local     func(slug string) (localReading, error)
 	teardown  func(ctx context.Context, req pairteardown.Request) (pairteardown.Result, error)
-	settle    func(slug, rerun string) (fabriclayout.RemoveResult, bool, error)
 }
 
 // run removes the pair of slug.
@@ -57,8 +51,6 @@ type remover struct {
 // A requested --remote is dropped, and the result names it.
 // Any other verdict removes it with the quiet wait, passing force and remote through unchanged.
 // A refusal or a reconcile error returns before the removal starts.
-// With remote, a slug of which nothing remains settles the unfinished teardown a pending record names,
-// and the result's one step is that settling; with no record to settle, the removal's pair-not-found refusal stands.
 func (r remover) run(ctx context.Context, slug string, force, remote bool) (pairteardown.Result, error) {
 	restore := r.exemptAll()
 	defer restore()
@@ -68,7 +60,7 @@ func (r remover) run(ctx context.Context, slug string, force, remote bool) (pair
 		return pairteardown.Result{}, err
 	}
 
-	var report fabriclayout.OriginReport
+	var report fabricengine.OriginReport
 	if gone {
 		report.Unreachable = true
 	} else {
@@ -91,47 +83,27 @@ func (r remover) run(ctx context.Context, slug string, force, remote bool) (pair
 		return pairteardown.Result{}, err
 	}
 
-	var res pairteardown.Result
-	if verdict != fabriclayout.EntryEnded && verdict != fabriclayout.EntryOwnedElsewhere {
-		res, err = r.teardown(ctx, pairteardown.Request{
+	if verdict != fabricengine.EntryEnded && verdict != fabricengine.EntryOwnedElsewhere {
+		return r.teardown(ctx, pairteardown.Request{
 			Slug:           slug,
 			Force:          force,
 			Remote:         remote,
 			QuietWait:      pairteardown.RemoveQuietWait,
 			RefuseWhenBusy: true,
 		})
-	} else {
-		res, err = r.teardown(ctx, pairteardown.Request{
-			Slug:           slug,
-			Force:          force,
-			Local:          true,
-			Verdict:        verdict,
-			RefuseWhenBusy: true,
-		})
-		if remote {
-			res.Removal.RemoteSkippedReason = fmt.Sprintf("the origin reconcile read the entry %s, so the removal was local and --remote was dropped", verdict)
-		}
 	}
-	if remote && errors.Is(err, fabricengine.ErrPairNotFound) {
-		return r.settleGonePair(slug, err)
+
+	res, err := r.teardown(ctx, pairteardown.Request{
+		Slug:           slug,
+		Force:          force,
+		Local:          true,
+		Verdict:        verdict,
+		RefuseWhenBusy: true,
+	})
+	if remote {
+		res.Removal.RemoteSkippedReason = fmt.Sprintf("the origin reconcile read the entry %s, so the removal was local and --remote was dropped", verdict)
 	}
 	return res, err
-}
-
-// settleGonePair settles the unfinished teardown of slug, of whose pair nothing remains.
-// A pending record names this removal as its re-run while nothing is left for the removal itself to do.
-// notFound is the removal's refusal, returned unchanged when no record is settled.
-func (r remover) settleGonePair(slug string, notFound error) (pairteardown.Result, error) {
-	rerun := "lym fabric remove " + slug + " --remote"
-	removal, settled, err := r.settle(slug, rerun)
-	if err != nil {
-		// The result still carries what the failed settling changed.
-		return pairteardown.Result{Removal: removal}, fmt.Errorf("settle the unfinished teardown of %q: %w; fix the cause it names, then run %s again", slug, err, rerun)
-	}
-	if !settled {
-		return pairteardown.Result{}, notFound
-	}
-	return pairteardown.Result{Removal: removal}, nil
 }
 
 // removeVerdict turns a reconcile report into the verdict on the slug's entry.
@@ -142,13 +114,13 @@ func (r remover) settleGonePair(slug string, notFound error) (pairteardown.Resul
 // A gone branch of the slug is one such stop, since the removal clears it.
 // With an unreachable origin the local reading decides.
 // Ownership by another machine gives owned_elsewhere, a done entry gives ended, and otherwise the verdict is empty.
-func removeVerdict(report fabriclayout.OriginReport, slug string, local localReading) (verdict fabriclayout.EntryState, refusal error) {
+func removeVerdict(report fabricengine.OriginReport, slug string, local localReading) (verdict fabricengine.EntryState, refusal error) {
 	if report.Unreachable {
 		switch {
 		case local.ownedElsewhere:
-			return fabriclayout.EntryOwnedElsewhere, nil
+			return fabricengine.EntryOwnedElsewhere, nil
 		case local.done:
-			return fabriclayout.EntryEnded, nil
+			return fabricengine.EntryEnded, nil
 		}
 		return "", nil
 	}
@@ -158,9 +130,9 @@ func removeVerdict(report fabriclayout.OriginReport, slug string, local localRea
 			continue
 		}
 		switch entry.State {
-		case fabriclayout.EntryEnded, fabriclayout.EntryOwnedElsewhere:
+		case fabricengine.EntryEnded, fabricengine.EntryOwnedElsewhere:
 			return entry.State, nil
-		case fabriclayout.EntryStopped:
+		case fabricengine.EntryStopped:
 			return "", stoppedRemoveRefusal(slug, report.Branches)
 		}
 		return "", nil
@@ -172,7 +144,7 @@ func removeVerdict(report fabriclayout.OriginReport, slug string, local localRea
 // It returns nil when no branch refuses the removal.
 // The entry's own way forward is never used: it can hold the gone branch's text, which names the refused verb.
 // A busy records branch of the slug and a busy shared branch stop nothing here, as the reconcile judges them.
-func stoppedRemoveRefusal(slug string, branches []fabriclayout.BranchOutcome) error {
+func stoppedRemoveRefusal(slug string, branches []fabricengine.BranchOutcome) error {
 	for _, branch := range branches {
 		if !stopsRemoval(branch.State) {
 			continue
@@ -182,10 +154,10 @@ func stoppedRemoveRefusal(slug string, branches []fabriclayout.BranchOutcome) er
 		if !own && !shared {
 			continue
 		}
-		if branch.State == fabriclayout.BranchBusy && ((own && branch.Repo == sideRecords) || shared) {
+		if branch.State == fabricengine.BranchBusy && ((own && branch.Repo == sideRecords) || shared) {
 			continue
 		}
-		if branch.State == fabriclayout.BranchGone && own {
+		if branch.State == fabricengine.BranchGone && own {
 			continue
 		}
 		return fmt.Errorf("cannot remove %q: branch %s is %s against origin; %s; then run lym fabric remove %s again", slug, branch.Branch, branch.State, branch.WayForward, slug)
@@ -194,10 +166,10 @@ func stoppedRemoveRefusal(slug string, branches []fabriclayout.BranchOutcome) er
 }
 
 // stopsRemoval reports whether a branch in this state stops its entry.
-func stopsRemoval(state fabriclayout.BranchState) bool {
+func stopsRemoval(state fabricengine.BranchState) bool {
 	switch state {
-	case fabriclayout.BranchRewound, fabriclayout.BranchRewritten, fabriclayout.BranchDiverged, fabriclayout.BranchGone,
-		fabriclayout.BranchDirty, fabriclayout.BranchBusy, fabriclayout.BranchLive, fabriclayout.BranchAnchorStopped:
+	case fabricengine.BranchRewound, fabricengine.BranchRewritten, fabricengine.BranchDiverged, fabricengine.BranchGone,
+		fabricengine.BranchDirty, fabricengine.BranchBusy, fabricengine.BranchLive, fabricengine.BranchAnchorStopped:
 		return true
 	}
 	return false
@@ -212,7 +184,7 @@ func readLocalReading(prime *lymcwd.Location, slug string) (localReading, error)
 	if err != nil {
 		return localReading{}, err
 	}
-	owners, err := boardengine.ReadOwners(fabriclayout.BoardDir(prime.HubPath))
+	owners, err := boardengine.ReadOwners(fabricengine.BoardDir(prime.HubPath))
 	if err != nil {
 		return localReading{}, err
 	}
@@ -229,7 +201,7 @@ func readLocalReading(prime *lymcwd.Location, slug string) (localReading, error)
 		return localReading{}, err
 	}
 	return localReading{
-		ownedElsewhere: boardengine.OwnedElsewhere(owner, owners.Registry, machine),
+		ownedElsewhere: boardengine.OwnedElsewhere(owner, machine),
 		done:           found && task.Status != nil && *task.Status == "done",
 	}, nil
 }
@@ -239,19 +211,19 @@ func readLocalReading(prime *lymcwd.Location, slug string) (localReading, error)
 // A hub whose warp or weft repository has no origin remote has nothing to judge against,
 // so it reads as an unreachable origin and the local board decides.
 // The run scope tears no pair down, so the report never shows the slug's pair already removed.
-func reconcileForRemove(prime *lymcwd.Location, td *pairteardown.Teardown, slug string) (fabriclayout.OriginReport, error) {
+func reconcileForRemove(prime *lymcwd.Location, td *pairteardown.Teardown, slug string) (fabricengine.OriginReport, error) {
 	recordsRoot, err := fabricengine.RecordsRepoRoot(prime)
 	if err != nil {
-		return fabriclayout.OriginReport{}, err
+		return fabricengine.OriginReport{}, err
 	}
 	for _, repoPath := range []string{prime.WorktreePath(), recordsRoot} {
 		if _, err := gitrepo.New(repoPath).RemoteURL("origin"); err != nil {
 			logger.Info("fabriccli: no origin remote to reconcile against", "slug", slug, "repo", repoPath, "cause", err)
-			return fabriclayout.OriginReport{Unreachable: true}, nil
+			return fabricengine.OriginReport{Unreachable: true}, nil
 		}
 	}
 
-	report, err := fabricengine.ReconcileOrigin(prime, fabriclayout.ReconcileScope{Run: slug}, td.OriginSeams(pairteardown.HubSeamOptions(prime)), fabricengine.ReconcileOptions{})
+	report, err := fabricengine.ReconcileOrigin(prime, fabricengine.ReconcileScope{Run: slug}, td.OriginSeams(pairteardown.HubSeamOptions(prime)), fabricengine.ReconcileOptions{})
 	for _, mutation := range report.Mutations.Entries() {
 		logger.Info("fabriccli: origin reconcile mutation", "slug", slug, "kind", string(mutation.Kind), "target", mutation.Target, "detail", mutation.Detail)
 	}

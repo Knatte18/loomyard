@@ -16,7 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/runfsm"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -147,8 +147,8 @@ func TestBattenPreStep_RefusalKinds(t *testing.T) {
 					CurrentProducer: battenrecipe.NameLand,
 					State:           shedengine.StateRunning,
 				})
-				c.reconcile = func(string) (fabriclayout.OriginReport, error) {
-					return fabriclayout.OriginReport{Entries: []fabriclayout.EntryOutcome{{Slug: c.slug, State: fabriclayout.EntryOwnedElsewhere, Owner: "there", AdoptSubject: "some-beam"}}}, nil
+				c.reconcile = func(string) (fabricengine.OriginReport, error) {
+					return fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: c.slug, State: fabricengine.EntryOwnedElsewhere, Owner: "there", AdoptSubject: "some-beam"}}}, nil
 				}
 			},
 			wantKind:   shedverbs.KindBootstrap,

@@ -1,4 +1,4 @@
-// smoke_debuglog_test.go runs the reed.debug_log opt-in against a real tmux server.
+// smoke_debuglog_test.go runs the debug_log opt-in against a real tmux server.
 // A boot with LYM_REED_DEBUG set writes a verbose tmux server log into the hub's logs dir.
 // The boot-time prune trims older logs there to the newest 2.
 // Repeated crash boots keep every debug log shape bounded.
@@ -16,14 +16,14 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
-// TestSmokeDebugLog arms reed.debug_log through LYM_REED_DEBUG on one hub's prime worktree, one step per verbosity.
+// TestSmokeDebugLog arms debug_log through LYM_REED_DEBUG on one hub's prime worktree, one step per verbosity.
 // The steps run serially in a fixed order.
 // The second step starts from the logs the first left behind, which only tightens its bound.
 // The scenario does not call t.Parallel, because each step sets LYM_REED_DEBUG, which every boot in the process reads.
@@ -38,7 +38,7 @@ func TestSmokeDebugLog(t *testing.T) {
 		var buf bytes.Buffer
 		clihelp.ExecuteIn(Command(), prime, &buf, []string{"down"})
 	})
-	logsDir := fabriclayout.HubLogsDir(h.Location.HubPath)
+	logsDir := fabricengine.HubLogsDir(h.Location.HubPath)
 
 	// With LYM_REED_DEBUG=1 the boot prunes pre-existing logs down to the newest 2,
 	// and it writes a fresh verbose log of its own.

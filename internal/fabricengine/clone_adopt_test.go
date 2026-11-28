@@ -17,7 +17,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -154,11 +153,11 @@ func TestCloneHub_StrictAbortRemovesHubOnFailure(t *testing.T) {
 	nonExistentWarp := filepath.Join(fixtures, "nonexistent-warp.git")
 
 	cloneParent := t.TempDir()
-	expectedHubPath := fabriclayout.HubPath(cloneParent, fabricengine.DeriveWarpName(filepath.ToSlash(nonExistentWarp)))
+	expectedHubPath := fabricengine.HubPath(cloneParent, fabricengine.DeriveWarpName(filepath.ToSlash(nonExistentWarp)))
 
 	// ForceBootstrap is needed because weftBare is a plain seeded remote, not a weft that has ever been one.
 	// It carries no .lym-anchor, so without ForceBootstrap the guard fails before the warp clone is attempted.
-	_, err := fabricengine.CloneHub(cloneParent, fabriclayout.CloneOptions{
+	_, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
 		WeftURL:        filepath.ToSlash(weftBare),
 		WarpURL:        filepath.ToSlash(nonExistentWarp),
 		Subpath:        ".",
@@ -205,11 +204,11 @@ func TestCloneHub_AnchorGuardHardErrors(t *testing.T) {
 			weftBare := makeBareRemote(t, fixtures, "anchor-guard-weft")
 
 			cloneParent := t.TempDir()
-			expectedHubPath := fabriclayout.HubPath(cloneParent, fabricengine.DeriveWarpName(filepath.ToSlash(warpBare)))
+			expectedHubPath := fabricengine.HubPath(cloneParent, fabricengine.DeriveWarpName(filepath.ToSlash(warpBare)))
 
 			// ForceBootstrap: true, because weftBare is an ordinary seeded bare remote standing in for a weft;
 			// it has never been a repo, so it carries no .lym-anchor.
-			_, err := fabricengine.CloneHub(cloneParent, fabriclayout.CloneOptions{
+			_, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
 				WeftURL:        filepath.ToSlash(weftBare),
 				WarpURL:        filepath.ToSlash(warpBare),
 				Subpath:        tt.subpath,
@@ -240,9 +239,10 @@ func seedWeftBranchFromMain(t *testing.T, dir, bareRemote, branch string) {
 }
 
 // TestCloneHub_AnchorAdoptPath covers the adopt path against a weft remote with .lym-anchor="backend" committed.
-// The marker sits on main-weft, which the prime's weft worktree checks out.
+// The marker sits on main-weft, which the prime's weft worktree checks out and which wins;
+// or it sits only on the Bolt legacy branch, the fallback.
 // A re-clone with no --subpath reads the recorded value; a conflicting non-default --subpath hard-errors;
-// a matching --subpath succeeds; and no re-clone writes a marker on the board.
+// a matching --subpath succeeds; and no re-clone writes a Bolt marker the weft's own branch did not already carry.
 func TestCloneHub_AnchorAdoptPath(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -251,11 +251,17 @@ func TestCloneHub_AnchorAdoptPath(t *testing.T) {
 		name string
 		// seed commits the marker on the branch under test of the weft remote.
 		seed func(t *testing.T, fixtures, weftBare string)
+		// wantBoardMarker reports whether the board is expected to hold the marker on the weft remote's main.
+		wantBoardMarker bool
 	}{
 		{"MainWeftMarker", func(t *testing.T, fixtures, weftBare string) {
 			seedWeftBranchFromMain(t, fixtures, weftBare, "main-weft")
 			commitFileOnBranch(t, fixtures, weftBare, "main-weft", lymcwd.AnchorFileName, "backend\n")
-		}},
+		}, false},
+		{"BoltMarker", func(t *testing.T, fixtures, weftBare string) {
+			seedWeftBranchFromMain(t, fixtures, weftBare, "main-weft")
+			commitFileOnBranch(t, fixtures, weftBare, "main", lymcwd.AnchorFileName, "backend\n")
+		}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -266,15 +272,14 @@ func TestCloneHub_AnchorAdoptPath(t *testing.T) {
 			warpBare := makeBareRemoteWithSubdir(t, fixtures, "anchor-adopt-warp", "backend")
 			weftBare := makeBareRemote(t, fixtures, "anchor-adopt-weft")
 			tt.seed(t, fixtures, weftBare)
-			warpURL := filepath.ToSlash(warpBare)
 
 			// With no --subpath, the recorded anchor is read and returned as-is.
 			// ForceBootstrap is not needed; the weft already carries the .lym-anchor marker seeded above,
 			// so the guard admits it regardless.
 			cloneParent := t.TempDir()
-			res, err := fabricengine.CloneHub(cloneParent, fabriclayout.CloneOptions{
+			res, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
 				WeftURL: filepath.ToSlash(weftBare),
-				WarpURL: warpURL,
+				WarpURL: filepath.ToSlash(warpBare),
 				Subpath: "",
 			})
 			if err != nil {
@@ -284,16 +289,17 @@ func TestCloneHub_AnchorAdoptPath(t *testing.T) {
 			if res.Anchor != "backend" {
 				t.Errorf("res.Anchor = %q; want %q (adopted from the recorded marker)", res.Anchor, "backend")
 			}
-			if _, boardStatErr := os.Stat(filepath.Join(res.BoardDir, lymcwd.AnchorFileName)); boardStatErr == nil {
-				t.Errorf("board holds a %s; want none (the adopt writes nothing)", lymcwd.AnchorFileName)
+			_, boardStatErr := os.Stat(filepath.Join(res.BoardDir, lymcwd.AnchorFileName))
+			if gotBoardMarker := boardStatErr == nil; gotBoardMarker != tt.wantBoardMarker {
+				t.Errorf("board holds a %s = %v; want %v (the adopt writes nothing)", lymcwd.AnchorFileName, gotBoardMarker, tt.wantBoardMarker)
 			}
 
 			// A conflicting non-default --subpath must hard-error rather than silently re-anchor:
 			// the recorded anchor is authoritative on adopt.
 			conflictParent := t.TempDir()
-			_, err = fabricengine.CloneHub(conflictParent, fabriclayout.CloneOptions{
+			_, err = fabricengine.CloneHub(conflictParent, fabricengine.CloneOptions{
 				WeftURL: filepath.ToSlash(weftBare),
-				WarpURL: warpURL,
+				WarpURL: filepath.ToSlash(warpBare),
 				Subpath: "frontend",
 			})
 			if err == nil {
@@ -302,9 +308,9 @@ func TestCloneHub_AnchorAdoptPath(t *testing.T) {
 
 			// A matching --subpath succeeds identically to the no-flag case.
 			matchParent := t.TempDir()
-			matchRes, err := fabricengine.CloneHub(matchParent, fabriclayout.CloneOptions{
+			matchRes, err := fabricengine.CloneHub(matchParent, fabricengine.CloneOptions{
 				WeftURL: filepath.ToSlash(weftBare),
-				WarpURL: warpURL,
+				WarpURL: filepath.ToSlash(warpBare),
 				Subpath: "backend",
 			})
 			if err != nil {
@@ -318,46 +324,10 @@ func TestCloneHub_AnchorAdoptPath(t *testing.T) {
 	}
 }
 
-// TestCloneHub_BoltCheckoutAdoptsARemoteOnlyBoardBranch asserts that the Bolt checkout starts from origin's board branch.
-// The weft remote's HEAD names another branch here,
-// so the weft clone holds the board branch only as a remote-tracking ref.
-// A checkout that orphan-created the board would drop the history origin holds.
-func TestCloneHub_BoltCheckoutAdoptsARemoteOnlyBoardBranch(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	fixtures := t.TempDir()
-	warpBare := makeBareRemote(t, fixtures, "remote-only-board-warp")
-	weftBare := makeBareRemote(t, fixtures, "remote-only-board-weft")
-	commitFileOnBranch(t, fixtures, weftBare, "main", "board-history.txt", "board\n")
-	seedWeftBranchFromMain(t, fixtures, weftBare, "other")
-	gitkit.Git(t, weftBare, "symbolic-ref", "HEAD", "refs/heads/other")
-
-	res, err := fabricengine.CloneHub(t.TempDir(), fabriclayout.CloneOptions{
-		WeftURL:        filepath.ToSlash(weftBare),
-		WarpURL:        filepath.ToSlash(warpBare),
-		Subpath:        ".",
-		ForceBootstrap: true,
-		Shortname:      "tst",
-	})
-	if err != nil {
-		t.Fatalf("CloneHub() error = %v; want nil", err)
-	}
-	t.Cleanup(func() { _ = os.RemoveAll(res.HubPath) })
-
-	if _, statErr := os.Stat(filepath.Join(res.BoardDir, "board-history.txt")); statErr != nil {
-		t.Errorf("board lacks board-history.txt: %v; want the Bolt checkout to hold origin's board commit", statErr)
-	}
-	if got := gitkit.Git(t, res.BoardDir, "rev-parse", "--abbrev-ref", "@{u}"); got != "origin/main" {
-		t.Errorf("board upstream = %q; want %q", got, "origin/main")
-	}
-}
-
 // TestCloneHub_StaleFabricAnchorHardErrors asserts a hard error for a weft remote with a stale marker.
-// The stale marker is ".fabric-anchor" with no ".lym-anchor" beside it.
-// The error names the marker on the prime's records branch as the remedy, and teardownHub removes the hub.
+// The stale marker is ".fabric-anchor" with no ".lym-anchor" beside it; the error names the marker rename as the remedy,
+// and teardownHub removes the hub.
 // An old clone must never silently fall through to the create path and re-anchor under ".lym-anchor".
-// Applying the remedy lets the retried clone adopt the old marker's non-default anchor.
 func TestCloneHub_StaleFabricAnchorHardErrors(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -372,12 +342,12 @@ func TestCloneHub_StaleFabricAnchorHardErrors(t *testing.T) {
 	commitFileOnBranch(t, fixtures, weftBare, "main", ".fabric-anchor", "backend\n")
 
 	cloneParent := t.TempDir()
-	expectedHubPath := fabriclayout.HubPath(cloneParent, fabricengine.DeriveWarpName(filepath.ToSlash(warpBare)))
+	expectedHubPath := fabricengine.HubPath(cloneParent, fabricengine.DeriveWarpName(filepath.ToSlash(warpBare)))
 
 	// No ForceBootstrap: the guard admits this fixture, since its probe recognises a stale .fabric-anchor marker.
 	// The test asserts the stale-marker error that names the marker rename as the remedy;
 	// the bootstrap guard never produces that message.
-	_, err := fabricengine.CloneHub(cloneParent, fabriclayout.CloneOptions{
+	_, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
 		WeftURL: filepath.ToSlash(weftBare),
 		WarpURL: filepath.ToSlash(warpBare),
 		Subpath: "",
@@ -385,32 +355,16 @@ func TestCloneHub_StaleFabricAnchorHardErrors(t *testing.T) {
 	if err == nil {
 		t.Fatalf("CloneHub() against a stale .fabric-anchor with no .lym-anchor should have failed")
 	}
-	// The remedy must name the marker on the prime's records branch, never "re-clone":
-	// this error is produced by a clone, so prescribing another clone is a loop the operator cannot exit.
-	for _, want := range []string{lymcwd.AnchorFileName, "records branch main-weft", "retry this clone"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("CloneHub() error = %q; want it to contain %q", err.Error(), want)
-		}
+	// The remedy must be the marker rename, never "re-clone": this error is produced by a clone;
+	// prescribing another clone is a loop the operator cannot exit.
+	if !strings.Contains(err.Error(), "git mv .fabric-anchor .lym-anchor") {
+		t.Errorf("CloneHub() error = %q; want it to name the marker rename as the remedy", err.Error())
 	}
 	if strings.Contains(err.Error(), "re-clone this hub") {
 		t.Errorf("CloneHub() error = %q; want it NOT to prescribe the very action that produced it", err.Error())
 	}
 	if _, statErr := os.Stat(expectedHubPath); statErr == nil {
 		t.Errorf("hub directory %s should have been removed by teardownHub after the stale-marker guard failure", expectedHubPath)
-	}
-
-	seedWeftBranchFromMain(t, fixtures, weftBare, "main-weft")
-	commitFileOnBranch(t, fixtures, weftBare, "main-weft", lymcwd.AnchorFileName, "backend\n")
-	res, err := fabricengine.CloneHub(cloneParent, fabriclayout.CloneOptions{
-		WeftURL: filepath.ToSlash(weftBare),
-		WarpURL: filepath.ToSlash(warpBare),
-		Subpath: "",
-	})
-	if err != nil {
-		t.Fatalf("CloneHub() after the remedy error = %v; want nil", err)
-	}
-	if res.Anchor != "backend" {
-		t.Errorf("res.Anchor = %q; want %q (adopted from the marker the remedy committed)", res.Anchor, "backend")
 	}
 }
 
@@ -440,9 +394,9 @@ func TestCloneHub_RejectsUnusableSubpath(t *testing.T) {
 			weftBare := makeBareRemote(t, fixtures, "unusable-subpath-weft")
 
 			cloneParent := t.TempDir()
-			expectedHubPath := fabriclayout.HubPath(cloneParent, fabricengine.DeriveWarpName(filepath.ToSlash(warpBare)))
+			expectedHubPath := fabricengine.HubPath(cloneParent, fabricengine.DeriveWarpName(filepath.ToSlash(warpBare)))
 
-			_, err := fabricengine.CloneHub(cloneParent, fabriclayout.CloneOptions{
+			_, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
 				WeftURL:        filepath.ToSlash(weftBare),
 				WarpURL:        filepath.ToSlash(warpBare),
 				Subpath:        tt.subpath,
@@ -489,7 +443,7 @@ func TestCloneHub_RefusesAWarpRemoteWhoseHeadNamesANonexistentBranch(t *testing.
 			t.Fatalf("mkdir into: %v", err)
 		}
 
-		_, err := fabricengine.CloneHub(into, fabriclayout.CloneOptions{
+		_, err := fabricengine.CloneHub(into, fabricengine.CloneOptions{
 			WeftURL:        filepath.ToSlash(weftRemote),
 			WarpURL:        filepath.ToSlash(warpRemote),
 			ForceBootstrap: true,
@@ -528,7 +482,7 @@ func TestCloneHub_RefusesAWarpRemoteWhoseHeadNamesANonexistentBranch(t *testing.
 			t.Fatalf("mkdir into: %v", err)
 		}
 
-		if _, err := fabricengine.CloneHub(into, fabriclayout.CloneOptions{
+		if _, err := fabricengine.CloneHub(into, fabricengine.CloneOptions{
 			WeftURL:        filepath.ToSlash(weftRemote),
 			WarpURL:        filepath.ToSlash(emptyWarp),
 			ForceBootstrap: true,

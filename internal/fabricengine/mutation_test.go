@@ -1,17 +1,17 @@
 // mutation_test.go covers the mutation-record vocabulary declared in mutation.go: append ordering,
-// the hub-relative Target conversion, ref recording, copy and isolation semantics,
+// the hub-relative Target conversion, ref recording, copy and isolation semantics, JSON marshalling,
 // and the nil-safety and value-receiver contracts the doc comments promise.
 // It is untagged Tier 1: pure table/data tests with no git spawn and no filesystem access.
 
 package fabricengine
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -61,7 +61,7 @@ func TestMutations_Append_HubRelativeConversion(t *testing.T) {
 			t.Parallel()
 
 			m := NewMutations(tt.hubRoot)
-			m.Append(fabriclayout.KindPathRemoved, tt.target, "")
+			m.Append(KindPathRemoved, tt.target, "")
 			got := m.Entries()
 			if len(got) != 1 {
 				t.Fatalf("Entries() = %d entries; want 1", len(got))
@@ -82,10 +82,10 @@ func TestMutations_AppendRef(t *testing.T) {
 
 	hubRoot := filepath.Join(string(filepath.Separator), "hub", "root")
 	m := NewMutations(hubRoot)
-	m.AppendRef(fabriclayout.KindBranchDeleted, "feature-x-weft", "cleanup")
+	m.AppendRef(KindBranchDeleted, "feature-x-weft", "cleanup")
 
 	got := m.Entries()
-	want := fabriclayout.Mutation{Kind: fabriclayout.KindBranchDeleted, Target: "feature-x-weft", Detail: "cleanup"}
+	want := Mutation{Kind: KindBranchDeleted, Target: "feature-x-weft", Detail: "cleanup"}
 	if len(got) != 1 || got[0] != want {
 		t.Errorf("AppendRef(...) recorded %+v; want [%+v]", got, want)
 	}
@@ -95,7 +95,8 @@ func TestMutations_AppendRef(t *testing.T) {
 // mutating the returned slice does not change what a second Entries() call reports.
 // It also covers that an empty record returns a non-nil zero-length slice.
 // Appending through the recorder after taking a snapshot does not change the snapshot's Len().
-// It also covers that Entries() and Len() are callable directly on the result of a function returning a record value.
+// It also covers that Entries() and Len() are callable directly on the result of a function returning Mutations:
+// which is why those two methods carry value receivers.
 //
 //testtiming:keep Entries() and Snapshot() returning copies, an empty record returning a non-nil slice, and value-receiver callability; coverage of its blocks by other tests does not show an assertion of this
 func TestMutations_EntriesAndSnapshotAreCopies(t *testing.T) {
@@ -112,7 +113,7 @@ func TestMutations_EntriesAndSnapshotAreCopies(t *testing.T) {
 	}
 
 	m := NewMutations("")
-	m.Append(fabriclayout.KindDirCreated, "/hub/one", "")
+	m.Append(KindDirCreated, "/hub/one", "")
 
 	first := m.Entries()
 	first[0].Target = "mutated"
@@ -126,7 +127,7 @@ func TestMutations_EntriesAndSnapshotAreCopies(t *testing.T) {
 	if snap.Len() != 1 {
 		t.Fatalf("Snapshot().Len() = %d; want 1", snap.Len())
 	}
-	m.Append(fabriclayout.KindFileWritten, "/hub/two", "")
+	m.Append(KindFileWritten, "/hub/two", "")
 	if snap.Len() != 1 {
 		t.Errorf("Snapshot().Len() after a later Append = %d; want unaffected 1", snap.Len())
 	}
@@ -142,6 +143,113 @@ func TestMutations_EntriesAndSnapshotAreCopies(t *testing.T) {
 	}
 }
 
+// TestMutations_MarshalJSON covers the empty, zero-value, empty-Detail, and non-empty-Detail
+// marshalling cases, asserting the exact JSON byte string.
+func TestMutations_MarshalJSON(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		m    Mutations
+		want string
+	}{
+		{
+			name: "empty record",
+			m:    *NewMutations(""),
+			want: `[]`,
+		},
+		{
+			name: "zero-value record",
+			m:    Mutations{},
+			want: `[]`,
+		},
+		{
+			name: "one entry with empty Detail",
+			m: func() Mutations {
+				m := NewMutations("")
+				m.Append(KindDirCreated, "/hub/one", "")
+				return m.Snapshot()
+			}(),
+			want: `[{"kind":"dir_created","target":"/hub/one"}]`,
+		},
+		{
+			name: "one entry with non-empty Detail",
+			m: func() Mutations {
+				m := NewMutations("")
+				m.Append(KindWorktreeReset, "/hub/one", "deadbeef")
+				return m.Snapshot()
+			}(),
+			want: `[{"kind":"worktree_reset","target":"/hub/one","detail":"deadbeef"}]`,
+		},
+		{
+			name: "merge staged entry",
+			m: func() Mutations {
+				m := NewMutations("")
+				m.Append(KindMergeStaged, "/hub/warp", "deadbeef")
+				return m.Snapshot()
+			}(),
+			want: `[{"kind":"merge_staged","target":"/hub/warp","detail":"deadbeef"}]`,
+		},
+		{
+			name: "merge committed entry",
+			m: func() Mutations {
+				m := NewMutations("")
+				m.Append(KindMergeCommitted, "/hub/warp", "cafebabe")
+				return m.Snapshot()
+			}(),
+			want: `[{"kind":"merge_committed","target":"/hub/warp","detail":"cafebabe"}]`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := json.Marshal(tt.m)
+			if err != nil {
+				t.Fatalf("json.Marshal(%+v) error = %v", tt.m, err)
+			}
+			if string(got) != tt.want {
+				t.Errorf("json.Marshal(%+v) = %s; want %s", tt.m, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestMutationRecord_EmbedsAndMarshalsUnderMutationsKey covers a MutationRecord embedded in a local struct.
+// It checks that the record marshals under the "mutations" key, and that Mutated() returns the same entries.
+//
+//testtiming:keep an embedded MutationRecord marshalling under the "mutations" key; coverage of its blocks by other tests does not show an assertion of this
+func TestMutationRecord_EmbedsAndMarshalsUnderMutationsKey(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	type result struct {
+		MutationRecord
+		Name string `json:"name"`
+	}
+
+	m := NewMutations("")
+	m.Append(KindDirCreated, "/hub/one", "")
+
+	r := result{MutationRecord: MutationRecord{Mutations: m.Snapshot()}, Name: "example"}
+
+	got, err := json.Marshal(r)
+	if err != nil {
+		t.Fatalf("json.Marshal(%+v) error = %v", r, err)
+	}
+	want := `{"mutations":[{"kind":"dir_created","target":"/hub/one"}],"name":"example"}`
+	if string(got) != want {
+		t.Errorf("json.Marshal(%+v) = %s; want %s", r, got, want)
+	}
+
+	mutated := r.Mutated().Entries()
+	if len(mutated) != 1 || mutated[0].Target != "/hub/one" {
+		t.Errorf("Mutated().Entries() = %+v; want one entry targeting /hub/one", mutated)
+	}
+}
+
 // TestMutations_Extend covers that Extend appends other's entries verbatim and in order.
 // It also covers that Extend is a no-op on an empty source and safe on a nil receiver.
 func TestMutations_Extend(t *testing.T) {
@@ -149,19 +257,19 @@ func TestMutations_Extend(t *testing.T) {
 	t.Parallel()
 
 	m := NewMutations("")
-	m.Append(fabriclayout.KindDirCreated, "/hub/one", "")
+	m.Append(KindDirCreated, "/hub/one", "")
 
 	other := NewMutations("")
-	other.Append(fabriclayout.KindFileWritten, "/hub/two", "")
-	other.AppendRef(fabriclayout.KindBranchCreated, "feature-x", "")
+	other.Append(KindFileWritten, "/hub/two", "")
+	other.AppendRef(KindBranchCreated, "feature-x", "")
 
 	m.Extend(other.Snapshot())
 
 	got := m.Entries()
-	want := []fabriclayout.Mutation{
-		{Kind: fabriclayout.KindDirCreated, Target: "/hub/one"},
-		{Kind: fabriclayout.KindFileWritten, Target: "/hub/two"},
-		{Kind: fabriclayout.KindBranchCreated, Target: "feature-x"},
+	want := []Mutation{
+		{Kind: KindDirCreated, Target: "/hub/one"},
+		{Kind: KindFileWritten, Target: "/hub/two"},
+		{Kind: KindBranchCreated, Target: "feature-x"},
 	}
 	if len(got) != len(want) {
 		t.Fatalf("Entries() = %d entries; want %d", len(got), len(want))
@@ -174,7 +282,7 @@ func TestMutations_Extend(t *testing.T) {
 
 	empty := NewMutations("")
 	m2 := NewMutations("")
-	m2.Append(fabriclayout.KindDirCreated, "/hub/one", "")
+	m2.Append(KindDirCreated, "/hub/one", "")
 	m2.Extend(empty.Snapshot())
 	if m2.Len() != 1 {
 		t.Errorf("Extend(empty).Len() = %d; want unaffected 1", m2.Len())
@@ -184,11 +292,11 @@ func TestMutations_Extend(t *testing.T) {
 	nilRec.Extend(other.Snapshot())
 }
 
-// mutationsFromFunc returns a non-addressable record value.
-// It has the shape of a result type's Mutated() accessor, which returns a value, not a pointer.
-func mutationsFromFunc() fabriclayout.Mutations {
+// mutationsFromFunc returns a non-addressable Mutations value.
+// It has the shape of a result type's Mutated() accessor, which returns Mutations, not *Mutations.
+func mutationsFromFunc() Mutations {
 	m := NewMutations("")
-	m.Append(fabriclayout.KindDirCreated, "/hub/one", "")
+	m.Append(KindDirCreated, "/hub/one", "")
 	return m.Snapshot()
 }
 
@@ -233,7 +341,7 @@ func TestMutations_TraceLogging(t *testing.T) {
 		read := armTraceSink(t)
 
 		m := NewMutations("")
-		m.Append(fabriclayout.KindDirCreated, "/hub/one", "why")
+		m.Append(KindDirCreated, "/hub/one", "why")
 
 		lines := read()
 		if len(lines) != 1 {
@@ -250,7 +358,7 @@ func TestMutations_TraceLogging(t *testing.T) {
 		read := armTraceSink(t)
 
 		m := NewMutations("")
-		m.AppendRef(fabriclayout.KindBranchCreated, "feature-x", "why")
+		m.AppendRef(KindBranchCreated, "feature-x", "why")
 
 		lines := read()
 		if len(lines) != 1 {
@@ -265,7 +373,7 @@ func TestMutations_TraceLogging(t *testing.T) {
 
 	t.Run("extend logs nothing", func(t *testing.T) {
 		other := NewMutations("")
-		other.Append(fabriclayout.KindDirCreated, "/hub/one", "")
+		other.Append(KindDirCreated, "/hub/one", "")
 		read := armTraceSink(t)
 
 		m := NewMutations("")
@@ -280,8 +388,8 @@ func TestMutations_TraceLogging(t *testing.T) {
 		read := armTraceSink(t)
 
 		var m *Mutations
-		m.Append(fabriclayout.KindDirCreated, "/hub/one", "")
-		m.AppendRef(fabriclayout.KindBranchCreated, "feature-x", "")
+		m.Append(KindDirCreated, "/hub/one", "")
+		m.AppendRef(KindBranchCreated, "feature-x", "")
 		if got := m.Snapshot(); got.Len() != 0 {
 			t.Errorf("nil.Snapshot().Len() = %d; want 0", got.Len())
 		}

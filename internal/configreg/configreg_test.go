@@ -14,36 +14,12 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/creelconfig"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/shuttleengines"
+	"github.com/Knatte18/loomyard/internal/hubregistry"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
-
-// TestLookup_BeamCarriesThePullRequestModesReinterpretationAfterThePerTaskOne pins a registration of the beam module.
-// The reinterpretation of beam.pull_request's renamed on and merge comes after the per-task one.
-// Dropping it leaves a hub's beam.yaml holding on or merge unloadable.
-//
-//testtiming:keep pins the order and shape of the beam module's two Reinterpretations entries, which no walk test reads
-func TestLookup_BeamCarriesThePullRequestModesReinterpretationAfterThePerTaskOne(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-	module, ok := Lookup("beam")
-	if !ok {
-		t.Fatal("Lookup(beam) found = false; want true")
-	}
-	var ids []string
-	for _, change := range module.Reinterpretations {
-		ids = append(ids, change.ID)
-		if change.Rewrite == nil || !change.RunsWithoutFile {
-			t.Errorf("reinterpretation %q has Rewrite nil %t, RunsWithoutFile %t; want a Rewrite and RunsWithoutFile set", change.ID, change.Rewrite == nil, change.RunsWithoutFile)
-		}
-	}
-	want := []string{"beam-per-task-settings", "beam-pull-request-modes"}
-	if !slices.Equal(ids, want) {
-		t.Errorf("Lookup(beam).Reinterpretations IDs = %q; want %q", ids, want)
-	}
-}
 
 // TestNames pins the registry's ORDER and shape: every `lym config` surface renders it in registry order,
 // so an out-of-sort or repeated entry is user-visible, and every module carries a template and a load check.
@@ -72,6 +48,53 @@ func TestNames(t *testing.T) {
 	}
 }
 
+// TestModules_CreelRegistersTheTrustedHubsReinterpretation pins that the creel module carries the change of trusted_hubs.
+// The change goes from shortnames to repository names and rewrites a hub's creel.yaml with no hand step.
+func TestModules_CreelRegistersTheTrustedHubsReinterpretation(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	module, ok := Lookup("creel")
+	if !ok {
+		t.Fatal(`Lookup("creel") found no module`)
+	}
+	if len(module.Reinterpretations) != 1 || module.Reinterpretations[0].ID != creelconfig.TrustedHubsRepositoryReinterpretation || module.Reinterpretations[0].Rewrite == nil {
+		t.Errorf("creel Reinterpretations = %+v; want one with ID %q and a rewrite", module.Reinterpretations, creelconfig.TrustedHubsRepositoryReinterpretation)
+	}
+}
+
+// TestMarkUnresolvable pins which resolve failures drop a trusted_hubs entry and which end the rewrite.
+func TestMarkUnresolvable(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	unreadable := errors.New("the per-user state directory is unreadable")
+	tests := []struct {
+		name          string
+		err           error
+		wantUnmarked  bool
+		wantUnchanged bool
+	}{
+		{"ShortnameNamingNoHub", fmt.Errorf("no hub: %w", hubregistry.ErrUnresolved), false, false},
+		{"HubWithNoRepository", fmt.Errorf("no origin: %w", hubregistry.ErrNoRepository), false, false},
+		{"UnreadableState", unreadable, true, true},
+		{"NoError", nil, true, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := markUnresolvable(tt.err)
+			if marked := errors.Is(got, creelconfig.ErrShortnameUnresolvable); marked == tt.wantUnmarked {
+				t.Errorf("markUnresolvable(%v) matches ErrShortnameUnresolvable = %v; want %v", tt.err, marked, !tt.wantUnmarked)
+			}
+			if tt.wantUnchanged && got != tt.err {
+				t.Errorf("markUnresolvable(%v) = %v; want it unchanged", tt.err, got)
+			}
+			if tt.err != nil && (got == nil || got.Error() != tt.err.Error() || !errors.Is(got, tt.err)) {
+				t.Errorf("markUnresolvable(%v) = %v; want the same text and the same chain", tt.err, got)
+			}
+		})
+	}
+}
+
 // TestModules_SeedOnlyAndHubWideFlags pins which modules carry the SeedOnly, HubWide and SeedsFromPrime flags.
 // Seed-only modules hold an open-ended, operator-owned key set; hub-wide modules describe facts about the hub.
 // The test body lists the members of each set.
@@ -85,7 +108,7 @@ func TestModules_SeedOnlyAndHubWideFlags(t *testing.T) {
 		if m.SeedOnly != wantSeedOnly {
 			t.Errorf("Modules(): module %q SeedOnly = %v; want %v", m.Name, m.SeedOnly, wantSeedOnly)
 		}
-		wantHubWide := m.Name == "agents" || m.Name == "fabric" || m.Name == "board" || m.Name == "creel" || m.Name == "gate" || m.Name == "heddle" || m.Name == "hibernate" || m.Name == "ide" || m.Name == "landing" || m.Name == "darn" || m.Name == "desktop" || m.Name == "drift" || m.Name == "env" || m.Name == "hardener" || m.Name == "language" || m.Name == "profiles" || m.Name == "report" || m.Name == "sampler" || m.Name == "slack"
+		wantHubWide := m.Name == "agents" || m.Name == "fabric" || m.Name == "board" || m.Name == "creel" || m.Name == "gate" || m.Name == "heddle" || m.Name == "hibernate" || m.Name == "ide" || m.Name == "landing" || m.Name == "darn" || m.Name == "desktop" || m.Name == "drift" || m.Name == "env" || m.Name == "language" || m.Name == "profiles" || m.Name == "report" || m.Name == "sampler" || m.Name == "slack"
 		if m.HubWide != wantHubWide {
 			t.Errorf("Modules(): module %q HubWide = %v; want %v", m.Name, m.HubWide, wantHubWide)
 		}
@@ -98,56 +121,6 @@ func TestModules_SeedOnlyAndHubWideFlags(t *testing.T) {
 			t.Errorf("Modules(): module %q Spec() = {Name: %q, OpenMaps: %v, PerNameMaps: %v, HubWide: %v, SeedOnly: %v}; want it to carry the entry's own name, template text, open maps, per-name maps, hub-wide flag and seed-only flag", m.Name, spec.Name, spec.OpenMaps, spec.PerNameMaps, spec.HubWide, spec.SeedOnly)
 		}
 	}
-	for _, engine := range shuttleengines.ConfigModules() {
-		if _, found := Lookup(engine.Name); !found {
-			t.Errorf("Lookup(%q) found no module; want every shuttle engine's config module registered", engine.Name)
-		}
-	}
-}
-
-// TestModules_OrchRegistersRemoteControlReinterpretation pins the orch module's remote-control reinterpretation.
-// Every hub gets the notice that its orch's remote control is now off only while the orch row declares it.
-//
-//testtiming:keep pins the orch row's Reinterpretations entry, which no walk test reads
-func TestModules_OrchRegistersRemoteControlReinterpretation(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-	orch, found := Lookup("orch")
-	if !found {
-		t.Fatal("Lookup(\"orch\") found no module; want the orch module registered")
-	}
-	if len(orch.Reinterpretations) != 1 {
-		t.Fatalf("orch Reinterpretations = %d entries; want 1", len(orch.Reinterpretations))
-	}
-	if got := orch.Reinterpretations[0].ID; got != "orch-remote-control-off-by-default" {
-		t.Errorf("orch Reinterpretations[0].ID = %q; want %q", got, "orch-remote-control-off-by-default")
-	}
-	if orch.Reinterpretations[0].Rewrite == nil {
-		t.Error("orch Reinterpretations[0].Rewrite is nil; want the rewrite function")
-	}
-}
-
-// TestModules_LoomRegistersCodeAutoAcceptReinterpretation pins the loom module's loom.code.auto_accept reinterpretation.
-// A hub that sets loom.code.auto_accept: true gets the notice that an open BLOCKING finding now escalates.
-// It does so only while the row declares the reinterpretation.
-//
-//testtiming:keep pins the loom row's Reinterpretations entry, which no walk test reads
-func TestModules_LoomRegistersCodeAutoAcceptReinterpretation(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-	loom, found := Lookup("loom")
-	if !found {
-		t.Fatal("Lookup(\"loom\") found no module; want the loom module registered")
-	}
-	if len(loom.Reinterpretations) != 1 {
-		t.Fatalf("loom Reinterpretations = %d entries; want 1", len(loom.Reinterpretations))
-	}
-	if got := loom.Reinterpretations[0].ID; got != "loom-code-auto-accept-escalates-blocking" {
-		t.Errorf("loom Reinterpretations[0].ID = %q; want %q", got, "loom-code-auto-accept-escalates-blocking")
-	}
-	if loom.Reinterpretations[0].Rewrite == nil {
-		t.Error("loom Reinterpretations[0].Rewrite is nil; want the rewrite function")
-	}
 }
 
 // TestModules_EveryTemplateKeyClassified pins that each module's Categories classify every template unit.
@@ -155,29 +128,27 @@ func TestModules_LoomRegistersCodeAutoAcceptReinterpretation(t *testing.T) {
 // The derived LocalKeys, LocalDenied and MachineKeys must match the record.
 // It is the one test that pins each module's whole key set, so a key nobody classified fails here,
 // and each failure names the key and the list or function it goes in.
-//
-//testtiming:keep pins the classification of every module's whole key set, which TestPrepareRunSettings never asserts
 func TestModules_EveryTemplateKeyClassified(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	wantLocalKeys := map[string][]string{
-		"agents":   {"efforts"},
-		"darn":     {"gate_fixer", "report_dir", "verify_attempts", "verify_budget_min", "writer", "writer_timeout_min"},
-		"drift":    {"enabled", "expect_model", "judge_ask_parent", "judge_interactive", "judge_model", "judge_parent_timeout_min", "scope"},
-		"hardener": {"concurrency", "fixer", "hard_max_bounces", "judge", "live_attempts", "llm_driving", "max_bounces", "packages", "reviewer", "seed", "verify_attempts"},
-		"ide":      {"open_files", "render_markdown"},
-		"landing":  {"conflict", "conflict_timeout_min", "describe", "describe_review", "describe_review_timeout_min", "describe_timeout_min", "fixer", "fixer_timeout_min", "pr_reviewer"},
-		"sampler":  {"agent", "code_review"},
-		"slack":    {"remind_after_min"},
+		"agents":  {"efforts"},
+		"darn":    {"gate_fixer", "verify_attempts", "verify_budget_min", "writer", "writer_timeout_min"},
+		"drift":   {"enabled", "expect_model", "judge_interactive", "judge_model", "scope"},
+		"ide":     {"open_files", "render_markdown"},
+		"landing": {"conflict", "conflict_timeout_min", "describe", "describe_timeout_min", "fixer", "fixer_timeout_min", "pr_reviewer"},
+		"sampler": {"agent", "code_review"},
+		"slack":   {"remind_after_min"},
 	}
 	wantLocalDenied := map[string][]string{
 		"batten":   {"open_ide_command", "open_window_command", "seed_ide_command"},
-		"claude":   {"account_pins", "accounts", "binary", "deny_ask_user_question"},
+		"beam":     {"pull_request"},
+		"claude":   {"binary", "deny_ask_user_question"},
 		"codex":    {"binary", "sandbox_mode", "writable_roots"},
 		"reed":     {"buttons", "debug_log", "mouse", "shell", "tmux", "tmux_conf"},
 		"shuttle":  {"deny_python", "run_dir"},
-		"loom":     {"code.auto_accept", "code.fixer_fan", "discussion.advisors", "discussion.auto_accept", "discussion.fixer_fan", "discussion.lenses", "discussion.reviewer_fan", "split.auto_accept", "split.fixer_fan", "split.reviewer_fan"},
-		"tapestry": {"plan.auto_accept", "plan.fixer_fan", "plan.lenses", "plan.reviewer_fan"},
+		"loom":     {"code_auto_accept", "code_fixer_fan", "discussion_advisors", "discussion_auto_accept", "discussion_fixer_fan", "discussion_lenses", "discussion_reviewer_fan", "split_auto_accept", "split_fixer_fan", "split_reviewer_fan"},
+		"tapestry": {"plan_auto_accept", "plan_fixer_fan", "plan_lenses", "plan_reviewer_fan"},
 		"lenses":   {"fans", "lens_set", "lenses", "remove"},
 		"weaver":   {"verify_gate"},
 	}
@@ -219,14 +190,11 @@ func TestModules_EveryTemplateKeyClassified(t *testing.T) {
 			if m.Name == "env" {
 				wantMachineKeys = []string{"vars"}
 			}
-			if m.Name == "claude" {
-				wantMachineKeys = []string{"account_pins", "accounts"}
-			}
 			if m.Name == "codex" {
 				wantMachineKeys = []string{"sandbox_mode"}
 			}
 			if m.Name == "fabric" {
-				wantMachineKeys = []string{"branch_prefix", "push_ceiling_s", "push_interval_s", "push_notice_after_min"}
+				wantMachineKeys = []string{"branch_prefix"}
 			}
 			if got := configengine.MachineKeys(spec); !slices.Equal(got, wantMachineKeys) {
 				t.Errorf("%s MachineKeys = %v; want %v, so no stray machine file is read by a registered loader; %s", m.Name, got, wantMachineKeys, keyListWayForward(fmt.Sprintf("the wantMachineKeys of %s", m.Name), got, wantMachineKeys))
@@ -309,8 +277,6 @@ func holdsPath(units []string, entry string) bool {
 }
 
 // TestModules_LocalLayerRefusals pins the local-layer verdict of keys that no loader test pins through its real load.
-//
-//testtiming:keep pins per-module local-layer verdicts and the refusal naming file and key, which TestLayerRunSettings never asserts
 func TestModules_LocalLayerRefusals(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -326,10 +292,10 @@ func TestModules_LocalLayerRefusals(t *testing.T) {
 		{"landing", "deploy_branches: false\n", "deploy_branches", false},
 		{"language", "skills:\n  - scribe:a\n", "skills", false},
 		{"reed", "mouse: true\n", "mouse", false},
-		{"loom", "discussion:\n  advisors:\n    - name: critic\n      model: sonnet[low]\n", "discussion.advisors", false},
-		{"loom", "discussion: {lenses: twill-discussion}\n", "discussion.lenses", false},
-		{"tapestry", "plan: {lenses: twill-plan}\n", "plan.lenses", false},
-		{"tapestry", "plan: {reviewer_fan: \"\"}\n", "plan.reviewer_fan", false},
+		{"loom", "discussion_advisors:\n  - name: critic\n    model: sonnet[low]\n", "discussion_advisors", false},
+		{"loom", "discussion_lenses: twill-discussion\n", "discussion_lenses", false},
+		{"tapestry", "plan_lenses: twill-plan\n", "plan_lenses", false},
+		{"tapestry", "plan_reviewer_fan: \"\"\n", "plan_reviewer_fan", false},
 		{"shuttle", "claude_prompt_cache_ttl_roles:\n  worker: 1h\n", "", true},
 	}
 	for _, tt := range tests {
@@ -394,7 +360,6 @@ func TestTemplate(t *testing.T) {
 	}
 }
 
-//testtiming:keep pins each module's registered OpenMaps and found flag, which TestPrepareRunSettings never asserts
 func TestLookup(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -406,17 +371,17 @@ func TestLookup(t *testing.T) {
 		{"batcher", true, nil},
 		{"board", true, []string{"types", "labels"}},
 		{"loom", true, []string{
-			"review.reviewer_model", "review.fixer_model",
-			"discussion.reviewer_model", "discussion.fixer_model",
-			"code.reviewer_model", "code.fixer_model",
-			"split.reviewer_model", "split.fixer_model",
-			"discussion.reviewer_fan", "code.reviewer_fan", "split.reviewer_fan",
-			"discussion.fixer_fan", "code.fixer_fan", "split.fixer_fan",
-			"discussion.assist_reviewer_model", "code.assist_reviewer_model",
-			"discussion.assist_reviewer_fan", "code.assist_reviewer_fan",
-			"discussion.advisors",
+			"reviewer_model", "fixer_model",
+			"discussion_reviewer_model", "discussion_fixer_model",
+			"code_reviewer_model", "code_fixer_model",
+			"split_reviewer_model", "split_fixer_model",
+			"discussion_reviewer_fan", "code_reviewer_fan", "split_reviewer_fan",
+			"discussion_fixer_fan", "code_fixer_fan", "split_fixer_fan",
+			"discussion_assist_reviewer_model", "code_assist_reviewer_model",
+			"discussion_assist_reviewer_fan", "code_assist_reviewer_fan",
+			"discussion_advisors",
 		}},
-		{"tapestry", true, []string{"plan.reviewer_model", "plan.fixer_model", "plan.reviewer_fan", "plan.fixer_fan", "plan.assist_reviewer_model", "plan.assist_reviewer_fan"}},
+		{"tapestry", true, []string{"plan_reviewer_model", "plan_fixer_model", "plan_reviewer_fan", "plan_fixer_fan", "plan_assist_reviewer_model", "plan_assist_reviewer_fan"}},
 		{"darn", true, []string{"tree_scope"}},
 		{"reed", true, []string{"buttons.task", "buttons.beam", "buttons.prime"}},
 		{"shuttle", true, nil},
@@ -445,7 +410,7 @@ func TestLookup(t *testing.T) {
 
 // TestFingerprint pins what the registry fingerprint is sensitive to.
 // It changes with a module's template, flags, open maps, per-name maps, name and overlay documents.
-// It does not change with its CheckLoad hook or an empty overlay.
+// It does not change with its Migrate hook or an empty overlay.
 func TestFingerprint(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -479,8 +444,8 @@ func TestFingerprint(t *testing.T) {
 		{"added OpenMaps entry", func(m []Module) { m[1].OpenMaps = []string{"b"} }, false},
 		{"added PerNameMaps entry", func(m []Module) { m[1].PerNameMaps = []string{"b"} }, false},
 		{"renamed module", func(m []Module) { m[0].Name = "gamma" }, false},
-		{"swapped CheckLoad hook", func(m []Module) {
-			m[0].CheckLoad = func(configengine.Dirs) error { return nil }
+		{"swapped Migrate hook", func(m []Module) {
+			m[0].Migrate = func(existing []byte) ([]byte, []string, error) { return existing, nil, nil }
 		}, true},
 	}
 	want := fingerprintOf(base())

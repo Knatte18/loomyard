@@ -900,7 +900,7 @@ func TestOwnWindow_RealTmux(t *testing.T) {
 	})
 
 	t.Run("ShellOnlyStrandReadsDeadPastTheGraceAndResumeRelaunchesIt", func(t *testing.T) {
-		t.Cleanup(func() { e.paneAge = PaneProcessAge })
+		t.Cleanup(func() { e.paneAge = paneProcessAge })
 		selvageBefore := func() string {
 			st, err := LoadState(e.stateDir())
 			if err != nil || st == nil {

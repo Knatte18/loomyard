@@ -4,8 +4,7 @@
 // the refusal of dirt outside the own paths precedes any fetch; the ownership refusals;
 // and the remote half's refusals, skips, stale lease and failed checkout rewrite.
 //
-// Every hub is built through hubforge.NewHub with an empty fabric.branch_prefix,
-// so the pair's warp branch is the bare slug.
+// Every hub is built through hubforge.NewHub with an empty branch_prefix, so the pair's warp branch is the bare slug.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
@@ -20,7 +19,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -100,7 +98,7 @@ func TestResetPairCode_DiscardsCommitsAndOwnPathDirtKeepsUntracked(t *testing.T)
 		t.Errorf("untracked file removed by reset: %v", err)
 	}
 
-	wantKinds(t, rec, fabriclayout.KindRemoteBranchUpdated, fabriclayout.KindWorktreeReset)
+	wantKinds(t, rec, fabricengine.KindRemoteBranchUpdated, fabricengine.KindWorktreeReset)
 	if entry := rec.Entries()[0]; entry.Target != "origin/"+slug || entry.Detail != older {
 		t.Errorf("remote update entry = %+v; want target origin/%s and detail %s", entry, slug, older)
 	}
@@ -235,10 +233,10 @@ func originTip(t *testing.T, p *remoteHalfPair, branch string) string {
 }
 
 // wantKinds fails the test unless rec holds exactly the given kinds, in order.
-func wantKinds(t *testing.T, rec recordEntries, want ...fabriclayout.Kind) {
+func wantKinds(t *testing.T, rec *fabricengine.Mutations, want ...fabricengine.Kind) {
 	t.Helper()
 
-	var got []fabriclayout.Kind
+	var got []fabricengine.Kind
 	for _, entry := range rec.Entries() {
 		got = append(got, entry.Kind)
 	}
@@ -292,7 +290,7 @@ func TestResetPairCode_RemoteHalf(t *testing.T) {
 		// wantErr holds the parts of the refusal; empty means the reset succeeds and leaves the checkout at sha.
 		wantErr []string
 		// wantKinds is the record the reset leaves.
-		wantKinds []fabriclayout.Kind
+		wantKinds []fabricengine.Kind
 	}{
 		{
 			name: "remote holding a commit HEAD lacks refuses and lists it",
@@ -336,21 +334,21 @@ func TestResetPairCode_RemoteHalf(t *testing.T) {
 			arrange: func(t *testing.T, p *remoteHalfPair) (fabricengine.SyncOptions, string, string) {
 				return fabricengine.SyncOptions{SkipGit: true}, p.older, p.older
 			},
-			wantKinds: []fabriclayout.Kind{fabriclayout.KindRemoteBranchUpdated, fabriclayout.KindWorktreeReset},
+			wantKinds: []fabricengine.Kind{fabricengine.KindRemoteBranchUpdated, fabricengine.KindWorktreeReset},
 		},
 		{
 			name: "SkipPush leaves the remote alone",
 			arrange: func(t *testing.T, p *remoteHalfPair) (fabricengine.SyncOptions, string, string) {
 				return fabricengine.SyncOptions{SkipPush: true}, p.older, p.later
 			},
-			wantKinds: []fabriclayout.Kind{fabriclayout.KindWorktreeReset},
+			wantKinds: []fabricengine.Kind{fabricengine.KindWorktreeReset},
 		},
 		{
 			name: "a remote tip equal to the target is left alone",
 			arrange: func(t *testing.T, p *remoteHalfPair) (fabricengine.SyncOptions, string, string) {
 				return fabricengine.SyncOptions{}, p.later, p.later
 			},
-			wantKinds: []fabriclayout.Kind{fabriclayout.KindWorktreeReset},
+			wantKinds: []fabricengine.Kind{fabricengine.KindWorktreeReset},
 		},
 		{
 			name: "a remote tip behind the target is left alone",
@@ -358,7 +356,7 @@ func TestResetPairCode_RemoteHalf(t *testing.T) {
 				gitkit.Git(t, p.warp, "push", "--force", "origin", p.older+":refs/heads/"+p.slug)
 				return fabricengine.SyncOptions{}, p.later, p.older
 			},
-			wantKinds: []fabriclayout.Kind{fabriclayout.KindWorktreeReset},
+			wantKinds: []fabricengine.Kind{fabricengine.KindWorktreeReset},
 		},
 		{
 			name: "a branch absent on the remote is left alone",
@@ -366,7 +364,7 @@ func TestResetPairCode_RemoteHalf(t *testing.T) {
 				gitkit.Git(t, p.warp, "push", "origin", "--delete", p.slug)
 				return fabricengine.SyncOptions{}, p.older, ""
 			},
-			wantKinds: []fabriclayout.Kind{fabriclayout.KindWorktreeReset},
+			wantKinds: []fabricengine.Kind{fabricengine.KindWorktreeReset},
 		},
 		{
 			name: "a repository with no remote resets the checkout alone",
@@ -374,7 +372,7 @@ func TestResetPairCode_RemoteHalf(t *testing.T) {
 				gitkit.Git(t, p.warp, "remote", "remove", "origin")
 				return fabricengine.SyncOptions{}, p.older, p.later
 			},
-			wantKinds: []fabriclayout.Kind{fabriclayout.KindWorktreeReset},
+			wantKinds: []fabricengine.Kind{fabricengine.KindWorktreeReset},
 		},
 	}
 	for i, tc := range tests {
@@ -441,7 +439,7 @@ func TestResetPairCode_OursMergeThenRerunConverges(t *testing.T) {
 	if err := p.f.ResetPairCode(rec, p.older, "main", nil, fabricengine.SyncOptions{}); err != nil {
 		t.Fatalf("ResetPairCode after the ours merge: %v", err)
 	}
-	wantKinds(t, rec, fabriclayout.KindRemoteBranchUpdated, fabriclayout.KindWorktreeReset)
+	wantKinds(t, rec, fabricengine.KindRemoteBranchUpdated, fabricengine.KindWorktreeReset)
 	if got := gitkit.RevParse(t, p.warp, "HEAD"); got != p.older {
 		t.Errorf("HEAD = %s; want %s", got, p.older)
 	}
@@ -495,7 +493,7 @@ func TestResetPairCode_CheckoutFailureAfterRemoteUpdateConverges(t *testing.T) {
 			t.Errorf("error %q does not contain %q", err, part)
 		}
 	}
-	wantKinds(t, rec, fabriclayout.KindRemoteBranchUpdated)
+	wantKinds(t, rec, fabricengine.KindRemoteBranchUpdated)
 	if got := originTip(t, p, p.slug); got != p.older {
 		t.Errorf("remote %s = %q; want %q", p.slug, got, p.older)
 	}
@@ -507,7 +505,7 @@ func TestResetPairCode_CheckoutFailureAfterRemoteUpdateConverges(t *testing.T) {
 	if err := p.f.ResetPairCode(rec, p.older, "main", nil, fabricengine.SyncOptions{}); err != nil {
 		t.Fatalf("re-run: %v", err)
 	}
-	wantKinds(t, rec, fabriclayout.KindWorktreeReset)
+	wantKinds(t, rec, fabricengine.KindWorktreeReset)
 	if got := gitkit.RevParse(t, p.warp, "HEAD"); got != p.older {
 		t.Errorf("HEAD = %s; want %s", got, p.older)
 	}

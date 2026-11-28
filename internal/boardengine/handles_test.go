@@ -12,7 +12,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -262,7 +261,7 @@ func TestWorkspaceFolderNames(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			hub := t.TempDir()
-			boardDir := fabriclayout.BoardDir(hub)
+			boardDir := fabricengine.BoardDir(hub)
 			if err := os.MkdirAll(boardDir, 0o755); err != nil {
 				t.Fatalf("make the board directory: %v", err)
 			}
@@ -326,7 +325,7 @@ func TestWindowTitles(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			hub := t.TempDir()
-			boardDir := fabriclayout.BoardDir(hub)
+			boardDir := fabricengine.BoardDir(hub)
 			if err := os.MkdirAll(boardDir, 0o755); err != nil {
 				t.Fatalf("make the board directory: %v", err)
 			}
@@ -378,7 +377,7 @@ func TestRecipeWindowTitle(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			hub := t.TempDir()
-			boardDir := fabriclayout.BoardDir(hub)
+			boardDir := fabricengine.BoardDir(hub)
 			if err := os.MkdirAll(boardDir, 0o755); err != nil {
 				t.Fatalf("make the board directory: %v", err)
 			}

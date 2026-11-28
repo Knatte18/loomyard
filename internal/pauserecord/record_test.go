@@ -324,26 +324,46 @@ func TestCoverageOf(t *testing.T) {
 		t.Fatalf("resumed-only coverage = %+v, want uncovered with its one interval", resumedOnly)
 	}
 
-	if got.Held {
-		t.Fatalf("coverage by an entry with no caller = %+v, want Held unset", got)
+	if got.OwnerHeld {
+		t.Fatalf("coverage by an entry with no caller = %+v, want OwnerHeld unset", got)
+	}
+	ownerEntry := Entry{Scope: "a", PausedAt: epoch.Add(time.Minute), Caller: OwnerCaller}
+	olderHub := Entry{Scope: ScopeHub, PausedAt: epoch, Caller: "someone"}
+	for _, row := range []struct {
+		name   string
+		record Record
+		want   bool
+	}{
+		{"a slug entry carrying the owner caller", Record{Live: []Entry{ownerEntry}}, true},
+		{"a hub entry older than the owner entry", Record{Live: []Entry{olderHub, ownerEntry}}, true},
+		{"an entry with another caller", Record{Live: []Entry{{Scope: "a", PausedAt: epoch, Caller: "someone"}}}, false},
+		{"a hub entry carrying the owner caller", Record{Live: []Entry{{Scope: ScopeHub, PausedAt: epoch, Caller: OwnerCaller}}}, false},
+	} {
+		if held := row.record.CoverageOf("a", now).OwnerHeld; held != row.want {
+			t.Errorf("%s: OwnerHeld = %v, want %v", row.name, held, row.want)
+		}
 	}
 
-	boltHold := Entry{Scope: "a", PausedAt: epoch, Caller: BoltHoldCaller, Machine: "m1"}
+	holdEntry := Entry{Scope: "a", PausedAt: epoch, Caller: HoldCaller}
 	for _, row := range []struct {
 		name        string
 		record      Record
+		slug        string
 		wantHeld    bool
-		wantMachine string
+		wantCovered bool
 	}{
-		{"a live bolt-hold entry of the slug's scope", Record{Live: []Entry{boltHold}}, true, "m1"},
-		{"a bolt-hold entry of another slug's scope", Record{Live: []Entry{{Scope: "b", PausedAt: epoch, Caller: BoltHoldCaller, Machine: "m1"}}}, false, ""},
-		{"a resumed bolt-hold entry", Record{Resumed: []Entry{{Scope: "a", PausedAt: epoch, ResumedAt: epoch.Add(time.Minute), Caller: BoltHoldCaller, Machine: "m1"}}}, false, ""},
-		{"a hub entry carrying the bolt-hold caller", Record{Live: []Entry{{Scope: ScopeHub, PausedAt: epoch, Caller: BoltHoldCaller, Machine: "m1"}}}, false, ""},
-		{"an entry of the slug's scope with another caller", Record{Live: []Entry{{Scope: "a", PausedAt: epoch, Caller: "someone"}}}, false, ""},
+		{"a live hold entry of the slug's scope", Record{Live: []Entry{holdEntry}}, "a", true, true},
+		{"a hub entry carrying the hold caller", Record{Live: []Entry{{Scope: ScopeHub, PausedAt: epoch, Caller: HoldCaller}}}, "a", false, true},
+		{"a hold entry of another slug's scope", Record{Live: []Entry{{Scope: "b", PausedAt: epoch, Caller: HoldCaller}}}, "a", false, false},
+		{"a resumed hold entry", Record{Resumed: []Entry{{Scope: "a", PausedAt: epoch, ResumedAt: epoch.Add(time.Minute), Caller: HoldCaller}}}, "a", false, false},
+		{"an empty slug", Record{Live: []Entry{{Scope: "", PausedAt: epoch, Caller: HoldCaller}}}, "", false, false},
+		{"a live adopt entry of the slug's scope", Record{Live: []Entry{{Scope: "a", PausedAt: epoch, Caller: AdoptCaller}}}, "a", true, true},
+		{"a hub entry carrying the adopt caller", Record{Live: []Entry{{Scope: ScopeHub, PausedAt: epoch, Caller: AdoptCaller}}}, "a", false, true},
+		{"a resumed adopt entry", Record{Resumed: []Entry{{Scope: "a", PausedAt: epoch, ResumedAt: epoch.Add(time.Minute), Caller: AdoptCaller}}}, "a", false, false},
 	} {
-		got := row.record.CoverageOf("a", now)
-		if got.Held != row.wantHeld || got.HoldMachine != row.wantMachine {
-			t.Errorf("%s: Held = %v, HoldMachine = %q, want %v, %q", row.name, got.Held, got.HoldMachine, row.wantHeld, row.wantMachine)
+		got := row.record.CoverageOf(row.slug, now)
+		if got.Held != row.wantHeld || got.Covered != row.wantCovered || got.OwnerHeld {
+			t.Errorf("%s: Held = %v, Covered = %v, OwnerHeld = %v, want %v, %v, false", row.name, got.Held, got.Covered, got.OwnerHeld, row.wantHeld, row.wantCovered)
 		}
 	}
 }
@@ -416,22 +436,6 @@ func TestCoveredError(t *testing.T) {
 			Entry{Scope: "a", PausedAt: pausedAt},
 			"a",
 			`pause: the pause of a has held this run since 2026-01-10T12:00:00Z; way forward: run "lym tender resume a", then retry`,
-		},
-		{
-			"bolt-hold entry names its machine and no resume",
-			Entry{Scope: "a", PausedAt: pausedAt, Caller: BoltHoldCaller, Machine: "m1"},
-			"a",
-			"pause: an adopt on machine m1 holds this run since 2026-01-10T12:00:00Z; way forward: wait for that adopt's hold to clear, " +
-				"which lifts this entry at the next tick of the worktree's dobby (with no dobby running, `lym beam start` starts one), " +
-				"then retry; if machine m1 has stopped, ask the operator",
-		},
-		{
-			"bolt-hold entry with no machine names another machine",
-			Entry{Scope: "a", PausedAt: pausedAt, Caller: BoltHoldCaller},
-			"a",
-			"pause: an adopt on machine another machine holds this run since 2026-01-10T12:00:00Z; way forward: wait for that adopt's hold to clear, " +
-				"which lifts this entry at the next tick of the worktree's dobby (with no dobby running, `lym beam start` starts one), " +
-				"then retry; if machine another machine has stopped, ask the operator",
 		},
 	}
 	for _, tt := range tests {

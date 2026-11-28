@@ -1,8 +1,7 @@
-// amendment.go implements the Bouncer's new review generation over a changed subject or a newer review input.
+// amendment.go implements the Bouncer's new review generation over a changed subject.
 // It holds the archive and the generation record that start it.
 // It also holds the amendment allowance that bounds an amendment's rounds.
 // AmendmentNote is the text that scopes an amendment's review to the change.
-// ReviewInputNote is the text that names the inputs a full generation was opened over.
 
 package shedadapters
 
@@ -17,45 +16,38 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// ReviewInput is a file a re-entered review is told to read besides the subject's change.
-// WrittenAt is when the file was written.
-type ReviewInput struct {
-	Path      string
-	WrittenAt time.Time
-}
-
-// startNextGeneration starts the generation that follows settled.
-// It reads the review inputs first, keeping those written after settled.SettledAt.
+// startNextGeneration starts the generation that follows settled, over a changed subject.
+// It reads the review input first, keeping its path when the input was written after settled.SettledAt.
 // A read error is returned before anything is archived.
 // It then archives the run directory with the records travelling along.
-// It writes the generation record with the next number and the kept inputs' paths.
-// A generation is full when cfg.FullGeneration selects it;
-// it then carries no Amendment mark and no base.
-// Any other generation is an amendment and carries the Amendment mark and base.
+// It writes the generation record with the next number.
+// An amendment carries the Amendment mark, base and the kept review input path;
+// a full generation, which cfg.FullGeneration selects, carries the number alone.
 // An amendment with an allowance of 0 settles through approveWithoutReview, and every other generation seeds.
 // A failed archive degrades.
 // A Call that fails after the archive leaves the generation record naming a generation no seed has run for,
 // and the next Call's seed takes it from there.
 func (b *Bouncer) startNextGeneration(ctx context.Context, settled settleRecord, base string) (shedengine.Outcome, shedengine.OutputPointer, error) {
-	kept, err := b.keptReviewInput(settled.SettledAt)
-	if err != nil {
-		return "", shedengine.OutputPointer{}, err
-	}
 	amendment := !b.cfg.FullGeneration
+	inputPath := ""
+	if amendment {
+		var err error
+		if inputPath, err = b.keptReviewInput(settled.SettledAt); err != nil {
+			return "", shedengine.OutputPointer{}, err
+		}
+	}
 
 	next := settled.Generation + 1
-	logger.Warn("shedadapters: bouncer starting a new review generation", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "generation", next, "amendment", amendment, "runDir", b.cfg.RunDir)
+	logger.Warn("shedadapters: bouncer starting a new review generation over a changed subject", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "generation", next, "amendment", amendment, "runDir", b.cfg.RunDir)
 	if err := archiveRunDir(b.cfg.RunDir, b.cfg.Now); err != nil {
 		return b.degrade(ctx, "shedadapters: bouncer failed to archive the run directory for a new generation", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "generation", next, "cause", err)
 	}
 
 	record := generationRecord{Number: next}
-	for _, input := range kept {
-		record.ReviewInputs = append(record.ReviewInputs, input.Path)
-	}
 	if amendment {
 		record.Amendment = true
 		record.Base = base
+		record.ReviewInput = inputPath
 	}
 	if err := writeGenerationRecord(b.cfg.RunDir, record); err != nil {
 		return "", shedengine.OutputPointer{}, b.recordFailure("generation record", err)
@@ -67,26 +59,22 @@ func (b *Bouncer) startNextGeneration(ctx context.Context, settled settleRecord,
 	return b.seedCall(ctx)
 }
 
-// keptReviewInput returns the inputs the ReviewInputs seam reports that were written after settledAt.
-// They come in the seam's order.
-// It returns none when the seam is unset.
+// keptReviewInput returns the path of the review input when the ReviewInput seam reports one written after settledAt.
+// Otherwise it returns the empty string.
 // An unset or unparsable settledAt reads as the zero time, so any input is later.
-func (b *Bouncer) keptReviewInput(settledAt string) ([]ReviewInput, error) {
-	if b.cfg.ReviewInputs == nil {
-		return nil, nil
+func (b *Bouncer) keptReviewInput(settledAt string) (string, error) {
+	if b.cfg.ReviewInput == nil {
+		return "", nil
 	}
-	inputs, err := b.cfg.ReviewInputs()
+	path, writtenAt, found, err := b.cfg.ReviewInput()
 	if err != nil {
-		return nil, fmt.Errorf("shedadapters: %s (%s): read the review inputs: %w", b.cfg.Name, bouncerEngineLabel, err)
+		return "", fmt.Errorf("shedadapters: %s (%s): read the review input: %w", b.cfg.Name, bouncerEngineLabel, err)
 	}
 	settledTime, _ := time.Parse(time.RFC3339, settledAt)
-	var kept []ReviewInput
-	for _, input := range inputs {
-		if input.WrittenAt.After(settledTime) {
-			kept = append(kept, input)
-		}
+	if !found || !writtenAt.After(settledTime) {
+		return "", nil
 	}
-	return kept, nil
+	return path, nil
 }
 
 // amendment returns the run directory's generation record and true when it marks an amendment.
@@ -109,7 +97,7 @@ func (b *Bouncer) amendment() (generationRecord, bool) {
 // It includes untracked files outside the exclusion set.
 // A change already uncommitted at the settle is never shown as new;
 // parent changes a Parent-Align brought are left out.
-// When the record holds review inputs, the note names each file as an input the amendment reviews besides the change.
+// When the record holds a review input, the note names its file as an input the amendment reviews besides the change.
 func AmendmentNote(runDir string) string {
 	generation, found, err := readGenerationRecord(runDir)
 	if err != nil {
@@ -129,31 +117,8 @@ func AmendmentNote(runDir string) string {
 	} else {
 		fmt.Fprintf(&note, "This generation is an amendment: the artifacts were reviewed and settled before, so review only the artifacts' change since commit %s.", generation.Base)
 	}
-	for _, path := range generation.inputPaths() {
-		fmt.Fprintf(&note, "\nThe review input is %s; review it besides the change.", path)
-	}
-	return note.String()
-}
-
-// ReviewInputNote renders the note that names the review inputs a full generation was opened over.
-// The note is built from the run directory's generation record, and the rubric's review_input marker is filled from it.
-// It lists each input's path, which the generation reads besides the diff.
-// The note is `none` for an amendment, for a generation whose record holds no input, and when no record exists.
-func ReviewInputNote(runDir string) string {
-	generation, found, err := readGenerationRecord(runDir)
-	if err != nil {
-		logger.Warn("shedadapters: generation record unreadable; rendering no review input note", "runDir", runDir, "cause", err)
-		return noNote
-	}
-	paths := generation.inputPaths()
-	if !found || generation.Amendment || len(paths) == 0 {
-		return noNote
-	}
-
-	var note strings.Builder
-	note.WriteString("This generation reviews the whole range; it was opened by review inputs written after the perch last settled, which you read besides the diff:")
-	for _, path := range paths {
-		fmt.Fprintf(&note, "\n- %s", path)
+	if generation.ReviewInput != "" {
+		fmt.Fprintf(&note, "\nThe review input is %s; review it besides the change.", generation.ReviewInput)
 	}
 	return note.String()
 }

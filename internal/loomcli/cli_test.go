@@ -21,7 +21,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
-	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/spf13/cobra"
 )
@@ -56,19 +55,11 @@ func TestResolvePersistentPreRun_SkipsSlugGroups(t *testing.T) {
 			}
 		}
 	}
-
-	// The pusher verb is skipped too: it exits with the resolve error of its flag, not the pre-run's arming refusal.
-	var out bytes.Buffer
-	missing := filepath.Join(t.TempDir(), "no-such-worktree")
-	exitCode := clihelp.ExecuteIn(Command(), t.TempDir(), &out, []string{"pusher", "--worktree", missing})
-	wayForward := "; way forward: run lym loom pusher --worktree with the path of an existing code worktree; the next commit, dobby tick or resume starts the pusher again"
-	if exitCode != 1 || !strings.Contains(out.String(), wayForward) {
-		t.Errorf("loom pusher --worktree <missing> = exit %d, output %q; want exit 1 and the resolve error ending in %q", exitCode, out.String(), wayForward)
-	}
 }
 
-// TestCommand_StartVerbCarriesParent pins the start verb under the loom parent command: it exposes --parent.
-func TestCommand_StartVerbCarriesParent(t *testing.T) {
+// TestCommand_StartVerbCarriesParentAndHiddenNoAttach pins the start verb under the loom parent command:
+// it exposes --parent, and it accepts --no-attach, hidden, for existing callers.
+func TestCommand_StartVerbCarriesParentAndHiddenNoAttach(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
@@ -83,6 +74,11 @@ func TestCommand_StartVerbCarriesParent(t *testing.T) {
 	}
 	if registered.Flags().Lookup("parent") == nil {
 		t.Error(`"loom start" is missing the --parent flag`)
+	}
+	if noAttach := registered.Flags().Lookup("no-attach"); noAttach == nil {
+		t.Error(`"loom start" is missing the --no-attach flag`)
+	} else if !noAttach.Hidden {
+		t.Error(`"loom start"'s --no-attach flag is not hidden`)
 	}
 }
 
@@ -353,39 +349,6 @@ func TestSpecFor_ScratchAndFrictionDir(t *testing.T) {
 		}
 		if loop.OnExit == nil || loop.OnWake == nil {
 			t.Errorf("loop exit hook set %v, wake hook set %v; want both for the parent lock", loop.OnExit != nil, loop.OnWake != nil)
-		}
-	})
-
-	t.Run("LoopHooksStopTheStepsShuttleRuns", func(t *testing.T) {
-		var ties []shuttleengine.StepTie
-		var orphanedDirs []string
-		c := &loomCLI{location: loc, runID: "self", stopRuns: func(tie shuttleengine.StepTie) (shuttleengine.StepStopReport, error) {
-			ties = append(ties, tie)
-			return shuttleengine.StepStopReport{Stopped: []string{"a:1:plan"}}, nil
-		}, stopOrphanedRuns: func(stepsDir string) (shuttleengine.StepStopReport, error) {
-			orphanedDirs = append(orphanedDirs, stepsDir)
-			return shuttleengine.StepStopReport{Stopped: []string{"a:1:review"}}, nil
-		}}
-		spec := c.specFor("step")
-		if spec.Loop.OnWatchdogKill == nil || spec.Loop.OnStepOrphaned == nil || spec.Loop.ReconcileOrphanedSteps == nil {
-			t.Fatalf("loop watchdog hook set %v, orphaned-step hook set %v, reconcile hook set %v; want all three", spec.Loop.OnWatchdogKill != nil, spec.Loop.OnStepOrphaned != nil, spec.Loop.ReconcileOrphanedSteps != nil)
-		}
-
-		note := spec.Loop.OnStepOrphaned("trace-7")
-		reconcileNote := spec.Loop.ReconcileOrphanedSteps()
-
-		wantTie := shuttleengine.StepTie{StepsDir: spec.StepsDir, TraceID: "trace-7"}
-		if len(ties) != 1 || ties[0] != wantTie {
-			t.Errorf("stop ties = %+v; want the one tie %+v", ties, wantTie)
-		}
-		if note != "stopped shuttle runs: a:1:plan" {
-			t.Errorf("OnStepOrphaned note = %q; want the stopped runs named", note)
-		}
-		if len(orphanedDirs) != 1 || orphanedDirs[0] != spec.StepsDir {
-			t.Errorf("orphaned stop steps directories = %v; want the one %s", orphanedDirs, spec.StepsDir)
-		}
-		if reconcileNote != "stopped shuttle runs: a:1:review" {
-			t.Errorf("ReconcileOrphanedSteps note = %q; want the stopped runs named", reconcileNote)
 		}
 	})
 

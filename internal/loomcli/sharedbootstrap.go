@@ -1,11 +1,9 @@
-// sharedbootstrap.go holds the bootstrap helpers that `start`, `step` and `resume` share.
+// sharedbootstrap.go holds the bootstrap steps that `start` and `step` share.
 // Every helper here is lock-agnostic: none acquires or releases loomengine.LoomBootstrapLock.
-// Each verb wraps its own lock window around these calls, so no helper may assume any one window.
+// Each verb wraps its own lock window around these calls, so no helper may assume either window.
 // `start` holds the lock across the strand work, the driver spawn, and the run-lock handshake.
 // `step` holds it around reed Up alone and releases it before it calls the producer.
-// `resume` holds it across its status-pane restore and the driver wake or spawn.
-// ensureStatusStrand is called by `start` and by `resume`'s status-pane restore.
-// `step` never calls it, because `step` touches no strand.
+// ensureStatusStrand is `start`'s alone, because `step` touches no strand.
 
 package loomcli
 
@@ -16,7 +14,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -70,7 +67,7 @@ const (
 //
 // The effective driver is read from any already-recorded seed.
 // It is never taken from a flag, since the verbs declare no driver flag of their own.
-// It falls back to the shed.driver_kind the loaded config resolves to (llm by default) only when no seed exists yet.
+// It falls back to the driver_kind the loaded config resolves to (llm by default) only when no seed exists yet.
 // An operator who wants a driver on one run pre-seeds it with "lym shed seed self --recipe tapestry --driver go".
 // Without this read-through, a run already seeded for the llm driver would be refused here.
 // WriteSeed rejects a disagreeing existing seed.
@@ -89,7 +86,7 @@ func (c *loomCLI) seedAndCommitBootstrap(slug, parentFlag string) (string, strin
 		// The Mutation Record Invariant covers fabric verb outcomes, not loom's own result.
 		// The recorder is therefore discarded rather than surfaced in the envelope.
 		originRec := fabricengine.NewMutations("")
-		if err := fabricengine.WriteOrigin(originRec, c.location, slug, fabriclayout.Origin{ParentBranch: parent}); err != nil {
+		if err := fabricengine.WriteOrigin(originRec, c.location, slug, fabricengine.Origin{ParentBranch: parent}); err != nil {
 			return "", "", bootstrapStageOrigin, err
 		}
 	}
@@ -100,7 +97,7 @@ func (c *loomCLI) seedAndCommitBootstrap(slug, parentFlag string) (string, strin
 	// WriteSeed is already idempotent against a byte-identical seed, so a re-run needs no sentinel handling of its own.
 	// A disagreeing seed's refusal propagates as a returned error here, at bootstrapStageSeed.
 	// The parent in this seed is the run's recorded startup choice, not the durable record.
-	// fabriclayout.Origin.ParentBranch, written above, stays the durable record.
+	// fabricengine.Origin.ParentBranch, written above, stays the durable record.
 	// resolveParentBranch refuses a disagreeing value.
 	existingSeed, seedFound, err := shedrun.ReadSeed(c.location, shedrun.SelfRunID)
 	if err != nil {
@@ -258,8 +255,7 @@ func disagreeingSeedRefusal(seedPath string, existing shedrun.Seed, parent strin
 
 // resolveSeedDriver returns the driver a run records when it is seeded.
 // It is the already-recorded seed's own Driver when one exists.
-// It is kind only when no seed has been written yet.
-// Kind is the shed.driver_kind the loaded config resolves to, llm by default.
+// It is kind, the driver_kind the loaded config resolves to (llm by default), only when no seed has been written yet.
 // It is a pure function, so a Tier 1 test can pin its cases with no real fabric behind it.
 //
 // A recorded driver always wins over kind: editing the config after seeding has no effect on that run.
@@ -304,7 +300,7 @@ func loomSeedFor(recipe, parent, driver string) shedrun.Seed {
 // and the pins record is added only when its file exists.
 // It only stats that one file, so a Tier 1 test can pin the pathspec's exact shape without a real fabric behind it.
 func bootstrapCommitPaths(location *lymcwd.Location, withFriction bool) []string {
-	paths := []string{shedrun.StatusRel(location, shedrun.SelfRunID), shedrun.SeedRel(location, shedrun.SelfRunID), fabriclayout.OriginRecordRel()}
+	paths := []string{shedrun.StatusRel(location, shedrun.SelfRunID), shedrun.SeedRel(location, shedrun.SelfRunID), fabricengine.OriginRecordRel()}
 	if withFriction {
 		paths = append(paths, loomengine.LoomFrictionDirRel())
 	}
@@ -335,17 +331,13 @@ func ensureFrictionDirAfterSeed(frictionDir string, seedErr error) {
 	friction.EnsureDir(frictionDir)
 }
 
-// errStatusStrandNotReplaced marks a failed replace of the status strand.
-// It costs the operator the status pane, not the run.
-var errStatusStrandNotReplaced = errors.New("could not replace the status strand")
-
-// ensureStatusStrand keeps, replaces or adds the worktree's status strand.
-// The caller has brought reed up and holds the bootstrap lock, which this function neither acquires nor releases.
+// ensureStatusStrand is `start`'s status-strand work: it keeps, replaces or adds the worktree's status strand.
+// Only `start` calls it, after it has brought reed up.
+// It runs after the bootstrap-lock acquisition and ends before the run-lock probe.
 //
-// It returns nil on success.
-// A failed replace returns an error wrapping errStatusStrandNotReplaced and the cause.
-// A caller treats that error as non-fatal.
-// Any other failure is returned unwrapped.
+// It returns the first error encountered, unwrapped, and nil on success.
+// The caller owns the bootstrap lock: this function must neither acquire nor release it.
+// The lock's position differs between the verbs that run the bootstrap.
 func (c *loomCLI) ensureStatusStrand() error {
 	statusResult, err := c.reed.Status()
 	if err != nil {
@@ -369,9 +361,12 @@ func (c *loomCLI) ensureStatusStrand() error {
 	var strand reedengine.Strand
 	if strandAction == statusStrandReplace {
 		// A replace goes through ReplaceStrand so the status strand keeps its top slot.
+		// A failure is not fatal to the bootstrap;
+		// it costs the operator the status pane for this run, not the run itself.
 		strand, err = c.reed.ReplaceStrand(staleGUID, addSpec)
 		if err != nil {
-			return fmt.Errorf("%w %s: %w", errStatusStrandNotReplaced, staleGUID, err)
+			logger.Warn("loom: could not replace the status strand; the status pane will be missing this run", "guid", staleGUID, "cause", err)
+			return nil
 		}
 	} else {
 		strand, err = c.reed.AddStrand(addSpec)
@@ -381,7 +376,7 @@ func (c *loomCLI) ensureStatusStrand() error {
 	}
 	if buildErr == nil {
 		if err := statuspane.WriteSidecar(sidecarPath, strand.GUID, build); err != nil {
-			logger.Warn("loom: could not record the status strand's build; the next status-pane restore will replace it", "cause", err)
+			logger.Warn("loom: could not record the status strand's build; the next start will replace it", "cause", err)
 		}
 	}
 	return nil
@@ -435,17 +430,17 @@ func (c *loomCLI) wireLanding() error {
 	// The PR-Review session's liveness and process registration read reed's strand table.
 	slug := seedSlug(c.location.WorktreeName)
 	registerPane := func(pid int) error {
-		return runproc.Register(fabriclayout.RunProcDir(c.location.HubPath), slug, runproc.ChildRecord(pid, runproc.RoleSession, nil))
+		return runproc.Register(fabricengine.RunProcDir(c.location.HubPath), slug, runproc.ChildRecord(pid, runproc.RoleSession, nil))
 	}
-	c.env.Landing.PullRequest.SessionLive = reedengine.SessionLiveness(c.reed.Status)
-	c.env.Landing.PullRequest.RegisterSession = reedengine.SessionRegistrar(c.reed.Status, registerPane)
-	// The sampler run's session is checked for liveness and registered the same way,
-	// and its row wakes on its record's file event.
+	c.env.Landing.PullRequest.SessionLive = sessionLiveness(c.reed.Status)
+	c.env.Landing.PullRequest.RegisterSession = sessionRegistrar(c.reed.Status, registerPane)
+	// The sampler run's session is checked for liveness and registered, and its row wakes on its record's file event.
 	// The building paths pass through here; status and pause never do.
+	// So the watch opens only for a run that drives the row.
 	if recipeHasEngine(c.recipe, samplerSessionEngine) {
 		c.env.Sampler.Sessions = c.runner
-		c.env.Sampler.SessionLive = reedengine.SessionLiveness(c.reed.Status)
-		c.env.Sampler.RegisterSession = reedengine.SessionRegistrar(c.reed.Status, registerPane)
+		c.env.Sampler.SessionLive = sessionLiveness(c.reed.Status)
+		c.env.Sampler.RegisterSession = sessionRegistrar(c.reed.Status, registerPane)
 		c.env.Sampler.Watch = openRecordWatch(shedrun.SamplerRecord(c.location, c.runID))
 	}
 	// The fixer runs on the seat engine wire already built, so no second engine is constructed.

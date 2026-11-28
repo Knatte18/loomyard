@@ -5,7 +5,6 @@
 package ideengine
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path"
@@ -13,10 +12,8 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/desktophook"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/ideconfig"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -38,19 +35,6 @@ var KeybindingsPath = vscode.UserKeybindingsPath
 // It defaults to `selfexec.LymBinary`, which refuses a test binary.
 // It is exported so that tests can point it at a stand-in lym path.
 var LymBinary = selfexec.LymBinary
-
-// WorkspaceContent returns the "tasks" member of a workspace file: one "beam start" task.
-// The task runs "lym beam start <beam>" in anchorPath with the resolved lym binary, or bare "lym" when none resolves.
-// An empty beam, the hub's own file, runs it for the root subject.
-// It is installed as fabric's workspace-content hook.
-func WorkspaceContent(_, beam, anchorPath string) map[string]json.RawMessage {
-	lymPath, _ := LymBinary()
-	if beam == "" {
-		beam = boardengine.RootSubject
-	}
-	name, tasks := vscode.WorkspaceTasks(lymPath, beam, anchorPath)
-	return map[string]json.RawMessage{name: tasks}
-}
 
 // Spawn writes the worktree slug's window title, colours and .vscode/ config, and seeds the user's lym key bindings.
 // It then launches VS Code and runs the machine's desktop window command.
@@ -81,7 +65,7 @@ func Spawn(l *lymcwd.Location, slug string) (vscode.KeybindingsResult, error) {
 // It launches nothing.
 // It keeps .vscode/ out of git through info/exclude and never writes a .gitignore;
 // a tracked .vscode/tasks.json is left alone with a warning.
-// The settings make a markdown file open rendered while ide.render_markdown is on;
+// The settings make a markdown file open rendered while ide.yaml's render_markdown is on;
 // an ide.yaml that fails to load fails the seed.
 // When slug names the prime or a beam, Seed then regenerates the hub workspace file and every beam's file.
 // Each file carries the workspace look in its settings, and any error on that path is returned.
@@ -195,14 +179,14 @@ func filesToOpen(anchorPath string, entries []string, beam func() string) []stri
 				beamName, beamAsked = beam(), true
 			}
 			if beamName == "" {
-				logger.Info("ide: no beam resolves an "+configengine.KeyName("ide", "open_files")+" entry; skipping it", "entry", entry)
+				logger.Info("ide: no beam resolves an open_files entry; skipping it", "entry", entry)
 				continue
 			}
 			entry = strings.ReplaceAll(entry, ideconfig.BeamPlaceholder, beamName)
 		}
 		filePath := filepath.Join(anchorPath, filepath.FromSlash(entry))
 		if info, err := os.Stat(filePath); err != nil || !info.Mode().IsRegular() {
-			logger.Info("ide: an "+configengine.KeyName("ide", "open_files")+" entry names no file; skipping it", "path", filePath)
+			logger.Info("ide: an open_files entry names no file; skipping it", "path", filePath)
 			continue
 		}
 		files = append(files, filePath)
@@ -348,7 +332,7 @@ func parentOf(hubPath, primeName, slug string) (string, error) {
 // its recorded colour, or for a beam with none the colour a new beam would record, without recording it.
 // An absent board holds no beam.
 func beamColors(hubPath string) (map[string]string, error) {
-	tasks, err := boardengine.ReadTasks(fabriclayout.BoardDir(hubPath))
+	tasks, err := boardengine.ReadTasks(fabricengine.BoardDir(hubPath))
 	if err != nil {
 		return nil, err
 	}

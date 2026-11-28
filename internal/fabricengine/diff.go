@@ -8,8 +8,6 @@ package fabricengine
 import (
 	"errors"
 	"fmt"
-
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 )
 
 // weftAnchorForWarpSHA resolves warpSHA to the weft SHA it corresponds to, without reverting anything.
@@ -31,38 +29,62 @@ func (f *Fabric) weftAnchorForWarpSHA(warpSHA string) (weftSHA string, found boo
 	return res.Entry.WeftSHA, true, nil
 }
 
+// ChangeSide names which repo of a warp<->weft pair a changed path belongs to.
+type ChangeSide string
+
+// The two sides of a warp<->weft pair that a changed path can be labelled with.
+const (
+	SideWarp ChangeSide = "warp"
+	SideWeft ChangeSide = "weft"
+)
+
+// ChangeEntry is one repo-relative path that changed on one side of a warp<->weft pair.
+// Its Side field names that side.
+type ChangeEntry struct {
+	Path string
+	Side ChangeSide
+}
+
+// DiffResult is the merged, side-labelled set of paths that changed across a warp<->weft pair since a warp SHA.
+// NoWeftCorrespondence reports whether that warp SHA predates any recorded weft correspondence;
+// in that case Entries holds only warp-side changes.
+type DiffResult struct {
+	Entries              []ChangeEntry
+	NoWeftCorrespondence bool
+}
+
 // Diff reports what changed on both sides of the warp<->weft pair since sinceWarpSHA.
 // It resolves sinceWarpSHA to the nearest correspondence at or before it when no exact match exists.
 // When no weft correspondence exists for sinceWarpSHA, the weft side is empty;
 // DiffResult.NoWeftCorrespondence is true rather than an error.
-func (f *Fabric) Diff(sinceWarpSHA string) (fabriclayout.DiffResult, error) {
+func (f *Fabric) Diff(sinceWarpSHA string) (DiffResult, error) {
 	warpFiles, err := f.code.ChangedFilesSince(sinceWarpSHA)
 	if err != nil {
-		return fabriclayout.DiffResult{}, fmt.Errorf("fabricengine: diff warp side: %w", err)
+		return DiffResult{}, fmt.Errorf("fabricengine: diff warp side: %w", err)
 	}
 
-	var entries []fabriclayout.ChangeEntry
+	var entries []ChangeEntry
 	for _, path := range warpFiles {
-		entries = append(entries, fabriclayout.ChangeEntry{Path: path, Side: fabriclayout.SideWarp})
+		entries = append(entries, ChangeEntry{Path: path, Side: SideWarp})
 	}
 
 	weftAnchor, found, err := f.weftAnchorForWarpSHA(sinceWarpSHA)
 	if err != nil {
-		return fabriclayout.DiffResult{}, fmt.Errorf("fabricengine: resolve weft anchor: %w", err)
+		return DiffResult{}, fmt.Errorf("fabricengine: resolve weft anchor: %w", err)
 	}
 	if !found {
-		return fabriclayout.DiffResult{Entries: entries, NoWeftCorrespondence: true}, nil
+		return DiffResult{Entries: entries, NoWeftCorrespondence: true}, nil
 	}
 
 	weftFiles, err := f.records.ChangedFilesSince(weftAnchor)
 	if err != nil {
-		return fabriclayout.DiffResult{}, fmt.Errorf("fabricengine: diff weft side: %w", err)
+		return DiffResult{}, fmt.Errorf("fabricengine: diff weft side: %w", err)
 	}
 	for _, path := range weftFiles {
-		entries = append(entries, fabriclayout.ChangeEntry{Path: path, Side: fabriclayout.SideWeft})
+		entries = append(entries, ChangeEntry{Path: path, Side: SideWeft})
 	}
 
-	return fabriclayout.DiffResult{Entries: entries}, nil
+	return DiffResult{Entries: entries}, nil
 }
 
 // DirtyPaths returns the tracked uncommitted paths of both checkouts of the pair, with no side label.
@@ -105,7 +127,7 @@ func (f *Fabric) CodeWorktreeChanges() ([]string, error) {
 
 // Status reports every uncommitted path on both sides of the warp<->weft pair, merged into one side-labelled slice.
 // It reads each checkout's live worktree, so no correspondence is involved.
-func (f *Fabric) Status() ([]fabriclayout.ChangeEntry, error) {
+func (f *Fabric) Status() ([]ChangeEntry, error) {
 	warpFiles, err := f.code.WorktreeChangedFiles()
 	if err != nil {
 		return nil, fmt.Errorf("fabricengine: status warp side: %w", err)
@@ -116,12 +138,12 @@ func (f *Fabric) Status() ([]fabriclayout.ChangeEntry, error) {
 		return nil, fmt.Errorf("fabricengine: status weft side: %w", err)
 	}
 
-	var entries []fabriclayout.ChangeEntry
+	var entries []ChangeEntry
 	for _, path := range warpFiles {
-		entries = append(entries, fabriclayout.ChangeEntry{Path: path, Side: fabriclayout.SideWarp})
+		entries = append(entries, ChangeEntry{Path: path, Side: SideWarp})
 	}
 	for _, path := range weftFiles {
-		entries = append(entries, fabriclayout.ChangeEntry{Path: path, Side: fabriclayout.SideWeft})
+		entries = append(entries, ChangeEntry{Path: path, Side: SideWeft})
 	}
 	return entries, nil
 }

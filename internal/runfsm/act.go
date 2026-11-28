@@ -6,12 +6,7 @@ package runfsm
 import (
 	"fmt"
 	"strings"
-	"time"
 )
-
-// CodeTipGrace is how long a code tip the run's last transition on origin names may stay missing from origin.
-// It is measured from the commit time of that transition; past it, a tip absent from the owner's repository is given up.
-const CodeTipGrace = 30 * time.Minute
 
 // Inputs are the machine-local facts and the derived state the act rule decides over.
 type Inputs struct {
@@ -25,27 +20,12 @@ type Inputs struct {
 	AdoptSubject string
 	// Held is true while an adopt hold stands over the hub.
 	Held bool
-	// HoldMachine names the machine that wrote the hold, for the held refusal.
-	HoldMachine string
 	// PauseCovers is true when this machine's pause record covers the run.
 	PauseCovers bool
-	// PushOwed is true while a push of the run is owed:
-	// origin is unreachable, the records side was deferred or a teardown lock is held.
-	PushOwed bool
-	// PushOwedError is the owed push's last error, for the push-owed refusal.
-	PushOwedError string
-	// PushOwedWorktree is the worktree whose side is owed, for the push-owed refusal.
-	PushOwedWorktree string
-	// PushOwedWayForward is the owed push's own way forward, which the push-owed refusal names when it is set.
-	PushOwedWayForward string
+	// PushOwedOffline is true while a push is owed because origin is unreachable.
+	PushOwedOffline bool
 	// CodeTipMissing is true when the run's code tip is not on origin.
 	CodeTipMissing bool
-	// CodeTip is the code tip the run's last transition on origin names, for the code-tip refusal.
-	CodeTip string
-	// CodeTipMachine is the machine whose transition named CodeTip, for the code-tip refusal.
-	CodeTipMachine string
-	// CodeTipPairAbsent is true when no pair of the run stands on this machine, for the code-tip refusal.
-	CodeTipPairAbsent bool
 	// PastParentMerge is true when origin's fetched parent branch holds the task's work.
 	PastParentMerge bool
 }
@@ -86,21 +66,11 @@ type Verdict struct {
 	// Owner and AdoptSubject are copied from the inputs for the hand-over refusal.
 	Owner        string
 	AdoptSubject string
-	// PushOwedError, PushOwedWorktree and PushOwedWayForward are copied from the inputs for the push-owed refusal.
-	// CodeTip, CodeTipMachine and CodeTipPairAbsent are copied from the inputs for the code-tip refusal.
-	PushOwedError      string
-	PushOwedWorktree   string
-	PushOwedWayForward string
-	CodeTip            string
-	CodeTipMachine     string
-	CodeTipPairAbsent  bool
 	// CancelMachine and CancelRemove are the record's cancel intent, for the cancelling refusal; Judge fills them.
 	CancelMachine string
 	CancelRemove  bool
 	// PausedByIntent is true when a pause intent holds the paused run; Judge fills it.
 	PausedByIntent bool
-	// HoldMachine is copied from the inputs for the held refusal.
-	HoldMachine string
 }
 
 // Act answers whether a verb may act on the run the inputs describe, in the rule's order.
@@ -110,13 +80,9 @@ type Verdict struct {
 // A landing run past its parent-side merge acts unless a pause covers it.
 // Then a hold, a covering pause, and the paused, cancelling and terminal states wait, and everything else acts.
 func Act(in Inputs) Verdict {
-	verdict := Verdict{
-		Answer: AnswerWait, State: in.State, Owner: in.Owner, AdoptSubject: in.AdoptSubject,
-		PushOwedError: in.PushOwedError, PushOwedWorktree: in.PushOwedWorktree, PushOwedWayForward: in.PushOwedWayForward,
-		CodeTip: in.CodeTip, CodeTipMachine: in.CodeTipMachine, CodeTipPairAbsent: in.CodeTipPairAbsent, HoldMachine: in.HoldMachine,
-	}
+	verdict := Verdict{Answer: AnswerWait, State: in.State, Owner: in.Owner, AdoptSubject: in.AdoptSubject}
 	switch {
-	case in.PushOwed:
+	case in.PushOwedOffline:
 		verdict.Reason = ReasonPushOwed
 	case in.OwnedElsewhere:
 		verdict.Answer, verdict.Reason = AnswerHandOver, ReasonOwnedElsewhere
@@ -146,30 +112,17 @@ func (v Verdict) Refusal(slug, retry string) error {
 	var reason, wayForward string
 	switch v.Reason {
 	case ReasonPushOwed:
-		reason = "a push to origin is owed"
-		if v.PushOwedError != "" {
-			reason += fmt.Sprintf(" (last error: %s)", v.PushOwedError)
-		}
-		switch {
-		case v.PushOwedWayForward != "":
-			wayForward = fmt.Sprintf("%s; then run %s again", v.PushOwedWayForward, retry)
-		case v.PushOwedWorktree != "":
-			wayForward = fmt.Sprintf("run `lym fabric push` in %s once origin answers, then run %s again", v.PushOwedWorktree, retry)
-		default:
-			wayForward = fmt.Sprintf("run %s again once the owed push lands", retry)
-		}
+		reason = "a push is owed to origin, which is unreachable"
+		wayForward = fmt.Sprintf("run %s again once origin answers", retry)
 	case ReasonOwnedElsewhere:
 		reason = fmt.Sprintf("machine %s owns the run", v.Owner)
 		wayForward = fmt.Sprintf("run the same verb on %s, or run `lym adopt %s` on this machine first", v.Owner, v.AdoptSubject)
 	case ReasonCodeTip:
-		reason, wayForward = v.codeTipRefusal(slug, retry)
+		reason = "the run's code tip is not on origin yet"
+		wayForward = fmt.Sprintf("run %s again once the code push lands", retry)
 	case ReasonHeld:
-		machine := v.HoldMachine
-		if machine == "" {
-			machine = "another machine"
-		}
-		reason = fmt.Sprintf("an adopt on machine %s holds the hub", machine)
-		wayForward = fmt.Sprintf("wait for that adopt's hold to clear, then run %s again; if machine %s has stopped, ask the operator", retry, machine)
+		reason = "an adopt holds the hub"
+		wayForward = fmt.Sprintf("wait for the adopt that holds the hub to finish, then run %s again", retry)
 	case ReasonPauseCovers:
 		reason = "a pause covers the run"
 		wayForward = fmt.Sprintf("run `lym tender resume %s`, then run %s again", slug, retry)
@@ -193,29 +146,6 @@ func (v Verdict) Refusal(slug, retry string) error {
 		return nil
 	}
 	return fmt.Errorf("run %q cannot act: %s; way forward: %s", slug, reason, wayForward)
-}
-
-// codeTipRefusal words the reason and the way forward of a code-tip wait.
-// With no pair of the run on this machine, the transition may come from a records branch origin has deleted.
-// This machine kept that branch's fetched ref, so the way forward fetches origin's records before any push.
-func (v Verdict) codeTipRefusal(slug, retry string) (reason, wayForward string) {
-	reason = "the code tip the run's last transition names is not on origin yet"
-	if v.CodeTip != "" {
-		reason = fmt.Sprintf("the code tip %s the run's last transition names is not on origin yet", v.CodeTip)
-	}
-	wayForward = fmt.Sprintf("run %s again once the code push lands", retry)
-	if v.CodeTipMachine != "" {
-		reason += fmt.Sprintf("; machine %s owes it", v.CodeTipMachine)
-		wayForward = fmt.Sprintf("run `lym fabric push` in the task worktree on machine %s, then run %s again once the code push lands",
-			v.CodeTipMachine, retry)
-	}
-	if !v.CodeTipPairAbsent {
-		return reason, wayForward
-	}
-	reason += fmt.Sprintf("; no pair of the run stands on this machine, so the transition may be read from a records branch origin has deleted, "+
-		"as `lym batten cancel %s --remove` does", slug)
-	fetch := fmt.Sprintf("run `lym fabric pull` in the prime, which fetches origin's records and drops the ref of a deleted records branch, then run %s again", retry)
-	return reason, fetch + "; if the refusal stays, " + wayForward
 }
 
 // terminalRefusal words the refusal of a landed or cancelled run.
@@ -248,7 +178,7 @@ type Aside struct {
 	Hold bool
 	// ShedPause reads a shed state of paused as not paused.
 	ShedPause bool
-	// PushOwed drops the owed push: Inputs.PushOwed, its error, its worktree and its way forward.
+	// PushOwed drops the owed push.
 	PushOwed bool
 }
 
@@ -271,10 +201,7 @@ func Judge(r Records, in Inputs, aside Aside) (Reading, Verdict) {
 		in.Held = false
 	}
 	if aside.PushOwed {
-		in.PushOwed = false
-		in.PushOwedError = ""
-		in.PushOwedWorktree = ""
-		in.PushOwedWayForward = ""
+		in.PushOwedOffline = false
 	}
 	reading := Derive(r)
 	in.State = reading.State

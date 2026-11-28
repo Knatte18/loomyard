@@ -14,9 +14,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -42,7 +40,7 @@ const raddleFileEngine = "RaddleFile"
 // A run whose recipe rows hold a split perch never reads it.
 const (
 	raddleSettingModule  = "loom"
-	raddleAutoApproveKey = "raddle.auto_approve"
+	raddleAutoApproveKey = "raddle_auto_approve"
 )
 
 // raddleRunHistory returns the history of the run's status file at location, empty when the run has no status file yet.
@@ -77,7 +75,7 @@ func freshRaddleEntry(history []shedengine.HistoryEntry) (fresh bool, position i
 // The bool is false while the run has filed none.
 // A store entry left by an earlier board entry of the same slug is not the run's, since its created stamp differs.
 func raddleRunFiling(location *lymcwd.Location, slug string) ([]string, bool, error) {
-	store, err := boardengine.ReadRaddleStore(fabriclayout.BoardDir(location.HubPath))
+	store, err := boardengine.ReadRaddleStore(fabricengine.BoardDir(location.HubPath))
 	if err != nil {
 		return nil, false, err
 	}
@@ -141,8 +139,7 @@ func raddleWriteEnv(location *lymcwd.Location, cfg loomengine.Config, stencilsDi
 				}
 				auto, ok := value.(bool)
 				if !ok {
-					key := configengine.KeyName(raddleSettingModule, raddleAutoApproveKey)
-					return false, fmt.Errorf("setting %s holds %v, want true or false; way forward: set %s in loom.yaml, or in the run profile's raddle block", key, value, key)
+					return false, fmt.Errorf("setting %s.%s holds %v, want true or false; way forward: set %s in loom.yaml, or in the run profile's raddle block", raddleSettingModule, raddleAutoApproveKey, value, raddleAutoApproveKey)
 				}
 				return auto, nil
 			},
@@ -179,7 +176,7 @@ func raddleWriteEnv(location *lymcwd.Location, cfg loomengine.Config, stencilsDi
 // It covers the run's raddle paths and the board writes of the filing.
 // Every closure opens the board or reads the run on a call, never at build time.
 func raddleFileDeps(location *lymcwd.Location, slug string) loomshed.RaddleFileDeps {
-	boardDir := fabriclayout.BoardDir(location.HubPath)
+	boardDir := fabricengine.BoardDir(location.HubPath)
 	return loomshed.RaddleFileDeps{
 		ProposalPath:   loomengine.RaddleProposal(location),
 		ColdPath:       loomengine.RaddleColdProposal(location),

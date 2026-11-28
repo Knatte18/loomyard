@@ -5,7 +5,6 @@ package claudeengine
 
 import (
 	"encoding/json"
-	"flag"
 	"fmt"
 	"os"
 	"path"
@@ -16,7 +15,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/Knatte18/loomyard/internal/shellguard"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -69,7 +68,7 @@ func TestBuildSettings_LeavesWorktreeSettingsOut(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, shuttleengine.Config{}, Config{}, tt.fork, false, false, "", "", tt.flagDir, "", testLymPath, sessionScope{})
+			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, shuttleengine.Config{}, Config{}, tt.fork, false, "", "", tt.flagDir, "", sessionScope{})
 			if err != nil {
 				t.Fatalf("buildSettings() error: %v", err)
 			}
@@ -118,7 +117,7 @@ func TestBuildSettings_RecordingHooks(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			data, err := buildSettings(tt.eventsPath, false, shuttleengine.Config{}, Config{}, false, false, false, "", "", "", "", testLymPath, sessionScope{})
+			data, err := buildSettings(tt.eventsPath, false, shuttleengine.Config{}, Config{}, false, false, "", "", "", "", sessionScope{})
 			if err != nil {
 				t.Fatalf("buildSettings() error: %v", err)
 			}
@@ -191,7 +190,7 @@ func TestBuildSettings_SessionStartHook(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			data, err := buildSettings("/c/run/events.jsonl", false, shuttleengine.Config{}, Config{}, false, false, false, tt.command, "", "", "", testLymPath, sessionScope{})
+			data, err := buildSettings("/c/run/events.jsonl", false, shuttleengine.Config{}, Config{}, false, false, tt.command, "", "", "", sessionScope{})
 			if err != nil {
 				t.Fatalf("buildSettings() error: %v", err)
 			}
@@ -267,7 +266,7 @@ func TestBuildSettings_CreelMailHook(t *testing.T) {
 	t.Parallel()
 	const eventsPath = "/c/run/events.jsonl"
 	quotedEventsPath := shQuote(eventsPath)
-	quotedFlagDir := `'/c/hub'\''s/` + fabriclayout.BoltDirName + `/.lym/creel/flags'`
+	quotedFlagDir := `'/c/hub'\''s/` + fabricengine.BoltDirName + `/.lym/creel/flags'`
 	type stopHook struct {
 		command       string
 		asyncRewake   bool
@@ -282,7 +281,7 @@ func TestBuildSettings_CreelMailHook(t *testing.T) {
 		wantStop []stopHook
 	}{
 		{
-			"InAHub", `/c/hub's/` + fabriclayout.BoltDirName + `/.lym/creel/flags`,
+			"InAHub", `/c/hub's/` + fabricengine.BoltDirName + `/.lym/creel/flags`,
 			[]string{"touch '/c/run/activity-stamp'; true", creelMailHookCommand(quotedFlagDir)},
 			[]stopHook{
 				{command: creelStopHookCommand(quotedFlagDir, quotedEventsPath, "")},
@@ -292,7 +291,7 @@ func TestBuildSettings_CreelMailHook(t *testing.T) {
 		{"Standalone", "", []string{"touch '/c/run/activity-stamp'; true"}, []stopHook{{command: recordingCommand(hookEventStop, quotedEventsPath)}}},
 	}
 	for _, tt := range tests {
-		data, err := buildSettings(eventsPath, false, shuttleengine.Config{}, Config{}, false, false, false, "", "", tt.flagDir, "", testLymPath, sessionScope{})
+		data, err := buildSettings(eventsPath, false, shuttleengine.Config{}, Config{}, false, false, "", "", tt.flagDir, "", sessionScope{})
 		if err != nil {
 			t.Fatalf("buildSettings(%s) error: %v", tt.name, err)
 		}
@@ -383,7 +382,7 @@ func TestBuildSettings_TurnHookCommand(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			data, err := buildSettings(eventsPath, false, shuttleengine.Config{}, Config{}, false, false, false, "", "lym slack hook", tt.flagDir, "", testLymPath, sessionScope{})
+			data, err := buildSettings(eventsPath, false, shuttleengine.Config{}, Config{}, false, false, "", "lym slack hook", tt.flagDir, "", sessionScope{})
 			if err != nil {
 				t.Fatalf("buildSettings() error: %v", err)
 			}
@@ -398,9 +397,6 @@ func TestBuildSettings_TurnHookCommand(t *testing.T) {
 	}
 }
 
-// TestBuildSettings_DenyToggleMatrix proves each Bash deny's presence and the PreToolUse count follow the deny inputs.
-//
-//testtiming:keep pins each Bash deny's presence and the PreToolUse count across every interactive, fork and publish combination, which TestPrepare_WritesTheManifest checks for one autonomous spec
 func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -408,24 +404,29 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 		askUserDeny      bool
 		interactive      bool
 		wantAskUserEntry bool
+		pythonDeny       bool
 		fork             bool
 		denyPublish      bool
 	}{
-		{"all_off_autonomous", false, false, false, false, false},
-		{"askuser_on_autonomous", true, false, true, false, false},
+		{"all_off_autonomous", false, false, false, false, false, false},
+		{"askuser_on_autonomous", true, false, true, false, false, false},
 		// Interactive runs always carry the non-denying AskUserQuestion marker entry, regardless of DenyAskUserQuestion.
 		// The deny is autonomous-only, and the marker and the deny are mutually exclusive.
-		{"askuser_on_interactive_marker_not_deny", true, true, true, false, false},
-		{"askuser_off_interactive_marker_still_present", false, true, true, false, false},
-		{"askuser_on_fork", true, false, true, true, false},
+		{"askuser_on_interactive_marker_not_deny", true, true, true, false, false, false},
+		{"askuser_off_interactive_marker_still_present", false, true, true, false, false, false},
+		{"askuser_on_fork", true, false, true, false, true, false},
+		// The python deny is independent of the others and installed in every run mode.
+		{"python_only_autonomous", false, false, false, true, false, false},
+		{"python_only_interactive", false, true, true, true, false, false},
+		{"python_only_fork", false, false, false, true, true, false},
 		// The publish deny is installed only on the launch-spec switch, in every run mode.
-		{"publish_on", false, false, false, false, true},
+		{"publish_on", false, false, false, false, false, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := shuttleengine.Config{}
+			cfg := shuttleengine.Config{DenyPython: tt.pythonDeny}
 			claude := Config{DenyAskUserQuestion: tt.askUserDeny}
-			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, cfg, claude, tt.fork, tt.denyPublish, false, "", "", "", "", testLymPath, sessionScope{})
+			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, cfg, claude, tt.fork, tt.denyPublish, "", "", "", "", sessionScope{})
 			if err != nil {
 				t.Fatalf("buildSettings() error: %v", err)
 			}
@@ -474,9 +475,8 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 					t.Errorf("autonomous AskUserQuestion command = %q; want the deny JSON payload", command)
 				}
 			}
-			pythonInstalled, rawGoInstalled, shellEditInstalled, computedRmInstalled, sleepInstalled, headlessClaudeInstalled, adoptTakeHoldInstalled, publishInstalled := false, false, false, false, false, false, false, false
+			pythonInstalled, rawGoInstalled, shellEditInstalled, computedRmInstalled, sleepInstalled, headlessClaudeInstalled, publishInstalled := false, false, false, false, false, false, false
 			for _, command := range matcherCommands(doc, "Bash") {
-				adoptTakeHoldInstalled = adoptTakeHoldInstalled || strings.Contains(command, shellRow(t, "adopt-take-hold").Steer)
 				pythonInstalled = pythonInstalled || strings.Contains(command, shellRow(t, "python").Steer)
 				rawGoInstalled = rawGoInstalled || strings.Contains(command, shellRow(t, "raw-go").Steer)
 				shellEditInstalled = shellEditInstalled || strings.Contains(command, shellRow(t, "shell-edit").Steer)
@@ -485,17 +485,14 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 				headlessClaudeInstalled = headlessClaudeInstalled || strings.Contains(command, shellRow(t, "headless-claude").Steer)
 				publishInstalled = publishInstalled || strings.Contains(command, shellRow(t, "publish").Steer)
 			}
-			if !pythonInstalled {
-				t.Errorf("python Bash PreToolUse entry present = false; want it installed under every input (preToolUse: %v)", preToolUse)
+			if pythonInstalled != tt.pythonDeny {
+				t.Errorf("python Bash PreToolUse entry present = %v; want %v (preToolUse: %v)", pythonInstalled, tt.pythonDeny, preToolUse)
 			}
 			// The raw go deny has no toggle: every run mode installs it.
 			if !rawGoInstalled {
 				t.Errorf("raw go Bash PreToolUse entry present = false; want it installed under every input (preToolUse: %v)", preToolUse)
 			}
-			// The shell-edit, computed-rm, sleep, headless claude and adopt takeover denies have no toggle either.
-			if !adoptTakeHoldInstalled {
-				t.Errorf("adopt takeover Bash PreToolUse entry present = false; want it installed under every input (preToolUse: %v)", preToolUse)
-			}
+			// The shell-edit, computed-rm, sleep and headless claude denies have no toggle either.
 			if !headlessClaudeInstalled {
 				t.Errorf("headless claude Bash PreToolUse entry present = false; want it installed under every input (preToolUse: %v)", preToolUse)
 			}
@@ -511,8 +508,8 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 			if publishInstalled != tt.denyPublish {
 				t.Errorf("publish Bash PreToolUse entry present = %v; want %v (preToolUse: %v)", publishInstalled, tt.denyPublish, preToolUse)
 			}
-			if !tt.wantAskUserEntry && !tt.denyPublish && !tt.fork && len(preToolUse) != 10 {
-				t.Errorf("PreToolUse = %v with no denies/marker configured; want only the python, raw go, shell-edit, computed-rm, sleep, headless claude, adopt takeover, tmux and script, session bus and hub tmux server denies", preToolUse)
+			if !tt.wantAskUserEntry && !tt.pythonDeny && !tt.denyPublish && !tt.fork && len(preToolUse) != 5 {
+				t.Errorf("PreToolUse = %v with no denies/marker configured; want only the raw go, shell-edit, computed-rm, sleep and headless claude denies", preToolUse)
 			}
 		})
 	}
@@ -526,7 +523,7 @@ func TestStandingDenies_RenderEveryShellGuardRow(t *testing.T) {
 	t.Parallel()
 
 	rows := shellguard.Rows(bashForegroundPhrase, sampleRefuseRaw)
-	denies := standingDeniesFor(sampleRefuseRaw, testLymPath)
+	denies := standingDeniesFor(sampleRefuseRaw)
 	claudeCount := len(claudeDenies())
 	if len(denies) != claudeCount+len(rows) {
 		t.Fatalf("standingDeniesFor has %d entries; want %d Claude entries plus %d shell guard rows", len(denies), claudeCount, len(rows))
@@ -557,7 +554,7 @@ func TestBuildSettings_NoForbiddenCharsInSteerText(t *testing.T) {
 	// Each steer constant rides inside a JSON string literal, so a literal `"` or `\` would corrupt the payload.
 	// The JSON sits inside a single-quoted echo argument under git-bash, so a literal `'` would corrupt the hook command.
 	// All three characters must stay absent.
-	for _, deny := range standingDeniesFor(sampleRefuseRaw, testLymPath) {
+	for _, deny := range standingDeniesFor(sampleRefuseRaw) {
 		if strings.ContainsAny(deny.steer, steerTextForbiddenChars) {
 			t.Errorf("steer text contains a forbidden character (one of %q): %q", steerTextForbiddenChars, deny.steer)
 		}
@@ -590,7 +587,7 @@ func matcherCommands(doc map[string]any, matcher string) []string {
 
 // TestBuildSettings_NoAgentHookAndForkGuard covers the PreToolUse entries that forkSubagents and AskUserQuestion decide.
 // It also checks that no input installs an Agent entry.
-// Every document carries the raw go, shell-edit, computed-rm, sleep, headless claude and adopt takeover Bash entries.
+// The raw go, shell-edit, computed-rm, sleep and headless claude denies are the Bash entries every document carries.
 // The fork-loop-deadlock guard is the only other Bash entry, so no run mode installs a Bash stdin rewrite.
 // A fork-mode run emits a PreToolUse(Bash) hook that denies a call with steerWebsterForkDeny.
 // It matches only a fork-context agent_id together with a `lym webster` command.
@@ -608,7 +605,6 @@ func TestBuildSettings_NoAgentHookAndForkGuard(t *testing.T) {
 		claude        Config
 		interactive   bool
 		fork          bool
-		allowRawTmux  bool
 		wantBashGuard bool
 		wantAskDeny   bool
 	}{
@@ -616,14 +612,13 @@ func TestBuildSettings_NoAgentHookAndForkGuard(t *testing.T) {
 		{name: "fork_off_installs_no_bash_guard", claude: Config{}},
 		{name: "autonomous", claude: askDeny, wantAskDeny: true},
 		{name: "interactive", claude: askDeny, interactive: true},
-		{name: "interactive_with_the_tmux_exemption", claude: askDeny, interactive: true, allowRawTmux: true},
 		{name: "fork_with_ask_deny", claude: askDeny, fork: true, wantBashGuard: true, wantAskDeny: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, shuttleengine.Config{}, tt.claude, tt.fork, false, tt.allowRawTmux, "", "", "", "", testLymPath, sessionScope{})
+			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, shuttleengine.Config{}, tt.claude, tt.fork, false, "", "", "", "", sessionScope{})
 			if err != nil {
 				t.Fatalf("buildSettings() error: %v", err)
 			}
@@ -633,23 +628,11 @@ func TestBuildSettings_NoAgentHookAndForkGuard(t *testing.T) {
 				t.Errorf("Agent PreToolUse entries = %q; want none (data: %s)", agentCommands, data)
 			}
 
-			// Every input installs the python, raw go, shell-edit, computed-rm, sleep and headless claude denies.
-			// It also installs the adopt takeover, session bus and hub tmux server denies,
-			// and every input but one that sets the exemption the tmux and script deny.
-			// The rest of the Bash entries are the fork guard.
-			var bashCommands, pythonCommands, rawGoCommands, shellEditCommands, computedRmCommands, sleepCommands, headlessClaudeCommands, adoptTakeHoldCommands, tmuxScriptCommands, sessionBusCommands, hubTmuxServerCommands []string
+			// The raw go, shell-edit, computed-rm, sleep and headless claude denies are installed under every input;
+			// the rest of the Bash entries are the fork guard.
+			var bashCommands, rawGoCommands, shellEditCommands, computedRmCommands, sleepCommands, headlessClaudeCommands []string
 			for _, command := range matcherCommands(doc, "Bash") {
 				switch {
-				case strings.Contains(command, shellRow(t, "tmux-script").Steer):
-					tmuxScriptCommands = append(tmuxScriptCommands, command)
-				case strings.Contains(command, shellRow(t, "session-bus").Steer):
-					sessionBusCommands = append(sessionBusCommands, command)
-				case strings.Contains(command, shellRow(t, "hub-tmux-server").Steer):
-					hubTmuxServerCommands = append(hubTmuxServerCommands, command)
-				case strings.Contains(command, shellRow(t, "python").Steer):
-					pythonCommands = append(pythonCommands, command)
-				case strings.Contains(command, shellRow(t, "adopt-take-hold").Steer):
-					adoptTakeHoldCommands = append(adoptTakeHoldCommands, command)
 				case strings.Contains(command, shellRow(t, "raw-go").Steer):
 					rawGoCommands = append(rawGoCommands, command)
 				case strings.Contains(command, shellRow(t, "shell-edit").Steer):
@@ -664,21 +647,8 @@ func TestBuildSettings_NoAgentHookAndForkGuard(t *testing.T) {
 					bashCommands = append(bashCommands, command)
 				}
 			}
-			wantTmuxScript := 1
-			if tt.allowRawTmux {
-				wantTmuxScript = 0
-			}
-			if len(tmuxScriptCommands) != wantTmuxScript {
-				t.Errorf("tmux and script Bash PreToolUse entries = %q; want %d (data: %s)", tmuxScriptCommands, wantTmuxScript, data)
-			}
 			if len(headlessClaudeCommands) != 1 {
 				t.Errorf("headless claude Bash PreToolUse entries = %q; want exactly one (data: %s)", headlessClaudeCommands, data)
-			}
-			if len(adoptTakeHoldCommands) != 1 {
-				t.Errorf("adopt takeover Bash PreToolUse entries = %q; want exactly one (data: %s)", adoptTakeHoldCommands, data)
-			}
-			if len(pythonCommands) != 1 {
-				t.Errorf("python Bash PreToolUse entries = %q; want exactly one (data: %s)", pythonCommands, data)
 			}
 			if len(rawGoCommands) != 1 {
 				t.Errorf("raw go Bash PreToolUse entries = %q; want exactly one (data: %s)", rawGoCommands, data)
@@ -691,12 +661,6 @@ func TestBuildSettings_NoAgentHookAndForkGuard(t *testing.T) {
 			}
 			if len(sleepCommands) != 1 {
 				t.Errorf("sleep Bash PreToolUse entries = %q; want exactly one (data: %s)", sleepCommands, data)
-			}
-			if len(sessionBusCommands) != 1 {
-				t.Errorf("session bus Bash PreToolUse entries = %q; want exactly one (data: %s)", sessionBusCommands, data)
-			}
-			if len(hubTmuxServerCommands) != 1 {
-				t.Errorf("hub tmux server Bash PreToolUse entries = %q; want exactly one (data: %s)", hubTmuxServerCommands, data)
 			}
 			if !tt.wantBashGuard {
 				if len(bashCommands) != 0 {
@@ -721,10 +685,7 @@ func TestBuildSettings_NoAgentHookAndForkGuard(t *testing.T) {
 			}
 
 			askCommands := matcherCommands(doc, "AskUserQuestion")
-			notice := buildDenyNotice(tt.interactive, shuttleengine.Config{}, tt.claude, tt.fork, false, tt.allowRawTmux)
-			if got, want := strings.Contains(notice, shellRow(t, "tmux-script").Notice), !tt.allowRawTmux; got != want {
-				t.Errorf("notice announces the tmux and script deny = %v; want %v (notice: %q)", got, want, notice)
-			}
+			notice := buildDenyNotice(tt.interactive, shuttleengine.Config{}, tt.claude, tt.fork, false)
 			if tt.wantAskDeny {
 				if len(askCommands) != 1 || !strings.Contains(askCommands[0], steerAskUserQuestionDeny) {
 					t.Errorf("AskUserQuestion commands = %q; want the deny kept", askCommands)
@@ -946,7 +907,7 @@ func TestPrepare_WritesArtifactsAndReturnsConsistentLaunch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read append-system-prompt.txt: %v", err)
 	}
-	if want := buildDenyNotice(false, shuttleengine.Config{}, claude, false, false, false) + " " + shuttleengine.CreelTrustSentence; string(appendPromptBytes) != want {
+	if want := buildDenyNotice(false, shuttleengine.Config{}, claude, false, false) + " " + shuttleengine.CreelTrustSentence; string(appendPromptBytes) != want {
 		t.Errorf("append-system-prompt.txt = %q; want the deny notice and the trust sentence %q", appendPromptBytes, want)
 	}
 
@@ -992,8 +953,8 @@ func TestPrepare_WritesArtifactsAndReturnsConsistentLaunch(t *testing.T) {
 	}
 
 	// The refuse list comes from the gate config under the engine's dirs:
-	// a seeded list reaches settings.json and the notice, also when a gate key the launch does not read fails to load;
-	// an absent file adds no row, and an unparsable file refuses the spawn before any artifact.
+	// a seeded list reaches settings.json and the notice, an absent file adds no row,
+	// and an unparsable file refuses the spawn before any artifact.
 	var refuseRow shellguard.Row
 	for _, row := range shellguard.Rows(bashForegroundPhrase, []string{"go test"}) {
 		if row.Name == "refuse-raw" {
@@ -1007,11 +968,10 @@ func TestPrepare_WritesArtifactsAndReturnsConsistentLaunch(t *testing.T) {
 		wantRefused bool
 		wantErr     bool
 	}{
-		{"SeededRefuseRawReachesSettingsAndNotice", "slots: 2\nrefuse_raw: [\"go test\"]\n", 11, true, false},
-		{"ScopelessGateKeyStillLaunchesWithRefuseRaw", "slots: 2\nrefuse_raw: [\"go test\"]\ngates:\n  harden-live-copies:\n    tiers: [1]\n", 11, true, false},
-		{"AbsentGateConfigRendersNoRefuseRawRow", "", 10, false, false},
+		{"SeededRefuseRawReachesSettingsAndNotice", "slots: 2\nrefuse_raw: [\"go test\"]\n", 6, true, false},
+		{"AbsentGateConfigRendersNoRefuseRawRow", "", 5, false, false},
 		{"UnparsableGateConfigRefusesBeforeArtifacts", "slots: [\n", 0, false, true},
-		{"InvalidRefuseRawBesideAScopelessGateKeyRefusesBeforeArtifacts", "slots: 2\nrefuse_raw: [\"go  test\"]\ngates:\n  harden-live-copies:\n    tiers: [1]\n", 0, false, true}}
+	}
 	for _, tt := range gateTests {
 		t.Run(tt.name, func(t *testing.T) {
 			engine, anchor := engineWithAnchor(t)
@@ -1064,8 +1024,6 @@ func TestPrepare_WritesArtifactsAndReturnsConsistentLaunch(t *testing.T) {
 }
 
 // TestBuildDenyNotice_MatchesInstalledDenies pins that the notice names exactly the denies buildSettings installs.
-// The python deny is the one exception:
-// it is installed in every run, and named only while the launch's config denies Python.
 // It checks every deny combination.
 //
 //testtiming:keep pins the notice sentences against the installed hooks over every combination, which its covering test checks only for the append-system-prompt.txt file
@@ -1077,7 +1035,7 @@ func TestBuildDenyNotice_MatchesInstalledDenies(t *testing.T) {
 				for _, fork := range []bool{false, true} {
 					cfg := shuttleengine.Config{DenyPython: pythonDeny, RefuseRaw: sampleRefuseRaw}
 					claude := Config{DenyAskUserQuestion: askUserDeny}
-					data, err := buildSettings("/c/run/events.jsonl", interactive, cfg, claude, fork, false, false, "", "", "", "", testLymPath, sessionScope{})
+					data, err := buildSettings("/c/run/events.jsonl", interactive, cfg, claude, fork, false, "", "", "", "", sessionScope{})
 					if err != nil {
 						t.Fatalf("buildSettings() error: %v", err)
 					}
@@ -1087,14 +1045,14 @@ func TestBuildDenyNotice_MatchesInstalledDenies(t *testing.T) {
 						hooks, _ := entry["hooks"].([]any)
 						cmd, _ := hooks[0].(map[string]any)
 						command, _ := cmd["command"].(string)
-						for _, deny := range standingDeniesFor(cfg.RefuseRaw, testLymPath) {
-							if deny.command == command && deny.notice != "" && (pythonDeny || deny.notice != shellRow(t, "python").Notice) {
+						for _, deny := range standingDeniesFor(cfg.RefuseRaw) {
+							if deny.command == command && deny.notice != "" {
 								wantSentences = append(wantSentences, deny.notice)
 							}
 						}
 					}
 					want := strings.Join(wantSentences, " ")
-					notice := buildDenyNotice(interactive, cfg, claude, fork, false, false)
+					notice := buildDenyNotice(interactive, cfg, claude, fork, false)
 					if notice != want {
 						t.Errorf("ask=%v python=%v interactive=%v fork=%v: notice = %q; want the sentences of the installed denies %q", askUserDeny, pythonDeny, interactive, fork, notice, want)
 					}
@@ -1117,9 +1075,9 @@ func TestBuildDenyNotice_SentenceContent(t *testing.T) {
 	tiergate.Require(t, 0)
 	cfg := shuttleengine.Config{}
 	claude := Config{DenyAskUserQuestion: true}
-	nonFork := buildDenyNotice(false, cfg, claude, false, false, false)
-	for name, notice := range map[string]string{"autonomous": nonFork, "interactive": buildDenyNotice(true, cfg, claude, false, false, false), "fork": buildDenyNotice(false, cfg, claude, true, false, false)} {
-		for _, row := range []string{"computed-rm", "machine-sleep", "headless-claude", "tmux-script", "session-bus", "hub-tmux-server"} {
+	nonFork := buildDenyNotice(false, cfg, claude, false, false)
+	for name, notice := range map[string]string{"autonomous": nonFork, "interactive": buildDenyNotice(true, cfg, claude, false, false), "fork": buildDenyNotice(false, cfg, claude, true, false)} {
+		for _, row := range []string{"computed-rm", "machine-sleep", "headless-claude"} {
 			if !strings.Contains(notice, shellRow(t, row).Notice) {
 				t.Errorf("%s notice = %q; want it to contain the %s sentence", name, notice, row)
 			}
@@ -1146,77 +1104,51 @@ func goldenLabel(interactive, fork, denyAsk, denyPython bool) string {
 	return fmt.Sprintf("interactive=%t fork=%t denyAsk=%t denyPython=%t", interactive, fork, denyAsk, denyPython)
 }
 
-// settingsGoldenPath is the settings golden file, relative to the package directory.
-var settingsGoldenPath = filepath.Join("testdata", "settings-golden.json")
-
-// updateSettingsGolden turns TestBuildSettings_MatchesGolden into the golden's renderer:
-// the test rewrites the golden from the rendered settings and deny notices instead of comparing against it.
-// A shell guard row change rewrites the golden, and this flag renders it with no renderer of the agent's own:
-// lym gate test ./internal/shuttleengine/claudeengine -- -run TestBuildSettings_MatchesGolden -update
-var updateSettingsGolden = flag.Bool("update", false, "rewrite "+settingsGoldenPath+" from the rendered settings and deny notices")
-
-// settingsGolden is one entry of the settings golden, for one combination of the deny inputs.
-// It holds that combination's settings document and deny notice.
-type settingsGolden struct {
-	Settings string `json:"settings"`
-	Notice   string `json:"notice"`
-}
-
 // TestBuildSettings_MatchesGolden pins the settings document and deny notice byte for byte.
 // It covers every combination of the four deny inputs.
-// Under -update it rewrites the golden from what it renders and compares nothing.
 func TestBuildSettings_MatchesGolden(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
+	type golden struct {
+		Settings string `json:"settings"`
+		Notice   string `json:"notice"`
+	}
+	raw, err := os.ReadFile(filepath.Join("testdata", "settings-golden.json"))
+	if err != nil {
+		t.Fatalf("read golden: %v", err)
+	}
+	var want map[string]golden
+	if err := json.Unmarshal(raw, &want); err != nil {
+		t.Fatalf("unmarshal golden: %v", err)
+	}
 
-	got := map[string]settingsGolden{}
+	rendered := map[string]bool{}
 	for mask := 0; mask < 16; mask++ {
 		bit := func(position int) bool { return mask&(1<<position) != 0 }
 		interactive, fork := bit(0), bit(1)
 		cfg := shuttleengine.Config{DenyPython: bit(3)}
 		claude := Config{DenyAskUserQuestion: bit(2)}
 		label := goldenLabel(interactive, fork, claude.DenyAskUserQuestion, cfg.DenyPython)
-		settings, err := buildSettings("/c/run/events.jsonl", interactive, cfg, claude, fork, false, false, "", "", "", "", testLymPath, sessionScope{})
-		if err != nil {
-			t.Fatalf("buildSettings(%s): %v", label, err)
-		}
-		got[label] = settingsGolden{Settings: string(settings), Notice: buildDenyNotice(interactive, cfg, claude, fork, false, false)}
-	}
+		rendered[label] = true
 
-	if *updateSettingsGolden {
-		data, err := json.MarshalIndent(got, "", "  ")
-		if err != nil {
-			t.Fatalf("marshal golden: %v", err)
-		}
-		if err := os.WriteFile(settingsGoldenPath, append(data, '\n'), 0o644); err != nil {
-			t.Fatalf("write golden: %v", err)
-		}
-		return
-	}
-
-	raw, err := os.ReadFile(settingsGoldenPath)
-	if err != nil {
-		t.Fatalf("read golden: %v", err)
-	}
-	var want map[string]settingsGolden
-	if err := json.Unmarshal(raw, &want); err != nil {
-		t.Fatalf("unmarshal golden: %v", err)
-	}
-	for label, entry := range got {
-		wantEntry, ok := want[label]
+		entry, ok := want[label]
 		if !ok {
 			t.Errorf("golden lacks %q", label)
 			continue
 		}
-		if entry.Settings != wantEntry.Settings {
-			t.Errorf("settings differ for %q:\ngot  %s\nwant %s", label, entry.Settings, wantEntry.Settings)
+		settings, err := buildSettings("/c/run/events.jsonl", interactive, cfg, claude, fork, false, "", "", "", "", sessionScope{})
+		if err != nil {
+			t.Fatalf("buildSettings(%s): %v", label, err)
 		}
-		if entry.Notice != wantEntry.Notice {
-			t.Errorf("notice differs for %q:\ngot  %q\nwant %q", label, entry.Notice, wantEntry.Notice)
+		if string(settings) != entry.Settings {
+			t.Errorf("settings differ for %q:\ngot  %s\nwant %s", label, settings, entry.Settings)
+		}
+		if notice := buildDenyNotice(interactive, cfg, claude, fork, false); notice != entry.Notice {
+			t.Errorf("notice differs for %q:\ngot  %q\nwant %q", label, notice, entry.Notice)
 		}
 	}
 	for label := range want {
-		if _, ok := got[label]; !ok {
+		if !rendered[label] {
 			t.Errorf("golden holds %q, which the test does not render", label)
 		}
 	}

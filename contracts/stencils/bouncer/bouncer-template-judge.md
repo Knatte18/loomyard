@@ -10,9 +10,7 @@
      a required marker inside a conditional branch would render silently blank when present-but-empty (see internal/stencil/stencil.go).
      The focus-schema markers ({{.focus_example_lists}}, {{.focus_list_rules}}, {{.approved_focus_lists}}) have two variants, rendered by focusSchemaMarkers in internal/shedadapters/bouncerprompt.go:
      Go holds the variant so this stencil stays conditional-free.
-     {{.decision_rule}} is the same kind of Go-held variant, rendered by decisionRuleMarker in the same file: it renders round 1's rule in round 1 and the lighter rule from round 2 on,
-     unless the Bouncer sets FirstRaisedGates, which renders round 1's rule in every round.
-     It offers CIRCLING only from the configured checkpoint round on.
+     {{.decision_rule}} is the same kind of Go-held variant, rendered by decisionRuleMarker in the same file: it renders round 1's rule in round 1 and the lighter rule from round 2 on, and offers CIRCLING only from the configured checkpoint round on.
      {{.round}} and {{.next_round}} are different markers on purpose.
      The ledger file (`{{.ledger_path}}`) records the round being judged.
      The focus file (`{{.focus_path}}`) is named for the round the directive is for, so its own frontmatter must record that round plus one;

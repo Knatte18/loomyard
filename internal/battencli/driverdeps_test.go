@@ -11,14 +11,10 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/Knatte18/loomyard/internal/arbiterstop"
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/battenshed"
-	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -38,16 +34,9 @@ func TestBattenDriverDeps(t *testing.T) {
 	t.Parallel()
 
 	c := newFakeReceiver(t, nil)
-	config := strings.Replace(fabricengine.ConfigTemplate(), "push_ceiling_s: 300", "push_ceiling_s: 77", 1)
-	if err := os.WriteFile(configengine.ConfigFile(fabriclayout.BoltDir(c.location.HubPath), "fabric"), []byte(config), 0o644); err != nil {
-		t.Fatalf("WriteFile() = %v", err)
-	}
 	deps, err := c.driverDepsFor()
 	if err != nil {
 		t.Fatalf("driverDepsFor() error = %v", err)
-	}
-	if want := shedrun.DriveWaitRecord(c.location, c.slug); deps.NetworkWaitCeiling != 77*time.Second || deps.WaitRecordPath != want {
-		t.Errorf("ceiling = %s, wait record = %q; want 1m17s and %q", deps.NetworkWaitCeiling, deps.WaitRecordPath, want)
 	}
 
 	unwired := map[string]bool{
@@ -110,12 +99,9 @@ func TestBattenDriverDeps(t *testing.T) {
 		t.Errorf("NewReportPath() directory = %q; want %q", filepath.Dir(deps.NewReportPath()), want)
 	}
 
-	tackler := c.tacklerDepsFor(sheddriver.TacklerSettings{}, nil, "tst:orch")
+	tackler := c.tacklerDepsFor(sheddriver.TacklerSettings{}, nil)
 	if tackler.Recipe != battenTacklerRecipe || tackler.GotoRoutedFrom {
 		t.Errorf("tackler Recipe = %q, GotoRoutedFrom = %v; want %q and false", tackler.Recipe, tackler.GotoRoutedFrom, battenTacklerRecipe)
-	}
-	if tackler.Prompt.ParentName != "tst:orch" {
-		t.Errorf("tackler Prompt.ParentName = %q; want tst:orch", tackler.Prompt.ParentName)
 	}
 	if want := shedrun.TacklerDir(c.location, c.slug); tackler.TacklerDir != want {
 		t.Errorf("tackler TacklerDir = %q; want %q", tackler.TacklerDir, want)
@@ -237,7 +223,7 @@ func TestBattenRecordsCommitSeams(t *testing.T) {
 						messages = append(messages, msg)
 						return false, tt.commitErr
 					},
-					StartPush: func() bool { return false },
+					Spawn: func() error { return nil },
 				}
 			}
 			deps, err := c.driverDepsFor()

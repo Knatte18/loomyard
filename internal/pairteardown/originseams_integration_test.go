@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -75,7 +75,7 @@ func TestHubSeamOptions(t *testing.T) {
 
 	branch := gitkit.CurrentBranch(t, primeRoot)
 	startTime, _ := proc.StartTime(os.Getpid())
-	store := &parentlock.Store{Dir: parentlock.Dir(fabriclayout.BoardDir(prime.HubPath))}
+	store := &parentlock.Store{Dir: parentlock.Dir(fabricengine.BoardDir(prime.HubPath))}
 	attempt, err := store.TryAcquire(branch, parentlock.Owner{Slug: "task", Pair: "task", RunID: "run", PID: os.Getpid(), StartTime: startTime})
 	if err != nil || !attempt.Granted {
 		t.Fatalf("TryAcquire(%s) = %+v, %v; want the lock granted", branch, attempt, err)
@@ -84,7 +84,7 @@ func TestHubSeamOptions(t *testing.T) {
 		t.Errorf("PrimeParentLockFree() with a live owner's record = %v, %v; want held", free, err)
 	}
 
-	boardDir := fabriclayout.BoardDir(prime.HubPath)
+	boardDir := fabricengine.BoardDir(prime.HubPath)
 	if err := os.MkdirAll(boardDir, 0o755); err != nil {
 		t.Fatalf("create the board dir: %v", err)
 	}

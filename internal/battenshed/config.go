@@ -93,7 +93,7 @@ func LoadConfig(dirs configengine.Dirs) (Config, error) {
 		return Config{}, configengine.MarkInvalid(fmt.Errorf("unmarshal batten config: %w", err))
 	}
 	if _, present := keys["driver_kind"]; present {
-		return Config{}, configengine.MarkInvalid(fmt.Errorf("config key %q: batten's own driver is always go, so batten.yaml holds no such key; remove the key from batten.yaml", configengine.KeyName("batten", "driver_kind")))
+		return Config{}, configengine.MarkInvalid(fmt.Errorf("batten config key %q: batten's own driver is always go, so batten.yaml holds no driver_kind; remove the key from batten.yaml", "driver_kind"))
 	}
 	var cfg Config
 	if err := yaml.Unmarshal(resolved, &cfg); err != nil {

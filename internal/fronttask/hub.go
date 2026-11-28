@@ -16,7 +16,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/battencli"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -31,7 +30,7 @@ const recordFileName = "records.json"
 
 // recordPathOf returns the record file of the hub at hubPath.
 func recordPathOf(hubPath string) string {
-	return filepath.Join(fabriclayout.FrontTaskScratchDir(hubPath), recordFileName)
+	return filepath.Join(fabricengine.FrontTaskScratchDir(hubPath), recordFileName)
 }
 
 // HubDeps returns the filing and removal seams over the hub of prime.
@@ -90,11 +89,11 @@ func HubSettleDeps(prime *lymcwd.Location, beam string) (SettleDeps, error) {
 		Subject: subject,
 		Tasks:   board.ListTasksFull,
 		OwnedHere: func() (bool, error) {
-			here, err := machinename.ReadIdentity()
+			here, err := machinename.Name()
 			if err != nil {
 				return false, err
 			}
-			owners, err := boardengine.ReadOwners(fabriclayout.BoardDir(prime.HubPath))
+			owners, err := boardengine.ReadOwners(fabricengine.BoardDir(prime.HubPath))
 			if err != nil {
 				return false, err
 			}
@@ -105,7 +104,7 @@ func HubSettleDeps(prime *lymcwd.Location, beam string) (SettleDeps, error) {
 					return false, err
 				}
 			}
-			return !boardengine.OwnedElsewhere(owner, owners.Registry, here), nil
+			return !boardengine.OwnedElsewhere(owner, here), nil
 		},
 		RecordPath: recordPathOf(prime.HubPath),
 		RunAction: func(key, subject string) error {
@@ -141,7 +140,7 @@ func startAction(prime *lymcwd.Location, key, subject string, lymBinary func() (
 	if err != nil {
 		return fmt.Errorf("locate the lym executable: %w", err)
 	}
-	outDir := fabriclayout.FrontTaskScratchDir(prime.HubPath)
+	outDir := fabricengine.FrontTaskScratchDir(prime.HubPath)
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		return fmt.Errorf("create the front-task directory: %w", err)
 	}

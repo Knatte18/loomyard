@@ -14,7 +14,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabriccli"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -179,7 +179,7 @@ func pushSpawnedTargets(result envelope.Envelope) map[string]bool {
 	mutations, _ := result.Raw["mutations"].([]any)
 	for _, raw := range mutations {
 		entry, _ := raw.(map[string]any)
-		if entry["kind"] == string(fabriclayout.KindPushSpawned) {
+		if entry["kind"] == string(fabricengine.KindPushSpawned) {
 			target, _ := entry["target"].(string)
 			targets[target] = true
 		}

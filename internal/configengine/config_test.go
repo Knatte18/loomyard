@@ -6,13 +6,14 @@ package configengine_test
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -149,20 +150,20 @@ func TestLoad(t *testing.T) {
 	tests := []loadCase{
 		{
 			name:     "file values round-trip",
-			template: "path: " + fabriclayout.BoltDirName + "\nhome: Home.md\n",
+			template: "path: " + fabricengine.BoltDirName + "\nhome: Home.md\n",
 			content:  "path: custom_path\nhome: Index.md\n",
 			contains: []string{"path: custom_path", "home: Index.md"},
 		},
 		{
 			name:     "missing key loads at its template default",
-			template: "path: " + fabriclayout.BoltDirName + "\nhome: Home.md\n",
+			template: "path: " + fabricengine.BoltDirName + "\nhome: Home.md\n",
 			content:  "path: custom_path\n",
 			wantFill: "home",
 			contains: []string{"path: custom_path", "home: Home.md"},
 		},
 		{
 			name:     "complete file logs no fill",
-			template: "path: " + fabriclayout.BoltDirName + "\nhome: Home.md\n",
+			template: "path: " + fabricengine.BoltDirName + "\nhome: Home.md\n",
 			content:  "path: a\nhome: b\n",
 			contains: []string{"path: a", "home: b"},
 		},
@@ -175,7 +176,7 @@ func TestLoad(t *testing.T) {
 		},
 		{
 			name:     "extra key is tolerated",
-			template: "path: " + fabriclayout.BoltDirName + "\n",
+			template: "path: " + fabricengine.BoltDirName + "\n",
 			content:  "path: custom_path\nextra_key: extra_value\n",
 			contains: []string{"path: custom_path", "extra_key: extra_value"},
 		},
@@ -270,19 +271,19 @@ func TestLoad_Refusals(t *testing.T) {
 		{
 			name:     "uninitialized base directory",
 			state:    baseNone,
-			template: "path: " + fabriclayout.BoltDirName + "\n",
+			template: "path: " + fabricengine.BoltDirName + "\n",
 			wantErr:  []string{"not initialized"},
 		},
 		{
 			name:     "absent config file",
 			state:    baseConfigDir,
-			template: "path: " + fabriclayout.BoltDirName + "\n",
+			template: "path: " + fabricengine.BoltDirName + "\n",
 			wantErr:  []string{"not found", "lym config reconcile"},
 		},
 		{
 			name:     "absent hub-wide board-dir base",
 			state:    baseConfigDir,
-			template: "path: " + fabriclayout.BoltDirName + "\n",
+			template: "path: " + fabricengine.BoltDirName + "\n",
 			boardDir: true,
 			hubWide:  true,
 			wantErr:  []string{"not found", "lym fabric reconcile", "a session lym refuses the verb from reports status: FAILED and the orch runs it"},
@@ -290,14 +291,14 @@ func TestLoad_Refusals(t *testing.T) {
 		{
 			name:     "absent per-worktree board-dir base",
 			state:    baseConfigDir,
-			template: "path: " + fabriclayout.BoltDirName + "\n",
+			template: "path: " + fabricengine.BoltDirName + "\n",
 			boardDir: true,
 			wantErr:  []string{"not found", "lym loom resume", "hub reconcile seeds the default from the prime", "a session lym refuses the verb from reports status: FAILED and the orch runs it"},
 		},
 		{
 			name:     "config file that cannot be read",
 			state:    baseUnreadable,
-			template: "path: " + fabriclayout.BoltDirName + "\n",
+			template: "path: " + fabricengine.BoltDirName + "\n",
 			wantErr:  []string{"read config file"},
 		},
 		{
@@ -330,7 +331,7 @@ func TestLoad_Refusals(t *testing.T) {
 		{
 			name:        "unparseable file",
 			state:       baseWithFile,
-			template:    "path: " + fabriclayout.BoltDirName + "\n",
+			template:    "path: " + fabricengine.BoltDirName + "\n",
 			content:     "path: [unclosed\n",
 			wantErr:     []string{"board.yaml"},
 			wantNotErr:  []string{"lym config reconcile"},
@@ -339,7 +340,7 @@ func TestLoad_Refusals(t *testing.T) {
 		{
 			name:        "filled env marker whose variable is unset",
 			state:       baseWithFile,
-			template:    "path: " + fabriclayout.BoltDirName + "\ntoken: ${env:TEST_FILL_UNSET_VAR}\n",
+			template:    "path: " + fabricengine.BoltDirName + "\ntoken: ${env:TEST_FILL_UNSET_VAR}\n",
 			content:     "path: custom\n",
 			wantErr:     []string{"TEST_FILL_UNSET_VAR"},
 			wantNotErr:  []string{"lym config reconcile"},
@@ -433,15 +434,15 @@ func TestLoadOrTemplate(t *testing.T) {
 		state baseState
 	}{
 		{
-			loadCase{name: "absent _lym resolves the template", template: "path: " + fabriclayout.BoltDirName + "\nhome: Home.md\n", contains: []string{"path: " + fabriclayout.BoltDirName, "home: Home.md"}},
+			loadCase{name: "absent _lym resolves the template", template: "path: " + fabricengine.BoltDirName + "\nhome: Home.md\n", contains: []string{"path: " + fabricengine.BoltDirName, "home: Home.md"}},
 			baseNone,
 		},
 		{
-			loadCase{name: "absent config file resolves the template", template: "path: " + fabriclayout.BoltDirName + "\n", contains: []string{"path: " + fabriclayout.BoltDirName}},
+			loadCase{name: "absent config file resolves the template", template: "path: " + fabricengine.BoltDirName + "\n", contains: []string{"path: " + fabricengine.BoltDirName}},
 			baseConfigDir,
 		},
 		{
-			loadCase{name: "base directory that does not exist resolves the template", template: "path: " + fabriclayout.BoltDirName + "\n", contains: []string{"path: " + fabriclayout.BoltDirName}},
+			loadCase{name: "base directory that does not exist resolves the template", template: "path: " + fabricengine.BoltDirName + "\n", contains: []string{"path: " + fabricengine.BoltDirName}},
 			baseAbsent,
 		},
 		{
@@ -456,7 +457,7 @@ func TestLoadOrTemplate(t *testing.T) {
 		{
 			loadCase{
 				name:     "present file loads like the strict loader",
-				template: "path: " + fabriclayout.BoltDirName + "\nhome: Home.md\n",
+				template: "path: " + fabricengine.BoltDirName + "\nhome: Home.md\n",
 				content:  "path: custom_path\nhome: Index.md\n",
 				contains: []string{"path: custom_path", "home: Index.md"},
 			},
@@ -465,7 +466,7 @@ func TestLoadOrTemplate(t *testing.T) {
 		{
 			loadCase{
 				name:     "present file missing a key loads it at its template default",
-				template: "path: " + fabriclayout.BoltDirName + "\nhome: Home.md\n",
+				template: "path: " + fabricengine.BoltDirName + "\nhome: Home.md\n",
 				content:  "path: custom_path\n",
 				wantFill: "home",
 				contains: []string{"path: custom_path", "home: Home.md"},
@@ -473,16 +474,16 @@ func TestLoadOrTemplate(t *testing.T) {
 			baseWithFile,
 		},
 		{
-			loadCase{name: "present empty file loads as the template", template: "path: " + fabriclayout.BoltDirName + "\n", wantFill: "path", contains: []string{"path: " + fabriclayout.BoltDirName}},
+			loadCase{name: "present empty file loads as the template", template: "path: " + fabricengine.BoltDirName + "\n", wantFill: "path", contains: []string{"path: " + fabricengine.BoltDirName}},
 			baseWithFile,
 		},
 		{
 			loadCase{
 				name:     "present comments-only file loads as the template",
-				template: "path: " + fabriclayout.BoltDirName + "\n",
+				template: "path: " + fabricengine.BoltDirName + "\n",
 				content:  "# just a comment\n",
 				wantFill: "path",
-				contains: []string{"path: " + fabriclayout.BoltDirName},
+				contains: []string{"path: " + fabricengine.BoltDirName},
 			},
 			baseWithFile,
 		},
@@ -632,6 +633,13 @@ func TestConfigPaths(t *testing.T) {
 		{"StagingFile", configengine.StagingFile(base, "board"), filepath.Join(base, lymdirs.DotLymDirName, "config", "board.yaml")},
 		{"ConfigFileRel loom", configengine.ConfigFileRel("loom"), filepath.Join(lymdirs.LymDirName, "config", "loom.yaml")},
 		{"ConfigFileRel board", configengine.ConfigFileRel("board"), filepath.Join(lymdirs.LymDirName, "config", "board.yaml")},
+		{"SparseMarker", configengine.SparseMarker(base), filepath.Join(base, lymdirs.LymDirName, "config", "sparse")},
+		{"SparseMarkerRel", configengine.SparseMarkerRel(), filepath.Join(lymdirs.LymDirName, "config", "sparse")},
+		{"SparseMarker is SparseMarkerRel under the base", configengine.SparseMarker(base), filepath.Join(base, configengine.SparseMarkerRel())},
+		{"BaseSparseMarker", configengine.BaseSparseMarker(base), filepath.Join(base, lymdirs.LymDirName, "config", "base-sparse")},
+		{"BaseSparseMarkerRel", configengine.BaseSparseMarkerRel(), filepath.Join(lymdirs.LymDirName, "config", "base-sparse")},
+		{"BaseSparseMarker is BaseSparseMarkerRel under the base", configengine.BaseSparseMarker(base), filepath.Join(base, configengine.BaseSparseMarkerRel())},
+		{"BaseSparseMarker differs from SparseMarker", fmt.Sprint(configengine.BaseSparseMarker(base) != configengine.SparseMarker(base)), "true"},
 		{"ConfigFile is ConfigFileRel under the base", configengine.ConfigFile(base, "myapp"), filepath.Join(base, configengine.ConfigFileRel("myapp"))},
 	}
 	for _, tt := range tests {

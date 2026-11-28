@@ -169,7 +169,7 @@ func RefFile(plan *Plan, ref string) (string, bool) {
 // RefScope returns the worktree scope a card ref covers, and false when the ref names no unit.
 // A unit or path with a file extension is that cleaned file, and isFile is true.
 // Any other unit is its directory, with isFile false.
-// Under a Go plan, a unit taken from a glyph or `plan:` handle first goes through GoPackageDir,
+// Under a Go plan, a unit taken from a glyph or `plan:` handle first goes through goPackageDir,
 // so an external test package's pseudo-unit names its package directory.
 // A nil plan reads as the default language.
 func RefScope(plan *Plan, ref string) (scope string, isFile bool, ok bool) {
@@ -184,7 +184,7 @@ func RefScope(plan *Plan, ref string) (scope string, isFile bool, ok bool) {
 		return path.Clean(unit), true, true
 	}
 	if fromGlyph && plan.GoToolchain() {
-		unit = GoPackageDir(unit)
+		unit = goPackageDir(unit)
 	}
 	return path.Clean(unit), false, true
 }
@@ -304,7 +304,7 @@ func TargetHolds(plan *Plan, target, member, file string) bool {
 		return false
 	}
 	if targetGlyph.IsSelf() {
-		return targetGlyph.Unit == memberGlyph.Unit || (plan.GoToolchain() && targetGlyph.Unit == GoPackageDir(memberGlyph.Unit))
+		return targetGlyph.Unit == memberGlyph.Unit || (plan.GoToolchain() && targetGlyph.Unit == goPackageDir(memberGlyph.Unit))
 	}
 	if targetGlyph.Unit != memberGlyph.Unit {
 		return false
@@ -331,18 +331,18 @@ func targetDir(plan *Plan, raw string) (dir string, namesGo, ok bool) {
 		return "", false, false
 	}
 	if fromGlyph && plan.GoToolchain() {
-		unit = GoPackageDir(unit)
+		unit = goPackageDir(unit)
 	}
 	return unitDir(unit, fromGlyph)
 }
 
-// GoPackageDir maps a Go unit string to the directory its package lives in.
+// goPackageDir maps a Go unit string to the directory its package lives in.
 // The string may come from a glyph's `UnitPath` result or from a handle's package half.
 // quarry names an external test package's unit `<dir>_test`, which has no directory of its own,
 // so a last path segment ending in `_test` with no file extension loses that suffix.
 // Any other unit is returned unchanged.
 // It reads no disk, so a real package directory whose own name ends in `_test` maps to its sibling.
-func GoPackageDir(unit string) string {
+func goPackageDir(unit string) string {
 	if hasFileExtension(unit) {
 		return unit
 	}
@@ -362,7 +362,7 @@ func GoPackageCounterpart(plan *Plan, ref string) (string, bool) {
 	if err != nil || parsed.IsSelf() || hasFileExtension(parsed.Unit) {
 		return "", false
 	}
-	if dir := GoPackageDir(parsed.Unit); dir != parsed.Unit {
+	if dir := goPackageDir(parsed.Unit); dir != parsed.Unit {
 		parsed.Unit = dir
 	} else {
 		parsed.Unit += "_test"

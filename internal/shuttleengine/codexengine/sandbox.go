@@ -1,5 +1,5 @@
 // sandbox.go settles the sandbox a Codex launch runs in.
-// It probes whether Codex's sandbox can start on this machine and resolves codex.sandbox_mode against the result.
+// It probes whether Codex's sandbox can start on this machine and resolves codex.yaml's sandbox_mode against the result.
 
 package codexengine
 
@@ -57,7 +57,7 @@ func runSandboxProbe(bin, home, dir string) error {
 	return nil
 }
 
-// launchSandboxMode returns the sandbox a launch runs in, from codex.sandbox_mode and the probe.
+// launchSandboxMode returns the sandbox a launch runs in, from codex.yaml's sandbox_mode and the probe.
 // danger-full-access runs no probe and no sandbox.
 // Under auto and workspace-write the probe runs once, under the lym home at home, in the engine's anchor;
 // a sandbox that starts gives workspace-write.
@@ -82,5 +82,5 @@ func (c *Codex) launchSandboxMode(codex Config, home string) (string, error) {
 		c.warn("codexengine: Codex's sandbox cannot start on this machine, so the session runs with no sandbox", "sandbox_mode", sandboxAuto, "cause", err)
 		return sandboxFullAccess, nil
 	}
-	return "", fmt.Errorf("codexengine: %s is %s, but Codex's sandbox cannot start on this machine: %w; way forward: set it for this machine with lym config codex --layer machine --set sandbox_mode=%s from the hub's prime worktree", keyName(sandboxModeConfigKey), sandboxWorkspaceWrite, err, sandboxAuto)
+	return "", fmt.Errorf("codexengine: codex.yaml's sandbox_mode is %s, but Codex's sandbox cannot start on this machine: %w; way forward: set it for this machine with lym config codex --layer machine --set sandbox_mode=%s from the hub's prime worktree", sandboxWorkspaceWrite, err, sandboxAuto)
 }

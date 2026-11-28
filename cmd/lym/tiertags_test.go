@@ -122,7 +122,6 @@ func tierFailure(rel string, data []byte) string {
 // It also fails for a test file whose constraint names a tier tag or a retired tier spelling.
 //
 //lym:guard
-//lym:only parent-align finalize
 func TestTierTags_OneTierPerTestFile(t *testing.T) {
 	tiergate.Require(t, 0)
 	var failures []string

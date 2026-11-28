@@ -15,11 +15,9 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
-	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -55,42 +53,6 @@ func trackedUnderRoot(t *testing.T, l *lymcwd.Location, dir, branch string) stri
 	return gitkit.Git(t, dir, "ls-tree", "-r", "--name-only", branch, "--", root)
 }
 
-// TestAdd_AtAnotherAnchorCommitsTheDeletionOfTheOnlyTrackedRunRecords covers a fork point.
-// Its only tracked content under the wired `_lym` name is run records.
-// The new pair's move to another anchor finds `_lym` untracked once the fork drops those records from the index.
-// Its commit must still carry their staged deletion, leaving nothing staged.
-func TestAdd_AtAnotherAnchorCommitsTheDeletionOfTheOnlyTrackedRunRecords(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	h := newAnchorHub(t)
-	l := h.Location
-	const slug = "moves-with-deletion"
-	weftRoot := mustRecordsRepoRoot(t, l)
-	commitRunRecords(t, l, weftRoot)
-	runsPrefix := filepath.ToSlash(shedrun.RunsRootRel()) + "/"
-	for _, tracked := range strings.Fields(gitkit.Git(t, weftRoot, "ls-files", "--", lymdirs.LymDirName)) {
-		if !strings.HasPrefix(tracked, runsPrefix) {
-			gitkit.Git(t, weftRoot, "rm", "-q", "--", tracked)
-		}
-	}
-	gitkit.Git(t, weftRoot, "commit", "-q", "--allow-empty", "-m", "fixture: run records are the only tracked content under the wired name")
-	forkPoint := gitkit.RevParse(t, weftRoot, fabriclayout.RecordsBranchName("main"))
-
-	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true, Anchor: "sub"})
-
-	pairWeft := fabricengine.RecordsWorktreePath(l, slug)
-	committed := gitkit.Git(t, weftRoot, "diff", "--name-status", forkPoint, fabriclayout.RecordsBranchName(slug))
-	for _, rel := range runRecordFiles {
-		if want := "D\t" + filepath.ToSlash(rel); !strings.Contains(committed, want) {
-			t.Errorf("the pair's commits since the fork point hold %q; want them to carry %q", committed, want)
-		}
-	}
-	if staged := gitkit.Git(t, pairWeft, "diff", "--cached", "--name-only"); staged != "" {
-		t.Errorf("staged paths after the add = %q; want none", staged)
-	}
-}
-
 // TestAdd_DropsParentRunRecords_SubpathAnchor repeats the drop in a hub anchored at a subpath.
 // The run-records root is joined under AnchorRel for both the fork's index drop and the first weft commit,
 // so those two joins must name the same tree.
@@ -106,11 +68,11 @@ func TestAdd_DropsParentRunRecords_SubpathAnchor(t *testing.T) {
 	weftRoot := mustRecordsRepoRoot(t, l)
 
 	commitRunRecords(t, l, weftRoot)
-	forkPoint := gitkit.RevParse(t, weftRoot, fabriclayout.RecordsBranchName("main"))
+	forkPoint := gitkit.RevParse(t, weftRoot, fabricengine.RecordsBranchName("main"))
 
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
-	weftBranch := fabriclayout.RecordsBranchName(slug)
+	weftBranch := fabricengine.RecordsBranchName(slug)
 	if got := gitkit.RevListCount(t, weftRoot, forkPoint+".."+weftBranch); got != 1 {
 		t.Errorf("weft branch is %d commits ahead of the fork point; want exactly 1", got)
 	}
@@ -140,7 +102,7 @@ func TestAdd_DropsParentRunRecords_SubpathAnchor(t *testing.T) {
 		for _, rel := range runRecordFiles {
 			gitkit.CommitFile(t, parentWeftPath, filepath.Join(parentAnchor, rel), "{}\n", "seed run records under the parent's anchor")
 		}
-		parentRecordsBranch := fabriclayout.RecordsBranchName(gitkit.Git(t, fabricengine.WorktreePath(l, parentSlug), "rev-parse", "--abbrev-ref", "HEAD"))
+		parentRecordsBranch := fabricengine.RecordsBranchName(gitkit.Git(t, fabricengine.WorktreePath(l, parentSlug), "rev-parse", "--abbrev-ref", "HEAD"))
 		forkPoint := gitkit.RevParse(t, weftRoot, parentRecordsBranch)
 		if got := trackedUnderRoot(t, parentL, weftRoot, parentRecordsBranch); got == "" {
 			t.Fatalf("setup: the parent's records branch tracks no run records under %q", parentAnchor)
@@ -150,7 +112,7 @@ func TestAdd_DropsParentRunRecords_SubpathAnchor(t *testing.T) {
 			t.Fatalf("Add(%q, Parent %q): %v", childSlug, parentSlug, err)
 		}
 
-		childBranch := fabriclayout.RecordsBranchName(childSlug)
+		childBranch := fabricengine.RecordsBranchName(childSlug)
 		if _, err := os.Stat(filepath.Join(fabricengine.RecordsWorktreePath(l, childSlug), parentAnchor, shedrun.RunsRootRel())); !os.IsNotExist(err) {
 			t.Errorf("run-records root exists on the child's records disk under %q (stat err = %v)", parentAnchor, err)
 		}

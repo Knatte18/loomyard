@@ -1,5 +1,5 @@
 // innerrun_owner.go implements InnerRun's owner check, which asks whether another machine owns the run.
-// It runs after a pause hold and while an owner stands; a run found owned elsewhere is held and the orch noticed.
+// It runs after a pause hold and while an owner stands; a run found owned elsewhere is paused and the orch noticed.
 // Its parent lock is released unless a Finalize past its parent-side merge still holds it.
 
 package battenshed
@@ -18,6 +18,7 @@ const finalizeRow = "Finalize"
 // The failure messages of the owner seams; each one keys the episode of its seam.
 const (
 	failOwnerCheck        = "battenshed: owner check failed; retrying at the next check"
+	failOwnerPause        = "battenshed: could not pause the run owned elsewhere; retrying at the next probe"
 	failOwnerFinalizeRead = "battenshed: could not tell whether the parent holds the task's work; keeping the parent lock"
 )
 
@@ -111,12 +112,20 @@ func (p *innerRunProducer) ownerStep(ctx context.Context, w *childWait) {
 
 // ownedElsewhere records owner as the run's owner and subject as what `lym adopt` takes to move it.
 // It releases the parent lock record of the child's run, unless a Finalize past its parent-side merge keeps it.
-// It pauses nothing: the run is held, and the dobby's catch-up hands it over.
+// It then pauses the slug under the owner caller.
 // It sends one notice per episode naming the owner and the adopt command, which names the slug when subject is empty.
+// A failed pause warns once per episode and is retried at the next probe while the owner stands.
 func (p *innerRunProducer) ownedElsewhere(ctx context.Context, w *childWait, owner, subject string) {
 	p.ownedBy, p.ownedSubject = owner, subject
 	if !p.keepsLockForFinalize(w.status) {
 		p.releaseChildLock(w, fmt.Sprintf("the run is owned by machine %s", owner))
+	}
+	if err := p.deps.PauseOwned(ctx, owner); err != nil {
+		if ctx.Err() == nil {
+			p.seamFailed(failOwnerPause, err, "owner", owner)
+		}
+	} else {
+		p.seamRecovered(failOwnerPause)
 	}
 	p.noticeOwnedElsewhere(ctx, owner)
 	p.reportState(w, p.ownerHoldReason())
@@ -131,7 +140,7 @@ func (p *innerRunProducer) noticeOwnedElsewhere(ctx context.Context, owner strin
 		p.episode.deliveries = map[string]*noticeDelivery{}
 	}
 	condition := "owned by machine " + owner
-	line := fmt.Sprintf("%s %s: run held; %s; take it over with \"lym adopt %s\"", noticePrefix, p.slug, condition, p.adoptSubject())
+	line := fmt.Sprintf("%s %s: run paused; %s; take it over with \"lym adopt %s\"", noticePrefix, p.slug, condition, p.adoptSubject())
 	if p.deliver(ctx, "owner "+owner, condition, line) {
 		p.ownerNoticed = true
 	}

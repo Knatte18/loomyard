@@ -1,35 +1,21 @@
-deploy_branches: ["main"]  # list of base branch names a landing into which batten's Land row deploys, by running landing.deploy; a list because tasks branch off other tasks, and only a landing into a listed branch is deployed; empty deploys nothing
+deploy_branches: ["main"]  # list of base branch names a landing into which batten's Land row deploys, by running deploy; a list because tasks branch off other tasks, and only a landing into a listed branch is deployed; empty deploys nothing
 squash: true  # whether Finalize's parent-side merge squashes; true because a run produces one commit per card and an ordinary merge floods the parent with implementation noise
 conflict: opus[high]  # model-spec for the conflict-resolution session both producers' resolver runs under (see contracts/specs/llm-model-spec.md)
 conflict_timeout_min: 60  # minutes the conflict-resolution session's shuttle run is allowed to run
 describe: sonnet[medium]  # model-spec for the Describe row's session, which writes the change description that becomes the PR title and body and the landing commit message (see contracts/specs/llm-model-spec.md)
-describe_timeout_min: 30  # minutes the Describe session's writer is allowed to run; while a describe_review reviewer runs, the writer's and the reviewer's shuttle runs may each run for this plus describe_review_timeout_min
-describe_review: sonnet[medium]  # model-spec for the Describe row's reviewer, an assistant seat that checks the change description against the diff and the scope; the writer's turn end waits for its report, and its findings go back to the writer once; empty runs no reviewer (see contracts/specs/llm-model-spec.md)
-describe_review_timeout_min: 15  # the longest the Describe writer's turn end waits without a break for the reviewer's report, in minutes, once the description passes its check; it is also added to describe_timeout_min as the limit of both runs while a reviewer runs
-describe_forbidden_terms:  # Go regular expressions no line of a change description may match: names of the tooling that wrote the change, which the repository's reader never sees; the credit block the landing appends is never checked; set [] in a hub whose repository owns these names
-  - '(?i)\bloomyard\b'
-  - '(?i)\blym\b'
-  - '\bSketch(es)?\b'
-  - '(?i)\bdecision records?\b'
-  - '(?i)\bboard (entry|entries|note|notes)\b'
-  - '(?i)\bscoper\b'
-  - '(?i)\bperch\b'
-  - '(?i)\borch\b'
-  - '(?i)\bitems? \d+ of the (task|board entry|issue|note)\b'
-  - '(?i)\bthe parent (recorded|ruled|decided|asked)\b'
-pr_reviewer: opus[high]  # model-spec for the PR-Review row's interactive session under beam.pull_request review, the agent the operator works the pull request with (see contracts/specs/llm-model-spec.md)
-credit: true  # whether the landing commit and the pull request's body end with the credit block: landing.credit_heading, then the landing.credit_loomyard item, then the landing.credit_engines item of each engine that ran a session in the task
+describe_timeout_min: 30  # minutes the Describe session's shuttle run is allowed to run
+pr_reviewer: opus[high]  # model-spec for the PR-Review row's interactive session, the agent the operator discusses the pull request with (see contracts/specs/llm-model-spec.md)
+credit: true  # whether the landing commit and the pull request's body end with the credit block: credit_heading, then the credit_loomyard item, then the credit_engines item of each engine that ran a session in the task
 credit_heading: "Created using"  # first line of the credit block; empty leaves the items without a heading
 credit_loomyard: "LoomYard https://github.com/Knatte18/loomyard"  # credit block item listed whatever engines ran; empty adds none
 credit_engines:  # engine name to the credit block item listed when that engine ran a session in the task; an engine left out or set to "" adds nothing
   claude: "Claude Code <noreply@anthropic.com>"
   codex: "Codex https://github.com/openai/codex"
-deploy: ""  # shell command batten's Land row runs in the prime after a landing into a branch listed in landing.deploy_branches; empty runs nothing
+deploy: ""  # shell command batten's Land row runs in the prime after a landing into a branch listed in deploy_branches; empty runs nothing
 fixer: opus[high]  # model-spec for the merge fixer session that Parent-Align and Finalize run to fix a merge or test failure, and for the fix review Finalize runs over a fixer change past the caps (see contracts/specs/llm-model-spec.md)
 fixer_timeout_min: 60  # minutes one fixer turn, or the fix review session, may run
 parent_align_fix_attempts: 2  # fixer turns one Parent-Align row entry may spend
 finalize_fix_attempts: 2  # fixer turns one Finalize row entry may spend
 finalize_fix_max_lines: 40  # added plus deleted lines a fixer change may hold before it is over the cap
 finalize_fix_review_rounds: 3  # fix reviews one Finalize row entry may run over a fixer change past the caps; each review that does not approve sends its findings back to the fixer, and the last halts for the operator
-finalize_lost_races: 2  # times one Finalize may find the parent moved since its merge and landing gate, which run with no parent lock held, before it merges and gates under the parent lock instead, so a run on a busy parent is never starved; 0 merges and gates under the lock from the start
 parent_lock_idle_release_min: 10  # minutes a waiting run keeps its parent lock before the lock is released, bar a run at Finalize and running or with a live verify, which keeps it; a value below 1 reads as 10

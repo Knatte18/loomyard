@@ -27,16 +27,15 @@ type TaskView struct {
 	Status *string
 	// PendingDependencies holds the slugs of the entries the task depends on that are not done.
 	PendingDependencies []string
-	// Parent names the parent worktree, the prime's name for the prime; read for released tasks.
+	// Parent names the parent worktree, the prime's name for the prime; read for released tasks and NotifyOnLand entries.
 	Parent string
-	// OwnedElsewhere reports whether another machine owns the entry; read for released tasks.
+	// OwnedElsewhere reports whether another machine owns the entry; read for released tasks and NotifyOnLand entries.
 	OwnedElsewhere bool
 	// StartRefusal is the refusal every start of the slug gets now, such as a finished run record; empty when none.
 	// Dobby spawns no pass for it and starts it on the first tick after the refusal is gone; read for released tasks.
 	StartRefusal string
-	// HeldBy names the machine of the adopt hold that holds the task, empty when none does; read for released tasks.
-	// A hold holds every queued task but the fix task of an adopt-fix hold.
-	HeldBy string
+	// NotifyOnLand reports whether the entry carries notify_on_land, a request for a landing notice.
+	NotifyOnLand bool
 	// Front reports whether the entry is a front task, filed ahead of its worktree's other starts; read for every entry.
 	Front bool
 	// Project is the slug of the beam project the entry belongs to, empty for the prime's own; read for every entry.
@@ -65,9 +64,9 @@ func released(task TaskView, here string) bool {
 
 // heldByEntry reports whether a released task is held.
 // A task is held while a dependency is not done, another machine owns it, or a refusal awaits its slug's starts.
-// A pause entry covering the hub or the slug holds it too, and so does an adopt hold on any machine.
+// A pause entry covering the hub or the slug holds it too.
 func heldByEntry(task TaskView, covered bool) bool {
-	return len(task.PendingDependencies) > 0 || task.OwnedElsewhere || task.StartRefusal != "" || task.HeldBy != "" || covered
+	return len(task.PendingDependencies) > 0 || task.OwnedElsewhere || task.StartRefusal != "" || covered
 }
 
 // readyToStart reports whether dobby of the worktree named here starts task.
@@ -76,7 +75,7 @@ func readyToStart(task TaskView, here string, covered bool) bool {
 	return released(task, here) && !heldByEntry(task, covered)
 }
 
-// startReady starts each ready task of the local board while fewer than beam.max_runs runs it drives are in flight.
+// startReady starts each ready task of the local board while fewer than max_runs runs it drives are in flight.
 // Starting runs the task's first pass, a full pass that claims it as batten does.
 // A slug with a pass in flight is never started twice.
 // The count covers the runs listed for this tick, halted and done ones included.
@@ -85,15 +84,11 @@ func readyToStart(task TaskView, here string, covered bool) bool {
 // It leaves out runs whose board entry is done or gone.
 // It adds first passes that have not yet left a status file.
 // A task whose backoff has not run out waits, unless its entry changed since the refusal.
-// While the cgroup task limit leaves fewer than beam.task_headroom tasks free, the step starts no task.
+// While the cgroup task limit leaves fewer than task_headroom tasks free, the step starts no task.
 // While an open front task of the worktree stands, the step starts no other task.
-// It starts the front task itself once it is released, even when the runs in flight fill beam.max_runs.
+// It starts the front task itself once it is released, even when the runs in flight fill max_runs.
 // While the beam is flagged ready, the step starts no task at all.
-// Nor does it while the catch-up from origin is owed, which a first pass read earlier in the tick can owe.
 func (d *daemon) startReady(ctx context.Context, now time.Time) error {
-	if d.catchUpOwed {
-		return nil
-	}
 	cfg, err := d.deps.LoadConfig()
 	if err != nil {
 		return fmt.Errorf("load beam.yaml: %w", err)
@@ -288,7 +283,7 @@ func (d *daemon) taskLimitHolds(headroom int, now time.Time) bool {
 	held := found && limit.Headroom() < headroom
 	switch {
 	case held && !d.taskLimitHeld:
-		d.logLine(now, fmt.Sprintf("hold starts: %d of %d tasks in %s, below %s %d", limit.Current, limit.Max, limit.Cgroup, keyName(taskHeadroomKey), headroom))
+		d.logLine(now, fmt.Sprintf("hold starts: %d of %d tasks in %s, below task_headroom %d", limit.Current, limit.Max, limit.Cgroup, headroom))
 	case !held && d.taskLimitHeld && found:
 		d.logLine(now, fmt.Sprintf("starts resume: %d of %d tasks in %s", limit.Current, limit.Max, limit.Cgroup))
 	case !held && d.taskLimitHeld:
@@ -314,7 +309,7 @@ func (d *daemon) runsInFlight(current State) int {
 	return count
 }
 
-// slotsTaken counts the runs that take a slot under beam.max_runs:
+// slotsTaken counts the runs that take a slot under max_runs:
 // a run takes one unless the record marks it owned elsewhere, it is a pawl run without its landing hold,
 // or its board entry is done or gone.
 // A run whose entry ended has nothing left to start, so batten stopping it short of its teardown holds no slot.
@@ -342,19 +337,12 @@ func (d *daemon) startFirstPass(task TaskView, now time.Time) {
 
 // firstPassExited reads how a first pass exited.
 // A pass that left a status file claimed the task: its start record is cleared, and the exit is read as any pass's.
-// A covered pass is no refusal.
-// A pass whose catch-up could not reach origin is no refusal either while the dobby's catch-up can answer it:
-// it owes that catch-up, which retries on its own delay and lets the task start once it succeeds.
-// Any other exit that left no status file is a refused start.
+// A covered pass is no refusal, and any other exit that left no status file is a refused start.
 func (d *daemon) firstPassExited(slug string, f flight, exit PassExit, now time.Time) {
 	claimed, err := d.deps.StatusExists(slug)
 	if err != nil {
 		logger.Warn("dobbyengine: whether the first pass left a status file is unreadable; the exit is read as a pass's", "slug", slug, "error", err)
 		claimed = true
-	}
-	// A remembered stop speaks only of the entry's next exit, so any other exit forgets it.
-	if claimed || exit.Code != PassExitOriginWait {
-		delete(d.originStops, slug)
 	}
 	switch {
 	case claimed:
@@ -363,7 +351,6 @@ func (d *daemon) firstPassExited(slug string, f flight, exit PassExit, now time.
 		}
 		d.passExited(slug, f.full, exit.Code, exit.Error, now)
 	case exit.Code == PassExitCovered:
-	case exit.Code == PassExitOriginWait && d.oweCatchUpForStart(slug, f.fingerprint):
 	case exit.Code == 0:
 		if err := d.updateStart(slug, func(s *StartState) { *s = StartState{} }); err != nil {
 			logger.Warn("dobbyengine: the start record could not be cleared", "slug", slug, "error", err)
@@ -375,31 +362,6 @@ func (d *daemon) firstPassExited(slug string, f flight, exit PassExit, now time.
 		}
 		d.refusedStart(slug, f.fingerprint, text, now)
 	}
-}
-
-// originStop is a first pass that an unreachable origin stopped:
-// the board entry it started, and the count of successful catch-ups when it exited.
-type originStop struct {
-	fingerprint string
-	successes   int
-}
-
-// oweCatchUpForStart owes the catch-up from origin for a first pass of slug that an unreachable origin stopped.
-// It reports false, owing nothing, when the catch-up cannot answer that stop:
-// the dobby has none, or one succeeded since an earlier such stop of the same entry, so the failure is the start's own.
-func (d *daemon) oweCatchUpForStart(slug, fingerprint string) bool {
-	if stop, stopped := d.originStops[slug]; stopped && stop.fingerprint == fingerprint && d.catchUpSuccesses > stop.successes {
-		return false
-	}
-	d.oweCatchUp()
-	if !d.catchUpOwed {
-		return false
-	}
-	if d.originStops == nil {
-		d.originStops = map[string]originStop{}
-	}
-	d.originStops[slug] = originStop{fingerprint: fingerprint, successes: d.catchUpSuccesses}
-	return true
 }
 
 // refusedStart records a refused start of slug and schedules its retry backoff.

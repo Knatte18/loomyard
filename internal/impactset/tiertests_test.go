@@ -1,4 +1,4 @@
-// tiertests_test.go covers HoldsTierTest and TestsUseLymBinary over a package directory written for each case.
+// tiertests_test.go covers HoldsTierTest over a package directory written for each case.
 
 package impactset_test
 
@@ -56,51 +56,6 @@ func TestHoldsTierTest(t *testing.T) {
 			}
 			if got := impactset.HoldsTierTest(dir, tt.tiers); got != tt.want {
 				t.Errorf("HoldsTierTest(%v) = %v; want %v", tt.tiers, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestTestsUseLymBinary(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	const lymbinImport = "\"github.com/Knatte18/loomyard/internal/testkit/lymbin\""
-	tests := []struct {
-		name string
-		// rel is the package directory under the case's temp root.
-		rel string
-		// files are the directory's files, keyed by name; nil leaves the directory absent.
-		files map[string]string
-		want  bool
-	}{
-		{name: "an external test file importing the kit", rel: "p", files: map[string]string{"a_test.go": "package p_test\n\nimport " + lymbinImport + "\n"}, want: true},
-		{name: "an in-package test file importing the kit among others", rel: "p", files: map[string]string{"a_test.go": "package p\n\nimport (\n\t\"testing\"\n\n\t" + lymbinImport + "\n)\n"}, want: true},
-		{name: "a second test file importing the kit is enough", rel: "p", files: map[string]string{"a_test.go": "package p\n\nimport \"testing\"\n", "b_test.go": "package p\n\nimport " + lymbinImport + "\n"}, want: true},
-		{name: "a test file under another platform's constraint still counts", rel: "p", files: map[string]string{"a_test.go": "//go:build plan9\n\npackage p\n\nimport " + lymbinImport + "\n"}, want: true},
-		{name: "test files importing other packages", rel: "p", files: map[string]string{"a_test.go": "package p\n\nimport (\n\t\"testing\"\n\n\t\"github.com/Knatte18/loomyard/internal/testkit/tiergate\"\n)\n"}},
-		{name: "a package whose own file imports the kit is not a test of it", rel: "p", files: map[string]string{"a.go": "package p\n\nimport " + lymbinImport + "\n"}},
-		{name: "a package with no test file", rel: "p", files: map[string]string{"a.go": "package p\n"}},
-		{name: "the kit's own directory", rel: "internal/testkit/lymbin", files: map[string]string{"kit.go": "package lymbin\n"}, want: true},
-		{name: "a test file that does not parse counts as using it", rel: "p", files: map[string]string{"a_test.go": "package p\n\nimport (\n"}, want: true},
-		{name: "a directory that cannot be read counts as using it", rel: "p", want: true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			dir := filepath.Join(t.TempDir(), filepath.FromSlash(tt.rel))
-			if tt.files != nil {
-				if err := os.MkdirAll(dir, 0o755); err != nil {
-					t.Fatal(err)
-				}
-			}
-			for name, content := range tt.files {
-				if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
-					t.Fatal(err)
-				}
-			}
-			if got := impactset.TestsUseLymBinary(dir); got != tt.want {
-				t.Errorf("TestsUseLymBinary(%s) = %v; want %v", tt.rel, got, tt.want)
 			}
 		})
 	}

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -66,8 +66,8 @@ func TestFinalize_MergeJudgement(t *testing.T) {
 			head := "t1"
 			deps.TaskHead = func() (string, error) { return head, nil }
 			deps.MergeBase = func(string) (string, error) { return taskBase, nil }
-			deps.ReadParentTips = func(bool) (fabriclayout.ParentTips, error) {
-				return fabriclayout.ParentTips{Local: newTip, Upstream: newTip, Relation: fabriclayout.ParentEqual}, nil
+			deps.ReadParentTips = func(bool) (fabricengine.ParentTips, error) {
+				return fabricengine.ParentTips{Local: newTip, Upstream: newTip, Relation: fabricengine.ParentEqual}, nil
 			}
 			var changed []string
 			deps.ChangedPaths = func(from, to string) ([]string, error) {
@@ -89,7 +89,7 @@ func TestFinalize_MergeJudgement(t *testing.T) {
 				}
 			}
 			gate := newGateFixture(t, "finalize", "go test ./...", nil)
-			merger := &recordingParentMerger{results: []mergeCallResult{{result: fabriclayout.MergeResult{Committed: true}}}}
+			merger := &recordingParentMerger{results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}}}
 			resolver := &eventResolver{
 				events: new([]string),
 				result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved, AlreadyUpToDate: tt.upToDate},

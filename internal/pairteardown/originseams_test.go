@@ -9,20 +9,18 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
-	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // removeRecorder replaces a teardown's removal with one that keeps the request it was given and answers with result and err.
 type removeRecorder struct {
 	request Request
-	result  fabriclayout.RemoveResult
+	result  fabricengine.RemoveResult
 	err     error
 }
 
 func (r *removeRecorder) install(f *fakeSubstrates, td *Teardown) {
-	td.remove = func(req Request) (fabriclayout.RemoveResult, error) {
+	td.remove = func(req Request) (fabricengine.RemoveResult, error) {
 		r.request = req
 		f.calls = append(f.calls, "remove-local")
 		return r.result, r.err
@@ -30,10 +28,10 @@ func (r *removeRecorder) install(f *fakeSubstrates, td *Teardown) {
 }
 
 // mutationRecord returns a record holding one created tag.
-func mutationRecord(tag string) fabriclayout.MutationRecord {
+func mutationRecord(tag string) fabricengine.MutationRecord {
 	rec := fabricengine.NewMutations("/hub")
-	rec.AppendRef(fabriclayout.KindTagCreated, tag, "")
-	return fabriclayout.MutationRecord{Mutations: rec.Snapshot()}
+	rec.AppendRef(fabricengine.KindTagCreated, tag, "")
+	return fabricengine.MutationRecord{Mutations: rec.Snapshot()}
 }
 
 // TestTeardown_OriginSeams pins what the origin reconcile's seams read and how they drive a local removal.
@@ -93,7 +91,7 @@ func TestTeardown_OriginSeams(t *testing.T) {
 			`{"slug":"held","kind":"task","status":"running · Implementer"}]}`
 		const noPrimeOwner = `{"version":1,"entries":[{"slug":"unowned","kind":"task"}]}`
 		errAny := errors.New("any error")
-		machine := func() (machinename.Identity, error) { return machinename.Identity{Name: "here"}, nil }
+		machine := func() (string, error) { return "here", nil }
 		parentOf := func(_, slug string) (string, error) {
 			if slug == "child" {
 				return "theirs", nil
@@ -103,7 +101,7 @@ func TestTeardown_OriginSeams(t *testing.T) {
 		boom := errors.New("boom")
 		for _, row := range []struct {
 			name          string
-			machine       func() (machinename.Identity, error)
+			machine       func() (string, error)
 			parentOf      func(hubPath, slug string) (string, error)
 			board         string
 			slug          string
@@ -118,7 +116,7 @@ func TestTeardown_OriginSeams(t *testing.T) {
 			{"unowned under a parent owned elsewhere", machine, parentOf, board, "child", "other", "theirs", true, nil},
 			{"held by a run with no owner reads its parent's owner", machine, parentOf, board, "held", "other", "root", true, nil},
 			{"a hub with no prime owner", machine, parentOf, noPrimeOwner, "unowned", "", "root", false, nil},
-			{"a machine error", func() (machinename.Identity, error) { return machinename.Identity{}, boom }, parentOf, board, "mine", "", "", false, boom},
+			{"a machine error", func() (string, error) { return "", boom }, parentOf, board, "mine", "", "", false, boom},
 			{"a parent resolver error", machine, func(_, _ string) (string, error) { return "", boom }, board, "unowned", "", "", false, boom},
 			{"undecodable bytes", machine, parentOf, "{", "mine", "", "", false, errAny},
 		} {
@@ -152,7 +150,7 @@ func TestTeardown_OriginSeams(t *testing.T) {
 		removal := &removeRecorder{}
 		removal.install(f, td)
 
-		report, err := td.OriginSeams(SeamOptions{}).Teardown(fabriclayout.EndedTeardown{Slug: "slug"})
+		report, err := td.OriginSeams(SeamOptions{}).Teardown(fabricengine.EndedTeardown{Slug: "slug"})
 
 		if err != nil || report.Busy {
 			t.Fatalf("Teardown() = %+v, %v; want a removed pair", report, err)
@@ -169,12 +167,12 @@ func TestTeardown_OriginSeams(t *testing.T) {
 		removal := &removeRecorder{}
 		removal.install(f, td)
 
-		report, err := td.OriginSeams(SeamOptions{}).Teardown(fabriclayout.EndedTeardown{Slug: "slug"})
+		report, err := td.OriginSeams(SeamOptions{}).Teardown(fabricengine.EndedTeardown{Slug: "slug"})
 
 		if err != nil || report.Busy {
 			t.Fatalf("Teardown() = %+v, %v; want a removed pair", report, err)
 		}
-		if removal.request.Verdict != fabriclayout.EntryEnded || !slices.Contains(f.calls, "remove-local") || slices.Contains(f.calls, "quiet") {
+		if removal.request.Verdict != fabricengine.EntryEnded || !slices.Contains(f.calls, "remove-local") || slices.Contains(f.calls, "quiet") {
 			t.Errorf("verdict = %q, calls = %v; want the ended verdict, no quiet probe and the local removal", removal.request.Verdict, f.calls)
 		}
 	})
@@ -186,9 +184,9 @@ func TestTeardown_OriginSeams(t *testing.T) {
 		removal := &removeRecorder{}
 		removal.install(f, td)
 
-		report, err := td.OriginSeams(SeamOptions{}).Teardown(fabriclayout.EndedTeardown{Slug: "slug"})
+		report, err := td.OriginSeams(SeamOptions{}).Teardown(fabricengine.EndedTeardown{Slug: "slug"})
 
-		if err != nil || !report.Busy || report.BusyOn != fabriclayout.BusyOnDriver {
+		if err != nil || !report.Busy || report.BusyOn != fabricengine.BusyOnDriver {
 			t.Errorf("Teardown() = %+v, %v; want busy on the driver and no error", report, err)
 		}
 		if slices.Contains(f.calls, "remove-local") || slices.Contains(f.calls, "end") {
@@ -203,9 +201,9 @@ func TestTeardown_OriginSeams(t *testing.T) {
 		removal := &removeRecorder{err: fmt.Errorf("the records write lock is held: %w", fabricengine.ErrPairBusy)}
 		removal.install(f, td)
 
-		report, err := td.OriginSeams(SeamOptions{}).Teardown(fabriclayout.EndedTeardown{Slug: "slug"})
+		report, err := td.OriginSeams(SeamOptions{}).Teardown(fabricengine.EndedTeardown{Slug: "slug"})
 
-		if err != nil || !report.Busy || report.BusyOn != fabriclayout.BusyOnLock {
+		if err != nil || !report.Busy || report.BusyOn != fabricengine.BusyOnLock {
 			t.Errorf("Teardown() = %+v, %v; want busy on a lock and no error", report, err)
 		}
 	})
@@ -215,15 +213,15 @@ func TestTeardown_OriginSeams(t *testing.T) {
 		f := &fakeSubstrates{quiets: []quietState{{quiet: true}}}
 		td := f.teardown()
 		boom := errors.New("boom")
-		removal := &removeRecorder{result: fabriclayout.RemoveResult{MutationRecord: mutationRecord("set-aside/slug/abc"), SetAsideTag: "set-aside/slug/abc"}, err: boom}
+		removal := &removeRecorder{result: fabricengine.RemoveResult{MutationRecord: mutationRecord("set-aside/slug/abc"), SetAsideTag: "set-aside/slug/abc"}, err: boom}
 		removal.install(f, td)
 
-		report, err := td.OriginSeams(SeamOptions{}).Teardown(fabriclayout.EndedTeardown{Slug: "slug"})
+		report, err := td.OriginSeams(SeamOptions{}).Teardown(fabricengine.EndedTeardown{Slug: "slug"})
 
 		if !errors.Is(err, boom) || report.Busy {
 			t.Errorf("Teardown() error = %v, busy = %v; want the removal's error", err, report.Busy)
 		}
-		if got := report.Mutations.Entries(); len(got) != 1 || got[0].Kind != fabriclayout.KindTagCreated {
+		if got := report.Mutations.Entries(); len(got) != 1 || got[0].Kind != fabricengine.KindTagCreated {
 			t.Errorf("report mutations = %v; want the removal's one tag_created entry", got)
 		}
 		if !slices.Equal(report.Tags, []string{"set-aside/slug/abc"}) {
@@ -242,7 +240,7 @@ func TestTeardown_OriginSeams(t *testing.T) {
 			LiftWakeHold: func(string) error { f.calls = append(f.calls, "lift"); return nil },
 		}
 
-		report, err := td.OriginSeams(opts).Teardown(fabriclayout.EndedTeardown{Slug: "slug"})
+		report, err := td.OriginSeams(opts).Teardown(fabricengine.EndedTeardown{Slug: "slug"})
 
 		if err != nil || report.Busy {
 			t.Fatalf("Teardown() = %+v, %v; want the busy driver ended and the pair removed", report, err)
@@ -271,7 +269,7 @@ func TestTeardown_OriginSeams(t *testing.T) {
 		lifted := false
 		opts := SeamOptions{LiftWakeHold: func(string) error { lifted = true; return nil }}
 
-		_, err := td.OriginSeams(opts).Teardown(fabriclayout.EndedTeardown{Slug: "slug", EarlierSnapshot: true})
+		_, err := td.OriginSeams(opts).Teardown(fabricengine.EndedTeardown{Slug: "slug", EarlierSnapshot: true})
 
 		if err != nil {
 			t.Fatalf("Teardown() error = %v; want nil", err)

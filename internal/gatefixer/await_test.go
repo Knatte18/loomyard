@@ -4,9 +4,7 @@
 package gatefixer
 
 import (
-	"encoding/json"
 	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -30,30 +28,7 @@ func appendTurnEnd(t *testing.T, fx *fixture, rec *Record) {
 	}
 }
 
-// markRunInterrupted rewrites rec's shuttle run record as lym's reconcile leaves a run a machine stop ended:
-// stopped and interrupted.
-func markRunInterrupted(t *testing.T, rec *Record) {
-	t.Helper()
-	path := filepath.Join(rec.ShuttleRunDir, "run.json")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read run record: %v", err)
-	}
-	var run map[string]any
-	if err := json.Unmarshal(data, &run); err != nil {
-		t.Fatalf("decode run record: %v", err)
-	}
-	run["outcome"], run["interrupted"] = "stopped", true
-	data, err = json.Marshal(run)
-	if err != nil {
-		t.Fatalf("encode run record: %v", err)
-	}
-	if err := os.WriteFile(path, data, 0o644); err != nil {
-		t.Fatalf("write run record: %v", err)
-	}
-}
-
-// TestAwait pins the order done, asking, a gone strand and timeout are decided in.
+// TestAwait pins the order done, asking, timeout and died are decided in.
 // It also pins that every terminal result stops the strand once.
 func TestAwait(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -101,49 +76,19 @@ func TestAwait(t *testing.T) {
 			wantReason: DeadReasonAsking,
 		},
 		{
-			name: "DiedIsDecidedBeforeTimeout",
+			name: "TimeoutIsDecidedBeforeDied",
 			arrange: func(_ *testing.T, fx *fixture, _ *Record) {
 				pastTimeout(fx)
 				goneStrand(fx)
 			},
 			wantStatus: StatusDead,
-			wantReason: DeadReasonDied,
+			wantReason: DeadReasonTimeout,
 		},
 		{
 			name:       "GoneStrandIsDied",
 			arrange:    func(_ *testing.T, fx *fixture, _ *Record) { goneStrand(fx) },
 			wantStatus: StatusDead,
 			wantReason: DeadReasonDied,
-		},
-		{
-			name: "GoneStrandWithNoRunRecordIsDied",
-			arrange: func(t *testing.T, fx *fixture, rec *Record) {
-				if err := os.Remove(filepath.Join(rec.ShuttleRunDir, "run.json")); err != nil {
-					t.Fatalf("remove run record: %v", err)
-				}
-				goneStrand(fx)
-			},
-			wantStatus: StatusDead,
-			wantReason: DeadReasonDied,
-		},
-		{
-			name: "GoneStrandOfAnInterruptedRunIsInterrupted",
-			arrange: func(t *testing.T, fx *fixture, rec *Record) {
-				markRunInterrupted(t, rec)
-				goneStrand(fx)
-			},
-			wantStatus: StatusDead,
-			wantReason: DeadReasonInterrupted,
-		},
-		{
-			name: "InterruptedRunAStopOutlastingTheTimeoutEndedIsInterrupted",
-			arrange: func(t *testing.T, fx *fixture, rec *Record) {
-				markRunInterrupted(t, rec)
-				pastTimeout(fx)
-				goneStrand(fx)
-			},
-			wantStatus: StatusDead,
-			wantReason: DeadReasonInterrupted,
 		},
 		{
 			name:       "LiveFixerOutlastingTheTimeoutIsDeadOnIt",

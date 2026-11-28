@@ -34,8 +34,7 @@ type sweeper struct {
 	lastError  string
 }
 
-// sweepLoop sweeps while a strand holds unread mail, a read message still awaiting a reply, a queued inject,
-// or a strand of this hub has sent a question still open.
+// sweepLoop sweeps while a strand holds unread mail, a read message still awaiting a reply, or a queued inject.
 // Unread program mail waiting for a hub orch's strand does not count.
 // The wait starts at sweepBackoffBase and doubles up to sweepBackoffCeiling while the strand-name set holds;
 // it returns to the base on a change of that set or a failed sweep.
@@ -178,8 +177,7 @@ func isStrandName(full string) bool {
 	return err == nil
 }
 
-// sweepNeeded reports whether a strand holds unread mail, a read message still awaiting a reply, a queued inject,
-// or a strand of this hub has sent a question still open.
+// sweepNeeded reports whether a strand holds unread mail, a read message still awaiting a reply, or a queued inject.
 func (s *Store) sweepNeeded() bool {
 	return len(s.sweepSubjects()) > 0
 }
@@ -190,15 +188,7 @@ func (s *Store) waitsForHubOrch(msg *Message) bool {
 	return msg.Status == StatusUnread && len(msg.Path) == 0 && s.isHubOrchName(msg.Holder) && agentname.IsProgram(msg.From) && !isExternalName(msg.From)
 }
 
-// isOpenQuestionOfThisHub reports whether msg is an open question sent by a strand of this hub.
-// A question from another hub or machine names a sender this hub's strand listing never holds.
-// It is therefore never the sweep's to settle.
-func isOpenQuestionOfThisHub(msg *Message) bool {
-	return isOpenQuestion(msg) && isStrandName(msg.From) && msg.SendingHub == "" && msg.SendingMachine == ""
-}
-
 // sweepSubjects returns the strands that hold unread mail, a chaseable message or have an inject queued, in name order.
-// It also returns each strand that sent a question still open.
 // Unread mail from a program to an orch of this hub that no strand forwarded counts for no strand, since it waits for the orch's strand and is never returned.
 func (s *Store) sweepSubjects() []string {
 	s.mu.Lock()
@@ -207,9 +197,6 @@ func (s *Store) sweepSubjects() []string {
 	for _, msg := range s.state.messages {
 		if (msg.Status == StatusUnread && isStrandName(msg.Holder) && !s.waitsForHubOrch(msg)) || isChaseable(msg) {
 			seen[msg.Holder] = true
-		}
-		if isOpenQuestionOfThisHub(msg) {
-			seen[msg.From] = true
 		}
 	}
 	for _, entry := range s.state.injects {
@@ -232,7 +219,6 @@ func (s *Store) sweepSubjects() []string {
 // A reply wait on it is answered as returned.
 // Unread program mail to a hub orch that no strand forwarded is not returned; it stays for the orch's strand.
 // Each message the strand read and left unanswered while it expected a reply is settled unanswered, with no chase sent.
-// Each open question the strand itself sent is settled unanswered too, so a later strand of the same name inherits none.
 // Each inject queued for the strand expires.
 func (s *Store) releaseGoneHolder(holder string) error {
 	listing := s.listStrands()
@@ -266,18 +252,6 @@ func (s *Store) releaseGoneHolder(holder string) error {
 		}
 		for _, msg := range s.chaseableLocked(holder) {
 			if err := s.settleUnansweredLocked(msg.ID, UnansweredHolderGone, listing); err != nil {
-				return err
-			}
-		}
-		var askedIDs []int64
-		for id, msg := range s.state.messages {
-			if msg.From == holder && isOpenQuestionOfThisHub(msg) {
-				askedIDs = append(askedIDs, id)
-			}
-		}
-		sort.Slice(askedIDs, func(i, j int) bool { return askedIDs[i] < askedIDs[j] })
-		for _, id := range askedIDs {
-			if err := s.settleUnansweredLocked(id, UnansweredAskerGone, listing); err != nil {
 				return err
 			}
 		}

@@ -16,7 +16,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
@@ -282,7 +281,7 @@ func TestBolt_Sync_HoldsSingleAbsorbingLockAcrossBurst(t *testing.T) {
 	repoPath := newBoltRepo(t, container, "bolt", bareRemote)
 	b := NewBolt(repoPath)
 
-	pushLockPath, err := BoltLockPath(repoPath, fabriclayout.BoardPushLockFile)
+	pushLockPath, err := BoltLockPath(repoPath, BoardPushLockFile)
 	if err != nil {
 		t.Fatalf("BoltLockPath() error = %v", err)
 	}

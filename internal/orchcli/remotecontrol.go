@@ -1,6 +1,5 @@
 // remotecontrol.go holds remote control for the orch and for every agent reed's RC button serves.
-// It forms the session name a launch of the orch passes,
-// and it marks the launched pane for the button once the session records its remote control connecting.
+// It forms the session name a launch of the orch passes and marks the launched pane for the button.
 // It also holds the hidden verb `rc-on`, which a click on the RC button runs.
 
 package orchcli
@@ -30,7 +29,7 @@ const (
 	remoteControlProgram = "REMOTECONTROL"
 )
 
-// orchEngine is the engine the orch session runs on, whatever shuttle.engine is:
+// orchEngine is the engine the orch session runs on, whatever shuttle.yaml's default engine is:
 // the orch role is worded for it.
 const orchEngine = "claude"
 
@@ -50,7 +49,7 @@ func (c *orchCLI) orchHasRemoteControl() bool {
 }
 
 // remoteControlSessionName returns the remote session's name of the strand strandName on this machine.
-// It fills orch.remote_control_name.
+// It fills orch.yaml's remote_control_name.
 func (c *orchCLI) remoteControlSessionName(strandName string) (string, error) {
 	parsed, err := agentname.Parse(strandName)
 	if err != nil {
@@ -89,53 +88,25 @@ func (c *orchCLI) launchRemoteControlName(listed reedengine.StrandStatus, hasStr
 	return name
 }
 
-// launchRemoteControlCheckpoint returns how far the orch session sessionID's record reaches before a launch resumes it.
-// A launch without remote control, or one with no session to resume, starts from zero.
-// read is false when the record cannot be read; the launch then leaves its pane unmarked, logged at Warn.
-func (c *orchCLI) launchRemoteControlCheckpoint(sessionID, remoteControlName string) (checkpoint int64, read bool) {
-	if remoteControlName == "" || sessionID == "" {
-		return 0, true
-	}
-	checkpoint, err := c.remoteControlCheckpoint(sessionID)
-	if err != nil {
-		logger.Warn("orch: could not read where the orch session's record ends, so the RC button stays dim after the launch", "sessionID", sessionID, "err", err)
-		return 0, false
-	}
-	return checkpoint, true
-}
-
-// markLaunchedRemoteControl marks the pane of the strand started, which a launch asked to start with remote control on.
-// It marks only once the session records its remote control connecting, so reed's RC button shows the orch lit only then.
-// The record counts past checkpoint when started resumed the session resumed, and whole when it started another session.
-// A connection the provider refuses, such as by an organization's policy, leaves the pane unmarked and the button dim.
-// A failed read or mark is logged at Warn and never fails the caller, since the mark is display only.
-func (c *orchCLI) markLaunchedRemoteControl(started startedSession, resumed string, checkpoint int64) {
+// markLaunchedRemoteControl marks the pane of the strand guid, which a launch started with remote control on.
+// reed's RC button then shows the orch lit.
+// A failed mark is logged at Warn and never fails the caller, since the mark is display only.
+func (c *orchCLI) markLaunchedRemoteControl(guid string) {
 	if c.markRemoteControl == nil {
 		return
 	}
-	if started.SessionID != resumed {
-		checkpoint = 0
-	}
-	connected, err := c.awaitRemoteControl(started.SessionID, checkpoint)
-	if err != nil {
-		logger.Warn("orch: could not read whether the orch session's remote control connected, so the RC button stays dim", "strandGUID", started.GUID, "err", err)
-		return
-	}
-	if !connected {
-		logger.Info("orch: the orch session recorded no remote-control connection, so the RC button stays dim", "strandGUID", started.GUID, "sessionID", started.SessionID)
-		return
-	}
-	if err := c.markRemoteControl(started.GUID); err != nil {
-		logger.Warn("orch: could not mark the orch pane's remote control for the RC button", "strandGUID", started.GUID, "err", err)
+	if err := c.markRemoteControl(guid); err != nil {
+		logger.Warn("orch: could not mark the orch pane's remote control for the RC button", "strandGUID", guid, "err", err)
 	}
 }
 
-// turnOnRemoteControl queues the remote-control command into the agent pane runs, through creel.
-// The name is the one orch.remote_control_name forms for the agent, whatever orch.remote_control says.
-// It marks nothing: creel marks the pane once the session records its remote control connecting.
+// turnOnRemoteControl queues the remote-control command into the agent pane runs, through creel, then marks pane.
+// The name is the one remote_control_name forms for the agent, whatever orch.yaml's switch says.
 // It refuses a pane that runs no agent and a pane whose mark already reads on; both send nothing.
-// An agent whose engine has no remote control gets nothing typed.
-func (c *orchCLI) turnOnRemoteControl(pane reedengine.AgentPane) (map[string]any, error) {
+// A failed mark is logged and the click still succeeds with a warning field, since the command is already queued.
+// An agent whose engine has no remote control gets nothing typed, and its pane is marked all the same.
+// What Claude Code shows for a second command in a session with remote control on is unverified.
+func (c *orchCLI) turnOnRemoteControl(pane reedengine.AgentPane, mark func() error) (map[string]any, error) {
 	if pane.StrandName == "" {
 		return nil, errors.New("orch: the active pane runs no agent; way forward: select an agent's pane and click RC again")
 	}
@@ -149,7 +120,12 @@ func (c *orchCLI) turnOnRemoteControl(pane reedengine.AgentPane) (map[string]any
 	if err := c.injectRemoteControl(pane.StrandName, name); err != nil {
 		return nil, fmt.Errorf("orch: queue the remote-control command for %s: %w; way forward: repair what the error names and click RC again", pane.StrandName, err)
 	}
-	return map[string]any{"strand": pane.StrandName, "remote_control_name": name}, nil
+	fields := map[string]any{"strand": pane.StrandName, "remote_control_name": name}
+	if err := mark(); err != nil {
+		logger.Warn("orch: could not mark the agent pane's remote control for the RC button", "strand", pane.StrandName, "pane", pane.PaneID, "err", err)
+		fields["warning"] = fmt.Sprintf("the command is queued, but marking the pane failed (%v); the RC button stays dim, and another click would queue the command again", err)
+	}
+	return fields, nil
 }
 
 // injectRemoteControlCommand queues creel's remote-control command with name into the strand receiver.
@@ -174,13 +150,11 @@ func (c *orchCLI) remoteControlOnCmd() *cobra.Command {
 		Long: `rc-on is what a click on reed's RC button runs, from the clicked session's run
 directory: the session's own worktree for the prime and a beam, the parent's for
 a task. It acts on the agent of the clicking client's active pane. It queues
-creel's remote-control command into that agent, under the name
-` + orchKeyName("remote_control_name") + ` forms, whether or not ` + orchKeyName("remote_control") + ` is on. The command is
-typed once the session is idle, and the pane is marked so the RC button shows
-lit only once the session records its remote control connecting. A connection
-the provider refuses, such as by an organization's policy, leaves the button
-dim. A pane that runs no agent and a pane already marked refuse and send
-nothing. A session whose remote control was turned off inside Claude Code takes
+creel's remote-control command into that agent, under the name orch.yaml's
+remote_control_name forms, whether or not remote_control is on, and marks the
+pane so the RC button shows lit. The command is typed once the session is idle.
+A pane that runs no agent and a pane already marked refuse and send nothing. A
+session whose remote control was turned off inside Claude Code takes
 /remote-control typed by hand in its pane.
 
 It then redraws the clicking client's status bar on the server at --socket,
@@ -194,7 +168,9 @@ showing the refusal there first when the click failed.`,
 			var fields map[string]any
 			pane, err := reedengine.ClientAgentPane(tmuxPath, socketPath, client)
 			if err == nil {
-				fields, err = c.turnOnRemoteControl(pane)
+				fields, err = c.turnOnRemoteControl(pane, func() error {
+					return reedengine.MarkPaneRemoteControlOn(tmuxPath, socketPath, pane.PaneID)
+				})
 			}
 			message := ""
 			if err != nil {

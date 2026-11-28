@@ -3,8 +3,6 @@
 package adoptcli
 
 import (
-	"io"
-
 	"github.com/Knatte18/loomyard/internal/buildvcs"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
@@ -23,14 +21,14 @@ func ReadDeployState(prime *lymcwd.Location, readInstalled func() (buildvcs.Iden
 	return readDeployState(prime, readInstalled)
 }
 
-// AdoptAs runs the foreground adopt over the hub prime belongs to, in this process.
-// It covers the beam projects subjects name, and root when the word `root` is among them.
-// It moves another machine's hold when takeHold is set.
+// AdoptAs runs the takeover over the hub prime belongs to, as the worker does, in this process.
+// It covers the beam projects slugs name, and root when the word `root` is among them.
 // It reads machine as this machine's name, so two clones of one host stand for two machines.
-func AdoptAs(prime *lymcwd.Location, machine func() (string, error), subjects []string, takeHold bool) (Outcome, error) {
-	deps, err := hubDepsAs(prime, machine)
+func AdoptAs(prime *lymcwd.Location, machine string, slugs []string, keepLocal, dropLocal bool) (Outcome, error) {
+	deps, err := hubWorkerDeps(prime, func() (string, error) { return machine, nil })
 	if err != nil {
 		return Outcome{}, err
 	}
-	return runForeground(deps, request{Slugs: subjects, TakeHold: takeHold}, io.Discard)
+	result, _, err := runWorker(deps, request{Slugs: slugs, KeepLocal: keepLocal, DropLocal: dropLocal})
+	return result, err
 }

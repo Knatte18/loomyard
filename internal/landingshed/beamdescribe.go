@@ -1,15 +1,11 @@
-// beamdescribe.go implements the halves of a beam's change description.
-// The beam's orch or its describer agent writes the description.
+// beamdescribe.go implements the two halves of a beam's change description, which the beam's orch writes.
 // DraftBeamDescription offers a starting point from the board entry and the beam's member pull requests;
-// RecordBeamDescription validates the orch's text and commits it;
-// ReplaceBeamDescription validates the describer agent's draft and commits it in place of the recorded text.
+// RecordBeamDescription validates the orch's text and commits it.
 
 package landingshed
 
 import (
-	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -31,11 +27,6 @@ const (
 	beamCommitSummaryMax = 200
 	// beamCommitTimeLayout formats the time an entry shows, in UTC.
 	beamCommitTimeLayout = "2006-01-02 15:04 UTC"
-	// beamMergeDangerDraft is the draft's Merge danger section, its two values left for the orch to call.
-	// The description's validation refuses both placeholders, so a draft recorded unedited is refused.
-	beamMergeDangerDraft = summaryparser.MergeDangerHeading + "\n\n" +
-		summaryparser.MergeDangerDoorLabel + " " + summaryparser.DoorOneWay + " or " + summaryparser.DoorTwoWay + "\n" +
-		summaryparser.MergeDangerRadiusLabel + " one word"
 )
 
 // pullRequestSubject matches the subject of a commit a pull request landed, `<title> (#<number>)`.
@@ -96,7 +87,6 @@ func requireBeamDraftDeps(deps BeamDraftDeps) error {
 // Any other commit, a merge from the parent included, is listed by its object name, subject and commit time.
 // Either entry carries the first sentence of the commit's body as its summary, when the body has one.
 // GitHub links the number and the object name in a pull request's body.
-// A Merge danger section closes the draft with its door and blast radius left as placeholders for the orch to call.
 // The draft is neither validated nor committed: the orch edits it, and RecordBeamDescription records it.
 // It refuses deps with an unset field, naming that field.
 // A read or write failure is an error naming the step.
@@ -134,15 +124,14 @@ func DraftBeamDescription(deps BeamDraftDeps) error {
 // It then commits it through commit.
 // slug names the beam in the way forward of a refusal.
 // It refuses a missing file, naming the draft verb that offers a starting point.
-// It refuses a description with a finding, naming each finding and the file to fix.
-// A line that one of forbidden matches is such a finding.
-// A refused description is not committed.
+// It refuses a description with a finding, naming each finding and the file to fix;
+// a refused description is not committed.
 // A validation or commit failure is an error naming the step.
-func RecordBeamDescription(slug, path string, forbidden []*regexp.Regexp, commit func() error) error {
+func RecordBeamDescription(slug, path string, commit func() error) error {
 	fail := func(step string, err error) error {
 		return fmt.Errorf("landingshed: record the beam description: %s: %w", step, err)
 	}
-	findings, err := summaryparser.ValidateDescription(path, forbidden)
+	findings, err := summaryparser.ValidateDescription(path)
 	if err != nil {
 		return fail("validate the description", err)
 	}
@@ -162,69 +151,8 @@ func RecordBeamDescription(slug, path string, forbidden []*regexp.Regexp, commit
 	return nil
 }
 
-// ReplaceBeamDescription validates the draft at draftPath, which the beam's describer agent wrote.
-// It then writes the draft over the description at path atomically and commits it through commit.
-// A write that fails leaves the description at path as it stood.
-// slug names the beam in the way forward of a refusal.
-// It refuses a missing draft or one with a finding, a line that one of forbidden matches included, naming each finding;
-// it then leaves the description at path as it stands.
-// A failed commit puts back the description that stood at path, or removes the file when none stood.
-// A read, write or commit failure is an error naming the step.
-func ReplaceBeamDescription(slug, draftPath, path string, forbidden []*regexp.Regexp, commit func() error) error {
-	fail := func(step string, err error) error {
-		return fmt.Errorf("landingshed: replace the beam description: %s: %w", step, err)
-	}
-	findings, err := summaryparser.ValidateDescription(draftPath, forbidden)
-	if err != nil {
-		return fail("validate the draft", err)
-	}
-	if len(findings) > 0 {
-		parts := make([]string, len(findings))
-		for i, finding := range findings {
-			parts[i] = finding.Error()
-		}
-		return fail("validate the draft", fmt.Errorf("%s; the description at %s stands; way forward: edit it and run \"lym beam describe %s\"", strings.Join(parts, "; "), path, slug))
-	}
-	draft, err := os.ReadFile(draftPath)
-	if err != nil {
-		return fail("read the draft", err)
-	}
-	previous, err := os.ReadFile(path)
-	stood := err == nil
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return fail("read the recorded description", err)
-	}
-	if err := writeBytesAtomic(path, "description", draft); err != nil {
-		return fail("write the description", err)
-	}
-	if err := commit(); err != nil {
-		var restoreErr error
-		if stood {
-			restoreErr = writeBytesAtomic(path, "description", previous)
-		} else {
-			restoreErr = os.Remove(path)
-		}
-		return fail("commit the description", errors.Join(err, restoreErr))
-	}
-	return nil
-}
-
-// RenderBeamChanges renders commits, oldest first, as a markdown list with one entry per commit.
-// A pull request's merge writes its subject ending in ` (#<number>)`.
-// Such a commit is listed by that pull request's number, title and merge time.
-// Any other commit, a merge from the parent included, is listed by its object name, subject and commit time.
-// Either entry carries the first sentence of the commit's body on an indented line, when the body has one.
-// No commits render as "".
-func RenderBeamChanges(commits []BeamCommit) string {
-	entries := make([]string, len(commits))
-	for i, commit := range commits {
-		entries[i] = beamCommitEntry(commit)
-	}
-	return strings.Join(entries, "\n")
-}
-
 // beamDraft renders the draft: the title cut to beamDescriptionTitleMax characters as a heading.
-// Then come the brief, the list of commits and the Merge danger placeholders, each set off by a blank line.
+// Then come the brief and the list of commits, each set off by a blank line.
 func beamDraft(title, brief string, commits []BeamCommit) string {
 	title = strings.TrimSpace(title)
 	if runes := []rune(title); len(runes) > beamDescriptionTitleMax {
@@ -234,11 +162,18 @@ func beamDraft(title, brief string, commits []BeamCommit) string {
 	if brief = strings.TrimSpace(brief); brief != "" {
 		sections = append(sections, brief)
 	}
-	if changes := RenderBeamChanges(commits); changes != "" {
-		sections = append(sections, beamChangesHeading+"\n\n"+changes)
+	if len(commits) > 0 {
+		entries := make([]string, len(commits))
+		for i, commit := range commits {
+			entries[i] = beamCommitEntry(commit)
+		}
+		sections = append(sections, beamChangesHeading+"\n\n"+strings.Join(entries, "\n"))
 	}
-	sections = append(sections, beamMergeDangerDraft)
-	return "# " + title + "\n\n" + strings.Join(sections, "\n\n") + "\n"
+	description := "# " + title
+	if len(sections) > 0 {
+		description += "\n\n" + strings.Join(sections, "\n\n")
+	}
+	return description + "\n"
 }
 
 // beamCommitEntry renders one commit as a list item.

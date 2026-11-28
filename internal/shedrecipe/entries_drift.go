@@ -152,7 +152,7 @@ func driftAwaitEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProdu
 // The row's required "subject" is decision-record or board-entry,
 // and its required "gates" holds exactly one entry, named judgement, which the judge's table runs at each turn end;
 // "gate_key" and every other key is refused.
-// It checks Env.Seats and the Env.Drift seams the producer reads, bar Drift.ReviewBase, whose nil lists no file.
+// It checks Env.Seats and the Env.Drift seams the producer reads.
 // It fills the producer's seat runner, clock and gate findings file from Env.
 func driftVerifyEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	const entry = "DriftVerify"
@@ -187,9 +187,6 @@ func driftVerifyEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProd
 		{"Drift.RecordsChangedSince", d.RecordsChangedSince},
 		{"Drift.EndRoles", d.EndRoles},
 		{"Drift.Compare", d.Compare},
-		{"Drift.ChangedFiles", d.ChangedFiles},
-		{"Drift.CommitMessages", d.CommitMessages},
-		{"Drift.RangeDiff", d.RangeDiff},
 	})
 	if err != nil {
 		return nil, err

@@ -93,25 +93,10 @@ func claudeBinary(claude Config) string {
 // It must ride the pane command because the reed server env is scrubbed of CLAUDE_CODE_* at boot.
 const forkSubagentEnvKey = "CLAUDE_CODE_FORK_SUBAGENT"
 
-// promptCacheTTLEnvKey is the variable Claude Code reads as the TTL of the main conversation's prompt cache.
+// promptCacheTTLEnvKey is the variable Claude Code reads to pick the TTL of the prompt cache it writes.
 // It rides the pane line because the reed server env is scrubbed of CLAUDE_CODE_* at boot,
-// and it outranks every Claude Code control for that TTL but FORCE_PROMPT_CACHING_5M.
+// and it outranks every Claude Code control for the TTL but FORCE_PROMPT_CACHING_5M.
 const promptCacheTTLEnvKey = "CLAUDE_CODE_PROMPT_CACHE_TTL"
-
-// subagentPromptCacheTTLEnvKey is the variable Claude Code reads as the TTL of requests outside the main conversation.
-// Those are subagents, forks, and background and helper requests such as compaction.
-// Claude Code counts a few of its helper requests, such as the auto-mode classifier's, as the main conversation.
-// It rides the pane line because the reed server env is scrubbed of CLAUDE_CODE_* at boot.
-const subagentPromptCacheTTLEnvKey = "CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL"
-
-// subagentPromptCacheTTL is the prompt-cache TTL of a lym-spawned session's requests outside its main conversation.
-// Claude Code moves a background subagent's foreground Bash call to the background after 180 seconds.
-// A subagent whose prompt cache is one hour is exempt.
-// A capped `lym gate test` call waits up to the role's keep-warm cap.
-// On the 5-minute default, a cap past 180 seconds would therefore answer a backgrounded call.
-// One-hour cache writes cost more than 5-minute ones.
-// Subagents, forks, and background and helper requests all pay that price for the exemption.
-const subagentPromptCacheTTL = "1h"
 
 // bashMaxTimeoutEnvKey is the variable Claude Code reads as the ceiling on the Bash tool's timeout parameter.
 // It rides the pane line because the reed server env is scrubbed of CLAUDE_CODE_* at boot.
@@ -137,7 +122,7 @@ func validatePromptCacheTTL(key, value string) error {
 	if validPromptCacheTTLs[value] {
 		return nil
 	}
-	return fmt.Errorf("claudeengine: invalid %s %q; valid values are 5m, 1h (case-sensitive); fix it in claude.yaml with lym config claude", keyName(key), value)
+	return fmt.Errorf("claudeengine: invalid %s %q; valid values are 5m, 1h (case-sensitive); fix it in claude.yaml with lym config claude", key, value)
 }
 
 // resolvePromptCacheTTL returns the prompt-cache TTL for a strand's role.
@@ -196,20 +181,20 @@ const minKeepWarmCap = 60 * time.Second
 func checkKeepWarmCap(key, value string, lifetime time.Duration) (time.Duration, error) {
 	capWait, err := time.ParseDuration(value)
 	if err != nil {
-		return 0, fmt.Errorf("claudeengine: invalid %s %q; it must parse as a Go duration; fix it in claude.yaml with lym config claude", keyName(key), value)
+		return 0, fmt.Errorf("claudeengine: invalid %s %q; it must parse as a Go duration; fix it in claude.yaml with lym config claude", key, value)
 	}
 	switch {
 	case capWait < minKeepWarmCap:
-		return 0, fmt.Errorf("claudeengine: invalid %s %q; it must be at least %s; fix it in claude.yaml with lym config claude", keyName(key), value, minKeepWarmCap)
+		return 0, fmt.Errorf("claudeengine: invalid %s %q; it must be at least %s; fix it in claude.yaml with lym config claude", key, value, minKeepWarmCap)
 	case capWait >= lifetime:
-		return 0, fmt.Errorf("claudeengine: invalid %s %q; it must be below the role's prompt-cache lifetime %s; fix it in claude.yaml with lym config claude", keyName(key), value, lifetime)
+		return 0, fmt.Errorf("claudeengine: invalid %s %q; it must be below the role's prompt-cache lifetime %s; fix it in claude.yaml with lym config claude", key, value, lifetime)
 	case capWait > longKeepWarmCap:
-		return 0, fmt.Errorf("claudeengine: invalid %s %q; it must be at most %s; fix it in claude.yaml with lym config claude", keyName(key), value, longKeepWarmCap)
+		return 0, fmt.Errorf("claudeengine: invalid %s %q; it must be at most %s; fix it in claude.yaml with lym config claude", key, value, longKeepWarmCap)
 	}
 	return capWait, nil
 }
 
-// keepWarmCapFor returns the cap string for role: its claude.keep_warm_cap_roles entry, else claude.keep_warm_cap.
+// keepWarmCapFor returns the cap string for role: its keep_warm_cap_roles entry, else keep_warm_cap.
 func keepWarmCapFor(role string, claude Config) string {
 	if value, ok := claude.KeepWarmCapRoles[role]; ok {
 		return value
@@ -222,8 +207,7 @@ func keepWarmCapFor(role string, claude Config) string {
 // It must also be below its prompt-cache lifetime.
 // The prompt-cache TTLs are resolved first, so a bad TTL is reported before a bad cap.
 // The default cap is checked against the default lifetime first.
-// Each role named in claude.prompt_cache_ttl_roles or claude.keep_warm_cap_roles is then checked.
-// The check is against its own lifetime.
+// Each role named in prompt_cache_ttl_roles or keep_warm_cap_roles is then checked against its own lifetime.
 // Roles are visited in sorted order, so the reported error is deterministic.
 func ValidateKeepWarm(claude Config) error {
 	defaultTTL, err := resolvePromptCacheTTL("", claude)
@@ -270,7 +254,7 @@ func ValidateKeepWarm(claude Config) error {
 }
 
 // KeepWarmCaps returns the cap on one keep-warm wait of a session of role, and the long cap a long gate wait uses.
-// The cap is role's claude.keep_warm_cap_roles entry, else claude.keep_warm_cap, from claude.yaml.
+// The cap is role's keep_warm_cap_roles entry, else keep_warm_cap, from claude.yaml.
 // It loads and validates claude.yaml first; a load or validation error is returned with its claude.yaml advice.
 func (c *Claude) KeepWarmCaps(role string) (time.Duration, time.Duration, error) {
 	claude, err := loadConfigOrRefuse(c.dirs)
@@ -343,10 +327,8 @@ func envFileContentFor(goos string) string {
 // Shuttle builds this line before reed forms the strand's name,
 // so the pane shell expands the reference from the export that reed's launch script makes.
 // A non-empty remoteControlName adds --remote-control naming it, so the session starts with remote control on.
-// It sets subagentPromptCacheTTLEnvKey to subagentPromptCacheTTL, so no fork's gate call leaves the foreground early.
 // It wraps the finished line in the envFileKey assignment naming envFilePath, so that assignment leads the line.
-// The account's environment is applied outermost, so it wins over a value the pane's own environment holds.
-func buildLaunchCmd(sh shell.Shell, bin, pointer, settingsPath, sessionID, model, effort, appendPromptPath, envFilePath, promptCacheTTL, remoteControlName string, account accountEnv, resume, skipPermissions, forkSubagents bool) string {
+func buildLaunchCmd(sh shell.Shell, bin, pointer, settingsPath, sessionID, model, effort, appendPromptPath, envFilePath, promptCacheTTL, remoteControlName string, resume, skipPermissions, forkSubagents bool) string {
 	sessionFlag := " --session-id "
 	if resume {
 		sessionFlag = " --resume "
@@ -376,9 +358,8 @@ func buildLaunchCmd(sh shell.Shell, bin, pointer, settingsPath, sessionID, model
 		cmd = sh.WithEnv(forkSubagentEnvKey, "1", cmd)
 	}
 	cmd = sh.WithEnv(promptCacheTTLEnvKey, promptCacheTTL, cmd)
-	cmd = sh.WithEnv(subagentPromptCacheTTLEnvKey, subagentPromptCacheTTL, cmd)
 	cmd = sh.WithEnv(bashMaxTimeoutEnvKey, bashMaxTimeoutMS, cmd)
-	return account.wrap(sh, sh.WithEnv(envFileKey, envFilePath, cmd))
+	return sh.WithEnv(envFileKey, envFilePath, cmd)
 }
 
 // buildOpenCmd composes the pane-shell line of a named interactive session that takes no task prompt.
@@ -430,16 +411,11 @@ func buildOpenCmd(sh shell.Shell, bin, firstTurn, sessionID, model, effort, sett
 // The TTL is spec.Role's from claude.yaml, as for a run, and an invalid TTL anywhere in claude.yaml refuses the open.
 // Both lines open with a statement that exports it as CLAUDE_CODE_PROMPT_CACHE_TTL,
 // so the resume line and its fresh fallback both run under it, in either shell dialect.
-// A second statement exports CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL at one hour.
-// It keeps a fork's gate call from leaving the foreground early.
-// A statement that exports or unsets CLAUDE_CONFIG_DIR for the worktree's resolved account follows that export.
-// It runs ahead of both lines.
 // With a hub board directory, it creates dir and writes two files into it:
 // settings.json holds creel's hook delivery and the session's scope for spec.Skills alone.
 // The append-system-prompt file holds the creel trust sentence.
 // The Cmd and ResumeCmd lines both name these files, and the launch is marked CreelHooks,
 // so the session gets its mail through its hooks, as a run session does.
-// It also writes account.json there, naming the config directory and the listed account the session launched under.
 // Without a hub board directory, it writes nothing, creates no dir and marks nothing.
 // A failure after dir is created removes it.
 // Bypass is the default, and spec.PermissionMode "prompt" opts out per call.
@@ -477,10 +453,6 @@ func (c *Claude) OpenLaunch(dir string, spec shuttleengine.OpenSpec, cfg shuttle
 		return shuttleengine.Launch{}, err
 	}
 	logger.Info("claudeengine: resolved the prompt-cache TTL of an opened session", "role", spec.Role, "ttl", promptCacheTTL)
-	account, launched, err := c.resolveLaunchAccount(claude)
-	if err != nil {
-		return shuttleengine.Launch{}, err
-	}
 	skillLoadMessage := ""
 	if len(spec.Skills) > 0 {
 		skillLoadMessage = c.SkillLoadMessage(spec.Skills)
@@ -501,22 +473,10 @@ func (c *Claude) OpenLaunch(dir string, spec shuttleengine.OpenSpec, cfg shuttle
 	}
 	settingsPath, appendPromptPath := "", ""
 	if creelFlagDirForHook != "" {
-		scope := c.sessionScopeFor(claude.SessionScope, spec.Skills, spec.Role, launched.ConfigDir)
-		statusLine := ""
-		if launched.Account != "" {
-			lymPath, err := LymBinary()
-			if err != nil {
-				return shuttleengine.Launch{}, fmt.Errorf("resolve the lym binary the status line runs: %w", err)
-			}
-			statusLine = statusLineCommand(lymPath, launched.Account)
-		}
-		settingsPath, appendPromptPath, err = writeOpenFiles(dir, creelFlagDirForHook, scope, statusLine)
+		scope := c.sessionScopeFor(claude.SessionScope, spec.Skills, spec.Role)
+		settingsPath, appendPromptPath, err = writeOpenFiles(dir, creelFlagDirForHook, scope)
 		if err != nil {
 			return shuttleengine.Launch{}, err
-		}
-		if err := writeLaunchedAccount(dir, launched); err != nil {
-			_ = os.RemoveAll(dir)
-			return shuttleengine.Launch{}, fmt.Errorf("write the launched account of the open session: %w", err)
 		}
 	}
 	sh := shell.ForGOOS()
@@ -524,11 +484,9 @@ func (c *Claude) OpenLaunch(dir string, spec shuttleengine.OpenSpec, cfg shuttle
 	fresh := buildOpenCmd(sh, bin, skillLoadMessage, sessionID, resolvedModel, spec.Effort, settingsPath, appendPromptPath, skipPermissions, false)
 	resumeLine := buildOpenCmd(sh, bin, "", sessionID, resolvedModel, spec.Effort, settingsPath, appendPromptPath, skipPermissions, true)
 	exportTTL := sh.ExportEnv(promptCacheTTLEnvKey, promptCacheTTL)
-	exportSubagentTTL := sh.ExportEnv(subagentPromptCacheTTLEnvKey, subagentPromptCacheTTL)
-	accountStatement := account.statement(sh)
 	return shuttleengine.Launch{
-		Cmd:        sh.Chain(exportTTL, exportSubagentTTL, accountStatement, fresh),
-		ResumeCmd:  sh.Chain(exportTTL, exportSubagentTTL, accountStatement, sh.OrElse(resumeLine, fresh)),
+		Cmd:        sh.Chain(exportTTL, fresh),
+		ResumeCmd:  sh.Chain(exportTTL, sh.OrElse(resumeLine, fresh)),
 		SessionID:  sessionID,
 		CreelHooks: creelFlagDirForHook != "",
 	}, nil
@@ -536,11 +494,10 @@ func (c *Claude) OpenLaunch(dir string, spec shuttleengine.OpenSpec, cfg shuttle
 
 // writeOpenFiles creates dir and writes an opened session's two files into it.
 // settings.json holds creel's hook delivery over the flag directory creelFlagDirPosix and the scope passed in.
-// A non-empty statusLine is the command the settings run as the session's status line.
 // The append-system-prompt file holds the creel trust sentence.
 // It returns the two files' absolute paths.
 // A failure after the directory is created removes it, so a failed launch leaves nothing behind.
-func writeOpenFiles(dir, creelFlagDirPosix string, scope sessionScope, statusLine string) (settingsPath, appendPromptPath string, err error) {
+func writeOpenFiles(dir, creelFlagDirPosix string, scope sessionScope) (settingsPath, appendPromptPath string, err error) {
 	absDir, err := filepath.Abs(dir)
 	if err != nil {
 		return "", "", fmt.Errorf("resolve the open session directory: %w", err)
@@ -556,11 +513,6 @@ func writeOpenFiles(dir, creelFlagDirPosix string, scope sessionScope, statusLin
 	settingsJSON, err := buildOpenSettings(creelFlagDirPosix, scope)
 	if err != nil {
 		return "", "", fmt.Errorf("build open settings: %w", err)
-	}
-	if statusLine != "" {
-		if settingsJSON, err = addStatusLine(settingsJSON, statusLine); err != nil {
-			return "", "", fmt.Errorf("add the status line to the open settings: %w", err)
-		}
 	}
 	settingsPath = filepath.Join(absDir, settingsFileName)
 	if err := os.WriteFile(settingsPath, settingsJSON, 0o644); err != nil {
@@ -594,11 +546,10 @@ var _ shuttleengine.SessionOpener = (*Claude)(nil)
 // When forkSubagents is true, the line is wrapped to keep the fork-subagent capability.
 // It carries the promptCacheTTLEnvKey assignment too, since the resumed claude inherits nothing from the launch:
 // without it the session falls back to Claude Code's default TTL.
-// It carries the subagentPromptCacheTTLEnvKey and bashMaxTimeoutEnvKey assignments too, for the same reason.
+// It carries the bashMaxTimeoutEnvKey assignment too, for the same reason.
 // It leads with the envFileKey assignment naming envFilePath:
 // a resumed session keeps the default stdin of its Bash tool.
-// It applies the account's environment outermost, as the launch line does, since the resumed claude inherits nothing.
-func buildResumeCmd(sh shell.Shell, bin, settingsPath, sessionID, model, effort, appendPromptPath, envFilePath, promptCacheTTL, remoteControlName string, account accountEnv, skipPermissions, forkSubagents bool) string {
+func buildResumeCmd(sh shell.Shell, bin, settingsPath, sessionID, model, effort, appendPromptPath, envFilePath, promptCacheTTL, remoteControlName string, skipPermissions, forkSubagents bool) string {
 	cmd := sh.Invoke(bin) + " --resume " + sh.Quote(sessionID) + " --settings " + sh.Quote(settingsPath) +
 		" --name " + sh.EnvRef(agentname.StrandNameEnv)
 	if model != "" {
@@ -620,7 +571,6 @@ func buildResumeCmd(sh shell.Shell, bin, settingsPath, sessionID, model, effort,
 		cmd = sh.WithEnv(forkSubagentEnvKey, "1", cmd)
 	}
 	cmd = sh.WithEnv(promptCacheTTLEnvKey, promptCacheTTL, cmd)
-	cmd = sh.WithEnv(subagentPromptCacheTTLEnvKey, subagentPromptCacheTTL, cmd)
 	cmd = sh.WithEnv(bashMaxTimeoutEnvKey, bashMaxTimeoutMS, cmd)
-	return account.wrap(sh, sh.WithEnv(envFileKey, envFilePath, cmd))
+	return sh.WithEnv(envFileKey, envFilePath, cmd)
 }

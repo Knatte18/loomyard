@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/driftengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -28,24 +28,19 @@ func driftTestEnv(t *testing.T) Env {
 		BranchPoint: func() (string, error) { return "branch-point", nil },
 		DirtyPaths:  func() ([]string, error) { return nil, nil },
 		Commit:      func([]string) error { return nil },
-		CommitWithTrailers: func([]string, []fabriclayout.Trailer) error {
+		CommitWithTrailers: func([]string, []fabricengine.Trailer) error {
 			return nil
 		},
-		TrailerCommit: func(string, bool) (fabriclayout.TrailerCommit, bool, error) {
-			return fabriclayout.TrailerCommit{}, false, nil
+		TrailerCommit: func(string, bool) (fabricengine.TrailerCommit, bool, error) {
+			return fabricengine.TrailerCommit{}, false, nil
 		},
 		FileAt:       func(string, string) ([]byte, bool, error) { return nil, false, nil },
 		CommitsSince: func(string) ([]string, error) { return nil, nil },
-		ChangedFiles: func(string) ([]fabriclayout.FileDiff, error) { return nil, nil },
-		RangeDiff:    func(string) (string, error) { return "", nil },
-		CommitMessages: func(string) ([]string, error) {
-			return nil, nil
-		},
 		ExpectTable:  func(string) (seatengine.Table, error) { return seatengine.Table{}, nil },
 		StartCapture: func() error { return nil },
 		JudgeTable:   func(string) (seatengine.Table, error) { return seatengine.Table{}, nil },
-		Checkouts: func() (fabriclayout.CheckoutState, fabriclayout.CheckoutState, error) {
-			return fabriclayout.CheckoutState{}, fabriclayout.CheckoutState{}, nil
+		Checkouts: func() (fabricengine.CheckoutState, fabricengine.CheckoutState, error) {
+			return fabricengine.CheckoutState{}, fabricengine.CheckoutState{}, nil
 		},
 		RecordsChangedSince: func(string) ([]string, error) { return nil, nil },
 		EndRoles:            func([]string) error { return nil },
@@ -112,9 +107,6 @@ func TestDriftEntries(t *testing.T) {
 		{"VerifySecondGate", driftVerifyEntry, verifyCfg(verifyGate, map[string]any{"name": "description", "attempts": 3}), nil, nil, "way forward: set gates"},
 		{"VerifyOnlyOtherGate", driftVerifyEntry, verifyCfg(map[string]any{"name": "verify", "attempts": 3}), nil, nil, "way forward: set gates"},
 		{"VerifyNilCompare", driftVerifyEntry, verifyCfg(verifyGate), func(e *Env) { e.Drift.Compare = nil }, nil, "Drift.Compare"},
-		{"VerifyNilChangedFiles", driftVerifyEntry, verifyCfg(verifyGate), func(e *Env) { e.Drift.ChangedFiles = nil }, nil, "Drift.ChangedFiles"},
-		{"VerifyNilCommitMessages", driftVerifyEntry, verifyCfg(verifyGate), func(e *Env) { e.Drift.CommitMessages = nil }, nil, "Drift.CommitMessages"},
-		{"VerifyNilRangeDiff", driftVerifyEntry, verifyCfg(verifyGate), func(e *Env) { e.Drift.RangeDiff = nil }, nil, "Drift.RangeDiff"},
 		{"VerifyNilRecordsChangedSince", driftVerifyEntry, verifyCfg(verifyGate), func(e *Env) { e.Drift.RecordsChangedSince = nil }, nil, "Drift.RecordsChangedSince"},
 		{"VerifyNilEndRoles", driftVerifyEntry, verifyCfg(verifyGate), func(e *Env) { e.Drift.EndRoles = nil }, nil, "Drift.EndRoles"},
 		{"BaselineNilHead", driftBaselineEntry, Config{"subject": "decision-record"}, func(e *Env) { e.Drift.Head = nil }, nil, "Drift.Head"},

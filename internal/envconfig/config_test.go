@@ -73,32 +73,32 @@ func TestLoadConfig_StacksHubAndMachineName(t *testing.T) {
 		{
 			name:        "NameWithADashIsRefused",
 			machine:     "vars:\n  BAD-NAME: x\n",
-			wantInvalid: `"env.vars.BAD-NAME"`,
+			wantInvalid: `"vars.BAD-NAME"`,
 		},
 		{
 			name:        "NameStartingWithADigitIsRefused",
 			hub:         "vars:\n  1ST: x\n",
-			wantInvalid: `"env.vars.1ST"`,
+			wantInvalid: `"vars.1ST"`,
 		},
 		{
 			name:        "LymOwnNameIsRefused",
 			hub:         "vars:\n  LYM_STRAND_NAME: x\n",
-			wantInvalid: `"env.vars.LYM_STRAND_NAME"`,
+			wantInvalid: `"vars.LYM_STRAND_NAME"`,
 		},
 		{
 			name:        "LowercaseLymNameIsRefused",
 			hub:         "vars:\n  lym_parent: x\n",
-			wantInvalid: `"env.vars.lym_parent"`,
+			wantInvalid: `"vars.lym_parent"`,
 		},
 		{
 			name:        "PathIsRefused",
 			machine:     "vars:\n  PATH: /x\n",
-			wantInvalid: `"env.vars.PATH"`,
+			wantInvalid: `"vars.PATH"`,
 		},
 		{
 			name:        "PathInAnotherCaseIsRefused",
 			hub:         "vars:\n  Path: /x\n",
-			wantInvalid: `"env.vars.Path"`,
+			wantInvalid: `"vars.Path"`,
 		},
 		{
 			name:        "LocalLayerIsRefused",
@@ -108,7 +108,7 @@ func TestLoadConfig_StacksHubAndMachineName(t *testing.T) {
 		{
 			name:        "MachineValueThatIsAMappingIsRefused",
 			machine:     "vars:\n  NESTED:\n    a: b\n",
-			wantInvalid: `"env.vars.NESTED.a" is not in the env template`,
+			wantInvalid: `"vars.NESTED.a" is not in the env template`,
 		},
 	}
 	for _, tt := range tests {

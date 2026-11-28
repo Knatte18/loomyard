@@ -19,7 +19,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -449,7 +448,7 @@ func TestRun_TeardownScenario(t *testing.T) {
 				t.Errorf("Run error = %v; want ErrDriverBusy naming `lym reed attach, run from %s`", err, pairAnchor)
 			}
 
-			_, err = p.td.Run(context.Background(), pairteardown.Request{Slug: p.slug, RefuseWhenBusy: true, Verdict: fabriclayout.EntryEnded})
+			_, err = p.td.Run(context.Background(), pairteardown.Request{Slug: p.slug, RefuseWhenBusy: true, Verdict: fabricengine.EntryEnded})
 			if !errors.Is(err, pairteardown.ErrDriverBusy) || !strings.Contains(err.Error(), driverLockPath) {
 				t.Errorf("Run error = %v; want ErrDriverBusy naming the driver lock %s", err, driverLockPath)
 			}

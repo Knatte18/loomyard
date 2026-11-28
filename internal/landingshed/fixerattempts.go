@@ -10,8 +10,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-
-	"github.com/Knatte18/loomyard/internal/logger"
 )
 
 // FixerAttempts records the fixer turns one row entry has spent.
@@ -50,15 +48,28 @@ func FixerAttemptsPath(recordsDir, row string) string {
 	return filepath.Join(recordsDir, row+"-fixer-attempts.json")
 }
 
-// readRowAttempts reads the attempt record at path for entry, the row's current entry.
-// A record that does not decode comes back as a halting reason naming the file and how to remove it.
-func readRowAttempts(row, path string, entry int) (FixerAttempts, string, error) {
-	rec, err := ReadFixerAttempts(path, entry)
-	if err != nil {
-		logger.Warn("landingshed: fixer attempt record unreadable", "producer", row, "cause", err)
-		return FixerAttempts{}, fmt.Sprintf("%sthe fixer attempt record of %s does not decode: %s; way forward: remove %s, which grants the entry a fresh cap, then `lym loom resume`", LandingStopPrefix, row, path, path), nil
+// moveScratchAttempts moves the attempt record of row found only under scratchDir into recordsDir.
+// It moves nothing when recordsDir holds the record or scratchDir holds none.
+// A run in flight when the record moved so keeps its spent count, and no resume grants it a fresh cap.
+func moveScratchAttempts(scratchDir, recordsDir, row string) error {
+	current := FixerAttemptsPath(recordsDir, row)
+	if _, err := os.Stat(current); err == nil {
+		return nil
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("landingshed: stat fixer attempts %s: %w", current, err)
 	}
-	return rec, "", nil
+	scratch := FixerAttemptsPath(scratchDir, row)
+	data, err := os.ReadFile(scratch)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("landingshed: read fixer attempts %s: %w", scratch, err)
+	}
+	if err := writeBytesAtomic(current, "fixer-attempts", data); err != nil {
+		return err
+	}
+	return RemoveFixerAttempts(scratch)
 }
 
 // ReadFixerAttempts reads the record at path and returns it when it names entry.

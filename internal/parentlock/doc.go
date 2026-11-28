@@ -13,6 +13,7 @@
 // A Record is Branch, Owner and AcquiredAt, stored as JSON at `<Dir>/<hex(branch)>.json`.
 // The branch is hex-encoded into the file name.
 // A name with a slash, `..` or a case clash on Windows can therefore neither escape nor collide in the directory.
+// The first write creates Dir.
 // An Owner names the run (slug, pair path, run id) and the process (pid, start time);
 // SameRun compares the run, SameProcess the run and the process.
 //
@@ -26,18 +27,24 @@
 //
 // Every read-modify-write runs under a file lock on `<Dir>/<hex(branch)>.lock`, so two acquirers never both win.
 // TryAcquire takes a free record, a record whose owner is not alive and a record naming the acquirer's own run.
+// Taking its own run's record rewrites the owner process.
 // A free or stale record goes to the head of the queue.
 // The queue is the live tickets kept at `<Dir>/<hex(branch)>.tickets/<pid>-<start>.json`:
 // tickets at the front first, then the rest, each part oldest first.
 // An acquirer that is not the head keeps its ticket and is not granted.
+// A dead waiter's ticket is removed in the attempt that finds it, and a granted acquirer's own ticket is removed.
 // A run a pause covers, as Store.Covered tells, yields the queue.
 // It keeps its ticket and place and is not granted, unless the record already names its own run.
+// The queue head is the first live ticket of an uncovered run.
 // A covered waiter still first in the queue at the resume is granted next.
 //
 // # Waiting
 //
 // Acquire loops attempts until granted, with no time limit.
-// A release or any other change to the record ends the poll delay early.
+// It polls from one second, doubling to thirty seconds while the holder is unchanged.
+// It watches the branch's record file through internal/fswatch.
+// A release or any other change to the record ends the poll delay early, still a second after the last attempt began;
+// a watch that cannot open leaves the poll alone.
 // A Waiter tells it optional seams:
 // OnWait when the wait starts and the holder changes;
 // Paused before every sleep;

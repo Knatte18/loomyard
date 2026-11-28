@@ -1,4 +1,4 @@
-// export_test.go re-exports unexported seams and the one-pair hub shape for the loomcli_test files over a forged hub.
+// export_test.go re-exports the run owner verdict for the loomcli_test files that drive it over a forged hub.
 
 package loomcli
 
@@ -10,11 +10,6 @@ import (
 // DriftDepsAt builds the Drift seams over location with no agent tables.
 func DriftDepsAt(location *lymcwd.Location, statusPath, statusLockPath string) driftengine.Deps {
 	return driftDeps(location, statusPath, statusLockPath, driftTables{})
-}
-
-// DriftDepsWithDecisionRecord builds the Drift seams over location with decisionRecordPath set in the agent tables.
-func DriftDepsWithDecisionRecord(location *lymcwd.Location, statusPath, statusLockPath, decisionRecordPath string) driftengine.Deps {
-	return driftDeps(location, statusPath, statusLockPath, driftTables{decisionRecordPath: decisionRecordPath})
 }
 
 // LoomRecordsDirs re-exports the records paths the judge snapshot leaves out.
@@ -31,6 +26,3 @@ type OwnerVerdict = ownerVerdict
 
 // RunOwnerVerdict judges whether another machine owns the run of a slug.
 var RunOwnerVerdict = runOwnerVerdict
-
-// PairHubShape describes a hub holding one pair, slug hubforge.TemplatePairSlug.
-var PairHubShape = pairHubShape

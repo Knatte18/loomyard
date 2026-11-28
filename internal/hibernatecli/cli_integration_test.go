@@ -18,7 +18,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
@@ -41,7 +41,7 @@ func TestHibernateVerbs_WireTheHub(t *testing.T) {
 	t.Setenv(agentname.StrandNameEnv, "")
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: ".", Pairs: []string{pairSlug}})
 	prime := h.PrimeWorktree()
-	hibernateDir := filepath.Join(fabriclayout.HubScratchDir(h.Path), lymdirs.HibernateDirName)
+	hibernateDir := filepath.Join(fabricengine.HubScratchDir(h.Path), lymdirs.HibernateDirName)
 	requestPath := filepath.Join(hibernateDir, requestFileName)
 
 	status, code := verb(t, h.PairCodeWorktree(pairSlug), "status")

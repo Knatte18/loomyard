@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -32,11 +31,8 @@ func (c *shuttleCLI) openCmd() *cobra.Command {
 		Short:       "open a named llm session with no prompt in its own window",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `open starts one interactive LLM session in a detached window of its own and
-returns at once. --role is required and names the strand,
-in ` + agentname.RoleRule + `;
-its words are joined with dashes and lowered,
-so "My Agent" names my-agent, and a second open of the same role is numbered
-by reed.
+returns at once. --role is required and names the strand; a second open of the
+same role is numbered by reed.
 The session takes no turn and writes no run record, so lym shuttle state never
 lists it. Each --skill, repeatable, is loaded in the order given in the
 session's one first turn; an engine that cannot load skills refuses the open. Its window closes when the session exits. It is refused under a pause.
@@ -80,13 +76,8 @@ Example:
 				clihelp.SetExit(cmd.Context(), output.Err(out, "--role is required"))
 				return nil
 			}
-			strandRole, err := roleFromFlag("--role", role)
-			if err != nil {
-				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
-				return nil
-			}
 
-			spec := shuttleengine.OpenSpec{Role: strandRole, Segment: segmentcolor.Segment(segment), PermissionMode: permissionMode, Skills: skills}
+			spec := shuttleengine.OpenSpec{Role: role, Segment: segmentcolor.Segment(segment), PermissionMode: permissionMode, Skills: skills}
 			if model != "" {
 				choice, err := c.resolveModelSpec(model)
 				if err != nil {

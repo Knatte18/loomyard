@@ -6,7 +6,6 @@
 // Act answers from the state and the machine-local inputs whether a verb acts, waits or hands the run over.
 // Verdict.Refusal words the wait or hand-over with its way forward.
 // Judge runs both over one set of inputs, with the states a verb sets aside cleared first.
-// The owed push and the code-tip wait are inputs the reader fills from tracked records and failed-push records.
 //
 // The board's "<state> · <row>" text is a display of the state: TransitionState maps one status transition to it.
 package runfsm

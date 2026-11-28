@@ -39,8 +39,11 @@ func TestBindingArgvs_BindsTheFiveAltKeysAndTheStatusClickInTheRootTableOnly(t *
 			t.Parallel()
 
 			argvs := bindingArgvs(tt.prev, tt.next, false, true, true, true)
+			if want := []string{"unbind-key", "-n", "M-z"}; !slices.Equal(argvs[0], want) {
+				t.Fatalf("first binding argv = %q, want %q ahead of every bind-key", argvs[0], want)
+			}
 			var keys []string
-			for _, argv := range argvs {
+			for _, argv := range argvs[1:] {
 				if len(argv) < 4 || argv[0] != "bind-key" || argv[1] != "-n" {
 					t.Fatalf("binding argv %q, want it to start with bind-key -n <key> <command>", argv)
 				}
@@ -281,9 +284,7 @@ func TestPinBindingsLocked_PinsTheToggleLinesOnlyWhenEverythingResolves(t *testi
 			wantToggle, _ := composeSlackToggleCommand(sh, tt.executable, socketPath, tmuxPath)
 			wantState, _ := composeSlackStateCommand(sh, tt.executable)
 			wantRCClick, _ := composeRemoteControlClickCommand(sh, tt.executable, socketPath, tmuxPath)
-			wantSync, _ := composeSyncStatusCommand(sh, tt.executable, e.geom.HubPath)
 			lines := []struct{ option, line string }{
-				{syncStatusCommandOption, wantSync},
 				{slackToggleCommandOption, wantToggle},
 				{slackStateCommandOption, wantState},
 				{remoteControlClickCommandOption, wantRCClick},

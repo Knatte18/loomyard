@@ -18,7 +18,7 @@ import (
 
 const (
 	// agentsOverrideFile is the file Codex reads in a directory before every other instruction file.
-	agentsOverrideFile = heddleengine.CodexOverrideInstructionsFile
+	agentsOverrideFile = "AGENTS.override.md"
 	// agentsFile is the file Codex reads in a directory that holds no override.
 	agentsFile = "AGENTS.md"
 	// defaultProjectDocMaxBytes is Codex's own cap on the project instruction text it reads.

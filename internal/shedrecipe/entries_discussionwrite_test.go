@@ -192,9 +192,9 @@ func TestDiscussionWriteEntry_GateConfig(t *testing.T) {
 	t.Run("FixerRequestNamesTheDiscussionEntry", func(t *testing.T) {
 		t.Parallel()
 		env := newTestEnv(t)
-		env.Setting = fakeSetting(map[string]any{"loom.discussion.gate_fixer": "opus"})
+		env.Setting = fakeSetting(map[string]any{"loom.discussion_gate_fixer": "opus"})
 		calls := recordGateFixer(&env)
-		cfg := Config{"gates": []any{map[string]any{"name": "discussion", "attempts": 3, "fixer": "loom.discussion.gate_fixer"}}}
+		cfg := Config{"gates": []any{map[string]any{"name": "discussion", "attempts": 3, "fixer": "loom.discussion_gate_fixer"}}}
 		if _, err := discussionWriteEntry(RowIdentity{Name: "Row"}, cfg, env); err != nil {
 			t.Fatalf("discussionWriteEntry() error = %v; want nil", err)
 		}

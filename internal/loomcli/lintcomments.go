@@ -30,9 +30,8 @@ func (c *loomCLI) lintCommentsCmd() *cobra.Command {
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `lint-comments runs commentlint.Lint over the current worktree -- the check
 a gate key's comments lint step also runs inside lym gate test -- and reports the result as one JSON
-envelope. It lints the working tree, uncommitted edits and untracked Go files
-included, so a fix is checked before it is committed: against HEAD without
---base, and against that commit with --base. A finding is
+envelope. Without --base it lints the working tree against HEAD, untracked Go
+files included; with --base it lints that commit against HEAD. A finding is
 a line of a // comment block that a new break leaves ending in the middle of
 a sentence, or a new or changed line whose text reaches the comment
 line-length limit; the envelope lists each as file:line: rule: text. It
@@ -67,7 +66,7 @@ Example:
 		},
 	}
 
-	cmd.Flags().StringVar(&base, "base", "", "lint the working tree against this commit instead of against HEAD")
+	cmd.Flags().StringVar(&base, "base", "", "lint this commit against HEAD instead of the working tree against HEAD")
 
 	return cmd
 }

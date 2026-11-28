@@ -30,9 +30,8 @@ import (
 // completionSignalScannedFiles are the files that own every run-outcome verdict in this package:
 // wait.go finalizes a live run's outcome, attach.go decides whether a persisted one is reconstructed
 // or respawned over, and stop.go records a stop over a run that has not finished.
-// apierrorretry.go ends a run on API errors, and accountrelaunch.go ends one whose relaunch under another account fails.
 // A future file that grows a third kind of verdict belongs in this list, and the failure message says so.
-var completionSignalScannedFiles = []string{"wait.go", "attach.go", "stop.go", "apierrorretry.go", "accountrelaunch.go"}
+var completionSignalScannedFiles = []string{"wait.go", "attach.go", "stop.go", "apierrorretry.go"}
 
 // negativeVerdictMarkers are the identifiers whose appearance anywhere in a return statement's
 // results makes that return a negative answer to "did this run finish".
@@ -95,8 +94,8 @@ var negativeVerdictMarkers = map[string]bool{
 //     allOutputFilesExist call that opens the function.
 //   - Stop [Errorf] — the failed record write, returned with the strand untouched. It is a refusal to
 //     stop, not a verdict on whether the run finished; the write itself goes through stopOutcome.
-//   - stopRecorded [Errorf] — the failed locked read-modify-write of the record, returned before
-//     any strand removal. It is a refusal to stop, with the write behind stopOutcome.
+//   - stopRecorded [Errorf] — the unreadable record and the failed record write, both returned before
+//     any strand removal. They are refusals to stop, with the write behind stopOutcome.
 //   - removeStrandIfPresent [Errorf] — the failed reed probe and the failed removal, after the record was
 //     written. They are infrastructure faults of the removal, not verdicts on any run.
 //   - attach [Errorf] — the returns in attach's body, which Attach, AttachGated and AttachIfLive share.
@@ -121,15 +120,6 @@ var negativeVerdictMarkers = map[string]bool{
 //     has already answered not-done.
 //   - abandonStartup [Errorf] — its own ErrNotStarted-wrapping return, the not-ready teardown's single
 //     finalization site: every caller reaches it only past one of awaitStartup's guarded checks.
-//   - stopForRelaunch [Errorf] — the failed mark write and the failed end of the strand's process.
-//     Each is a refusal to relaunch that leaves the run running, so neither is a verdict on whether it finished.
-//   - relaunchUnderAccount [Errorf] — one refusal that never began a relaunch, which is no verdict,
-//     and three failures of the relaunch's steps, each handed to endFailedRelaunch,
-//     which classifies the end through classifyDeadlineExpiry before it finalizes or abandons the start.
-//   - relaunchSpec [Errorf] — the refusal of a resume whose live holder cannot be ruled out,
-//     returned to relaunchUnderAccount, which ends it through endFailedRelaunch.
-//   - endStoppedRelaunch [Errorf] — the start path's ErrNotStarted return for a relaunch a stop ended.
-//     The record is the stop's own, written behind stopOutcome, and nothing is finalized here.
 var auditedNegativeVerdictReturns = map[string]int{
 	"attach [Errorf]":                                 5,
 	"removeSupersededStrands [Errorf]":                1,
@@ -155,11 +145,7 @@ var auditedNegativeVerdictReturns = map[string]int{
 	"removeStrandIfPresent [Errorf]":                  2,
 	"Stop [Errorf]":                                   1,
 	"stopOutcome [runOutcomeStopped]":                 1,
-	"stopRecorded [Errorf]":                           1,
-	"stopForRelaunch [Errorf]":                        2,
-	"relaunchUnderAccount [Errorf]":                   4,
-	"relaunchSpec [Errorf]":                           1,
-	"endStoppedRelaunch [Errorf]":                     1,
+	"stopRecorded [Errorf]":                           2,
 }
 
 // auditedFileContractCallSites is the audited set of allOutputFilesExist call sites, keyed by enclosing function.

@@ -56,7 +56,7 @@ The part changes these packages:
   the per-transition spawn behind `internal/statuscommit/statuscommit.go`,
   and the respawn of a pair's push that exited on a held teardown lock (`internal/fabricengine/teardownlock.go`).
   A transition's push that meets a held teardown lock waits for its release and pushes before the next producer starts.
-  A wait that outlasts the push lock wait (`fabriclayout.StatusPushLockWait`) turns the push owed;
+  A wait that outlasts the push lock wait (`fabricengine.StatusPushLockWait`) turns the push owed;
   that releases the admission below, so a pause written meanwhile reaches the process again.
   Fabric's pause deferral of a push no longer applies to a transition's push, which is synchronous;
   it stays for the detached pushes below.

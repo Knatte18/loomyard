@@ -19,7 +19,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
-	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -97,11 +96,6 @@ func TestGoDriver_Settle(t *testing.T) {
 	transientFailure := func(t *testing.T) []byte {
 		return driveEnvelopeJSON(t, map[string]any{"ok": false, "kind": "producer", "transient": "api", "error": "the API timed out"},
 			map[string]any{"state": "failed", "current_producer": "Build", "history_length": 2})
-	}
-	const fetchFailure = "battencli: origin reconcile: git fetch origin: exit 128: fatal: unable to access 'x': HTTP/2 stream 1 was closed cleanly, but before getting all response header fields"
-	networkFailure := func(t *testing.T) []byte {
-		return driveEnvelopeJSON(t, map[string]any{"ok": false, "kind": "bootstrap", "transient": string(shedengine.TransientGitTransport), "error": fetchFailure},
-			map[string]any{"state": "failed", "current_producer": "Run-Shed", "history_length": 2})
 	}
 	unseededFailure := func(t *testing.T) []byte {
 		return driveEnvelopeJSON(t, map[string]any{"ok": false, "kind": "unseeded", "error": "no seed"},
@@ -194,9 +188,7 @@ func TestGoDriver_Settle(t *testing.T) {
 		// wake, when set, wires CompletedWake to answer with the reading.
 		wake        *wakeReading
 		runLockHeld bool
-		// watched wires Watched to report a live batten watching the run.
-		watched    bool
-		escalation bool
+		escalation  bool
 		// judgesFirst, when set, is the one row the arbiter seam judges before the tackler.
 		judgesFirst string
 		// judgesFirstReason, when set, limits the judgesFirst row to a stop whose reason opens with it.
@@ -223,9 +215,9 @@ func TestGoDriver_Settle(t *testing.T) {
 		restartAttempt bool
 		restartArbiter bool
 
-		// buildChanged is whether the last step ran another build than the on-disk one.
-		// spawnErr is what the successor spawn fails with.
+		// The hand-over seams: whether the last step ran another build than the on-disk one, the uncommitted paths, and what the successor spawn fails with.
 		buildChanged bool
+		dirty        []string
 		spawnErr     error
 
 		// Each no-group field leaves that optional group nil for the row.
@@ -257,16 +249,6 @@ func TestGoDriver_Settle(t *testing.T) {
 		wantBuild string
 		// wantRestepCommits, when set, is the commits the last re-step settle record lists.
 		wantRestepCommits []string
-		// waitErr is what the Wait seam answers with once it has recorded its call.
-		waitErr error
-		// waitMovesTo, when set, is the status the run shows from the first Wait call on, as an orch goto made during the wait.
-		waitMovesTo *shedengine.Status
-		// wantRunErr is the error Run must return; nil wants none.
-		wantRunErr error
-		// seedWait leaves a wait record an earlier driver wrote.
-		seedWait bool
-		// wantStepWaits, when set, is whether a wait record stood at each step.
-		wantStepWaits []bool
 	}{
 		{name: "done commits and exits with no park", steps: []func(*testing.T) []byte{done}, wantCalls: []string{"step", "commit-records"}, wantExit: ExitDone},
 		{
@@ -323,30 +305,6 @@ func TestGoDriver_Settle(t *testing.T) {
 			steps: []func(*testing.T) []byte{transientFailure, done}, tacklerReturns: tacklerOutcome(TacklerVerdictResume, 1),
 			wantCalls:   []string{"step", "tackler", "snapshot", "snapshot", "consume:tackler/1", "step", "commit-records"},
 			wantActions: []string{shedrun.SettleSpawn, shedrun.SettleRestep}, wantSettlers: []string{shedrun.SettlerTackler, shedrun.SettlerTackler}, wantReports: 1, wantExit: ExitDone,
-		},
-		{
-			name:  "a network failure is re-stepped with doubling waits under one wait record until the run is done, with no hand-back",
-			steps: []func(*testing.T) []byte{networkFailure, networkFailure, networkFailure, networkFailure, done}, orchRecorded: true,
-			wantCalls:     []string{"step", "wait:15s", "step", "wait:30s", "step", "wait:1m0s", "step", "wait:2m0s", "step", "commit-records"},
-			wantActions:   []string{shedrun.SettleRestep, shedrun.SettleRestep, shedrun.SettleRestep, shedrun.SettleRestep},
-			wantSettlers:  []string{shedrun.SettlerGoRule, shedrun.SettlerGoRule, shedrun.SettlerGoRule, shedrun.SettlerGoRule},
-			wantStepWaits: []bool{false, true, true, true, true}, wantExit: ExitDone,
-		},
-		{
-			name:  "a wait the context ends returns its error with no re-step, settle record or hand-back, and removes the wait record",
-			steps: []func(*testing.T) []byte{networkFailure}, orchRecorded: true, waitErr: context.Canceled,
-			wantCalls: []string{"step", "wait:15s"}, wantRunErr: context.Canceled,
-		},
-		{
-			name:  "a wait record an earlier driver left is gone before the first step",
-			steps: []func(*testing.T) []byte{done}, seedWait: true,
-			wantCalls: []string{"step", "commit-records"}, wantStepWaits: []bool{false}, wantExit: ExitDone,
-		},
-		{
-			name:  "an orch goto made during the network wait is honoured: a moved record and a re-step at the new row, none at the failed stop",
-			steps: []func(*testing.T) []byte{networkFailure, done}, waitMovesTo: &gotoMoved,
-			wantCalls:   []string{"step", "wait:15s", "step", "commit-records"},
-			wantActions: []string{shedrun.SettleMoved}, wantSettlers: []string{shedrun.SettlerGoRule}, wantExit: ExitDone,
 		},
 		{
 			name:  "a third reinvoke failure reaches the tackler, and a hand-back parks with its question",
@@ -461,36 +419,6 @@ func TestGoDriver_Settle(t *testing.T) {
 			wantCalls:   []string{"step", "arbiter:"},
 			wantActions: []string{shedrun.SettleSpawn, shedrun.SettleHandBack}, wantSettlers: []string{shedrun.SettlerArbiter, shedrun.SettlerParent},
 			wantReports: 2, wantParked: true, wantNotifies: 1, wantHandBack: true, wantExit: ExitHandBack, wantReportHas: map[int][]string{2: {"a row the arbiter judges first", "which way?"}},
-		},
-		{
-			name:  "a watched blocked stop the arbiter hands on with no question tells the parent the run stopped",
-			steps: []func(*testing.T) []byte{blocked}, judgesFirst: "Build", watched: true, orchRecorded: true,
-			arbiterReturns: func() ArbiterOutcome {
-				outcome := arbiterOutcome("hand-on", 1)
-				outcome.Question = ""
-				return outcome
-			}(),
-			wantCalls:   []string{"step", "arbiter:"},
-			wantActions: []string{shedrun.SettleSpawn, shedrun.SettleHandBack}, wantSettlers: []string{shedrun.SettlerArbiter, shedrun.SettlerParent},
-			wantReports: 2, wantParked: true, wantNotifies: 1, wantNoNotice: "with a question", wantHandBack: true, wantExit: ExitHandBack,
-		},
-		{
-			name:  "a watched blocked stop the arbiter refuses tells the parent the run stopped",
-			steps: []func(*testing.T) []byte{blocked}, judgesFirst: "Build", watched: true, orchRecorded: true, arbiterErr: errors.New("arbiter: arbiter_max_spawns spent"),
-			wantCalls:   []string{"step", "arbiter:"},
-			wantActions: []string{shedrun.SettleHandBack}, wantSettlers: []string{shedrun.SettlerParent},
-			wantReports: 2, wantParked: true, wantNotifies: 1, wantHandBack: true, wantExit: ExitHandBack,
-		},
-		{
-			name: "a watched blocked stop that hands back by rule after the arbiter judged an earlier stop tells the parent nothing",
-			steps: []func(*testing.T) []byte{blocked, func(t *testing.T) []byte {
-				return driveEnvelopeJSON(t, map[string]any{"ok": true, "state": "blocked", "reason": shedengine.ReasonBounceBudgetExhausted + " for Build; way forward: the parent resumes"},
-					map[string]any{"state": "blocked", "current_producer": "Build", "history_length": 3})
-			}},
-			judgesFirst: "Build", watched: true, orchRecorded: true, arbiterReturns: arbiterOutcome("resume", 1),
-			wantCalls:   []string{"step", "arbiter:", "step:1"},
-			wantActions: []string{shedrun.SettleSpawn, shedrun.SettleRestep, shedrun.SettleHandBack}, wantSettlers: []string{shedrun.SettlerArbiter, shedrun.SettlerArbiter, shedrun.SettlerParent},
-			wantReports: 2, wantParked: true, wantNotifies: 0, wantHandBack: true, wantExit: ExitHandBack,
 		},
 		{
 			name:  "an arbiter hand-on after its own commits names them in the stop report's attempt line",
@@ -643,7 +571,7 @@ func TestGoDriver_Settle(t *testing.T) {
 			wantReports: 2, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
 		},
 		{
-			name:  "a changed build records the hand-over, parks, notifies before releasing the lock, spawns and exits",
+			name:  "a changed build on a clean tree records the hand-over, parks, notifies before releasing the lock, spawns and exits",
 			steps: []func(*testing.T) []byte{blocked}, buildChanged: true, orchRecorded: true,
 			wantCalls: []string{"step", "release", "spawn:" + wiredExecutable}, wantOrder: []string{"notify", "release", "spawn"},
 			wantActions: []string{shedrun.SettleHandOver}, wantSettlers: []string{shedrun.SettlerGoRule}, wantBuild: "newbuild1234",
@@ -656,6 +584,11 @@ func TestGoDriver_Settle(t *testing.T) {
 			wantCalls:   []string{"step", "tackler", "snapshot", "snapshot"},
 			wantActions: []string{shedrun.SettleHandOver, shedrun.SettleSpawn, shedrun.SettleHandBack},
 			wantReports: 2, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
+		},
+		{
+			name: "a dirty tree hands back naming its paths and spawns nothing", steps: []func(*testing.T) []byte{blocked}, buildChanged: true, dirty: []string{"a.go", "b.go"},
+			wantCalls: []string{"step"}, wantActions: []string{shedrun.SettleHandBack}, wantReports: 1, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
+			wantReportHas: map[int][]string{1: {"a.go, b.go"}},
 		},
 		{
 			name: "a failing successor spawn leaves the report and the park marker on disk", steps: []func(*testing.T) []byte{blocked}, buildChanged: true, spawnErr: errors.New("no such binary"),
@@ -817,33 +750,9 @@ func TestGoDriver_Settle(t *testing.T) {
 				}
 			}
 
-			waitPath := filepath.Join(root, "scratch", "drive-wait.json")
-			if tt.seedWait {
-				if err := state.WriteJSON(waitPath, driveWaitLock(waitPath), DriveWait{Producer: "Old"}); err != nil {
-					t.Fatalf("seed the wait record: %v", err)
-				}
-			}
-			// The clock advances by each wait, so a record that restarted its start time would differ.
-			var waited time.Duration
-			var stepWaits []bool
-			checkWait := func() bool {
-				record, found, err := state.ReadJSON[DriveWait](waitPath, driveWaitLock(waitPath))
-				if err != nil {
-					t.Errorf("read the wait record: %v", err)
-				}
-				want := DriveWait{Producer: "Run-Shed", Class: string(shedengine.TransientGitTransport), Since: driveTestEpoch}
-				if found && !tt.seedWait && record != want {
-					t.Errorf("wait record = %+v; want %+v", record, want)
-				}
-				return found
-			}
-
 			deps := Deps{
-				RunID:              "run-1",
-				WaitRecordPath:     waitPath,
-				NetworkWaitCeiling: 5 * time.Minute,
+				RunID: "run-1",
 				Step: func(ctx context.Context, attempt string) ([]byte, error) {
-					stepWaits = append(stepWaits, checkWait())
 					if stepsTaken >= len(tt.steps) {
 						t.Fatalf("Step called %d times; the row scripts %d", stepsTaken+1, len(tt.steps))
 					}
@@ -870,9 +779,6 @@ func TestGoDriver_Settle(t *testing.T) {
 					if len(tt.statusSeq) > 0 {
 						statusReads++
 						return tt.statusSeq[min(statusReads, len(tt.statusSeq))-1], true, nil
-					}
-					if tt.waitMovesTo != nil && slices.ContainsFunc(calls, func(call string) bool { return strings.HasPrefix(call, "wait:") }) {
-						return *tt.waitMovesTo, true, nil
 					}
 					if len(tt.statuses) > 0 {
 						return tt.statuses[min(stepsTaken, len(tt.statuses))-1], true, nil
@@ -940,15 +846,7 @@ func TestGoDriver_Settle(t *testing.T) {
 					}
 					return openTackler, tt.openArbiter, tt.openApplied, nil
 				},
-				Now: func() time.Time { return driveTestEpoch.Add(waited) },
-				Wait: func(_ context.Context, delay time.Duration) error {
-					calls = append(calls, "wait:"+delay.String())
-					if !checkWait() {
-						t.Error("no wait record stands during a network wait")
-					}
-					waited += delay
-					return tt.waitErr
-				},
+				Now: func() time.Time { return driveTestEpoch },
 				CommitRecords: func() error {
 					calls = append(calls, "commit-records")
 					return nil
@@ -974,6 +872,7 @@ func TestGoDriver_Settle(t *testing.T) {
 				HandOver: &HandOverSeam{
 					OnDiskBuild:  func() (buildvcs.Identity, error) { return buildvcs.Identity{Revision: "newbuild1234567"}, nil },
 					BuildChanged: func(buildvcs.Identity) bool { return tt.buildChanged },
+					DirtyPaths:   func() ([]string, error) { return tt.dirty, nil },
 					ReleaseLock: func() error {
 						calls = append(calls, "release")
 						order = append(order, "release")
@@ -1001,9 +900,6 @@ func TestGoDriver_Settle(t *testing.T) {
 				deps.Arbiter.JudgesFirst = func(producer, reason string) bool {
 					return producer == tt.judgesFirst && strings.HasPrefix(reason, tt.judgesFirstReason)
 				}
-			}
-			if tt.watched {
-				deps.Watched = func() bool { return true }
 			}
 			if tt.noArbiter {
 				deps.Arbiter = nil
@@ -1038,8 +934,8 @@ func TestGoDriver_Settle(t *testing.T) {
 			}
 
 			exit, err := Run(context.Background(), deps)
-			if !errors.Is(err, tt.wantRunErr) {
-				t.Fatalf("Run() = %v; want %v", err, tt.wantRunErr)
+			if err != nil {
+				t.Fatalf("Run() = %v; want nil", err)
 			}
 
 			if exit != tt.wantExit {
@@ -1047,12 +943,6 @@ func TestGoDriver_Settle(t *testing.T) {
 			}
 			if !slices.Equal(calls, tt.wantCalls) {
 				t.Errorf("seam calls = %q; want %q", calls, tt.wantCalls)
-			}
-			if tt.wantStepWaits != nil && !slices.Equal(stepWaits, tt.wantStepWaits) {
-				t.Errorf("wait record standing at each step = %v; want %v", stepWaits, tt.wantStepWaits)
-			}
-			if _, err := os.Stat(waitPath); !errors.Is(err, os.ErrNotExist) {
-				t.Errorf("stat the wait record after Run = %v; want it removed", err)
 			}
 			records, err := ReadSettleRecords(settlePath)
 			if err != nil {
@@ -1144,91 +1034,6 @@ func TestGoDriver_Settle(t *testing.T) {
 						t.Errorf("Notify line %q holds %q; want no such line", line, tt.wantNoNotice)
 					}
 				}
-			}
-		})
-	}
-}
-
-func TestReadDriveWait(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	record := DriveWait{Producer: "Finalize", Class: string(shedengine.TransientGitTransport), Since: driveTestEpoch}
-	tests := []struct {
-		name string
-		// content is written verbatim as the record when set, else record is written when seeded.
-		content      string
-		seeded       bool
-		held         bool
-		want         DriveWait
-		wantStanding bool
-		wantGone     bool
-		wantErr      error
-	}{
-		{name: "NoRecordIsNotStanding"},
-		{name: "ARecordUnderAHeldLockStands", seeded: true, held: true, want: record, wantStanding: true},
-		{name: "ARecordWithTheLockFreeNamesADeadDriver", seeded: true, want: record, wantStanding: true, wantGone: true},
-		{name: "AnUndecodableRecordReturnsItsError", content: "{", wantErr: state.ErrDecode},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			dir := t.TempDir()
-			recordPath, lockPath := filepath.Join(dir, "drive-wait.json"), filepath.Join(dir, "driver.lock")
-			if tt.seeded {
-				if err := state.WriteJSON(recordPath, driveWaitLock(recordPath), record); err != nil {
-					t.Fatalf("seed the wait record: %v", err)
-				}
-			}
-			if tt.content != "" {
-				if err := os.WriteFile(recordPath, []byte(tt.content), 0o644); err != nil {
-					t.Fatalf("seed the wait record: %v", err)
-				}
-			}
-			if tt.held {
-				held, acquired, err := lock.TryAcquireWriteLock(lockPath)
-				if err != nil || !acquired {
-					t.Fatalf("take the driver lock: acquired %t, %v", acquired, err)
-				}
-				t.Cleanup(func() { _ = held.Release() })
-			}
-
-			got, standing, gone, err := ReadDriveWait(recordPath, lockPath)
-
-			if !errors.Is(err, tt.wantErr) {
-				t.Fatalf("ReadDriveWait() error = %v; want %v", err, tt.wantErr)
-			}
-			if got != tt.want || standing != tt.wantStanding || gone != tt.wantGone {
-				t.Errorf("ReadDriveWait() = %+v, standing %t, gone %t; want %+v, %t, %t", got, standing, gone, tt.want, tt.wantStanding, tt.wantGone)
-			}
-		})
-	}
-}
-
-// TestGoDriver_Wait pins the real-clock branch of the wait before a re-step.
-// Every production driver takes that branch, since none wires Deps.Wait.
-func TestGoDriver_Wait(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	ended, end := context.WithCancel(context.Background())
-	end()
-	tests := []struct {
-		name  string
-		ctx   context.Context
-		delay time.Duration
-		want  error
-	}{
-		{"a context that has ended returns its error without waiting the delay", ended, time.Hour, context.Canceled},
-		{"a delay that elapses returns nil", context.Background(), time.Nanosecond, nil},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			d := &goDriver{deps: Deps{RunID: "run-1"}}
-			if err := d.wait(tt.ctx, tt.delay); !errors.Is(err, tt.want) {
-				t.Errorf("wait(%v) = %v; want %v", tt.delay, err, tt.want)
 			}
 		})
 	}

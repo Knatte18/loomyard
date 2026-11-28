@@ -6,7 +6,6 @@ package machinecli
 import (
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -153,53 +152,6 @@ func TestName_SweepsHubs(t *testing.T) {
 		}
 		if ownersB.Prime != "osl46" {
 			t.Errorf("hub b prime owner = %q; want osl46, reached through the working directory's subdirectory", ownersB.Prime)
-		}
-
-		// A fresh clone of hub a reads what origin holds.
-		originOwners, err := boardengine.ReadOwners(hubforge.CloneSecond(t, f.a).BoardDir())
-		if err != nil {
-			t.Fatalf("read origin's owners: %v", err)
-		}
-		registered := false
-		for _, entry := range originOwners.Registry {
-			registered = registered || entry.Name == "osl46" && slices.Equal(entry.Former, []string{"osl-1046"})
-		}
-		if !registered {
-			t.Errorf("origin's registry = %+v; want this machine's entry as osl46 with osl-1046 among its former names", originOwners.Registry)
-		}
-	})
-
-	t.Run("ForgetFormerListsTheBeamsStillRecordedUnderTheDroppedName", func(t *testing.T) {
-		t.Parallel()
-		f := newSweepFixture(t)
-		if code, envelope := runName(t, f.d, f.cwd, "osl46"); code != 0 {
-			t.Fatalf("set exit %d, envelope %v; want ok", code, envelope)
-		}
-		seedBeams(t, openBoard(t, f.a.BoardDir()), f.a.BoardDir(), "osl-1046", "late")
-
-		code, envelope := runName(t, f.d, f.cwd, "--forget-former", "osl-1046")
-
-		if code != 0 {
-			t.Fatalf("forget exit %d, envelope %v; want ok", code, envelope)
-		}
-		listed := false
-		references, _ := machineOf(t, envelope)["references"].([]any)
-		for _, raw := range references {
-			reference := raw.(map[string]any)
-			wayForward, _ := reference["way_forward"].(string)
-			listed = listed || reference["entry"] == "late" && reference["subject"] == "late" && strings.Contains(wayForward, "lym adopt late")
-		}
-		if !listed {
-			t.Errorf("machine.references = %v; want the beam late listed with lym adopt late", references)
-		}
-		ownersA, err := boardengine.ReadOwners(f.a.BoardDir())
-		if err != nil {
-			t.Fatalf("read hub a's owners: %v", err)
-		}
-		for _, entry := range ownersA.Registry {
-			if slices.Contains(entry.Former, "osl-1046") {
-				t.Errorf("hub a's registry = %+v; want osl-1046 gone from every entry's former names", ownersA.Registry)
-			}
 		}
 	})
 }

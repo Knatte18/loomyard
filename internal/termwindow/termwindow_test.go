@@ -36,8 +36,6 @@ func TestResolve_ChoosesLauncherPerPlatform(t *testing.T) {
 		{name: "KonsoleOnWayland", goos: "linux", env: map[string]string{"WAYLAND_DISPLAY": "wayland-0"}, lookPath: onPath("konsole"), want: "konsole"},
 		{name: "NoGraphicalSession", goos: "linux", lookPath: onPath("konsole")},
 		{name: "NoKonsole", goos: "linux", env: map[string]string{"DISPLAY": ":0"}, lookPath: onPath()},
-		{name: "NativeWindows", goos: "windows", lookPath: onPath("wt.exe"), want: "wt.exe"},
-		{name: "NativeWindowsWithoutWindowsTerminal", goos: "windows", lookPath: onPath()},
 		{name: "OtherPlatform", goos: "darwin", env: map[string]string{"DISPLAY": ":0"}, lookPath: onPath("konsole")},
 	}
 	for _, tt := range tests {
@@ -67,43 +65,35 @@ func TestLauncher_ArgumentsOpenTitledWindowRunningAttach(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
+	line := attachLine("/opt/lym dev/lym", "/hub/my slug")
 	const wantLine = `'/opt/lym dev/lym' reed attach; status=$?; if [ $status -eq 0 ]; then exit 0; fi; ` +
 		`echo 'reed attach ended with status' $status '- waiting up to 30s for the run worktree to be removed'; ` +
 		`i=0; while [ $i -lt 30 ]; do [ -d '/hub/my slug' ] || exit 0; sleep 1; i=$((i+1)); done; ` +
 		`[ -d '/hub/my slug' ] || exit 0; exec bash`
-	if line := attachLine("/opt/lym dev/lym", "/hub/my slug"); line != wantLine {
+	if line != wantLine {
 		t.Fatalf("attachLine() = %q; want %q", line, wantLine)
 	}
 	tests := []struct {
 		name      string
-		arguments func(dir, title, lymPath string) []string
-		lymPath   string
+		arguments func(dir, title, line string) []string
 		want      []string
 	}{
 		{
 			name:      "Konsole",
 			arguments: konsoleArguments,
-			lymPath:   "/opt/lym dev/lym",
-			want:      []string{"--workdir", "/hub/my slug", "-p", "tabtitle=slug", "-e", "bash", "-lc", wantLine},
+			want:      []string{"--workdir", "/hub/slug", "-p", "tabtitle=slug", "-e", "bash", "-lc", line},
 		},
 		{
 			name:      "WindowsTerminal",
 			arguments: windowsTerminalArguments,
-			lymPath:   "/opt/lym dev/lym",
-			want:      []string{"-w", "new", "--title", "slug", "wsl.exe", "--cd", "/hub/my slug", "--", "bash", "-lc", strings.ReplaceAll(wantLine, ";", `\;`)},
-		},
-		{
-			name:      "NativeWindowsTerminal",
-			arguments: nativeWindowsTerminalArguments,
-			lymPath:   `C:\lym;dev\lym.exe`,
-			want:      []string{"-w", "new", "--title", "slug", "-d", "/hub/my slug", `C:\lym\;dev\lym.exe`, "reed", "attach"},
+			want:      []string{"-w", "new", "--title", "slug", "wsl.exe", "--cd", "/hub/slug", "--", "bash", "-lc", strings.ReplaceAll(wantLine, ";", `\;`)},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			if got := tt.arguments("/hub/my slug", "slug", tt.lymPath); !slices.Equal(got, tt.want) {
+			if got := tt.arguments("/hub/slug", "slug", line); !slices.Equal(got, tt.want) {
 				t.Errorf("arguments = %q; want %q", got, tt.want)
 			}
 		})

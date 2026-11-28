@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/githubclient"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/pawlengine"
@@ -30,7 +30,7 @@ type landWorld struct {
 	owners  boardengine.Owners
 	parents map[string]string
 	pairs   map[string]bool
-	origins map[string]fabriclayout.Origin
+	origins map[string]fabricengine.Origin
 	// children holds each beam's pawl run status; a beam with no entry has no pawl run.
 	children map[string]shedengine.Status
 	// ready holds each beam whose ready record flags it, and marked holds the ready records written.
@@ -51,14 +51,12 @@ type landWorld struct {
 	// held and heldErr are what HeldSlugs answers: the slugs run directories and task branches hold.
 	held    []string
 	heldErr error
-	// drafted and recorded hold the slug of each DraftDescription and RecordDescription call,
-	// and recordedFrom the draft path each RecordDescription call names;
+	// drafted and recorded hold the slug of each DraftDescription and RecordDescription call;
 	// draftErr and recordErr are what those seams fail with.
-	drafted      []string
-	draftErr     error
-	recorded     []string
-	recordedFrom []string
-	recordErr    error
+	drafted   []string
+	draftErr  error
+	recorded  []string
+	recordErr error
 	// api is the fake GitHub every pull request side holds; origin and sideErr are what PullRequestSide answers with.
 	api     *prkit.API
 	origin  landingshed.Origin
@@ -114,7 +112,7 @@ func newLandWorld() *landWorld {
 		}},
 		parents:  map[string]string{},
 		pairs:    map[string]bool{"b": true, "landed": true},
-		origins:  map[string]fabriclayout.Origin{"b": {Beam: true, ParentBranch: "main"}, "landed": {Beam: true}},
+		origins:  map[string]fabricengine.Origin{"b": {Beam: true, ParentBranch: "main"}, "landed": {Beam: true}},
 		children: map[string]shedengine.Status{"b": {State: shedengine.StateRunning, CurrentProducer: pawlengine.NameBeamAwait}},
 		runID:    "2026-02-28T08:00:00Z",
 		ready:    map[string]bool{"b": true},
@@ -140,7 +138,7 @@ func (w *landWorld) deps() landDeps {
 		ReadOwners:  func() (boardengine.Owners, error) { return w.owners, nil },
 		ParentOf:    func(slug string) (string, error) { return w.parents[slug], nil },
 		PairPresent: func(slug string) bool { return w.pairs[slug] },
-		OriginRecord: func(slug string) (fabriclayout.Origin, bool, error) {
+		OriginRecord: func(slug string) (fabricengine.Origin, bool, error) {
 			origin, found := w.origins[slug]
 			return origin, found, nil
 		},
@@ -183,9 +181,8 @@ func (w *landWorld) deps() landDeps {
 			}
 			return "/hub/" + slug + "/_lym/landing/summary.md", nil
 		},
-		RecordDescription: func(slug, from string, _ time.Time) (string, error) {
+		RecordDescription: func(slug string, _ time.Time) (string, error) {
 			w.recorded = append(w.recorded, slug)
-			w.recordedFrom = append(w.recordedFrom, from)
 			if w.recordErr != nil {
 				return "", w.recordErr
 			}
@@ -274,7 +271,7 @@ func TestLand(t *testing.T) {
 			name: "UnmarkedPairRefusedNamingCreate",
 			slug: "b",
 			setup: func(w *landWorld) {
-				w.origins["b"] = fabriclayout.Origin{}
+				w.origins["b"] = fabricengine.Origin{}
 			},
 			wantErr: []string{"beam mark", "lym beam create b"},
 		},
@@ -327,7 +324,7 @@ func TestLand(t *testing.T) {
 				w.owners.Entries["inner"] = boardengine.OwnerEntry{IsProject: true, Beam: true, Owner: here}
 				w.parents["inner"] = "outer"
 				w.pairs["inner"] = true
-				w.origins["inner"] = fabriclayout.Origin{Beam: true}
+				w.origins["inner"] = fabricengine.Origin{Beam: true}
 				w.children["inner"] = shedengine.Status{State: shedengine.StateRunning, CurrentProducer: pawlengine.NameBeamAwait}
 			},
 			wantErr: []string{"parent of inner is owned by machine there", "lym adopt outer"},
@@ -517,33 +514,38 @@ func TestMarkReady(t *testing.T) {
 			wantErr: []string{"empty-body: body is empty", "lym beam describe b"},
 		},
 		{
+			name:    "RequiredParentWithNoneRecordedRefusedNamingOpen",
+			slug:    "b",
+			setup:   unflagged(func(w *landWorld) { w.mode = "required" }),
+			wantErr: []string{"lym beam pr open b"},
+		},
+		{
 			name: "RulesRequiredOnParentWithNoneRecordedRefusedNamingOpen",
 			slug: "b",
 			setup: unflagged(func(w *landWorld) {
-				w.mode = "review"
+				w.mode = "on"
 				w.rulesRequired = true
 			}),
 			wantErr: []string{"lym beam pr open b"},
 		},
 		{
-			name: "RulesRequiredWithNoUpstreamRefusedNamingTheFactAndReady",
+			name: "RequiredParentWithNoUpstreamRefusedNamingTheFactAndReady",
 			slug: "b",
 			setup: unflagged(func(w *landWorld) {
-				w.mode = "review"
-				w.rulesRequired = true
+				w.mode = "required"
 				w.origin = landingshed.Origin{URL: "https://github.com/o/r.git"}
 			}),
 			wantErr:   []string{"no upstream", "lym beam ready b"},
 			wantNoErr: []string{"lym loom resume"},
 		},
 		{
-			name: "MergeWithTheSameMissingFactRefused",
+			name: "MergeParentWithTheSameMissingFactRefused",
 			slug: "b",
 			setup: unflagged(func(w *landWorld) {
-				w.mode = "trail"
+				w.mode = "merge"
 				w.origin = landingshed.Origin{URL: "https://github.com/o/r.git"}
 			}),
-			wantErr:   []string{"no upstream", "lym beam ready b", "the beam's beam.pull_request is trail"},
+			wantErr:   []string{"no upstream", "lym beam ready b"},
 			wantNoErr: []string{"lym loom resume"},
 		},
 		{
@@ -639,17 +641,16 @@ func TestMarkReady(t *testing.T) {
 			wantMarkCalls: 1,
 		},
 		{
-			name:          "MergeWithNoneRecordedWritesTheRecord",
+			name:          "MergeParentWithNoneRecordedWritesTheRecord",
 			slug:          "b",
-			setup:         unflagged(func(w *landWorld) { w.mode = "trail" }),
+			setup:         unflagged(func(w *landWorld) { w.mode = "merge" }),
 			wantMarkCalls: 1,
 		},
 		{
-			name: "RulesRequiredWithNoCommitsBeyondItsParentWritesTheRecord",
+			name: "RequiredParentWithNoCommitsBeyondItsParentWritesTheRecord",
 			slug: "b",
 			setup: unflagged(func(w *landWorld) {
-				w.mode = "review"
-				w.rulesRequired = true
+				w.mode = "required"
 				w.hasCommits = false
 			}),
 			wantMarkCalls: 1,

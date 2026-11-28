@@ -384,7 +384,7 @@ func (e *Engine) addStrandLocked(st *ReedState, spec AddSpec) (Strand, error) {
 		return Strand{}, err
 	}
 
-	guid, err := e.newGUID()
+	guid, err := newGUID()
 	if err != nil {
 		return Strand{}, fmt.Errorf("generate guid: %w", err)
 	}
@@ -612,9 +612,13 @@ func (e *Engine) AddStrandUnless(spec AddSpec, unlessName string) (Strand, bool,
 				return nil
 			case ifAbsentRelaunch:
 				strand := &st.Strands[idx]
-				// Launch with the stored ResumeCmd, falling back to Cmd: the same line a resume replays.
+				// Launch with the stored ResumeCmd, falling back to Cmd: the same fallback a resume applies.
 				// A relaunch matched by name therefore does what resuming that strand does.
-				if err := e.launchStrandLocked(st, strand, e.revivalCmd(*strand)); err != nil {
+				launchCmd := strand.ResumeCmd
+				if launchCmd == "" {
+					launchCmd = strand.Cmd
+				}
+				if err := e.launchStrandLocked(st, strand, launchCmd); err != nil {
 					return fmt.Errorf("launch strand: %w", err)
 				}
 				// Persist after the launch succeeds and before the layout apply.

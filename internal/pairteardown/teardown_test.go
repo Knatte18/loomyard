@@ -16,13 +16,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/pullrequest"
-	"github.com/Knatte18/loomyard/internal/pushledger"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -61,8 +59,9 @@ type fakeSubstrates struct {
 	// battenSeeded and battenState are what batten's run reads answer.
 	battenSeeded bool
 	battenState  string
-	// runRecord is the batten run record the follow-up reads, absent when nil.
-	runRecord *shedengine.Status
+	// runRecord is the batten run record the follow-up reads, absent when nil; ownerPaused is whether an owner pause covers the slug.
+	runRecord   *shedengine.Status
+	ownerPaused bool
 	// claim is the board entry's status when claimFound; claimReadErr fails the read.
 	claim        *string
 	claimFound   bool
@@ -108,11 +107,6 @@ type fakeSubstrates struct {
 	droppedRunMail []string
 	// removeCancelledErr fails the deletion of a cancelled run record, which only a cancelled runRecord reaches.
 	removeCancelledErr error
-	// sandboxRoot is whether the worktree holds a sandbox root, so the clear runs; clearErr fails that clear.
-	// A clear that runs is recorded in calls, and clearAsked counts every ask, root or not.
-	sandboxRoot bool
-	clearErr    error
-	clearAsked  int
 }
 
 // awaitCall is one call of the pre-end run-lock wait.
@@ -188,22 +182,14 @@ func (f *fakeSubstrates) teardown() *Teardown {
 			return f.endErr == nil, "", f.endErr
 		},
 		archive: func(string) { f.calls = append(f.calls, "archive") },
-		clearSandbox: func(string) (bool, error) {
-			f.clearAsked++
-			if !f.sandboxRoot {
-				return false, nil
-			}
-			f.calls = append(f.calls, "clearSandbox")
-			return f.clearErr == nil, f.clearErr
-		},
 		closePR: func(string) { f.closePRs = append(f.closePRs, strings.Join(f.calls, ",")) },
-		remove: func(req Request) (fabriclayout.RemoveResult, error) {
+		remove: func(req Request) (fabricengine.RemoveResult, error) {
 			if req.Local {
 				f.calls = append(f.calls, "remove-local")
 			} else {
 				f.calls = append(f.calls, "remove")
 			}
-			return fabriclayout.RemoveResult{StrayPath: f.removeStrayPath}, f.removeErr
+			return fabricengine.RemoveResult{StrayPath: f.removeStrayPath}, f.removeErr
 		},
 		dropRunMail: func(slug string) {
 			f.calls = append(f.calls, "dropRunMail")
@@ -246,6 +232,7 @@ func (f *fakeSubstrates) teardown() *Teardown {
 			}
 			return *f.runRecord, true, nil
 		},
+		ownerHeld: func(string) (bool, error) { return f.ownerPaused, nil },
 		removeCancelledRecord: func(string) (bool, error) {
 			if f.runRecord == nil || f.runRecord.State != shedengine.StateCancelled {
 				return false, nil
@@ -361,33 +348,8 @@ func TestRemovePair_ClearStray(t *testing.T) {
 	}
 }
 
-// useLedger points td at a fresh hub directory whose push ledger holds entry, and fills td's landing read over it.
-// The entry's key is that of the records worktree name, or the landing key for an empty name.
-// It returns the hub directory and the key.
-func useLedger(t *testing.T, td *Teardown, name string, entry pushledger.Entry) (string, pushledger.Key) {
-	t.Helper()
-	hub := t.TempDir()
-	td.prime = &lymcwd.Location{HubPath: hub, WorktreeName: "prime", AnchorRel: "."}
-	key := pushledger.LandingKey
-	if name != "" {
-		key = pushledger.RecordsKey(fabricengine.RecordsWorktreePath(td.prime, name))
-	}
-	err := pushledger.Update(hub, key, time.Unix(1, 0), func(pushledger.Entry, bool) (pushledger.Entry, bool, error) {
-		return entry, true, nil
-	})
-	if err != nil {
-		t.Fatalf("pushledger.Update: %v", err)
-	}
-	td.landingStands = func(slug string) (bool, error) {
-		return LandingStands(hub, slug, &lymcwd.Location{HubPath: hub, WorktreeName: slug, AnchorRel: "."})
-	}
-	return hub, key
-}
-
 // TestTeardown_CallSequence drives EndSession and Run through the fake substrates and pins which substrate calls each makes, in what order, and what it returns.
 // The board-claim rows pin the settlement rule through Run: which reads precede the removal and the write, and what is written.
-// The landing rows pin that a standing landing refuses with nothing called.
-// They also pin that a removal drops the pair's ledger entry.
 func TestTeardown_CallSequence(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -414,9 +376,6 @@ func TestTeardown_CallSequence(t *testing.T) {
 		killCaptureErr error
 		// removeErr fails the removal.
 		removeErr error
-		// sandboxRoot makes the worktree hold a sandbox root, and clearErr fails its clear.
-		sandboxRoot bool
-		clearErr    error
 		// snapshotErr fails the snapshot step; afterSnapshotErr fails the request's AfterSnapshot, which is set whenever either is wanted.
 		snapshotErr       error
 		afterSnapshotErr  error
@@ -449,19 +408,15 @@ func TestTeardown_CallSequence(t *testing.T) {
 		// wantEnded and wantSurvivors are the EndedProcesses and Survivors of the returned session result.
 		wantEnded     []runproc.Ended
 		wantSurvivors []runproc.Ended
-		// runRecord scripts the follow-up's read; wantWarning is the Result.Warning a Run must return.
+		// runRecord and ownerPaused script the follow-up's reads; wantWarning is the Result.Warning a Run must return.
 		runRecord   *shedengine.Status
+		ownerPaused bool
 		wantWarning string
 		// removeCancelledErr fails the deletion of a cancelled run record.
 		removeCancelledErr error
 		// gone makes the task worktree read as gone.
-		gone bool
-		// ledger, when set, is the push ledger entry under the records worktree ledgerName, the landing key when empty.
-		ledger     *pushledger.Entry
-		ledgerName string
-		// wantEntryGone requires that ledger entry to be gone afterwards.
-		wantEntryGone bool
-		request       Request
+		gone    bool
+		request Request
 		// wantErrIs is a sentinel the error must wrap; wantErrContains are substrings it must hold.
 		wantErrIs       error
 		wantErrContains []string
@@ -475,38 +430,6 @@ func TestTeardown_CallSequence(t *testing.T) {
 		// wantSawGone requires the session end to have been told the task worktree is gone.
 		wantSawGone bool
 	}{
-		{
-			name:      "StandingLandingRefusesRunWithNothingCalled",
-			run:       true,
-			ledger:    &pushledger.Entry{Landings: []pushledger.Landing{{Run: "slug"}}},
-			request:   Request{Slug: "slug"},
-			wantErrIs: ErrLandingStands,
-		},
-		{
-			name:      "StandingLandingRefusesAForcedRemoteRun",
-			run:       true,
-			ledger:    &pushledger.Entry{Landings: []pushledger.Landing{{Run: "slug"}}},
-			request:   Request{Slug: "slug", Force: true, Remote: true},
-			wantErrIs: ErrLandingStands,
-		},
-		{
-			name:       "BeamPairHoldingAChildsLandingRefusesRun",
-			run:        true,
-			ledger:     &pushledger.Entry{Landings: []pushledger.Landing{{Run: "child"}}},
-			ledgerName: "slug",
-			request:    Request{Slug: "slug"},
-			wantErrIs:  ErrLandingStands,
-		},
-		{
-			name:          "SuccessfulRemovalDropsThePairsLedgerEntry",
-			run:           true,
-			quiets:        []quietState{{quiet: true}},
-			ledger:        &pushledger.Entry{Slug: "slug", HeldRecords: "held"},
-			ledgerName:    "slug",
-			wantEntryGone: true,
-			request:       Request{Slug: "slug"},
-			wantCalls:     sessionEnd + ",landed,archive,remove,dropRunMail,readClaim",
-		},
 		{
 			name:            "BusyDriverAtBoundRefusesWithoutTouchingAnything",
 			quiets:          []quietState{busy},
@@ -565,25 +488,6 @@ func TestTeardown_CallSequence(t *testing.T) {
 			claimFound:  true,
 			battenAlive: true,
 			wantCalls:   "readClaim," + skippedEnd + ",landed,archive,remove,dropRunMail,readClaim",
-		},
-		{
-			name:        "SandboxRootIsClearedBetweenTheArchiveAndTheRemoval",
-			run:         true,
-			quiets:      []quietState{{quiet: true}},
-			request:     Request{Slug: "slug"},
-			sandboxRoot: true,
-			wantCalls:   sessionEnd + ",landed,archive,clearSandbox,remove,dropRunMail,readClaim",
-		},
-		{
-			name:            "FailedSandboxClearKeepsTheWorktreeAndNamesTheWayForward",
-			run:             true,
-			quiets:          []quietState{{quiet: true}},
-			request:         Request{Slug: "slug"},
-			sandboxRoot:     true,
-			clearErr:        errors.New("reed server would not stop"),
-			wantAnyError:    true,
-			wantErrContains: []string{"reed server would not stop", "way forward: run `lym harden sandbox clear` in /hub/slug", "`lym fabric remove slug`", "`lym loom resume`"},
-			wantCalls:       sessionEnd + ",landed,archive,clearSandbox",
 		},
 		{
 			name:       "EntryWithoutTheRunFormIsKept",
@@ -693,7 +597,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			name:         "ClaimReadFailureAfterTheRemovalWritesNothing",
 			run:          true,
 			quiets:       []quietState{{quiet: true}},
-			request:      Request{Slug: "slug", Verdict: fabriclayout.EntryEnded},
+			request:      Request{Slug: "slug", Verdict: fabricengine.EntryEnded},
 			claimReadErr: errors.New("board unreadable"),
 			wantCalls:    skippedEnd + ",landed,archive,remove,dropRunMail,readClaim",
 		},
@@ -886,7 +790,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			name:       "LeaveClaimReadsNoLandedAnswerAndSettlesNoClaim",
 			run:        true,
 			quiets:     []quietState{{quiet: true}},
-			request:    Request{Slug: "slug", Verdict: fabriclayout.EntryEnded, LeaveClaim: true},
+			request:    Request{Slug: "slug", Verdict: fabricengine.EntryEnded, LeaveClaim: true},
 			claim:      runClaim,
 			claimFound: true,
 			wantCalls:  skippedEnd + ",archive,remove,dropRunMail",
@@ -898,7 +802,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			request:     Request{Slug: "slug"},
 			runRecord:   runShed,
 			wantCalls:   sessionEnd + ",landed,archive,remove,dropRunMail,readClaim",
-			wantWarning: "the batten run of slug still stands; " + BattenFollowUp("slug", *runShed, true),
+			wantWarning: "the batten run of slug still stands; " + BattenFollowUp("slug", *runShed, true, false),
 		},
 		{
 			name:      "CancelledRecordIsDeletedAfterTheRemovalAndGivesNoWarning",
@@ -919,10 +823,19 @@ func TestTeardown_CallSequence(t *testing.T) {
 			wantWarning:        `the pair of slug is removed but its cancelled run record is not: disk full; way forward: run "lym batten cleanup --apply", which removes it`,
 		},
 		{
+			name:        "OwnerPauseCoveringTheSlugGivesNoWarning",
+			run:         true,
+			quiets:      []quietState{{quiet: true}},
+			request:     Request{Slug: "slug"},
+			runRecord:   runShed,
+			ownerPaused: true,
+			wantCalls:   sessionEnd + ",landed,archive,remove,dropRunMail,readClaim",
+		},
+		{
 			name:      "LeaveClaimGivesNoWarning",
 			run:       true,
 			quiets:    []quietState{{quiet: true}},
-			request:   Request{Slug: "slug", Verdict: fabriclayout.EntryEnded, LeaveClaim: true},
+			request:   Request{Slug: "slug", Verdict: fabricengine.EntryEnded, LeaveClaim: true},
 			runRecord: runShed,
 			wantCalls: skippedEnd + ",archive,remove,dropRunMail",
 		},
@@ -978,14 +891,14 @@ func TestTeardown_CallSequence(t *testing.T) {
 		{
 			name:      "EndedVerdictSkipsTheQuietWaitAndWaitsForTheRunLockFirst",
 			quiets:    []quietState{busy},
-			request:   Request{Slug: "slug", Verdict: fabriclayout.EntryEnded, RefuseWhenBusy: true},
+			request:   Request{Slug: "slug", Verdict: fabricengine.EntryEnded, RefuseWhenBusy: true},
 			wantCalls: skippedEnd,
 			wantAwait: &awaitCall{retry: "the removal"},
 		},
 		{
 			name:      "OwnedElsewhereVerdictSkipsTheQuietWait",
 			quiets:    []quietState{busy},
-			request:   Request{Slug: "slug", Verdict: fabriclayout.EntryOwnedElsewhere, RefuseWhenBusy: true},
+			request:   Request{Slug: "slug", Verdict: fabricengine.EntryOwnedElsewhere, RefuseWhenBusy: true},
 			wantCalls: skippedEnd,
 			wantAwait: &awaitCall{retry: "the removal"},
 		},
@@ -1017,7 +930,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			name:           "RunLockRefusalFromTheWaitIsReturnedWithNothingEnded",
 			quiets:         []quietState{busy},
 			awaitOrPassErr: fmt.Errorf("%w: the run lock is held", ErrDriverBusy),
-			request:        Request{Slug: "slug", Verdict: fabriclayout.EntryEnded, RefuseWhenBusy: true},
+			request:        Request{Slug: "slug", Verdict: fabricengine.EntryEnded, RefuseWhenBusy: true},
 			wantErrIs:      ErrDriverBusy,
 			wantCalls:      "awaitOrPass",
 		},
@@ -1025,7 +938,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			name:       "RefusalProbeInTheSkippedOrderEndsNoOwnedProcess",
 			quiets:     []quietState{busy},
 			refusalErr: refusal,
-			request:    Request{Slug: "slug", Verdict: fabriclayout.EntryEnded},
+			request:    Request{Slug: "slug", Verdict: fabricengine.EntryEnded},
 			wantErrIs:  refusal,
 			wantCalls:  "awaitOrPass,refusal",
 		},
@@ -1042,7 +955,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			quiets:      []quietState{busy},
 			gone:        true,
 			pausedErr:   errors.New("pause record unreadable"),
-			request:     Request{Slug: "slug", Verdict: fabriclayout.EntryEnded, RefuseWhenBusy: true},
+			request:     Request{Slug: "slug", Verdict: fabricengine.EntryEnded, RefuseWhenBusy: true},
 			wantCalls:   "refusal,endOwned,killCapture,end",
 			wantSawGone: true,
 		},
@@ -1053,21 +966,16 @@ func TestTeardown_CallSequence(t *testing.T) {
 
 			f := &fakeSubstrates{
 				quiets: tt.quiets, refusalErr: tt.refusalErr, endErr: tt.endErr, seizeErr: tt.seizeErr, awaitErr: tt.awaitErr, killCaptureErr: tt.killCaptureErr,
-				removeErr: tt.removeErr, sandboxRoot: tt.sandboxRoot, clearErr: tt.clearErr, childLanded: tt.childLanded, battenSeeded: tt.battenSeeded, battenState: tt.battenState,
+				removeErr: tt.removeErr, childLanded: tt.childLanded, battenSeeded: tt.battenSeeded, battenState: tt.battenState,
 				claim: tt.claim, claimFound: tt.claimFound, claimReadErr: tt.claimReadErr, snapshotErr: tt.snapshotErr,
 				endedProcs: tt.endedProcs, endOwnedErr: tt.endOwnedErr, driverLockHeld: tt.driverLockHeld,
 				driverPID: tt.driverPID, driverFound: tt.driverFound, battenAlive: tt.battenAlive,
 				paused: tt.paused, hubEntry: tt.hubEntry, pausedErr: tt.pausedErr, awaitOrPassErr: tt.awaitOrPassErr, owned: tt.owned,
-				runRecord: tt.runRecord, removeCancelledErr: tt.removeCancelledErr,
+				runRecord: tt.runRecord, ownerPaused: tt.ownerPaused, removeCancelledErr: tt.removeCancelledErr,
 			}
 			td := f.teardown()
 			if tt.goos != "" {
 				td.goos = tt.goos
-			}
-			var ledgerHub string
-			var ledgerKey pushledger.Key
-			if tt.ledger != nil {
-				ledgerHub, ledgerKey = useLedger(t, td, tt.ledgerName, *tt.ledger)
 			}
 			if tt.withAfterSnapshot {
 				tt.request.AfterSnapshot = func() error {
@@ -1087,7 +995,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 
 			var session SessionResult
 			var err error
-			var removal fabriclayout.RemoveResult
+			var removal fabricengine.RemoveResult
 			var warning string
 			if tt.run {
 				var result Result
@@ -1121,11 +1029,6 @@ func TestTeardown_CallSequence(t *testing.T) {
 			if got, want := f.droppedRunMail, wantDroppedRunMail(tt.wantCalls); !slices.Equal(got, want) {
 				t.Errorf("run mail dropped for %v, want %v", got, want)
 			}
-			if tt.wantEntryGone {
-				if entry, found, err := pushledger.Read(ledgerHub, ledgerKey); err != nil || found {
-					t.Errorf("pair ledger entry = %+v, found %v, %v; want none", entry, found, err)
-				}
-			}
 			if removal.SnapshotTag != tt.wantSnapshotTag {
 				t.Errorf("SnapshotTag = %q, want %q", removal.SnapshotTag, tt.wantSnapshotTag)
 			}
@@ -1151,10 +1054,6 @@ func TestTeardown_CallSequence(t *testing.T) {
 			}
 			if sawGone != tt.wantSawGone {
 				t.Errorf("session end told the task worktree is gone = %v, want %v", sawGone, tt.wantSawGone)
-			}
-			// A run that reached the removal asked the sandbox clear exactly once, whether or not the worktree held a root.
-			if wantAsked := strings.Count(tt.wantCalls, "archive"); f.clearAsked != wantAsked {
-				t.Errorf("sandbox clear asked %d times, want %d", f.clearAsked, wantAsked)
 			}
 			// A run that reached the removal closed the pull request once, before the archive and the removal, a local removal included; any other run closed none.
 			reachedRemoval := strings.Contains(tt.wantCalls, "archive")

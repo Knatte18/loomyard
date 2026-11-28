@@ -9,8 +9,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-
-	"github.com/Knatte18/loomyard/internal/machinename"
 )
 
 // RootSubject is what `lym adopt` takes to move the ownership of the root project.
@@ -50,10 +48,6 @@ type Owners struct {
 	Prime string
 	// Entries maps a slug to its owner facts.
 	Entries map[string]OwnerEntry
-	// Registry is the board's machine registry, empty when none is recorded.
-	Registry Registry
-	// Holds is the board's adopt holds, empty when none stands.
-	Holds []Hold
 }
 
 // ParseOwners decodes board.json bytes into Owners.
@@ -67,16 +61,12 @@ func ParseOwners(boardJSON []byte) (Owners, error) {
 		return Owners{}, err
 	}
 	var record struct {
-		PrimeOwner string   `json:"prime_owner"`
-		Machines   Registry `json:"machines"`
-		Holds      []Hold   `json:"holds"`
+		PrimeOwner string `json:"prime_owner"`
 	}
 	if err := json.Unmarshal(boardJSON, &record); err != nil {
-		return Owners{}, fmt.Errorf("read prime_owner, machines and holds: %w", err)
+		return Owners{}, fmt.Errorf("read prime_owner: %w", err)
 	}
-	owners := ownersOf(record.PrimeOwner, tasks)
-	owners.Registry, owners.Holds = record.Machines, record.Holds
-	return owners, nil
+	return ownersOf(record.PrimeOwner, tasks), nil
 }
 
 // ownersOf builds the Owners of a board holding tasks and recording primeOwner.
@@ -115,7 +105,7 @@ func (s *Store) effectiveOwner(slug string) (string, error) {
 
 // checkOwnerPayload judges the owner_machine key of an upsert payload against the entry's effective owner.
 // A value equal to it is a no-op and is dropped from fields;
-// any other value is refused, since an upsert never writes an owner.
+// any other value is refused, since only the owner setter writes an owner.
 // A payload without the key passes untouched.
 func checkOwnerPayload(s *Store, fields map[string]any) error {
 	value, carried := fields["owner_machine"]
@@ -135,7 +125,7 @@ func checkOwnerPayload(s *Store, fields map[string]any) error {
 	if err != nil {
 		return fmt.Errorf("entry %q: resolve what adopt takes: %w", slug, err)
 	}
-	return fmt.Errorf("entry %q is owned by %q, and an upsert never changes an owner: run `lym adopt %s` from this machine's prime to take it over", slug, effective, subject)
+	return fmt.Errorf("entry %q is owned by %q, and a board write never changes an owner: run `lym adopt %s` from this machine's prime to take it over", slug, effective, subject)
 }
 
 // Effective returns the owner machine the entry slug reads as, where "" means owned by no other machine.
@@ -181,8 +171,7 @@ func (o Owners) AdoptSubject(slug string, parentOf func(slug string) (string, er
 	return o.AdoptSubject(parent, parentOf)
 }
 
-// OwnedElsewhere reports whether owner names a machine other than here, reading the name through registry.
-// An owner recorded under a former name of the machine here reads as here; an empty owner is owned by no other machine.
-func OwnedElsewhere(owner string, registry Registry, here machinename.Identity) bool {
-	return owner != "" && !registry.ReadsAsHere(owner, here)
+// OwnedElsewhere reports whether owner names a machine other than here; an empty owner is owned by no other machine.
+func OwnedElsewhere(owner, here string) bool {
+	return owner != "" && owner != here
 }

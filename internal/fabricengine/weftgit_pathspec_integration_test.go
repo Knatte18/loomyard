@@ -14,7 +14,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -69,7 +68,7 @@ func TestCommitWeft_UntrackedNewFileCountsAsMatch(t *testing.T) {
 
 	mustWriteFileWeft(t, filepath.Join(weftFixture.PrimeRecords(), "newmodule", "newfile.txt"), "brand new, never staged")
 
-	sha, committed, err := fabricengine.CommitWeftForTest(f, []string{"doesnotexist", "newmodule"}, fabriclayout.DefaultCommitMessage, fabricengine.SyncOptions{})
+	sha, committed, err := fabricengine.CommitWeftForTest(f, []string{"doesnotexist", "newmodule"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{})
 	if err != nil {
 		t.Fatalf("commitWeft() error = %v; want nil", err)
 	}
@@ -113,7 +112,7 @@ func TestCommitWeft_IndexOnlyDeletionCountsAsMatch(t *testing.T) {
 		t.Fatalf("os.Remove(%q): %v", trackedPath, err)
 	}
 
-	sha, committed, err := fabricengine.CommitWeftForTest(f, []string{"_lym"}, fabriclayout.DefaultCommitMessage, fabricengine.SyncOptions{})
+	sha, committed, err := fabricengine.CommitWeftForTest(f, []string{"_lym"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{})
 	if err != nil {
 		t.Fatalf("commitWeft() error = %v; want nil", err)
 	}
@@ -146,7 +145,7 @@ func TestCommitWeft_ExcludeMagicPassesThroughUntouched(t *testing.T) {
 	mustWriteFileWeft(t, filepath.Join(weftFixture.PrimeRecords(), "_lym", "durable.txt"), "durable state")
 	mustWriteFileWeft(t, filepath.Join(weftFixture.PrimeRecords(), "_lym", "run.lock"), "machine-local lock")
 
-	sha, committed, err := fabricengine.CommitWeftForTest(f, []string{"_lym", ":(exclude)_lym/*.lock"}, fabriclayout.DefaultCommitMessage, fabricengine.SyncOptions{})
+	sha, committed, err := fabricengine.CommitWeftForTest(f, []string{"_lym", ":(exclude)_lym/*.lock"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{})
 	if err != nil {
 		t.Fatalf("commitWeft() error = %v; want nil", err)
 	}
@@ -187,7 +186,7 @@ func TestCommitWeft_OnlyPositiveEntryMatchingNothing_StagesNothing(t *testing.T)
 	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeRecords(), "dirtied but must stay unstaged")
 	mustWriteFileWeft(t, filepath.Join(weftFixture.PrimeRecords(), "_lym", "run.lock"), "machine-local lock")
 
-	sha, committed, err := fabricengine.CommitWeftForTest(f, []string{"doesnotexist", ":(exclude)_lym/*.lock"}, fabriclayout.DefaultCommitMessage, fabricengine.SyncOptions{})
+	sha, committed, err := fabricengine.CommitWeftForTest(f, []string{"doesnotexist", ":(exclude)_lym/*.lock"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{})
 	if err != nil {
 		t.Fatalf("commitWeft() error = %v; want nil", err)
 	}

@@ -25,7 +25,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -35,7 +34,7 @@ const defaultHubBoardConfig = "readme: Home.md\ndesign_prefix: proposal-\n"
 // seedCwd creates a temp directory, seeds the default hub board.yaml, and initialises a git repo there.
 // The git repo lets lymcwd.Resolve succeed, and seedCwd changes into the directory and returns its path.
 // The board data dir is the Bolt checkout under Hub, where Hub = filepath.Dir(cwd).
-// Callers can compute it as fabriclayout.BoardDir(filepath.Dir(cwd)).
+// Callers can compute it as fabricengine.BoardDir(filepath.Dir(cwd)).
 func seedCwd(t *testing.T) string {
 	t.Helper()
 
@@ -56,7 +55,7 @@ func seedCwd(t *testing.T) string {
 // It also writes the default fabric.yaml beside it, which the slug rule of a write reads.
 func seedHubBoardConfig(t *testing.T, hub, content string) {
 	t.Helper()
-	boardDir := fabriclayout.BoardDir(hub)
+	boardDir := fabricengine.BoardDir(hub)
 	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
 		t.Fatalf("failed to create hub board config dir: %v", err)
 	}
@@ -71,7 +70,7 @@ func seedHubBoardConfig(t *testing.T, hub, content string) {
 // seedBoardFile writes body as the board.json in the board dir of the hub above cwd, creating the directory.
 func seedBoardFile(t *testing.T, cwd, body string) {
 	t.Helper()
-	boardDir := fabriclayout.BoardDir(filepath.Dir(cwd))
+	boardDir := fabricengine.BoardDir(filepath.Dir(cwd))
 	if err := os.MkdirAll(boardDir, 0o755); err != nil {
 		t.Fatalf("create board dir: %v", err)
 	}
@@ -90,7 +89,7 @@ type cliFixture struct {
 func (f *cliFixture) reset(t *testing.T) string {
 	t.Helper()
 	hub := filepath.Dir(f.cwd)
-	if err := os.RemoveAll(fabriclayout.BoardDir(hub)); err != nil {
+	if err := os.RemoveAll(fabricengine.BoardDir(hub)); err != nil {
 		t.Fatalf("remove hub board dir: %v", err)
 	}
 	if err := os.RemoveAll(configengine.ConfigDir(f.cwd)); err != nil {
@@ -126,11 +125,13 @@ func TestCLI(t *testing.T) {
 		{"TaskSessionFilesNotesOnly", stepTaskSessionFilesNotesOnly},
 		{"Rename", stepRename},
 		{"Prune", stepPrune},
+		{"NotifyOnLandOnALandedEntry", stepNotifyOnLandOnALandedEntry},
 		{"Find", stepFind},
 		{"ListAndFindLabelFilter", stepListAndFindLabelFilter},
 		{"Find_NoArgumentRefused", stepFind_NoArgumentRefused},
 		{"ListAndFindText", stepListAndFindText},
 		{"ListShowsASketch", stepListShowsASketch},
+		{"RetireLegacy", stepRetireLegacy},
 		{"GetAndRemoveByID", stepGetAndRemoveByID},
 		{"Owners", stepOwners},
 		{"FrontTask", stepFrontTask},
@@ -231,7 +232,7 @@ func stepSiblingWarning(t *testing.T, f *cliFixture) {
 	})
 	t.Run("a batch joins the run-settings notice and the sibling line", func(t *testing.T) {
 		seed(t, `{"slug":"rs","title":"RS","kind":"task","labels":["bug"],"status":"running · Discussion-Write"}`)
-		result := runJSON(t, 0, "upsert-batch", `{"tasks":[{"slug":"rs","run_settings":{"loom":{"review":{"max_bounces":4}}}},{"slug":"X","depends_on":["D"]}]}`)
+		result := runJSON(t, 0, "upsert-batch", `{"tasks":[{"slug":"rs","run_settings":{"loom":{"review_max_bounces":4}}},{"slug":"X","depends_on":["D"]}]}`)
 		notice, _ := result["notice"].(string)
 		if !strings.Contains(notice, "--layer local") || !strings.Contains(notice, `"X" now waits on D`) {
 			t.Errorf("notice = %q; want the run-settings line and the sibling line", notice)
@@ -333,7 +334,7 @@ func stepContract(t *testing.T, f *cliFixture) {
 			assertFieldExists: func(t *testing.T, result map[string]any, cwd string) {
 				// The fixture initialised a git repo at cwd, so Hub is filepath.Dir(cwd);
 				// lymcwd.Resolve derives Hub from the git root, so board renders in the Bolt checkout under Hub.
-				homePath := filepath.Join(fabriclayout.BoardDir(filepath.Dir(cwd)), "Home.md")
+				homePath := filepath.Join(fabricengine.BoardDir(filepath.Dir(cwd)), "Home.md")
 				if _, err := os.Stat(homePath); err != nil {
 					t.Fatalf("Home.md not created at %q: %v", homePath, err)
 				}
@@ -857,45 +858,6 @@ func stepLookupContract(t *testing.T, f *cliFixture) {
 			},
 		},
 		{
-			name: "get_by_bare_slug",
-			setup: func(t *testing.T) {
-				f.reset(t)
-				runCLI(t, "upsert", `{"slug":"halt-escalation-messages","title":"H","kind":"task","labels":["bug"]}`)
-			},
-			verb:         "get",
-			payload:      `halt-escalation-messages`,
-			wantExitCode: 0,
-			wantOK:       true,
-			assertResult: func(t *testing.T, result map[string]any) {
-				task, _ := result["task"].(map[string]any)
-				if task["slug"] != "halt-escalation-messages" {
-					t.Errorf("get halt-escalation-messages: got %v; want halt-escalation-messages", task)
-				}
-			},
-		},
-		{
-			name: "get_bare_payload_with_leading_digit_is_invalid_json",
-			setup: func(t *testing.T) {
-				f.reset(t)
-			},
-			verb:         "get",
-			payload:      `1abc`,
-			wantExitCode: 1,
-			wantOK:       false,
-			wantError:    "invalid json:",
-		},
-		{
-			name: "get_bare_payload_with_space_is_invalid_json",
-			setup: func(t *testing.T) {
-				f.reset(t)
-			},
-			verb:         "get",
-			payload:      `my task`,
-			wantExitCode: 1,
-			wantOK:       false,
-			wantError:    "invalid json:",
-		},
-		{
 			name: "set_status_bare_handle_lacks_status",
 			setup: func(t *testing.T) {
 				f.reset(t)
@@ -1226,7 +1188,7 @@ func stepLoadsHubBoardConfig(t *testing.T, f *cliFixture) {
 			}
 			if tt.hubConfig != "" {
 				seedHubBoardConfig(t, hub, tt.hubConfig)
-			} else if err := os.Remove(configengine.ConfigFile(fabriclayout.BoardDir(hub), "board")); err != nil {
+			} else if err := os.Remove(configengine.ConfigFile(fabricengine.BoardDir(hub), "board")); err != nil {
 				t.Fatalf("remove hub board.yaml: %v", err)
 			}
 
@@ -1238,7 +1200,7 @@ func stepLoadsHubBoardConfig(t *testing.T, f *cliFixture) {
 				t.Fatalf("stdout %q does not name %q", stdout, tt.wantError)
 			}
 			if tt.wantReadme != "" {
-				readme, err := os.ReadFile(filepath.Join(fabriclayout.BoardDir(hub), "Home.md"))
+				readme, err := os.ReadFile(filepath.Join(fabricengine.BoardDir(hub), "Home.md"))
 				if err != nil {
 					t.Fatalf("read rendered README: %v", err)
 				}
@@ -1251,19 +1213,19 @@ func stepLoadsHubBoardConfig(t *testing.T, f *cliFixture) {
 }
 
 // stepBoardPathResolution verifies the two board data dir resolution paths in PersistentPreRunE.
-// Without --board-path, the CLI uses fabriclayout.BoardDir(hub), derived from lymcwd.Resolve.
+// Without --board-path, the CLI uses fabricengine.BoardDir(hub), derived from lymcwd.Resolve.
 // With --board-path, the supplied path takes precedence.
 // The fixture's real git repo lets lymcwd.Resolve succeed.
 func stepBoardPathResolution(t *testing.T, f *cliFixture) {
 	// The fixture's repository is the worktree, and its parent is the hub.
 	// lymcwd.Resolve(worktree) derives Hub = topDir.
-	// fabriclayout.BoardDir(Hub) is therefore filepath.Join(topDir, fabriclayout.BoltDirName).
+	// fabricengine.BoardDir(Hub) is therefore filepath.Join(topDir, fabricengine.BoltDirName).
 	topDir := filepath.Dir(f.cwd)
 
-	expectedBoardDir := fabriclayout.BoardDir(topDir)
+	expectedBoardDir := fabricengine.BoardDir(topDir)
 
 	t.Run("no_board_path_resolves_via_paths", func(t *testing.T) {
-		// PersistentPreRunE calls lymcwd.Resolve and derives cfg.Path = fabriclayout.BoardDir(topDir).
+		// PersistentPreRunE calls lymcwd.Resolve and derives cfg.Path = fabricengine.BoardDir(topDir).
 		// Upsert writes board.json inside that derived board dir.
 		exitCode, stdout := runCLI(t, "upsert", `{"slug":"path-test","title":"Path Test","labels":["bug"]}`)
 		if exitCode != 0 {
@@ -1271,7 +1233,7 @@ func stepBoardPathResolution(t *testing.T, f *cliFixture) {
 		}
 		storeFile := filepath.Join(expectedBoardDir, "board.json")
 		if _, err := os.Stat(storeFile); err != nil {
-			t.Errorf("board not at fabriclayout.BoardDir(hub) %q: %v", expectedBoardDir, err)
+			t.Errorf("board not at fabricengine.BoardDir(hub) %q: %v", expectedBoardDir, err)
 		}
 	})
 

@@ -10,7 +10,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -19,7 +19,7 @@ func TestOrchIntegration_WireCLITakesTheOrchSkillsFromAgentsYAML(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	agentsFile := configengine.ConfigFile(fabriclayout.BoltDir(h.Path), agentconfig.ModuleName)
+	agentsFile := configengine.ConfigFile(fabricengine.BoltDir(h.Path), agentconfig.ModuleName)
 	if err := os.MkdirAll(filepath.Dir(agentsFile), 0o755); err != nil {
 		t.Fatalf("mkdir %s: %v", filepath.Dir(agentsFile), err)
 	}

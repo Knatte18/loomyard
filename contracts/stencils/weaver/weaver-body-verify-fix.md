@@ -40,7 +40,3 @@ You never run a Bash call in the background, and you end your turn only after yo
 - A fix that departs from a PATTERN entry because the entry forbids the way the findings call for records the departure as a `Pattern-Departure:` trailer in that `fix:` commit.
 - Never run the plan-level verify yourself: Weaver runs it again once you end.
 - Leave the worktree clean: no uncommitted change may remain when you end your turn.
-
-{{template "loom-fragment-loosened-check"}}
-
-{{template "loom-fragment-tooling-names"}}

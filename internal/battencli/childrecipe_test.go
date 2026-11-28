@@ -28,7 +28,6 @@ func TestChildRecipeSupported(t *testing.T) {
 		{shedrun.RecipeSampler, true},
 		{shedrun.RecipeRaddle, true},
 		{shedrun.RecipeArras, true},
-		{shedrun.RecipeHardener, true},
 		{shedrun.RecipeBatten, false},
 		{"no-such-recipe", false},
 	}
@@ -45,12 +44,9 @@ func TestChildRecipeSupported(t *testing.T) {
 	if !errors.Is(err, battenshed.ErrUnsupportedChildRecipe) {
 		t.Fatalf("unsupportedChildRecipeRefusal() error = %v; want it to wrap ErrUnsupportedChildRecipe", err)
 	}
-	for _, want := range []string{shedrun.RecipeRaddle, shedrun.RecipeHardener, "no-such-recipe"} {
+	for _, want := range []string{shedrun.RecipeRaddle, shedrun.RecipeArras, "no-such-recipe"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("unsupportedChildRecipeRefusal() error = %q; want it to contain %q", err, want)
 		}
-	}
-	if strings.Contains(err.Error(), shedrun.RecipeArras) {
-		t.Errorf("unsupportedChildRecipeRefusal() error = %q; want it not to offer %q", err, shedrun.RecipeArras)
 	}
 }

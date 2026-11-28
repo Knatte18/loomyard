@@ -6,14 +6,14 @@ package landingshed
 import (
 	"fmt"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
 // preMerge holds the three functions the pre-merge step uses to probe and change the pair's merge state.
 // A nil mergeState skips the whole step, so a producer built by a struct literal runs no probe.
 type preMerge struct {
-	mergeState          func() (fabriclayout.MidMergeState, error)
+	mergeState          func() (fabricengine.MidMergeState, error)
 	abortMerge          func() error
 	stopConflictSession func() (string, error)
 }
@@ -45,10 +45,10 @@ func (m preMerge) clear(producer, parentBranch string) (string, error) {
 	}
 	const mergeWayForward = `conclude it with "lym fabric merge --continue" or discard it with "lym fabric merge --abort", then resume; a session lym refuses the verb from reports status: FAILED and the orch runs it`
 	switch state.Kind {
-	case fabriclayout.MidMergeNone:
+	case fabricengine.MidMergeNone:
 		return "", nil
-	case fabriclayout.MidMergeParked:
-		if state.Verb != fabriclayout.MergeVerbMergeIn || state.Source != parentBranch {
+	case fabricengine.MidMergeParked:
+		if state.Verb != fabricengine.MergeVerbMergeIn || state.Source != parentBranch {
 			return fmt.Sprintf("a fabric merge (%s of %s) is in progress in the task worktree; way forward: %s", state.Verb, state.Source, mergeWayForward), nil
 		}
 	default:

@@ -42,7 +42,7 @@ func DiscussionApprovalRow(recipe string) (string, bool, error) {
 
 // PastDiscussionApproval reports whether a run of the named recipe at currentRow is past its discussion approval.
 // hasRow reports whether the recipe has an approval row at all, and past is false when it has none.
-// Otherwise a run is past when currentRow is a row after the approval row's segment.
+// Otherwise a run is past when currentRow, mapped through RetiredRows, is a row after the approval row's segment.
 // An empty currentRow, a row before or inside that segment, and a row the recipe does not hold are not past.
 // The recipe's rows are read expanded, so an approval row inside a block is found where the run meets it.
 // An empty recipe name reads as the tapestry recipe, and a name that selects no embedded recipe is refused.
@@ -63,6 +63,9 @@ func PastDiscussionApproval(recipe, currentRow string) (past, hasRow bool, err e
 		}
 	}
 	lastApprovalIndex, currentIndex := -1, -1
+	if mapped, retired := RetiredRows(recipe)[currentRow]; retired {
+		currentRow = mapped
+	}
 	for i, row := range parsed.Producers {
 		if row.Name == approvalRow || (segment != "" && row.Segment == segment) {
 			lastApprovalIndex = i

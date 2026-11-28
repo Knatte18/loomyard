@@ -27,11 +27,6 @@ Your only job is to fix the failures the report at `{{.report_path}}` lists, as 
 2. Read the `pattern/` background files the constraints section above points at, when that section is present, choosing those that touch what you will change.
 3. Read the code behind each failure before you edit it.
 
-## External tools and processes
-
-Learn how an external tool such as tmux behaves from a test in the repository that the gate runs, never from processes you start in the shell.
-Never start a background or detached process from the shell: such a process outlives your command and runs outside every memory cap lym sets.
-
 ## Your final action
 
 Your last action, after the rules below are met, is writing your reply to `{{.reply_path}}`: a short markdown note naming each failure you fixed, and each you left with why.

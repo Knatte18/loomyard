@@ -25,23 +25,6 @@ const driveRepairCap = 2
 // A loop that died sooner after its re-step than this counts against the cap, so a loop that keeps dying still reaches the tackler.
 const wakeRestartGap = 10 * time.Minute
 
-// networkWaitBase is the wait before the first re-step of a stop a network failure left.
-const networkWaitBase = 15 * time.Second
-
-// networkWait returns the wait before the re-step that follows repairCount earlier re-steps of a network stop:
-// networkWaitBase doubled once per earlier re-step, capped at ceiling.
-// A ceiling of zero or less caps it at networkWaitBase.
-func networkWait(repairCount int, ceiling time.Duration) time.Duration {
-	if ceiling <= 0 {
-		ceiling = networkWaitBase
-	}
-	wait := networkWaitBase
-	for i := 0; i < repairCount && wait < ceiling; i++ {
-		wait *= 2
-	}
-	return min(wait, ceiling)
-}
-
 // Stop is what the loop's envelope says about one stop, or what a status says when the driver acts on a stop it did not step to.
 // The loop-object fields are empty for a stop built from a status, and Raw holds the envelope bytes verbatim.
 type Stop struct {
@@ -190,8 +173,6 @@ type driveFacts struct {
 	ResumeReturned bool
 	// ArbiterFirst is true when the stop is blocked at a row the arbiter judges before the tackler.
 	ArbiterFirst bool
-	// NetworkCeiling is the longest wait before a re-step of a network failure.
-	NetworkCeiling time.Duration
 }
 
 // driveAction is what the loop does for a decision.
@@ -211,12 +192,10 @@ const (
 // driveDecision is the table's answer for one stop.
 // Rule is the rule text the stop report quotes.
 // FrictionNote asks for a friction note on a paused stop that carries no reason, from the envelope or the status.
-// Wait is how long a re-step waits before it steps; zero steps at once.
 type driveDecision struct {
 	Action       driveAction
 	Rule         string
 	FrictionNote bool
-	Wait         time.Duration
 }
 
 // binaryEligible reports whether a newer on-disk build could change what happens at the stop:
@@ -288,8 +267,6 @@ func decideDrive(stop Stop, facts driveFacts) driveDecision {
 		return driveDecision{Action: driveActionArbiter, Rule: "a tackler resume returned to the same stop: the arbiter decides"}
 	case state == string(shedengine.StateBlocked) && facts.ArbiterFirst:
 		return driveDecision{Action: driveActionArbiter, Rule: "a blocked stop at a row the arbiter judges first: the arbiter decides"}
-	case networkFailure(stop):
-		return driveDecision{Action: driveActionRestep, Rule: "a network failure: wait for the remote, then re-step", Wait: networkWait(facts.RepairCount, facts.NetworkCeiling)}
 	case !stop.OK && stop.Transient != "":
 		return driveDecision{Action: driveActionTackler, Rule: "a transient error that outlived its re-step: the tackler decides"}
 	case stop.Kind == shedverbs.KindInterrupted && stop.InterruptPolicy == shedverbs.InterruptPolicyReinvoke && facts.RepairCount < driveRepairCap:
@@ -300,19 +277,6 @@ func decideDrive(stop Stop, facts driveFacts) driveDecision {
 		return driveDecision{Action: driveActionTackler, Rule: "no rule settles the stop: the tackler decides"}
 	}
 	return driveDecision{Action: driveActionHandBack, Rule: "no rule names the stop: hand back"}
-}
-
-// networkFailure reports whether stop is an error a git transport or GitHub API failure left:
-// the remote did not answer, and the same step can succeed once it does.
-func networkFailure(stop Stop) bool {
-	if stop.OK {
-		return false
-	}
-	switch shedengine.TransientClass(stop.Transient) {
-	case shedengine.TransientGitTransport, shedengine.TransientGitHubAPI:
-		return true
-	}
-	return false
 }
 
 // budgetExhausted reports whether stop is a blocked stop halted by an exhausted bounce budget.

@@ -11,7 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestCheckParentCaller covers each caller the check admits and each refusal, with the chain and parent readable or not.
+// TestCheckParentCaller covers the unnamed shell, the run's parent, another session, and an unresolvable parent.
 func TestCheckParentCaller(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -21,10 +21,7 @@ func TestCheckParentCaller(t *testing.T) {
 	tests := []struct {
 		name   string
 		strand string
-		// chain and chainErr are what the read of the orchs above the pair answers.
-		chain    []hubgeom.Parent
-		chainErr error
-		parent   func() (hubgeom.Parent, error)
+		parent func() (hubgeom.Parent, error)
 		// wantErr holds the fragments the refusal names; nil wants the caller admitted.
 		wantErr []string
 	}{
@@ -34,15 +31,6 @@ func TestCheckParentCaller(t *testing.T) {
 			parent: func() (hubgeom.Parent, error) { return hubgeom.Parent{}, errors.New("must not be read") },
 		},
 		{name: "TheRunsParentPasses", strand: parentName, parent: resolved},
-		{name: "ABeamOrchAboveThePairPassesWhileAnotherOrchResolvesAsTheParent", strand: "ly:beam-b:orch", chain: []hubgeom.Parent{{Name: "ly:beam-b:orch"}, {Name: parentName}}, parent: resolved},
-		{name: "TheResolvedParentPassesWhenTheChainCannotBeRead", strand: parentName, chainErr: errors.New("origin record unreadable"), parent: resolved},
-		{
-			name:     "AnUnreadableChainRefusesAnotherSessionNamingTheError",
-			strand:   "ly:task:writer",
-			chainErr: errors.New("origin record unreadable"),
-			parent:   resolved,
-			wantErr:  []string{"drift amend refused", "could not be resolved", "origin record unreadable", "operator's own unnamed shell"},
-		},
 		{
 			name:    "AnotherSessionIsRefusedNamingTheParent",
 			strand:  "ly:task:writer",
@@ -59,8 +47,7 @@ func TestCheckParentCaller(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			orchsAbove := func() ([]hubgeom.Parent, error) { return tt.chain, tt.chainErr }
-			err := checkParentCaller("amend", tt.strand, orchsAbove, tt.parent)
+			err := checkParentCaller("amend", tt.strand, tt.parent)
 			if tt.wantErr == nil {
 				if err != nil {
 					t.Errorf("checkParentCaller(%q) = %v; want nil", tt.strand, err)

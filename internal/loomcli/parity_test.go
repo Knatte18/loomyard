@@ -767,7 +767,7 @@ func TestGateParity_DescriptionGate(t *testing.T) {
 		{
 			name: "Clean",
 			build: func(t *testing.T, dir string) *loomCLI {
-				return descriptionFixture(t, dir, "# Title\n\nbody\n\n## Merge danger\n\n**Door:** two-way\n**Blast radius:** loom\n")
+				return descriptionFixture(t, dir, "# Title\n\nbody\n")
 			},
 			want: verdictDone,
 		},
@@ -798,7 +798,7 @@ func TestGateParity_DescriptionGate(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			c := tc.build(t, t.TempDir())
 
-			result, err := landingshed.NewDescriptionGate(c.env.DescriptionPath, nil)()
+			result, err := landingshed.NewDescriptionGate(c.env.DescriptionPath)()
 			pv := producerVerdict(result, err)
 
 			var out bytes.Buffer

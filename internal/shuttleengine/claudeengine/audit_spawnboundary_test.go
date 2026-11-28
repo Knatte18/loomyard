@@ -1,8 +1,8 @@
-// audit_spawnboundary_test.go covers what the audit reads from a subagent transcript's sibling <transcript>.meta.json.
+// audit_spawnboundary_test.go covers the spawn-boundary exclusion for fork transcripts.
 // On Claude Code 2.1.205, a fork transcript's first assistant line replays the parent's own spawning Agent tool_use.
 // Counting that entry would flag every legitimate fork as a nested-Agent violation,
-// so the audit excludes it by the tool_use id that the meta file records.
-// These tests pin that exclusion and the fallback for a transcript with no meta file, which skips nothing.
+// so the audit excludes it by the tool_use id that the sibling <transcript>.meta.json records.
+// These tests pin both that exclusion and the fallback for a transcript with no meta file, which skips nothing.
 
 package claudeengine
 
@@ -14,18 +14,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// forkMeta is the meta file Claude Code writes beside a fork's transcript.
-const forkMeta = `{"agentType":"fork","isFork":true,"toolUseId":"toolu_01SpawnBoundary","spawnDepth":1}`
-
 // writeSpawnBoundaryFixture copies the spawn-boundary fork transcript into a new temporary directory.
 // It returns the transcript path.
-// When meta is not empty, it also writes meta as the sibling .meta.json.
-func writeSpawnBoundaryFixture(t *testing.T, meta string) string {
+// When withMeta is true, it also writes the sibling .meta.json carrying the spawning call's toolUseId.
+func writeSpawnBoundaryFixture(t *testing.T, withMeta bool) string {
 	t.Helper()
 	dir := t.TempDir()
 	transcript := filepath.Join(dir, "agent-a93e40b96f277c37a.jsonl")
 	copyFixture(t, "fork-spawn-boundary.jsonl", transcript)
-	if meta != "" {
+	if withMeta {
+		meta := `{"agentType":"fork","isFork":true,"toolUseId":"toolu_01SpawnBoundary","spawnDepth":1}`
 		if err := os.WriteFile(filepath.Join(dir, "agent-a93e40b96f277c37a.meta.json"), []byte(meta), 0o644); err != nil {
 			t.Fatalf("write meta.json: %v", err)
 		}
@@ -33,14 +31,11 @@ func writeSpawnBoundaryFixture(t *testing.T, meta string) string {
 	return transcript
 }
 
-//testtiming:keep pins the spawn-boundary Agent call's exclusion and the fork's own tool counts and report
 func TestAuditForkTranscript_SpawnBoundaryAgentCallExcluded(t *testing.T) {
 	tiergate.Require(t, 0)
-	t.Parallel()
-	transcript := writeSpawnBoundaryFixture(t, forkMeta)
-	meta, metaFound := readSubagentMeta(transcript)
+	transcript := writeSpawnBoundaryFixture(t, true)
 
-	report, err := auditForkTranscript(transcript, meta, metaFound, nil)
+	report, err := auditForkTranscript(transcript)
 	if err != nil {
 		t.Fatalf("auditForkTranscript() error: %v", err)
 	}
@@ -66,13 +61,11 @@ func TestAuditForkTranscript_SpawnBoundaryAgentCallExcluded(t *testing.T) {
 	}
 }
 
-//testtiming:keep pins that a missing meta file excludes no Agent call
 func TestAuditForkTranscript_MissingMetaFallsBackToCountingEverything(t *testing.T) {
 	tiergate.Require(t, 0)
-	t.Parallel()
-	transcript := writeSpawnBoundaryFixture(t, "")
+	transcript := writeSpawnBoundaryFixture(t, false)
 
-	report, err := auditForkTranscript(transcript, subagentMeta{}, false, nil)
+	report, err := auditForkTranscript(transcript)
 	if err != nil {
 		t.Fatalf("auditForkTranscript() error: %v", err)
 	}

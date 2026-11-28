@@ -13,7 +13,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/orchcli"
-	"github.com/Knatte18/loomyard/internal/runpusher"
 )
 
 // archiveOwnerTips archives every local tip under the worktree named worktree that origin lacks.
@@ -30,7 +29,7 @@ func archiveOwnerTips(prime *lymcwd.Location, worktree string) error {
 	if err != nil {
 		return err
 	}
-	runs, err := battencli.DobbyRuns(prime, geom, battencli.NewDobbyParents(prime), pause.RecordPath, runpusher.StartIfAhead)
+	runs, err := battencli.DobbyRuns(prime, geom, battencli.NewDobbyParents(prime), pause.RecordPath)
 	if err != nil {
 		return fmt.Errorf("list the runs under %s: %w", worktree, err)
 	}
@@ -60,7 +59,7 @@ func archiveOwnerTips(prime *lymcwd.Location, worktree string) error {
 // ownerArchiveBeforeRefusal returns the archive `lym beam start` runs for target.
 // The verb runs it before refusing target for another machine's ownership.
 // The archive covers this machine's unpushed tips under the worktree.
-// It archives nothing while a hold this machine wrote in Bolt covers the worktree's subject.
+// It archives nothing while an adopt in flight here covers the worktree.
 func ownerArchiveBeforeRefusal(target beamTarget) func() error {
 	return func() error {
 		root, err := resolveBeamTarget(target.Location, rootSlug)
@@ -73,7 +72,7 @@ func ownerArchiveBeforeRefusal(target beamTarget) func() error {
 		if worktree == prime.WorktreeName {
 			slug = ""
 		}
-		if orchcli.UnderOwnHold(prime)(slug) {
+		if orchcli.UnderAdoptWatch(prime).Covers(slug) {
 			return nil
 		}
 		return archiveOwnerTips(prime, worktree)

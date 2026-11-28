@@ -16,8 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/burlerengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -145,34 +144,16 @@ type verifyFixture struct {
 	// liveChair is whether a probe finds the judge's chair.
 	liveChair bool
 	// codeCheckout and recordsCheckout are the two fake checkouts, and recordsChanged is what RecordsChangedSince answers.
-	codeCheckout, recordsCheckout fabriclayout.CheckoutState
+	codeCheckout, recordsCheckout fabricengine.CheckoutState
 	// checkoutsErr, when set, is what the checkouts read fails with, so taking the judge snapshot fails.
 	checkoutsErr   error
 	recordsChanged []string
-	// reviewBase is what the ReviewBase seam answers; changedFiles and commitMessages are what the range's reads answer.
-	// addedDiff is the diff of the files the range adds, which the full range diff holds after the changed files' diffs.
-	// changedFilesBases, commitMessagesBases and rangeDiffBases hold the base each of those reads was called with.
-	reviewBase          string
-	changedFiles        []fabriclayout.FileDiff
-	addedDiff           string
-	commitMessages      []string
-	changedFilesBases   []string
-	commitMessagesBases []string
-	rangeDiffBases      []string
-	// fileRulings maps a listed file's path to the loosened checks the judge rules on it; a file with none is ruled none.
-	fileRulings map[string][]LoosenedRuling
-	// fileCarriedBy maps a listed file's path to the files the judge names as carrying its removed checks.
-	fileCarriedBy map[string][]string
 	// rulings maps a cell's "<case> <key>" to its ruling, which defaults to matching; rangeChecked is the open-range note.
 	rulings      map[string]Ruling
 	rangeChecked string
 	// onArrival runs at each judge arrival before the judgement is written; badJudgement makes it unparsable.
 	onArrival    func()
 	badJudgement bool
-	// reasonOf, when set, gives the reason the judge writes for each cell; it defaults to a fixed sentence.
-	// reverseCells makes the judge write its rulings in the reverse of the request's order.
-	reasonOf     func(cell JudgeCell) string
-	reverseCells bool
 	// requests, judgementPresent, and marksAtArrival record each arrival's request, file presence and session mark.
 	requests         []JudgeRequest
 	judgementPresent []bool
@@ -192,10 +173,9 @@ func newVerifyFixture(t *testing.T) *verifyFixture {
 		row:             "Drift-Verify",
 		config:          Config{Enabled: true, Diff: DiffLines, KeyPatterns: []string{keyValuePattern}},
 		rangeChecked:    "read what the range covers",
-		reviewBase:      "review-base",
 		compare:         passingCompare,
-		codeCheckout:    fabriclayout.CheckoutState{Root: t.TempDir(), Head: "code-1"},
-		recordsCheckout: fabriclayout.CheckoutState{Root: t.TempDir(), Head: "records-1"},
+		codeCheckout:    fabricengine.CheckoutState{Root: t.TempDir(), Head: "code-1"},
+		recordsCheckout: fabricengine.CheckoutState{Root: t.TempDir(), Head: "records-1"},
 	}
 
 	actions := make([]func(), 12)
@@ -236,32 +216,13 @@ func newVerifyFixture(t *testing.T) *verifyFixture {
 	}
 	d.JudgeSnapshotDir = filepath.Join(t.TempDir(), "snapshot")
 	d.LoomRecordsDirs = []string{testRunDirRel, testFrictionRel, testFrictionPrefix}
-	d.Checkouts = func() (fabriclayout.CheckoutState, fabriclayout.CheckoutState, error) {
+	d.Checkouts = func() (fabricengine.CheckoutState, fabricengine.CheckoutState, error) {
 		return f.codeCheckout, f.recordsCheckout, f.checkoutsErr
 	}
 	d.RecordsChangedSince = func(string) ([]string, error) { return f.recordsChanged, nil }
 	d.EndRoles = func(roles []string) error {
 		f.endedRoles = append(f.endedRoles, slices.Clone(roles))
 		return nil
-	}
-	d.BranchPoint = func() (string, error) { return "branch-point", nil }
-	d.ReviewBase = func() (string, error) { return f.reviewBase, nil }
-	d.ChangedFiles = func(base string) ([]fabriclayout.FileDiff, error) {
-		f.changedFilesBases = append(f.changedFilesBases, base)
-		return f.changedFiles, nil
-	}
-	d.CommitMessages = func(base string) ([]string, error) {
-		f.commitMessagesBases = append(f.commitMessagesBases, base)
-		return f.commitMessages, nil
-	}
-	d.RangeDiff = func(base string) (string, error) {
-		f.rangeDiffBases = append(f.rangeDiffBases, base)
-		var diff strings.Builder
-		for _, file := range f.changedFiles {
-			diff.WriteString(file.Path + "\n" + file.Diff)
-		}
-		diff.WriteString(f.addedDiff)
-		return diff.String(), nil
 	}
 	f.deps = d
 	return f
@@ -298,60 +259,24 @@ func (f *verifyFixture) judgeArrives() {
 		for _, name := range slices.Sorted(maps.Keys(f.caseRulings)) {
 			fmt.Fprintf(&text, "  - case: %s\n    ruling: %s\n    reason: compared the old and the new value\n", name, f.caseRulings[name])
 		}
-		text.WriteString(f.filesYAML(request))
 		writeTree(f.t, filepath.Dir(f.paths.Judgement), map[string]string{judgementFileName: text.String()})
 		return
 	}
 
 	var text strings.Builder
 	fmt.Fprintf(&text, "spawn_id: %s\ncells:\n", request.SpawnID)
-	cells := slices.Clone(request.Cells)
-	if f.reverseCells {
-		slices.Reverse(cells)
-	}
-	for _, cell := range cells {
+	for _, cell := range request.Cells {
 		ruling := RulingMatches
 		if set, ok := f.rulings[cell.Case+" "+cell.Identity.Key]; ok {
 			ruling = set
 		}
-		reason := "compared the old and the new value"
-		if f.reasonOf != nil {
-			reason = f.reasonOf(cell)
-		}
-		fmt.Fprintf(&text, "  - id: %s\n    ruling: %s\n    reason: %s\n", cell.ID, ruling, reason)
+		fmt.Fprintf(&text, "  - id: %s\n    ruling: %s\n    reason: compared the old and the new value\n", cell.ID, ruling)
 	}
 	text.WriteString("open_ranges:\n")
 	for _, open := range request.OpenRanges {
 		fmt.Fprintf(&text, "  - case: %s\n    range: %q\n    checked: %s\n", open.Case, open.Range, f.rangeChecked)
 	}
-	text.WriteString(f.filesYAML(request))
 	writeTree(f.t, filepath.Dir(f.paths.Judgement), map[string]string{judgementFileName: text.String()})
-}
-
-// filesYAML returns the files block of the scripted judgement.
-// Each listed file is ruled by fileRulings, and none by default.
-// It is empty when the request lists no file.
-func (f *verifyFixture) filesYAML(request JudgeRequest) string {
-	if len(request.Files) == 0 {
-		return ""
-	}
-	var text strings.Builder
-	text.WriteString("files:\n")
-	for _, file := range request.Files {
-		checks := f.fileRulings[file.Path]
-		if len(checks) == 0 {
-			fmt.Fprintf(&text, "  - id: %s\n    ruling: %s\n    reason: no assertion was widened\n", file.ID, RulingNone)
-			if carriers := f.fileCarriedBy[file.Path]; len(carriers) > 0 {
-				fmt.Fprintf(&text, "    carried_by: [%s]\n", strings.Join(carriers, ", "))
-			}
-			continue
-		}
-		fmt.Fprintf(&text, "  - id: %s\n    ruling: %s\n    reason: a limit was widened\n    checks:\n", file.ID, RulingLoosened)
-		for _, check := range checks {
-			fmt.Fprintf(&text, "      - test: %q\n        loosened: %q\n        ruling: %s\n        cause: %q\n        reason: %q\n", check.Test, check.Loosened, check.Ruling, check.Cause, check.Reason)
-		}
-	}
-	return text.String()
 }
 
 // seed writes the baseline files and a passed capture record at the code HEAD.
@@ -367,7 +292,7 @@ func (f *verifyFixture) seed(scope ScopeRecord, baseline map[string]string) {
 		f.t.Fatalf("WriteCapture() = %v; want nil", err)
 	}
 	change := func(s *ScopeRecord, _ *JudgedRecord) error { *s = scope; return nil }
-	if err := WriteRecords(f.deps, change, fabriclayout.Trailer{Key: BaselineTrailerKey, Value: digest}); err != nil {
+	if err := WriteRecords(f.deps, change, fabricengine.Trailer{Key: BaselineTrailerKey, Value: digest}); err != nil {
 		f.t.Fatalf("WriteRecords() = %v; want nil", err)
 	}
 }
@@ -838,214 +763,6 @@ func TestDriftVerify(t *testing.T) {
 		}
 	})
 
-	t.Run("a halt over many ruled cells leads with the way forward, groups them, caps the text and writes every one to the findings file", func(t *testing.T) {
-		t.Parallel()
-		const rows, cases = 150, 100
-		var repeatedBase, repeatedNow strings.Builder
-		for i := range rows {
-			fmt.Fprintf(&repeatedBase, "t=%d\n", i)
-			fmt.Fprintf(&repeatedNow, "t=%d\n", i+1)
-		}
-		manyBase, manyNow := map[string]string{}, map[string]string{}
-		var manyExpected strings.Builder
-		manyRulings := map[string]Ruling{}
-		manyExpected.WriteString("cases:\n")
-		for i := range cases {
-			name := fmt.Sprintf("c%03d.txt", i)
-			manyBase[name], manyNow[name] = "y=2\n", "y=3\n"
-			fmt.Fprintf(&manyExpected, "  %s:\n    keys:\n      - key: y\n        why: tuned the setting\n", name)
-			manyRulings[name+" y"] = RulingNoMatch
-		}
-		const repeatedExpected = "cases:\n  a.txt:\n    keys:\n      - key: t\n        why: shifted the series\n"
-		repeatedFragments := []string{
-			fmt.Sprintf("%d findings", rows),
-			fmt.Sprintf(`changed in case "a.txt" at key "t" n 1 to %d, %d rows, first old "0", new "1", last old "%d", new "%d": compared the old and the new value`, rows, rows, rows-1, rows),
-		}
-		repeatedLast := fmt.Sprintf(`changed in case "a.txt" at key "t" n %d: old "%d", new "%d": compared the old and the new value`, rows, rows-1, rows)
-		manyLast := fmt.Sprintf(`changed in case "c%03d.txt" at key "y": old "2", new "3": compared the old and the new value`, cases-1)
-
-		tests := []struct {
-			name      string
-			baseline  map[string]string
-			current   map[string]string
-			expected  string
-			rulings   map[string]Ruling
-			findings  int
-			fragments []string
-			shown     int
-			// reasonOf sets the judge's reason per cell, and reversed makes it rule the cells in reverse order.
-			reasonOf func(cell JudgeCell) string
-			reversed bool
-			// groups is how many findings the reason carries, those it leaves out included.
-			groups int
-			// inFile holds the exact line of a cell the reason leaves out, which the findings file must still hold.
-			inFile []string
-			// absent holds text the reason must not carry.
-			absent []string
-			// cutToTheLimit says the one finding passes the limit, so the reason ends it with an ellipsis.
-			cutToTheLimit bool
-		}{
-			{
-				name:      "RepeatedKeyIsOneGroup",
-				baseline:  map[string]string{"a.txt": repeatedBase.String()},
-				current:   map[string]string{"a.txt": repeatedNow.String()},
-				expected:  repeatedExpected,
-				rulings:   map[string]Ruling{"a.txt t": RulingNoMatch},
-				findings:  rows,
-				fragments: repeatedFragments,
-				shown:     1,
-				groups:    1,
-				inFile:    []string{repeatedLast},
-			},
-			{
-				name:      "GroupEndsFollowTheRowsWhenTheJudgeRulesThemOutOfOrder",
-				baseline:  map[string]string{"a.txt": repeatedBase.String()},
-				current:   map[string]string{"a.txt": repeatedNow.String()},
-				expected:  repeatedExpected,
-				rulings:   map[string]Ruling{"a.txt t": RulingNoMatch},
-				reversed:  true,
-				findings:  rows,
-				fragments: repeatedFragments,
-				shown:     1,
-				groups:    1,
-				inFile:    []string{repeatedLast},
-			},
-			{
-				name:      "ManyGroupsAreCapped",
-				baseline:  manyBase,
-				current:   manyNow,
-				expected:  manyExpected.String(),
-				rulings:   manyRulings,
-				findings:  cases,
-				fragments: []string{fmt.Sprintf("%d findings", cases), " more; every finding is in "},
-				groups:    cases,
-				inFile:    []string{manyLast},
-			},
-			{
-				name:     "CellsThatDifferOnlyInReasonStayApart",
-				baseline: map[string]string{"a.txt": "t=0\nt=1\nt=2\nt=3\n"},
-				current:  map[string]string{"a.txt": "t=1\nt=2\nt=3\nt=4\n"},
-				expected: repeatedExpected,
-				rulings:  map[string]Ruling{"a.txt t": RulingNoMatch},
-				reasonOf: func(cell JudgeCell) string {
-					if cell.Identity.N <= 2 {
-						return "reason A"
-					}
-					return "reason B"
-				},
-				findings: 4,
-				fragments: []string{
-					`changed in case "a.txt" at key "t" n 1 to 2, 2 rows, first old "0", new "1", last old "1", new "2": reason A`,
-					`changed in case "a.txt" at key "t" n 3 to 4, 2 rows, first old "2", new "3", last old "3", new "4": reason B`,
-				},
-				groups: 2,
-			},
-			{
-				name:      "UnkeyedLinesWordALineRange",
-				baseline:  map[string]string{"a.txt": "alpha\nbeta\ngamma\n"},
-				current:   map[string]string{"a.txt": "ALPHA\nBETA\ngamma\n"},
-				expected:  "cases:\n  a.txt:\n    lines:\n      - range: \"1-\"\n        why: the free text is rewritten\n",
-				rulings:   map[string]Ruling{"a.txt ": RulingNoMatch},
-				findings:  2,
-				fragments: []string{`changed in case "a.txt" at lines #1 to #2, 2 rows, first old "alpha", new "ALPHA", last old "beta", new "BETA": compared the old and the new value`},
-				groups:    1,
-			},
-			{
-				name:     "AddedCasesStayOneFindingEach",
-				baseline: map[string]string{"a.txt": "x=1\n"},
-				current:  map[string]string{"a.txt": "x=1\n", "b.txt": "x=1\n", "c.txt": "x=1\n"},
-				expected: "added:\n  - case: b.txt\n    why: the task adds b\n  - case: c.txt\n    why: the task adds c\n",
-				rulings:  map[string]Ruling{"b.txt ": RulingNoMatch, "c.txt ": RulingNoMatch},
-				findings: 2,
-				fragments: []string{
-					`added case "b.txt": compared the old and the new value`,
-					`added case "c.txt": compared the old and the new value`,
-				},
-				groups: 2,
-				absent: []string{" rows,"},
-			},
-			{
-				name:          "ALongFindingIsCutToTheLimit",
-				baseline:      map[string]string{"a.txt": "y=2\n"},
-				current:       map[string]string{"a.txt": "y=3\n"},
-				expected:      expectsY,
-				rulings:       map[string]Ruling{"a.txt y": RulingNoMatch},
-				reasonOf:      func(JudgeCell) string { return strings.Repeat("x", 2*haltFindingsLimit) },
-				findings:      1,
-				groups:        1,
-				cutToTheLimit: true,
-			},
-		}
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				t.Parallel()
-				f := newVerifyFixture(t)
-				f.seed(countedScope(), tt.baseline)
-				f.seal(tt.expected)
-				f.current = tt.current
-				f.rulings = tt.rulings
-				f.reasonOf, f.reverseCells = tt.reasonOf, tt.reversed
-
-				outcome, pointer, err := f.call()
-
-				findingsRel, relErr := filepath.Rel(f.deps.WorktreeRoot, f.paths.Findings)
-				if relErr != nil {
-					t.Fatal(relErr)
-				}
-				requireStuck(t, outcome, pointer, err, true, append(tt.fragments, "every finding is in "+filepath.ToSlash(findingsRel))...)
-				if way, findings := strings.Index(pointer.Reason, "way forward"), strings.Index(pointer.Reason, "findings: "); way < 0 || way > findings {
-					t.Errorf("reason %q puts the way forward at %d and the findings at %d; want the way forward first", pointer.Reason, way, findings)
-				}
-				if limit := haltFindingsLimit + 1000; len(pointer.Reason) > limit {
-					t.Errorf("reason is %d characters; want at most %d", len(pointer.Reason), limit)
-				}
-				if tt.shown > 0 {
-					if got := strings.Count(pointer.Reason, "compared the old and the new value"); got != tt.shown {
-						t.Errorf("reason carries %d rulings; want %d", got, tt.shown)
-					}
-				}
-				for _, text := range tt.absent {
-					if strings.Contains(pointer.Reason, text) {
-						t.Errorf("reason %q carries %q; want it left out", pointer.Reason, text)
-					}
-				}
-
-				const findingsMark, findingsEnd = "findings: ", "; every finding is in "
-				start := strings.Index(pointer.Reason, findingsMark) + len(findingsMark)
-				part := pointer.Reason[start:strings.Index(pointer.Reason, findingsEnd)]
-				if len(part) > haltFindingsLimit {
-					t.Errorf("the findings part is %d characters; want at most %d", len(part), haltFindingsLimit)
-				}
-				if got := strings.HasSuffix(part, findingsEllipsis); got != tt.cutToTheLimit {
-					t.Errorf("the findings part %q ends with the ellipsis = %v; want %v", part, got, tt.cutToTheLimit)
-				}
-				pieces, omitted := strings.Split(part, findingsSeparator), 0
-				if note := pieces[len(pieces)-1]; strings.HasPrefix(note, "and ") {
-					if _, scanErr := fmt.Sscanf(note, "and %d more", &omitted); scanErr != nil {
-						t.Fatalf("read the omission note %q: %v", note, scanErr)
-					}
-					pieces = pieces[:len(pieces)-1]
-				}
-				if got := len(pieces) + omitted; got != tt.groups {
-					t.Errorf("the findings part carries %d findings and omits %d, %d in all; want %d", len(pieces), omitted, got, tt.groups)
-				}
-
-				data, readErr := os.ReadFile(f.paths.Findings)
-				if readErr != nil {
-					t.Fatalf("read the findings file: %v", readErr)
-				}
-				if got := strings.Count(string(data), "\n- "); got != tt.findings {
-					t.Errorf("the findings file holds %d findings; want %d", got, tt.findings)
-				}
-				for _, line := range tt.inFile {
-					if !strings.Contains(string(data), "\n- "+line+"\n") {
-						t.Errorf("the findings file lacks the line %q", line)
-					}
-				}
-			})
-		}
-	})
-
 	t.Run("a cell of an added case names the case's file in the current capture", func(t *testing.T) {
 		t.Parallel()
 		f := newVerifyFixture(t)
@@ -1282,265 +999,6 @@ func TestDriftVerify(t *testing.T) {
 						t.Errorf("%d judge runs, stored cases %+v, last check %+v; want one judge, no stored ruling and a pass with one matched case", f.seats.Calls, f.records().Judged.Cases, scope.LastCheck)
 					}
 				})
-			}
-		})
-	})
-
-	t.Run("a loosened check in the review range", func(t *testing.T) {
-		t.Parallel()
-		const limitsTest = "limits_test.go"
-		const trailer = "Loosened-Check: TestLimit — the limit from 5 to 50 — measured 40 under load"
-		widened := []fabriclayout.FileDiff{{Path: limitsTest, Diff: "-\tlimit := 5\n+\tlimit := 50\n"}}
-		uncaused := map[string][]LoosenedRuling{limitsTest: {{Test: "TestLimit", Loosened: "the limit from 5 to 50", Ruling: RulingUncaused, Reason: "no measurement is named"}}}
-		caused := map[string][]LoosenedRuling{limitsTest: {{Test: "TestLimit", Loosened: "the limit from 5 to 50", Ruling: RulingCaused, Cause: "measured 40 under load", Reason: "the trailer names a measurement"}}}
-		wantUncaused := LoosenedCheck{Path: limitsTest, Test: "TestLimit", Loosened: "the limit from 5 to 50", Ruling: RulingUncaused, Reason: "no measurement is named"}
-		wantCaused := LoosenedCheck{Path: limitsTest, Test: "TestLimit", Loosened: "the limit from 5 to 50", Ruling: RulingCaused, Cause: "measured 40 under load", Reason: "the trailer names a measurement"}
-
-		t.Run("a widened limit with no trailer halts, a trailer-only commit passes, and an unchanged range reuses the ruling", func(t *testing.T) {
-			t.Parallel()
-			f := newVerifyFixture(t)
-			f.seed(countedScope(), verifyBaseline)
-			f.current = verifyBaseline
-			f.changedFiles = widened
-			f.commitMessages = []string{"3: widen the limit\n"}
-			f.fileRulings = uncaused
-
-			outcome, pointer, err := f.call()
-
-			requireStuck(t, outcome, pointer, err, true, "has no measured cause", limitsTest+": TestLimit: the limit from 5 to 50: no measurement is named",
-				`"Loosened-Check: <test> — <what was loosened> — <measured cause>" trailer`, "commit a revert of the loosening", "lym loom resume")
-			wantFile := JudgeFile{ID: "f1", Path: limitsTest, Diff: widened[0].Diff}
-			if len(f.requests) != 1 || len(f.requests[0].Cells) != 0 || !slices.Equal(f.requests[0].Files, []JudgeFile{wantFile}) || !slices.Equal(f.requests[0].CommitMessages, f.commitMessages) {
-				t.Fatalf("requests = %+v; want one judge listing %+v and the range's messages, with no cell", f.requests, wantFile)
-			}
-			if !slices.Equal(f.changedFilesBases, []string{"review-base"}) || !slices.Equal(f.commitMessagesBases, []string{"review-base"}) || !slices.Equal(f.rangeDiffBases, []string{"review-base"}) {
-				t.Errorf("ChangedFiles bases %q, CommitMessages bases %q and RangeDiff bases %q; want the review base alone, not the branch point", f.changedFilesBases, f.commitMessagesBases, f.rangeDiffBases)
-			}
-			scope, judged := f.records().Scope, f.records().Judged
-			if len(judged.Files) != 1 || judged.Files[0].Path != limitsTest || judged.Files[0].Key != fileRulingKey(widened[0].Diff, nil) || judged.Files[0].Ruling != RulingLoosened {
-				t.Errorf("stored files = %+v; want the one loosened ruling under the key of the diff with no trailer", judged.Files)
-			}
-			if scope.LastCheck.Passed || !slices.Equal(scope.LastCheck.Loosened, []LoosenedCheck{wantUncaused}) {
-				t.Errorf("last check = %+v; want it not passed, recording %+v", scope.LastCheck, wantUncaused)
-			}
-
-			outcome, pointer, err = f.call()
-
-			requireStuck(t, outcome, pointer, err, true, "has no measured cause")
-			if f.seats.Calls != 1 {
-				t.Fatalf("%d judge runs after a resume with no new commit; want the stored ruling to halt with no judge", f.seats.Calls)
-			}
-
-			f.moveHead("code-head-1")
-			f.commitMessages = []string{"record the cause\n\n" + trailer + "\n", "3: widen the limit\n"}
-			f.fileRulings = caused
-
-			requireDone(f)
-
-			if f.seats.Calls != 2 {
-				t.Fatalf("%d judge runs after a trailer-only commit; want the judge spawned again", f.seats.Calls)
-			}
-			scope, judged = f.records().Scope, f.records().Judged
-			if len(judged.Files) != 1 || judged.Files[0].Key != fileRulingKey(widened[0].Diff, []string{trailer}) {
-				t.Errorf("stored files = %+v; want the one ruling replaced, under the key that holds the trailer", judged.Files)
-			}
-			if !scope.LastCheck.Passed || !slices.Equal(scope.LastCheck.Loosened, []LoosenedCheck{wantCaused}) {
-				t.Errorf("last check = %+v; want a pass recording %+v", scope.LastCheck, wantCaused)
-			}
-
-			f.moveHead("code-head-2")
-
-			requireDone(f)
-
-			if f.seats.Calls != 2 || !slices.Equal(f.scope().LastCheck.Loosened, []LoosenedCheck{wantCaused}) {
-				t.Errorf("%d judge runs and last check %+v over an unchanged range; want the ruling reused, with no judge", f.seats.Calls, f.scope().LastCheck)
-			}
-		})
-
-		t.Run("a later commit that adds the dropped checks to another test has the uncaused ruling judged again", func(t *testing.T) {
-			t.Parallel()
-			const movedTo = "limits_class_test.go"
-			const untouchedTest = "names_test.go"
-			before := fabriclayout.FileDiff{Path: movedTo, Diff: "+type limitsClass struct{}\n"}
-			untouched := fabriclayout.FileDiff{Path: untouchedTest, Diff: "+\tname := \"limit\"\n"}
-			f := newVerifyFixture(t)
-			f.seed(countedScope(), verifyBaseline)
-			f.current = verifyBaseline
-			f.changedFiles = []fabriclayout.FileDiff{widened[0], before, untouched}
-			f.commitMessages = []string{"3: widen the limit\n"}
-			f.fileRulings = uncaused
-			storedUntouched := func() JudgedFile {
-				files := f.records().Judged.Files
-				index := slices.IndexFunc(files, func(held JudgedFile) bool { return held.Path == untouchedTest })
-				if index < 0 {
-					t.Fatalf("stored files = %+v; want a ruling on %s", files, untouchedTest)
-				}
-				return files[index]
-			}
-
-			outcome, pointer, err := f.call()
-
-			requireStuck(t, outcome, pointer, err, true, "has no measured cause", "commit the dropped checks in a test", "has the judge rule again on a file whose stored ruling the new commits may answer")
-			ruledFirst := storedUntouched()
-
-			added := fabriclayout.FileDiff{Path: movedTo, Diff: before.Diff + "+\tif got > 5 {\n+\t\tt.Errorf(\"limit exceeded\")\n"}
-			f.moveHead("code-head-1")
-			f.changedFiles = []fabriclayout.FileDiff{widened[0], added, untouched}
-			f.commitMessages = []string{"4: add the dropped checks\n", "3: widen the limit\n"}
-			f.fileRulings = nil
-
-			requireDone(f)
-
-			wantFiles := []JudgeFile{{ID: "f1", Path: limitsTest, Diff: widened[0].Diff}, {ID: "f2", Path: movedTo, Diff: added.Diff}}
-			if f.seats.Calls != 2 || !slices.Equal(f.requests[1].Files, wantFiles) {
-				t.Fatalf("%d judge runs, requests %+v; want a second judge listing %+v", f.seats.Calls, f.requests, wantFiles)
-			}
-			if got := storedUntouched(); !reflect.DeepEqual(got, ruledFirst) {
-				t.Errorf("stored ruling on %s = %+v; want it reused as %+v", untouchedTest, got, ruledFirst)
-			}
-			if scope := f.scope(); !scope.LastCheck.Passed || len(scope.LastCheck.Loosened) != 0 {
-				t.Errorf("last check = %+v; want a pass with no loosened check", scope.LastCheck)
-			}
-		})
-
-		t.Run("a later commit that adds the dropped checks in a new test file has the uncaused ruling judged again", func(t *testing.T) {
-			t.Parallel()
-			f := newVerifyFixture(t)
-			f.seed(countedScope(), verifyBaseline)
-			f.current = verifyBaseline
-			f.changedFiles = widened
-			f.fileRulings = uncaused
-
-			outcome, pointer, err := f.call()
-
-			requireStuck(t, outcome, pointer, err, true, "has no measured cause")
-
-			f.moveHead("code-head-1")
-			f.addedDiff = "limits_class_test.go\n+\tif got > 5 {\n"
-			f.fileRulings = nil
-
-			requireDone(f)
-
-			if f.seats.Calls != 2 || !f.scope().LastCheck.Passed {
-				t.Errorf("%d judge runs and last check %+v; want a second judge and a pass", f.seats.Calls, f.scope().LastCheck)
-			}
-		})
-
-		t.Run("a ruling that names a carrying file the range adds is judged again once that file changes", func(t *testing.T) {
-			t.Parallel()
-			const carrier = "limits_class_test.go"
-			f := newVerifyFixture(t)
-			f.seed(countedScope(), verifyBaseline)
-			f.current = verifyBaseline
-			f.changedFiles = widened
-			f.addedDiff = carrier + "\n+\tif got > 5 {\n"
-			f.fileCarriedBy = map[string][]string{limitsTest: {carrier}}
-			requireDone(f)
-
-			f.moveHead("code-head-1")
-			f.addedDiff = carrier + "\n+type limitsClass struct{}\n"
-
-			requireDone(f)
-
-			wantFiles := []JudgeFile{{ID: "f1", Path: limitsTest, Diff: widened[0].Diff}}
-			if f.seats.Calls != 2 || !slices.Equal(f.requests[1].Files, wantFiles) {
-				t.Errorf("%d judge runs, requests %+v; want a second judge listing %+v", f.seats.Calls, f.requests, wantFiles)
-			}
-		})
-
-		t.Run("a judge spawn ruling a cell does not match and a file uncaused halts with both reasons, the no-match one first", func(t *testing.T) {
-			t.Parallel()
-			f := newVerifyFixture(t)
-			f.seedChanged(expectsY)
-			f.rulings = map[string]Ruling{"a.txt y": RulingNoMatch}
-			f.changedFiles = widened
-			f.fileRulings = uncaused
-
-			outcome, pointer, err := f.call()
-
-			requireStuck(t, outcome, pointer, err, true, "does not match", "has no measured cause")
-			if strings.Index(pointer.Reason, "does not match") > strings.Index(pointer.Reason, "has no measured cause") {
-				t.Errorf("reason %q names the uncaused check before the no-match one; want the no-match reason first", pointer.Reason)
-			}
-		})
-
-		t.Run("a nil review base lists no file", func(t *testing.T) {
-			t.Parallel()
-			f := newVerifyFixture(t)
-			f.seedChanged(expectsY)
-			f.deps.ReviewBase = nil
-			f.changedFiles = widened
-			f.fileRulings = uncaused
-
-			requireDone(f)
-
-			if len(f.requests) != 1 || len(f.requests[0].Files) != 0 || len(f.changedFilesBases)+len(f.commitMessagesBases)+len(f.rangeDiffBases) != 0 {
-				t.Errorf("requests = %+v, range reads %q, %q and %q; want one judge for the cell alone and no range read", f.requests, f.changedFilesBases, f.commitMessagesBases, f.rangeDiffBases)
-			}
-		})
-
-		t.Run("under command a compare that exits 0 still spawns the judge for an unruled file and halts on its uncaused ruling", func(t *testing.T) {
-			t.Parallel()
-			f := newVerifyFixture(t)
-			f.seedCommand()
-			f.compare = passingCompare
-			f.changedFiles = widened
-			f.fileRulings = uncaused
-
-			outcome, pointer, err := f.call()
-
-			requireStuck(t, outcome, pointer, err, true, "has no measured cause", "lym loom resume")
-			if f.compares != 1 || len(f.requests) != 1 {
-				t.Fatalf("%d compares and %d requests; want one compare and one judge", f.compares, len(f.requests))
-			}
-			request := f.requests[0]
-			if request.Mode != DiffCommand || request.CompareLog != "" || len(request.Cells) != 0 || len(request.Files) != 1 {
-				t.Errorf("request = %+v; want the command mode with no compare log, no cell and the one file", request)
-			}
-			scope := f.scope()
-			if scope.LastCheck.Passed || scope.LastCheck.CompareExit != 0 || !slices.Equal(scope.LastCheck.Loosened, []LoosenedCheck{wantUncaused}) {
-				t.Errorf("last check = %+v; want it not passed, with exit 0 and %+v", scope.LastCheck, wantUncaused)
-			}
-		})
-
-		t.Run("under command a failing compare and an uncaused file halt with the no-match reason first and store the file ruling", func(t *testing.T) {
-			t.Parallel()
-			f := newVerifyFixture(t)
-			f.seedCommand()
-			f.caseRulings = map[string]Ruling{"a.txt": RulingNoMatch}
-			f.changedFiles = widened
-			f.fileRulings = uncaused
-
-			outcome, pointer, err := f.call()
-
-			requireStuck(t, outcome, pointer, err, true, "does not match", "has no measured cause")
-			if strings.Index(pointer.Reason, "does not match") > strings.Index(pointer.Reason, "has no measured cause") {
-				t.Errorf("reason %q names the uncaused check before the no-match one; want the no-match reason first", pointer.Reason)
-			}
-			judged := f.records().Judged
-			if len(judged.Files) != 1 || judged.Files[0].Path != limitsTest || judged.Files[0].Key != fileRulingKey(widened[0].Diff, nil) || judged.Files[0].Ruling != RulingLoosened {
-				t.Errorf("stored files = %+v; want the one loosened ruling under the key of the diff with no trailer", judged.Files)
-			}
-		})
-
-		t.Run("under command a compare that exits 0 over a file already ruled reuses the ruling with no judge", func(t *testing.T) {
-			t.Parallel()
-			f := newVerifyFixture(t)
-			f.seedCommand()
-			f.compare = passingCompare
-			f.changedFiles = widened
-			f.fileRulings = caused
-			requireDone(f)
-			if f.seats.Calls != 1 {
-				t.Fatalf("%d judge runs for the first pass; want one, for the unruled file", f.seats.Calls)
-			}
-
-			f.moveHead("code-head-1")
-
-			requireDone(f)
-
-			if f.seats.Calls != 1 || !f.scope().LastCheck.Passed || !slices.Equal(f.scope().LastCheck.Loosened, []LoosenedCheck{wantCaused}) {
-				t.Errorf("%d judge runs and last check %+v over a ruled file; want no new judge and a pass recording %+v", f.seats.Calls, f.scope().LastCheck, wantCaused)
 			}
 		})
 	})
@@ -1808,113 +1266,6 @@ func TestDriftVerify(t *testing.T) {
 			})
 		}
 
-		t.Run("AResumeNamesWhatStillDiffersWhatWasRestoredAndWhenEachFileChanged", func(t *testing.T) {
-			t.Parallel()
-			f := newVerifyFixture(t)
-			f.seedChanged(expectsY)
-			now := f.deps.Now()
-			later := now.Add(6 * time.Minute)
-			edit := func(rel string, at time.Time) {
-				writeTestFile(t, f.codeCheckout.Root, rel, "edited at "+at.String())
-				if err := os.Chtimes(filepath.Join(f.codeCheckout.Root, rel), at, at); err != nil {
-					t.Fatal(err)
-				}
-			}
-			f.onArrival = func() {
-				edit("a.go", now)
-				edit("b.go", now)
-				f.codeCheckout.Changed = []string{"a.go", "b.go"}
-			}
-
-			outcome, pointer, err := f.call()
-
-			opened := stamp(now)
-			requireStuck(t, outcome, pointer, err, true, "the judge session changed what it may not",
-				fmt.Sprintf("code: a.go was changed (modified at %s, inside the judge session's window from %s to %s", opened, opened, opened))
-			if halt := f.scope().JudgeSession.GuardHalt; halt == nil || halt.At != opened || !slices.Equal(halt.Changes, []string{"code: a.go was changed", "code: b.go was changed"}) {
-				t.Fatalf("guard halt %+v; want it at %s naming both files", halt, opened)
-			}
-
-			f.onArrival = nil
-			removeTestFile(t, f.codeCheckout.Root, "a.go")
-			f.codeCheckout.Changed = []string{"b.go"}
-			edit("b.go", later)
-			outcome, pointer, err = f.call()
-
-			requireStuck(t, outcome, pointer, err, true, "the resume re-checked the judge guard",
-				fmt.Sprintf("code: b.go was changed (modified at %s, after the guard halted the returned judge session at %s, so by another process)", stamp(later), opened),
-				"restored since the last check: code: a.go was changed")
-			if f.seats.Calls != 1 {
-				t.Fatalf("%d judge runs after a resume with b.go still changed; want the guard to stop it with no spawn", f.seats.Calls)
-			}
-
-			if halt := f.scope().JudgeSession.GuardHalt; halt == nil || halt.At != opened || !slices.Equal(halt.Changes, []string{"code: b.go was changed"}) {
-				t.Fatalf("guard halt after the resume %+v; want the first halt's time %s and only b.go", halt, opened)
-			}
-
-			removeTestFile(t, f.codeCheckout.Root, "b.go")
-			f.codeCheckout.Changed = nil
-			f.captureFails = true
-			outcome, pointer, err = f.call()
-
-			requireStuck(t, outcome, pointer, err, true, "the current capture did not pass")
-			if mark := f.scope().JudgeSession; !mark.Open || mark.GuardHalt != nil {
-				t.Fatalf("mark %+v after a check that found nothing; want it open with the guard halt cleared", mark)
-			}
-
-			f.captureFails = false
-			requireDone(f)
-		})
-
-		t.Run("AChangeDatedBeforeTheSessionOpenedSaysSo", func(t *testing.T) {
-			t.Parallel()
-			f := newVerifyFixture(t)
-			f.seedChanged(expectsY)
-			now := f.deps.Now()
-			before := now.Add(-time.Hour)
-			f.onArrival = func() {
-				writeTestFile(t, f.codeCheckout.Root, "a.go", "edited")
-				if err := os.Chtimes(filepath.Join(f.codeCheckout.Root, "a.go"), before, before); err != nil {
-					t.Fatal(err)
-				}
-				f.codeCheckout.Changed = []string{"a.go"}
-			}
-
-			outcome, pointer, err := f.call()
-
-			requireStuck(t, outcome, pointer, err, true,
-				fmt.Sprintf("code: a.go was changed (modified at %s, before the judge session opened at %s)", stamp(before), stamp(now)))
-		})
-
-		t.Run("AResumeOverASessionThatNeverReturnedNamesWhatWasRestored", func(t *testing.T) {
-			t.Parallel()
-			f := newVerifyFixture(t)
-			f.seedChanged(expectsY)
-			f.badJudgement = true
-			outcome, pointer, err := f.call()
-			if err != nil || outcome != shedengine.Stuck || !f.scope().JudgeSession.Open {
-				t.Fatalf("Call() = %q, %v (%s), mark %+v; want the shed's Stuck with the mark left open", outcome, err, pointer.Reason, f.scope().JudgeSession)
-			}
-
-			both := []string{"code: a.go was changed", "code: b.go was changed"}
-			for _, rel := range []string{"a.go", "b.go"} {
-				writeTestFile(t, f.codeCheckout.Root, rel, "edited")
-			}
-			f.codeCheckout.Changed = []string{"a.go", "b.go"}
-			outcome, pointer, err = f.call()
-
-			requireStuck(t, outcome, pointer, err, true, "the judge session changed what it may not")
-			if halt := f.scope().JudgeSession.GuardHalt; halt == nil || halt.At != "" || !slices.Equal(halt.Changes, both) {
-				t.Fatalf("guard halt %+v; want the changes of both files and no time, since the judge never returned", halt)
-			}
-
-			removeTestFile(t, f.codeCheckout.Root, "a.go")
-			f.codeCheckout.Changed = []string{"b.go"}
-			outcome, pointer, err = f.call()
-
-			requireStuck(t, outcome, pointer, err, true, "the resume re-checked the judge guard", "restored since the last check: code: a.go was changed")
-		})
-
 		t.Run("AChangeMadeBeforeTheSpawnIsNoJudgeEdit", func(t *testing.T) {
 			t.Parallel()
 			f := newVerifyFixture(t)
@@ -1941,167 +1292,6 @@ func TestDriftVerify(t *testing.T) {
 		})
 	})
 
-	t.Run("under autonomy a judge ask that ends unanswered halts the pass, and a resume asks the parent again", func(t *testing.T) {
-		t.Parallel()
-
-		t.Run("an ask that ends unanswered halts before the rulings are stored, and passes without autonomy", func(t *testing.T) {
-			t.Parallel()
-			tests := []struct {
-				name     string
-				state    burlerengine.ParentAskState
-				noParent bool
-				arrive   func(a *autonomousJudge)
-			}{
-				{"Timeout", burlerengine.ParentAskTimeout, false, func(a *autonomousJudge) { a.atArrival[2] = a.moveClockPastTheWait }},
-				{"NotSent", burlerengine.ParentAskNotSent, false, func(a *autonomousJudge) {
-					a.atArrival[1] = func() { a.clock = a.clock.Add(judgeTimeout) }
-				}},
-				{"NoParent", burlerengine.ParentAskNoParent, true, func(*autonomousJudge) {}},
-				{"Undelivered", burlerengine.ParentAskUndelivered, false, func(a *autonomousJudge) {
-					a.deps.JudgeParent.Post = func(string, string) error { return errors.New("creel: may not sign as the program") }
-				}},
-			}
-			for _, tt := range tests {
-				for _, autonomous := range []bool{true, false} {
-					t.Run(fmt.Sprintf("%s_Autonomous%v", tt.name, autonomous), func(t *testing.T) {
-						t.Parallel()
-						a := newAutonomousJudge(t, autonomous, tt.noParent)
-						a.seedChanged(expectsY)
-						tt.arrive(a)
-
-						outcome, pointer, err := a.call()
-
-						if asks := a.asks(); len(asks) != 1 || asks[0].State != tt.state {
-							t.Fatalf("asks = %+v; want one ask in state %s", asks, tt.state)
-						}
-						if autonomous {
-							requireAutonomyHalt(t, a.verifyFixture, outcome, pointer, err, tt.state)
-							return
-						}
-						if err != nil || outcome != shedengine.Done || len(a.records().Judged.Tuples) != 1 {
-							t.Errorf("Call() = %q, %v (%s) with %d stored tuples; want Done with the rulings stored", outcome, err, pointer.Reason, len(a.records().Judged.Tuples))
-						}
-					})
-				}
-			}
-		})
-
-		t.Run("a satisfied answer to the ask stores the rulings", func(t *testing.T) {
-			t.Parallel()
-			a := newAutonomousJudge(t, true, false)
-			a.seedChanged(expectsY)
-			a.atArrival[2] = a.answerLatestSatisfied
-
-			requireDone(a.verifyFixture)
-
-			if asks := a.asks(); len(asks) != 1 || asks[0].State != burlerengine.ParentAskDone || len(a.records().Judged.Tuples) != 1 {
-				t.Errorf("asks = %+v and %d stored tuples; want one done ask and the rulings stored", asks, len(a.records().Judged.Tuples))
-			}
-		})
-
-		t.Run("a resume clears the ended ask, asks again over the same rulings and stores them on the answer", func(t *testing.T) {
-			t.Parallel()
-			a := newAutonomousJudge(t, true, false)
-			a.seedChanged(expectsY)
-			a.haltOnTimeout()
-			runsBefore := a.runs()
-			a.onSleep(a.answerLatestSatisfied)
-
-			requireDone(a.verifyFixture)
-
-			asks := a.asks()
-			if len(asks) != 2 || !asks[0].Cleared || asks[0].State != burlerengine.ParentAskTimeout ||
-				asks[1].Round != 2 || asks[1].Digest != asks[0].Digest || asks[1].State != burlerengine.ParentAskDone || asks[1].Cleared {
-				t.Errorf("asks = %+v; want the timed-out ask cleared and a done ask of round 2 over the same digest", asks)
-			}
-			if a.runs() != runsBefore || a.sleeps != 1 {
-				t.Errorf("%d runs after %d before and %d waits; want no seat started and one wait", a.runs(), runsBefore, a.sleeps)
-			}
-			if scope := a.scope(); len(a.records().Judged.Tuples) != 1 || scope.JudgeSession.Open || !a.judgementGone() {
-				t.Errorf("tuples %d, mark %+v, judgement gone %v; want the rulings stored, the mark closed and judgement.yaml removed", len(a.records().Judged.Tuples), scope.JudgeSession, a.judgementGone())
-			}
-		})
-
-		t.Run("a resume whose new ask ends unanswered halts again", func(t *testing.T) {
-			t.Parallel()
-			a := newAutonomousJudge(t, true, false)
-			a.seedChanged(expectsY)
-			a.haltOnTimeout()
-			a.onSleep(a.moveClockPastTheWait)
-
-			outcome, pointer, err := a.call()
-
-			requireAutonomyHalt(t, a.verifyFixture, outcome, pointer, err, burlerengine.ParentAskTimeout)
-			if asks := a.asks(); len(asks) != 2 || asks[1].State != burlerengine.ParentAskTimeout || asks[1].Cleared {
-				t.Errorf("asks = %+v; want the new ask timed out and not cleared", asks)
-			}
-		})
-
-		t.Run("a resume after a kill mid-wait continues the open ask and records no further one", func(t *testing.T) {
-			t.Parallel()
-			a := newAutonomousJudge(t, true, false)
-			a.seedChanged(expectsY)
-			a.haltOnTimeout()
-			first := a.asks()[0]
-			if err := burlerengine.ClearParentAsk(a.files, first.Number); err != nil {
-				t.Fatalf("ClearParentAsk() error = %v; want nil", err)
-			}
-			open := burlerengine.ParentAsk{Round: 2, Seed: first.Seed, Tag: first.Tag, Digest: first.Digest, State: burlerengine.ParentAskOpen, Strand: first.Strand, AskedAt: a.clock, Deadline: a.clock.Add(autonomyWait)}
-			if _, err := burlerengine.RecordParentAsk(a.files, open); err != nil {
-				t.Fatalf("RecordParentAsk() error = %v; want nil", err)
-			}
-			runsBefore := a.runs()
-			a.onSleep(a.answerLatestSatisfied)
-
-			requireDone(a.verifyFixture)
-
-			if asks := a.asks(); len(asks) != 2 || asks[1].State != burlerengine.ParentAskDone || a.runs() != runsBefore || len(a.records().Judged.Tuples) != 1 {
-				t.Errorf("asks = %+v, %d runs after %d before and %d stored tuples; want no further ask, no seat and the rulings stored", asks, a.runs(), runsBefore, len(a.records().Judged.Tuples))
-			}
-		})
-
-		t.Run("a resume over a lost snapshot starts the judge as today", func(t *testing.T) {
-			t.Parallel()
-			a := newAutonomousJudge(t, true, false)
-			a.seedChanged(expectsY)
-			a.haltOnTimeout()
-			runsBefore := a.seats.Calls
-			err := WriteRecords(a.deps, func(scope *ScopeRecord, _ *JudgedRecord) error {
-				scope.SnapshotLost = true
-				return nil
-			})
-			if err != nil {
-				t.Fatalf("WriteRecords() error = %v; want nil", err)
-			}
-
-			if _, _, err := a.call(); err != nil {
-				t.Fatalf("Call() error = %v; want nil", err)
-			}
-
-			if a.seats.Calls != runsBefore+1 {
-				t.Errorf("%d judge runs after %d before; want the judge started once more", a.seats.Calls, runsBefore)
-			}
-		})
-
-		t.Run("under diff command an ask that ends unanswered halts, and a resume asks again", func(t *testing.T) {
-			t.Parallel()
-			a := newAutonomousJudge(t, true, false)
-			a.seedCommand()
-			a.caseRulings = map[string]Ruling{"a.txt": RulingNoMatch}
-			a.haltOnTimeout()
-			runsBefore := a.runs()
-			a.onSleep(a.answerLatestSatisfied)
-
-			outcome, pointer, err := a.call()
-
-			requireStuck(t, outcome, pointer, err, true, "does not match")
-			asks := a.asks()
-			if len(asks) != 2 || !asks[0].Cleared || asks[1].Round != 2 || asks[1].State != burlerengine.ParentAskDone || a.runs() != runsBefore || len(a.records().Judged.Cases) != 1 {
-				t.Errorf("asks = %+v, %d runs after %d before and %d stored cases; want a new done ask, no seat and the case ruling stored", asks, a.runs(), runsBefore, len(a.records().Judged.Cases))
-			}
-		})
-	})
-
 	t.Run("a judgement entry that fails every attempt ends Stuck and the next entry respawns the judge", func(t *testing.T) {
 		t.Parallel()
 		f := newVerifyFixture(t)
@@ -2124,99 +1314,6 @@ func TestDriftVerify(t *testing.T) {
 			t.Errorf("%d runs, spawn ids %q and %q; want a respawn under the same spawn id", f.seats.Calls, f.requests[0].SpawnID, f.requests[len(f.requests)-1].SpawnID)
 		}
 	})
-}
-
-// autonomyWait is the drift.judge_parent_timeout_min of the autonomy rows' config.
-const autonomyWait = 30 * time.Minute
-
-// autonomousJudge is a verifyFixture whose judge asks the run's parent orch under autonomy, over a clock the rows move.
-type autonomousJudge struct {
-	*verifyFixture
-	files burlerengine.ParentReviewFiles
-	// clock is the time the pass and the parent seat read.
-	clock time.Time
-	// arrivals counts the judge's arrivals from 1, and atArrival holds the action to run at an arrival by that number.
-	arrivals  int
-	atArrival map[int]func()
-	// sleeps counts the waits of a resume.
-	sleeps int
-}
-
-// newAutonomousJudge returns a fixture whose parent seat records no orch strand when noParent is set.
-// Its config asks the parent and sets autonomy to autonomous.
-func newAutonomousJudge(t *testing.T, autonomous, noParent bool) *autonomousJudge {
-	t.Helper()
-	f := newVerifyFixture(t)
-	a := &autonomousJudge{verifyFixture: f, files: burlerengine.ParentReviewFilesOf(t.TempDir()), clock: f.deps.Now(), atArrival: map[int]func(){}}
-	f.config.Autonomous, f.config.JudgeAskParent, f.config.JudgeParentTimeoutMin = autonomous, true, int(autonomyWait/time.Minute)
-	f.deps.Now = func() time.Time { return a.clock }
-	f.deps.JudgeParent = &JudgeParentSeat{
-		Files:   a.files,
-		Slug:    judgeParentSlug,
-		Resolve: func() (string, bool, error) { return judgeParentStrand, !noParent, nil },
-		Post:    func(string, string) error { return nil },
-	}
-	f.onArrival = func() {
-		a.arrivals++
-		if action := a.atArrival[a.arrivals]; action != nil {
-			action()
-		}
-	}
-	return a
-}
-
-// asks reads the asks the run recorded, oldest first.
-func (a *autonomousJudge) asks() []burlerengine.ParentAsk {
-	a.t.Helper()
-	record, _, err := burlerengine.ReadParentAsks(a.files)
-	if err != nil {
-		a.t.Fatalf("ReadParentAsks() error = %v; want nil", err)
-	}
-	return record.Asks
-}
-
-// answerLatestSatisfied answers the latest ask with a satisfied report at the clock's time.
-func (a *autonomousJudge) answerLatestSatisfied() {
-	a.t.Helper()
-	asks := a.asks()
-	if _, err := burlerengine.AnswerParentAsk(a.files, asks[len(asks)-1].Number, a.clock, nil); err != nil {
-		a.t.Fatalf("AnswerParentAsk() error = %v; want nil", err)
-	}
-}
-
-// onSleep sets the resume's wait to run action and return at once.
-func (a *autonomousJudge) onSleep(action func()) {
-	a.deps.Sleep = func(context.Context, time.Duration) error {
-		a.sleeps++
-		action()
-		return nil
-	}
-}
-
-// moveClockPastTheWait moves the clock past the ask's deadline.
-func (a *autonomousJudge) moveClockPastTheWait() { a.clock = a.clock.Add(autonomyWait + time.Minute) }
-
-// haltOnTimeout runs a pass whose first ask times out before any answer, and requires its halt.
-func (a *autonomousJudge) haltOnTimeout() {
-	a.t.Helper()
-	a.atArrival[2] = a.moveClockPastTheWait
-	outcome, pointer, err := a.call()
-	requireAutonomyHalt(a.t, a.verifyFixture, outcome, pointer, err, burlerengine.ParentAskTimeout)
-}
-
-// runs counts the seat runner's runs and resumes.
-func (a *autonomousJudge) runs() int { return a.seats.Calls + a.seats.ResumeCalls }
-
-// requireAutonomyHalt checks the pass is the Stuck of a judge ask that ended in state:
-// no ruling stored, judgement.yaml kept and the session mark open.
-func requireAutonomyHalt(t *testing.T, f *verifyFixture, outcome shedengine.Outcome, pointer shedengine.OutputPointer, err error, state burlerengine.ParentAskState) {
-	t.Helper()
-	requireStuck(t, outcome, pointer, err, true, "under autonomy", "ended "+string(state), "lym loom resume")
-	records := f.records()
-	if len(records.Judged.Tuples) != 0 || len(records.Judged.Cases) != 0 || f.judgementGone() || !records.Scope.JudgeSession.Open {
-		t.Errorf("tuples %d, cases %d, judgement gone %v, mark %+v; want no ruling stored, judgement.yaml kept and the mark open",
-			len(records.Judged.Tuples), len(records.Judged.Cases), f.judgementGone(), records.Scope.JudgeSession)
-	}
 }
 
 // ptr returns a pointer to a copy of value.

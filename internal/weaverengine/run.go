@@ -23,7 +23,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/runplan"
-	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 )
 
@@ -67,10 +66,6 @@ type RunResult struct {
 	StuckReason string
 	// BatchesDone counts the batches recorded done, set when Outcome is resultDone.
 	BatchesDone int
-	// VerifySpans are the time spans of this call's plan-level verify, in the order they started:
-	// one gate span per run of the verify and one rework span per verify fixer, from its spawn to its end.
-	// They are nil when the call ran no verify.
-	VerifySpans []shuttleengine.GateSpan
 }
 
 // outcomeRecord is outcome.yaml's one shape, with the keys Webster's outcome file holds so the two read alike.
@@ -478,7 +473,7 @@ func runBatch(deps RunDeps, st *State, plan *planparser.Plan, batch batcher.Batc
 		if err != nil {
 			return batchEnd{}, err
 		}
-		spec := attemptSpec(attemptLaunch{Prompt: prompt, Engine: engine, ReportPath: attempt.ReportPath, Choice: deps.Ladder[rung], Label: label, Skills: deps.LanguageSkills, Timeout: deps.attemptTimeout()})
+		spec := attemptSpec(attemptLaunch{Prompt: prompt, Engine: engine, ReportPath: attempt.ReportPath, Choice: deps.Ladder[rung], Label: label, Skills: deps.LanguageSkills})
 
 		var verdict attemptVerdict
 		run, startErr := deps.Runner.StartGated(spec, gateSpec)
@@ -724,12 +719,9 @@ func clipBytes(text string) string {
 // finishRun runs the plan-level verify and its fixers once every batch is recorded.
 // A failure goes to one verify fixer on the next rung, and the verify runs again before any next fixer.
 // A pass writes summary.md and outcome.yaml, commits the run record and returns done.
-// Every result it returns, done or stuck, carries the spans of the verify runs and fixers it started.
-func finishRun(deps RunDeps, st *State) (result RunResult, err error) {
+func finishRun(deps RunDeps, st *State) (RunResult, error) {
 	geom := deps.Geom
 	batchesDone := doneBatches(st)
-	var spans []shuttleengine.GateSpan
-	defer func() { result.VerifySpans = spans }()
 	verifyStop := func(rung int, cause string) RunResult {
 		st.Stop = &StopRecord{Kind: stopKindVerify, Rung: rung}
 		if err := saveRunState(geom, st, false); err != nil {
@@ -740,7 +732,7 @@ func finishRun(deps RunDeps, st *State) (result RunResult, err error) {
 
 	var flaky []string
 	for evaluation := 1; ; evaluation++ {
-		out, err := runVerify(deps, st, evaluation, &spans)
+		out, err := runVerify(deps, st, evaluation)
 		if err != nil {
 			return stuck(stopReason(deps, st, "the plan-level verify", err.Error())), nil
 		}
@@ -748,7 +740,7 @@ func finishRun(deps RunDeps, st *State) (result RunResult, err error) {
 			flaky = append(flaky, out.Flaky...)
 			break
 		}
-		if out.Unjudged {
+		if out.RunnerCrash {
 			return verifyStop(len(st.Fixers), out.Findings), nil
 		}
 
@@ -769,12 +761,10 @@ func finishRun(deps RunDeps, st *State) (result RunResult, err error) {
 		if err := saveRunState(geom, st, false); err != nil {
 			return stuck(stopReason(deps, st, "the plan-level verify", err.Error())), nil
 		}
-		stopCause, err := runFixer(deps, st, fixer, &spans)
-		if err != nil {
+		if result, err := runFixer(deps, st, fixer); err != nil {
 			return stuck(stopReason(deps, st, "the plan-level verify", err.Error())), nil
-		}
-		if stopCause != "" {
-			return verifyStop(fixer.Rung, stopCause), nil
+		} else if result != "" {
+			return verifyStop(fixer.Rung, result), nil
 		}
 	}
 
@@ -811,8 +801,7 @@ func nextFixerRung(st *State) int {
 // runFixer spawns one verify fixer and waits for its end, then records the end on the fixer's state.
 // A terminal result sets the record's status, since the wait never marks it, and the fixer's outcome.
 // It returns a non-empty stop cause when the fixer's strand could not be stopped, and an error for any other fault.
-// A fixer that spawned appends one rework span to spans, however its run then ends.
-func runFixer(deps RunDeps, st *State, fixer *FixerState, spans *[]shuttleengine.GateSpan) (stopCause string, err error) {
+func runFixer(deps RunDeps, st *State, fixer *FixerState) (stopCause string, err error) {
 	spec, err := fixerSpec(deps, st, fixer, fixer.Findings)
 	if err != nil {
 		return "", err
@@ -822,10 +811,6 @@ func runFixer(deps RunDeps, st *State, fixer *FixerState, spans *[]shuttleengine
 	if err != nil {
 		return "", err
 	}
-	start := deps.clock().Now()
-	defer func() {
-		*spans = append(*spans, shuttleengine.GateSpan{Kind: shuttleengine.GateSpanRework, Start: start, End: deps.clock().Now()})
-	}()
 	if err := saveRunState(deps.Geom, st, false); err != nil {
 		return "", err
 	}

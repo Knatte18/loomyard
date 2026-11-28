@@ -1,7 +1,7 @@
 // landingdeps_integration_test.go drives landingDeps' seams over a real hub.
 // ConfigChanges reads a pair's committed config files through real branches.
 // Notify posts creel mail to the prime's orch.
-// The PullRequest seams read the run's beam.pull_request through the per-task lookup and the task branch's commits.
+// The PullRequest seams read the receiving branch's mode, the run's board entry and the task branch's commits.
 // This package's own testmain_test.go arms the hermetic git test environment for the whole binary,
 // so this file adds no TestMain.
 
@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -41,17 +42,17 @@ func TestLandingDeps_ConfigNoticeSeamsOverRealHub(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	h := hubforge.CopyHub(t, pairHubShape)
-	const slug = hubforge.TemplatePairSlug
-	taskRecords := h.PairRecordsSibling(slug)
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	hubforge.AddPair(t, h, "task")
+	taskRecords := h.PairRecordsSibling("task")
 	gitkit.CommitFile(t, taskRecords, configengine.ConfigFileRel("loom"), "task_setting: changed\n", "task: change loom config")
 	gitkit.CommitFile(t, taskRecords, configengine.ConfigFileRel("board"), "task_setting: changed\n", "task: change board config")
 
-	taskLocation, err := lymcwd.ResolveWorktree(h.PairCodeWorktree(slug))
+	taskLocation, err := lymcwd.ResolveWorktree(h.PairCodeWorktree("task"))
 	if err != nil {
-		t.Fatalf("lymcwd.ResolveWorktree(%s) error = %v; want nil", slug, err)
+		t.Fatalf("lymcwd.ResolveWorktree(task) error = %v; want nil", err)
 	}
-	deps := landingDeps(taskLocation, shedrun.RecipeTapestry, websterengine.Geometry{}, slug, "main",
+	deps := landingDeps(taskLocation, shedrun.RecipeTapestry, websterengine.Geometry{}, "task", "main",
 		true, modelspec.Registry{}, &shuttleengine.Runner{}, landingshed.Config{}, "", nil, nil, nil, planVerifySource(taskLocation), parentLockDeps(taskLocation, shedrun.SelfRunID, "", ""))
 
 	t.Run("ConfigChanges reports the per-worktree file and not the hub-wide one", func(t *testing.T) {
@@ -66,10 +67,20 @@ func TestLandingDeps_ConfigNoticeSeamsOverRealHub(t *testing.T) {
 	})
 
 	paths := orchcli.PrimePaths(h.Location)
+	noticeCount := func() int {
+		entries, err := os.ReadDir(paths.NoticesDir)
+		if err != nil && !os.IsNotExist(err) {
+			t.Fatalf("ReadDir(%q) error = %v; want nil", paths.NoticesDir, err)
+		}
+		return len(entries)
+	}
 
-	if !t.Run("Notify with no orch strand recorded returns nil", func(t *testing.T) {
+	if !t.Run("Notify with no orch strand recorded returns nil and writes no notice file", func(t *testing.T) {
 		if err := deps.Notify("loom: a notice"); err != nil {
 			t.Fatalf("Notify() error = %v; want nil", err)
+		}
+		if got := noticeCount(); got != 0 {
+			t.Errorf("notice files = %d; want 0 without an orch strand", got)
 		}
 	}) {
 		return
@@ -83,6 +94,9 @@ func TestLandingDeps_ConfigNoticeSeamsOverRealHub(t *testing.T) {
 		err := deps.Notify("loom: a notice")
 		if err == nil || !strings.Contains(err.Error(), "loom: a notice") {
 			t.Fatalf("Notify() error = %v; want an error holding the notice line", err)
+		}
+		if got := noticeCount(); got != 0 {
+			t.Errorf("notice files = %d; want 0", got)
 		}
 	})
 
@@ -165,9 +179,11 @@ func TestParentRecordsCommitter_CommitsTheRecordedParent(t *testing.T) {
 	}
 }
 
-// TestLandingDeps_PullRequestModeReadsThePerTaskLookup pins the Mode seam's per-task lookup of beam.pull_request.
-// The run's own worktree's value applies first, else the nearest parent's up to the prime.
-func TestLandingDeps_PullRequestModeReadsThePerTaskLookup(t *testing.T) {
+// TestLandingDeps_PullRequestModeReadsTheParent asserts that ParentMode reads the receiving branch's beam.yaml.
+// It never reads the task worktree's own beam.yaml.
+// A task under the prime reads the prime's, a member under a beam reads the beam's, and the beam reads the prime's.
+// It also asserts EntryField reads the run's own board entry.
+func TestLandingDeps_PullRequestModeReadsTheParent(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
@@ -182,7 +198,6 @@ func TestLandingDeps_PullRequestModeReadsThePerTaskLookup(t *testing.T) {
 	hubforge.AddPair(t, h, "task")
 	hubforge.AddPairWith(t, h, "beam", fabricengine.AddOptions{Beam: true})
 	hubforge.AddPairWith(t, h, "member", fabricengine.AddOptions{Parent: "beam"})
-	hubforge.AddPairWith(t, h, "plainbeam", fabricengine.AddOptions{Beam: true})
 
 	locate := func(codeWorktree string) *lymcwd.Location {
 		t.Helper()
@@ -207,29 +222,47 @@ func TestLandingDeps_PullRequestModeReadsThePerTaskLookup(t *testing.T) {
 			true, modelspec.Registry{}, &shuttleengine.Runner{}, landingshed.Config{}, "", nil, nil, nil, planVerifySource(location), parentLockDeps(location, shedrun.SelfRunID, "", ""))
 	}
 
-	prime, task, beam, member, plainBeam := h.Location, locate(h.PairCodeWorktree("task")), locate(h.PairCodeWorktree("beam")), locate(h.PairCodeWorktree("member")), locate(h.PairCodeWorktree("plainbeam"))
+	prime, task, beam, member := h.Location, locate(h.PairCodeWorktree("task")), locate(h.PairCodeWorktree("beam")), locate(h.PairCodeWorktree("member"))
 	setMode(prime, "off")
-	setMode(task, "trail")
-	setMode(beam, "review")
+	setMode(task, "required")
+	setMode(beam, "required")
+	board, err := boardengine.OpenHub(h.Location.HubPath)
+	if err != nil {
+		t.Fatalf("boardengine.OpenHub() error = %v; want nil", err)
+	}
+	if _, err := board.UpsertTask(map[string]any{"slug": "beam", "title": "Beam", "kind": "project", "labels": []string{"bug"}, "pull_request": "on"}); err != nil {
+		t.Fatalf("UpsertTask(beam) error = %v; want nil", err)
+	}
 
 	tests := []struct {
-		name     string
-		location *lymcwd.Location
-		wantMode string
+		name         string
+		location     *lymcwd.Location
+		wantMode     string
+		wantWorktree string
 	}{
-		{"TaskReadsItsOwnValueNotThePrimes", task, "trail"},
-		{"MemberWithNoValueReadsItsParentBeams", member, "review"},
-		{"BeamWithNoValueReadsThePrimes", plainBeam, "off"},
-		{"BeamReadsItsOwnValue", beam, "review"},
+		{"TaskUnderThePrimeReadsThePrimesNotItsOwn", task, "off", prime.WorktreeName},
+		{"MemberUnderABeamReadsTheBeams", member, "required", "beam"},
+		{"BeamReadsThePrimes", beam, "off", prime.WorktreeName},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mode, err := depsOf(tt.location).PullRequest.Mode()
-			if err != nil || mode != tt.wantMode {
-				t.Errorf("Mode() = %q, %v; want %q, nil", mode, err, tt.wantMode)
+			mode, worktree, err := depsOf(tt.location).PullRequest.ParentMode()
+			if err != nil || mode != tt.wantMode || worktree != tt.wantWorktree {
+				t.Errorf("ParentMode() = %q, %q, %v; want %q, %q, nil", mode, worktree, err, tt.wantMode, tt.wantWorktree)
 			}
 		})
 	}
+
+	t.Run("EntryFieldReadsTheRunsOwnEntry", func(t *testing.T) {
+		field, err := depsOf(beam).PullRequest.EntryField()
+		if err != nil || field != "on" {
+			t.Errorf("beam EntryField() = %q, %v; want \"on\", nil", field, err)
+		}
+		field, err = depsOf(member).PullRequest.EntryField()
+		if err != nil || field != "" {
+			t.Errorf("member EntryField() = %q, %v; want an empty field for an absent entry, nil", field, err)
+		}
+	})
 }
 
 // TestLandingDeps_TaskHasCommitsReadsTheTaskHeadAgainstTheParent asserts the TaskHasCommits seam.
@@ -240,15 +273,15 @@ func TestLandingDeps_TaskHasCommitsReadsTheTaskHeadAgainstTheParent(t *testing.T
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	h := hubforge.CopyHub(t, pairHubShape)
-	const slug = hubforge.TemplatePairSlug
-	taskWorktree := h.PairCodeWorktree(slug)
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	hubforge.AddPair(t, h, "task")
+	taskWorktree := h.PairCodeWorktree("task")
 	taskLocation, err := lymcwd.ResolveWorktree(taskWorktree)
 	if err != nil {
-		t.Fatalf("lymcwd.ResolveWorktree(%s) error = %v; want nil", slug, err)
+		t.Fatalf("lymcwd.ResolveWorktree(task) error = %v; want nil", err)
 	}
 	taskHasCommits := func(parentBranch string) (bool, error) {
-		deps := landingDeps(taskLocation, shedrun.RecipeTapestry, websterengine.Geometry{}, slug, parentBranch,
+		deps := landingDeps(taskLocation, shedrun.RecipeTapestry, websterengine.Geometry{}, "task", parentBranch,
 			true, modelspec.Registry{}, &shuttleengine.Runner{}, landingshed.Config{}, "", nil, nil, nil, planVerifySource(taskLocation), parentLockDeps(taskLocation, shedrun.SelfRunID, "", ""))
 		return deps.PullRequest.TaskHasCommits()
 	}
@@ -278,58 +311,57 @@ func TestLandingDeps_TaskHasCommitsReadsTheTaskHeadAgainstTheParent(t *testing.T
 	})
 }
 
-// TestLandingDeps_RecordLandingWritesWhereTheDobbyReads pins the RecordLanding seam's write.
-// It writes the commit and its empty-diff flag into the prime's scratch of the run named for the pair.
-// shedrun.ReadLandedCommit reads them there.
+// TestLandingDeps_RecordLandingWritesWhereTheDobbyReads asserts the RecordLanding seam writes the commit.
+// It writes it into the prime's scratch of the run named for the pair, where shedrun.ReadLandedCommit reads it.
 func TestLandingDeps_RecordLandingWritesWhereTheDobbyReads(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	h := hubforge.CopyHub(t, pairHubShape)
-	const slug = hubforge.TemplatePairSlug
-	taskLocation, err := lymcwd.ResolveWorktree(h.PairCodeWorktree(slug))
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	hubforge.AddPair(t, h, "task")
+	taskLocation, err := lymcwd.ResolveWorktree(h.PairCodeWorktree("task"))
 	if err != nil {
-		t.Fatalf("lymcwd.ResolveWorktree(%s) error = %v; want nil", slug, err)
+		t.Fatalf("lymcwd.ResolveWorktree(task) error = %v; want nil", err)
 	}
-	deps := landingDeps(taskLocation, shedrun.RecipeTapestry, websterengine.Geometry{}, slug, "main",
+	deps := landingDeps(taskLocation, shedrun.RecipeTapestry, websterengine.Geometry{}, "task", "main",
 		true, modelspec.Registry{}, &shuttleengine.Runner{}, landingshed.Config{}, "", nil, nil, nil, planVerifySource(taskLocation), parentLockDeps(taskLocation, shedrun.SelfRunID, "", ""))
 
-	if err := deps.RecordLanding("abc123", true); err != nil {
+	if err := deps.RecordLanding("abc123"); err != nil {
 		t.Fatalf("RecordLanding() error = %v; want nil", err)
 	}
 
-	got, err := shedrun.ReadLandedCommit(h.Location, slug)
-	if want := (shedrun.LandedCommit{Commit: "abc123", EmptyDiff: true}); err != nil || got != want {
-		t.Errorf("ReadLandedCommit(prime, task) = %+v, %v; want %+v, nil", got, err, want)
+	got, err := shedrun.ReadLandedCommit(h.Location, "task")
+	if err != nil || got != "abc123" {
+		t.Errorf("ReadLandedCommit(prime, task) = %q, %v; want abc123, nil", got, err)
 	}
 }
 
 // TestPullRequestDeps_CommitsTheRecord asserts the CommitRecord seam commits the run's record on the records side.
 // A record written through the deps' paths is committed, and so is its removal.
-// A clean call commits nothing.
-// Each commit is pushed synchronously, so origin's records branch holds it once the committer returns.
+// A clean call commits nothing, and a record found only at its former scratch path is moved and committed.
+// Each commit starts one records push, and the test counts them through a recorder swapped for the spawn.
+//
+// It is serial because it swaps a package variable.
 func TestPullRequestDeps_CommitsTheRecord(t *testing.T) {
 	tiergate.Require(t, 1)
-	t.Parallel()
 
-	h := hubforge.CopyHub(t, pairHubShape)
-	const slug = hubforge.TemplatePairSlug
-	location, err := lymcwd.ResolveWorktree(h.PairCodeWorktree(slug))
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	hubforge.AddPair(t, h, "task")
+	location, err := lymcwd.ResolveWorktree(h.PairCodeWorktree("task"))
 	if err != nil {
-		t.Fatalf("lymcwd.ResolveWorktree(%s) error = %v; want nil", slug, err)
+		t.Fatalf("lymcwd.ResolveWorktree(task) error = %v; want nil", err)
 	}
-	records := h.PairRecordsSibling(slug)
+	records := h.PairRecordsSibling("task")
 
-	recordsBranch := gitkit.Git(t, records, "rev-parse", "--abbrev-ref", "HEAD")
-	requireOriginAtHead := func(when string) {
-		t.Helper()
-		origin, head := gitkit.RevParse(t, h.RecordsBare, "refs/heads/"+recordsBranch), gitkit.RevParse(t, records, "HEAD")
-		if origin != head {
-			t.Errorf("origin's records branch %s = %s; want the committed head %s", when, origin, head)
-		}
+	spawns := 0
+	originalSpawn := spawnStatusPush
+	spawnStatusPush = func(*lymcwd.Location, string) (fabricengine.SpawnResult, error) {
+		spawns++
+		return fabricengine.SpawnResult{}, nil
 	}
+	t.Cleanup(func() { spawnStatusPush = originalSpawn })
 
-	deps := pullRequestDepsGuardedBy(prePushCheck{slug: slug, skip: func() (bool, error) { return true, nil }}, location, "main", true, &shuttleengine.Runner{})
+	deps := pullRequestDepsGuardedBy(prePushCheck{slug: "task", skip: func() (bool, error) { return true, nil }}, location, "main", true, nil)
 	rel := filepath.ToSlash(shedrun.PullRequestRecordRel(location, shedrun.SelfRunID))
 	headFiles := func(format string) string {
 		t.Helper()
@@ -348,7 +380,9 @@ func TestPullRequestDeps_CommitsTheRecord(t *testing.T) {
 	if got := headFiles("--name-status"); got != "A\t"+rel {
 		t.Errorf("records HEAD after a write = %q; want the record added", got)
 	}
-	requireOriginAtHead("after a write")
+	if spawns != 1 {
+		t.Errorf("push spawns after a write = %d; want 1", spawns)
+	}
 
 	if err := pullrequest.RemoveRecord(deps.RecordPath, deps.RecordLockPath); err != nil {
 		t.Fatalf("RemoveRecord() error = %v; want nil", err)
@@ -359,14 +393,40 @@ func TestPullRequestDeps_CommitsTheRecord(t *testing.T) {
 	if got := headFiles("--name-status"); got != "D\t"+rel {
 		t.Errorf("records HEAD after a removal = %q; want the record deleted", got)
 	}
-	requireOriginAtHead("after a removal")
+	if spawns != 2 {
+		t.Errorf("push spawns after a removal = %d; want 2", spawns)
+	}
 
 	headBefore := gitkit.RevParse(t, records, "HEAD")
 	if err := deps.CommitRecord(); err != nil {
 		t.Fatalf("CommitRecord() with nothing to commit error = %v; want nil", err)
 	}
-	if got := gitkit.RevParse(t, records, "HEAD"); got != headBefore {
-		t.Errorf("records HEAD = %s with nothing to commit; want %s", got, headBefore)
+	if got := gitkit.RevParse(t, records, "HEAD"); got != headBefore || spawns != 2 {
+		t.Errorf("records HEAD = %s, spawns = %d with nothing to commit; want HEAD %s and 2 spawns", got, spawns, headBefore)
+	}
+
+	legacy := shedrun.LegacyPullRequestRecord(location, shedrun.SelfRunID)
+	if err := os.MkdirAll(filepath.Dir(legacy), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(legacy, []byte("{\"number\":9}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := deps.CommitRecord(); err != nil {
+		t.Fatalf("CommitRecord() over a scratch record error = %v; want nil", err)
+	}
+	if got := headFiles("--name-only"); got != rel {
+		t.Errorf("records HEAD after the move = %q; want the moved record", got)
+	}
+	moved, found, err := pullrequest.ReadRecord(deps.RecordPath, deps.RecordLockPath)
+	if err != nil || !found || moved.Number != 9 {
+		t.Errorf("ReadRecord() after the move = %+v, found %v, error %v; want number 9", moved, found, err)
+	}
+	if _, err := os.Stat(legacy); !os.IsNotExist(err) {
+		t.Errorf("the scratch record after the move: stat error = %v; want it gone", err)
+	}
+	if spawns != 3 {
+		t.Errorf("push spawns after the move = %d; want 3", spawns)
 	}
 }
 

@@ -8,15 +8,14 @@ import (
 	"errors"
 	"fmt"
 	"os/signal"
-	"slices"
 	"syscall"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/adoptrecord"
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -39,7 +38,7 @@ func (realClock) Now() time.Time { return time.Now() }
 // `<shortname>:orch` in the prime and `<shortname>:<slug>:orch` in a beam.
 // A hub with no recorded shortname yields the empty name, which the watcher reads as the prime's orch.
 func (c *orchCLI) orchAgentName() (string, error) {
-	shortname, found := fabricengine.ReadShortname(fabriclayout.BoltDir(c.location.HubPath))
+	shortname, found := fabricengine.ReadShortname(fabricengine.BoltDir(c.location.HubPath))
 	if !found {
 		return "", nil
 	}
@@ -59,11 +58,11 @@ func (c *orchCLI) orchAgentName() (string, error) {
 // elsewhere is true when that owner names a machine other than this one;
 // a worktree with no owner recorded is owned by no other machine.
 func beamOwnerElsewhere(location *lymcwd.Location) (owner string, elsewhere bool, err error) {
-	here, err := machinename.ReadIdentity()
+	here, err := machinename.Name()
 	if err != nil {
 		return "", false, fmt.Errorf("orch: read this machine's name: %w", err)
 	}
-	owners, err := boardengine.ReadOwners(fabriclayout.BoardDir(location.HubPath))
+	owners, err := boardengine.ReadOwners(fabricengine.BoardDir(location.HubPath))
 	if err != nil {
 		return "", false, fmt.Errorf("orch: read the board's owners: %w", err)
 	}
@@ -83,82 +82,22 @@ func beamOwnerElsewhere(location *lymcwd.Location) (owner string, elsewhere bool
 			return "", false, fmt.Errorf("orch: resolve the owner of %q: %w", location.WorktreeName, err)
 		}
 	}
-	return owner, boardengine.OwnedElsewhere(owner, owners.Registry, here), nil
+	return owner, boardengine.OwnedElsewhere(owner, here), nil
 }
 
-// UnderOwnHold returns the accessor of the hub of prime.
-// The accessor reports whether a Bolt hold of this machine covers a worktree.
-// For the worktree named slug, empty for the prime, it reads the hub's local Bolt and this machine's identity.
-// The worktree's subject is `root` for the prime, else the beam subject `Owners.AdoptSubject` names.
-// It moves up to the subject above while the beam records no owner of its own and the hold does not list it.
-// It reports true only when a hold whose machine reads as this machine lists that subject.
-// A beam that keeps its own owner outside the hold's subjects is not covered.
-// A Bolt or identity that does not read counts as no hold, logged once per episode.
-// The accessor is not safe for concurrent use.
-func UnderOwnHold(prime *lymcwd.Location) func(slug string) bool {
-	var failures logger.Episode
-	return func(slug string) bool {
-		covered, err := ownHoldCovers(prime, slug)
-		if err != nil {
-			failures.Fail("orch: the Bolt hold or the identity it is judged against does not read; they count as no hold", "hub", prime.HubPath, "error", err)
-			return false
-		}
-		failures.Recover("orch: the Bolt hold and the identity read again", "hub", prime.HubPath)
-		return covered
-	}
+// UnderAdoptWatch returns the under-adopt accessor of the hub of prime.
+// It judges the hub's adopt record against the local board, resolving parents through `hubgeom.ParentOf`.
+func UnderAdoptWatch(prime *lymcwd.Location) *adoptrecord.Watch {
+	return adoptrecord.NewWatch(prime.HubPath,
+		func() (boardengine.Owners, error) {
+			return boardengine.ReadOwners(fabricengine.BoardDir(prime.HubPath))
+		},
+		func(slug string) (string, error) { return hubgeom.ParentOf(prime, slug) })
 }
 
-// ownHoldCovers reads the local Bolt and this machine's identity.
-// It judges whether a hold of this machine lists the subject of slug.
-func ownHoldCovers(prime *lymcwd.Location, slug string) (bool, error) {
-	here, err := machinename.ReadIdentity()
-	if err != nil {
-		return false, fmt.Errorf("read this machine's name: %w", err)
-	}
-	owners, err := boardengine.ReadOwners(fabriclayout.BoardDir(prime.HubPath))
-	if err != nil {
-		return false, fmt.Errorf("read the board's owners: %w", err)
-	}
-	var ownHolds []boardengine.Hold
-	for _, hold := range owners.Holds {
-		if owners.Registry.ReadsAsHere(hold.Machine, here) {
-			ownHolds = append(ownHolds, hold)
-		}
-	}
-	if len(ownHolds) == 0 {
-		return false, nil
-	}
-	listed := func(subject string) bool {
-		return slices.ContainsFunc(ownHolds, func(hold boardengine.Hold) bool {
-			return slices.ContainsFunc(hold.Subjects, func(held boardengine.HoldSubject) bool { return held.Subject == subject })
-		})
-	}
-	parentOf := func(entry string) (string, error) { return hubgeom.ParentOf(prime, entry) }
-	subject := boardengine.RootSubject
-	if slug != "" {
-		if subject, err = owners.AdoptSubject(slug, parentOf); err != nil {
-			return false, fmt.Errorf("resolve the adopt subject of %q: %w", slug, err)
-		}
-	}
-	for subject != boardengine.RootSubject && !listed(subject) && owners.Entries[subject].Owner == "" {
-		parent, err := parentOf(subject)
-		if err != nil {
-			return false, fmt.Errorf("resolve the parent of %q: %w", subject, err)
-		}
-		if parent == "" {
-			subject = boardengine.RootSubject
-			break
-		}
-		if subject, err = owners.AdoptSubject(parent, parentOf); err != nil {
-			return false, fmt.Errorf("resolve the adopt subject of %q: %w", parent, err)
-		}
-	}
-	return listed(subject), nil
-}
-
-// underAdoptWatch returns the Bolt-hold accessor of the receiver's hub and the slug it asks about:
+// underAdoptWatch returns the under-adopt accessor of the receiver's hub and the slug it asks about:
 // the beam's slug, empty for the prime.
-func (c *orchCLI) underAdoptWatch() (func(slug string) bool, string, error) {
+func (c *orchCLI) underAdoptWatch() (*adoptrecord.Watch, string, error) {
 	prime, err := resolvePrime(c.location)
 	if err != nil {
 		return nil, "", err
@@ -167,7 +106,7 @@ func (c *orchCLI) underAdoptWatch() (func(slug string) bool, string, error) {
 	if slug == prime.WorktreeName {
 		slug = ""
 	}
-	return UnderOwnHold(prime), slug, nil
+	return UnderAdoptWatch(prime), slug, nil
 }
 
 // reapInheritedChildren waits on the children a watcher re-exec'd onto a new binary keeps from its old image.
@@ -230,35 +169,26 @@ A second watcher finding the first alive reports already_running and exits.`,
 			watcher.SetOrchName(orchName)
 			// The accessor resolves the hub's prime only when a foreign owner first makes the watcher ask.
 			// Once built it is kept, so its read failures log once per episode.
-			var underHold func(slug string) bool
-			var holdSlug string
+			var underAdopt *adoptrecord.Watch
+			var adoptSlug string
 			var buildFailures logger.Episode
 			watcher.WatchOwner(orchengine.OwnerWatch{
 				Read: func() (string, bool, error) { return beamOwnerElsewhere(c.location) },
 				End:  c.endSubject,
 				Stop: c.strands.RemoveStrand,
 				UnderAdopt: func() bool {
-					if underHold == nil {
+					if underAdopt == nil {
 						built, slug, err := c.underAdoptWatch()
 						if err != nil {
-							buildFailures.Fail("orch: the Bolt-hold accessor could not be built; no hold covers the beam", "error", err)
+							buildFailures.Fail("orch: the under-adopt accessor could not be built; no adopt covers the beam", "error", err)
 							return false
 						}
-						buildFailures.Recover("orch: the Bolt-hold accessor is built")
-						underHold, holdSlug = built, slug
+						buildFailures.Recover("orch: the under-adopt accessor is built")
+						underAdopt, adoptSlug = built, slug
 					}
-					return underHold(holdSlug)
+					return underAdopt.Covers(adoptSlug)
 				},
 			})
-			relaunch := func(fresh bool) func(orchengine.State) (orchengine.State, error) {
-				return func(st orchengine.State) (orchengine.State, error) {
-					if _, err := c.relaunchOrch(st, fresh); err != nil {
-						return st, err
-					}
-					return orchengine.LoadState(c.paths)
-				}
-			}
-			watcher.WatchRestart(orchengine.OrchRestart{Resume: relaunch(false), Fresh: relaunch(true)})
 			watcher.WatchBinary(selfexec.New().Check)
 			runErr := watcher.Run(ctx, time.Sleep)
 

@@ -204,7 +204,7 @@ func TestLoadConfig_PermissionMode(t *testing.T) {
 		if err == nil {
 			t.Fatalf("permission_mode: %s = nil error, want error", mode)
 		}
-		if !strings.Contains(err.Error(), "set orch.permission_mode to bypass or remove the key") {
+		if !strings.Contains(err.Error(), "set permission_mode: bypass or remove the key") {
 			t.Errorf("permission_mode: %s error = %q, want the fix named", mode, err)
 		}
 	}
@@ -220,10 +220,9 @@ func TestLoadConfig_RemoteControl(t *testing.T) {
 		wantName  string
 		wantError string
 	}{
-		{"the template is off with the cross-machine address", "model: opus\n", false, "{machine}::{name}", ""},
-		{"switched on keeps the template's name", "remote_control: true\n", true, "{machine}::{name}", ""},
-		{"off with an empty name loads", "remote_control_name: \"\"\n", false, "", ""},
-		{"on with an empty name is refused", "remote_control: true\nremote_control_name: \" \"\n", false, "", "remote_control_name is empty"},
+		{"the template is on with the cross-machine address", "model: opus\n", true, "{machine}::{name}", ""},
+		{"switched off with an empty name loads", "remote_control: false\nremote_control_name: \"\"\n", false, "", ""},
+		{"on with an empty name is refused", "remote_control_name: \" \"\n", false, "", "remote_control_name is empty"},
 		{"a control character is refused", "remote_control_name: \"a\\tb\"\n", false, "", "control character"},
 	}
 	for _, tt := range tests {

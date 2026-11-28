@@ -1,5 +1,5 @@
-// prebuild.go builds `lym` once for a tagged `lym gate test` run whose tests may use it.
-// Every package of that run shares the one binary.
+// prebuild.go builds `lym` once for a tagged `lym gate test` run or a `lym gate testmap` call.
+// Every package of that run or call shares the one binary.
 // Every package reaches it through gateslot.PrebuiltLymEnv.
 // Inside a hub, the binary is kept in the hub's content-addressed store.
 
@@ -19,58 +19,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/gateslot"
-	"github.com/Knatte18/loomyard/internal/impactset"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymtemp"
 	"github.com/Knatte18/loomyard/internal/proc"
 )
-
-// needsPrebuiltLym reports whether run's tier asks for a prebuilt `lym` and a test the run executes may use it.
-// root is the worktree root the invocations' run directories resolve against.
-// A command that takes no targets runs whole whatever the invocations' targets say, so it counts as using it.
-// A tier that asks for one but whose targets' tests cannot use it logs that it builds none.
-func needsPrebuiltLym(run tierRun, root string) bool {
-	if !run.tier.PrebuiltLym {
-		return false
-	}
-	if !gateslot.HoldsTargets(run.tier.Command) || invocationsUseLymBinary(root, run.invocations) {
-		return true
-	}
-	logger.Info("gate test: no targeted package's tests use the lym binary, so the tier builds none", "tier", tierName(run.number))
-	return false
-}
-
-// invocationsUseLymBinary reports whether a test the invocations run may use the prebuilt `lym`.
-// An invocation with no target runs its command whole, and so does a target that holds `...`,
-// and a target that is no relative or absolute directory may name any package:
-// each counts as using it.
-// A directory target resolves against its invocation's run directory under root.
-// It counts when impactset.TestsUseLymBinary reports that the tests in that directory use the binary.
-func invocationsUseLymBinary(root string, invocations []invocation) bool {
-	for _, invocation := range invocations {
-		if len(invocation.targets) == 0 {
-			return true
-		}
-		dir := resolveRunDir(root, invocation.dir)
-		for _, target := range invocation.targets {
-			if strings.Contains(target, "...") || !isDirectoryTarget(target) {
-				return true
-			}
-			if impactset.TestsUseLymBinary(resolveRunDir(dir, target)) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// isDirectoryTarget reports whether target names a directory as `go` reads a package argument:
-// `.` or `..`, a path opening with one of them and a slash, or an absolute path.
-func isDirectoryTarget(target string) bool {
-	return target == "." || target == ".." || strings.HasPrefix(target, "./") || strings.HasPrefix(target, "../") || filepath.IsAbs(target)
-}
 
 // prebuiltRetention is how long a stored binary stays after its last use before a later prebuild prunes it.
 // It is far longer than any gate run, so no run loses its binary while it still runs.

@@ -5,16 +5,13 @@ package shedverbs_test
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
@@ -22,7 +19,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
-	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
@@ -32,8 +28,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// loomRunFixture is a real hub with one pair whose tapestry run is seeded and reads running.
-// Its config is reconciled for the built lym and its hub-wide landing config is then gone.
+// loomRunFixture is a real hub with one pair whose tapestry run is seeded and reads running, and whose hub-wide landing config is gone.
 type loomRunFixture struct {
 	t        *testing.T
 	loc      *lymcwd.Location
@@ -58,73 +53,13 @@ func newLoomRunFixture(t *testing.T) *loomRunFixture {
 	if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, seed); err != nil {
 		t.Fatalf("WriteSeed: %v", err)
 	}
-	f := &loomRunFixture{t: t, loc: loc, worktree: worktree, lym: lymbin.Build(t)}
-	f.resetRunning()
-	// A verb that loads the loom config first reconciles a hub whose build stamp is stale.
-	// That reconcile reseeds a missing config file.
-	// The step would then arm and start a real agent, so the hub is stamped for this binary before the file goes.
-	// The pushes are skipped because a detached push would outlive the test.
-	skipPush := []string{"FABRIC_SKIP_PUSH=1", "BOARD_SKIP_PUSH=1"}
-	if out, code, err := lymbin.RunWithEnv(f.lym, worktree, skipPush, time.Minute, "loom", "status"); err != nil || code != 0 {
-		t.Fatalf("lym loom status = exit %d, %v; want the hub reconciled: %s", code, err, out)
-	}
 	landing := configengine.ConfigFile(h.BoardDir(), "landing")
-	if err := os.Remove(landing); err != nil {
+	if err := os.Remove(landing); err != nil && !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("remove the hub landing config: %v", err)
 	}
+	f := &loomRunFixture{t: t, loc: loc, worktree: worktree, lym: lymbin.Build(t)}
+	f.resetRunning()
 	return f
-}
-
-// killStepChild kills the process tree of the step child the loop's pid record names, if any.
-func (f *loomRunFixture) killStepChild() {
-	record, found, err := shedverbs.ReadLoopPIDRecord(shedrun.LoopPIDFile(f.loc, shedrun.SelfRunID))
-	if err == nil && found && record.Child.PID != 0 {
-		_, _ = proc.KillTree(record.Child)
-	}
-}
-
-// stuckStepEvidence renders the newest captured step stderr and the run's status file.
-func (f *loomRunFixture) stuckStepEvidence() string {
-	var newest string
-	var newestAt time.Time
-	paths, _ := filepath.Glob(shedrun.StepStderr(f.loc, shedrun.SelfRunID, "*"))
-	for _, path := range paths {
-		if info, err := os.Stat(path); err == nil && info.ModTime().After(newestAt) {
-			newest, newestAt = path, info.ModTime()
-		}
-	}
-	stderr, _ := os.ReadFile(newest)
-	status, err := os.ReadFile(shedrun.StatusFile(f.loc, shedrun.SelfRunID))
-	return fmt.Sprintf("step stderr %q:\n%s\nstatus file (read error %v):\n%s", newest, stderr, err, status)
-}
-
-// runBuilt runs the built binary in the pair's worktree and returns its standard output and exit code.
-// A run past the step bound is killed with its step child and fails t.
-func (f *loomRunFixture) runBuilt(t *testing.T, args ...string) ([]byte, int) {
-	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), shedverbs.LoopStepBoundForTest)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, f.lym, args...)
-	cmd.Dir = f.worktree
-	cmd.WaitDelay = time.Second
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	cmd.Cancel = func() error {
-		f.killStepChild()
-		return cmd.Process.Kill()
-	}
-	out, err := cmd.Output()
-	if ctx.Err() != nil {
-		t.Fatalf("lym %v did not end within %s; its stderr:\n%s\n%s", args, shedverbs.LoopStepBoundForTest, stderr.String(), f.stuckStepEvidence())
-	}
-	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) {
-		return out, exitErr.ExitCode()
-	}
-	if err != nil {
-		t.Fatalf("lym %v: %v", args, err)
-	}
-	return out, 0
 }
 
 // resetRunning writes the run's status file as a run no step has finished.
@@ -150,13 +85,22 @@ func (f *loomRunFixture) status() shedengine.Status {
 }
 
 // runLym runs the built binary in the pair's worktree and decodes the last line it printed as the envelope.
-func (f *loomRunFixture) runLym(t *testing.T, args ...string) (map[string]any, int) {
-	t.Helper()
-	out, code := f.runBuilt(t, args...)
+func (f *loomRunFixture) runLym(args ...string) (map[string]any, int) {
+	f.t.Helper()
+	cmd := exec.Command(f.lym, args...)
+	cmd.Dir = f.worktree
+	out, err := cmd.Output()
+	code := 0
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		code = exitErr.ExitCode()
+	} else if err != nil {
+		f.t.Fatalf("lym %v: %v", args, err)
+	}
 	lines := strings.Split(strings.TrimRight(string(out), "\n"), "\n")
 	var env map[string]any
 	if err := json.Unmarshal([]byte(lines[len(lines)-1]), &env); err != nil {
-		t.Fatalf("decode the envelope of lym %v from %q: %v", args, out, err)
+		f.t.Fatalf("decode the envelope of lym %v from %q: %v", args, out, err)
 	}
 	return env, code
 }
@@ -195,10 +139,18 @@ func TestLoopIntegration_ArmingRefusalStopsAsBootstrap(t *testing.T) {
 	// The refusal is written as the loop envelope under the loop id, for the waiter that spawned the keeper to print.
 	// It returns that envelope and the keeper's exit code.
 	// It removes the envelope file so the next row meets no undelivered envelope.
-	runKeeperRefusal := func(t *testing.T, loopID string, verbArgs ...string) (map[string]any, int) {
-		t.Helper()
+	runKeeperRefusal := func(loopID string, verbArgs ...string) (map[string]any, int) {
 		args := append(verbArgs, "--"+shedverbs.UntilStopFlag, "--"+shedverbs.LoopKeeperFlag+"="+loopID)
-		out, code := f.runBuilt(t, args...)
+		cmd := exec.Command(f.lym, args...)
+		cmd.Dir = f.worktree
+		out, err := cmd.Output()
+		code := 0
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			code = exitErr.ExitCode()
+		} else if err != nil {
+			t.Fatalf("run the keeper over lym %v: %v", args, err)
+		}
 		if len(bytes.TrimSpace(out)) != 0 {
 			t.Errorf("the keeper over lym %v printed %q; want nothing, the refusal going to the loop envelope file", args, out)
 		}
@@ -222,27 +174,21 @@ func TestLoopIntegration_ArmingRefusalStopsAsBootstrap(t *testing.T) {
 	}
 	tests := []struct {
 		name string
-		run  func(t *testing.T) (map[string]any, int)
+		run  func() (map[string]any, int)
 	}{
 		{
 			name: "a child step refuses while arming",
-			run: func(sub *testing.T) (map[string]any, int) {
-				// The parent changes directory, so the trace file check after the rows still runs in the worktree.
+			run: func() (map[string]any, int) {
 				t.Chdir(f.worktree)
 				root := &cobra.Command{Use: "lym"}
 				shed := &cobra.Command{Use: "shed"}
 				shed.AddCommand(shedverbs.StepCmdForTest(f.childLoopSpec()))
 				root.AddCommand(shed)
 				var out bytes.Buffer
-				// The loop runs in this process, so the bound kills its step child, which ends the loop.
-				bound := time.AfterFunc(shedverbs.LoopStepBoundForTest, f.killStepChild)
 				code := clihelp.Execute(root, &out, []string{"shed", "step", shedrun.SelfRunID, "--" + shedverbs.UntilStopFlag, "--" + shedverbs.LoopDetachedFlag + "=loop-int-1"})
-				if !bound.Stop() {
-					sub.Fatalf("the step child did not end within %s; the loop printed %q\n%s", shedverbs.LoopStepBoundForTest, out.String(), f.stuckStepEvidence())
-				}
 				var env map[string]any
 				if err := json.Unmarshal(bytes.TrimSpace(out.Bytes()), &env); err != nil {
-					sub.Fatalf("decode the loop's envelope from %q: %v", out.String(), err)
+					t.Fatalf("decode the loop's envelope from %q: %v", out.String(), err)
 				}
 				childLoopEnv = env
 				return env, code
@@ -250,32 +196,28 @@ func TestLoopIntegration_ArmingRefusalStopsAsBootstrap(t *testing.T) {
 		},
 		{
 			name: "the loop's keeper refuses while arming",
-			run: func(t *testing.T) (map[string]any, int) {
-				return runKeeperRefusal(t, "loop-int-2", "shed", "step", shedrun.SelfRunID)
-			},
+			run:  func() (map[string]any, int) { return runKeeperRefusal("loop-int-2", "shed", "step", shedrun.SelfRunID) },
 		},
 		{
 			name: "the loom surface's keeper refuses while arming",
-			run:  func(t *testing.T) (map[string]any, int) { return runKeeperRefusal(t, "loop-int-3", "loom", "step") },
+			run:  func() (map[string]any, int) { return runKeeperRefusal("loop-int-3", "loom", "step") },
 		},
 		{
 			name: "the driver's own invocation of shed step",
-			run: func(t *testing.T) (map[string]any, int) {
-				return f.runLym(t, "shed", "step", shedrun.SelfRunID, "--"+shedverbs.UntilStopFlag)
+			run: func() (map[string]any, int) {
+				return f.runLym("shed", "step", shedrun.SelfRunID, "--"+shedverbs.UntilStopFlag)
 			},
 		},
 		{
 			name: "the loom surface",
-			run: func(t *testing.T) (map[string]any, int) {
-				return f.runLym(t, "loom", "step", "--"+shedverbs.UntilStopFlag)
-			},
+			run:  func() (map[string]any, int) { return f.runLym("loom", "step", "--"+shedverbs.UntilStopFlag) },
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			f.resetRunning()
 
-			env, code := tt.run(t)
+			env, code := tt.run()
 
 			loop := shedverbs.LoopOfForTest(t, env)
 			shedverbs.AssertLoopKeysForTest(t, loop, false)

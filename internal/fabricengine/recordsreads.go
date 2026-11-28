@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"path/filepath"
 	"sort"
+	"time"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -19,6 +19,24 @@ import (
 // configKeyNotSetExit is the exit code `git config --get` answers for a key that is not set.
 const configKeyNotSetExit = 1
 
+// RecordsTag is one tag of a slug's records history:
+// an archive tag a teardown pushed, or a set-aside tag a local removal kept.
+type RecordsTag struct {
+	// Name is the tag's short name.
+	Name string
+	// Commit is the full hex object name of the commit the tag names, an annotated tag peeled.
+	Commit string
+	// OnOrigin is true when origin holds the tag.
+	OnOrigin bool
+	// OriginOnly is true when only origin holds the tag.
+	OriginOnly bool
+	// CommitterTime is the committer time of Commit.
+	CommitterTime time.Time
+	// Files holds the content of each requested path found at Commit, keyed by the requested path;
+	// a path absent there is left out.
+	Files map[string][]byte
+}
+
 // SlugRecordsTags lists the tags that keep slug's records:
 // its archive tags on origin, and the records repository's local archive and set-aside tags.
 // Each tag carries the content of every path in anchoredRels that its commit holds, under that commit's own anchor.
@@ -26,23 +44,23 @@ const configKeyNotSetExit = 1
 // it writes no branch, tag or remote-tracking ref.
 // A records repository with no origin lists local tags only; a failed ls-remote or fetch is returned.
 // The tags are ordered by committer time, then by name.
-func SlugRecordsTags(l *lymcwd.Location, slug string, anchoredRels []string) ([]fabriclayout.RecordsTag, error) {
+func SlugRecordsTags(l *lymcwd.Location, slug string, anchoredRels []string) ([]RecordsTag, error) {
 	recordsRoot, err := RecordsRepoRoot(l)
 	if err != nil {
 		return nil, fmt.Errorf("resolve the records repository: %w", err)
 	}
 	repo := gitrepo.New(recordsRoot)
 
-	var tags []fabriclayout.RecordsTag
+	var tags []RecordsTag
 	local := map[string]bool{}
-	for _, prefix := range []string{fabriclayout.ArchiveTagPrefix + slug + "/", setAsideTagPrefix + slug + "/"} {
+	for _, prefix := range []string{ArchiveTagPrefix + slug + "/", setAsideTagPrefix + slug + "/"} {
 		refs, err := repo.TagRefs(prefix)
 		if err != nil {
 			return nil, fmt.Errorf("list the local tags %q: %w", prefix+"*", err)
 		}
 		for _, ref := range refs {
 			local[ref.Name] = true
-			tags = append(tags, fabriclayout.RecordsTag{Name: ref.Name, Commit: ref.Commit, CommitterTime: ref.Committed})
+			tags = append(tags, RecordsTag{Name: ref.Name, Commit: ref.Commit, CommitterTime: ref.Committed})
 		}
 	}
 
@@ -73,7 +91,7 @@ func SlugRecordsTags(l *lymcwd.Location, slug string, anchoredRels []string) ([]
 		if err != nil || len(commits) == 0 {
 			return nil, fmt.Errorf("read the commit %s of the archive tag %q: %v", commit, name, err)
 		}
-		tags = append(tags, fabriclayout.RecordsTag{Name: name, Commit: commit, OnOrigin: true, OriginOnly: true, CommitterTime: commits[0].Committed})
+		tags = append(tags, RecordsTag{Name: name, Commit: commit, OnOrigin: true, OriginOnly: true, CommitterTime: commits[0].Committed})
 	}
 	sort.SliceStable(tags, func(i, j int) bool {
 		if !tags[i].CommitterTime.Equal(tags[j].CommitterTime) {

@@ -27,9 +27,6 @@ Every function of a test-support package is a root too, so a function such a pac
 It fails naming each function of a production file that no root reaches, outside the test-support packages.
 An entry of its allowlist admits a function, with the reason naming the tests it serves or what reaches it that the analysis cannot see.
 An entry that matches no unreachable function fails the guard.
-The guard carries `//lym:only upkeep`, so no task's gate runs it:
-the upkeep run on the main branch does, and each function it names becomes a board note.
-A card may therefore add a function that only a later card calls.
 
 - Bound: the analysis reads the Linux build alone, so the guard compiles on Linux only.
   A function that only a Windows file calls fails the guard until it moves into a Windows-only file.

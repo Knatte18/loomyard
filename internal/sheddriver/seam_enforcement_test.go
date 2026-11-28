@@ -32,8 +32,6 @@ var sheddriverAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/shedrun",
 	"github.com/Knatte18/loomyard/internal/shedverbs",
 	"github.com/Knatte18/loomyard/internal/shuttleengine",
-	// state writes the driver's wait record at the path the caller tells.
-	"github.com/Knatte18/loomyard/internal/state",
 	"github.com/Knatte18/loomyard/internal/stencil",
 	"github.com/Knatte18/loomyard/internal/stencilstore",
 	// yaml.v3 decodes the verdict and the config documents.

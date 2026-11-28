@@ -13,7 +13,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
@@ -54,7 +53,7 @@ func TestCleanupIntegration_RefusesOutsideThePrimeThenDryRunsThenRemovesAndPushe
 	if _, committed, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), h.Location, rels, "test: finished run", fabricengine.EnvSyncOptions()); err != nil || !committed {
 		t.Fatalf("commit the finished run: committed=%v err=%v", committed, err)
 	}
-	if _, err := fabricengine.PushPairAnchored(h.Location, fabricengine.EnvSyncOptions(), fabriclayout.PairPush{LockWait: fabriclayout.StatusPushLockWait}); err != nil {
+	if _, err := fabricengine.PushPairAnchored(h.Location, fabricengine.EnvSyncOptions(), fabricengine.StatusPushLockWait); err != nil {
 		t.Fatalf("push the finished run: %v", err)
 	}
 

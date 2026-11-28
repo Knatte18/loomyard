@@ -99,6 +99,14 @@ type Weights struct {
 	// so a fork at position k starts the start base + Orientation + (k−1) × BatchGrowth deep.
 	BatchGrowth float64 `json:"batch_growth"`
 
+	// RetiredMasterBase is read only: it lets a breakdown recorded without a start base decode.
+	// It is not one of the coefficients, and nothing writes it.
+	RetiredMasterBase float64 `json:"master_base,omitempty"`
+
+	// RetiredStartupContext is read only: it lets a breakdown whose start model ignored batch position decode.
+	// It is not one of the coefficients, and nothing writes it.
+	RetiredStartupContext float64 `json:"startup_context,omitempty"`
+
 	// ForkMessages is the messages spent starting a fork, before any card.
 	ForkMessages float64 `json:"fork_messages"`
 
@@ -152,7 +160,7 @@ func ProfileWeights(dirs configengine.Dirs, profileName string) (Weights, error)
 	}
 	prof, ok := cfg.Profiles[profileName]
 	if !ok {
-		return Weights{}, fmt.Errorf("batcher.yaml: %s holds no profile %q", keyName(profilesKey), profileName)
+		return Weights{}, fmt.Errorf("batcher.yaml has no profile %q", profileName)
 	}
 	return profileWeights(profileName, prof)
 }
@@ -164,7 +172,7 @@ func ProfileWeights(dirs configengine.Dirs, profileName string) (Weights, error)
 func profileWeights(profileName string, prof profile) (Weights, error) {
 	for _, retired := range []string{"master_base", "startup_context"} {
 		if _, ok := prof.Weights[retired]; ok {
-			return Weights{}, retiredKeyError(prof.file, prof.layer, profileName, weightsLeaf+"."+retired)
+			return Weights{}, retiredKeyError(prof.file, prof.layer, profileName, "weights key "+retired)
 		}
 	}
 	known := make(map[string]bool, len(coefficients))
@@ -179,17 +187,17 @@ func profileWeights(profileName string, prof profile) (Weights, error) {
 	}
 	if len(unknown) > 0 {
 		sort.Strings(unknown)
-		return Weights{}, configengine.MarkInvalid(fmt.Errorf("batcher.yaml: %s has unknown keys: %s", profileKeyName(profileName, weightsLeaf), strings.Join(unknown, ", ")))
+		return Weights{}, configengine.MarkInvalid(fmt.Errorf("batcher.yaml profile %q has unknown weights keys: %s", profileName, strings.Join(unknown, ", ")))
 	}
 
 	var w Weights
 	for _, c := range coefficients {
 		value, ok := prof.Weights[c.key]
 		if !ok {
-			return Weights{}, configengine.MarkInvalid(fmt.Errorf("batcher.yaml: %s is missing", profileKeyName(profileName, weightsLeaf+"."+c.key)))
+			return Weights{}, configengine.MarkInvalid(fmt.Errorf("batcher.yaml profile %q is missing weights key %q", profileName, c.key))
 		}
 		if value < 0 {
-			return Weights{}, configengine.MarkInvalid(fmt.Errorf("batcher.yaml: %s is negative: %v", profileKeyName(profileName, weightsLeaf+"."+c.key), value))
+			return Weights{}, configengine.MarkInvalid(fmt.Errorf("batcher.yaml profile %q weights key %q is negative: %v", profileName, c.key, value))
 		}
 		*c.field(&w) = value
 	}

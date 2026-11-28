@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubregistry"
 	"github.com/Knatte18/loomyard/internal/standalonestate"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -42,7 +41,7 @@ func TestLiveHubGeometries(t *testing.T) {
 			t.Fatalf("MkdirAll(%q) = %v", stateDir, err)
 		}
 		hubPath = filepath.Join(base, "hub")
-		boltDir := fabriclayout.BoltDir(hubPath)
+		boltDir := fabricengine.BoltDir(hubPath)
 		if err := os.MkdirAll(boltDir, 0o755); err != nil {
 			t.Fatalf("MkdirAll(%q) = %v", boltDir, err)
 		}

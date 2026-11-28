@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"path"
-	"slices"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -84,45 +83,9 @@ var gitInitValuedOptions = map[string]bool{
 // That word is never read as the path.
 var gitWorktreeAddValuedOptions = map[string]bool{"-b": true, "-B": true, "--reason": true}
 
-// gitCloneValuedOptions holds the git clone options whose value is the following word.
-// That word is never read as the source or the directory.
-var gitCloneValuedOptions = map[string]bool{
-	"-o": true, "--origin": true, "-b": true, "--branch": true, "-u": true, "--upload-pack": true,
-	"--reference": true, "--reference-if-able": true, "--separate-git-dir": true, "--depth": true,
-	"--shallow-since": true, "--shallow-exclude": true, "-c": true, "--config": true, "--template": true,
-	"-j": true, "--jobs": true, "--filter": true, "--server-option": true, "--bundle-uri": true, "--ref-format": true,
-}
-
-// gitCloneOriginOptions holds the git clone options that name the remote the clone points at its source.
-var gitCloneOriginOptions = map[string]bool{"-o": true, "--origin": true}
-
-// gitRemoteValuedOptions holds the git remote add options whose value is the following word.
-// That word is never read as the remote's name or URL.
-var gitRemoteValuedOptions = map[string]bool{"-t": true, "-m": true}
-
-// gitPushValuedOptions holds the git push options whose value is the following word.
-// That word is never read as the destination.
-var gitPushValuedOptions = map[string]bool{"-o": true, "--push-option": true, "--receive-pack": true, "--exec": true}
-
-// gitPushRedirectKeyPrefixes holds the prefixes of the config keys that can change where a push goes.
-// An include key counts because the file it names may hold any of the others.
-var gitPushRedirectKeyPrefixes = []string{"remote.", "url.", "branch.", "include.", "includeif."}
-
-// gitRemoteChangingVerbs holds the git remote verbs that add, re-point, rename or remove a remote.
-var gitRemoteChangingVerbs = map[string]bool{"add": true, "set-url": true, "rename": true, "remove": true, "rm": true}
-
-// mutatingGitCommand is a fork's Bash command that runs a state-mutating git invocation.
-// The invocation runs outside the repositories the fork created.
-type mutatingGitCommand struct {
-	// command is the Bash command as the transcript holds it.
-	command string
-	// pushFrom is the fork-created repository the command pushed from, when every such invocation of it is a push from one;
-	// it is "" otherwise.
-	pushFrom string
-}
-
-// mutatingGitCommands scans commands, one fork's Bash commands in transcript order.
-// It returns, in order, each command that runs a state-mutating git subcommand on a repository the fork did not create.
+// firstMutatingGitCommand scans commands, one fork's Bash commands in transcript order.
+// It returns the first command that runs a state-mutating git subcommand on a repository the fork did not create.
+// It reports whether such a command exists.
 // A command is split into segments at ;, &, | and newlines,
 // and a segment is a git invocation when its first word is git, bare or path-prefixed.
 // Only the subcommand word decides: a mutating verb named as an argument, as in git help cherry-pick, never counts.
@@ -133,63 +96,32 @@ type mutatingGitCommand struct {
 // further along it is an option value or an operand, as in git commit -m -h.
 //
 // A mutating invocation does not count when its directory lies inside a repository the fork created earlier.
-// The fork creates one by git init, by git clone, or by git worktree add from such a repository.
+// The fork creates one by git init, or by git worktree add from such a repository.
 // So a fork may experiment on a throwaway repository.
 // The directory is resolved lexically from the command's unknown starting directory.
 // It applies the command's own cd segments first, then the invocation's -C options.
-// Any invocation with --git-dir or --work-tree counts, as does one after a bare cd or cd -.
+// git push always counts, as does any invocation with --git-dir or --work-tree, or one after a bare cd or cd -.
 // Their target is not the resolved directory.
-// A git init or git clone whose relative path is the starting directory or an ancestor of it records no repository.
+// A git init whose relative path is the starting directory or an ancestor of it records no repository.
 // The same holds for a path that leaves the directory through .., since it may reinitialize the target.
-// Nor does one whose path is or encloses a directory an earlier git call ran in outside every created repository.
 // A .. that would climb above a leading ~ or $ word leaves the directory unresolvable.
 // Such a directory matches no recorded repository.
-//
-// A git push does not count when its destination leads into a repository the fork created:
-// a remote of the pushing repository that points into one, or a word written as a local path inside one.
-// A relative path is read from the top level of the repository the push or remote call runs in, as git reads it.
-// git remote add, git remote set-url and git clone point a remote; git remote rename and git remote remove forget one.
-// A remote that stopped leading into a created repository never leads into one again.
-// A git worktree shares the remotes of the repository it was added from.
-// A push with no destination or with --repo counts.
-// So does a push from outside every created repository with -u, --set-upstream or --recurse-submodules.
-// So does every push after a config key that may redirect it.
-// Such a key starts with remote., url., branch., include. or includeif.
-// It is named by git config, -c, --config-env, or a git clone -c or --config.
-// The same holds after a git remote change whose directory is unknown.
-// It holds after any ln too, since the link may lead out.
-func mutatingGitCommands(commands []string) []mutatingGitCommand {
+func firstMutatingGitCommand(commands []string) (string, bool) {
 	var repos forkRepositories
-	var found []mutatingGitCommand
 	for _, cmd := range commands {
-		if pushFrom, mutates := repos.runsMutatingGit(cmd); mutates {
-			found = append(found, mutatingGitCommand{command: cmd, pushFrom: pushFrom})
+		if repos.runsMutatingGit(cmd) {
+			return cmd, true
 		}
 	}
-	return found
+	return "", false
 }
 
-// forkRepositories holds what one fork's commands created: repositories, and the remotes that lead into them.
-type forkRepositories struct {
-	// roots holds the lexically resolved directories of the repositories the fork created.
-	roots []string
-	// worktreeSources maps the root of a created worktree to the created repository whose config it shares.
-	worktreeSources map[string]string
-	// entered holds the lexically resolved directories git calls ran in outside every created repository.
-	// The fork did not make them, so no later git init or git clone may claim one or an ancestor of one.
-	entered []string
-	// remotes maps a created repository's root to its remote names.
-	// A name maps to true when the remote leads into a created repository.
-	remotes map[string]map[string]bool
-	// pushRedirected reports whether a call named a config key or made a link that can redirect a push.
-	pushRedirected bool
-}
+// forkRepositories holds the lexically resolved directories of the repositories one fork created.
+type forkRepositories []string
 
 // runsMutatingGit reports whether cmd invokes git with a state-mutating subcommand outside repos.
-// It also returns the created repository cmd pushed from, when every such invocation of cmd is a push from one.
-// It records each repository and remote cmd creates, and marks every push redirected after an ln.
-func (repos *forkRepositories) runsMutatingGit(cmd string) (pushFrom string, mutates bool) {
-	onlyOwnPushes := true
+// It records each repository cmd creates.
+func (repos *forkRepositories) runsMutatingGit(cmd string) bool {
 	dir, dirKnown := ".", true
 	for _, words := range splitShellSegments(cmd) {
 		switch {
@@ -200,320 +132,8 @@ func (repos *forkRepositories) runsMutatingGit(cmd string) (pushFrom string, mut
 			} else if dirKnown || isAnchoredShellPath(words[1]) {
 				dir, dirKnown = resolveShellPath(dir, words[1]), true
 			}
-		case isLinkExecutable(words[0]):
-			repos.pushRedirected = true
 		case isGitExecutable(words[0]):
-			from, violates := repos.gitInvocationMutates(parseGitInvocation(words[1:], dir, dirKnown))
-			if !violates {
-				continue
-			}
-			if !mutates {
-				pushFrom = from
-			}
-			mutates = true
-			onlyOwnPushes = onlyOwnPushes && from != ""
-		}
-	}
-	if !onlyOwnPushes {
-		pushFrom = ""
-	}
-	return pushFrom, mutates
-}
-
-// gitInvocationMutates reports whether invocation changes state outside repos.
-// For a push it also returns the created repository it ran from, "" when it ran from none.
-// It records the repository and the remote that invocation creates.
-func (repos *forkRepositories) gitInvocationMutates(invocation gitInvocation) (pushFrom string, mutates bool) {
-	if invocation.helpRequested || len(invocation.args) > 0 && isHelpFlag(invocation.args[0]) {
-		return "", false
-	}
-	defer repos.enter(invocation)
-	redirects := invocation.redirectsPush
-	switch invocation.subcommand {
-	case "config":
-		redirects = redirects || namesPushRedirectKey(invocation.args)
-	case "clone":
-		redirects = redirects || namesPushRedirectKey(cloneConfigValues(invocation.args))
-	}
-	if redirects {
-		repos.pushRedirected = true
-	}
-	switch invocation.subcommand {
-	case "init":
-		directory := "."
-		if operands := gitOperands(invocation.args, gitInitValuedOptions); len(operands) > 0 {
-			directory = operands[0]
-		}
-		repos.record(invocation, directory)
-	case "clone":
-		repos.recordClone(invocation)
-	case "worktree":
-		if source, inside := repos.rootOf(invocation); inside && len(invocation.args) > 0 && invocation.args[0] == "add" {
-			if operands := gitOperands(invocation.args[1:], gitWorktreeAddValuedOptions); len(operands) > 0 {
-				if root, recorded := repos.record(invocation, operands[0]); recorded {
-					if repos.worktreeSources == nil {
-						repos.worktreeSources = map[string]string{}
-					}
-					repos.worktreeSources[root] = repos.configRoot(source)
-				}
-			}
-		}
-	case "remote":
-		repos.recordRemote(invocation)
-	case "tag":
-		if gitTagListsOnly(invocation.args) {
-			return "", false
-		}
-	case "branch":
-		if gitBranchReadsOnly(invocation.args) {
-			return "", false
-		}
-	case "push":
-		return repos.pushMutates(invocation)
-	}
-	if !mutatingGitSubcommands[invocation.subcommand] {
-		return "", false
-	}
-	_, inside := repos.rootOf(invocation)
-	return "", !inside
-}
-
-// pushMutates reports whether invocation, a git push, may change a repository the fork did not create.
-// It also returns the created repository the push ran from, "" when it ran from none.
-func (repos *forkRepositories) pushMutates(invocation gitInvocation) (pushFrom string, mutates bool) {
-	from, _ := repos.rootOf(invocation)
-	if repos.pushRedirected {
-		return from, true
-	}
-	for _, arg := range invocation.args {
-		if arg == "--repo" || strings.HasPrefix(arg, "--repo=") {
-			return from, true
-		}
-		// Outside every created repository, -u and --recurse-submodules write into the repository the push runs from.
-		if from == "" && (arg == "-u" || arg == "--set-upstream" || arg == "--recurse-submodules" || strings.HasPrefix(arg, "--recurse-submodules=")) {
-			return from, true
-		}
-	}
-	destinations := gitOperands(invocation.args, gitPushValuedOptions)
-	if len(destinations) == 0 {
-		return from, true
-	}
-	destination := destinations[0]
-	if leadsIn, named := repos.remotes[repos.configRoot(from)][destination]; named {
-		return from, !leadsIn
-	}
-	// A destination that names no remote the fork pointed counts unless it is written as a path:
-	// a bare word may name a remote the transcript never shows being set.
-	looksLikePath := isAnchoredShellPath(destination) || strings.HasPrefix(destination, ".") || strings.Contains(destination, "/")
-	return from, !looksLikePath || isGitURL(destination) || !repos.leadsInto(invocation, destination)
-}
-
-// recordClone records the repository a git clone creates.
-// The repository sits at the clone's directory operand, or at the name git derives from its source.
-// The clone's origin, or the remote -o or --origin names, leads into a created repository when the source does.
-func (repos *forkRepositories) recordClone(invocation gitInvocation) {
-	operands := gitOperands(invocation.args, gitCloneValuedOptions)
-	if len(operands) == 0 {
-		return
-	}
-	source := operands[0]
-	directory := cloneDirectoryName(source)
-	if len(operands) > 1 {
-		directory = operands[1]
-	}
-	root, recorded := repos.record(invocation, directory)
-	if !recorded {
-		return
-	}
-	origin := "origin"
-	for i, arg := range invocation.args {
-		if name, value, attached := strings.Cut(arg, "="); attached && name == "--origin" {
-			origin = value
-		} else if gitCloneOriginOptions[arg] && i+1 < len(invocation.args) {
-			origin = invocation.args[i+1]
-		}
-	}
-	repos.setRemote(root, origin, repos.sourceLeadsIn(invocation, source))
-}
-
-// cloneDirectoryName returns the directory git clone derives from source when given none:
-// its last path element, without a trailing /.git or .git.
-func cloneDirectoryName(source string) string {
-	trimmed := strings.TrimSuffix(strings.TrimRight(source, "/"), "/.git")
-	return strings.TrimSuffix(path.Base(trimmed), ".git")
-}
-
-// recordRemote follows a git remote call.
-// git remote add and git remote set-url mark the named remote as leading into a created repository or not.
-// The remote is the one of the repository whose config the call runs in.
-// A set-url --add or --push keeps the remote leading in only when it did and the URL does.
-// A set-url --delete never keeps it, since the URLs left are unknown.
-// git remote rename and git remote remove forget every name they touch.
-// A call whose directory is unknown may change the remotes of any created repository.
-// It marks every push redirected.
-func (repos *forkRepositories) recordRemote(invocation gitInvocation) {
-	if len(invocation.args) == 0 || !gitRemoteChangingVerbs[invocation.args[0]] {
-		return
-	}
-	if !invocation.dirKnown {
-		repos.pushRedirected = true
-		return
-	}
-	root, inside := repos.rootOf(invocation)
-	if !inside {
-		return
-	}
-	key := repos.configRoot(root)
-	operands := gitOperands(invocation.args[1:], gitRemoteValuedOptions)
-	if invocation.args[0] != "add" && invocation.args[0] != "set-url" {
-		for _, name := range operands {
-			repos.setRemote(key, name, false)
-		}
-		return
-	}
-	if len(operands) < 2 {
-		return
-	}
-	leadsIn := !isGitURL(operands[1]) && repos.leadsInto(invocation, operands[1])
-	if slices.Contains(invocation.args, "--add") || slices.Contains(invocation.args, "--push") {
-		leadsIn = leadsIn && repos.remotes[key][operands[0]]
-	}
-	if slices.Contains(invocation.args, "--delete") {
-		leadsIn = false
-	}
-	repos.setRemote(key, operands[0], leadsIn)
-}
-
-// setRemote marks the remote name of the repository keyed key as leading into a created repository or not.
-// A remote marked as not leading in stays so:
-// once the audit lost track of where it pushes, a later URL inside does not restore that trust.
-func (repos *forkRepositories) setRemote(key, name string, leadsIn bool) {
-	if current, known := repos.remotes[key][name]; known && !current {
-		return
-	}
-	if repos.remotes == nil {
-		repos.remotes = map[string]map[string]bool{}
-	}
-	if repos.remotes[key] == nil {
-		repos.remotes[key] = map[string]bool{}
-	}
-	repos.remotes[key][name] = leadsIn
-}
-
-// record adds operand, resolved against invocation's directory, to repos, and returns the recorded root.
-// It records nothing when the directory is unknown.
-// It also records nothing when operand resolves to the starting directory or an ancestor of it.
-// A path leaving the directory through .. is skipped too.
-// Such a path may name the starting directory under its own basename.
-// So is a directory an earlier git call ran in outside every created repository, or an ancestor of one:
-// the fork did not make it.
-func (repos *forkRepositories) record(invocation gitInvocation, operand string) (string, bool) {
-	if !invocation.dirKnown {
-		return "", false
-	}
-	created := resolveShellPath(invocation.dir, operand)
-	if created == "." || created == ".." || strings.HasPrefix(created, "../") || repos.enclosesEntered(created) {
-		return "", false
-	}
-	repos.roots = append(repos.roots, created)
-	return created, true
-}
-
-// rootOf returns the created repository invocation's directory lies inside, and reports whether there is one.
-// An unknown directory lies inside none.
-func (repos *forkRepositories) rootOf(invocation gitInvocation) (string, bool) {
-	if !invocation.dirKnown {
-		return "", false
-	}
-	return repos.rootContaining(invocation.dir)
-}
-
-// rootContaining returns the innermost created repository that dir lies inside, and reports whether there is one.
-func (repos *forkRepositories) rootContaining(dir string) (string, bool) {
-	innermost := ""
-	for _, root := range repos.roots {
-		if (dir == root || strings.HasPrefix(dir, root+"/")) && len(root) > len(innermost) {
-			innermost = root
-		}
-	}
-	return innermost, innermost != ""
-}
-
-// configRoot returns the created repository whose config the repository at root uses.
-// A worktree shares the config, and so the remotes, of the repository it was added from.
-func (repos *forkRepositories) configRoot(root string) string {
-	if source, shared := repos.worktreeSources[root]; shared {
-		return source
-	}
-	return root
-}
-
-// enter remembers the directory invocation ran in when it lies inside no created repository.
-func (repos *forkRepositories) enter(invocation gitInvocation) {
-	if !invocation.dirKnown {
-		return
-	}
-	if _, inside := repos.rootContaining(invocation.dir); !inside {
-		repos.entered = append(repos.entered, invocation.dir)
-	}
-}
-
-// enclosesEntered reports whether created is, or is an ancestor of, a directory that enter remembered.
-func (repos *forkRepositories) enclosesEntered(created string) bool {
-	prefix := strings.TrimSuffix(created, "/") + "/"
-	for _, dir := range repos.entered {
-		if dir == created || strings.HasPrefix(dir, prefix) {
-			return true
-		}
-	}
-	return false
-}
-
-// leadsInto reports whether p lies inside a created repository.
-// p is a local path or remote URL given to a git call run in invocation's directory.
-// Git reads a relative p from the top level of the repository the call runs in.
-// So a relative p leads nowhere when that directory lies inside no created repository.
-func (repos *forkRepositories) leadsInto(invocation gitInvocation, p string) bool {
-	base := ""
-	if !isAnchoredShellPath(p) {
-		root, inside := repos.rootOf(invocation)
-		if !inside {
-			return false
-		}
-		base = root
-	}
-	_, inside := repos.rootContaining(resolveShellPath(base, p))
-	return inside
-}
-
-// sourceLeadsIn reports whether source is a local path inside a created repository.
-// source is the source of a git clone run in invocation's directory.
-// A clone runs in no repository, so git reads a relative source from that directory.
-func (repos *forkRepositories) sourceLeadsIn(invocation gitInvocation, source string) bool {
-	if isGitURL(source) || !isAnchoredShellPath(source) && !invocation.dirKnown {
-		return false
-	}
-	_, inside := repos.rootContaining(resolveShellPath(invocation.dir, source))
-	return inside
-}
-
-// isGitURL reports whether word, a git clone source, remote URL or push destination, is a URL or host:path location:
-// it holds a colon with no slash before it.
-func isGitURL(word string) bool {
-	slash, colon := strings.Index(word, "/"), strings.Index(word, ":")
-	return colon >= 0 && (slash < 0 || colon < slash)
-}
-
-// namesPushRedirectKey reports whether a word of words names a config key that can change where a push goes.
-// A word counts alone, as a key=value pair, or as the value of a --name=value option.
-func namesPushRedirectKey(words []string) bool {
-	for _, word := range words {
-		if _, value, attached := strings.Cut(word, "="); attached && strings.HasPrefix(word, "--") {
-			word = value
-		}
-		lower := strings.ToLower(word)
-		for _, prefix := range gitPushRedirectKeyPrefixes {
-			if strings.HasPrefix(lower, prefix) {
+			if repos.gitInvocationMutates(parseGitInvocation(words[1:], dir, dirKnown)) {
 				return true
 			}
 		}
@@ -521,21 +141,67 @@ func namesPushRedirectKey(words []string) bool {
 	return false
 }
 
-// cloneConfigValues returns the settings args, the words after git clone, give with -c or --config.
-// Only these can set a config key; the source and directory operands are never keys.
-func cloneConfigValues(args []string) []string {
-	var values []string
-	for i, arg := range args {
-		switch {
-		case (arg == "-c" || arg == "--config") && i+1 < len(args):
-			values = append(values, args[i+1])
-		case strings.HasPrefix(arg, "--config="):
-			values = append(values, strings.TrimPrefix(arg, "--config="))
-		case strings.HasPrefix(arg, "-c") && len(arg) > 2 && !strings.HasPrefix(arg, "--"):
-			values = append(values, arg[2:])
+// gitInvocationMutates reports whether invocation changes state outside repos.
+// It records the repository that invocation creates.
+func (repos *forkRepositories) gitInvocationMutates(invocation gitInvocation) bool {
+	if invocation.helpRequested || len(invocation.args) > 0 && isHelpFlag(invocation.args[0]) {
+		return false
+	}
+	switch invocation.subcommand {
+	case "init":
+		directory, found := firstOperand(invocation.args, gitInitValuedOptions)
+		if !found {
+			directory = "."
+		}
+		repos.record(invocation, directory)
+	case "worktree":
+		if len(invocation.args) > 0 && invocation.args[0] == "add" && repos.contain(invocation) {
+			if worktreePath, found := firstOperand(invocation.args[1:], gitWorktreeAddValuedOptions); found {
+				repos.record(invocation, worktreePath)
+			}
+		}
+	case "tag":
+		if gitTagListsOnly(invocation.args) {
+			return false
+		}
+	case "branch":
+		if gitBranchReadsOnly(invocation.args) {
+			return false
 		}
 	}
-	return values
+	if !mutatingGitSubcommands[invocation.subcommand] {
+		return false
+	}
+	return invocation.subcommand == "push" || !repos.contain(invocation)
+}
+
+// record adds operand, resolved against invocation's directory, to repos.
+// It records nothing when the directory is unknown.
+// It also records nothing when operand resolves to the starting directory or an ancestor of it.
+// A path leaving the directory through .. is skipped too.
+// Such a path may name the starting directory under its own basename.
+func (repos *forkRepositories) record(invocation gitInvocation, operand string) {
+	if !invocation.dirKnown {
+		return
+	}
+	created := resolveShellPath(invocation.dir, operand)
+	if created == "." || created == ".." || strings.HasPrefix(created, "../") {
+		return
+	}
+	*repos = append(*repos, created)
+}
+
+// contain reports whether invocation's directory is known and lies inside one of repos.
+func (repos forkRepositories) contain(invocation gitInvocation) bool {
+	if !invocation.dirKnown {
+		return false
+	}
+	for _, root := range repos {
+		if invocation.dir == root || strings.HasPrefix(invocation.dir, root+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 // gitInvocation is one git call of a shell segment, with the directory it acts on.
@@ -546,8 +212,6 @@ type gitInvocation struct {
 	args []string
 	// helpRequested reports whether a -h or --help stood among the global options.
 	helpRequested bool
-	// redirectsPush reports whether a global -c or --config-env named a config key that can change where a push goes.
-	redirectsPush bool
 	// dir is the lexically resolved directory git acts on, meaningful only when dirKnown.
 	dir string
 	// dirKnown reports whether dir names the repository git acts on.
@@ -571,14 +235,7 @@ func parseGitInvocation(args []string, dir string, dirKnown bool) gitInvocation 
 			if name == args[i] {
 				i++
 			}
-		case strings.HasPrefix(args[i], "--config-env="):
-			if namesPushRedirectKey([]string{strings.TrimPrefix(args[i], "--config-env=")}) {
-				invocation.redirectsPush = true
-			}
 		case gitValuedGlobalOptions[args[i]]:
-			if (args[i] == "-c" || args[i] == "--config-env") && i+1 < len(args) && namesPushRedirectKey(args[i+1:i+2]) {
-				invocation.redirectsPush = true
-			}
 			i++
 		case isHelpFlag(args[i]):
 			invocation.helpRequested = true
@@ -592,22 +249,25 @@ func parseGitInvocation(args []string, dir string, dirKnown bool) gitInvocation 
 	return invocation
 }
 
-// gitOperands returns the non-option words of args in order.
-// It skips the value of each option that valuedOptions holds, and every word after a -- is an operand.
-func gitOperands(args []string, valuedOptions map[string]bool) []string {
-	var operands []string
+// firstOperand returns the first non-option word of args and reports whether there is one.
+// It skips the value of each option that valuedOptions holds.
+// After a -- it returns the next word, whatever its spelling.
+func firstOperand(args []string, valuedOptions map[string]bool) (string, bool) {
 	for i := 0; i < len(args); i++ {
 		switch {
 		case args[i] == "--":
-			return append(operands, args[i+1:]...)
+			if i+1 < len(args) {
+				return args[i+1], true
+			}
+			return "", false
 		case valuedOptions[args[i]]:
 			i++
 		case strings.HasPrefix(args[i], "-"):
 		default:
-			operands = append(operands, args[i])
+			return args[i], true
 		}
 	}
-	return operands
+	return "", false
 }
 
 // isAnchoredShellPath reports whether p names its directory independently of the current directory:
@@ -818,11 +478,6 @@ func isHelpFlag(word string) bool {
 	return word == "-h" || word == "--help"
 }
 
-// isLinkExecutable reports whether word names the ln binary, bare or behind a directory path.
-func isLinkExecutable(word string) bool {
-	return word == "ln" || strings.HasSuffix(word, "/ln")
-}
-
 // isGitExecutable reports whether word names the git binary, bare or behind a directory path.
 func isGitExecutable(word string) bool {
 	return word == "git" || strings.HasSuffix(word, "/git") || strings.HasSuffix(word, `\git`)
@@ -845,67 +500,29 @@ func auditClusterRound(audit *shuttleengine.ForkAudit, wantN int) ([]string, err
 	return unreturnedForkWarnings(audit), nil
 }
 
-// forkViolationError is the first fork rule an audit found broken.
-type forkViolationError struct {
-	message string
-	// targetUntouched reports whether no fork of the audit wrote a file or ran a git invocation that may change the target:
-	// every state-changing git invocation a fork ran was a push from a repository it created.
-	targetUntouched bool
-	// pushFrom is the fork-created repository the audit's first push-only command pushed from, "" when there is none.
-	pushFrom string
-}
-
-func (e *forkViolationError) Error() string { return e.message }
-
 // forkViolation returns the first violation of audit, or nil when the forks are clean.
 // The checks run in this order: a nested spawn call, a write or edit call, a git-mutating command, and a named spawn.
 // The error carries no burler prefix, so each caller adds its own.
-func forkViolation(audit *shuttleengine.ForkAudit) *forkViolationError {
-	untouched := true
-	pushFrom := ""
-	for _, fork := range audit.Forks {
-		untouched = untouched && fork.WriteCalls == 0
-		for _, cmd := range mutatingGitCommands(fork.BashCommands) {
-			untouched = untouched && cmd.pushFrom != ""
-			if pushFrom == "" {
-				pushFrom = cmd.pushFrom
-			}
-		}
-	}
-	violation := func(format string, args ...any) *forkViolationError {
-		return &forkViolationError{message: fmt.Sprintf(format, args...), targetUntouched: untouched, pushFrom: pushFrom}
-	}
+func forkViolation(audit *shuttleengine.ForkAudit) error {
 	for _, fork := range audit.Forks {
 		if fork.AgentCalls > 0 {
-			return violation("fork %q attempted %d nested spawn call(s) — forks cannot nest and must never spawn a fork or subagent, even when the attempt was denied", fork.TranscriptPath, fork.AgentCalls)
+			return fmt.Errorf("fork %q attempted %d nested spawn call(s) — forks cannot nest and must never spawn a fork or subagent, even when the attempt was denied", fork.TranscriptPath, fork.AgentCalls)
 		}
 	}
 	for _, fork := range audit.Forks {
 		if fork.WriteCalls > 0 {
-			return violation("fork %q attempted %d write/edit tool call(s) — a fork must never mutate a file", fork.TranscriptPath, fork.WriteCalls)
+			return fmt.Errorf("fork %q attempted %d write/edit tool call(s) — a fork must never mutate a file", fork.TranscriptPath, fork.WriteCalls)
 		}
 	}
 	for _, fork := range audit.Forks {
-		if found := mutatingGitCommands(fork.BashCommands); len(found) > 0 {
-			return violation("fork %q ran a git-mutating command (%q) — a fork must never run a state-mutating git command outside a repository it created", fork.TranscriptPath, found[0].command)
+		if cmd, found := firstMutatingGitCommand(fork.BashCommands); found {
+			return fmt.Errorf("fork %q ran a git-mutating command (%q) — a fork must never run a state-mutating git command", fork.TranscriptPath, cmd)
 		}
 	}
 	if audit.NamedSpawns > 0 {
-		return violation("%d fork(s) were spawned with a name — named forks silently lose inherited context, which is a silent quality-degradation defect, not an advisory", audit.NamedSpawns)
+		return fmt.Errorf("%d fork(s) were spawned with a name — named forks silently lose inherited context, which is a silent quality-degradation defect, not an advisory", audit.NamedSpawns)
 	}
 	return nil
-}
-
-// fixViolationWayForward words what the target holds after violation and the way forward from it.
-// It says when the audit found no target change, so the operator is never sent to revert what no fork wrote.
-func fixViolationWayForward(violation *forkViolationError) string {
-	switch {
-	case violation.targetUntouched && violation.pushFrom != "":
-		return fmt.Sprintf("no target change was found: no fork wrote a file or ran a state-changing git command in the target's working tree, and the push from %s went to a destination the audit could not place; way forward: check that destination is neither the target's repository nor one of its remotes, and resume the run", violation.pushFrom)
-	case violation.targetUntouched:
-		return "no target change was found: no fork wrote a file or ran a state-changing git command outside a repository it created; way forward: resume the run"
-	}
-	return "way forward: inspect the target's working-tree changes, revert what the fork wrote, and resume the run"
 }
 
 // unreturnedForkWarnings returns one warning per fork of audit that never returned a final report.
@@ -921,44 +538,22 @@ func unreturnedForkWarnings(audit *shuttleengine.ForkAudit) []string {
 }
 
 // auditFixRound checks the fork audit of a twill fixer that spawned self-check forks for wantN lenses.
-// A fork violation is a hard error, wrapped with its way forward, which says when the audit found no target change.
+// A fork violation is a hard error, wrapped with its way forward.
 // A fork count other than wantN, zero included, is a warning.
 // The fix is already on disk; failing the half would redo a finished fix.
 // It returns the warnings, including one per fork that never returned a report.
 // It also returns the audited fork count, which is 0 for a nil audit.
-// A fresh subagent the fixer started to make its fixes writes on the fixer's behalf:
-// it is no self-check fork, so this audit neither checks nor counts it.
-// A name given to it is no named-fork violation.
-// A subagent belongs to whichever subagent the session itself spawned at the head of its spawner chain.
-// Under a fresh subagent it is part of that subagent's work, so it is neither checked nor counted.
-// Under a fork it is checked like that fork, so what it changed in the target reaches the way forward.
 func auditFixRound(audit *shuttleengine.ForkAudit, wantN int) (warnings []string, forks int, err error) {
 	if audit == nil {
 		return []string{fmt.Sprintf("twill fixer spawned 0 fork(s) for %d lens(es)", wantN)}, 0, nil
 	}
-	selfCheck := *audit
-	selfCheck.Forks = nil
-	selfCheck.NamedSpawns = audit.NamedForkSpawns
-	reports := map[string]shuttleengine.ForkReport{}
-	for _, fork := range audit.Forks {
-		reports[fork.TranscriptPath] = fork
+	if violation := forkViolation(audit); violation != nil {
+		return nil, len(audit.Forks), fmt.Errorf("burler: twill fixer %w; way forward: inspect the target's working-tree changes, revert what the fork wrote, and resume the run", violation)
 	}
-	for _, fork := range audit.Forks {
-		head := fork
-		for head.SpawnerTranscriptPath != "" {
-			head = reports[head.SpawnerTranscriptPath]
-		}
-		if !head.FreshSubagent {
-			selfCheck.Forks = append(selfCheck.Forks, fork)
-		}
-	}
-	if violation := forkViolation(&selfCheck); violation != nil {
-		return nil, len(selfCheck.Forks), fmt.Errorf("burler: twill fixer %w; %s", violation, fixViolationWayForward(violation))
-	}
-	forks = len(selfCheck.Forks)
+	forks = len(audit.Forks)
 	if forks != wantN {
 		warnings = append(warnings, fmt.Sprintf("twill fixer spawned %d fork(s) for %d lens(es)", forks, wantN))
 	}
-	warnings = append(warnings, unreturnedForkWarnings(&selfCheck)...)
+	warnings = append(warnings, unreturnedForkWarnings(audit)...)
 	return warnings, forks, nil
 }

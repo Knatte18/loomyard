@@ -23,7 +23,7 @@ func validateLabels(t Task, prior *Task, v Vocabulary) error {
 	var typeLabels []string
 	for _, label := range t.Labels {
 		if !v.Known(label) {
-			return fmt.Errorf("entry %q carries label %q, which is in neither %s nor %s in board.yaml: add it to one of them, or drop it from the entry", t.Slug, label, typesName(), labelsName())
+			return fmt.Errorf("entry %q carries label %q, which is in neither the types nor the labels list of board.yaml: add it to one of them, or drop it from the entry", t.Slug, label)
 		}
 		if seen[label] {
 			return fmt.Errorf("entry %q carries label %q more than once: list each label once", t.Slug, label)
@@ -40,11 +40,11 @@ func validateLabels(t Task, prior *Task, v Vocabulary) error {
 		if len(typeLabels) > 0 {
 			carried = strings.Join(typeLabels, ", ")
 		}
-		return fmt.Errorf("note %q must carry exactly one type label of %s in board.yaml, and carries: %s", t.Slug, typesName(), carried)
+		return fmt.Errorf("note %q must carry exactly one type label from the types list of board.yaml, and carries: %s", t.Slug, carried)
 	case t.Kind == KindTask && len(typeLabels) == 0:
-		return fmt.Errorf("task %q must carry a type label of %s in board.yaml: add one to its labels", t.Slug, typesName())
+		return fmt.Errorf("task %q must carry a type label from the types list of board.yaml: add one to its labels", t.Slug)
 	case t.Kind == KindProject && len(typeLabels) == 0:
-		return fmt.Errorf("project %q must carry a type label of %s in board.yaml: add one to its labels", t.Slug, typesName())
+		return fmt.Errorf("project %q must carry a type label from the types list of board.yaml: add one to its labels", t.Slug)
 	}
 	return checkSketchLabel(t, prior)
 }

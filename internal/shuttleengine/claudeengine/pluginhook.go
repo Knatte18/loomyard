@@ -36,8 +36,6 @@ const (
 	matchAllHooks = "*"
 	// hookWaitDelay bounds the wait for a hook's output pipes once its context has ended.
 	hookWaitDelay = 2 * time.Second
-	// hookNotRunReason is the reason an omitted hook gives when the request carried no runner.
-	hookNotRunReason = "not run"
 )
 
 // pluginHook is one command hook of a plugin's SessionStart event.
@@ -150,7 +148,7 @@ func pluginSessionStartContexts(req shuttleengine.UserSetupRequest, ids []string
 		for _, hook := range hooks {
 			name := fmt.Sprintf("plugin %s %s hook", id, sessionStartEvent)
 			if req.RunHook == nil {
-				omitted = append(omitted, shuttleengine.OmittedHook{Name: name + " " + hook.command, Reason: hookNotRunReason, Plugin: id, Hook: hook.command})
+				omitted = append(omitted, shuttleengine.OmittedHook{Name: name + " " + hook.command, Reason: "not run"})
 				continue
 			}
 			timeout := hook.timeout
@@ -165,7 +163,7 @@ func pluginSessionStartContexts(req shuttleengine.UserSetupRequest, ids []string
 				Timeout: timeout,
 			})
 			if err != nil {
-				omitted = append(omitted, shuttleengine.OmittedHook{Name: name + " " + hook.command, Reason: err.Error(), Plugin: id, Hook: hook.command})
+				omitted = append(omitted, shuttleengine.OmittedHook{Name: name + " " + hook.command, Reason: err.Error()})
 				continue
 			}
 			hookContext := pluginHookContext(stdout)
@@ -173,12 +171,10 @@ func pluginSessionStartContexts(req shuttleengine.UserSetupRequest, ids []string
 				continue
 			}
 			items = append(items, shuttleengine.InstructionItem{
-				Name:   name,
-				Plugin: id,
-				Hook:   hook.command,
-				Text:   hookContext,
+				Name: name,
+				Text: hookContext,
 				WayForward: "turn plugin " + id + " off in the session scope: drop its skills from the role's skills in agents.yaml (`lym config agents`) or from the spec, " +
-					"or, while " + keyName(sessionScopeKey+".enabled") + " is off, turn it on (`lym config claude`), since then every installed plugin is on",
+					"or, while claude.yaml's session_scope is off, turn it on (`lym config claude`), since then every installed plugin is on",
 			})
 		}
 	}

@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
@@ -14,7 +14,7 @@ import (
 // The line hands the orch the Sketch and the proposal of the stored entry that filed project.
 // found is false when no stored proposal filed project.
 func raddleHandOff(location *lymcwd.Location, project string) (line string, found bool, err error) {
-	store, err := boardengine.ReadRaddleStore(fabriclayout.BoardDir(location.HubPath))
+	store, err := boardengine.ReadRaddleStore(fabricengine.BoardDir(location.HubPath))
 	if err != nil {
 		return "", false, err
 	}

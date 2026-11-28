@@ -2,7 +2,8 @@
 // The hub-sibling fast path and the lymcwd.ResolveWorktree fallback are documented as equivalent,
 // so this asserts that they produce the same Location for the same worktree and that neither branch omits a field.
 //
-// On a real hub, the prime warp worktree's directory level also holds hub-reserved entries.
+// On a real hub, the prime warp worktree's directory level also holds the Bolt checkout, _portals and _launchers.
+// Those are the names fabricengine.HubReservedNames() returns.
 // This pins that the fast path resolves the prime worktree's own name, not one of those reserved siblings.
 
 package fabricengine_test
@@ -39,6 +40,11 @@ func TestWarpLayoutFor_FastPathMatchesResolveWorktree(t *testing.T) {
 	}
 
 	// Pin that the fast path resolved the prime warp worktree's own name, not a hub-reserved sibling.
+	for _, reserved := range fabricengine.HubReservedNames() {
+		if fast.WorktreeName == reserved {
+			t.Errorf("warpLayoutFor resolved WorktreeName = %q, a hub-reserved name; want the prime worktree's own name", fast.WorktreeName)
+		}
+	}
 	if fast.WorktreeName != filepath.Base(worktreeRoot) {
 		t.Errorf("warpLayoutFor WorktreeName = %q; want %q (the prime worktree's own base name)", fast.WorktreeName, filepath.Base(worktreeRoot))
 	}

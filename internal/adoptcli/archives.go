@@ -12,7 +12,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/output"
 )
 
@@ -23,7 +23,7 @@ import (
 type archiveDeps struct {
 	ReadOwners   func() (boardengine.Owners, error)
 	ParentOf     func(slug string) (string, error)
-	ReadArchives func(keep func(slug string) bool) ([]fabriclayout.OwnerArchive, error)
+	ReadArchives func(keep func(slug string) bool) ([]fabricengine.OwnerArchive, error)
 }
 
 // archiveTag is one listed owner archive tag and the command that shows its commits.
@@ -45,10 +45,10 @@ type archiveSlug struct {
 // runArchives runs `lym adopt --archives` over the subjects req names, which are beam projects or `root`.
 // It prints the list on out.
 // It refuses no subject, any flag but --archives, a slug the board does not hold and an entry that is not a beam project.
-// It runs no step and writes no hold.
+// It runs no step, and it reads and writes no adopt record.
 // It returns the exit code.
 func runArchives(deps archiveDeps, req request, flags callFlags, out io.Writer) int {
-	if req.All || req.TakeHold || req.NoOrch || flags.Here {
+	if req.All || req.KeepLocal || req.DropLocal || req.NoOrch || flags.Discard || flags.Here {
 		return output.Err(out, "lym adopt: --archives only lists archives and takes no other flag: run `lym adopt --archives <subject>...` alone")
 	}
 	if len(req.Slugs) == 0 {

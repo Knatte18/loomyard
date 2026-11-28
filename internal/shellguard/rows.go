@@ -18,15 +18,10 @@ type Switch string
 const (
 	// SwitchNone marks a row installed for every run.
 	SwitchNone Switch = ""
-	// SwitchDenyPython marks the row installed for every run.
-	// Its hook asks the hub's current shuttle.deny_python on each matching call.
-	// Its notice follows shuttle.deny_python at launch.
+	// SwitchDenyPython marks the row the python switch of the shuttle config turns off.
 	SwitchDenyPython Switch = "deny_python"
 	// SwitchDenyPublish marks the row a launch spec turns on to keep a session from publishing: git push and the gh calls beyond reads, comments and title and body edits.
 	SwitchDenyPublish Switch = "deny_publish"
-	// SwitchDenyRawTmux marks a row installed and announced for every run whose launch spec does not exempt itself.
-	// A spec exempts itself when its session's task is to start tmux servers of its own.
-	SwitchDenyRawTmux Switch = "deny_raw_tmux"
 )
 
 // Row is one guard against shell commands.
@@ -34,8 +29,6 @@ type Row struct {
 	// Name identifies the row.
 	Name string
 	// Patterns are grep -E patterns; the guard denies when every one of them matches the payload.
-	// A pattern matches anywhere in the payload,
-	// so an exception the row allows is spelled inside the pattern that matches the command.
 	Patterns []string
 	// Steer is the deny reason shown to the agent.
 	Steer string
@@ -83,10 +76,9 @@ const codexEditToolsRule = "change a file with the apply_patch tool, and read or
 
 // pythonRefusal states the python deny, why it stands and the way forward for work that needs Python itself.
 // It names the version check, which agents otherwise run as a probe before choosing how to edit or parse.
-const pythonRefusal = "python and python3 are refused in every lym session, a version check included, so never probe for Python: what it runs differs from machine to machine with the installed packages, venvs and installations, and it is often very slow; when the work itself needs Python, as OCR does, say so to the operator or your parent, who can set shuttle." + string(SwitchDenyPython) + ": false for the hub, and never work round the guard"
+const pythonRefusal = "python and python3 are refused in every lym session, a version check included, so never probe for Python: what it runs differs from machine to machine with the installed packages, venvs and installations, and it is often very slow; when the work itself needs Python, as OCR does, say so to the operator or your parent, who can set " + string(SwitchDenyPython) + ": false for the hub, and never work round the guard"
 
-// pythonRoutes opens the python row's own steer text, which follows the shared whole-command clause.
-// It holds the refusal and the parse routes in Python's place.
+// pythonRoutes opens every python steer: the refusal and the parse routes in Python's place.
 const pythonRoutes = pythonRefusal + "; for work that does not need Python itself, parse JSON with jq and text with grep or awk; "
 
 // steerPythonDeny refuses a Bash python invocation and names the parse and edit routes in its place; it must contain no single/double quote or backslash (checked at init).
@@ -98,8 +90,7 @@ const codexSteerPythonDeny = pythonRoutes + codexEditToolsRule
 // noticePythonDeny announces the python deny; the edit rule its steer carries is announced by the shell-edit row's notice.
 const noticePythonDeny = pythonRefusal + "."
 
-// shellEditRefusal opens the shell-edit row's own steer text, which follows the shared whole-command clause.
-// It names the commands the row refuses.
+// shellEditRefusal opens every shell-edit steer: the commands the row refuses.
 const shellEditRefusal = "sed -i, perl -i, and a heredoc, redirect or tee into a source file are refused here; "
 
 // steerShellEditDeny refuses a Bash edit of a file; it must contain no single/double quote or backslash (checked at init).
@@ -125,169 +116,14 @@ const shellUnitPattern = `([^"\\'<]|\\[^"]|'[^']*'|` + doubleQuotedOpenPattern +
 // shellLineUnitPattern matches what shellUnitPattern matches except a JSON-escaped newline, so a run of it stays on one line.
 const shellLineUnitPattern = `([^"\\'<]|\\[^"n]|'[^']*'|` + doubleQuotedOpenPattern + `\\"|<[^<"\\'(])`
 
-// commandSeparatorPattern matches what ends one command and puts the next word in command position:
-// a ; & | ( <( >( or backtick, which also covers $( and ( subshells, or a JSON-escaped newline.
-const commandSeparatorPattern = `([;&|` + "`" + `]|[<>]?\(|\\n)`
-
-// topLevelReachPattern matches a run of shell units from the start of the command up to a separator, or nothing.
-// A separator after a heredoc operator counts only on that operator's line.
-const topLevelReachPattern = `(` + shellUnitPattern + `*(` + commandSeparatorPattern + `|<<-?` + shellLineUnitPattern + `*([;&|` + "`" + `]|[<>]?\()))?`
-
-// commandWordPrefixPattern matches what may stand between command position and the command word:
-// whitespace, then any of env, exec, xargs, sudo and time and the shell keywords that open a command, then a path prefix.
-// The keywords are do, then, else, if, elif, while and until.
-const commandWordPrefixPattern = `[[:space:]]*((env|exec|xargs|sudo|time|do|then|else|if|elif|while|until)[[:space:]]+)*([^[:space:]"\\;&|()` + "`" + `]*/)?`
-
-// shellDashCPattern matches a shell given its script as an argument and the whitespace before the script:
-// sh, bash, dash, ksh or zsh, any flag words, and then -c alone or ending a cluster such as -lc or -ec.
-const shellDashCPattern = `(ba|da|k|z)?sh([[:space:]]+-[A-Za-z-]+)*[[:space:]]+-[A-Za-z]*c[A-Za-z]*[[:space:]]+`
-
-// singleQuotedScriptStringOpenPattern matches the opening of a double-quoted string in a single-quoted shell -c script.
-// It matches the opening JSON-escaped double quote and the characters inside the string so far.
-// A single quote closes the script, even inside that string.
-const singleQuotedScriptStringOpenPattern = `\\"([^"\\']|\\[^"])*`
-
-// singleQuotedScriptUnitPattern matches one unit of a single-quoted shell -c script as JSON encodes it:
-// what shellUnitPattern matches bar a single-quoted string.
-// A single quote closes the script, even inside a double-quoted string of the script.
-const singleQuotedScriptUnitPattern = `([^"\\'<]|\\[^"]|` + singleQuotedScriptStringOpenPattern + `\\"|<[^<"\\'(])`
-
-// singleQuotedScriptLineUnitPattern matches what singleQuotedScriptUnitPattern matches except a JSON-escaped newline.
-// A run of it thus stays on one line.
-const singleQuotedScriptLineUnitPattern = `([^"\\'<]|\\[^"n]|` + singleQuotedScriptStringOpenPattern + `\\"|<[^<"\\'(])`
-
-// doubleQuotedScriptUnitPattern matches one unit of a double-quoted shell -c script as JSON encodes it:
-// what shellUnitPattern matches bar a double-quoted string.
-// A JSON-escaped double quote closes the script, even inside a single-quoted string of the script.
-const doubleQuotedScriptUnitPattern = `([^"\\'<]|\\[^"]|'[^'"]*'|<[^<"\\'(])`
-
-// doubleQuotedScriptLineUnitPattern matches what doubleQuotedScriptUnitPattern matches except a JSON-escaped newline.
-// A run of it thus stays on one line.
-const doubleQuotedScriptLineUnitPattern = `([^"\\'<]|\\[^"n]|'[^'"]*'|<[^<"\\'(])`
-
-// singleQuotedScriptReachPattern matches a shell -c with a single-quoted script in command position.
-// It matches the script up to a command position inside it:
-// the script's start, or a separator reached through a run of the script's units.
-// A separator after a heredoc operator counts only on that operator's line.
-const singleQuotedScriptReachPattern = commandWordPrefixPattern + shellDashCPattern +
-	`'(` + singleQuotedScriptUnitPattern + `*(` + commandSeparatorPattern + `|<<-?` + singleQuotedScriptLineUnitPattern + `*([;&|` + "`" + `]|[<>]?\()))?`
-
-// doubleQuotedScriptReachPattern matches a shell -c with a double-quoted script in command position.
-// It matches the script up to a command position inside it, as for a single-quoted script.
-const doubleQuotedScriptReachPattern = commandWordPrefixPattern + shellDashCPattern +
-	`\\"(` + doubleQuotedScriptUnitPattern + `*(` + commandSeparatorPattern + `|<<-?` + doubleQuotedScriptLineUnitPattern + `*([;&|` + "`" + `]|[<>]?\()))?`
-
-// shellScriptReachPattern matches a shell -c in command position and its script up to a command position inside it.
-// The script may be in either quote.
-const shellScriptReachPattern = `(` + singleQuotedScriptReachPattern + `|` + doubleQuotedScriptReachPattern + `)`
-
 // commandPositionPattern is the grep -E prefix that puts the pattern after it in command position of the raw PreToolUse payload JSON, with an optional path prefix.
-// Command position is the start of the command or right after a separator.
-// Any of env, exec, xargs, sudo, time and the shell keywords that open a command, such as do and then, may follow.
+// Command position is the start of the command, or right after a ; & | ( <( >( or backtick, which also covers $( and ( subshells, or a JSON-escaped newline, then any of env, exec, xargs, sudo, time.
 // The separator is reached through a run of shell units, and one after a heredoc operator counts only on that operator's line.
-// The script of a shell -c in command position, single-quoted or double-quoted, is read the same way one level deep:
-// its start and a separator inside it put the next word in command position.
-// The guards thus refuse inside the script what they refuse outside it.
-// One exception: a lym variable expanded inside a double-quoted string of a double-quoted script is not read.
 // It sees static text only: it misreads a JSON-escaped double quote inside a double-quoted string and a quote inside a comment, and it sees nothing after a heredoc operator's line.
 // A double-quoted string is one unit, so a command substitution inside it, as in out="$(python3 x.py)", is never in command position and passes.
 // A < before a quote or a backslash, as in <"f" or <<<"f", ends the run of units, so a command after it passes.
-// A script behind a nested shell -c, eval, find -exec or a flag of xargs hides its commands,
-// and a lone single quote inside a double-quoted script hides the commands after it.
-const commandPositionPattern = commandFieldPattern + topLevelReachPattern + `(` + shellScriptReachPattern + `)?` + commandWordPrefixPattern
-
-// shellScope is one place a command can stand in the payload JSON.
-// The places are the top level, a single-quoted shell -c script and a double-quoted one.
-// It carries the place's own reading of a command's words.
-// A row's scan over the words that follow a command word thus stops at the script's closing quote.
-// It never runs on into a later command.
-type shellScope struct {
-	// position matches the payload up to a command word in the scope, a path prefix included.
-	position string
-	// quoted matches one quoted string a word of the scope can hold, as an alternation body.
-	quoted string
-	// quotedOpen matches the opening of such a string and the characters inside it so far.
-	quotedOpen string
-	// closing is the character a bare word of the scope excludes besides the shell's own.
-	// It is the quote that closes a single-quoted script.
-	closing string
-	// escapeExcluded is the characters a JSON escape pair in the scope's text may not hold after its backslash.
-	// It is in bracket syntax.
-	escapeExcluded string
-}
-
-// shellScopes are the places a command can stand, in the order commandRowPattern renders them.
-var shellScopes = []shellScope{
-	{
-		position:       commandFieldPattern + topLevelReachPattern + commandWordPrefixPattern,
-		quoted:         `'[^']*'|` + doubleQuotedOpenPattern + `\\"`,
-		quotedOpen:     `('[^']*|` + doubleQuotedOpenPattern + `)`,
-		escapeExcluded: "n",
-	},
-	{
-		position:       commandFieldPattern + topLevelReachPattern + singleQuotedScriptReachPattern + commandWordPrefixPattern,
-		quoted:         singleQuotedScriptStringOpenPattern + `\\"`,
-		quotedOpen:     singleQuotedScriptStringOpenPattern,
-		closing:        "'",
-		escapeExcluded: "n",
-	},
-	{
-		position:       commandFieldPattern + topLevelReachPattern + doubleQuotedScriptReachPattern + commandWordPrefixPattern,
-		quoted:         `'[^'"]*'`,
-		quotedOpen:     `'[^'"]*`,
-		escapeExcluded: `n"`,
-	},
-}
-
-// argument returns a grep -E pattern matching one argument word of a command in the scope as JSON encodes it:
-// unquoted characters and quoted strings run together.
-// A backslash, a separator, a parenthesis, a redirect operator or a backtick ends the word.
-// A run of arguments thus stays inside one command on one line.
-func (scope shellScope) argument() string {
-	return `([^[:space:]"\\;&|()'<>` + "`" + `]|` + scope.quoted + `)+`
-}
-
-// word returns a grep -E pattern matching the characters of one command-line word in the scope.
-func (scope shellScope) word() string {
-	return `[^[:space:]"\\;&|()` + scope.closing + "`" + `]*`
-}
-
-// goWordEnd returns a grep -E pattern matching what ends a word in the scope.
-// It is a separator, whitespace, a quote the scope reads as a word end, or the end of the payload.
-func (scope shellScope) goWordEnd() string {
-	return `([[:space:]"\\;&|()` + scope.closing + "`" + `]|$)`
-}
-
-// goArguments returns a grep -E pattern matching the rest of a command line in the scope after a go subcommand.
-// It ends on whitespace and takes anything up to the next separator, JSON-escaped newline or the end of the scope.
-func (scope shellScope) goArguments() string {
-	return `(([^;&|\\` + scope.closing + `]|\\[^` + scope.escapeExcluded + `])*[[:space:]])?`
-}
-
-// ghWordChars returns the bracket body of the characters one gh argument word holds in the scope.
-func (scope shellScope) ghWordChars() string {
-	return ghWordClass + scope.closing
-}
-
-// mutationScan returns a grep -E pattern matching the rest of a gh api command in the scope.
-// The match runs up to a GraphQL mutation word.
-// The scan stays on one command: it stops at an unquoted separator or newline.
-// It crosses a newline only inside a quoted string, so a mutation on a later line of a multi-line query is found.
-func (scope shellScope) mutationScan() string {
-	return `([^;&|\\'"]|\\[^"n]|` + scope.quoted + `)*(mutation|` + scope.quotedOpen + `mutation)`
-}
-
-// commandRowPattern returns the grep -E alternation of one pattern per scope.
-// Each is the scope's position followed by what build returns for the scope.
-// A row's argument scans thus stay inside the script their command word was reached in.
-// build returns a pattern that is grouped on its own when it holds a top-level alternation.
-func commandRowPattern(build func(scope shellScope) string) string {
-	alternatives := make([]string, len(shellScopes))
-	for i, scope := range shellScopes {
-		alternatives[i] = `(` + scope.position + build(scope) + `)`
-	}
-	return strings.Join(alternatives, "|")
-}
+const commandPositionPattern = commandFieldPattern + `(` + shellUnitPattern + `*([;&|` + "`" + `]|[<>]?\(|\\n|<<-?` + shellLineUnitPattern + `*([;&|` + "`" + `]|[<>]?\()))?` +
+	`[[:space:]]*((env|exec|xargs|sudo|time)[[:space:]]+)*([^[:space:]"\\;&|()` + "`" + `]*/)?`
 
 // pythonCommandPattern is the grep -E pattern the python deny matches against the raw PreToolUse payload JSON.
 // It matches python, python3 or python3.<minor>, optionally path-prefixed, as a whole word in command position.
@@ -307,105 +143,29 @@ const rmCommandPattern = commandPositionPattern + `rm([^A-Za-z0-9_./-]|$)`
 // The @ and * take in the positional parameters $@ and $*; the special parameters $$, $?, $# and $! are not matched.
 const shellExpansionPattern = "[$][A-Za-z0-9_{@*(]|`"
 
+// shellArgumentPattern matches one argument word of a command as JSON encodes it: unquoted characters, single-quoted strings and double-quoted strings run together.
+// A backslash, a separator, a parenthesis, a redirect operator or a backtick ends the word, so a run of arguments stays inside one command on one line.
+const shellArgumentPattern = `([^[:space:]"\\;&|()'<>` + "`" + `]|'[^']*'|` + doubleQuotedOpenPattern + `\\")+`
+
 // sourceFilePattern matches a file path word ending in a source file's extension, followed by a word end.
 // It names Go, markdown, YAML, TOML, shell and .NET sources; a .json, .txt or .log target passes, so command output captured into a scratch file with one of those three extensions is not refused.
 // A scratch file with a listed extension is written with Write.
 const sourceFilePattern = `[^[:space:]"\\;&|()<>'` + "`" + `]*\.(go|mod|sum|md|ya?ml|toml|sh|ps1|cs|csproj|sln|props|targets)([^A-Za-z0-9_./-]|$)`
 
-// heredocBodyLinePattern matches one line of a heredoc body as JSON encodes it, through its JSON-escaped newline.
-// The line holds any characters but the JSON string's closing quote, so the match stays inside the command.
-const heredocBodyLinePattern = `([^"\\]|\\[^n])*\\n`
-
-// heredocDelimiterWords are the delimiter words whose closing line is tied to the operator's word.
-// grep -E has no backreference, so each tied word is rendered as an alternative of its own.
-// Each word must be letters only.
-var heredocDelimiterWords = []string{"EOF", "END", "EOT", "PY"}
-
-// heredocBodyLineOtherThan returns a grep -E pattern for a heredoc body line that is not word alone after optional tabs.
-// The line is read as JSON encodes it, through its JSON-escaped newline.
-// word must hold only letters.
-func heredocBodyLineOtherThan(word string) string {
-	const unit = `([^"\\]|\\[^n])`
-	rest := unit + `+`
-	for i := len(word) - 1; i >= 0; i-- {
-		letter := word[i : i+1]
-		escape := `\\[^n]`
-		// A JSON-escaped tab ahead of the first letter belongs to the leading tabs.
-		if i == 0 {
-			escape = `\\[^nt]`
-		}
-		// The line may end here: it is blank or stops short of word.
-		rest = `([^"\\` + letter + `]` + unit + `*|` + escape + unit + `*|` + letter + rest + `)?`
-	}
-	return `(\\t)*` + rest + `\\n`
-}
-
-// closedHeredocPattern returns a grep -E pattern matching one heredoc from its operator through its closing line.
-// The match runs through the newline that ends the closing line.
-// The delimiter word may be bare, quoted or backslash-escaped.
-// For a word of heredocDelimiterWords the closing line is that word alone, after any tabs.
-// No earlier line closes such a body.
-// Any other word must not open with a digit or a dash.
-// For such a word any line holding a bare word alone may close the body.
-// A second heredoc operator on the operator's line is no match.
-func closedHeredocPattern() string {
-	const operator = `<<-?([[:space:]]|\\t)*('|\\"|\\\\)?`
-	const lineRest = `('|\\")?(([[:space:];&|)>]|\\t)` + shellLineUnitPattern + `*)?\\n`
-	alternatives := make([]string, 0, len(heredocDelimiterWords)+1)
-	for _, word := range heredocDelimiterWords {
-		alternatives = append(alternatives, word+lineRest+`(`+heredocBodyLineOtherThan(word)+`)*(\\t)*`+word+`\\n`)
-	}
-	// A digit opening the word is excluded so an arithmetic shift such as 1<<2 is no operator.
-	// A dash is excluded so the dash of <<- never opens the word.
-	otherWord := notWordFrom(`[:space:]`+unquotedWordBreakers, heredocDelimiterWords, "0-9-")
-	alternatives = append(alternatives, otherWord+lineRest+`(`+heredocBodyLinePattern+`)*(\\t)*[A-Za-z0-9_.-]+\\n`)
-	return operator + `(` + strings.Join(alternatives, "|") + `)`
-}
-
-// inPlaceEditCommandIn returns the in-place edit alternatives after a command word in the scope, grouped:
-// sed with an in-place flag, perl with an in-place switch, or tee writing a source file.
+// inPlaceEditCommandPattern matches, in command position, sed with an in-place flag, perl with an in-place switch, or tee writing a source file.
 // The flag may follow any argument words: sed takes -i, --in-place, or -i at the end of a cluster of its argument-free flags such as -Ei; perl takes -i at the end of a cluster of its argument-free switches such as -pi or -0777i.
 // A cluster holding a switch that takes the rest of the word as its value, such as perl -Mstrict, is no in-place switch.
-func inPlaceEditCommandIn(scope shellScope) string {
-	argument := scope.argument()
-	return `(sed([[:space:]]+` + argument + `)*[[:space:]]+(-[nsuzEr]*i|--in-place)` +
-		`|perl([[:space:]]+` + argument + `)*[[:space:]]+-[nlpaswcTtWX0-9]*i` +
-		`|tee([[:space:]]+` + argument + `)*[[:space:]]+` + sourceFilePattern + `)`
-}
-
-// inPlaceEditAfterClosedHeredocPattern returns a grep -E pattern matching an in-place edit command after closed heredocs.
-// Each heredoc body is skipped.
-// The line after the last closing line is in command position.
-// So is a separator reached from that line as the top level reaches one.
-// The script of a shell -c there is read as at the top level.
-func inPlaceEditAfterClosedHeredocPattern() string {
-	// Each reach leads from the top level into the scope of the same index in shellScopes.
-	reaches := []string{"", singleQuotedScriptReachPattern, doubleQuotedScriptReachPattern}
-	alternatives := make([]string, len(shellScopes))
-	for i, scope := range shellScopes {
-		alternatives[i] = `(` + reaches[i] + commandWordPrefixPattern + inPlaceEditCommandIn(scope) + `)`
-	}
-	return commandFieldPattern + `(` + shellUnitPattern + `*` + closedHeredocPattern() + `)+` + topLevelReachPattern +
-		`(` + strings.Join(alternatives, "|") + `)`
-}
-
-// inPlaceEditCommandPattern matches an in-place edit command in command position.
-// It reads every scope and the lines after a closed heredoc.
-var inPlaceEditCommandPattern = commandRowPattern(inPlaceEditCommandIn) +
-	`|(` + inPlaceEditAfterClosedHeredocPattern() + `)`
+const inPlaceEditCommandPattern = commandPositionPattern + `(sed([[:space:]]+` + shellArgumentPattern + `)*[[:space:]]+(-[nsuzEr]*i|--in-place)` +
+	`|perl([[:space:]]+` + shellArgumentPattern + `)*[[:space:]]+-[nlpaswcTtWX0-9]*i` +
+	`|tee([[:space:]]+` + shellArgumentPattern + `)*[[:space:]]+` + sourceFilePattern + `)`
 
 // redirectWritePattern matches a > or >> redirect, a >| clobbering one included, into a source file, reached through a run of shell units from the start of the command.
 // A redirect on a heredoc operator's line counts, as in cat <<EOF > f.go; one inside a heredoc body or a quoted string does not.
-// A redirect inside the script of a shell -c in command position counts.
-// It is reached through a run of the script's units, a heredoc operator's line included.
 // A fd duplication such as 2>&1 and a target in quotes are no match.
-const redirectWritePattern = commandFieldPattern + `(` + topLevelReachPattern + commandWordPrefixPattern + shellDashCPattern +
-	`('` + singleQuotedScriptUnitPattern + `*(<<-?` + singleQuotedScriptLineUnitPattern + `*)?` +
-	`|\\"` + doubleQuotedScriptUnitPattern + `*(<<-?` + doubleQuotedScriptLineUnitPattern + `*)?)|` +
-	shellUnitPattern + `*(<<-?` + shellLineUnitPattern + `*)?)>[>|]?[[:space:]]*` + sourceFilePattern
+const redirectWritePattern = commandFieldPattern + shellUnitPattern + `*(<<-?` + shellLineUnitPattern + `*)?>[>|]?[[:space:]]*` + sourceFilePattern
 
 // shellEditPattern is the grep -E pattern the shell-edit deny matches against the raw PreToolUse payload JSON: an in-place edit command or a redirect into a source file.
-var shellEditPattern = `(` + inPlaceEditCommandPattern + `)|(` + redirectWritePattern + `)`
+const shellEditPattern = `(` + inPlaceEditCommandPattern + `)|(` + redirectWritePattern + `)`
 
 // steerSleepDeny refuses a Bash systemctl machine sleep command; it must contain no single/double quote or backslash (checked at init).
 const steerSleepDeny = "the machine sleep commands are refused here; a hibernate goes through lym hibernate request, which waits until every session is paused, and a pair agent asks its parent session to run it"
@@ -416,12 +176,9 @@ const noticeSleepDeny = steerSleepDeny + "."
 // sleepCommandPattern is the grep -E pattern the sleep deny matches against the raw PreToolUse payload JSON.
 // It matches systemctl in command position, optionally path-prefixed, followed by any flag words and then one of the verbs sleep, hibernate, suspend, hybrid-sleep or suspend-then-hibernate as a whole word, so hibernate.target is no verb.
 // A word that is not a flag ends the match, so systemctl status and every other verb pass.
-var sleepCommandPattern = commandRowPattern(func(scope shellScope) string {
-	return `systemctl([[:space:]]+-` + scope.word() + `)*[[:space:]]+(sleep|hibernate|suspend|hybrid-sleep|suspend-then-hibernate)([^A-Za-z0-9_.-]|$)`
-})
+const sleepCommandPattern = commandPositionPattern + `systemctl([[:space:]]+-` + goWordPattern + `)*[[:space:]]+(sleep|hibernate|suspend|hybrid-sleep|suspend-then-hibernate)([^A-Za-z0-9_.-]|$)`
 
-// headlessClaudeRefusal opens the headless claude row's own steer text, which follows the shared whole-command clause.
-// It holds the refusal and its reason.
+// headlessClaudeRefusal opens every headless claude steer: the refusal and its reason.
 const headlessClaudeRefusal = "a headless claude launch, in print mode, is refused here because its work shows in no pane; "
 
 // steerHeadlessClaudeDeny refuses a Bash launch of a headless claude and names the subagent route in its place; it must contain no single/double quote or backslash (checked at init).
@@ -436,125 +193,7 @@ const codexSteerHeadlessClaudeDeny = headlessClaudeRefusal + "hand the work to a
 // headlessClaudeCommandPattern is the grep -E pattern the headless claude deny matches against the raw PreToolUse payload JSON.
 // It matches claude or claude.exe in command position, optionally path-prefixed, followed by any argument words and then the long print flag, or a single-dash flag word holding p such as -p or -pc, as a whole word, the long flag with an = value included.
 // A word that crosses a separator ends the match, so a print flag of a later command passes.
-var headlessClaudeCommandPattern = commandRowPattern(func(scope shellScope) string {
-	return `claude(\.exe)?([[:space:]]+` + scope.argument() + `)*[[:space:]]+(-[a-z]*p[a-z]*|--print)([^A-Za-z0-9_./-]|$)`
-})
-
-// steerAdoptTakeHoldDeny refuses a Bash adopt that takes another machine hold over to this one.
-// It must contain no single/double quote or backslash (checked at init).
-// It names the operator as the way forward and spells no flag.
-const steerAdoptTakeHoldDeny = "a lym adopt that takes the hold of another machine over to this one is refused here; that takeover is the operator to decide, so ask the operator"
-
-// noticeAdoptTakeHoldDeny announces the adopt takeover deny in the same wording as its steer.
-const noticeAdoptTakeHoldDeny = steerAdoptTakeHoldDeny + "."
-
-// adoptTakeHoldCommandPattern is the grep -E pattern the adopt takeover deny matches in the payload JSON.
-// It matches lym adopt in command position, optionally path-prefixed.
-// Any argument words on the same command may follow, then the --take-hold flag word.
-// The flag with an = value is included.
-// A word that crosses a separator ends the match, so a flag of a later command passes.
-// It sees static text only.
-// A written script, a command substitution inside a quoted string and the flag spelled through a variable pass.
-var adoptTakeHoldCommandPattern = commandRowPattern(func(scope shellScope) string {
-	return `lym[[:space:]]+adopt([[:space:]]+` + scope.argument() + `)*[[:space:]]+--take-hold` + wordEndPattern
-})
-
-// steerTmuxScriptDeny refuses a raw tmux or script command and names a tmux-tier test under the gate as the way forward.
-// It must contain no single/double quote or backslash (checked at init).
-const steerTmuxScriptDeny = "a raw tmux or script command is refused in this session: a tmux server or a script it starts outlives the command and runs outside every memory cap lym sets. To learn how tmux behaves, write a tmux-tier test in the repository and run that one test through lym gate test with --tier naming the tier the hub runs tmux tests in, the package that holds the test, and after -- a filter that selects it"
-
-// noticeTmuxScriptDeny announces the tmux and script deny in the same wording as its steer.
-const noticeTmuxScriptDeny = steerTmuxScriptDeny + "."
-
-// tmuxScriptCommandPattern is the grep -E pattern the tmux and script deny matches.
-// It is matched against the raw PreToolUse payload JSON.
-// It matches tmux or script, optionally path-prefixed, as a whole word in command position.
-var tmuxScriptCommandPattern = commandPositionPattern + `(tmux|script)` + wordEndPattern
-
-// steerSessionBusDeny refuses a Bash command that reaches the user session bus.
-// It names the operator or the parent as the way forward.
-// It must contain no single/double quote or backslash (checked at init).
-const steerSessionBusDeny = "systemd-run, busctl --user, gdbus and a dbus-send without --system are refused here: the user session bus they reach starts processes outside lym and every memory cap lym sets, and lym uses the bus itself where a run needs it. When the work needs the session bus, say so to the operator or your parent"
-
-// noticeSessionBusDeny announces the session bus deny in the same wording as its steer.
-const noticeSessionBusDeny = steerSessionBusDeny + "."
-
-// sessionBusCommandPattern is the grep -E pattern the session bus deny matches against the raw PreToolUse payload JSON.
-// In command position and optionally path-prefixed, it matches systemd-run or gdbus as a whole word.
-// It also matches busctl followed by any argument words on the same command and then --user as a whole word.
-// It also matches dbus-send, which talks to the session bus unless told --system.
-// It lets one through only when a --system word is reached from it through unquoted words alone.
-// A quote, backslash, tab, redirect or substitution before --system thus leaves it matched.
-// dbus-send with a --session, --bus or --peer flag word among its arguments is matched beside --system too.
-var sessionBusCommandPattern = commandRowPattern(func(scope shellScope) string {
-	arguments := `([[:space:]]+` + scope.argument() + `)*[[:space:]]+`
-	return `((systemd-run|gdbus)` + wordEndPattern +
-		`|busctl` + arguments + `--user` + wordEndPattern +
-		`|dbus-send` + arguments + `--(session|bus|peer)` + wordEndPattern +
-		`|dbus-send([[:space:]]+` + unquotedWordOtherThan("--system") + `)*[[:space:]]*` + unquotedWordRunEnd() + `)`
-})
-
-// unquotedWordBreakers is a grep -E bracket body.
-// It lists the characters, whitespace aside, that an unquoted word cannot hold.
-const unquotedWordBreakers = `"\\;&|()'<>` + "`"
-
-// unquotedWordOtherThan returns a grep -E pattern matching an unquoted command-line word that is not word.
-// It is how a row states an exception to a command it refuses:
-// after the command word come a run of these words, optional whitespace and then unquotedWordRunEnd.
-// Only word among the command's unquoted words keeps the run from reaching that end.
-// The run is fail-closed only when unquotedWordRunEnd ends it:
-// that end matches at every character, whitespace aside, that an unquoted word cannot hold,
-// so a command the run cannot read is refused.
-// The match may cover only the opening of a longer word.
-// word must hold only letters and dashes.
-func unquotedWordOtherThan(word string) string {
-	unit := func(excluded string) string {
-		return `[^[:space:]` + unquotedWordBreakers + excluded + `]`
-	}
-	rest := unit("") + `+`
-	for i := len(word) - 1; i >= 0; i-- {
-		letter := word[i : i+1]
-		rest = `(` + unit(letter) + unit("") + `*|` + letter + rest + `)`
-		// A word may stop short of the whole of word, but not before its first character.
-		if i > 0 {
-			rest += "?"
-		}
-	}
-	return rest
-}
-
-// unquotedWordRunEnd returns a grep -E pattern matching what ends a run of unquoted words:
-// the payload's end, or any character, whitespace aside, that such a word cannot hold.
-func unquotedWordRunEnd() string {
-	return `([` + unquotedWordBreakers + `]|$)`
-}
-
-// hubTmuxServerPrefix opens the name of every lym hub's tmux server.
-// That name is what tmux -L takes, and it is the file name of the server's socket.
-const hubTmuxServerPrefix = "lym-"
-
-// steerHubTmuxServerDeny refuses a Bash tmux command aimed at a lym hub's tmux server.
-// It names lym's verbs as the way forward.
-// It must contain no single/double quote or backslash (checked at init).
-const steerHubTmuxServerDeny = "a tmux command aimed at a lym hub server, through -L " + hubTmuxServerPrefix + " or an -S socket named " + hubTmuxServerPrefix + ", is refused here: a hub server runs the agents of that hub, so reach a hub only through lym and its verbs"
-
-// noticeHubTmuxServerDeny announces the hub tmux server deny in the same wording as its steer.
-const noticeHubTmuxServerDeny = steerHubTmuxServerDeny + "."
-
-// hubTmuxServerCommandPattern is the grep -E pattern the hub tmux server deny matches.
-// It is matched against the raw PreToolUse payload JSON.
-// In command position and optionally path-prefixed, it matches tmux, any argument words on the same command and a flag.
-// The flag is -L with a server name opening with hubTmuxServerPrefix, or -S with a socket path whose file name does.
-// Either letter may end a cluster of tmux's flags that take no value, as in -uL.
-// The name may follow the flag directly or after whitespace, and may open with a quote.
-// A directory along the socket path that opens with the prefix is no match.
-var hubTmuxServerCommandPattern = commandRowPattern(func(scope shellScope) string {
-	pathChars := `[^[:space:]"\\;&|()'<>` + "`" + `]`
-	fileNameChars := `[^/[:space:]"\\;&|()'<>` + "`" + `]`
-	cluster := `-[2CDlNuv]*`
-	return `tmux([[:space:]]+` + scope.argument() + `)*[[:space:]]+(` + cluster + `L[[:space:]]*(\\"|')?|` + cluster + `S[[:space:]]*(\\"|')?(` + pathChars + `*/)?)` +
-		hubTmuxServerPrefix + fileNameChars + `*([[:space:]"\\;&|()'<>` + "`" + `]|$)`
-})
+const headlessClaudeCommandPattern = commandPositionPattern + `claude(\.exe)?([[:space:]]+` + shellArgumentPattern + `)*[[:space:]]+(-[a-z]*p[a-z]*|--print)([^A-Za-z0-9_./-]|$)`
 
 // githubAllowed maps each gh command the publish row lets through to the subcommands of it the row lets through, nil for every subcommand.
 // They read GitHub, comment on a pull request or edit its title and body; every other gh command and subcommand is refused.
@@ -594,17 +233,11 @@ const wordEndPattern = `([^A-Za-z0-9_./-]|$)`
 // ghWordClass is the grep -E bracket body of the characters one gh argument word holds: neither whitespace, a separator, a quote, a redirect nor a backtick.
 const ghWordClass = `[:space:]"\\;&|()<>` + "`"
 
-// ghRepoFlagsPattern returns a pattern matching any run of -R or --repo flags with their repository word in the scope.
-// It is the one flag gh takes between a command and its subcommand.
-func ghRepoFlagsPattern(scope shellScope) string {
-	return `([[:space:]]+(-R|--repo)([[:space:]]+|=)[^` + scope.ghWordChars() + `]+)*`
-}
+// ghRepoFlagsPattern matches any run of -R or --repo flags with their repository word, the one flag gh takes between a command and its subcommand.
+const ghRepoFlagsPattern = `([[:space:]]+(-R|--repo)([[:space:]]+|=)[^` + ghWordClass + `]+)*`
 
-// ghArgumentsPattern returns a pattern matching any argument words in the scope after a gh subcommand.
-// It also matches the whitespace before the next word, on one command.
-func ghArgumentsPattern(scope shellScope) string {
-	return `([[:space:]]+` + scope.argument() + `)*[[:space:]]+`
-}
+// ghArgumentsPattern matches any argument words after a gh subcommand and the whitespace before the next word, on one command.
+const ghArgumentsPattern = `([[:space:]]+` + shellArgumentPattern + `)*[[:space:]]+`
 
 // ghWriteMethodPattern matches an HTTP method that writes, in upper or lower case.
 const ghWriteMethodPattern = `([Pp][Oo][Ss][Tt]|[Pp][Uu][Tt]|[Pp][Aa][Tt][Cc][Hh]|[Dd][Ee][Ll][Ee][Tt][Ee])`
@@ -612,26 +245,25 @@ const ghWriteMethodPattern = `([Pp][Oo][Ss][Tt]|[Pp][Uu][Tt]|[Pp][Aa][Tt][Cc][Hh
 // optionalQuotePattern matches one JSON-escaped double quote or nothing, the quote a shell double-quoted word opens or closes with.
 const optionalQuotePattern = `(\\")?`
 
+// ghMutationScanPattern matches the rest of a gh api command up to a GraphQL mutation word.
+// The scan stays on one command: it stops at an unquoted separator or newline, and crosses a newline only inside a single-quoted or double-quoted string, so a mutation on a later line of a multi-line query is found.
+const ghMutationScanPattern = `([^;&|\\'"]|\\[^"n]|'[^']*'|` + doubleQuotedOpenPattern + `\\")*(mutation|'[^']*mutation|` + doubleQuotedOpenPattern + `mutation)`
+
 // quotableWord returns a grep -E pattern matching word bare or inside a pair of JSON-escaped double quotes.
 func quotableWord(word string) string {
 	return optionalQuotePattern + word + optionalQuotePattern
 }
 
-// notWordPattern returns a grep -E pattern matching one whole gh argument word in the scope, up to a word end.
-// The word is none of words and opens with no dash, so a flag word never matches.
+// notWordPattern returns a grep -E pattern matching one whole gh argument word, up to a word end, that is none of words and opens with no dash, so a flag word never matches.
 // A word in double quotes is read by what is inside them, so a listed word in quotes is no match and an unlisted one is.
 // Each word must be lowercase letters only.
-func notWordPattern(scope shellScope, words []string) string {
-	return optionalQuotePattern + notWordFrom(scope.ghWordChars(), words, "-") + wordEndPattern
+func notWordPattern(words []string) string {
+	return optionalQuotePattern + notWordFrom(words, true) + wordEndPattern
 }
 
-// notWordFrom returns a grep -E group matching the rest of a word, after a prefix already read.
-// wordBreakers is the bracket body of the characters the word cannot hold.
-// The rest is no suffix in suffixes.
-// A non-empty firstExcluded marks the start of the word.
-// It is the bracket body of what may not open the word, with any literal dash last.
-// The empty rest matches only past the start and when suffixes holds no empty suffix.
-func notWordFrom(wordBreakers string, suffixes []string, firstExcluded string) string {
+// notWordFrom returns a grep -E group matching the rest of a word, after a prefix already read, that is no suffix in suffixes.
+// It matches the empty rest only when suffixes holds no empty suffix and first is false, since a word is never empty.
+func notWordFrom(suffixes []string, first bool) string {
 	children := map[byte][]string{}
 	terminal := false
 	for _, suffix := range suffixes {
@@ -642,13 +274,16 @@ func notWordFrom(wordBreakers string, suffixes []string, firstExcluded string) s
 		children[suffix[0]] = append(children[suffix[0]], suffix[1:])
 	}
 	letters := slices.Sorted(maps.Keys(children))
-	excluded := wordBreakers + string(letters) + firstExcluded
-	alternatives := []string{`[^` + excluded + `][^` + wordBreakers + `]*`}
+	excluded := ghWordClass + string(letters)
+	if first {
+		excluded += "-"
+	}
+	alternatives := []string{`[^` + excluded + `][^` + ghWordClass + `]*`}
 	for _, letter := range letters {
-		alternatives = append(alternatives, string(letter)+notWordFrom(wordBreakers, children[letter], ""))
+		alternatives = append(alternatives, string(letter)+notWordFrom(children[letter], false))
 	}
 	group := `(` + strings.Join(alternatives, "|") + `)`
-	if !terminal && firstExcluded == "" {
+	if !terminal && !first {
 		group += "?"
 	}
 	return group
@@ -662,45 +297,35 @@ func notWordFrom(wordBreakers string, suffixes []string, firstExcluded string) s
 // A command, subcommand or method word may sit in double quotes.
 // A gh word opening with a dash is no command, so gh --version passes.
 func publishCommandPattern() string {
-	return commandRowPattern(publishCommandIn)
-}
-
-// publishCommandIn returns the publish deny's alternatives after a command word in the scope, grouped.
-func publishCommandIn(scope shellScope) string {
-	gh := `gh` + ghRepoFlagsPattern(scope) + `[[:space:]]+`
+	gh := `gh` + ghRepoFlagsPattern + `[[:space:]]+`
 	subcommand := func(command, sub string) string {
-		return quotableWord(command) + ghRepoFlagsPattern(scope) + `[[:space:]]+` + sub
+		return quotableWord(command) + ghRepoFlagsPattern + `[[:space:]]+` + sub
 	}
-	arguments := ghArgumentsPattern(scope)
-	word := scope.word()
 	alternatives := []string{
-		`git([[:space:]]+(-C[[:space:]=]+` + word + `|-` + word + `))*[[:space:]]+push` + wordEndPattern,
-		gh + notWordPattern(scope, slices.Sorted(maps.Keys(githubAllowed))),
-		gh + subcommand("pr", quotableWord("review")) + arguments + `(-[A-Za-z]*[ar][A-Za-z]*|--approve|--request-changes)` + wordEndPattern,
-		gh + subcommand("pr", quotableWord("edit")) + arguments + `(-B|--base` + wordEndPattern + `)`,
-		gh + quotableWord(`api`) + arguments + `(-X[[:space:]=]*|--method([[:space:]]+|=))` + optionalQuotePattern + ghWriteMethodPattern + wordEndPattern,
-		gh + quotableWord(`api`) + arguments + `--input` + wordEndPattern,
-		gh + quotableWord(`api`) + wordEndPattern + scope.mutationScan(),
+		`git([[:space:]]+(-C[[:space:]=]+` + goWordPattern + `|-` + goWordPattern + `))*[[:space:]]+push` + wordEndPattern,
+		gh + notWordPattern(slices.Sorted(maps.Keys(githubAllowed))),
+		gh + subcommand("pr", quotableWord("review")) + ghArgumentsPattern + `(-[A-Za-z]*[ar][A-Za-z]*|--approve|--request-changes)` + wordEndPattern,
+		gh + subcommand("pr", quotableWord("edit")) + ghArgumentsPattern + `(-B|--base` + wordEndPattern + `)`,
+		gh + quotableWord(`api`) + ghArgumentsPattern + `(-X[[:space:]=]*|--method([[:space:]]+|=))` + optionalQuotePattern + ghWriteMethodPattern + wordEndPattern,
+		gh + quotableWord(`api`) + ghArgumentsPattern + `--input` + wordEndPattern,
+		gh + quotableWord(`api`) + wordEndPattern + ghMutationScanPattern,
 	}
 	for _, command := range slices.Sorted(maps.Keys(githubAllowed)) {
 		if subcommands := githubAllowed[command]; subcommands != nil {
-			alternatives = append(alternatives, gh+subcommand(command, notWordPattern(scope, subcommands)))
+			alternatives = append(alternatives, gh+subcommand(command, notWordPattern(subcommands)))
 		}
 	}
-	return `(` + strings.Join(alternatives, "|") + `)`
+	return commandPositionPattern + `(` + strings.Join(alternatives, "|") + `)`
 }
 
-// goCommandIn returns the raw go deny's go test, build and vet alternatives after the scope's position, grouped.
-// The go word sits directly before the subcommand, with an optional -C <dir> between them.
-// A word holding ... or the word all in the arguments, or a -tags value naming tier2 or tier3, denies.
-// A single quote is a word end only in a single-quoted script, where it closes the script;
-// at the top level it is part of a quoted argument, so go test -run 'TestA all' ./internal/x passes.
-func goCommandIn(scope shellScope) string {
-	subcommand := `go[[:space:]]+(-C[[:space:]=]+[^[:space:]` + scope.closing + `]+[[:space:]]+)?`
-	word := scope.word()
-	return `((` + subcommand + `(test|build|vet)[[:space:]]` + scope.goArguments() + `(` + word + `\.\.\.` + word + `|all)` + scope.goWordEnd() + `)` +
-		`|(` + subcommand + `test[[:space:]]` + scope.goArguments() + `-{1,2}tags[[:space:]=]+[^[:space:];&|` + scope.closing + `]*(tier2|tier3)))`
-}
+// goSubcommandPattern is the grep -E prefix of a go test, build or vet command: go in command position directly before the subcommand, with an optional -C <dir> between them, then whitespace.
+const goSubcommandPattern = commandPositionPattern + `go[[:space:]]+(-C[[:space:]=]+[^[:space:]]+[[:space:]]+)?`
+
+// goArgumentsPattern matches the rest of a command line after a go subcommand and ends on whitespace: anything up to the next separator or JSON-escaped newline.
+const goArgumentsPattern = `(([^;&|\\]|\\[^n])*[[:space:]])?`
+
+// goWordPattern matches the characters of one command-line word.
+const goWordPattern = `[^[:space:]"\\;&|()` + "`" + `]*`
 
 // lymEnvNamesPattern matches the name of the slot-inheritance variable, the strand-name variable or the prebuilt-binary variable.
 const lymEnvNamesPattern = `(` + gateslot.InheritEnv + `|` + agentname.StrandNameEnv + `|` + gateslot.PrebuiltLymEnv + `)`
@@ -709,31 +334,20 @@ const lymEnvNamesPattern = `(` + gateslot.InheritEnv + `|` + agentname.StrandNam
 // It matches three shapes.
 // A go test, build or vet whose arguments include a word holding ... or the word all.
 // A go test whose -tags value names tier2 or tier3.
-// A command setting or reading the slot-inheritance variable, the strand-name variable or the prebuilt-binary variable.
-// It matches one named outside quotes or expanded inside a double-quoted string.
-// It also matches one named in the script of a shell -c outside a quoted string of the script.
-// It matches one expanded inside a double-quoted string of a single-quoted script too.
-// A double-quoted string inside a double-quoted script is not read.
-// It sees static text only, so it is a guardrail and not a barrier.
-// A run hidden behind a script file passes.
-// So do a cd plus a relative pattern it does not cover, a shell variable and a quote commandPositionPattern misreads.
-// So do a command substitution inside a double-quoted string and a command after a < before a quote.
-// So do any raw package-scoped go test and a variable read by printenv with its name quoted.
+// A command setting or reading the slot-inheritance variable, the strand-name variable or the prebuilt-binary variable: one named outside quotes, or expanded inside a double-quoted string.
+// It sees static text only, so it is a guardrail and not a barrier:
+// a run hidden behind a script, bash -c, a cd plus a relative pattern it does not cover, a shell variable, a command substitution inside a double-quoted string, a command after a < before a quote, or a quote commandPositionPattern misreads passes, as does any raw package-scoped go test and a variable read by printenv with its name quoted.
 // It falsely denies a word holding ... or the word all inside a quoted argument of the go command itself, such as a -run filter.
-var rawGoCommandPattern = commandRowPattern(goCommandIn) +
+const rawGoCommandPattern = `(` + goSubcommandPattern + `(test|build|vet)[[:space:]]` + goArgumentsPattern + `(` + goWordPattern + `\.\.\.` + goWordPattern + `|all)([[:space:]"\\;&|()` + "`" + `]|$))` +
+	`|(` + goSubcommandPattern + `test[[:space:]]` + goArgumentsPattern + `-{1,2}tags[[:space:]=]+[^[:space:];&|]*(tier2|tier3))` +
 	`|(` + commandFieldPattern + `(` + shellUnitPattern + `*([^A-Za-z0-9_"\\'<]|\\[^"]))?` + lymEnvNamesPattern + `)` +
-	`|(` + commandFieldPattern + shellUnitPattern + `*` + doubleQuotedOpenPattern + `[$]\{?` + lymEnvNamesPattern + `)` +
-	`|(` + commandFieldPattern + topLevelReachPattern + commandWordPrefixPattern + shellDashCPattern + `'` +
-	singleQuotedScriptUnitPattern + `*` + singleQuotedScriptStringOpenPattern + `[$]\{?` + lymEnvNamesPattern + `)` +
-	`|(` + commandFieldPattern + topLevelReachPattern + commandWordPrefixPattern + shellDashCPattern +
-	`('(` + singleQuotedScriptUnitPattern + `*([^A-Za-z0-9_"\\'<]|\\[^"]))?|\\"(` + doubleQuotedScriptUnitPattern + `*([^A-Za-z0-9_"\\'<]|\\[^"]))?)` + lymEnvNamesPattern + `)`
+	`|(` + commandFieldPattern + shellUnitPattern + `*` + doubleQuotedOpenPattern + `[$]\{?` + lymEnvNamesPattern + `)`
 
 // refuseRawPattern returns the grep -E pattern the refuse-raw deny matches against the raw PreToolUse payload JSON.
 // It matches any listed prefix in command position, its words joined by whitespace runs and the last followed by a word end, so go testing is no go test.
 // Each word's . is escaped; the gate config loader admits only letters, digits, . _ and - in a word, so no other metacharacter reaches the pattern.
 // It sees static text only, so it is a guardrail and not a barrier:
-// it lets through a run behind a script file, a flag between the prefix's words such as go -C dir test,
-// and an assignment prefix such as GOFLAGS=x go test.
+// it lets through a run behind a script or bash -c, a flag between the prefix's words such as go -C dir test, and an assignment prefix such as GOFLAGS=x go test.
 func refuseRawPattern(prefixes []string) string {
 	alternatives := make([]string, len(prefixes))
 	for i, prefix := range prefixes {
@@ -746,26 +360,6 @@ func refuseRawPattern(prefixes []string) string {
 	return commandPositionPattern + `(` + strings.Join(alternatives, "|") + `)([^A-Za-z0-9_./-]|$)`
 }
 
-// wholeCommandRefusal opens every steer, plain and per engine.
-// A guard deny refuses the whole shell command, so none of its other parts ran either.
-// The row's own text follows it and names the refused part, so the agent runs again only the parts it still needs.
-const wholeCommandRefusal = "Nothing in this command ran: the guard refuses the whole command for one part, so run the parts you still need again without it. The refused part: "
-
-// openSteersWithWholeCommandRefusal prefixes every steer of rows, plain and per engine, with wholeCommandRefusal.
-// Notices stay as they are, since a notice announces a guard before any command runs.
-func openSteersWithWholeCommandRefusal(rows []Row) []Row {
-	for i := range rows {
-		rows[i].Steer = wholeCommandRefusal + rows[i].Steer
-		for engine, text := range rows[i].EngineTexts {
-			if text.Steer != "" {
-				text.Steer = wholeCommandRefusal + text.Steer
-				rows[i].EngineTexts[engine] = text
-			}
-		}
-	}
-	return rows
-}
-
 // forbiddenSteerChars are characters that would corrupt steer text in JSON or shell quoting layers (checked at init).
 const forbiddenSteerChars = `'"\`
 
@@ -773,11 +367,8 @@ const forbiddenSteerChars = `'"\`
 const forbiddenNoticeChars = forbiddenSteerChars + "\n\r"
 
 // Rows returns a fresh slice of the shell guard rows in table order.
-// Each steer opens with the clause that nothing in the refused command ran.
-// foreground is the engine's phrase for running a long command in the foreground.
-// The gate rule in the raw go row's steer and notice and the refuse-raw row's steer carries it.
-// refuseRaw lists the command prefixes the hub refuses to run raw;
-// a non-empty list adds the refuse-raw row after the raw go row, and an empty one adds none.
+// foreground is the engine's phrase for running a long command in the foreground, which the gate rule in the raw go row's steer and notice and the refuse-raw row's steer carries.
+// refuseRaw lists the command prefixes the hub refuses to run raw; a non-empty list adds the refuse-raw row after the raw go row, and an empty one adds none.
 // The raw go row's steer names only the compile checks refuseRaw does not refuse.
 func Rows(foreground string, refuseRaw []string) []Row {
 	rawGoSteer := "raw module-wide, tmux-tier and llm-tier go runs are refused here." + compileCheckSentence(refuseRaw) + " Gate rule: run lym gate test in the foreground " + foreground + ", never in the background, for example lym gate test ./internal/x, and use its --tier flag for a tier. When lym gate test or lym gate card-verify answers done: false, run the same command again in a turn that does nothing else, so the prompt cache stays warm between calls. Run every other check in the foreground too, and never cd into the directory you already work in. The slot, strand and prebuilt-binary environment variables belong to lym, and a command setting or reading any of them is refused"
@@ -785,7 +376,7 @@ func Rows(foreground string, refuseRaw []string) []Row {
 	if len(refuseRaw) > 0 {
 		rows = append(rows, refuseRawRow(foreground, refuseRaw))
 	}
-	return openSteersWithWholeCommandRefusal(append(rows, rowsAfterRawGo()...))
+	return append(rows, rowsAfterRawGo()...)
 }
 
 // compileCheckForms are the package-scoped compile checks the raw go row's steer offers in place of a refused ./... or all run.
@@ -844,9 +435,7 @@ func rowsBeforeRefuseRaw(rawGoSteer string) []Row {
 	return []Row{
 		{
 			// A guardrail, not a barrier.
-			// The pattern lets through python as an argument and python behind eval.
-			// It lets through python after a prefix it does not list (env FOO=1, nohup, command, timeout).
-			// It lets through python launched by a launcher such as py or uv run.
+			// The pattern lets through python as an argument, behind bash -c, sh -c or eval, after a prefix it does not list (env FOO=1, nohup, command, timeout), and through a launcher such as py or uv run.
 			// It falsely denies python after a separator inside a quote commandPositionPattern misreads.
 			Name:        "python",
 			Patterns:    []string{pythonCommandPattern},
@@ -873,20 +462,8 @@ func rowsAfterRawGo() []Row {
 	return []Row{
 		{
 			// Installed for every run, the orch included, with no config key, so every session edits through the Edit tool, which takes only a file read with Read.
-			// A guardrail, not a barrier.
-			// An edit behind a script file, awk, cp or mv, behind find -exec or behind xargs with a flag passes.
-			// A redirect into a quoted target passes.
-			// So does a redirect into a file whose extension sourceFilePattern does not name.
-			// So does a redirect after a heredoc operator's line, and an in-place edit after a heredoc with no closing line.
-			// Inside a shell -c script, an in-place edit on a later line of that script passes after a heredoc closed in it.
-			// One also passes after two heredoc operators on one line.
-			// It passes after a delimiter word that opens with a digit or a dash.
-			// It also passes after a quoted delimiter word holding a space or a breaker of unquoted words.
-			// It also passes after a closing word that holds anything but letters, digits, _, . and -.
+			// A guardrail, not a barrier: an edit behind bash -c, a script, awk, cp or mv, a sed -i after do or then, behind find -exec or behind xargs with a flag, a redirect into a quoted target or into a file whose extension sourceFilePattern does not name, and anything after a heredoc operator's line pass.
 			// It falsely denies a matching spelling after a separator inside a quote commandPositionPattern misreads.
-			// For a delimiter word outside heredocDelimiterWords, a line holding a bare word alone is taken for the closing line,
-			// so a later body line or quoted text that opens with an in-place edit spelling is falsely denied, prose included.
-			// So is one after a tab-indented line holding the listed word of a << operator, and after a << that shifts by a name.
 			Name:        "shell-edit",
 			Patterns:    []string{shellEditPattern},
 			Steer:       steerShellEditDeny,
@@ -900,8 +477,7 @@ func rowsAfterRawGo() []Row {
 			// Installed for every run, the orch included, with no config key.
 			// Requires rm in command position and an expansion anywhere in the payload.
 			// A guardrail, not a barrier: it falsely denies an rm of a literal path in a command that uses $ elsewhere in the payload, the description field included.
-			// It lets through a removal behind find -delete, behind xargs rm with no $ and behind a script file.
-			// It lets through a removal through the special parameters it does not list ($$, $?, $#, $!).
+			// It lets through a removal behind find -delete, xargs rm with no $, bash -c or a script, and one through the special parameters it does not list ($$, $?, $#, $!).
 			Name:     "computed-rm",
 			Patterns: []string{rmCommandPattern, shellExpansionPattern},
 			Steer:    steerComputedRmDeny,
@@ -910,10 +486,7 @@ func rowsAfterRawGo() []Row {
 		},
 		{
 			// Installed for every run, the orch included, with no config key.
-			// A guardrail, not a barrier.
-			// Eval, a shell variable and systemctl start or isolate of a sleep target pass.
-			// So do other sleep routes such as busctl or dbus-send on the system bus and rtcwake.
-			// A matching spelling after a separator inside a quote commandPositionPattern misreads is falsely denied.
+			// A guardrail, not a barrier: bash -c, eval, a shell variable, systemctl start or isolate of a sleep target and other sleep routes such as busctl, dbus-send and rtcwake pass, and a matching spelling after a separator inside a quote commandPositionPattern misreads is falsely denied.
 			Name:     "machine-sleep",
 			Patterns: []string{sleepCommandPattern},
 			Steer:    steerSleepDeny,
@@ -929,8 +502,7 @@ func rowsAfterRawGo() []Row {
 		},
 		{
 			// Installed for every run, the orch included, with no config key, so no session hands work to an agent whose work shows in no pane.
-			// A guardrail, not a barrier.
-			// A launch behind a script file, an assignment prefix such as X=1 claude, or env with an assignment passes.
+			// A guardrail, not a barrier: a launch behind bash -c, a script, an assignment prefix such as X=1 claude or env with an assignment passes.
 			// A claude subcommand, or a command launched through one, taking a single-dash flag word holding p of its own is falsely denied.
 			// So is a matching spelling after a separator inside a quote commandPositionPattern misreads.
 			Name:        "headless-claude",
@@ -942,77 +514,11 @@ func rowsAfterRawGo() []Row {
 			EngineTexts: map[string]EngineText{engineCodex: {Steer: codexSteerHeadlessClaudeDeny, Notice: codexSteerHeadlessClaudeDeny + "."}},
 		},
 		{
-			// Installed for every run, the orch included, with no config key, so no agent moves another machine hold to this one.
-			// A guardrail, not a barrier.
-			// A written script, a command substitution inside a quoted string and a variable-spelled flag pass.
-			// A matching spelling after a separator inside a quote commandPositionPattern misreads is falsely denied.
-			Name:     "adopt-take-hold",
-			Patterns: []string{adoptTakeHoldCommandPattern},
-			Steer:    steerAdoptTakeHoldDeny,
-			Notice:   noticeAdoptTakeHoldDeny,
-			Switch:   SwitchNone,
-			Forms:    [][]string{{"lym", "adopt", "--take-hold"}},
-		},
-		{
-			// Installed for every run on every engine and for every role, interactive sessions included.
-			// Only a launch spec that sets AllowRawTmux leaves it out.
-			// A tmux server or a script started from the shell outlives the command.
-			// It runs outside the memory scope lym gives each test binary.
-			// A script with its input on an endless stream queues that input in memory without bound.
-			// The sampler's spec sets AllowRawTmux, since its trials start tmux servers of their own.
-			// A guardrail, not a barrier.
-			// A launch behind a script file, eval, nohup, setsid or timeout passes, and so does one spelled through a variable.
-			// A program named script or tmux under another directory, such as tools/script, is falsely denied.
-			// So is a matching spelling after a separator inside a quote commandPositionPattern misreads.
-			Name:     "tmux-script",
-			Patterns: []string{tmuxScriptCommandPattern},
-			Steer:    steerTmuxScriptDeny,
-			Notice:   noticeTmuxScriptDeny,
-			Switch:   SwitchDenyRawTmux,
-		},
-		{
-			// Installed for every run, the orch included, with no config key.
-			// The session bus starts units and scopes outside lym's process tree and its memory caps.
-			// lym's own use of the bus, such as a memory-capped scope, runs from Go and never meets the row.
-			// A guardrail, not a barrier.
-			// A launch behind a script file, eval or a variable passes.
-			// So do systemctl --user, and busctl and dbus-send on the system bus.
-			// The dbus-send form stands for the call without --system, which a token sequence cannot spell.
-			// A matching spelling after a separator inside a quote commandPositionPattern misreads is falsely denied.
-			Name:     "session-bus",
-			Patterns: []string{sessionBusCommandPattern},
-			Steer:    steerSessionBusDeny,
-			Notice:   noticeSessionBusDeny,
-			Switch:   SwitchNone,
-			Forms:    [][]string{{"systemd-run"}, {"busctl", "--user"}, {"dbus-send"}, {"gdbus"}},
-		},
-		{
-			// Installed for every run, the orch included, with no config key.
-			// It reaches the sessions whose launch spec lifts the tmux and script row, whose own tmux servers carry other names.
-			// It refuses a hub's own server as well as another hub's, since a session reaches its hub through lym's verbs.
-			// A guardrail, not a barrier.
-			// A launch behind a script file, eval or a variable passes, and so does a socket reached through TMUX or a symlink.
-			// So does a quoted socket path with a space in a directory name.
-			// A matching spelling after a separator inside a quote commandPositionPattern misreads is falsely denied.
-			Name:     "hub-tmux-server",
-			Patterns: []string{hubTmuxServerCommandPattern},
-			Steer:    steerHubTmuxServerDeny,
-			Notice:   noticeHubTmuxServerDeny,
-			Switch:   SwitchNone,
-		},
-		{
-			// Installed only for a launch spec that sets DenyPublish, such as the PR-Review session's.
-			// That session reads the pull request, comments on it and edits its title and body through gh.
-			// A guardrail, not a barrier.
-			// A script file, env forms the pattern does not list, a git alias or hub pass.
-			// So does a flag word between gh and its command.
-			// So does a gh api call that writes by an implied POST with field flags.
-			// So does a GraphQL mutation read from a file.
-			// A gh spelling after a separator inside a quote commandPositionPattern misreads is falsely denied.
-			// So is a gh pr review short-flag cluster whose attached body holds an a or an r.
+			// Installed only for a launch spec that sets DenyPublish, such as the PR-Review session's, which reads the pull request, comments on it and edits its title and body through gh.
+			// A guardrail, not a barrier: bash -c, a script, env forms the pattern does not list, a git alias or hub pass, as do a flag word between gh and its command, a gh api call that writes by an implied POST with field flags, and a GraphQL mutation read from a file;
+			// a gh spelling after a separator inside a quote commandPositionPattern misreads is falsely denied, and so is a gh pr review short-flag cluster whose attached body holds an a or an r.
 			// A gh api call with an unbalanced apostrophe before its mutation word passes, since the scan reads a quoted string whole.
-			// A lym verb that pushes the task branch reaches origin from the session too.
-			// lym fabric push is one, and so is the detached both-sides push a run-record commit fires.
+			// A lym verb that pushes the task branch, such as lym fabric push or the detached both-sides push a run-record commit fires, reaches origin from the session too, so the row gates what lands, not what reaches the pull request.
 			Name:     "publish",
 			Patterns: []string{publishCommandPattern()},
 			Steer:    steerPublishDeny(),

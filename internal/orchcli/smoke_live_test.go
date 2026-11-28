@@ -157,6 +157,16 @@ func (f *liveFixture) stopOrch(t *testing.T) {
 	}
 }
 
+// sendTurn sends text to guid and waits for the turn it starts to end.
+func (f *liveFixture) sendTurn(t *testing.T, guid, eventsPath, text string, attempts int) {
+	t.Helper()
+	before := turnEnds(eventsPath)
+	if err := f.reed.SendText(guid, text, true); err != nil {
+		t.Fatalf("send turn: %v", err)
+	}
+	waitFor(t, attempts, "the turn to end", func() bool { return turnEnds(eventsPath) > before })
+}
+
 // permissionDialogMarker is the text Claude Code's permission dialog shows.
 const permissionDialogMarker = "Do you want to"
 
@@ -279,8 +289,7 @@ func TestSmokeOrch_BypassAgentAndIdle(t *testing.T) {
 // TestSmokeOrch_SoftCycle proves the soft trigger starts a cycle at a turn end below an unreachable hard cap.
 func TestSmokeOrch_SoftCycle(t *testing.T) {
 	tiergate.Require(t, 3)
-	// The start prompt's own turn end already qualifies at this soft threshold.
-	// So orch.soft_idle_s is long enough for the background-shell turn below to land first.
+	// The start prompt's own turn end already qualifies at this soft threshold, so soft_idle_s is long enough for the background-shell turn below to land first.
 	f := newLiveFixture(t, smokeOrchConfig("clear", "bypass", 1, 100000000, 45), nil)
 	guid, run := f.startOrch(t)
 	waitFor(t, 120, "the start prompt's turn to end", func() bool { return turnEnds(run.EventsPath) > 0 })
@@ -335,7 +344,7 @@ const (
 // TestSmokeOrch_CompactCycle proves the compact cycle keeps the session id and the strand, brings the context reading under the soft threshold, counts one cycle, and leaves a background task able to complete into the session.
 func TestSmokeOrch_CompactCycle(t *testing.T) {
 	tiergate.Require(t, 3)
-	// orch.soft_idle_s is long enough for the filler turn below to end before the soft trigger may fire.
+	// soft_idle_s is long enough for the filler turn below to end before the soft trigger may fire.
 	f := newLiveFixture(t, smokeOrchConfig("compact", "bypass", compactSoftThreshold, 100000000, 45), nil)
 	guid, run := f.startOrch(t)
 	waitFor(t, 120, "the start prompt's turn to end", func() bool { return turnEnds(run.EventsPath) > 0 })

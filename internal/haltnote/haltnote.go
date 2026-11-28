@@ -18,9 +18,6 @@ const (
 	fence         = "```"
 	historyHeader = "history:"
 	noHistoryLine = "no history entries"
-	// routedPrefix opens a history row's fourth field.
-	// The field names the producer the row's step routed the run on to, by a routed Stuck or a reroute.
-	routedPrefix = "routed to "
 	// parentHeader opens a section that older binaries wrote; Parse skips every line under it.
 	parentHeader    = "parent fabric status:"
 	rowSeparator    = " / "
@@ -48,13 +45,9 @@ type Row struct {
 	Producer string
 	Outcome  string
 	At       string
-	// RoutedTo names the producer the row's step handed the run on to, empty when it handed it to none.
-	// It tells a step that routed the run on, by a routed Stuck or a reroute, from a step that stopped the run.
-	RoutedTo string
 }
 
 // Render returns the halt note file for n: a title, the reason in a fence, then the producer, state and history lines.
-// A history row whose step handed the run on ends with `routed to <producer>`.
 func Render(n Note) []byte {
 	var b strings.Builder
 	b.WriteString(titlePrefix + n.State + " at " + n.Producer + "\n\n")
@@ -71,11 +64,7 @@ func Render(n Note) []byte {
 		b.WriteString(noHistoryLine + "\n")
 	}
 	for _, r := range n.History {
-		b.WriteString("- " + r.Producer + rowSeparator + r.Outcome + rowSeparator + r.At)
-		if r.RoutedTo != "" {
-			b.WriteString(rowSeparator + routedPrefix + r.RoutedTo)
-		}
-		b.WriteString("\n")
+		b.WriteString("- " + r.Producer + rowSeparator + r.Outcome + rowSeparator + r.At + "\n")
 	}
 	return []byte(b.String())
 }
@@ -142,15 +131,11 @@ func parseRow(line string) (Row, bool) {
 	if !ok {
 		return Row{}, false
 	}
-	parts := strings.SplitN(body, rowSeparator, 4)
-	if len(parts) < 3 {
+	parts := strings.SplitN(body, rowSeparator, 3)
+	if len(parts) != 3 {
 		return Row{}, false
 	}
-	row := Row{Producer: parts[0], Outcome: parts[1], At: parts[2]}
-	if len(parts) == 4 {
-		row.RoutedTo = strings.TrimPrefix(parts[3], routedPrefix)
-	}
-	return row, true
+	return Row{Producer: parts[0], Outcome: parts[1], At: parts[2]}, true
 }
 
 // IsNoteName reports whether a friction directory file name is a halt note: `loom-halt.md` or `loom-halt-<N>.md`.

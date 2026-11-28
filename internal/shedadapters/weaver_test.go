@@ -6,14 +6,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"reflect"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/shedengine"
-	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -39,51 +36,28 @@ func TestWeaverProducer(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	at := func(minute int) time.Time { return time.Date(2026, 11, 28, 10, minute, 0, 0, time.UTC) }
-	verifySpans := []shuttleengine.GateSpan{
-		{Kind: shuttleengine.GateSpanGate, Start: at(0), End: at(1)},
-		{Kind: shuttleengine.GateSpanRework, Start: at(1), End: at(5)},
-	}
-	wantSpans := []shedengine.GateSpan{
-		{Gate: "verify", Kind: "gate", Start: "2026-11-28T10:00:00Z", End: "2026-11-28T10:01:00Z"},
-		{Gate: "verify", Kind: "rework", Start: "2026-11-28T10:01:00Z", End: "2026-11-28T10:05:00Z"},
-	}
-
-	t.Run("DonePointsAtTheSummaryAndCarriesTheVerifySpans", func(t *testing.T) {
+	t.Run("DonePointsAtTheSummary", func(t *testing.T) {
 		t.Parallel()
 		deps := weaverDeps(t)
 		var calls int
-		p := NewWeaverProducer("loom", weaverRunner(weaverengine.RunResult{Outcome: "done", BatchesDone: 2, VerifySpans: verifySpans}, nil, &calls), deps)
+		p := NewWeaverProducer("loom", weaverRunner(weaverengine.RunResult{Outcome: "done", BatchesDone: 2}, nil, &calls), deps)
 
 		ptr := shedfake.RequireOutcome(t, p, shedengine.Done)
 
 		if want := summaryparser.Path(deps.Geom.RunDir); ptr.Path != want {
 			t.Errorf("Call() Path = %q; want Weaver's summary %q", ptr.Path, want)
 		}
-		if !reflect.DeepEqual(ptr.GateSpans, wantSpans) {
-			t.Errorf("Call() GateSpans = %+v; want %+v", ptr.GateSpans, wantSpans)
-		}
 	})
 
-	t.Run("StuckReasonPassesThroughWithTheVerifySpansWhenNoConflictRecordWasLeft", func(t *testing.T) {
-		t.Parallel()
-		var calls int
-		p := NewWeaverProducer("loom", weaverRunner(weaverengine.RunResult{Outcome: "stuck", StuckReason: "batch 01-a stopped", VerifySpans: verifySpans}, nil, &calls), weaverDeps(t))
-
-		ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
-
-		if ptr.Reason != "batch 01-a stopped" || ptr.Reroute || !reflect.DeepEqual(ptr.GateSpans, wantSpans) {
-			t.Errorf("Call() pointer = %+v; want the stuck reason as it is, no reroute and the gate spans %+v", ptr, wantSpans)
-		}
-	})
-
-	t.Run("RunWithNoVerifyCarriesNoGateSpans", func(t *testing.T) {
+	t.Run("StuckReasonPassesThroughWhenNoConflictRecordWasLeft", func(t *testing.T) {
 		t.Parallel()
 		var calls int
 		p := NewWeaverProducer("loom", weaverRunner(weaverengine.RunResult{Outcome: "stuck", StuckReason: "batch 01-a stopped"}, nil, &calls), weaverDeps(t))
 
-		if ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck); ptr.GateSpans != nil {
-			t.Errorf("Call() GateSpans = %+v; want nil for a run that ran no verify", ptr.GateSpans)
+		ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
+
+		if ptr.Reason != "batch 01-a stopped" || ptr.Reroute {
+			t.Errorf("Call() pointer = %+v; want the stuck reason as it is and no reroute", ptr)
 		}
 	})
 

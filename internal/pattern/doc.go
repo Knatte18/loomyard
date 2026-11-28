@@ -1,5 +1,5 @@
 // doc.go carries the package godoc for pattern:
-// the active check, the directive roles, the inlined overview and the PATTERN format.
+// the active check, the directive roles, the inlined overview, the stencil read path and the PATTERN format.
 
 // Package pattern answers one question for every code-touching lym agent:
 // is PATTERN active in this worktree, and what should the agent be told?
@@ -10,31 +10,58 @@
 //
 // PATTERN lives at the repository's worktree root: `PATTERN.md` is the overview,
 // and background files sit under `pattern/` beside it.
-// Directive and File take that root, never the anchor path.
+// Directive and File take that root, never the anchor path,
+// because the overview sits next to `go.mod` even when the anchor is a subdirectory.
 // PATTERN is active when the file at File(worktreeRoot) holds anything but whitespace.
 // An absent file, a directory in its place and a whitespace-only file are all inactive.
 // Any other content, however malformed, is active and inlined verbatim:
 // format violations are the format checker's job, not this package's.
-// Any other stat or read error is an error rather than an inactive PATTERN,
+// A stat error that is not "not exist", or a read error on an existing file,
+// is an error rather than an inactive PATTERN,
 // since silently disabling the constraints is worse than a visible failure.
 //
 // # Why the roles differ
 //
-// Directive's Role parameter selects the directive-text variant worded for what that agent shape does.
-// The fix half of the burler review receives no PATTERN directive.
+// Directive's Role parameter selects the directive-text variant for one agent shape,
+// because each shape needs its constraint text worded for what that agent does.
+// RoleImplementer is worded as a pre-edit checklist, because its agents edit code.
+// RoleReviewFix is worded for the burler review half's reviewer, which judges code and never edits it.
+// The fix half receives no PATTERN directive.
 // RoleOrchestrator is worded for forking rather than editing,
 // because an implementer-worded instruction would ask webster's Master to do what its prompt says it never does.
+// RoleDesigner is worded for checking decisions against the entries before any plan exists,
+// because its agent settles a design rather than changing code.
 // RoleJudge is worded for weighing findings the review already made,
 // because the Bouncer judge never opens the artifacts and must not downgrade a finding that cites an entry.
 //
 // # Why the overview is inlined and the background files are not
 //
-// Each directive stencil carries one required `{{.pattern_overview}}` marker, which Directive fills with the overview.
-// It also carries one optional `{{.pattern_changes}}` marker, which Directive fills with the task's declared changes.
-// A listed entry is followed and judged by its listed new text, never by the overview's current text.
-// Inlining the overview guarantees every agent sees the rules and keeps the prompt prefix cache-stable.
-// The background files stay a fixed relative `pattern/` pointer in the stencil's own body.
-// An interpolated absolute path would vary per worktree and defeat equality checks across worktrees.
+// Each directive stencil carries one required `{{.pattern_overview}}` marker.
+// Directive fills it with the overview's content.
+// It also carries one optional `{{.pattern_changes}}` marker right after it.
+// Directive fills that marker with the task's declared PATTERN changes.
+// The caller passes the declared changes as bullet lines that `discussionparser.DeclaredPatternChanges` reads.
+// This package stays a leaf that imports no parser.
+// A non-empty list renders the `pattern-fragment-changes` stencil.
+// Its one required `pattern_change_list` marker takes the lines.
+// The fragment states that a listed entry is followed and judged by its listed new text.
+// It is never judged by the overview's current text.
+// A nil or empty list reads no fragment and fills the marker with nothing.
+// Inlining the overview guarantees every agent sees the rules and saves it a read turn.
+// It also keeps the prompt prefix cache-stable.
+// The background files stay a fixed relative `pattern/` pointer in the stencil's own body,
+// never an interpolated absolute path built from the caller-supplied root.
+// An absolute path would vary per worktree.
+// The fixed directive strings could then not be compared for equality, or matched by substring, across worktrees.
+// This package's own tests and any consumer's tests need that comparison.
+//
+// # The stencil read path
+//
+// Directive is told a stencilsDir, reads the role's stencil through stencilstore.Read,
+// strips the leading banner with stencil.StripLeadingComment, and fills the overview marker with stencil.Fill.
+// It returns an error rather than an empty string when an active PATTERN's stencil cannot be read or filled.
+// The read is lazy: no stencil read is attempted on an empty root, an inactive PATTERN, or an unknown role.
+// A caller that already holds the stencil's bytes and the overview's bytes renders the same text with FillDirective.
 //
 // # The PATTERN format
 //
@@ -52,9 +79,26 @@
 // When present it points at `pattern/<the entry's own name>.md`, and that file exists.
 // Every file under `pattern/` is named by exactly one entry.
 //
-// A format checker in the package's tests enforces the shape; the real file is checked under `go test`.
-// MaxOverviewBytes is a hard cap on any tree.
-// Headroom binds a branch's own growth to the HeadroomBytes line; a merged tree answers only to the cap.
+// A format checker in the package's tests enforces the shape on an fs.FS holding the root.
+// The real file is checked under `go test`.
+// It caps the overview at MaxOverviewBytes and an entry's rule text at MaxEntryTextChars.
+// The rule text, as EntryRuleText cuts it, is the line without its bullet, name, `(test)` and background link,
+// so the room for the wording does not depend on the entry's name or tail.
+// It also reports an entry that continues onto a second line, an empty overview and an overview with no entry.
+// MaxOverviewBytes is a hard cap that it enforces on any tree, and its finding names the bytes over it.
+// HeadroomBytes is a line set below the cap, and Headroom binds growth to it:
+// given the overview at a base and at the head, it fails when the head is longer than both the base and the line.
+// It names the smallest cut that passes: the head size minus the larger of the base size and the line.
+// The line binds a branch's own change, so a base already above it is told to cut only the branch's growth.
+// A merged tree answers only to the cap.
+// ProjectOverview computes the overview that a plan's prescribed entry lines would leave.
+// The plan gate measures it with Headroom.
+// A prescribed line replaces the whole bullet of its entry, continuation lines included.
+// It is appended when the entry is absent, and the last line of an entry wins.
+// Each removed entry's bullet is then deleted, and an absent one is no change.
+// The projection is idempotent over an overview that already holds the prescribed lines.
+// EntryBullet returns the bullet an entry has as it stands.
 // PATTERN text states rules for the code only:
 // it never says how an agent, a run, a stencil or a workflow uses it.
+// The render path runs no format check, so Directive inlines a malformed overview verbatim.
 package pattern

@@ -564,7 +564,6 @@ func TestCompact_HookDeliveredPointerIsSkippedAndAStaleMarkIsTyped(t *testing.T)
 			if err != nil {
 				t.Fatal(err)
 			}
-			pointer += autonomyOffLine
 			if err := WriteResumeMark(e.paths, ResumeMark{At: tt.markAt(baseline, boundary), Text: pointer}); err != nil {
 				t.Fatal(err)
 			}
@@ -625,7 +624,7 @@ func TestCompact_TimeoutReturnsToIdleAndHoldsAutomaticTriggers(t *testing.T) {
 				t.Errorf("a timed-out compaction counted as a cycle: %d", st.CycleCount)
 			}
 
-			// A hard trigger is held for orch.soft_idle_s (60s) after the failure.
+			// A hard trigger is held for soft_idle_s (60s) after the failure.
 			e.s.usage["b"] = 2000
 			e.s.events = append(e.s.events, stop("b"))
 			e.tick()

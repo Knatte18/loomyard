@@ -13,7 +13,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/friction"
-	"github.com/Knatte18/loomyard/internal/heddleengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -68,9 +67,9 @@ func resolveModelChoice(raw string, reg modelspec.Registry) (shuttleengine.Model
 
 // DiscussionTable builds the seatengine.Table of one Discussion-Write run.
 // The lead writes the decision record, the support log and the relevant list.
-// Each entry of cfg.Discussion.Advisors adds one advisor, named by the entry,
+// Each entry of cfg.DiscussionAdvisors adds one advisor, named by the entry,
 // and each advisor writes a notes file for the lead to read.
-// When cfg.Discussion.Lenses is set, the lead alone may spawn fork subagents.
+// When cfg.DiscussionLenses is set, the lead alone may spawn fork subagents.
 // Under the same condition, the lead carries the twill lens review directive.
 // Its fan is resolved through lenses.yaml under dirs; the advisors never fork.
 // The seats' opening stencils are read at call time from stencilsDir.
@@ -79,7 +78,6 @@ func resolveModelChoice(raw string, reg modelspec.Registry) (shuttleengine.Model
 // cfg.SubagentModel names the model of the fresh subagents the lead's prompt tells it to hand lookups to.
 // The table carries no gate; the producer entry sets it.
 // A lead with no advisors decides each question itself, as its prompt says.
-// The lead's prompt carries lym's glossary, so the interview and the record keep lym's words.
 // The PATTERN directive renders the PATTERN changes the decision record declares;
 // a malformed section fails the table, naming the way forward.
 // A PATTERN directive or Tier 2 friction directive that cannot be rendered is left empty;
@@ -92,7 +90,7 @@ func DiscussionTable(layout *lymcwd.Location, dirs configengine.Dirs, stencilsDi
 		return seatengine.Table{}, fmt.Errorf("loom: DiscussionTable: slug must not be empty")
 	}
 
-	chairChoice, err := resolveModelChoice(cfg.Discussion.Model, reg)
+	chairChoice, err := resolveModelChoice(cfg.Discussion, reg)
 	if err != nil {
 		return seatengine.Table{}, fmt.Errorf("loom: DiscussionTable: discussion role model-spec: %w", err)
 	}
@@ -107,7 +105,7 @@ func DiscussionTable(layout *lymcwd.Location, dirs configengine.Dirs, stencilsDi
 	}
 
 	var frictionDir string
-	if cfg.Friction.Model != "" {
+	if cfg.Friction != "" {
 		frictionDir = LoomFrictionDir(layout)
 	}
 	frictionDirective, err := friction.Directive(friction.NotePath(frictionDir, "Discussion-Write"), stencilsDir, friction.RoleInterview)
@@ -122,22 +120,22 @@ func DiscussionTable(layout *lymcwd.Location, dirs configengine.Dirs, stencilsDi
 	if err != nil {
 		return seatengine.Table{}, fmt.Errorf("loom: DiscussionTable: self-check step: %w", err)
 	}
-	forks := cfg.Discussion.Lenses != ""
+	forks := cfg.DiscussionLenses != ""
 	leadValues := map[string]string{"self_check": selfCheck}
 	if forks {
-		lensDirective, err := discussionLensDirective(layout, dirs, stencilsDir, specsDir, cfg.Discussion.Lenses, chairChoice.Engine, fixerOn)
+		lensDirective, err := discussionLensDirective(layout, dirs, stencilsDir, specsDir, cfg.DiscussionLenses, chairChoice.Engine, fixerOn)
 		if err != nil {
 			return seatengine.Table{}, fmt.Errorf("loom: DiscussionTable: %w", err)
 		}
 		leadValues[twilldirective.MarkerName] = setOffParagraph(lensDirective)
 	}
 
-	seats := make([]seatengine.Seat, 0, 1+len(cfg.Discussion.Advisors))
+	seats := make([]seatengine.Seat, 0, 1+len(cfg.DiscussionAdvisors))
 	var notes []string
-	for n, advisor := range cfg.Discussion.Advisors {
+	for n, advisor := range cfg.DiscussionAdvisors {
 		choice, err := resolveModelChoice(advisor.Model, reg)
 		if err != nil {
-			return seatengine.Table{}, fmt.Errorf("loom: DiscussionTable: %s entry %d: %w; set the entry's model to a model-spec the registry defines", FullKeyName(discussionAdvisorsKey), n+1, err)
+			return seatengine.Table{}, fmt.Errorf("loom: DiscussionTable: %s entry %d: %w; set the entry's model to a model-spec the registry defines", discussionAdvisorsKey, n+1, err)
 		}
 		path := DiscussionAdvisorNotes(layout, advisor.Name)
 		notes = append(notes, path)
@@ -158,7 +156,7 @@ func DiscussionTable(layout *lymcwd.Location, dirs configengine.Dirs, stencilsDi
 		ConfigRole:    agentconfig.RoleDiscussion,
 		Values:        leadValues,
 		ForkSubagents: forks,
-		ModelKey:      shuttleengine.ModelKey{Module: loomModule, Key: discussionModelKey},
+		ModelKey:      shuttleengine.ModelKey{Module: loomModule, Key: "discussion"},
 	}
 	if forks {
 		// The lens directive tells the lead to fork and to end its turn while forks are outstanding.
@@ -169,8 +167,8 @@ func DiscussionTable(layout *lymcwd.Location, dirs configengine.Dirs, stencilsDi
 	return seatengine.Table{
 		RolePrefix:  discussionRole,
 		Segment:     segmentcolor.Discussion,
-		Timeout:     time.Duration(cfg.Discussion.TimeoutMin) * time.Minute,
-		Interactive: cfg.Discussion.Interactive,
+		Timeout:     time.Duration(cfg.DiscussionTimeoutMin) * time.Minute,
+		Interactive: cfg.DiscussionInteractive,
 		Values: map[string]string{
 			"slug":                 slug,
 			"specs_dir":            specsDir,
@@ -178,10 +176,9 @@ func DiscussionTable(layout *lymcwd.Location, dirs configengine.Dirs, stencilsDi
 			"support_log_path":     DiscussionSupportLog(layout),
 			"relevant_path":        DiscussionRelevant(layout),
 			subagentModelKey:       cfg.SubagentModel,
-			"mode_rules":           discussionModeRules(!cfg.Discussion.Interactive, len(cfg.Discussion.Advisors) > 0),
+			"mode_rules":           discussionModeRules(!cfg.DiscussionInteractive, len(cfg.DiscussionAdvisors) > 0),
 			"pattern_directive":    patternDirective,
 			friction.MarkerName:    frictionDirective,
-			"glossary":             heddleengine.Glossary(),
 		},
 		Optional: []string{"pattern_directive", ProjectDirectiveMarker, friction.MarkerName, twilldirective.MarkerName},
 		Seats:    append([]seatengine.Seat{lead}, seats...),

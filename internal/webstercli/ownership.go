@@ -9,6 +9,7 @@ package webstercli
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/clihelp"
@@ -56,7 +57,7 @@ func orphanedMasterRefusal(caller, scratchDir, verb string) (refusal string, run
 func (c *websterCLI) refuseOrphanedMaster(cmd *cobra.Command) *cobra.Command {
 	inner := cmd.RunE
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		if refusal, runEnded := orphanedMasterRefusal(c.strandName, c.geom.ScratchDir, cmd.Name()); refusal != "" {
+		if refusal, runEnded := orphanedMasterRefusal(os.Getenv(agentname.StrandNameEnv), c.geom.ScratchDir, cmd.Name()); refusal != "" {
 			var fields map[string]any
 			if runEnded {
 				fields = map[string]any{"run_ended": true}

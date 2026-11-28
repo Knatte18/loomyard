@@ -11,9 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/creelcli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gatefixer"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -32,8 +30,6 @@ const (
 	fixerRecordFile = "fixer.json"
 	// fixerBodyStencil names the body stencil a card gate's fixer prompt joins behind the shared cold frame.
 	fixerBodyStencil = "gatefix-body-card"
-	// cardFixerProgram is the program name the card fixer's reply probe signs with.
-	cardFixerProgram = "GATE"
 )
 
 // cardFixerKit is what the detached runner needs to hand a red call to a cold fixer.
@@ -116,7 +112,7 @@ func newStrandRig(location *lymcwd.Location) (strandRig, error) {
 	if err != nil {
 		return strandRig{}, err
 	}
-	engines, err := shuttleengines.NewForWorktree(shuttleCfg, dirs, hubgeom.EngineWorktree(location))
+	engines, err := shuttleengines.New(shuttleCfg, dirs)
 	if err != nil {
 		return strandRig{}, err
 	}
@@ -131,8 +127,7 @@ func newStrandRig(location *lymcwd.Location) (strandRig, error) {
 	reed := reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub())
 	runner := shuttleengine.NewRunner(reed, engines, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 	runner.SetPause(pauseGeom)
-	runner.SetSessionEnd(shedadapters.UsageRecorder(location, shuttleengines.RecordReaders(dirs)))
-	runner.SetReplyProbe(creelcli.AwaitsReplyProbe(location, cardFixerProgram))
+	runner.SetSessionEnd(shedadapters.UsageRecorder(location, shuttleengines.RecordReaders()))
 	return strandRig{runner: runner, reed: reed, engines: engines, shuttleCfg: shuttleCfg, anchorRoot: reedGeom.AnchorPath}, nil
 }
 
@@ -140,7 +135,7 @@ func newStrandRig(location *lymcwd.Location) (strandRig, error) {
 // It resolves the worktree from the request's Cwd and loads the gate config.
 // It reads the slug from the fabric origin record.
 // The kit's fixer is a strand over the worktree's reed geometry, registered under the slug with the gate fixer role.
-// Its model is the one the key's `fixer` names, and its timeout is gate.fixer_timeout_min.
+// Its model is the one the key's `fixer` names, and its timeout is the gate config's fixer timeout.
 // Its stencils and language skills come from the hub.
 // A call outside a hub, or one whose verdict stands, returns false.
 // A config or model that cannot be loaded or resolved is an error.
@@ -173,7 +168,7 @@ func newCardFixer(request detachRequest) (cardFixerKit, bool, error) {
 	}
 	resolved, err := registry.Resolve(modelSpec)
 	if err != nil {
-		return cardFixerKit{}, false, fmt.Errorf("gate test: resolve the %s gate fixer's model-spec: %w; way forward: set %s with lym config gate to an alias models.yaml holds, or to \"\" to turn the fixer off", key, err, keyName(gatesKey+"."+key+".fixer"))
+		return cardFixerKit{}, false, fmt.Errorf("gate test: resolve the %s gate fixer's model-spec: %w; way forward: set the key's fixer in gate.yaml with lym config gate to an alias models.yaml holds, or to \"\" to turn the fixer off", key, err)
 	}
 	language, err := languageconfig.Load(dirs)
 	if err != nil {
@@ -191,14 +186,14 @@ func newCardFixer(request detachRequest) (cardFixerKit, bool, error) {
 		ShuttleCfg: rig.shuttleCfg,
 		AnchorRoot: rig.anchorRoot,
 		Clock:      wallClock{},
-		Register:   gatefixer.Registrar(rig.reed, fabriclayout.RunProcDir(location.HubPath), slug, gatefixer.RoleGateFixer),
+		Register:   gatefixer.Registrar(rig.reed, fabricengine.RunProcDir(location.HubPath), slug, gatefixer.RoleGateFixer),
 	})
 	model := shuttleengine.NewModelChoice(resolved)
 	return cardFixerKit{
 		fixer:        fixer,
 		timeout:      cfg.FixerTimeout(),
 		worktreeRoot: location.WorktreePath(),
-		stencilsDir:  fabriclayout.StencilsDir(location.HubPath),
+		stencilsDir:  fabricengine.StencilsDir(location.HubPath),
 		model:        model,
 		skills:       language.Skills,
 		engine:       rig.engines.EngineName(model),

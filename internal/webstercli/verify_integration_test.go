@@ -3,7 +3,7 @@
 // The plan, the verify directory and the webster directories all lie outside the repo,
 // so a verify run never dirties the tree it checks.
 // The verb runs the rendered `final` gate call through the `lym` built from the tree.
-// TestVerifyVerb puts that `lym` first on `PATH` once, so it is serial, and its subtests run in parallel under that.
+// Each fixture puts that `lym` first on `PATH`, so every test here is not parallel.
 
 package webstercli
 
@@ -69,9 +69,10 @@ func verifyGateConfig(t *testing.T, command string, finalTier int) []byte {
 // The told GateConfig reads that file.
 // The repo excludes its .lym directory, where a standalone `lym gate test` writes its run record,
 // so the tree stays clean for the verify.
-// The caller puts the `lym` built from the tree first on `PATH`, since the verb runs its gate call through it.
+// It puts the `lym` built from the tree first on `PATH`, so the calling test is not parallel.
 func newVerifyFixture(t *testing.T, command string) *verifyFixture {
 	t.Helper()
+	lymbin.PutFirstOnPath(t)
 
 	worktree := t.TempDir()
 	gitkit.Git(t, worktree, "init", "-b", "main")
@@ -120,150 +121,142 @@ func (fx *verifyFixture) run(t *testing.T) (int, envelope.Envelope) {
 	return code, envelope.Decode(t, out.String())
 }
 
-// TestVerifyVerb drives the verb over one fixture per subtest.
-// Serial: it puts `lym` first on PATH once, and its subtests run in parallel under that.
-func TestVerifyVerb(t *testing.T) {
+func TestVerifyVerb_PassRecordsTheTree(t *testing.T) {
 	tiergate.Require(t, 1)
-	lymbin.PutFirstOnPath(t)
+	fx := newVerifyFixture(t, "exit 0")
 
-	t.Run("PassRecordsTheTree", func(t *testing.T) {
-		t.Parallel()
-		fx := newVerifyFixture(t, "exit 0")
+	code, env := fx.run(t)
 
-		code, env := fx.run(t)
+	if code != 0 || !env.OK {
+		t.Fatalf("verify on a passing plan = %d, envelope %+v; want 0 and ok", code, env)
+	}
+	if _, err := os.Stat(verifytree.NewPaths(fx.Worktree, fx.CLI.geom.VerifyDir).Record); err != nil {
+		t.Errorf("a passing verify wrote no record: %v", err)
+	}
+}
 
-		if code != 0 || !env.OK {
-			t.Fatalf("verify on a passing plan = %d, envelope %+v; want 0 and ok", code, env)
-		}
-		if _, err := os.Stat(verifytree.NewPaths(fx.Worktree, fx.CLI.geom.VerifyDir).Record); err != nil {
-			t.Errorf("a passing verify wrote no record: %v", err)
-		}
-	})
+func TestVerifyVerb_SecondCallOnTheSameTreeSkips(t *testing.T) {
+	tiergate.Require(t, 1)
+	fx := newVerifyFixture(t, "exit 0")
+	if code, _ := fx.run(t); code != 0 {
+		t.Fatalf("first verify = %d; want 0", code)
+	}
+	logPattern := filepath.Join(fx.CLI.geom.VerifyDir, "verify-*.log")
+	logsBefore, err := filepath.Glob(logPattern)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	t.Run("SecondCallOnTheSameTreeSkips", func(t *testing.T) {
-		t.Parallel()
-		fx := newVerifyFixture(t, "exit 0")
-		if code, _ := fx.run(t); code != 0 {
-			t.Fatalf("first verify = %d; want 0", code)
-		}
-		logPattern := filepath.Join(fx.CLI.geom.VerifyDir, "verify-*.log")
-		logsBefore, err := filepath.Glob(logPattern)
-		if err != nil {
-			t.Fatal(err)
-		}
+	code, env := fx.run(t)
 
-		code, env := fx.run(t)
+	if code != 0 || env.Raw["status"] != string(verifytree.StatusSkipped) {
+		t.Errorf("second verify = %d, envelope %+v; want 0 and status %q", code, env, verifytree.StatusSkipped)
+	}
+	if logs, err := filepath.Glob(logPattern); err != nil || len(logs) != len(logsBefore) {
+		t.Errorf("verify logs after the second verify = %q, %v; want %q, the command not to have run", logs, err, logsBefore)
+	}
+}
 
-		if code != 0 || env.Raw["status"] != string(verifytree.StatusSkipped) {
-			t.Errorf("second verify = %d, envelope %+v; want 0 and status %q", code, env, verifytree.StatusSkipped)
-		}
-		if logs, err := filepath.Glob(logPattern); err != nil || len(logs) != len(logsBefore) {
-			t.Errorf("verify logs after the second verify = %q, %v; want %q, the command not to have run", logs, err, logsBefore)
-		}
-	})
+func TestVerifyVerb_FailureExitsOneWithFindings(t *testing.T) {
+	tiergate.Require(t, 1)
+	fx := newVerifyFixture(t, "exit 3")
 
-	t.Run("FailureExitsOneWithFindings", func(t *testing.T) {
-		t.Parallel()
-		fx := newVerifyFixture(t, "exit 3")
+	code, env := fx.run(t)
 
-		code, env := fx.run(t)
+	if code != 1 || env.OK {
+		t.Fatalf("verify on a failing plan = %d, envelope %+v; want 1 and not ok", code, env)
+	}
+	findings, ok := env.Raw["findings"].(map[string]any)
+	if !ok {
+		t.Fatalf("failure envelope has no findings object: %+v", env.Raw)
+	}
+	if findings["exit_code"] != float64(3) {
+		t.Errorf("findings exit_code = %v; want 3", findings["exit_code"])
+	}
+	if want := filepath.Join(fx.CLI.geom.VerifyDir, "verify-1.log"); findings["log"] != want {
+		t.Errorf("findings log = %v; want the run's own log %s", findings["log"], want)
+	}
+}
 
-		if code != 1 || env.OK {
-			t.Fatalf("verify on a failing plan = %d, envelope %+v; want 1 and not ok", code, env)
-		}
-		findings, ok := env.Raw["findings"].(map[string]any)
-		if !ok {
-			t.Fatalf("failure envelope has no findings object: %+v", env.Raw)
-		}
-		if findings["exit_code"] != float64(3) {
-			t.Errorf("findings exit_code = %v; want 3", findings["exit_code"])
-		}
-		if want := filepath.Join(fx.CLI.geom.VerifyDir, "verify-1.log"); findings["log"] != want {
-			t.Errorf("findings log = %v; want the run's own log %s", findings["log"], want)
-		}
-	})
+// TestVerifyVerb_RunnerCrashIsNoFailureToFix pins that a verify refuses a log holding the runner crash line.
+// The refusal names the crashed run and has no failing identities to fix.
+// The tier prints the line itself and exits 1, which is no crash signal, so the gate does not wait out its rerun delay.
+func TestVerifyVerb_RunnerCrashIsNoFailureToFix(t *testing.T) {
+	tiergate.Require(t, 1)
+	crashLine := filepath.Join(t.TempDir(), "crash.txt")
+	if err := os.WriteFile(crashLine, []byte(gateslot.RunnerCrashLine("tier0 (exit 134, SIGABRT)")+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fx := newVerifyFixture(t, "cat '"+crashLine+"'; exit 1")
 
-	// RunnerCrashIsNoFailureToFix pins that a verify refuses a log holding the runner crash line.
-	// The refusal names the crashed run and has no failing identities to fix.
-	// The tier prints the line itself and exits 1, which is no crash signal, so the gate does not wait out its rerun delay.
-	t.Run("RunnerCrashIsNoFailureToFix", func(t *testing.T) {
-		t.Parallel()
-		crashLine := filepath.Join(t.TempDir(), "crash.txt")
-		if err := os.WriteFile(crashLine, []byte(gateslot.RunnerCrashLine("tier0 (exit 134, SIGABRT)")+"\n"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		fx := newVerifyFixture(t, "cat '"+crashLine+"'; exit 1")
+	code, env := fx.run(t)
 
-		code, env := fx.run(t)
+	if code != 1 || env.OK {
+		t.Fatalf("verify on a crashing runner = %d, envelope %+v; want 1 and not ok", code, env)
+	}
+	findings, ok := env.Raw["findings"].(map[string]any)
+	if !ok {
+		t.Fatalf("crash envelope has no findings object: %+v", env.Raw)
+	}
+	if detail, _ := findings["detail"].(string); !strings.Contains(detail, "SIGABRT") {
+		t.Errorf("findings detail = %q; want it to name SIGABRT", detail)
+	}
+	if _, hasFailures := findings["failures"]; hasFailures {
+		t.Errorf("findings = %+v; want no failures list for a crash", findings)
+	}
+}
 
-		if code != 1 || env.OK {
-			t.Fatalf("verify on a crashing runner = %d, envelope %+v; want 1 and not ok", code, env)
-		}
-		findings, ok := env.Raw["findings"].(map[string]any)
-		if !ok {
-			t.Fatalf("crash envelope has no findings object: %+v", env.Raw)
-		}
-		if detail, _ := findings["detail"].(string); !strings.Contains(detail, "SIGABRT") {
-			t.Errorf("findings detail = %q; want it to name SIGABRT", detail)
-		}
-		if _, hasFailures := findings["failures"]; hasFailures {
-			t.Errorf("findings = %+v; want no failures list for a crash", findings)
-		}
-	})
+func TestVerifyVerb_DirtyTreeExitsOneNamingPaths(t *testing.T) {
+	tiergate.Require(t, 1)
+	fx := newVerifyFixture(t, "exit 0")
+	if err := os.WriteFile(filepath.Join(fx.Worktree, "stray.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatalf("write stray file: %v", err)
+	}
 
-	t.Run("DirtyTreeExitsOneNamingPaths", func(t *testing.T) {
-		t.Parallel()
-		fx := newVerifyFixture(t, "exit 0")
-		if err := os.WriteFile(filepath.Join(fx.Worktree, "stray.txt"), []byte("x"), 0o644); err != nil {
-			t.Fatalf("write stray file: %v", err)
-		}
+	code, env := fx.run(t)
 
-		code, env := fx.run(t)
+	if code != 1 || env.OK {
+		t.Fatalf("verify on a dirty tree = %d, envelope %+v; want 1 and not ok", code, env)
+	}
+	findings, _ := env.Raw["findings"].(map[string]any)
+	if got := findings["dirty"]; !strings.Contains(strings.Join(anyStrings(got), ","), "stray.txt") {
+		t.Errorf("findings dirty = %v; want it to name stray.txt", got)
+	}
+}
 
-		if code != 1 || env.OK {
-			t.Fatalf("verify on a dirty tree = %d, envelope %+v; want 1 and not ok", code, env)
-		}
-		findings, _ := env.Raw["findings"].(map[string]any)
-		if got := findings["dirty"]; !strings.Contains(strings.Join(anyStrings(got), ","), "stray.txt") {
-			t.Errorf("findings dirty = %v; want it to name stray.txt", got)
-		}
-	})
+// TestVerifyVerb_GateConfigRefusalIsTheError pins that a gate.yaml the verb cannot load is the verb's error.
+// A `final` list naming an undeclared tier is refused the same way.
+// The refusal names `lym config gate`, never a pass.
+func TestVerifyVerb_GateConfigRefusalIsTheError(t *testing.T) {
+	tiergate.Require(t, 1)
+	tests := []struct {
+		name string
+		// breakConfig turns the fixture's committed gate.yaml into the refused shape.
+		breakConfig func(t *testing.T, configFile string)
+	}{
+		{"an absent gate.yaml", func(t *testing.T, configFile string) {
+			if err := os.Remove(configFile); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"a final list naming an undeclared tier", func(t *testing.T, configFile string) {
+			if err := os.WriteFile(configFile, verifyGateConfig(t, "exit 0", 7), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fx := newVerifyFixture(t, "exit 0")
+			tt.breakConfig(t, configengine.ConfigFile(fx.Worktree, "gate"))
 
-	// GateConfigRefusalIsTheError pins that a gate.yaml the verb cannot load is the verb's error.
-	// A `final` list naming an undeclared tier is refused the same way.
-	// The refusal names `lym config gate`, never a pass.
-	t.Run("GateConfigRefusalIsTheError", func(t *testing.T) {
-		t.Parallel()
-		tests := []struct {
-			name string
-			// breakConfig turns the fixture's committed gate.yaml into the refused shape.
-			breakConfig func(t *testing.T, configFile string)
-		}{
-			{"an absent gate.yaml", func(t *testing.T, configFile string) {
-				if err := os.Remove(configFile); err != nil {
-					t.Fatal(err)
-				}
-			}},
-			{"a final list naming an undeclared tier", func(t *testing.T, configFile string) {
-				if err := os.WriteFile(configFile, verifyGateConfig(t, "exit 0", 7), 0o644); err != nil {
-					t.Fatal(err)
-				}
-			}},
-		}
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				t.Parallel()
-				fx := newVerifyFixture(t, "exit 0")
-				tt.breakConfig(t, configengine.ConfigFile(fx.Worktree, "gate"))
+			code, env := fx.run(t)
 
-				code, env := fx.run(t)
-
-				if code != 1 || env.OK || !strings.Contains(env.Error, "lym config gate") {
-					t.Errorf("verify over %s = %d, envelope %+v; want 1 and an error naming lym config gate", tt.name, code, env)
-				}
-			})
-		}
-	})
+			if code != 1 || env.OK || !strings.Contains(env.Error, "lym config gate") {
+				t.Errorf("verify over %s = %d, envelope %+v; want 1 and an error naming lym config gate", tt.name, code, env)
+			}
+		})
+	}
 }
 
 // anyStrings returns v's elements as strings when v is a decoded JSON array of strings.

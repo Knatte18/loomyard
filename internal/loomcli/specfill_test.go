@@ -6,6 +6,7 @@ package loomcli
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -92,5 +93,26 @@ func TestSpecFor_FillsRunIdentityForSelf(t *testing.T) {
 	coverage, err := spec.Loop.Pause(pausedAt.Add(time.Hour))
 	if err != nil || !coverage.Covered {
 		t.Errorf("Loop.Pause covered/err = %v/%v; want the run covered by the live entry", coverage.Covered, err)
+	}
+}
+
+// TestSpecFor_LegacySelfDirKeepsSlugRunID verifies that with only a legacy _lym/shed/self/ present:
+// RunID stays the slug, while StepsDir keeps the legacy "self" segment.
+func TestSpecFor_LegacySelfDirKeepsSlugRunID(t *testing.T) {
+	tiergate.Require(t, 0)
+	loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "wt", AnchorRel: "."}
+	if err := os.MkdirAll(filepath.Join(loc.AnchorPath(), "_lym", "shed", "self"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	c := &loomCLI{location: loc, runID: shedrun.SelfRunID}
+
+	spec := c.specFor("status")
+
+	if spec.RunID != "wt" {
+		t.Errorf("RunID = %q, want %q", spec.RunID, "wt")
+	}
+	wantSuffix := filepath.Join(".lym", "shed", "self", "steps")
+	if !strings.HasSuffix(spec.StepsDir, wantSuffix) {
+		t.Errorf("StepsDir = %q, want suffix %q", spec.StepsDir, wantSuffix)
 	}
 }

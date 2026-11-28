@@ -1,23 +1,30 @@
-// anchormarker.go writes, commits and reads from git the `.lym-anchor` markers.
-// A worktree's own marker sits at the root of its weft branch.
+// anchormarker.go writes, commits, reads from git and retires the `.lym-anchor` markers.
+// A worktree's own marker sits at the root of its weft branch; the legacy hub-wide marker sits on the board.
 // It is the one marker writer outside the anchor move, and the verbs that record a marker all write through it.
 // It also refuses a marker left empty and derives the anchor of a branch that records none.
 
 package fabricengine
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
+
+// boltAnchorRemoved is the verdict reported once the hub-wide marker is gone.
+const boltAnchorRemoved = "removed"
+
+// boltAnchorKeptPrefix opens the verdict reported while the hub-wide marker stays, followed by the reason.
+const boltAnchorKeptPrefix = "kept: "
 
 // refuseEmptyOwnMarker returns nil unless the marker file at the weft worktree root at weftPath is blank.
 // It returns an error when the file is present and blank, naming the file and the way forward.
@@ -67,14 +74,14 @@ func commitAnchorMarker(rec *Mutations, weftPath, anchor, subject string) (strin
 	if err := root.WriteFile(lymcwd.AnchorFileName, []byte(anchor+"\n"), 0o644); err != nil {
 		return "", fmt.Errorf("fabricengine: write %s in %s: %w", lymcwd.AnchorFileName, weftPath, err)
 	}
-	rec.Append(fabriclayout.KindFileWritten, filepath.Join(weftPath, lymcwd.AnchorFileName), "")
+	rec.Append(KindFileWritten, filepath.Join(weftPath, lymcwd.AnchorFileName), "")
 
 	sha, committed, err := gitrepo.New(weftPath).StageAndCommit(subject, []string{lymcwd.AnchorFileName})
 	if err != nil {
 		return "", fmt.Errorf("fabricengine: commit %s in %s: %w", lymcwd.AnchorFileName, weftPath, err)
 	}
 	if committed {
-		rec.Append(fabriclayout.KindCommitCreated, weftPath, sha)
+		rec.Append(KindCommitCreated, weftPath, sha)
 	}
 	return sha, nil
 }
@@ -164,4 +171,138 @@ func recordAdoptedWeftAnchor(rec *Mutations, hubPath, slug, weftPath string, nam
 		}
 	}
 	return lymcwd.NamedWorktree(hubPath, slug)
+}
+
+// retireBoltAnchorMarker removes the hub-wide marker from the board once every worktree's own marker stands in for it.
+// The stale marker beside it, `lymcwd.StaleAnchorFileName`, goes too.
+// The removal is one board commit pushed through Bolt, written only after Bolt is brought up to date,
+// so it never writes over a stale board.
+// It reports "" for a hub with no board marker, "removed" once the marker is gone, and "kept: <reason>" while it stays:
+// a weft the census finds without a committed marker, or a board write that was skipped.
+// A board commit that landed but could not be pushed is reported "removed" with the push failure after it.
+func retireBoltAnchorMarker(rec *Mutations, l *lymcwd.Location) (string, error) {
+	boardDir := BoltDir(l.HubPath)
+	if _, err := os.Stat(filepath.Join(boardDir, lymcwd.AnchorFileName)); errors.Is(err, fs.ErrNotExist) {
+		return "", nil
+	} else if err != nil {
+		return "", fmt.Errorf("fabricengine: read the board's %s: %w", lymcwd.AnchorFileName, err)
+	}
+
+	keeper, err := boltAnchorKeeper(l)
+	if err != nil {
+		return "", err
+	}
+	if keeper != "" {
+		return boltAnchorKeptPrefix + keeper, nil
+	}
+
+	bolt := NewBolt(boardDir)
+	res, err := bolt.PullThenCommitWritten([]BoltWrite{{
+		Message: "fabric reconcile: retire the hub-wide anchor marker",
+		Write:   func() ([]string, error) { return removeBoltAnchorMarkers(boardDir) },
+	}}, rec)
+	if err != nil {
+		return "", err
+	}
+	if res.Skipped != "" {
+		return fmt.Sprintf("%s%s: %s", boltAnchorKeptPrefix, res.Skipped, res.SkipDetail), nil
+	}
+	if err := bolt.PushRecorded(SyncOptions{}, rec); err != nil {
+		return fmt.Sprintf("%s; its board commit is not pushed: %v", boltAnchorRemoved, err), nil
+	}
+	return boltAnchorRemoved, nil
+}
+
+// removeBoltAnchorMarkers deletes both marker files from the board directory through an os.Root, skipping an absent one.
+// It returns the board-relative names it deleted.
+func removeBoltAnchorMarkers(boardDir string) ([]string, error) {
+	root, err := os.OpenRoot(boardDir)
+	if err != nil {
+		return nil, fmt.Errorf("fabricengine: open the board %s: %w", boardDir, err)
+	}
+	defer func() { _ = root.Close() }()
+
+	var removed []string
+	for _, name := range []string{lymcwd.AnchorFileName, lymcwd.StaleAnchorFileName} {
+		if err := root.Remove(name); err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				continue
+			}
+			return nil, fmt.Errorf("fabricengine: remove %s from the board: %w", name, err)
+		}
+		removed = append(removed, name)
+	}
+	return removed, nil
+}
+
+// boltAnchorKeeper runs the census that decides whether the board's marker may go.
+// It answers the first reason it may not, or "" when it may.
+// The prime's weft and every local pair's weft must carry a non-blank committed marker at HEAD.
+// So must every weft branch, local or fetched, whose warp sibling is on origin, read from its remote-tracking ref.
+// A branch whose ref is not among the fetched ones keeps the marker.
+// A weft branch with no warp sibling on origin is an orphan and is not counted.
+// It reads local refs only and makes no network call.
+func boltAnchorKeeper(l *lymcwd.Location) (string, error) {
+	entries, err := List(l.WorktreePath())
+	if err != nil {
+		return "", fmt.Errorf("list worktrees: %w", err)
+	}
+	for _, entry := range entries {
+		if entry.Prunable {
+			continue
+		}
+		weftPath := RecordsWorktreePath(l, filepath.Base(filepath.Clean(filepath.FromSlash(entry.Path))))
+		if _, err := os.Stat(weftPath); errors.Is(err, fs.ErrNotExist) {
+			continue
+		} else if err != nil {
+			return "", err
+		}
+		marker, _, err := committedMarker(weftPath, "HEAD")
+		if err != nil {
+			return "", err
+		}
+		if marker == "" {
+			return fmt.Sprintf("the weft at %s carries no committed %s", weftPath, lymcwd.AnchorFileName), nil
+		}
+	}
+
+	weftRepoRoot, err := RecordsRepoRoot(l)
+	if err != nil {
+		return "", err
+	}
+	trackingPrefix := "refs/remotes/" + originRemoteName + "/"
+	listed, err := gitexec.Run([]string{"for-each-ref", "--format=%(refname)", "refs/heads/", trackingPrefix}, weftRepoRoot)
+	if err != nil {
+		return "", fmt.Errorf("list the weft branches of %s: %w", weftRepoRoot, err)
+	}
+	warp, weft := gitrepo.New(l.WorktreePath()), gitrepo.New(weftRepoRoot)
+	counted := make(map[string]bool)
+	for _, ref := range strings.Fields(listed) {
+		branch := strings.TrimPrefix(strings.TrimPrefix(ref, "refs/heads/"), trackingPrefix)
+		warpBranch, isWeft := WeftWarpSlug(branch)
+		if !isWeft || counted[branch] {
+			continue
+		}
+		counted[branch] = true
+
+		if _, err := warp.RefSHA(trackingPrefix + warpBranch); errors.Is(err, gitrepo.ErrRefNotFound) {
+			continue
+		} else if err != nil {
+			return "", err
+		}
+		tracking := trackingPrefix + branch
+		if _, err := weft.RefSHA(tracking); errors.Is(err, gitrepo.ErrRefNotFound) {
+			return fmt.Sprintf("the weft branch %s is not among the fetched branches of %s", branch, originRemoteName), nil
+		} else if err != nil {
+			return "", err
+		}
+		marker, _, err := committedMarker(weftRepoRoot, tracking)
+		if err != nil {
+			return "", err
+		}
+		if marker == "" {
+			return fmt.Sprintf("the fetched %s/%s carries no committed %s", originRemoteName, branch, lymcwd.AnchorFileName), nil
+		}
+	}
+	return "", nil
 }

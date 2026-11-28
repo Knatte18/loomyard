@@ -57,20 +57,6 @@ func requireStuck(t *testing.T, result weaverengine.RunResult, want ...string) {
 	}
 }
 
-// spanKinds returns the kind of each of result's verify spans, in order.
-func spanKinds(result weaverengine.RunResult) []shuttleengine.GateSpanKind {
-	var kinds []shuttleengine.GateSpanKind
-	for _, span := range result.VerifySpans {
-		kinds = append(kinds, span.Kind)
-	}
-	return kinds
-}
-
-// spanAt returns a verify span of kind between two minute marks counted from the fixture clock's start.
-func spanAt(kind shuttleengine.GateSpanKind, startMin, endMin int64) shuttleengine.GateSpan {
-	return shuttleengine.GateSpan{Kind: kind, Start: time.Unix(startMin*60, 0), End: time.Unix(endMin*60, 0)}
-}
-
 // readFile returns the content of path, or fails the test.
 func readFile(t *testing.T, path string) string {
 	t.Helper()
@@ -100,13 +86,9 @@ func TestRun(t *testing.T) {
 			t.Fatalf("strands started = %d; want 2", got)
 		}
 		for i, spec := range fx.runner.specs {
-			if spec.Model != "model-a" || spec.Role != weaverengine.BatchStrandRole || spec.PromptEngine != "claude" || spec.Timeout != 45*time.Minute {
-				t.Errorf("strand %d = model %q role %q prompt engine %q timeout %v; want the first rung under role %q rendered for claude, bounded by attempt_timeout_min",
-					i, spec.Model, spec.Role, spec.PromptEngine, spec.Timeout, weaverengine.BatchStrandRole)
+			if spec.Model != "model-a" || spec.Role != weaverengine.BatchStrandRole || spec.PromptEngine != "claude" {
+				t.Errorf("strand %d = model %q role %q prompt engine %q; want the first rung under role %q rendered for claude", i, spec.Model, spec.Role, spec.PromptEngine, weaverengine.BatchStrandRole)
 			}
-		}
-		if got, want := spanKinds(result), []shuttleengine.GateSpanKind{shuttleengine.GateSpanGate}; !slices.Equal(got, want) {
-			t.Errorf("verify spans = %v; want %v, one for the verify's one run", got, want)
 		}
 		if got, want := fx.runner.gateNames(0), []string{"card 1-one", "card 2-two", "batch", "drift"}; !slices.Equal(got, want) {
 			t.Errorf("first batch's gates = %v; want %v", got, want)
@@ -141,63 +123,6 @@ func TestRun(t *testing.T) {
 		summary := readFile(t, filepath.Join(fx.deps.Geom.RunDir, "summary.md"))
 		if !strings.HasPrefix(summary, "# ") || strings.Contains(summary, "## Integration suite triage") || strings.Contains(summary, "## Verify gate fixes") {
 			t.Errorf("summary.md = %q; want a title and no triage or fix section", summary)
-		}
-	})
-
-	summaries := []struct {
-		name string
-		// outsideTargets is what the scope guard reports for the batch.
-		outsideTargets []planindex.Finding
-		// script is the batch's one attempt.
-		script attemptScript
-		// want is the batch's lines in summary.md.
-		want string
-	}{
-		{
-			name:   "NoneWhenTheBatchHasNone",
-			script: attemptScript{commit: true},
-			want:   "- `01-one`: done after 1 attempt(s)\n  - Files changed outside its targets: none\n  - Pattern departures: none\n",
-		},
-		{
-			name:           "TheBatchsOwn",
-			outsideTargets: []planindex.Finding{{File: "internal/y/extra.go"}, {File: "internal/y/more.go"}},
-			script:         attemptScript{departure: "PATTERN-code-conventions — the literal is the test's own"},
-			want: "- `01-one`: done after 1 attempt(s)\n" +
-				"  - Files changed outside its targets: `internal/y/extra.go`, `internal/y/more.go`\n" +
-				"  - Pattern departures: the attempt's work: PATTERN-code-conventions — the literal is the test's own\n",
-		},
-	}
-	for _, tt := range summaries {
-		t.Run("SummaryNamesEachBatchsDeviationsAndDepartures_"+tt.name, func(t *testing.T) {
-			t.Parallel()
-			fx := newRunFixture(t, 1, "one")
-			fx.index.outsideTargets = tt.outsideTargets
-			fx.runner.scripts = []attemptScript{tt.script}
-
-			requireDone(t, mustRun(t, fx), 1)
-
-			if summary := readFile(t, filepath.Join(fx.deps.Geom.RunDir, "summary.md")); !strings.Contains(summary, tt.want) {
-				t.Errorf("summary.md lacks the batch's lines %q:\n%s", tt.want, summary)
-			}
-		})
-	}
-
-	t.Run("DroppedCreateTargetSkipsItsDoneCheck", func(t *testing.T) {
-		t.Parallel()
-		const target = "internal/x/one.go"
-		fx := newRunFixture(t, 1, "one")
-		fx.index.notDone = []planindex.Finding{{Check: "create-not-done", Card: "1-one", Severity: planindex.SeverityBlocking, Detail: target + " does not resolve"}}
-		fx.index.notDoneTarget = target
-		record := "## Decisions\n\n### Added after Discussion (parent, 2026-11-21): Drop it\n\nDecision: drop it.\nRationale: unneeded.\nDrops Create: `" + target + "`\n"
-		if err := os.WriteFile(fx.deps.Geom.DecisionRecordPath, []byte(record), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		fx.runner.scripts = []attemptScript{{report: runplan.Report{Journal: "tried"}}}
-
-		requireDone(t, mustRun(t, fx), 1)
-
-		if got := len(fx.runner.specs); got != 1 {
-			t.Errorf("strands started = %d; want 1, the dropped target blocking no attempt", got)
 		}
 	})
 
@@ -405,9 +330,6 @@ func TestRun(t *testing.T) {
 		if strings.Contains(result.StuckReason, "lym webster") {
 			t.Errorf("stuck reason names a webster verb: %s", result.StuckReason)
 		}
-		if result.VerifySpans != nil {
-			t.Errorf("verify spans = %v; want none for a call that stopped before the verify", result.VerifySpans)
-		}
 		if got := len(fx.runner.specs); got != 3 {
 			t.Errorf("strands started = %d; want one per rung", got)
 		}
@@ -420,66 +342,25 @@ func TestRun(t *testing.T) {
 		}
 	})
 
-	t.Run("FailedAttemptsClimbToTheThirdRungWhichRecordsTheBatchDone", func(t *testing.T) {
+	t.Run("MachineryLossRetriesOnceOnTheSameRungThenClimbs", func(t *testing.T) {
 		t.Parallel()
 		fx := newRunFixture(t, 1, "one")
-		failed := attemptScript{report: runplan.Report{Status: runplan.ReportStatusFailed, Journal: "tried"}}
-		fx.runner.scripts = []attemptScript{failed, failed, {commit: true}}
+		fx.runner.scripts = []attemptScript{{dieAfterStart: true}, {dieAfterStart: true}, {}}
 
 		requireDone(t, mustRun(t, fx), 1)
 
-		var models []string
+		models := []string{}
 		for _, spec := range fx.runner.specs {
 			models = append(models, spec.Model)
 		}
-		if want := []string{"model-a", "model-b", "model-c"}; !slices.Equal(models, want) {
-			t.Fatalf("models = %v; want one attempt per rung %v", models, want)
-		}
-		if want := "Attempt 2, on rung 2, ended failed: the attempt reported status FAILED"; !strings.Contains(fx.runner.specs[2].Prompt, want) {
-			t.Errorf("the third attempt's prompt lacks the second attempt's failure %q", want)
+		if want := []string{"model-a", "model-a", "model-b"}; !slices.Equal(models, want) {
+			t.Errorf("models = %v; want the loss retried on its rung, then the second loss climbed: %v", models, want)
 		}
 		st := fx.loadState()
-		if third := st.Attempts[2]; third.Number != 3 || third.Rung != 2 || third.Outcome != "done" {
-			t.Errorf("third attempt = number %d rung %d %q; want number 3 on rung 2, done", third.Number, third.Rung, third.Outcome)
-		}
-		if st.Stop != nil || st.Batches[1].Status != runplan.DigestStatusDone {
-			t.Errorf("Stop = %+v, batch status %q; want no stop and the batch done", st.Stop, st.Batches[1].Status)
+		if st.Attempts[0].Outcome != "lost" || st.Attempts[1].Outcome != "lost" || st.Attempts[1].Number != 2 {
+			t.Errorf("attempts = %q, %q (number %d); want two lost attempts with new numbers", st.Attempts[0].Outcome, st.Attempts[1].Outcome, st.Attempts[1].Number)
 		}
 	})
-
-	losses := []struct {
-		name string
-		// script is each lost attempt.
-		script attemptScript
-		// cause is what each lost attempt's recorded cause holds.
-		cause string
-	}{
-		{"WaitError", attemptScript{dieAfterStart: true}, "waiting on the strand failed"},
-		{"StrandDiedBeforeItsReport", attemptScript{paneDies: true}, "the strand died before it wrote its report"},
-	}
-	for _, tt := range losses {
-		t.Run("LostStrandRetriesOnceOnTheSameRungThenClimbs_"+tt.name, func(t *testing.T) {
-			t.Parallel()
-			fx := newRunFixture(t, 1, "one")
-			fx.runner.scripts = []attemptScript{tt.script, tt.script, {}}
-
-			requireDone(t, mustRun(t, fx), 1)
-
-			var models []string
-			for _, spec := range fx.runner.specs {
-				models = append(models, spec.Model)
-			}
-			if want := []string{"model-a", "model-a", "model-b"}; !slices.Equal(models, want) {
-				t.Errorf("models = %v; want the loss retried on its rung, then the second loss climbed: %v", models, want)
-			}
-			st := fx.loadState()
-			for i, attempt := range st.Attempts[:2] {
-				if attempt.Outcome != "lost" || attempt.Number != i+1 || !strings.Contains(attempt.Cause, tt.cause) {
-					t.Errorf("attempt %d = number %d %q %q; want lost with its own number and a cause holding %q", i+1, attempt.Number, attempt.Outcome, attempt.Cause, tt.cause)
-				}
-			}
-		})
-	}
 
 	t.Run("StartFailureIsALoss", func(t *testing.T) {
 		t.Parallel()
@@ -702,16 +583,10 @@ func TestRun(t *testing.T) {
 		fx.verify.scripts = []verifyScript{{failing: "TestBroken"}, {failing: "TestBroken"}}
 		fx.fixer.scripts = []fixerScript{{commit: "fix: repair the broken test"}}
 
-		result := mustRun(t, fx)
+		requireDone(t, mustRun(t, fx), 1)
 
-		requireDone(t, result, 1)
 		if len(fx.fixer.specs) != 1 {
 			t.Fatalf("fixers spawned = %d; want 1", len(fx.fixer.specs))
-		}
-		gate, rework := shuttleengine.GateSpanGate, shuttleengine.GateSpanRework
-		wantSpans := []shuttleengine.GateSpan{spanAt(gate, 0, 1), spanAt(gate, 1, 2), spanAt(rework, 2, 7), spanAt(gate, 7, 8)}
-		if got := result.VerifySpans; !slices.Equal(got, wantSpans) {
-			t.Errorf("verify spans = %v; want the run, its rerun, the fixer and the run after it: %v", got, wantSpans)
 		}
 		spec := fx.fixer.specs[0]
 		if spec.Timeout != 7*time.Minute || spec.ModelChoice.Model != "model-a" || spec.PromptEngine != "claude" || len(spec.Prompt) == 0 || !strings.Contains(string(spec.Prompt), "TestBroken") {
@@ -793,16 +668,6 @@ func TestRun(t *testing.T) {
 		result := mustRun(t, fx)
 
 		requireStuck(t, result, "plan-level verify", "TestBroken")
-		gate, rework := shuttleengine.GateSpanGate, shuttleengine.GateSpanRework
-		wantSpans := []shuttleengine.GateSpan{
-			spanAt(gate, 0, 1), spanAt(gate, 1, 2), spanAt(rework, 2, 7),
-			spanAt(gate, 7, 8), spanAt(gate, 8, 9), spanAt(rework, 9, 14),
-			spanAt(gate, 14, 15), spanAt(gate, 15, 16), spanAt(rework, 16, 21),
-			spanAt(gate, 21, 22), spanAt(gate, 22, 23),
-		}
-		if got := result.VerifySpans; !slices.Equal(got, wantSpans) {
-			t.Errorf("verify spans = %v; want each run and rerun and each fixer, up to the stop: %v", got, wantSpans)
-		}
 		var models, promptEngines []string
 		for _, spec := range fx.fixer.specs {
 			models = append(models, spec.ModelChoice.Model)

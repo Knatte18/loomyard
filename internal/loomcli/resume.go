@@ -3,9 +3,7 @@
 // It spawns a Go driver for a halted go-seeded run that has none, and refuses everything else with a way forward.
 // A run awaiting at a review segment's Bouncer row with a pending circling decision takes the halted path.
 // Its driver's step re-calls the Bouncer, which acts on the decision.
-// Before it spawns or wakes a driver it brings reed up and restores the status strand, as start does.
-// It spawns no LLM driver and adds no other strand.
-// It moves a viewer only when the restore replaces the status strand whose window they are viewing.
+// It spawns no LLM driver, adds no strand, never brings reed up and never switches a tmux client.
 
 package loomcli
 
@@ -20,7 +18,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -40,7 +37,6 @@ type resumeRefusal struct {
 
 // resumeFromRunState answers `lym loom resume` for the run's persisted state.
 // It must be called holding bootstrapLock, and releases it exactly once on every path out.
-// Once it has read a found status that is not done, it starts the run's pusher, before any driver wake.
 func (c *loomCLI) resumeFromRunState(ctx context.Context, out io.Writer, bootstrapLock *lock.FileLock) {
 	refuse := func(r resumeRefusal) {
 		_ = bootstrapLock.Release()
@@ -54,15 +50,10 @@ func (c *loomCLI) resumeFromRunState(ctx context.Context, out io.Writer, bootstr
 		_ = bootstrapLock.Release()
 		output.Ok(out, fields)
 	}
-	// paneWarning is the status-pane restore's failure, empty when the pane was restored or no restore ran.
-	paneWarning := ""
 	// succeedAfterWake reports a run whose driver this call put to work.
 	// It releases the bootstrap lock before the stencil check, so the notice's post never runs under the lock.
 	succeedAfterWake := func(fields map[string]any) {
 		_ = bootstrapLock.Release()
-		if paneWarning != "" {
-			fields["status_pane"] = paneWarning
-		}
 		output.Ok(out, withChangedStencils(fields, c.warnChangedStencils()))
 	}
 
@@ -92,10 +83,6 @@ func (c *loomCLI) resumeFromRunState(ctx context.Context, out io.Writer, bootstr
 			refuse(refusal)
 			return
 		}
-	}
-
-	if c.startPusher != nil {
-		c.startPusher()
 	}
 
 	runLockHeld, err := c.runLockHeld()
@@ -145,7 +132,6 @@ func (c *loomCLI) resumeFromRunState(ctx context.Context, out io.Writer, bootstr
 				return
 			}
 			if seedFound && seed.Driver == shedrun.DriverGo {
-				paneWarning = c.restoreStatusPaneBeforeWake()
 				c.vouchForSpawnedResume()
 				pid, err := c.spawnGoDriver()
 				if err != nil {
@@ -172,7 +158,6 @@ func (c *loomCLI) resumeFromRunState(ctx context.Context, out io.Writer, bootstr
 	if !c.refuseOverUnfinishedMerge(ctx, out, bootstrapLock, retryResume, status.CurrentProducer) {
 		return
 	}
-	paneWarning = c.restoreStatusPaneBeforeWake()
 	reportPath, err := c.resumeParkedDriver(driver.GUID, retryResume)
 	if err != nil {
 		if errors.Is(err, shuttleengine.ErrSessionBusy) {
@@ -183,22 +168,6 @@ func (c *loomCLI) resumeFromRunState(ctx context.Context, out io.Writer, bootstr
 		return
 	}
 	succeedAfterWake(map[string]any{"run_id": runID, "state": string(status.State), "message": "the parked driver was woken", "stop_report": reportPath})
-}
-
-// restoreStatusPaneBeforeWake brings reed up and restores the status strand for a driver about to be put to work.
-// A failure costs the operator the pane, not the run, so it never refuses the resume:
-// it is logged at Warn and returned as the envelope's warning, which names the restore's way forward.
-// It returns "" when the pane was restored.
-func (c *loomCLI) restoreStatusPaneBeforeWake() string {
-	if c.restoreStatusPane == nil {
-		return ""
-	}
-	err := c.restoreStatusPane()
-	if err == nil {
-		return ""
-	}
-	logger.Warn("loom: could not restore the status pane on resume; the run goes on without it", "cause", err)
-	return "the status pane could not be restored: " + err.Error() + `; run "` + retryStart + `" in the task worktree, which brings it back and leaves the live driver working`
 }
 
 // awaitingResumability decides whether a run awaiting at row may take the halted path.
@@ -274,17 +243,12 @@ func noLiveDriverMessage(driver reedengine.DirectoryRow, driverFound bool) strin
 func (c *loomCLI) resumeCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:         "resume",
-		Short:       "wake this task's halted loom driver and restore its status pane",
+		Short:       "wake this task's parked loom driver after a halt, without starting anything",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `resume wakes a halted run's live, parked driver by typing the resume line into
-its pane and removing the park marker. For a halted go-seeded run with no
-driver at all it spawns a Go driver, which re-steps the run. Before either it
-brings the worktree's tmux session up and restores the run's status pane, so a
-run resumed after a reboot shows its checklist again; a restore that fails
-never fails the resume, and the envelope's "status_pane" names the failure and
-"lym loom start", which brings the pane back. It never spawns an LLM driver or
-adds any other strand, and it moves your tmux view only when it replaces the
-status strand whose window you are viewing.
+its pane and removing the park marker. It never spawns an LLM driver, adds or
+attaches a strand, brings reed up or switches a tmux client. For a halted
+go-seeded run with no driver at all it spawns a Go driver, which re-steps the run.
 
 Reach for it in the task worktree after "lym loom circling accept" or
 "lym loom circling continue", or whenever a run halted at a hand-back should

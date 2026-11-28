@@ -295,7 +295,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -338,23 +337,8 @@ func parseSince(value string) (time.Time, error) {
 	return day, nil
 }
 
-// worktreeConfigDirs returns the config directories of the worktree the tool runs in,
-// so the engines find sessions under every Claude account the hub lists.
-// Outside a lym worktree it returns none, and the engines read the process's own Claude config directory.
-func worktreeConfigDirs() configengine.Dirs {
-	wd, err := lymcwd.Getwd()
-	if err != nil {
-		return configengine.Dirs{}
-	}
-	location, err := lymcwd.Resolve(wd)
-	if err != nil {
-		return configengine.Dirs{}
-	}
-	return fabricengine.ConfigDirs(location)
-}
-
 func main() {
-	if err := run(os.Args[1:], os.Stdout, shuttleengines.RecordReaders(worktreeConfigDirs())); err != nil {
+	if err := run(os.Args[1:], os.Stdout, shuttleengines.RecordReaders()); err != nil {
 		fmt.Fprintln(os.Stderr, "tokencount:", err)
 		os.Exit(1)
 	}

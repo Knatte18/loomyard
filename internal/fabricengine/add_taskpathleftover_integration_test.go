@@ -13,7 +13,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -75,7 +74,7 @@ func TestAdd_TaskPathLeftover(t *testing.T) {
 
 			res, err := h.Topology.Add(l, tt.slug, fabricengine.AddOptions{SkipPush: true})
 
-			deleted := fabriclayout.Mutation{Kind: fabriclayout.KindPathRemoved, Target: tt.slug, Detail: "recursive"}
+			deleted := fabricengine.Mutation{Kind: fabricengine.KindPathRemoved, Target: tt.slug, Detail: "recursive"}
 			if !tt.wantDeleted {
 				var taken *fabricengine.ErrTaskPathTaken
 				if !errors.As(err, &taken) || taken.Path != dir {

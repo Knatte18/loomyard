@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -81,7 +81,7 @@ func TestAwaitRunLockOrPass(t *testing.T) {
 			prime := &lymcwd.Location{HubPath: hub, AnchorRel: "."}
 			startTime, _ := proc.StartTime(pid)
 			if tt.parentLock {
-				store := &parentlock.Store{Dir: parentlock.Dir(fabriclayout.BoardDir(hub))}
+				store := &parentlock.Store{Dir: parentlock.Dir(fabricengine.BoardDir(hub))}
 				owner := parentlock.Owner{Slug: "slug", RunID: "run", PID: pid, StartTime: startTime}
 				if attempt, err := store.TryAcquire("main", owner); err != nil || !attempt.Granted {
 					t.Fatalf("TryAcquire = %+v, %v; want the lock", attempt, err)

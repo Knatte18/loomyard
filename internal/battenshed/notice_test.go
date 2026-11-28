@@ -126,6 +126,11 @@ func (h *noticeHarness) coverFrom(since, until time.Time) {
 	}
 }
 
+// resumeFrom lifts the cover, leaving the interval from since to until behind as a resumed pause.
+func (h *noticeHarness) resumeFrom(since, until time.Time) {
+	h.pause = pauserecord.Coverage{Intervals: []pauserecord.Interval{{Start: since, End: until}}}
+}
+
 // parked is a child halted in state, with a history of two entries.
 func parked(state shedengine.State) shedengine.Status {
 	return shedengine.Status{State: state, Error: "stuck", CurrentProducer: "Publish", History: make([]shedengine.HistoryEntry, 2)}

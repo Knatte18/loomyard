@@ -13,11 +13,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
+
+// DefaultCommitMessage is the commit message for a weft commit that does not need a custom one.
+const DefaultCommitMessage = "weft sync"
 
 // ErrMissingPath is the error for a warp or weft path that does not exist or is not a directory.
 // It names the missing path, so a caller can tell which of the two checkouts is absent.
@@ -77,29 +79,10 @@ type SyncOptions struct {
 	// The warp commit and the env-gated async push still run.
 	SkipGit  bool
 	SkipPush bool // Skip push operations if true; affects push only.
-	// BackoffSleep sleeps one delay of the push backoff between a push's retries; nil means sleep.
+	// BackoffSleep sleeps one push backoff delay before a missing branch or unreachable origin is recorded; nil means sleep.
 	BackoffSleep func(time.Duration)
 	// Notifier mails a failed push's record to the hub's orch; nil mails through the process's installed notifier.
 	Notifier PushNotifier
-	// RunSlug names the run a failed push of these options serves, so its failed-push record lists it in Runs.
-	// Empty means the push serves no run.
-	RunSlug string
-	// AfterRecords marks a task pair's code-side push sent once the run's own records side landed.
-	// Only such a push resets a code tip that no transition of the run names, when origin's code branch is ahead.
-	AfterRecords bool
-	// OwedUnrecorded makes a push of an owed class return its error and write no failed-push record or notice.
-	// The owed classes are transport, deferred and teardown_lock.
-	// A caller that retries the push itself needs no record of them.
-	// Every other class is recorded as without it.
-	OwedUnrecorded bool
-	// SingleAttempt makes a push that cannot reach origin fail after one transport attempt, with no backoff.
-	// It serves a caller that retries on its own schedule.
-	// A rejection is still retried over the push backoff.
-	SingleAttempt bool
-	// ceiling is the newest commit a push of one side may send, empty for the branch's tip.
-	ceiling string
-	// landings are the landing commits a push of a parent branch carries, which its refusal names.
-	landings []string
 }
 
 // EnvSyncOptions reads FABRIC_SKIP_GIT and FABRIC_SKIP_PUSH and returns the SyncOptions they describe.
@@ -136,9 +119,9 @@ func RequireWarpWorktree(l *lymcwd.Location) error {
 		return fmt.Errorf("%w: %s is the records sibling of a pair, not a warp worktree; run lym from the paired warp worktree instead",
 			ErrNotAWarpWorktree, l.WorktreePath())
 	}
-	if name == fabriclayout.BoltDirName {
+	if name == BoltDirName {
 		return fmt.Errorf("%w: %s is the hub's %s checkout, not a warp worktree; run lym from a warp worktree instead",
-			ErrNotAWarpWorktree, l.WorktreePath(), fabriclayout.BoltDirName)
+			ErrNotAWarpWorktree, l.WorktreePath(), BoltDirName)
 	}
 	return nil
 }
@@ -185,4 +168,21 @@ func PairComplete(l *lymcwd.Location) (ok bool, reason string, err error) {
 // It is a single-sided operation that a caller outside this package needs, so it is a named method.
 func (f *Fabric) OriginURL() (string, error) {
 	return f.code.RemoteURL("origin")
+}
+
+// PushBranch pushes f's warp side without a rebase and returns the PushResult as it came back.
+// It discards nothing from the PushResult; the caller decides what to keep.
+func (f *Fabric) PushBranch(opts SyncOptions) (PushResult, error) {
+	return PushWarpRebaseFreeAt(f.warpPath, opts)
+}
+
+// ScopedPathspec returns the entries of dirs joined under relPath.
+// At relPath == ".", this returns dirs unchanged;
+// at relPath == "sub", ["_lym"] becomes ["sub/_lym"].
+func ScopedPathspec(relPath string, dirs []string) []string {
+	result := make([]string, len(dirs))
+	for i, dir := range dirs {
+		result[i] = filepath.Join(relPath, dir)
+	}
+	return result
 }

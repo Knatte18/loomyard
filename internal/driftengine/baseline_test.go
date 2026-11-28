@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
@@ -34,8 +34,9 @@ type baselineFixture struct {
 	// disabled switches drift off, and configErr fails the config load.
 	disabled  bool
 	configErr error
-	// configScope is the drift config's scope key.
-	configScope string
+	// configScope is the drift config's scope key, and configWasPartial says the config read it from a stored partial.
+	configScope      string
+	configWasPartial bool
 	// startErr is what StartCapture answers, and runRecord what RunCapture answers.
 	startErr  error
 	runRecord CaptureRecord
@@ -66,7 +67,7 @@ func newBaselineFixture(t *testing.T) *baselineFixture {
 		if f.configErr != nil {
 			return Config{}, f.configErr
 		}
-		cfg := Config{Enabled: !f.disabled, Scope: f.configScope, Diff: DiffLines, KeyPatterns: []string{keyValuePattern}, Volatile: Volatile{Keys: []string{"captured_at"}}}
+		cfg := Config{Enabled: !f.disabled, Scope: f.configScope, ScopeWasPartial: f.configWasPartial, Diff: DiffLines, KeyPatterns: []string{keyValuePattern}, Volatile: Volatile{Keys: []string{"captured_at"}}}
 		if f.declared {
 			cfg.Capture = CommandStep{Command: "capture {baseline_dir}", Dir: ".", TimeoutMin: 1}
 		}
@@ -171,7 +172,7 @@ func requireRecordsCommits(t *testing.T, f *baselineFixture, n int) {
 		t.Errorf("%d records commits; want %d", len(f.store.commits), n)
 	}
 	for _, commit := range f.store.commits {
-		if !slices.ContainsFunc(commit.trailers, func(trailer fabriclayout.Trailer) bool { return trailer.Key == RecordsTrailerKey }) {
+		if !slices.ContainsFunc(commit.trailers, func(trailer fabricengine.Trailer) bool { return trailer.Key == RecordsTrailerKey }) {
 			t.Errorf("commit %s carries trailers %v; want %s", commit.sha, commit.trailers, RecordsTrailerKey)
 		}
 	}
@@ -222,6 +223,15 @@ func TestDriftBaseline(t *testing.T) {
 			},
 		},
 		{
+			name:       "a config scope read from partial is recorded full",
+			setup:      func(f *baselineFixture) { f.configScope, f.configWasPartial = ScopeFull, true },
+			want:       shedengine.Done,
+			wantStarts: 1,
+			check: func(t *testing.T, f *baselineFixture) {
+				checkRecordedScope(t, f, fullFromConfig)
+			},
+		},
+		{
 			name: "a recorded scope survives a config change, and so do its mode and patterns",
 			setup: func(f *baselineFixture) {
 				f.seedScopeRecord(ScopeRecord{Scope: ScopeFull, Diff: DiffCommand, KeyPatterns: []string{"other"}})
@@ -232,6 +242,17 @@ func TestDriftBaseline(t *testing.T) {
 			check: func(t *testing.T, f *baselineFixture) {
 				checkRecordedScope(t, f, ScopeRecord{Scope: ScopeFull, Diff: DiffCommand, KeyPatterns: []string{"other"}})
 				requireRecordsCommits(t, f, 0)
+			},
+		},
+		{
+			name: "an old recorded partial is kept and captured",
+			setup: func(f *baselineFixture) {
+				f.seedScopeRecord(ScopeRecord{Scope: ScopePartial, Skip: []string{"slow"}})
+			},
+			want:       shedengine.Done,
+			wantStarts: 1,
+			check: func(t *testing.T, f *baselineFixture) {
+				checkRecordedScope(t, f, ScopeRecord{Scope: ScopePartial})
 			},
 		},
 		{

@@ -93,19 +93,13 @@ func glyphRejectedWayForward(number int, uncheckable, exhausted bool) string {
 
 // createTargetWayForward is the way forward for a batch whose Create target or Rename pair is not done.
 // It also covers a batch whose card names a member that its unit declares only with another parameter list.
-// The way forward is the same whichever verb failed the batch.
-// It offers three ways forward.
-// One amends the target.
-// One has the run's parent record a decision that drops the Create.
-// One has recover-batch build the target as named.
-// A finding that holds no unresolved Create target, as a Rename pair that did not happen does, leaves the drop out:
-// a decision drops only a Create target.
-// A declared signature that differs leaves the amendment alone.
-// Building the target as named would repeat the failure.
+// A recovery checks the same target again.
+// So the way forward amends the target whenever the member may live under another unit or signature.
+// The way forward leads with recover-batch only when no recovery has tried the batch and no declared signature differs.
 // A batch whose counted recoveries are used up takes the exhausted-batch steps.
 // A failed batch records no amendment, so those steps apply.
 // A record that recovery would refuse as uncheckable restarts the run instead.
-func createTargetWayForward(number int, uncheckable, signatureMismatch, droppableCreate, exhausted bool) string {
+func createTargetWayForward(number int, uncheckable, recovered, signatureMismatch, exhausted bool) string {
 	if uncheckable {
 		return freshRestartSteps(stepRun)
 	}
@@ -113,13 +107,10 @@ func createTargetWayForward(number int, uncheckable, signatureMismatch, droppabl
 		return strings.TrimPrefix(exhaustedRecoveryWayForward(number), "way forward: ")
 	}
 	amend := fmt.Sprintf("amend the card's Create target or Rename new side to the unit, owner or parameter list the finding names the member declared with, run `lym webster rebaseline --card NN` naming each card you edited, then `lym webster recover-batch %02d`", number)
-	if signatureMismatch {
+	if recovered || signatureMismatch {
 		return amend
 	}
-	if !droppableCreate {
-		return fmt.Sprintf("%s; or `lym webster recover-batch %02d` to build the target as the card names it", amend, number)
-	}
-	return fmt.Sprintf("%s; or, when a parent decision drops the Create, the run's parent records it with `lym loom decision add <slug> --by parent … --drops-create <target>`, then `lym webster recover-batch %02d`, and the done-check skips that target; or `lym webster recover-batch %02d` to build the target as the card names it; once the task's scope is closed no decision records a drop, so the run's parent files it as a board note for a new task with `lym board upsert` and kind note, and one of the other steps is taken", amend, number, number)
+	return fmt.Sprintf("lym webster recover-batch %02d to build the target as the card names it; or, when the member is declared where the finding names it, %s", number, amend)
 }
 
 // exhaustedRecoveryWayForward is the way forward for a batch that has used its counted recoveries.
@@ -147,22 +138,21 @@ type cardNotDoneInputs struct {
 // The reasons open with the batch's id and its card list, so a finding keyed on a later card reads as the batch's own.
 // A Delete target that still resolves and an unbegun later card still references adds that reference to the reasons,
 // and the way forward is then the plan edit, since recover-batch would only repeat the failure.
-// A glyph-rejected finding offers the card amendment.
-// A Create target that does not resolve, and a Rename pair that did not happen, offer it too.
-// They also offer recover-batch, from either verb, and an unresolved Create target a parent decision that drops it.
-// The amendment comes alone when the member is declared with another parameter list.
+// A glyph-rejected finding, and a Create target that does not resolve, offer the card amendment.
+// A Rename pair that did not happen does too.
+// The amendment comes alone once a recover-batch call has tried the batch.
+// It also comes alone when the member is declared with another parameter list.
 // An exhausted batch takes the exhausted-batch steps instead.
 // A batch is exhausted once its counted recoveries are used and no amendment is left to render.
 func failCardNotDone(in cardNotDoneInputs, cause error) (*BatchFailedError, error) {
 	var reasons []string
-	var deleteNotDone, glyphRejected, createNotDone, droppableCreate, signatureMismatch bool
+	var deleteNotDone, glyphRejected, createNotDone, signatureMismatch bool
 	var notDone *runplan.CardNotDoneError
 	if errors.As(cause, &notDone) {
 		reasons = notDone.Reasons
 		deleteNotDone = notDone.DeleteNotDone
 		glyphRejected = notDone.GlyphRejected
 		createNotDone = notDone.CreateNotDone
-		droppableCreate = notDone.DroppableCreate
 		signatureMismatch = notDone.SignatureMismatch
 	} else {
 		reasons = strings.Split(strings.TrimPrefix(cause.Error(), ErrCardNotDone.Error()+": "), "; ")
@@ -190,7 +180,7 @@ func failCardNotDone(in cardNotDoneInputs, cause error) (*BatchFailedError, erro
 		wayForward = glyphRejectedWayForward(in.Number, len(in.Batch.Uncheckable) > 0, exhausted)
 	}
 	if wayForward == "" && (createNotDone || signatureMismatch) {
-		wayForward = createTargetWayForward(in.Number, len(in.Batch.Uncheckable) > 0, signatureMismatch, droppableCreate, exhausted)
+		wayForward = createTargetWayForward(in.Number, len(in.Batch.Uncheckable) > 0, in.Verb == "recover-batch", signatureMismatch, exhausted)
 	}
 	return failBatch(failBatchInput{
 		State:      in.State,
@@ -380,7 +370,7 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	for _, f := range audit.Forks {
 		if slices.Contains(bs.BracketTranscripts, f.TranscriptPath) {
 			bracketForks = append(bracketForks, f)
-			if slices.ContainsFunc(f.WritePaths, func(w string) bool { return isWriteOf(deps.Geom.PaneCwd, w, ownReport) }) {
+			if slices.ContainsFunc(f.WritePaths, func(w string) bool { return isOwnReportWrite(deps.Geom.PaneCwd, w, ownReport) }) {
 				counted = append(counted, f)
 			}
 		}
@@ -410,7 +400,7 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		return nil, err
 	}
 	var candidates []AuditViolation
-	candidates = append(candidates, CheckParent(audit, deps.OutcomePath, deps.SummaryPath, deps.State.MasterNotePaths, deps.Geom.PaneCwd, deps.RefMatcher)...)
+	candidates = append(candidates, CheckParent(audit, deps.OutcomePath, deps.SummaryPath, deps.Geom.PaneCwd, deps.RefMatcher)...)
 	for _, f := range append(slices.Clone(newReports), bracketForks...) {
 		candidates = append(candidates, CheckFork(f, deps.OutcomePath, deps.SummaryPath, deps.Geom.PaneCwd, planDirs, websterDirs, ownReport, deps.RefMatcher)...)
 		forkWarnings = append(forkWarnings, ForkWarnings(f)...)
@@ -905,7 +895,6 @@ func postBatchInputs(geom Geometry, plan *planparser.Plan, batches []batcher.Bat
 		HeadSHA:                headSHA,
 		Label:                  runplan.CardID(planparser.Card{Number: number, Slug: slug}),
 		Renames:                renames,
-		DecisionRecordPath:     geom.DecisionRecordPath,
 		HandBackRemovedTargets: handBack,
 		HandBackWayForward:     laterTargetHandBackWayForward(number),
 		RecordWarning: func(id, class, detail string) (string, bool) {

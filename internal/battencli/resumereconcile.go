@@ -4,14 +4,19 @@
 package battencli
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"strings"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
+	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/state"
 )
 
 // sideBolt and sideRecords name the repository sides a branch outcome reports.
@@ -24,29 +29,69 @@ const (
 // reconcileRun runs the run-scope origin reconcile of slug from the prime, with the hub seams the pair teardown builds.
 // The run scope tears no pair down.
 // With judgeOnly the reconcile only judges: it moves no ref and tears nothing down.
-// opts bounds the reconcile's remote calls and its retries of an unreachable origin.
 // Each entry of the report's mutation record is logged at Info, since a resume has no envelope to carry it.
 // The report is returned with the error, so a partial record is still logged.
-func reconcileRun(location *lymcwd.Location, slug string, judgeOnly bool, opts fabricengine.ReconcileOptions) (fabriclayout.OriginReport, error) {
+func reconcileRun(location *lymcwd.Location, slug string, judgeOnly bool) (fabricengine.OriginReport, error) {
 	teardown, err := pairteardown.New(location)
 	if err != nil {
-		return fabriclayout.OriginReport{}, err
+		return fabricengine.OriginReport{}, err
 	}
-	report, err := fabricengine.ReconcileOrigin(location, fabriclayout.ReconcileScope{Run: slug, JudgeOnly: judgeOnly}, teardown.OriginSeams(pairteardown.HubSeamOptions(location)), opts)
+	report, err := fabricengine.ReconcileOrigin(location, fabricengine.ReconcileScope{Run: slug, JudgeOnly: judgeOnly}, teardown.OriginSeams(pairteardown.HubSeamOptions(location)), fabricengine.ReconcileOptions{})
 	for _, mutation := range report.Mutations.Entries() {
 		logger.Info("battencli: origin reconcile mutation", "slug", slug, "kind", string(mutation.Kind), "target", mutation.Target, "detail", mutation.Detail)
 	}
 	return report, err
 }
 
+// originOwed is the record of the origin-owed marker.
+// A resume that judged its owner without reaching origin leaves the marker,
+// so the next passes stay full until one reaches origin.
+type originOwed struct {
+	// WrittenAt is when the resume wrote the marker.
+	WrittenAt time.Time `json:"written_at"`
+	// PID is the process that wrote it.
+	PID int `json:"pid"`
+}
+
+// OriginOwed reports whether the origin-owed marker of slug stands.
+// The marker stands from a resume that judged its owner without reaching origin, until a pass reaches origin.
+// While it stands, a continue pass is refused and dobby schedules full passes.
+func OriginOwed(location *lymcwd.Location, slug string) (bool, error) {
+	if _, err := os.Stat(shedrun.OriginOwedMarker(location, slug)); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+// markOriginOwed writes the origin-owed marker of this run.
+func (c *battenCLI) markOriginOwed() error {
+	path := shedrun.OriginOwedMarker(c.location, c.slug)
+	return state.WriteJSON(path, path+".lock", originOwed{WrittenAt: time.Now(), PID: os.Getpid()})
+}
+
+// clearOriginOwed removes the origin-owed marker of this run.
+// A pass that reached origin and exited 0 owes this removal.
+// A failed removal is logged and the marker stays, so the next pass stays full.
+func (c *battenCLI) clearOriginOwed() {
+	if err := os.Remove(shedrun.OriginOwedMarker(c.location, c.slug)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		logger.Warn("battencli: could not remove the origin-owed marker", "slug", c.slug, "cause", err)
+	}
+}
+
 // reconcileResume runs the run-scope reconcile for the slug the pre-run is about to resume.
 // It returns the refusal its verdict calls for.
 // A reconcile error refuses; the way forward is to fix the cause it names, then re-run.
-// The pass's catch-up has already read origin, so an unreachable origin here means it was lost since.
-// That logs one Warn and resumes, unless the local board shows a task owned by another machine; it writes no owner.
+// An unreachable origin logs one Warn and resumes, unless the local board shows a task owned by another machine;
+// it writes no owner.
+// On that path it writes the origin-owed marker before the resume.
+// A failed marker write refuses the resume, naming its cause and the re-run as the way forward;
+// a resume that leaves no marker would let dobby skip the reconcile it owes.
 // A reconcile that reached origin claims the prime when no prime owner is recorded;
 // it warns when the claim fails.
-// It then judges the verdict, and writes no owner.
+// It then notes that the pass reached origin, judges the verdict, and writes no owner.
 // A receiver with no reconcile seam resumes unchecked.
 func (c *battenCLI) reconcileResume() error {
 	if c.reconcile == nil {
@@ -58,8 +103,15 @@ func (c *battenCLI) reconcileResume() error {
 	}
 	if report.Unreachable {
 		logger.Warn("battencli: origin was unreachable, resuming without judging the run against it", "slug", c.slug)
-		return c.refuseOwnedElsewhereOnLocalBoard(fmt.Sprintf("re-run `lym batten run %s` once origin answers, or ", c.slug))
+		if err := c.refuseOwnedElsewhereOnLocalBoard(fmt.Sprintf("re-run `lym batten run %s` once origin answers, or ", c.slug)); err != nil {
+			return err
+		}
+		if err := c.markOriginOwed(); err != nil {
+			return fmt.Errorf("battencli: could not record that %q resumed without origin: %w; fix the cause it names, then re-run lym batten run %s", c.slug, err, c.slug)
+		}
+		return nil
 	}
+	c.originReached = true
 	if c.owner.Machine != nil {
 		if err := c.claimPrimeOwner(); err != nil {
 			logger.Warn("battencli: the prime owner was not claimed, resuming without it", "slug", c.slug, "cause", err)
@@ -76,20 +128,20 @@ func (c *battenCLI) reconcileResume() error {
 // the subject is the beam or `root`.
 // A stopped entry refuses, naming the branch that stopped it and its state;
 // the way forward for that state comes next, then the re-run of the resume.
-func resumeRefusal(slug string, report fabriclayout.OriginReport) error {
+func resumeRefusal(slug string, report fabricengine.OriginReport) error {
 	for _, entry := range report.Entries {
 		if entry.Slug != slug {
 			continue
 		}
 		switch entry.State {
-		case fabriclayout.EntryEnded:
+		case fabricengine.EntryEnded:
 			return fmt.Errorf(
 				"battencli: origin ended %q (%s); run \"lym cleanup --apply\" from the prime, whose hub reconcile tears its pair down, instead of resuming it",
 				slug, endedReason(entry.How),
 			)
-		case fabriclayout.EntryOwnedElsewhere:
+		case fabricengine.EntryOwnedElsewhere:
 			return ownedElsewhereFor(slug, entry.Owner, entry.AdoptSubject)
-		case fabriclayout.EntryStopped:
+		case fabricengine.EntryStopped:
 			return stoppedRefusal(slug, "resume", resumeReentry(slug), entry, report.Branches)
 		}
 	}
@@ -110,11 +162,11 @@ func endedReason(how string) string {
 // A branch the entry's own run holds busy stops nothing, as the reconcile itself judges it.
 // An entry stopped by a branch every pair shares is named by that branch;
 // one with no branch to name falls back to the entry's own way forward.
-func stoppedRefusal(slug, act, reentry string, entry fabriclayout.EntryOutcome, branches []fabriclayout.BranchOutcome) error {
+func stoppedRefusal(slug, act, reentry string, entry fabricengine.EntryOutcome, branches []fabricengine.BranchOutcome) error {
 	for _, branch := range branches {
-		own := branch.Slug == slug && !(branch.Repo == sideRecords && branch.State == fabriclayout.BranchBusy)
+		own := branch.Slug == slug && !(branch.Repo == sideRecords && branch.State == fabricengine.BranchBusy)
 		shared := branch.Repo == sideBolt || (branch.Repo == sideRecords && branch.Prime)
-		if !own && !(shared && branch.State != fabriclayout.BranchBusy) {
+		if !own && !(shared && branch.State != fabricengine.BranchBusy) {
 			continue
 		}
 		// Only a stopped branch carries a way forward, so a branch without one is skipped.

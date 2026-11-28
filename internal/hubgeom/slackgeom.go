@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/githubclient"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/machinename"
@@ -26,7 +26,6 @@ func SlackMachine() (slackengine.MachinePaths, error) {
 		TokenPath:      filepath.Join(credentialDir, slackengine.TokenFileName),
 		SocketLockPath: filepath.Join(credentialDir, slackengine.SocketLockFileName),
 		PresencePath:   filepath.Join(credentialDir, slackengine.PresenceFileName),
-		PeersPath:      filepath.Join(credentialDir, slackengine.PeersFileName),
 	}, nil
 }
 
@@ -51,7 +50,7 @@ func SlackGeometry(hubPath string) (slackengine.Geometry, error) {
 	if err != nil {
 		return slackengine.Geometry{}, err
 	}
-	dir := filepath.Join(fabriclayout.HubScratchDir(hubPath), lymdirs.SlackDirName)
+	dir := filepath.Join(fabricengine.HubScratchDir(hubPath), lymdirs.SlackDirName)
 	return slackengine.Geometry{
 		HubPath:        hubPath,
 		Shortname:      creel.Shortname,
@@ -63,17 +62,12 @@ func SlackGeometry(hubPath string) (slackengine.Geometry, error) {
 		SocketLockPath: machinePaths.SocketLockPath,
 		SetupPath:      filepath.Join(dir, slackengine.SetupFileName),
 		PresencePath:   machinePaths.PresencePath,
-		PeersPath:      machinePaths.PeersPath,
 		ForwardingPath: filepath.Join(dir, slackengine.ForwardingFileName),
 		OutboxPath:     filepath.Join(dir, slackengine.OutboxFileName),
 		RelayStatePath: filepath.Join(dir, slackengine.RelayStateFileName),
 		LockPath:       filepath.Join(dir, slackengine.RelayLockFileName),
 		LogPath:        filepath.Join(dir, slackengine.RelayLogFileName),
-		RunProcDir:     fabriclayout.RunProcDir(hubPath),
+		RunProcDir:     fabricengine.RunProcDir(hubPath),
 		LymExecutable:  executable,
-
-		BridgeMapPath:     filepath.Join(dir, slackengine.BridgeMapFileName),
-		BridgeNoticesPath: filepath.Join(dir, slackengine.BridgeNoticesFileName),
-		BridgePostsPath:   filepath.Join(dir, slackengine.BridgePostsFileName),
 	}, nil
 }

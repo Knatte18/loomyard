@@ -6,50 +6,48 @@ package fabriccli
 import (
 	"context"
 	"errors"
-	"fmt"
 	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const goneWayForward = "`lym fabric remove` of the pair removes the pair and clears this record"
 
-func branch(repo, slug string, prime bool, state fabriclayout.BranchState, wayForward string) fabriclayout.BranchOutcome {
-	return fabriclayout.BranchOutcome{Branch: repo + "/" + string(state), Repo: repo, Slug: slug, Prime: prime, State: state, WayForward: wayForward}
+func branch(repo, slug string, prime bool, state fabricengine.BranchState, wayForward string) fabricengine.BranchOutcome {
+	return fabricengine.BranchOutcome{Branch: repo + "/" + string(state), Repo: repo, Slug: slug, Prime: prime, State: state, WayForward: wayForward}
 }
 
-func reportOf(entry fabriclayout.EntryOutcome, branches ...fabriclayout.BranchOutcome) fabriclayout.OriginReport {
-	return fabriclayout.OriginReport{Entries: []fabriclayout.EntryOutcome{entry}, Branches: branches}
+func reportOf(entry fabricengine.EntryOutcome, branches ...fabricengine.BranchOutcome) fabricengine.OriginReport {
+	return fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{entry}, Branches: branches}
 }
 
 func TestRemoveVerdict(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	stopped := fabriclayout.EntryOutcome{Slug: "s", State: fabriclayout.EntryStopped, WayForward: goneWayForward}
-	goneCode := branch("code", "s", false, fabriclayout.BranchGone, goneWayForward)
-	divergedRecords := branch("records", "s", false, fabriclayout.BranchDiverged, "WF-RECORDS")
-	divergedBolt := branch("bolt", "", false, fabriclayout.BranchDiverged, "WF-BOLT")
-	busyBolt := branch("bolt", "", false, fabriclayout.BranchBusy, "WF-BUSY-BOLT")
-	busyOwnRecords := branch("records", "s", false, fabriclayout.BranchBusy, "WF-BUSY-RECORDS")
+	stopped := fabricengine.EntryOutcome{Slug: "s", State: fabricengine.EntryStopped, WayForward: goneWayForward}
+	goneCode := branch("code", "s", false, fabricengine.BranchGone, goneWayForward)
+	divergedRecords := branch("records", "s", false, fabricengine.BranchDiverged, "WF-RECORDS")
+	divergedBolt := branch("bolt", "", false, fabricengine.BranchDiverged, "WF-BOLT")
+	busyBolt := branch("bolt", "", false, fabricengine.BranchBusy, "WF-BUSY-BOLT")
+	busyOwnRecords := branch("records", "s", false, fabricengine.BranchBusy, "WF-BUSY-RECORDS")
 
 	tests := []struct {
 		name    string
-		report  fabriclayout.OriginReport
+		report  fabricengine.OriginReport
 		local   localReading
-		want    fabriclayout.EntryState
+		want    fabricengine.EntryState
 		refusal []string
 		// notInRefusal are texts the refusal must not carry.
 		notInRefusal []string
 	}{
 		{
 			name:    "StoppedRefusesNamingTheWayForwardAndTheRerun",
-			report:  reportOf(stopped, branch("code", "s", false, fabriclayout.BranchDiverged, "WF-CODE")),
+			report:  reportOf(stopped, branch("code", "s", false, fabricengine.BranchDiverged, "WF-CODE")),
 			refusal: []string{"WF-CODE", "lym fabric remove s again"},
 		},
 		{
@@ -80,41 +78,41 @@ func TestRemoveVerdict(t *testing.T) {
 		},
 		{
 			name:   "EndedPassesThrough",
-			report: reportOf(fabriclayout.EntryOutcome{Slug: "s", State: fabriclayout.EntryEnded}),
-			want:   fabriclayout.EntryEnded,
+			report: reportOf(fabricengine.EntryOutcome{Slug: "s", State: fabricengine.EntryEnded}),
+			want:   fabricengine.EntryEnded,
 		},
 		{
 			name:   "OwnedElsewherePassesThrough",
-			report: reportOf(fabriclayout.EntryOutcome{Slug: "s", State: fabriclayout.EntryOwnedElsewhere, Owner: "other"}),
-			want:   fabriclayout.EntryOwnedElsewhere,
+			report: reportOf(fabricengine.EntryOutcome{Slug: "s", State: fabricengine.EntryOwnedElsewhere, Owner: "other"}),
+			want:   fabricengine.EntryOwnedElsewhere,
 		},
 		{
 			name:   "ActiveIsTheOrdinaryRemoval",
-			report: reportOf(fabriclayout.EntryOutcome{Slug: "s", State: fabriclayout.EntryActive}),
+			report: reportOf(fabricengine.EntryOutcome{Slug: "s", State: fabricengine.EntryActive}),
 		},
 		{
 			name:   "NoEntryIsTheOrdinaryRemoval",
-			report: fabriclayout.OriginReport{},
+			report: fabricengine.OriginReport{},
 		},
 		{
 			name:   "ParentPairsEntryIsNotTheSlugs",
-			report: reportOf(fabriclayout.EntryOutcome{Slug: "parent", State: fabriclayout.EntryStopped, WayForward: "WF-PARENT"}, divergedRecords),
+			report: reportOf(fabricengine.EntryOutcome{Slug: "parent", State: fabricengine.EntryStopped, WayForward: "WF-PARENT"}, divergedRecords),
 		},
 		{
 			name:   "UnreachableWithAForeignLocalOwnerIsOwnedElsewhere",
-			report: fabriclayout.OriginReport{Unreachable: true},
+			report: fabricengine.OriginReport{Unreachable: true},
 			local:  localReading{ownedElsewhere: true, done: true},
-			want:   fabriclayout.EntryOwnedElsewhere,
+			want:   fabricengine.EntryOwnedElsewhere,
 		},
 		{
 			name:   "UnreachableWithALocalDoneEntryIsEnded",
-			report: fabriclayout.OriginReport{Unreachable: true},
+			report: fabricengine.OriginReport{Unreachable: true},
 			local:  localReading{done: true},
-			want:   fabriclayout.EntryEnded,
+			want:   fabricengine.EntryEnded,
 		},
 		{
 			name:   "UnreachableWithNeitherReadingIsTheOrdinaryRemoval",
-			report: fabriclayout.OriginReport{Unreachable: true},
+			report: fabricengine.OriginReport{Unreachable: true},
 		},
 	}
 	for _, tt := range tests {
@@ -153,102 +151,46 @@ func TestRemover(t *testing.T) {
 	t.Parallel()
 
 	ordinary := pairteardown.Request{Slug: "s", Force: true, Remote: true, QuietWait: pairteardown.RemoveQuietWait, RefuseWhenBusy: true}
-	endedReport := reportOf(fabriclayout.EntryOutcome{Slug: "s", State: fabriclayout.EntryEnded})
+	endedReport := reportOf(fabricengine.EntryOutcome{Slug: "s", State: fabricengine.EntryEnded})
 	stopped := reportOf(
-		fabriclayout.EntryOutcome{Slug: "s", State: fabriclayout.EntryStopped},
-		branch("code", "s", false, fabriclayout.BranchDiverged, "WF-CODE"),
+		fabricengine.EntryOutcome{Slug: "s", State: fabricengine.EntryStopped},
+		branch("code", "s", false, fabricengine.BranchDiverged, "WF-CODE"),
 	)
 	goneOnly := reportOf(
-		fabriclayout.EntryOutcome{Slug: "s", State: fabriclayout.EntryStopped},
-		branch("code", "s", false, fabriclayout.BranchGone, goneWayForward),
+		fabricengine.EntryOutcome{Slug: "s", State: fabricengine.EntryStopped},
+		branch("code", "s", false, fabricengine.BranchGone, goneWayForward),
 	)
-	nothingLeft := fmt.Errorf("%w: nothing of %q remains", fabricengine.ErrPairNotFound, "s")
 
 	tests := []struct {
-		name string
-		gone bool
-		// noRemote runs the removal without --remote.
-		noRemote     bool
-		report       fabriclayout.OriginReport
+		name         string
+		gone         bool
+		report       fabricengine.OriginReport
 		reconcileErr error
 		local        localReading
-		// teardownErr is the teardown's error.
-		teardownErr error
-		// settled and settleErr are what the settling of a pending-teardown record answers.
-		settled   bool
-		settleErr error
 		// wantCalls are the seam calls between the exemption and its restore, in order.
 		wantCalls []string
 		// wantRequest is the request the teardown saw; nil when it was never called.
 		wantRequest  *pairteardown.Request
 		wantErr      string
 		wantRemoteBy string
-		// wantSteps are the removal's steps; nil leaves them unchecked.
-		wantSteps []string
 	}{
-		{
-			name:        "NothingLeftWithAPendingRecordSettlesIt",
-			gone:        true,
-			teardownErr: nothingLeft,
-			settled:     true,
-			wantCalls:   []string{"gone", "local", "teardown", "settle"},
-			wantRequest: &ordinary,
-			wantSteps:   []string{fabriclayout.RemoveStepPendingTeardown},
-		},
-		{
-			name:        "NothingLeftUnderALocalVerdictSettlesThePendingRecordAndDropsNoRemote",
-			gone:        true,
-			local:       localReading{done: true},
-			teardownErr: nothingLeft,
-			settled:     true,
-			wantCalls:   []string{"gone", "local", "teardown", "settle"},
-			wantRequest: &pairteardown.Request{Slug: "s", Force: true, Local: true, Verdict: fabriclayout.EntryEnded, RefuseWhenBusy: true},
-			wantSteps:   []string{fabriclayout.RemoveStepPendingTeardown},
-		},
-		{
-			name:        "NothingLeftWithoutRemoteSettlesNothing",
-			gone:        true,
-			noRemote:    true,
-			teardownErr: nothingLeft,
-			settled:     true,
-			wantCalls:   []string{"gone", "local", "teardown"},
-			wantRequest: &pairteardown.Request{Slug: "s", Force: true, QuietWait: pairteardown.RemoveQuietWait, RefuseWhenBusy: true},
-			wantErr:     "nothing of \"s\" remains",
-		},
-		{
-			name:        "NothingLeftWithNoPendingRecordIsRefusedAsPairNotFound",
-			gone:        true,
-			teardownErr: nothingLeft,
-			wantCalls:   []string{"gone", "local", "teardown", "settle"},
-			wantRequest: &ordinary,
-			wantErr:     "nothing of \"s\" remains",
-		},
-		{
-			name:        "AFailedSettlingNamesTheRerun",
-			gone:        true,
-			teardownErr: nothingLeft,
-			settleErr:   errors.New("tag push refused"),
-			wantCalls:   []string{"gone", "local", "teardown", "settle"},
-			wantRequest: &ordinary,
-			wantErr:     "tag push refused; fix the cause it names, then run lym fabric remove s --remote again",
-		},
 		{
 			name:         "EndedVerdictRunsTheLocalRequestAndNamesTheDroppedRemote",
 			report:       endedReport,
 			wantCalls:    []string{"gone", "reconcile", "teardown"},
-			wantRequest:  &pairteardown.Request{Slug: "s", Force: true, Local: true, Verdict: fabriclayout.EntryEnded, RefuseWhenBusy: true},
+			wantRequest:  &pairteardown.Request{Slug: "s", Force: true, Local: true, Verdict: fabricengine.EntryEnded, RefuseWhenBusy: true},
 			wantRemoteBy: "the origin reconcile read the entry ended, so the removal was local and --remote was dropped",
 		},
 		{
 			name:         "OwnedElsewhereVerdictRunsTheLocalRequest",
-			report:       reportOf(fabriclayout.EntryOutcome{Slug: "s", State: fabriclayout.EntryOwnedElsewhere}),
+			report:       reportOf(fabricengine.EntryOutcome{Slug: "s", State: fabricengine.EntryOwnedElsewhere}),
 			wantCalls:    []string{"gone", "reconcile", "teardown"},
-			wantRequest:  &pairteardown.Request{Slug: "s", Force: true, Local: true, Verdict: fabriclayout.EntryOwnedElsewhere, RefuseWhenBusy: true},
+			wantRequest:  &pairteardown.Request{Slug: "s", Force: true, Local: true, Verdict: fabricengine.EntryOwnedElsewhere, RefuseWhenBusy: true},
 			wantRemoteBy: "the origin reconcile read the entry owned_elsewhere, so the removal was local and --remote was dropped",
 		},
 		{
 			name:        "ActiveVerdictRunsTheOrdinaryRequest",
-			report:      reportOf(fabriclayout.EntryOutcome{Slug: "s", State: fabriclayout.EntryActive}),
+			report:      reportOf(fabricengine.EntryOutcome{Slug: "s", State: fabricengine.EntryActive}),
 			wantCalls:   []string{"gone", "reconcile", "teardown"},
 			wantRequest: &ordinary,
 		},
@@ -275,7 +217,7 @@ func TestRemover(t *testing.T) {
 			gone:         true,
 			local:        localReading{ownedElsewhere: true},
 			wantCalls:    []string{"gone", "local", "teardown"},
-			wantRequest:  &pairteardown.Request{Slug: "s", Force: true, Local: true, Verdict: fabriclayout.EntryOwnedElsewhere, RefuseWhenBusy: true},
+			wantRequest:  &pairteardown.Request{Slug: "s", Force: true, Local: true, Verdict: fabricengine.EntryOwnedElsewhere, RefuseWhenBusy: true},
 			wantRemoteBy: "the origin reconcile read the entry owned_elsewhere, so the removal was local and --remote was dropped",
 		},
 		{
@@ -300,7 +242,7 @@ func TestRemover(t *testing.T) {
 					calls = append(calls, "gone")
 					return tt.gone, nil
 				},
-				reconcile: func(string) (fabriclayout.OriginReport, error) {
+				reconcile: func(string) (fabricengine.OriginReport, error) {
 					calls = append(calls, "reconcile")
 					return tt.report, tt.reconcileErr
 				},
@@ -311,22 +253,11 @@ func TestRemover(t *testing.T) {
 				teardown: func(_ context.Context, req pairteardown.Request) (pairteardown.Result, error) {
 					calls = append(calls, "teardown")
 					seen = &req
-					return pairteardown.Result{}, tt.teardownErr
-				},
-				settle: func(_, rerun string) (fabriclayout.RemoveResult, bool, error) {
-					calls = append(calls, "settle")
-					if want := "lym fabric remove s --remote"; rerun != want {
-						t.Errorf("settle re-run = %q, want %q", rerun, want)
-					}
-					var settledResult fabriclayout.RemoveResult
-					if tt.settled {
-						settledResult.Steps = []string{fabriclayout.RemoveStepPendingTeardown}
-					}
-					return settledResult, tt.settled, tt.settleErr
+					return pairteardown.Result{}, nil
 				},
 			}
 
-			res, err := r.run(context.Background(), "s", true, !tt.noRemote)
+			res, err := r.run(context.Background(), "s", true, true)
 
 			wantCalls := append(append([]string{"exempt"}, tt.wantCalls...), "restore")
 			if strings.Join(calls, ",") != strings.Join(wantCalls, ",") {
@@ -347,9 +278,6 @@ func TestRemover(t *testing.T) {
 			}
 			if got := res.Removal.RemoteSkippedReason; got != tt.wantRemoteBy {
 				t.Errorf("RemoteSkippedReason = %q, want %q", got, tt.wantRemoteBy)
-			}
-			if tt.wantSteps != nil && !reflect.DeepEqual(res.Removal.Steps, tt.wantSteps) {
-				t.Errorf("Steps = %v, want %v", res.Removal.Steps, tt.wantSteps)
 			}
 		})
 	}

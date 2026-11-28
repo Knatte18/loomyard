@@ -8,18 +8,36 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
+// PairParts reports which parts of a pair are present, read locally with no network call.
+type PairParts struct {
+	// TaskWorktree reports a registered linked worktree at the pair's location.
+	TaskWorktree bool
+	// RecordsWorktree reports a directory at the pair's records worktree path.
+	RecordsWorktree bool
+	// RecordsBranch reports the local sibling branch.
+	RecordsBranch bool
+	// TaskBranch reports the local task branch.
+	TaskBranch bool
+	// StrayPath reports an unregistered path at the pair's task worktree location, such as one a late writer refilled.
+	StrayPath bool
+}
+
+// Any reports whether any part of the pair is present.
+func (p PairParts) Any() bool {
+	return p.TaskWorktree || p.RecordsWorktree || p.RecordsBranch || p.TaskBranch || p.StrayPath
+}
+
 // PairParts reports which parts of slug's pair are present, read locally.
-func (t *Topology) PairParts(l *lymcwd.Location, slug string) (fabriclayout.PairParts, error) {
+func (t *Topology) PairParts(l *lymcwd.Location, slug string) (PairParts, error) {
 	state, err := t.inspectPair(l, slug)
 	if err != nil {
-		return fabriclayout.PairParts{}, err
+		return PairParts{}, err
 	}
-	return fabriclayout.PairParts{
+	return PairParts{
 		TaskWorktree:    state.taskWorktree,
 		RecordsWorktree: state.siblingWorktree,
 		RecordsBranch:   state.siblingBranch,

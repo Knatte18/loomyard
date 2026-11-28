@@ -12,10 +12,6 @@ import (
 // SessionCauseUnsupported is the cause of an unknown state read from an engine that cannot parse session signals.
 const SessionCauseUnsupported = "unsupported"
 
-// SessionCauseRelaunching is the cause of an unknown state read from a relaunching run.
-// Such a run's record carries a relaunching mark within its bound.
-const SessionCauseRelaunching = "relaunching"
-
 // RunSessionState is the session state read for one run.
 type RunSessionState struct {
 	// StrandName is the run's strand name, the strand guid for a record that predates the name.
@@ -30,14 +26,10 @@ type RunSessionState struct {
 	SessionStartAt time.Time
 	// SessionID is the session id of the newest signal that names one, else the run record's; empty if neither does.
 	SessionID string
-	// Relaunching is true when the run's record carries a relaunching mark within its bound.
-	// Its state is then unknown with cause SessionCauseRelaunching, read from no events file.
-	Relaunching bool
 }
 
 // ReadSessionStates returns the session state of each running run under the run-directory root of anchorPath.
 // The process waiting on a run need not be alive, so a run whose Wait died still shows.
-// A run whose record carries a relaunching mark within its bound reads unknown, relaunching, from no events.
 // A directory that is not a run directory and a run with no record are skipped.
 // Undecodable records, and runs naming an engine the set does not hold, are skipped, each logged once per episode.
 // Each run is read through the engine its record names, the set's default for a record naming none.
@@ -53,7 +45,6 @@ func ReadSessionStates(cfg Config, anchorPath string, engines EngineSet, now tim
 		return nil, err
 	}
 	var readings []RunSessionState
-	bound := relaunchBound(cfg)
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
@@ -72,26 +63,9 @@ func ReadSessionStates(cfg Config, anchorPath string, engines EngineSet, now tim
 		if !ok {
 			continue
 		}
-		readings = append(readings, readRecordedRunSessionState(rs, engine, now, bound))
+		readings = append(readings, readRunSessionState(rs, engine, now))
 	}
 	return readings, nil
-}
-
-// readRecordedRunSessionState reads the session state of the run rs names from its files, at now.
-// A record whose relaunching mark is within bound reads unknown with cause SessionCauseRelaunching and no events read.
-// Its prompt offset precedes the turn end of the session being replaced.
-func readRecordedRunSessionState(rs RunState, engine Engine, now time.Time, bound time.Duration) RunSessionState {
-	within, _ := rs.relaunching(now, bound)
-	if !within {
-		return readRunSessionState(rs, engine, now)
-	}
-	reading := RunSessionState{StrandName: rs.StrandName, StrandGUID: rs.StrandGUID, SessionID: rs.SessionID, Relaunching: true}
-	if reading.StrandName == "" {
-		reading.StrandName = rs.StrandGUID
-	}
-	reading.State = SessionState{Name: SessionUnknown, Cause: SessionCauseRelaunching, Since: now}
-	reading.History = []SessionState{reading.State}
-	return reading
 }
 
 // readRunSessionState folds the signals past rs's prompt offset, with the facts read for them, into one state.

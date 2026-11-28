@@ -22,10 +22,8 @@ resumeCmd (or cmd, when resumeCmd is empty). Anchor:hidden strands are
 skipped — they are pending first surface, not dead. Already-live strands are
 left untouched (no double send-keys). A not-live strand whose done-when paths
 all exist is finished: it is dropped from state instead of relaunched, and
-counted in the envelope's dropped. A strand left down on purpose is neither
-relaunched nor dropped, and is named in the envelope's held: one a covering pause
-left down, until "lym tender resume", and one whose process a caller ended on
-purpose, until that caller relaunches, releases or removes it.
+counted in the envelope's dropped. While a pause covers this pair, its strands
+are left down and named in the envelope's held, until "lym tender resume".
 
 Example:
   lym reed resume`,

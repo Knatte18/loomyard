@@ -4,7 +4,6 @@
 package pairteardown
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -12,7 +11,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -38,21 +36,10 @@ type runReader struct {
 	childHere func(slug string) (shedengine.Status, bool, error)
 	// childOnOrigin reads the child run record from origin's records branch.
 	childOnOrigin func(slug string) (shedengine.Status, bool, error)
-	// owners reads the owners and the machine registry the local Bolt records.
-	owners func() (boardengine.Owners, error)
-	// identity reads this machine's identity, which the registry compares a recorded owner against.
-	identity func() (machinename.Identity, error)
-	// parentOf names the slug of the pair slug was forked from, "" for the prime.
-	parentOf func(slug string) (string, error)
+	// owner reads the slug's effective owner, the subject adopt takes to move it and whether another machine owns it.
+	owner func(slug string) (owner, adoptSubject string, elsewhere bool, err error)
 	// pauseCovers reports whether this machine's pause record covers the slug.
 	pauseCovers func(slug string) (bool, error)
-	// owedPush lists the failed-push records that hold a push of the slug's run owed, newest first.
-	owedPush func(slug string) ([]fabriclayout.FailedPush, error)
-	// codeTip reads the code tip the slug's last transition on origin names, and whether origin lacks it.
-	codeTip func(slug string) (fabriclayout.CodeTipReading, error)
-	// localHoldsTip reports whether the local code branch of the slug's pair holds the code tip.
-	// Only a read of a pair standing here calls it.
-	localHoldsTip func(slug, tip string) (bool, error)
 	// skipPush is true when the environment skips every push, so origin never holds the parent merge.
 	skipPush bool
 	// originParentHolds reports whether origin's fetched parent branch holds the task's work.
@@ -71,25 +58,9 @@ func ReadRun(prime *lymcwd.Location, slug string) (runfsm.Records, runfsm.Inputs
 	return hubRunReader(prime).read(slug)
 }
 
-// ReadRunPulled brings the hub's Bolt level with origin, then reads the run of slug as ReadRun does.
-// A hold, an owner or a registry entry another machine pushed is therefore read.
-// An unreachable origin reads the local Bolt and goes on, and so does a hub with no Bolt checkout.
-// Any other failed pull returns an error naming the pull's detail and the way forward, and reads nothing.
-func ReadRunPulled(prime *lymcwd.Location, slug string) (runfsm.Records, runfsm.Inputs, error) {
-	boltDir := fabriclayout.BoltDir(prime.HubPath)
-	if _, err := os.Stat(boltDir); err == nil {
-		if err := boardengine.PullBolt(boltDir); err != nil && !errors.Is(err, boardengine.ErrOwnerOriginUnreachable) {
-			return runfsm.Records{}, runfsm.Inputs{}, fmt.Errorf(
-				"read the run of %s: the board could not be pulled: %w; way forward: bring the board level as it names, then run the verb again",
-				slug, err)
-		}
-	}
-	return ReadRun(prime, slug)
-}
-
 // hubRunReader wires a runReader over the hub of prime.
 func hubRunReader(prime *lymcwd.Location) runReader {
-	boardDir := fabriclayout.BoardDir(prime.HubPath)
+	boardDir := fabricengine.BoardDir(prime.HubPath)
 	taskLocation := func(slug string) (*lymcwd.Location, error) {
 		return lymcwd.ResolveWorktree(fabricengine.WorktreePath(prime, slug))
 	}
@@ -127,15 +98,26 @@ func hubRunReader(prime *lymcwd.Location) runReader {
 			return readStatus(shedrun.StatusFile(task, shedrun.SelfRunID), shedrun.StatusLock(task, shedrun.SelfRunID))
 		},
 		childOnOrigin: func(slug string) (shedengine.Status, bool, error) { return fabricengine.OriginRunStatus(prime, slug) },
-		owners:        func() (boardengine.Owners, error) { return boardengine.ReadOwners(boardDir) },
-		identity: func() (machinename.Identity, error) {
-			identity, err := machinename.ReadIdentity()
+		owner: func(slug string) (string, string, bool, error) {
+			here, err := machinename.Name()
 			if err != nil {
-				return machinename.Identity{}, fmt.Errorf("read this machine's name: %w", err)
+				return "", "", false, fmt.Errorf("read this machine's name: %w", err)
 			}
-			return identity, nil
+			owners, err := boardengine.ReadOwners(boardDir)
+			if err != nil {
+				return "", "", false, err
+			}
+			parentOf := func(entry string) (string, error) { return hubgeom.ParentOf(prime, entry) }
+			owner, err := owners.Effective(slug, parentOf)
+			if err != nil {
+				return "", "", false, err
+			}
+			subject, err := owners.AdoptSubject(slug, parentOf)
+			if err != nil {
+				return "", "", false, err
+			}
+			return owner, subject, boardengine.OwnedElsewhere(owner, here), nil
 		},
-		parentOf: func(slug string) (string, error) { return hubgeom.ParentOf(prime, slug) },
 		pauseCovers: func(slug string) (bool, error) {
 			geometry, err := hubgeom.PauseGeometry(prime)
 			if err != nil {
@@ -143,13 +125,6 @@ func hubRunReader(prime *lymcwd.Location) runReader {
 			}
 			coverage, err := pauserecord.ReadCoverage(geometry.RecordPath, slug, time.Now())
 			return coverage.Covered, err
-		},
-		owedPush: func(slug string) ([]fabriclayout.FailedPush, error) {
-			return fabricengine.FailedPushesOwedBy(prime.HubPath, slug)
-		},
-		codeTip: func(slug string) (fabriclayout.CodeTipReading, error) { return fabricengine.OriginCodeTip(prime, slug) },
-		localHoldsTip: func(slug, tip string) (bool, error) {
-			return fabricengine.HeadContains(fabricengine.WorktreePath(prime, slug), tip)
 		},
 		skipPush: fabricengine.EnvSyncOptions().SkipPush,
 		originParentHolds: func(slug string) (bool, error) {
@@ -228,95 +203,29 @@ func (r runReader) read(slug string) (runfsm.Records, runfsm.Inputs, error) {
 	records.ChildLanding = battenAtLanding ||
 		(records.ChildFound && (records.Child.CurrentProducer == loomshed.NameFinalize || records.Child.State == shedengine.StateDone))
 
-	if err := r.readOwner(slug, &inputs); err != nil {
+	if inputs.Owner, inputs.AdoptSubject, inputs.OwnedElsewhere, err = r.owner(slug); err != nil {
 		return fail("the owner", err)
 	}
 	if inputs.PauseCovers, err = r.pauseCovers(slug); err != nil {
 		return fail("the pause record", err)
 	}
 
-	owed, err := r.owedPush(slug)
-	if err != nil {
-		return fail("the owed push", err)
-	}
-	if len(owed) > 0 {
-		inputs.PushOwed = true
-		inputs.PushOwedError = owed[0].Error
-		inputs.PushOwedWorktree = owed[0].RepoPath
-		inputs.PushOwedWayForward = fabricengine.FailedPushWayForward(owed[0])
-	}
-	tip, err := r.codeTip(slug)
-	if err != nil {
-		return fail("the code tip", err)
-	}
-	if tip.Missing {
-		// A pair here whose code branch holds the tip owes it to origin.
-		// Its own pusher pushes the code side after the records side.
-		heldHere := false
-		if pairHere {
-			if heldHere, err = r.localHoldsTip(slug, tip.Tip); err != nil {
-				return fail("whether the local code branch holds the code tip", err)
-			}
-		}
-		if !heldHere {
-			inputs.CodeTipMissing = true
-			inputs.CodeTip = tip.Tip
-			inputs.CodeTipMachine = tip.Machine
-			inputs.CodeTipPairAbsent = !pairHere
-		}
-	}
-
-	// A local landing reaches the local parent first, and origin's only once the parent's push is made.
-	// Either one holding the work puts the run past its merge, so a resume never drives the merge again.
-	parentHolds := func() (bool, error) {
-		if !r.skipPush {
-			if held, err := r.originParentHolds(slug); err != nil || held {
-				return held, err
-			}
-		}
-		return r.localParentHolds(slug)
-	}
 	switch {
-	case battenAtLanding && !pairHere:
-		// A pair is removed only once origin holds the work, so there is no parent read left to make.
-		inputs.PastParentMerge = true
 	case battenAtLanding:
-		inputs.PastParentMerge, err = parentHolds()
+		inputs.PastParentMerge = true
 	case records.ChildFound && pairHere:
+		parentHolds := r.originParentHolds
+		if r.skipPush {
+			parentHolds = r.localParentHolds
+		}
 		inputs.PastParentMerge, err = battenshed.FinalizePastMerge(
 			records.Child,
 			func(status shedengine.Status) (bool, error) { return r.restepped(slug, status) },
-			parentHolds,
+			func() (bool, error) { return parentHolds(slug) },
 		)
-	}
-	if err != nil {
-		return fail("whether the work reached its parent", err)
+		if err != nil {
+			return fail("whether the work reached its parent", err)
+		}
 	}
 	return records, inputs, nil
-}
-
-// readOwner fills inputs with the slug's effective owner and the subject adopt takes to move it.
-// It also fills whether the registry reads that owner as another machine.
-// It fills whether a Bolt hold holds the slug, with the hold's machine.
-func (r runReader) readOwner(slug string, inputs *runfsm.Inputs) error {
-	here, err := r.identity()
-	if err != nil {
-		return err
-	}
-	owners, err := r.owners()
-	if err != nil {
-		return err
-	}
-	if inputs.Owner, err = owners.Effective(slug, r.parentOf); err != nil {
-		return err
-	}
-	if inputs.AdoptSubject, err = owners.AdoptSubject(slug, r.parentOf); err != nil {
-		return err
-	}
-	inputs.OwnedElsewhere = boardengine.OwnedElsewhere(inputs.Owner, owners.Registry, here)
-	if hold, held := owners.HoldOf(slug); held {
-		inputs.Held = true
-		inputs.HoldMachine = hold.Machine
-	}
-	return nil
 }

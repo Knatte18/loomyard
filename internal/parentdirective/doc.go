@@ -15,14 +15,8 @@
 // creel accepts a program claim only from an orch pane or a process in no pane,
 // so no task agent can sign one, and every other session's message stays untrusted.
 // A non-interactive role also gets the operator-ban line.
-// An interactive role does not, since its interview questions go to the operator.
+// An interactive role does not, since its interview questions go to the operator; only the ban line differs.
 // An empty parent name renders the no-parent variant: a blocked role writes its report and stops.
-//
-// HandBack serves a role whose verdict file is its only channel, as a tackler or an arbiter.
-// A non-empty parent name renders the hand-back variant.
-// That variant names the run's parent orch.
-// It still sends a blocked role to its report.
-// An empty one renders the no-parent variant.
 //
 // # Who renders it
 //
@@ -30,6 +24,7 @@
 // It passes the text as the value of the MarkerName marker its opening stencil carries.
 // The parent name is told, never derived:
 // a caller takes it from the origin record reed injects as `agentname.ParentEnv`.
+// That record is the `ParentName` of the reed geometry `hubgeom` builds.
 //
 // # Imports
 //

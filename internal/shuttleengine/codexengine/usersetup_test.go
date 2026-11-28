@@ -47,8 +47,6 @@ func TestPrepare_UserSetup(t *testing.T) {
 		wantErr []string
 		// wantWarn holds the texts the warnings carry.
 		wantWarn []string
-		// wantNoWarn holds the texts no warning may carry.
-		wantNoWarn []string
 		// throughLink reaches the worktree through a symlink to it, so the engine's anchor is not its resolved path.
 		throughLink bool
 	}{
@@ -68,13 +66,6 @@ func TestPrepare_UserSetup(t *testing.T) {
 				Omitted:  []shuttleengine.OmittedHook{{Name: "plugin p@m SessionStart hook run.sh", Reason: "exit status 3"}},
 			},
 			wantWarn: []string{"a source warning", "plugin p@m SessionStart hook run.sh", "exit status 3", "session scope"},
-		},
-		{
-			name: "HookListedUnrunLogsNoWarning",
-			setup: shuttleengine.UserSetup{
-				Omitted: []shuttleengine.OmittedHook{{Name: "plugin p@m SessionStart hook run.sh", Reason: shuttleengine.ErrHookUnrun.Error(), Plugin: "p@m", Hook: "run.sh"}},
-			},
-			wantNoWarn: []string{"run.sh", shuttleengine.ErrHookUnrun.Error()},
 		},
 		{
 			name:    "SourceErrorRefuses",
@@ -127,11 +118,6 @@ func TestPrepare_UserSetup(t *testing.T) {
 					t.Errorf("warnings = %q; want them to hold %q", warnings, want)
 				}
 			}
-			for _, unwanted := range tt.wantNoWarn {
-				if strings.Contains(warnings.String(), unwanted) {
-					t.Errorf("warnings = %q; want none holding %q", warnings, unwanted)
-				}
-			}
 			promptPath := filepath.Join(runDir, "prompt.md")
 			if len(tt.wantErr) > 0 {
 				if err == nil {
@@ -150,7 +136,7 @@ func TestPrepare_UserSetup(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Prepare() error: %v", err)
 			}
-			texts := []string{wantCreelHead(installedGuards(nil, guardInputs{}), guardInputs{})}
+			texts := []string{wantCreelHead(installedGuards(nil, guardInputs{}))}
 			for _, item := range append(tt.setup.InstructionFiles, tt.setup.PluginContexts...) {
 				texts = append(texts, item.Text)
 			}

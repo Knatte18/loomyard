@@ -4,7 +4,6 @@
 package claudeengine
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -51,7 +50,6 @@ func TestLoadConfig(t *testing.T) {
 			PromptCacheTTLRoles: map[string]string{"driver": "5m", "webster": "1h", "orch": "1h"},
 			KeepWarmCap:         "250s",
 			KeepWarmCapRoles:    map[string]string{},
-			Accounts:            []AccountConfig{},
 			BatchingNudge: BatchingNudgeConfig{
 				Enabled:       true,
 				LookupChain:   true,
@@ -101,6 +99,20 @@ func TestLoadConfig(t *testing.T) {
 		}
 	})
 
+	t.Run("a repo default holding the retired deny_agent_tool loads without it", func(t *testing.T) {
+		clearMarker(t)
+		board, anchor := t.TempDir(), t.TempDir()
+		writeClaudeLayer(t, configengine.ConfigFile(board, "claude"), ConfigTemplate()+"deny_agent_tool: false\n")
+		writeClaudeLayer(t, configengine.ConfigFile(anchor, "claude"), "")
+		cfg, err := LoadConfig(configengine.Dirs{Anchor: anchor, Board: board})
+		if err != nil {
+			t.Fatalf("LoadConfig() = _, %v; want nil error", err)
+		}
+		if !cfg.DenyAskUserQuestion || cfg.PromptCacheTTL != "5m" {
+			t.Errorf("LoadConfig() = %+v; want the template's values", cfg)
+		}
+	})
+
 	t.Run("a local file holds the cache lifetimes", func(t *testing.T) {
 		clearMarker(t)
 		board, anchor := t.TempDir(), t.TempDir()
@@ -131,102 +143,6 @@ func TestLoadConfig(t *testing.T) {
 			}
 		})
 	}
-
-	// accountRows load the layer files below.
-	// Each has DIR replaced by a temporary directory holding real/ and a link/ to it.
-	// Each refusal row reaches its own branch after every earlier check passes.
-	accountRows := []struct {
-		name      string
-		machine   string
-		hub       string
-		worktree  string
-		wantParts []string
-	}{
-		{"a duplicate name", "accounts:\n  - {name: a, config_dir: DIR/x, weight: 1}\n  - {name: a, config_dir: DIR/y, weight: 1}\n", "", "", []string{"accounts", "a"}},
-		{"an upper-case name", "accounts:\n  - {name: Work, config_dir: DIR/x, weight: 1}\n", "", "", []string{"accounts", "Work"}},
-		{"a relative path", "accounts:\n  - {name: a, config_dir: rel/x, weight: 1}\n", "", "", []string{"accounts", "rel/x"}},
-		{"two entries naming one directory through a symlink", "accounts:\n  - {name: a, config_dir: DIR/real, weight: 1}\n  - {name: b, config_dir: DIR/link, weight: 1}\n", "", "", []string{"accounts", "a", "b"}},
-		{"a negative weight", "accounts:\n  - {name: a, config_dir: DIR/x, weight: -1}\n", "", "", []string{"accounts", "weight"}},
-		{"an unknown window", "accounts:\n  - {name: a, config_dir: DIR/x, weight: 1, windows: {hourly: 50}}\n", "", "", []string{"accounts", "hourly"}},
-		{"a threshold of 0", "accounts:\n  - {name: a, config_dir: DIR/x, weight: 1, windows: {five_hour: 0}}\n", "", "", []string{"accounts", "five_hour"}},
-		{"a threshold of 101", "accounts:\n  - {name: a, config_dir: DIR/x, weight: 1, windows: {seven_day: 101}}\n", "", "", []string{"accounts", "seven_day"}},
-		{"a hub pin naming an unlisted account", "accounts:\n  - {name: a, config_dir: DIR/x, weight: 1}\naccount_pins:\n  hub: ghost\n", "", "", []string{"account_pins.hub", "ghost"}},
-		{"a beams pin naming a retired account", "accounts:\n  - {name: a, config_dir: DIR/x, weight: 0}\naccount_pins:\n  beams: a\n", "", "", []string{"account_pins.beams", "a"}},
-		{"accounts in the hub file", "", "accounts:\n  - {name: a, config_dir: DIR/x, weight: 1}\n", "", []string{"accounts", "claude.yaml", "--layer default"}},
-		{"a hub pin in the worktree file while the machine file holds it too", "accounts:\n  - {name: a, config_dir: DIR/x, weight: 1}\naccount_pins:\n  hub: a\n", "", "account_pins:\n  hub: a\n", []string{"account_pins.hub", "--layer worktree"}},
-	}
-	loadAccountRow := func(t *testing.T, machine, hub, worktree string) (Config, string, error) {
-		t.Helper()
-		clearMarker(t)
-		dir := t.TempDir()
-		t.Setenv("HOME", dir)
-		if err := os.Mkdir(filepath.Join(dir, "real"), 0o755); err != nil {
-			t.Fatalf("Mkdir(real) = %v; want nil", err)
-		}
-		if err := os.Symlink(filepath.Join(dir, "real"), filepath.Join(dir, "link")); err != nil {
-			t.Fatalf("Symlink(link) = %v; want nil", err)
-		}
-		board, anchor := t.TempDir(), t.TempDir()
-		fill := func(doc string) string { return strings.ReplaceAll(doc, "DIR", dir) }
-		hubDocument := ConfigTemplate()
-		if hub != "" {
-			hubDocument = strings.Replace(hubDocument, "accounts: []", strings.TrimSuffix(fill(hub), "\n"), 1)
-		}
-		writeClaudeLayer(t, configengine.ConfigFile(board, "claude"), hubDocument)
-		writeClaudeLayer(t, configengine.ConfigFile(anchor, "claude"), fill(worktree))
-		if machine != "" {
-			writeClaudeLayer(t, configengine.MachineFile(board, "claude"), fill(machine))
-		}
-		cfg, err := LoadConfig(configengine.Dirs{Anchor: anchor, Board: board})
-		return cfg, dir, err
-	}
-
-	t.Run("a valid machine-layer list loads with a leading ~/ expanded", func(t *testing.T) {
-		cfg, dir, err := loadAccountRow(t, "accounts:\n  - {name: home, config_dir: '~/x/', weight: 2, windows: {five_hour: 80}}\n  - {name: work, config_dir: DIR/y, weight: 1}\naccount_pins:\n  hub: home\n", "", "")
-		if err != nil {
-			t.Fatalf("LoadConfig() = _, %v; want nil error", err)
-		}
-		wantAccounts := []AccountConfig{
-			{Name: "home", ConfigDir: filepath.Join(dir, "x"), Weight: 2, Windows: map[string]int{"five_hour": 80}},
-			{Name: "work", ConfigDir: filepath.Join(dir, "y"), Weight: 1},
-		}
-		if !reflect.DeepEqual(cfg.Accounts, wantAccounts) || cfg.AccountPins != (AccountPins{Hub: "home"}) {
-			t.Errorf("LoadConfig() accounts = %+v, pins = %+v; want %+v and hub pin home", cfg.Accounts, cfg.AccountPins, wantAccounts)
-		}
-	})
-
-	for _, row := range accountRows {
-		t.Run("a refusal for "+row.name, func(t *testing.T) {
-			_, _, err := loadAccountRow(t, row.machine, row.hub, row.worktree)
-			if err == nil || !errors.Is(err, configengine.ErrInvalid) {
-				t.Fatalf("LoadConfig() = _, %v; want an error marked configengine.ErrInvalid", err)
-			}
-			for _, part := range append(row.wantParts, "lym config claude --layer machine") {
-				if !strings.Contains(err.Error(), part) {
-					t.Errorf("LoadConfig() error = %q; want it to contain %q", err, part)
-				}
-			}
-		})
-	}
-
-	t.Run("a refusal for a leading ~/ with no home directory", func(t *testing.T) {
-		clearMarker(t)
-		t.Setenv("HOME", "")
-		t.Setenv("USERPROFILE", "")
-		board, anchor := t.TempDir(), t.TempDir()
-		writeClaudeLayer(t, configengine.ConfigFile(board, "claude"), ConfigTemplate())
-		writeClaudeLayer(t, configengine.ConfigFile(anchor, "claude"), "")
-		writeClaudeLayer(t, configengine.MachineFile(board, "claude"), "accounts:\n  - {name: a, config_dir: '~/x', weight: 1}\n")
-		_, err := LoadConfig(configengine.Dirs{Anchor: anchor, Board: board})
-		if err == nil || !errors.Is(err, configengine.ErrInvalid) {
-			t.Fatalf("LoadConfig() = _, %v; want an error marked configengine.ErrInvalid", err)
-		}
-		for _, part := range []string{"accounts", "~/x", "home directory", "lym config claude --layer machine"} {
-			if !strings.Contains(err.Error(), part) {
-				t.Errorf("LoadConfig() error = %q; want it to contain %q", err, part)
-			}
-		}
-	})
 
 	t.Run("the environment marker resolves the binary", func(t *testing.T) {
 		t.Setenv("LYM_SHUTTLE_CLAUDE", "/opt/claude/bin/claude")

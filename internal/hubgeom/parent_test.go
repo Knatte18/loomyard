@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -22,7 +21,7 @@ func TestDecideParent(t *testing.T) {
 	tests := []struct {
 		name          string
 		shortname     string
-		origin        fabriclayout.Origin
+		origin        fabricengine.Origin
 		originFound   bool
 		parentIsPrime bool
 		want          Parent
@@ -31,7 +30,7 @@ func TestDecideParent(t *testing.T) {
 		{
 			name:          "prime parent gives the two-segment orch name",
 			shortname:     "tst",
-			origin:        fabriclayout.Origin{ParentWorktree: "prime"},
+			origin:        fabricengine.Origin{ParentWorktree: "prime"},
 			originFound:   true,
 			parentIsPrime: true,
 			want:          Parent{Name: "tst:orch", Worktree: "prime"},
@@ -39,7 +38,7 @@ func TestDecideParent(t *testing.T) {
 		{
 			name:        "pair parent gives the three-segment orch name",
 			shortname:   "tst",
-			origin:      fabriclayout.Origin{ParentWorktree: "other-task"},
+			origin:      fabricengine.Origin{ParentWorktree: "other-task"},
 			originFound: true,
 			want:        Parent{Name: "tst:other-task:orch", Worktree: "other-task"},
 		},
@@ -51,13 +50,13 @@ func TestDecideParent(t *testing.T) {
 		{
 			name:        "origin without parent worktree gives none",
 			shortname:   "tst",
-			origin:      fabriclayout.Origin{ParentBranch: "main"},
+			origin:      fabricengine.Origin{ParentBranch: "main"},
 			originFound: true,
 			want:        Parent{},
 		},
 		{
 			name:          "no shortname gives none",
-			origin:        fabriclayout.Origin{ParentWorktree: "prime"},
+			origin:        fabricengine.Origin{ParentWorktree: "prime"},
 			originFound:   true,
 			parentIsPrime: true,
 			want:          Parent{},
@@ -65,7 +64,7 @@ func TestDecideParent(t *testing.T) {
 		{
 			name:        "invalid parent worktree name is an error",
 			shortname:   "tst",
-			origin:      fabriclayout.Origin{ParentWorktree: "Bad Name"},
+			origin:      fabricengine.Origin{ParentWorktree: "Bad Name"},
 			originFound: true,
 			wantErr:     true,
 		},
@@ -122,17 +121,17 @@ func hubWithOrigin(t *testing.T, record string) *lymcwd.Location {
 	hub := filepath.Join(t.TempDir(), "some-hub-LYMHUB")
 	l := &lymcwd.Location{HubPath: hub, WorktreeName: "child-task", AnchorRel: "."}
 
-	boardDir := fabriclayout.BoardDir(hub)
+	boardDir := fabricengine.BoardDir(hub)
 	if err := os.MkdirAll(boardDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll board: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(boardDir, fabriclayout.ShortnameFileName), []byte("tst\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(boardDir, fabricengine.ShortnameFileName), []byte("tst\n"), 0o644); err != nil {
 		t.Fatalf("write shortname: %v", err)
 	}
 	// The record is written by hand: WriteOrigin seeds git excludes, which spawns git, and this file is untagged.
 	// ReadOriginFor requires the records worktree's lock directory beside the record.
 	recordPath := fabricengine.OriginRecordPathFor(l, l.WorktreeName)
-	for _, dir := range []string{filepath.Dir(recordPath), fabriclayout.RecordsLockDirPath(fabricengine.RecordsWorktreePath(l, l.WorktreeName))} {
+	for _, dir := range []string{filepath.Dir(recordPath), fabricengine.RecordsLockDirPath(fabricengine.RecordsWorktreePath(l, l.WorktreeName))} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatalf("MkdirAll %s: %v", dir, err)
 		}

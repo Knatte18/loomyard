@@ -22,6 +22,7 @@ const (
 	// ForwardingFileName is the hub's record of whether each orch's slack button is on.
 	ForwardingFileName = "forwarding.json"
 	// ChannelMapFileName is the hub's record of the Slack channel of each orch.
+	// The channels an older map named `channels.json` recorded are never read, so the relay leaves them alone.
 	ChannelMapFileName = "orch-channels.json"
 	// InboxDirName is the directory where the socket holder drops a wake hint for the hub's relay.
 	InboxDirName = "inbox"
@@ -35,15 +36,6 @@ const (
 	RelayLockFileName = "relay.lock"
 	// RelayLogFileName is the relay's log.
 	RelayLogFileName = "relay.log"
-	// PeersFileName is the machine's record of the machines whose Slack app the operator approved.
-	// It sits beside the credentials and is shared by every hub of the machine.
-	PeersFileName = "slack-peers.json"
-	// BridgeMapFileName is the hub's record of the bridge channel of each pair of orchs.
-	BridgeMapFileName = "bridge-channels.json"
-	// BridgeNoticesFileName is the hub's record of the bridge notices already sent.
-	BridgeNoticesFileName = "bridge-notices.json"
-	// BridgePostsFileName is the hub's record of the machine mail the relay has posted to bridge channels.
-	BridgePostsFileName = "bridge-posts.json"
 )
 
 // privateDirMode is the mode of a directory the engine creates, readable by its user alone.
@@ -57,8 +49,6 @@ type MachinePaths struct {
 	SocketLockPath string
 	// PresencePath is the machine's presence record.
 	PresencePath string
-	// PeersPath is the machine's record of the approved machines, which every hub of the machine shares.
-	PeersPath string
 }
 
 // Geometry is every path and fact the engine is told about one hub.
@@ -83,14 +73,6 @@ type Geometry struct {
 	SetupPath string
 	// PresencePath is the machine's presence record, which every hub of the machine shares.
 	PresencePath string
-	// PeersPath is the machine's record of the approved machines, which every hub of the machine shares.
-	PeersPath string
-	// BridgeMapPath is the hub's record of the bridge channel of each pair of orchs.
-	BridgeMapPath string
-	// BridgeNoticesPath is the hub's record of the bridge notices already sent.
-	BridgeNoticesPath string
-	// BridgePostsPath is the hub's record of the machine mail the relay has posted to bridge channels.
-	BridgePostsPath string
 	// ForwardingPath is the hub's record of whether each orch's slack button is on.
 	ForwardingPath string
 	// OutboxPath is the record of the mail the relay has read and not yet finished posting.
@@ -109,7 +91,7 @@ type Geometry struct {
 
 // MachinePaths returns the paths of the machine's own Slack files that the geometry carries.
 func (geom Geometry) MachinePaths() MachinePaths {
-	return MachinePaths{TokenPath: geom.TokenPath, SocketLockPath: geom.SocketLockPath, PresencePath: geom.PresencePath, PeersPath: geom.PeersPath}
+	return MachinePaths{TokenPath: geom.TokenPath, SocketLockPath: geom.SocketLockPath, PresencePath: geom.PresencePath}
 }
 
 // LiveHubs lists the Slack geometries of the machine's live hubs.

@@ -89,9 +89,6 @@ func runHelperChild(dir string) int {
 	return 0
 }
 
-// helperWaiterStderr is the file in a helper directory that takes the waiters' standard error.
-const helperWaiterStderr = "waiter.stderr"
-
 // startHelperWaiter starts this binary as the waiter over dir and returns it with the buffer its output lands in.
 func startHelperWaiter(t *testing.T, dir string) (*exec.Cmd, *bytes.Buffer) {
 	t.Helper()
@@ -99,14 +96,6 @@ func startHelperWaiter(t *testing.T, dir string) (*exec.Cmd, *bytes.Buffer) {
 	cmd.Env = append(os.Environ(), helperDirEnv+"="+dir)
 	var out bytes.Buffer
 	cmd.Stdout = &out
-	// A file, so that a process outliving the waiter holds no pipe its Wait would block on.
-	stderr, err := os.OpenFile(filepath.Join(dir, helperWaiterStderr), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-	if err != nil {
-		t.Fatalf("open the helper waiter's stderr file: %v", err)
-	}
-	t.Cleanup(func() { _ = stderr.Close() })
-	cmd.Stderr = stderr
-	cmd.WaitDelay = time.Second
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start the helper waiter: %v", err)
 	}

@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -22,7 +21,7 @@ func seedStencil(t *testing.T, hub *hubforge.Hub, name string, content []byte, m
 	t.Helper()
 
 	relPath := stencilstore.RelPath(name)
-	fullPath := filepath.Join(fabriclayout.StencilsDir(hub.Path), filepath.FromSlash(relPath))
+	fullPath := filepath.Join(fabricengine.StencilsDir(hub.Path), filepath.FromSlash(relPath))
 	if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
 		t.Fatalf("mkdir for %s: %v", relPath, err)
 	}
@@ -31,7 +30,7 @@ func seedStencil(t *testing.T, hub *hubforge.Hub, name string, content []byte, m
 	}
 
 	rec := fabricengine.NewMutations(filepath.Dir(hub.Path))
-	if _, err := fabricengine.CommitSeededStencils(hub.Path, fabriclayout.StencilsSubtreeRel(), fabriclayout.StencilsDir(hub.Path), []string{relPath}, message, rec); err != nil {
+	if _, err := fabricengine.CommitSeededStencils(hub.Path, fabricengine.StencilsSubtreeRel(), fabricengine.StencilsDir(hub.Path), []string{relPath}, message, rec); err != nil {
 		t.Fatalf("CommitSeededStencils(%s): %v", relPath, err)
 	}
 }

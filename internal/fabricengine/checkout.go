@@ -9,12 +9,22 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
+
+// CheckoutResult describes a completed switch of the warp and weft worktrees.
+// It embeds MutationRecord, which carries the mutations recorded over the call.
+type CheckoutResult struct {
+	MutationRecord
+	// Branch is the warp branch the warp worktree now points to,
+	// and the weft worktree points to RecordsBranchName(Branch).
+	Branch string `json:"branch"`
+	// RecordsWorktree is the filesystem path to the weft sibling worktree.
+	RecordsWorktree string `json:"records_worktree"`
+}
 
 // Checkout switches the warp worktree to branch and its weft sibling to RecordsBranchName(branch), all or nothing.
 // Before anything is switched, it refuses when the weft worktree has uncommitted changes or a move record.
@@ -22,7 +32,7 @@ import (
 // The anchor refusal wraps ErrAnchorChange.
 // It forks a missing weft branch from its parent, re-points the junctions, and refreshes the correspondence index.
 // A failure after the first switch rolls both sides back to their original branches.
-func (t *Topology) Checkout(l *lymcwd.Location, branch string) (res fabriclayout.CheckoutResult, err error) {
+func (t *Topology) Checkout(l *lymcwd.Location, branch string) (res CheckoutResult, err error) {
 	rec := NewMutations(l.HubPath)
 	defer func() { res.Mutations = rec.Snapshot() }()
 
@@ -31,48 +41,48 @@ func (t *Topology) Checkout(l *lymcwd.Location, branch string) (res fabriclayout
 	// The empty-marker refusal comes first: an empty marker would otherwise trip the dirtiness check below,
 	// and the refusal names its own way forward.
 	if stop := emptyMarkerStop(weftWorktree); stop != nil {
-		return fabriclayout.CheckoutResult{}, fmt.Errorf("%w: %s", stop, stop.WayForward)
+		return CheckoutResult{}, fmt.Errorf("%w: %s", stop, stop.WayForward)
 	}
 
 	// A standing move record is refused too:
 	// its re-run recovers against the branch the record was written on, and a switch would leave that branch behind.
 	moveStop, err := moveRecordStop(weftWorktree)
 	if err != nil {
-		return fabriclayout.CheckoutResult{}, err
+		return CheckoutResult{}, err
 	}
 	if moveStop != nil {
-		return fabriclayout.CheckoutResult{}, fmt.Errorf("%w: %s", moveStop, moveStop.WayForward)
+		return CheckoutResult{}, fmt.Errorf("%w: %s", moveStop, moveStop.WayForward)
 	}
 
 	// A coordinated branch switch out of a half-merged pair is refused;
 	// the foreign-state disposition belongs to Commit alone, so this check stays record-only.
 	blocked, err := mergeBlocksMutation(l.WorktreePath(), weftWorktree)
 	if err != nil {
-		return fabriclayout.CheckoutResult{}, err
+		return CheckoutResult{}, err
 	}
 	if blocked {
-		return fabriclayout.CheckoutResult{}, &ErrMergeInProgress{}
+		return CheckoutResult{}, &ErrMergeInProgress{}
 	}
 
 	// Refuse if the weft worktree is dirty to prevent half-switched pairs.
 	weftDirty, _, err := worktreeDirty(scopeTracked, weftWorktree)
 	if err != nil {
-		return fabriclayout.CheckoutResult{}, fmt.Errorf("check weft status: %w", err)
+		return CheckoutResult{}, fmt.Errorf("check weft status: %w", err)
 	}
 	if weftDirty {
-		return fabriclayout.CheckoutResult{}, fmt.Errorf("weft worktree has uncommitted changes; stash or commit before checkout")
+		return CheckoutResult{}, fmt.Errorf("weft worktree has uncommitted changes; stash or commit before checkout")
 	}
 
 	// A target weft branch anchored elsewhere would leave the pair's wiring and the worktree's anchor apart,
 	// so it is refused before anything is switched.
 	if err := refuseTargetAnchorChange(l, branch); err != nil {
-		return fabriclayout.CheckoutResult{}, err
+		return CheckoutResult{}, err
 	}
 
 	// Capture both original branches for rollback on later failure.
 	originalBranch, err := readBranch(l.WorktreePath())
 	if err != nil {
-		return fabriclayout.CheckoutResult{}, fmt.Errorf("capture warp branch: %w", err)
+		return CheckoutResult{}, fmt.Errorf("capture warp branch: %w", err)
 	}
 
 	// The weft branch capture is best-effort.
@@ -92,9 +102,9 @@ func (t *Topology) Checkout(l *lymcwd.Location, branch string) (res fabriclayout
 		[]string{"switch", branch},
 		l.WorktreePath(),
 	); err != nil {
-		return fabriclayout.CheckoutResult{}, fmt.Errorf("warp switch to branch %q failed: %w", branch, err)
+		return CheckoutResult{}, fmt.Errorf("warp switch to branch %q failed: %w", branch, err)
 	}
-	rec.Append(fabriclayout.KindWorktreeSwitched, l.WorktreePath(), branch)
+	rec.Append(KindWorktreeSwitched, l.WorktreePath(), branch)
 
 	// The weft side is switched next; a failure there rolls the warp switch back.
 	slug := filepath.Base(l.WorktreePath())
@@ -103,30 +113,30 @@ func (t *Topology) Checkout(l *lymcwd.Location, branch string) (res fabriclayout
 	weftCreated, err := t.switchOrForkWeft(rec, l, branch)
 	createdWeftBranch := ""
 	if weftCreated {
-		createdWeftBranch = fabriclayout.RecordsBranchName(branch)
+		createdWeftBranch = RecordsBranchName(branch)
 	}
 	if err != nil {
 		t.rollbackSwitch(rec, l, originalBranch, originalWeftBranch, createdWeftBranch)
-		return fabriclayout.CheckoutResult{}, err
+		return CheckoutResult{}, err
 	}
 
 	// Re-point junctions; roll back both sides on failure (weft already switched).
 	names, err := RepoWiredNames(l)
 	if err != nil {
 		t.rollbackSwitch(rec, l, originalBranch, originalWeftBranch, createdWeftBranch)
-		return fabriclayout.CheckoutResult{}, fmt.Errorf("re-point junctions: load fabric config: %w", err)
+		return CheckoutResult{}, fmt.Errorf("re-point junctions: load fabric config: %w", err)
 	}
 	if err := WireJunctionsWith(rec, l, slug, names); err != nil {
 		t.rollbackSwitch(rec, l, originalBranch, originalWeftBranch, createdWeftBranch)
-		return fabriclayout.CheckoutResult{}, fmt.Errorf("re-point junctions: %w", err)
+		return CheckoutResult{}, fmt.Errorf("re-point junctions: %w", err)
 	}
 
 	// Refresh the correspondence index for the new branch; a failure here does not undo the switch.
 	if err := refreshCorrIndexAfterSwitch(l.WorktreePath(), weftWorktree); err != nil {
-		return fabriclayout.CheckoutResult{}, fmt.Errorf("checkout to %q completed, but refreshing the correspondence index failed (re-run `lym fabric checkout` to retry): %w", branch, err)
+		return CheckoutResult{}, fmt.Errorf("checkout to %q completed, but refreshing the correspondence index failed (re-run `lym fabric checkout` to retry): %w", branch, err)
 	}
 
-	return fabriclayout.CheckoutResult{
+	return CheckoutResult{
 		Branch:          branch,
 		RecordsWorktree: weftWorktree,
 	}, nil
@@ -141,7 +151,7 @@ func (t *Topology) Checkout(l *lymcwd.Location, branch string) (res fabriclayout
 // The anchor change commits the new marker on the branch being left, which every machine that checks it out shares.
 // An anchor directory the current warp checkout does not track is first brought in by a code commit on that same branch.
 func refuseTargetAnchorChange(l *lymcwd.Location, branch string) error {
-	weftBranch := fabriclayout.RecordsBranchName(branch)
+	weftBranch := RecordsBranchName(branch)
 	weftRepoRoot, err := RecordsRepoRoot(l)
 	if err != nil {
 		return fmt.Errorf("resolve the weft repo to read %q: %w", weftBranch, err)
@@ -201,12 +211,8 @@ func targetWeftTip(weftRepoRoot, weftBranch string) (string, error) {
 	if err != nil || tip == "" {
 		return "", err
 	}
-	ns, err := originNamespaceAt(weftRepoRoot)
-	if err != nil {
-		return "", err
-	}
 	tracking := "refs/remotes/" + originRemoteName + "/" + weftBranch
-	if _, err := gitrepo.New(weftRepoRoot).FetchWithArgs("--no-tags", originRemoteName, ns.Branch(weftBranch)+":"+tracking); err != nil {
+	if _, err := gitrepo.New(weftRepoRoot).FetchWithArgs("--no-tags", originRemoteName, "refs/heads/"+weftBranch+":"+tracking); err != nil {
 		return "", fmt.Errorf("fetch weft branch %q from %q: %w", weftBranch, originRemoteName, err)
 	}
 	return tracking, nil
@@ -223,9 +229,9 @@ func targetWeftTip(weftRepoRoot, weftBranch string) (string, error) {
 // An unreachable origin is an error and forks nothing.
 func (t *Topology) switchOrForkWeft(rec *Mutations, l *lymcwd.Location, branch string) (created bool, err error) {
 	weftWorktree := RecordsWorktree(l)
-	weftBranch := fabriclayout.RecordsBranchName(branch)
+	weftBranch := RecordsBranchName(branch)
 
-	exists, fromOrigin, err := resolveWeftBranch(rec, l, weftBranch, true, readOriginOnce)
+	exists, fromOrigin, err := resolveWeftBranch(rec, l, weftBranch, true)
 	if err != nil {
 		return false, err
 	}
@@ -236,7 +242,7 @@ func (t *Topology) switchOrForkWeft(rec *Mutations, l *lymcwd.Location, branch s
 		); err != nil {
 			return fromOrigin, fmt.Errorf("weft switch to branch %q failed: %w", weftBranch, err)
 		}
-		rec.Append(fabriclayout.KindWorktreeSwitched, weftWorktree, weftBranch)
+		rec.Append(KindWorktreeSwitched, weftWorktree, weftBranch)
 		return fromOrigin, nil
 	}
 
@@ -252,8 +258,8 @@ func (t *Topology) switchOrForkWeft(rec *Mutations, l *lymcwd.Location, branch s
 	); err != nil {
 		return false, fmt.Errorf("fork weft branch %q from %q failed: %w", weftBranch, parentWeftBranch, err)
 	}
-	rec.Append(fabriclayout.KindWorktreeSwitched, weftWorktree, weftBranch)
-	rec.AppendRef(fabriclayout.KindBranchCreated, weftBranch, refDetail("records", weftWorktree, ""))
+	rec.Append(KindWorktreeSwitched, weftWorktree, weftBranch)
+	rec.AppendRef(KindBranchCreated, weftBranch, refDetail("records", weftWorktree, ""))
 
 	return true, nil
 }
@@ -270,11 +276,11 @@ func (t *Topology) switchOrForkWeft(rec *Mutations, l *lymcwd.Location, branch s
 // one KindWorktreeSwitched per successful switch, then the records of the deletion.
 func (t *Topology) rollbackSwitch(rec *Mutations, l *lymcwd.Location, originalBranch, originalWeftBranch, forkedWeftBranch string) {
 	if _, err := gitexec.Run([]string{"switch", originalBranch}, l.WorktreePath()); err == nil {
-		rec.Append(fabriclayout.KindWorktreeSwitched, l.WorktreePath(), originalBranch)
+		rec.Append(KindWorktreeSwitched, l.WorktreePath(), originalBranch)
 	}
 	if originalWeftBranch != "" {
 		if _, err := gitexec.Run([]string{"switch", originalWeftBranch}, RecordsWorktree(l)); err == nil {
-			rec.Append(fabriclayout.KindWorktreeSwitched, RecordsWorktree(l), originalWeftBranch)
+			rec.Append(KindWorktreeSwitched, RecordsWorktree(l), originalWeftBranch)
 		}
 	}
 	if forkedWeftBranch != "" {

@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/contracts/orchrole"
-	"github.com/Knatte18/loomyard/internal/slackengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -22,51 +21,6 @@ const (
 func seedStencils(t *testing.T) string {
 	t.Helper()
 	return stencilkit.Seed(t)
-}
-
-//testtiming:keep pins the pointer's one-line shape and the autonomy line with no presence path
-func TestWithLaunchFacts(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	const pointer = "Read the role at /orch/role.md."
-	tests := []struct {
-		name string
-		// presence is the presence the file holds; noPath leaves the presence path empty instead.
-		presence slackengine.Presence
-		noPath   bool
-		// autonomy is the seam's answer; nilSeam leaves the seam nil instead.
-		autonomy bool
-		nilSeam  bool
-		want     string
-	}{
-		{name: "OnUnderSlack", presence: slackengine.PresenceSlack, autonomy: true, want: pointer + presenceLine + autonomyOnLine},
-		{name: "OffUnderSlack", presence: slackengine.PresenceSlack, want: pointer + presenceLine + autonomyOffLine},
-		{name: "OnUnderTerminal", presence: slackengine.PresenceTerminal, autonomy: true, want: pointer + autonomyOnLine},
-		{name: "OffUnderTerminal", presence: slackengine.PresenceTerminal, want: pointer + autonomyOffLine},
-		{name: "OnWithNoPresencePath", noPath: true, autonomy: true, want: pointer + autonomyOnLine},
-		{name: "OffWithNoPresencePath", noPath: true, want: pointer + autonomyOffLine},
-		{name: "NilSeamReadsOff", presence: slackengine.PresenceSlack, nilSeam: true, want: pointer + presenceLine + autonomyOffLine},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			var p Paths
-			if !tt.noPath {
-				p.SlackPresencePath = presenceFileIn(t, tt.presence)
-			}
-			if !tt.nilSeam {
-				p.Autonomy = func() bool { return tt.autonomy }
-			}
-			got := WithLaunchFacts(p, pointer)
-			if got != tt.want {
-				t.Errorf("WithLaunchFacts = %q, want %q", got, tt.want)
-			}
-			if strings.Contains(got, "\n") {
-				t.Errorf("WithLaunchFacts = %q, want one line", got)
-			}
-		})
-	}
 }
 
 func TestRenderFiles_WriteWithoutLeadingComment(t *testing.T) {

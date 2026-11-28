@@ -318,23 +318,18 @@ func messageFields(message creelengine.Message) map[string]any {
 		fields["ended_unread_by"] = message.EndedUnreadBy
 		fields["ended_unread_at"] = message.EndedUnreadAt
 	}
-	if message.SendingHub != "" || message.SendingMachine != "" {
-		fields["trust"] = trustField(message)
-		fields["sending_id"] = message.SendingID
-	}
 	if message.SendingHub != "" {
+		fields["trust"] = trustField(message)
 		fields["sending_hub"] = message.SendingHub
+		fields["sending_id"] = message.SendingID
 		if message.SendingRepository != "" {
 			fields["sending_repository"] = message.SendingRepository
 		}
 	}
-	if message.SendingMachine != "" {
-		fields["sending_machine"] = message.SendingMachine
-	}
 	return fields
 }
 
-// trustField is the trust value of a message from another hub or another machine: trusted-orch or untrusted.
+// trustField is the trust value of a message from another hub: trusted-orch or untrusted.
 func trustField(message creelengine.Message) string {
 	if message.Trusted {
 		return "trusted-orch"
@@ -376,38 +371,37 @@ func postCmd() *cobra.Command {
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `post leaves the text as a message for the receiver strand and prints its id.
 A strand shuttle launched with creel's hooks gets the message in full at its
-next tool call or turn end.
-Any other strand gets a typed notice or reminder and reads it with "lym creel read".
+next tool call or turn end, an idle one woken with it.
+Any other strand, a hand-added one or a session launched without those hooks,
+gets a typed notice or reminder and reads the message with "lym creel read".
 
 With --reply <id> the text answers message <id> and goes to its sender, so no
 receiver is given. To answer mail you received, run
-lym creel post --reply <id> "<text>"; answer mail from
+lym creel post --reply <id> "<text>" with the id after the #; answer mail from
 EXTERNAL in your own reply text, since such a reply reaches only a waiting
 post --wait-reply. With --wait-reply the call waits for the reply, up to
 --timeout, and exits 5 if the message returns undelivered and 1 if creel
 recorded it unanswered after chasing its holder.
 
---expect-reply marks the message as expecting a reply without waiting;
---wait-reply marks it too.
+--expect-reply marks the message as expecting a reply, without waiting for it;
+--wait-reply marks it too. The receiver sees the mark beside the reply command,
+and the holder's reply clears it.
 
 With --parent the text goes to your parent orch, so no receiver is given: from a
-pair its recorded parent's, from a beam or the prime its own, even when down.
-A stopped or unstarted one passes it to a live orch above, else the prime's.
+pair the nearest live orch up from its recorded parent, else the prime's; from a
+beam or the prime that worktree's own orch when live. The answer names the
+resolved strand as receiver.
 
 --interrupt stops the receiver's running turn first; it needs a receiver
 shuttle launched with creel's hooks, and the answer says whether a turn was
 stopped as interrupted.
 
-A post to a strand or the Slack relay, ly:SLACK, answers receiver_live (and
-delivered for the relay); one not live gets a "creel: warning:" line.
-The relay takes a post only from an orch whose slack button is on.
+A post to a strand answers receiver_live, and a receiver not live gets a
+"creel: warning:" line on stderr.
 
 A receiver may be a strand of another hub, by its full name from lym creel
 hubs; --interrupt is refused. The daemon delivers such a post, so --wait-reply
 may wait up to an hour, and an undeliverable one returns with a CREEL notice.
-
-A receiver may be an orch of another machine, as osl-1046::ly:orch; only an
-orch with its slack button on posts to one, and --interrupt is refused.
 
 Example:
   lym creel post ly:impl "the schema changed, rebase before you go on"
@@ -433,29 +427,12 @@ Example:
 				return refuse(cmd, errors.New("--interrupt applies to a post to a receiver, not to a --reply; way forward: post --interrupt to the original sender by name when it is a strand, or post --reply <id> without --interrupt when it is EXTERNAL or a program"))
 			}
 			return runVerb(cmd, timeout, func(client *creelengine.Client, _ io.Writer) (result, error) {
-				// A waiting post hears the warning as progress, as soon as the post is stored, and a plain one in its answer.
-				warn := func(resp creelengine.Response) {
-					if resp.Warning != "" {
-						fmt.Fprintln(cmd.ErrOrStderr(), "creel: warning: "+resp.Warning)
-					}
-				}
-				addReceiverState := func(fields map[string]any, resp creelengine.Response) {
-					if resp.ReceiverLive != nil {
-						fields["receiver_live"] = *resp.ReceiverLive
-					}
-					if resp.Delivered != nil {
-						fields["delivered"] = *resp.Delivered
-					}
-				}
 				if replying {
 					resp, err := client.Call(creelengine.Request{Verb: creelengine.VerbReply, ID: replyID, Text: args[0]}, 0, nil)
 					if err != nil {
 						return result{}, err
 					}
-					warn(resp)
-					fields := map[string]any{"id": resp.ID, "sender": resp.Sender}
-					addReceiverState(fields, resp)
-					return result{fields: fields, done: fmt.Sprintf("message #%d was posted", resp.ID)}, nil
+					return result{fields: map[string]any{"id": resp.ID, "sender": resp.Sender}, done: fmt.Sprintf("message #%d was posted", resp.ID)}, nil
 				}
 				receiver, text := "", args[len(args)-1]
 				if toParent {
@@ -465,6 +442,12 @@ Example:
 					}
 				} else {
 					receiver = args[0]
+				}
+				// A waiting post hears the warning as progress, as soon as the post is stored, and a plain one in its answer.
+				warn := func(resp creelengine.Response) {
+					if resp.Warning != "" {
+						fmt.Fprintln(cmd.ErrOrStderr(), "creel: warning: "+resp.Warning)
+					}
 				}
 				req := creelengine.Request{Verb: creelengine.VerbPost, Receiver: receiver, Text: text, Wait: waitReply, Interrupt: interrupt, ExpectReply: expectReply}
 				resp, err := client.CallWatching(req, timeoutWhenWaiting(waitReply, timeout), nil, warn)
@@ -479,7 +462,9 @@ Example:
 				if interrupt {
 					fields["interrupted"] = resp.Interrupted
 				}
-				addReceiverState(fields, resp)
+				if resp.ReceiverLive != nil {
+					fields["receiver_live"] = *resp.ReceiverLive
+				}
 				done := fmt.Sprintf("message #%d was posted", resp.ID)
 				if !waitReply {
 					return result{fields: fields, done: done}, nil
@@ -622,8 +607,8 @@ and gets it through its hooks, or by its notice or reminder when it is a
 pane-mail strand; the message keeps its original sender and records who passed
 it on.
 
-A message from another hub or machine is forwarded only to a strand of this
-hub; to reach another hub's strand, post anew with lym creel post.
+A message from another hub is forwarded only to a strand of this hub; to reach
+another hub's strand, post anew with lym creel post.
 
 Example:
   lym creel forward 12 ly:reviewer`,
@@ -855,7 +840,7 @@ func logEntryFields(entry creelengine.LogEntry) map[string]any {
 		fields["id"] = entry.ID
 	}
 	for key, value := range map[string]string{
-		"from": entry.From, "to": entry.To, "by": entry.By, "receiver": entry.Receiver, "subject": entry.Subject, "reason": entry.Reason, "kind": entry.Kind,
+		"from": entry.From, "to": entry.To, "by": entry.By, "receiver": entry.Receiver, "subject": entry.Subject, "notice": entry.Notice, "reason": entry.Reason, "kind": entry.Kind,
 		"command": string(entry.Command), "argument": entry.Argument,
 	} {
 		if value != "" {
@@ -879,7 +864,6 @@ func logEntryFields(entry creelengine.LogEntry) map[string]any {
 	}
 	for key, value := range map[string]string{
 		"sending_hub": entry.SendingHub, "sending_shortname": entry.SendingShortname, "receiving_hub": entry.ReceivingHub,
-		"receiving_machine": entry.ReceivingMachine, "sending_machine": entry.SendingMachine, "slack_ts": entry.SlackTS,
 	} {
 		if value != "" {
 			fields[key] = value
@@ -1049,7 +1033,6 @@ func serveDaemon(ctx context.Context, hubPath string) error {
 		Geometry:  geometry,
 		Delivery:  newProductionHubDelivery(hubPath),
 		Hubs:      daemonHubs(hubPath, geometry.Shortname, root.Path()),
-		Bridge:    newSlackBridge(hubPath),
 		Clock:     realClock{},
 		ParentPID: proc.ParentPID,
 		GOOS:      runtime.GOOS,

@@ -22,8 +22,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// fabricSyncWayForward is the trailing clause of a refusal raised because the fabric sync failed.
-// A run handed over to another machine takes a different clause, since nothing more is pushed for it.
+// fabricSyncWayForward is the trailing clause of every refusal raised because the fabric sync failed.
 // The state is already saved locally, and fabricSync only commits the scoped _lym pathspec and never pushes.
 const fabricSyncWayForward = "way forward: the state is saved locally; `lym fabric commit` commits it, or the next bracket verb's own sync carries it; a session lym refuses the verb from reports status: FAILED and the orch runs it"
 
@@ -227,7 +226,7 @@ Example:
 
 			// The sync commits the scoped _lym pathspec, which holds the reports directory,
 			// so an archived report's rename is committed with the state.
-			if _, syncErr := fabricSync(c.openFabric, c.anchorRel, c.syncOptions, fmt.Sprintf("begin-batch %s", result.BatchName)); syncErr != nil {
+			if _, syncErr := fabricSync(c.openFabric, c.anchorRel, fmt.Sprintf("begin-batch %s", result.BatchName)); syncErr != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: batch %s begun but the fabric sync failed: %v; %s", result.BatchName, syncErr, fabricSyncWayForward)))
 				return nil
 			}

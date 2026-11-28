@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -20,15 +19,15 @@ import (
 // recordNotices installs a push notifier that records every notice it is given until the test ends.
 // It returns a reader of the recorded notices.
 // It changes process-global state, so the calling test must not be parallel.
-func recordNotices(t *testing.T) (notices func() []fabriclayout.PushNotice) {
+func recordNotices(t *testing.T) (notices func() []PushNotice) {
 	t.Helper()
-	var got []fabriclayout.PushNotice
-	restore := InstallPushNotifier(func(hubPath string, notice fabriclayout.PushNotice) (bool, error) {
+	var got []PushNotice
+	restore := InstallPushNotifier(func(hubPath string, notice PushNotice) (bool, error) {
 		got = append(got, notice)
 		return true, nil
 	})
 	t.Cleanup(restore)
-	return func() []fabriclayout.PushNotice { return slices.Clone(got) }
+	return func() []PushNotice { return slices.Clone(got) }
 }
 
 // TestNoticeRemoteTeardown covers the log line and the one creel notice of a failed remote step.
@@ -41,8 +40,8 @@ func TestNoticeRemoteTeardown(t *testing.T) {
 	worktree := t.TempDir()
 	weftTip := strings.Repeat("a", 40)
 	taskTip := strings.Repeat("b", 40)
-	weftTagPush := "push " + originRemoteName + " refs/tags/" + fabriclayout.ArchiveTagName(slug, weftTip)
-	taskTagPush := "push " + originRemoteName + " refs/tags/" + fabriclayout.ArchiveTagName(slug, taskTip)
+	weftTagPush := "push " + originRemoteName + " refs/tags/" + ArchiveTagName(slug, weftTip)
+	taskTagPush := "push " + originRemoteName + " refs/tags/" + ArchiveTagName(slug, taskTip)
 	removeAgain := "`lym fabric remove " + slug + " --remote`"
 	cleanupAgain := "`lym fabric cleanup --apply --remote`"
 	discardAgain := "run the command that discarded the task branch again"
@@ -54,7 +53,7 @@ func TestNoticeRemoteTeardown(t *testing.T) {
 		return job
 	}
 	archiveFailure := remoteOutcome{err: errors.New("tag push refused")}
-	weftDeleteFailure := remoteOutcome{weft: fabriclayout.CleanupBranchEntry{RemoteError: "lease lost"}}
+	weftDeleteFailure := remoteOutcome{weft: CleanupBranchEntry{RemoteError: "lease lost"}}
 	taskDeleteFailure := remoteOutcome{taskKept: "ls-remote refused", taskFailed: true}
 
 	tests := []struct {
@@ -67,8 +66,8 @@ func TestNoticeRemoteTeardown(t *testing.T) {
 		wantInLine []string
 		wantAbsent []string
 	}{
-		{"RemoveArchiveFailureWithWeftTip", withWeftTip(removeJob), archiveFailure, "/weft", []string{slug, "the archive of its records", "tag push refused", "git -C /weft " + weftTagPush, "`, then run " + removeAgain}, []string{"when origin still holds"}},
-		{"RemoveArchiveFailureWithWeftTipAndNoWeftRoot", withWeftTip(removeJob), archiveFailure, "", []string{slug, "the archive of its records", "tag push refused", removeAgain}, []string{"refs/tags/", "git -C", "when origin still holds"}},
+		{"RemoveArchiveFailureWithWeftTip", withWeftTip(removeJob), archiveFailure, "/weft", []string{slug, "the archive of its records", "tag push refused", "git -C /weft " + weftTagPush, "when origin still holds a branch of the pair", removeAgain}, nil},
+		{"RemoveArchiveFailureWithWeftTipAndNoWeftRoot", withWeftTip(removeJob), archiveFailure, "", []string{slug, "the archive of its records", "tag push refused", "when origin still holds a branch of the pair", removeAgain}, []string{"refs/tags/", "git -C"}},
 		{"RemoveArchiveFailureWithoutWeftTip", removeJob, archiveFailure, "/weft", []string{slug, "the archive of its records", "tag push refused", removeAgain}, []string{"refs/tags/"}},
 		{"CleanupArchiveFailureWithWeftTip", withWeftTip(cleanupJob), archiveFailure, "/weft", []string{slug, weftTagPush, cleanupAgain}, []string{"lym fabric remove"}},
 		{"RecordsRepositoryLookupFailure", withWeftTip(removeJob), remoteOutcome{err: errors.New("resolve weft repo root: no records repository"), weftRootErr: errors.New("resolve weft repo root: no records repository")}, "", []string{slug, "the lookup of its records repository", "no records repository", removeAgain}, []string{"the archive of its records", "refs/tags/"}},
@@ -80,7 +79,7 @@ func TestNoticeRemoteTeardown(t *testing.T) {
 		{"WeftAndTaskDeleteFailuresShareOneNotice", removeJob, remoteOutcome{weft: weftDeleteFailure.weft, taskKept: taskDeleteFailure.taskKept, taskFailed: true}, "",
 			[]string{"the delete of its records branch on origin", "lease lost", "the delete of its task branch on origin", "ls-remote refused"}, nil},
 		{"TaskBranchKeptIsNoFailure", removeJob, remoteOutcome{taskKept: "3 commit(s) not landed"}, "", nil, nil},
-		{"WeftBranchKeptIsNoFailure", removeJob, remoteOutcome{weft: fabriclayout.CleanupBranchEntry{RemoteKeptReason: "moved since the archive"}}, "", nil, nil},
+		{"WeftBranchKeptIsNoFailure", removeJob, remoteOutcome{weft: CleanupBranchEntry{RemoteKeptReason: "moved since the archive"}}, "", nil, nil},
 		{"CleanOutcome", removeJob, remoteOutcome{}, "", nil, nil},
 	}
 	for _, tt := range tests {
@@ -143,7 +142,7 @@ func TestSyncOptionsNotifier(t *testing.T) {
 			var own []string
 			options := SyncOptions{}
 			if tt.setOwn {
-				options.Notifier = func(hubPath string, notice fabriclayout.PushNotice) (bool, error) {
+				options.Notifier = func(hubPath string, notice PushNotice) (bool, error) {
 					own = append(own, notice.Line)
 					return true, nil
 				}
@@ -153,7 +152,7 @@ func TestSyncOptionsNotifier(t *testing.T) {
 			if notify == nil {
 				t.Fatalf("SyncOptions.notifier() = nil; want a notifier")
 			}
-			if _, err := notify("hub", fabriclayout.PushNotice{Line: "line"}); err != nil {
+			if _, err := notify("hub", PushNotice{Line: "line"}); err != nil {
 				t.Fatalf("notifier error = %v; want nil", err)
 			}
 
@@ -245,7 +244,7 @@ func TestRunTeardownChild_HoldsTheLockUntilItsInputCloses(t *testing.T) {
 	if err != nil || answer != teardownHeldSignal+"\n" {
 		t.Fatalf("child answer = (%q, %v); want %q", answer, err, teardownHeldSignal)
 	}
-	if held, acquired, err := lock.TryAcquireReadLock(fabriclayout.TeardownLockPath(hub, slug)); err != nil || acquired {
+	if held, acquired, err := lock.TryAcquireReadLock(TeardownLockPath(hub, slug)); err != nil || acquired {
 		if acquired {
 			_ = held.Release()
 		}
@@ -256,7 +255,7 @@ func TestRunTeardownChild_HoldsTheLockUntilItsInputCloses(t *testing.T) {
 	if err := <-done; err != nil {
 		t.Fatalf("RunTeardownChild() error = %v; want nil", err)
 	}
-	held, acquired, err := lock.TryAcquireWriteLock(fabriclayout.TeardownLockPath(hub, slug))
+	held, acquired, err := lock.TryAcquireWriteLock(TeardownLockPath(hub, slug))
 	if err != nil || !acquired {
 		t.Fatalf("TryAcquireWriteLock after the child ended = (%v, %v); want (true, nil)", acquired, err)
 	}
@@ -283,7 +282,7 @@ func TestRunTeardownChild_AnswersBusyOnAHeldLock(t *testing.T) {
 			if err := ensureTeardownLockDir(hub, slug); err != nil {
 				t.Fatalf("ensureTeardownLockDir() error = %v; want nil", err)
 			}
-			held, acquired, err := lock.TryAcquireWriteLock(fabriclayout.TeardownLockPath(hub, slug))
+			held, acquired, err := lock.TryAcquireWriteLock(TeardownLockPath(hub, slug))
 			if err != nil || !acquired {
 				t.Fatalf("TryAcquireWriteLock() = (%v, %v); want (true, nil)", acquired, err)
 			}
@@ -310,8 +309,8 @@ func TestTeardownChildArgs(t *testing.T) {
 		try  bool
 		want []string
 	}{
-		{"Wait", false, []string{"fabric", fabriclayout.TeardownChildVerb, "--slug", "s", "--wait", "2s"}},
-		{"Try", true, []string{"fabric", fabriclayout.TeardownChildVerb, "--slug", "s", "--wait", "2s", "--try"}},
+		{"Wait", false, []string{"fabric", TeardownChildVerb, "--slug", "s", "--wait", "2s"}},
+		{"Try", true, []string{"fabric", TeardownChildVerb, "--slug", "s", "--wait", "2s", "--try"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

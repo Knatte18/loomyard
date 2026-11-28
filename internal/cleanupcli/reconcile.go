@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hibernateengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -28,12 +27,12 @@ const (
 const reentry = "then re-run lym cleanup --apply from the prime"
 
 // reconcileHub runs the hub-scope origin reconcile from the prime, judging only unless apply is set.
-func reconcileHub(prime *lymcwd.Location, apply bool) (fabriclayout.OriginReport, error) {
+func reconcileHub(prime *lymcwd.Location, apply bool) (fabricengine.OriginReport, error) {
 	teardown, err := pairteardown.New(prime)
 	if err != nil {
-		return fabriclayout.OriginReport{}, err
+		return fabricengine.OriginReport{}, err
 	}
-	scope := fabriclayout.ReconcileScope{JudgeOnly: !apply}
+	scope := fabricengine.ReconcileScope{JudgeOnly: !apply}
 	return fabricengine.ReconcileOrigin(prime, scope, teardown.OriginSeams(cleanupSeamOptions(prime)), fabricengine.ReconcileOptions{})
 }
 
@@ -82,7 +81,7 @@ func wakeEntry(prime *lymcwd.Location, slug string) (pauserecord.Entry, bool, er
 // sharedStopText renders each stop on Bolt or the prime's records branch as its way forward.
 // A stop that a re-run of cleanup retries also carries the re-entry.
 // It is empty when neither branch stopped.
-func sharedStopText(report fabriclayout.OriginReport) string {
+func sharedStopText(report fabricengine.OriginReport) string {
 	var stops []string
 	for _, branch := range report.Branches {
 		shared := branch.Repo == sideBolt || (branch.Repo == sideRecords && branch.Prime)
@@ -91,11 +90,11 @@ func sharedStopText(report fabriclayout.OriginReport) string {
 		}
 		reenters := false
 		switch branch.State {
-		case fabriclayout.BranchDirty, fabriclayout.BranchGone:
+		case fabricengine.BranchDirty, fabricengine.BranchGone:
 			reenters = true
-		case fabriclayout.BranchBusy:
+		case fabricengine.BranchBusy:
 			reenters = !branch.PushLockHeld
-		case fabriclayout.BranchRewound, fabriclayout.BranchRewritten, fabriclayout.BranchDiverged, fabriclayout.BranchAnchorStopped:
+		case fabricengine.BranchRewound, fabricengine.BranchRewritten, fabricengine.BranchDiverged, fabricengine.BranchAnchorStopped:
 		default:
 			continue
 		}

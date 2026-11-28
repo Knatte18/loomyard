@@ -1,8 +1,7 @@
 // config_test.go — unit tests for fabricengine.LoadConfig.
 //
-// Covers: happy-path with template keys present;
-// fabric.branch_prefix and fabric.pathspec parsing; environment variable resolution;
-// the not-initialized error path; the secret-file matcher a hub's fabric.secret_paths yields; and the push timing.
+// Covers: happy-path with template keys present, branch_prefix/pathspec parsing, and environment variable resolution;
+// the not-initialized error path; and the secret-file matcher a hub's secret_paths yields.
 
 package fabricengine_test
 
@@ -11,7 +10,6 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -20,11 +18,11 @@ import (
 
 // TestLoadConfig covers LoadConfig over a hand-written fabric config:
 // a valid config with all template keys parses both fields and Dirs();
-// an empty fabric.branch_prefix stays the empty string;
-// an environment variable in fabric.branch_prefix is resolved;
+// an empty branch_prefix stays the empty string;
+// an environment variable in branch_prefix is resolved;
 // a missing `_lym/` returns the fabric-specific not-initialized error, naming the reconcile verb that fixes it;
-// a machine override's fabric.branch_prefix wins over the hub file's;
-// and a local fabric.pathspec or fabric.warp_exclude is refused.
+// a machine override's branch_prefix wins over the hub file's;
+// and a local pathspec or warp exclude list is refused.
 //
 //testtiming:keep LoadConfig parsing both fields and Dirs(), keeping an empty prefix, resolving env references and naming the reconcile verb when uninitialized; coverage of its blocks by other tests does not show an assertion of this
 func TestLoadConfig(t *testing.T) {
@@ -171,73 +169,8 @@ func TestLoadConfig(t *testing.T) {
 	}
 }
 
-// TestConfig_PushTiming covers the push timing a fabric.yaml yields:
-// the shipped template's defaults, a value below one second floored,
-// and a ceiling below the interval raised to it, each raised value with one warning line naming its key.
-func TestConfig_PushTiming(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-	tests := []struct {
-		name    string
-		old     string
-		new     string
-		want    fabricengine.PushTiming
-		wantKey string
-	}{
-		{
-			name: "TemplateDefaults",
-			want: fabricengine.PushTiming{Interval: 60 * time.Second, Ceiling: 300 * time.Second, NoticeAfter: 30 * time.Minute},
-		},
-		{
-			name:    "IntervalBelowFloor",
-			old:     "push_interval_s: 60",
-			new:     "push_interval_s: 0",
-			want:    fabricengine.PushTiming{Interval: time.Second, Ceiling: 300 * time.Second, NoticeAfter: 30 * time.Minute},
-			wantKey: "fabric.push_interval_s",
-		},
-		{
-			name:    "CeilingBelowInterval",
-			old:     "push_ceiling_s: 300",
-			new:     "push_ceiling_s: 10",
-			want:    fabricengine.PushTiming{Interval: 60 * time.Second, Ceiling: 60 * time.Second, NoticeAfter: 30 * time.Minute},
-			wantKey: "fabric.push_ceiling_s",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			board := t.TempDir()
-			if err := os.MkdirAll(configengine.ConfigDir(board), 0o755); err != nil {
-				t.Fatalf("failed to create _lym/config: %v", err)
-			}
-			content := strings.Replace(fabricengine.ConfigTemplate(), tt.old, tt.new, 1)
-			if err := os.WriteFile(configengine.ConfigFile(board, "fabric"), []byte(content), 0o644); err != nil {
-				t.Fatalf("failed to write config: %v", err)
-			}
-			cfg, err := fabricengine.LoadConfig(configengine.Dirs{Board: board})
-			if err != nil {
-				t.Fatalf("LoadConfig() error = %v", err)
-			}
-
-			got, warnings := cfg.PushTiming()
-			if got != tt.want {
-				t.Errorf("PushTiming() = %+v; want %+v", got, tt.want)
-			}
-			if tt.wantKey == "" {
-				if len(warnings) != 0 {
-					t.Errorf("PushTiming() warnings = %q; want none", warnings)
-				}
-				return
-			}
-			if len(warnings) != 1 || !strings.HasPrefix(warnings[0], tt.wantKey+" ") {
-				t.Errorf("PushTiming() warnings = %q; want one line naming %s", warnings, tt.wantKey)
-			}
-		})
-	}
-}
-
 // TestLoadSecretPathMatcher covers the matcher a hub's fabric.yaml yields:
-// each pattern fabric.secret_paths adds refuses its paths, the shipped patterns still apply beside them,
+// each pattern secret_paths adds refuses its paths, the shipped patterns still apply beside them,
 // and a malformed added pattern fails as invalid config naming the key.
 func TestLoadSecretPathMatcher(t *testing.T) {
 	tiergate.Require(t, 0)

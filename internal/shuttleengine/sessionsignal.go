@@ -79,10 +79,6 @@ type SessionSignal struct {
 	// AgentID is the id of the subagent or fork that made a file edit;
 	// empty for an edit of the session itself and on every other kind.
 	AgentID string
-	// ContentHash is a hash of a file edit's file content right after the edit;
-	// equal hashes mean equal content.
-	// It is empty when the hook could not read the file and on every other kind.
-	ContentHash string
 	// Event is true when the same line also yields an event.
 	Event bool
 	// Raw is the exact hook payload line the signal was read from.

@@ -1,5 +1,4 @@
-// bouncerfiles.go holds the strict parsers for the Bouncer's three file contracts: verdict, ledger and focus,
-// and the renderers of the ledger and focus files the Bouncer itself writes.
+// bouncerfiles.go holds the strict parsers for the Bouncer's three file contracts: verdict, ledger and focus.
 // Parsers fail loud on a malformed file;
 // the Bouncer's Call turns that error into a logger warning and shedengine.Stuck.
 
@@ -25,6 +24,13 @@ const (
 	verdictCircling  bouncerVerdict = "CIRCLING"
 )
 
+// Legacy spellings an older binary's judge wrote.
+// Only parseRecordedVerdict reads them.
+const (
+	legacyVerdictApproved = "APPROVED"
+	legacyVerdictBlocking = "BLOCKING"
+)
+
 // verdictHeader mirrors a bouncer verdict file's YAML frontmatter shape.
 // Unknown extra keys are tolerated, because the decoder does not set KnownFields:
 // agent-written metadata in the header is harmless noise.
@@ -36,7 +42,7 @@ type verdictHeader struct {
 // parseVerdict parses a bouncer verdict file into a bouncerVerdict and its rationale.
 // Fails loud: the frontmatter must be present, closed, and valid YAML;
 // verdict must be exactly verdictConverged, verdictContinue or verdictCircling;
-// the match is case-sensitive;
+// the match is case-sensitive, so a legacy word is rejected;
 // rationale must be non-empty after strings.TrimSpace.
 func parseVerdict(content []byte) (bouncerVerdict, string, error) {
 	header, err := splitFrontmatter(content, "verdict")
@@ -63,6 +69,37 @@ func parseVerdict(content []byte) (bouncerVerdict, string, error) {
 	return bouncerVerdict(parsed.Verdict), parsed.Rationale, nil
 }
 
+// parseRecordedVerdict parses a verdict that was already on disk at Call entry.
+// It tries parseVerdict first.
+// Otherwise it reads a legacy APPROVED as verdictConverged, and a legacy BLOCKING as verdictContinue.
+// The legacy result is true for either alias.
+// The rest of the file must meet parseVerdict's rules: valid frontmatter and a non-empty rationale.
+func parseRecordedVerdict(content []byte) (verdict bouncerVerdict, rationale string, legacy bool, err error) {
+	verdict, rationale, strictErr := parseVerdict(content)
+	if strictErr == nil {
+		return verdict, rationale, false, nil
+	}
+
+	header, err := splitFrontmatter(content, "verdict")
+	if err != nil {
+		return "", "", false, err
+	}
+	var parsed verdictHeader
+	if err := yaml.Unmarshal([]byte(header), &parsed); err != nil {
+		return "", "", false, fmt.Errorf("bouncer: verdict file frontmatter is not valid YAML: %w", err)
+	}
+	if strings.TrimSpace(parsed.Rationale) == "" {
+		return "", "", false, strictErr
+	}
+	switch parsed.Verdict {
+	case legacyVerdictApproved:
+		return verdictConverged, parsed.Rationale, true, nil
+	case legacyVerdictBlocking:
+		return verdictContinue, parsed.Rationale, true, nil
+	}
+	return "", "", false, strictErr
+}
+
 // recordedVerdict reads and parses round's verdict file and ledger file inside runDir.
 // It returns the parsed verdict and ledger, and false if either file is missing or does not parse;
 // it also returns false when the ledger names another round.
@@ -77,7 +114,19 @@ func parseVerdict(content []byte) (bouncerVerdict, string, error) {
 //
 // The focus file is left out: it is an input to the next round rather than evidence about this one,
 // and it can be synthesized, so including it would let a missing focus file invalidate a judgment that happened.
+//
+// The verdict is read through parseRecordedVerdict,
+// so a run directory that an older binary judged still reads as judged.
 func recordedVerdict(runDir string, round int) (bouncerVerdict, ledgerFile, bool) {
+	return readJudgment(runDir, round, func(content []byte) (bouncerVerdict, error) {
+		verdict, _, _, err := parseRecordedVerdict(content)
+		return verdict, err
+	})
+}
+
+// harvestedVerdict reads the verdict of a judge that this Call spawned or attached.
+// It accepts the strict vocabulary only, so a legacy word counts as no harvest and the caller judges the round again.
+func harvestedVerdict(runDir string, round int) (bouncerVerdict, ledgerFile, bool) {
 	return readJudgment(runDir, round, func(content []byte) (bouncerVerdict, error) {
 		verdict, _, err := parseVerdict(content)
 		return verdict, err
@@ -144,9 +193,9 @@ type ledgerEntryYAML struct {
 	Key      string `yaml:"key"`
 	Rounds   []int  `yaml:"rounds"`
 	Status   string `yaml:"status"`
-	Class    string `yaml:"class,omitempty"`
-	Severity string `yaml:"severity,omitempty"`
-	Fix      string `yaml:"fix,omitempty"`
+	Class    string `yaml:"class"`
+	Severity string `yaml:"severity"`
+	Fix      string `yaml:"fix"`
 }
 
 // parseLedger parses a bouncer ledger file into a ledgerFile.
@@ -212,35 +261,6 @@ func parseLedger(content []byte) (ledgerFile, error) {
 		Entries: entries,
 		Prose:   frontmatterProse(content),
 	}, nil
-}
-
-// renderLedger marshals ledger into a ledger file's bytes: the YAML frontmatter, then the prose when there is any.
-// An entry's empty class, severity and fix are left out.
-func renderLedger(ledger ledgerFile) ([]byte, error) {
-	header := ledgerHeader{Round: ledger.Round, Ledger: make([]ledgerEntryYAML, len(ledger.Entries))}
-	for i, entry := range ledger.Entries {
-		header.Ledger[i] = ledgerEntryYAML{
-			Key:      entry.Key,
-			Rounds:   entry.Rounds,
-			Status:   entry.Status,
-			Class:    string(entry.Class),
-			Severity: string(entry.Severity),
-			Fix:      entry.Fix,
-		}
-	}
-	headerBytes, err := yaml.Marshal(header)
-	if err != nil {
-		return nil, fmt.Errorf("bouncer: render ledger file frontmatter: %w", err)
-	}
-	var out strings.Builder
-	out.WriteString("---\n")
-	out.Write(headerBytes)
-	out.WriteString("---\n")
-	if ledger.Prose != "" {
-		out.WriteString(ledger.Prose)
-		out.WriteString("\n")
-	}
-	return []byte(out.String()), nil
 }
 
 // readLedger reads and parses round's ledger file inside runDir, wrapping either failure with the round.

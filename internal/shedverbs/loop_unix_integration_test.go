@@ -36,31 +36,11 @@ func TestLoopIntegration_ChildTreeDiesWithLoop(t *testing.T) {
 		t.Fatalf("write the status file: %v", err)
 	}
 
-	// stuckStepEvidence renders what the step's processes wrote and the status file.
-	stuckStepEvidence := func() string {
-		stderr, _ := os.ReadFile(filepath.Join(dir, helperWaiterStderr))
-		log, _ := os.ReadFile(spec.Loop.LogPath)
-		file, err := os.ReadFile(spec.StatusPath)
-		return fmt.Sprintf("stderr:\n%s\nloop log:\n%s\nstatus file (read error %v):\n%s", stderr, log, err, file)
-	}
-	t.Cleanup(func() {
-		if t.Failed() {
-			t.Log(stuckStepEvidence())
-		}
-	})
-
 	waiter, _ := startHelperWaiter(t, dir)
 	t.Cleanup(func() { _ = waiter.Process.Kill() })
 	var record LoopPIDRecord
 	var grandchild int
-	// A wait that times out below fails before the pids are all known, so this kills what the record names by then.
-	t.Cleanup(func() {
-		if left, found, err := ReadLoopPIDRecord(spec.Loop.PIDPath); err == nil && found && left.Child.PID != 0 {
-			_, _ = proc.KillTree(left.Child)
-			_ = proc.KillPID(left.Loop.PID)
-		}
-	})
-	waitUntil(t, loopStepBound, "the loop's step child to start a grandchild", func() bool {
+	waitUntil(t, 30*time.Second, "the loop's step child to start a grandchild", func() bool {
 		found := false
 		var err error
 		record, found, err = ReadLoopPIDRecord(spec.Loop.PIDPath)
@@ -101,17 +81,8 @@ func TestLoopIntegration_ChildTreeDiesWithLoop(t *testing.T) {
 	})
 
 	second, out := startHelperWaiter(t, dir)
-	secondExit := make(chan error, 1)
-	go func() { secondExit <- second.Wait() }()
-	select {
-	case err := <-secondExit:
-		if err == nil {
-			t.Errorf("the second waiter exited 0; want the loop-exited stop's exit 1")
-		}
-	case <-time.After(loopStepBound):
-		_ = second.Process.Kill()
-		<-secondExit
-		t.Fatalf("the second waiter did not exit within %s", loopStepBound)
+	if err := second.Wait(); err == nil {
+		t.Errorf("the second waiter exited 0; want the loop-exited stop's exit 1")
 	}
 	var env map[string]any
 	if err := json.Unmarshal(bytes.TrimSpace(out.Bytes()), &env); err != nil {
@@ -162,7 +133,7 @@ func TestLoopIntegration_PanicKillsTheInFlightStepTree(t *testing.T) {
 	fx.spec.Loop.Runner = func(context.Context, ChildRequest) (Child, error) {
 		return groupChild{record: proc.TreeRecord{PID: pid, PGID: pid, StartTime: startTime}}, nil
 	}
-	// The loop reads its clock right after it records the child, so the read panics with the child in flight.
+	// The loop reads its clock right after it records the child, so this panics with the child in flight.
 	fx.spec.Loop.Now = func() time.Time { panic("boom") }
 
 	env, _ := fx.execute()
@@ -229,7 +200,7 @@ func TestLoopIntegration_KeeperWaitsThroughATerminatingSignal(t *testing.T) {
 	}
 
 	want := regexp.MustCompile(`^; loop exit: lym shed: loop loop-x process [0-9]+ exited: exit status 3$`)
-	if got := loopExitEvidence(spec.Loop, "loop-x", ""); !want.MatchString(got) {
+	if got := loopExitEvidence(spec.Loop.LogPath, "loop-x"); !want.MatchString(got) {
 		t.Errorf("loopExitEvidence = %q; want it to match %s", got, want)
 	}
 }
@@ -319,7 +290,7 @@ func TestLoopIntegration_ProcessExitsAreMarked(t *testing.T) {
 
 			tt.run(t, spec, tt.script, tt.wantCode, tt.wantStarts)
 
-			if got := loopExitEvidence(spec.Loop, "loop-x", ""); !tt.want.MatchString(got) {
+			if got := loopExitEvidence(spec.Loop.LogPath, "loop-x"); !tt.want.MatchString(got) {
 				t.Errorf("loopExitEvidence = %q; want it to match %s", got, tt.want)
 			}
 		})

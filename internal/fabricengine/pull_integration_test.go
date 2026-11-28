@@ -18,7 +18,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -42,7 +41,7 @@ func buildReconcileFixture(t *testing.T, fixturesDir string, n int) (f *fabricen
 	for i := 0; i < n; i++ {
 		warpSHA := fabricengine.CommitWarpForTest(t, warpPath, fmt.Sprintf("warp change %d", i))
 		fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeRecords(), fmt.Sprintf("weft change %d", i))
-		weftSHA, committed, err := fabricengine.CommitWeftForTest(f, []string{"_lym"}, fabriclayout.DefaultCommitMessage, fabricengine.SyncOptions{})
+		weftSHA, committed, err := fabricengine.CommitWeftForTest(f, []string{"_lym"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{})
 		if err != nil {
 			t.Fatalf("commitWeft() round %d error = %v", i, err)
 		}
@@ -235,13 +234,13 @@ func TestPull_WeftDivergedAndWarpFetchFails_PartialError(t *testing.T) {
 	weftFixture := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
 
-	// A real hub's weft primary checks out the suffixed branch (fabriclayout.RecordsBranchName), never bare "main".
+	// A real hub's weft primary checks out the suffixed branch (fabricengine.RecordsBranchName), never bare "main".
 	// That branch carries no upstream until something pushes it.
 	// A fresh hub's primary stays local-only until the first real push.
 	// Establish that upstream explicitly here.
 	// Without it, weftHasUpstream() reports false, so the weft pull is skipped as a vacuous success.
 	// The genuine divergence this test needs never happens.
-	weftBranch := fabriclayout.RecordsBranchName("main")
+	weftBranch := fabricengine.RecordsBranchName("main")
 	gitkit.MustRun(t, weftFixture.PrimeRecords(), "git", "push", "-u", "origin", weftBranch)
 
 	cloneB := filepath.Join(fixturesDir, "weft-cloneB")
@@ -327,7 +326,7 @@ func newDivergedWeftFixture(t *testing.T, originRel, originContent, originMarker
 	f, warpPath, bareDir, weftFixture, _, _, _ := buildReconcileFixture(t, fixturesDir, 1)
 	weftPath := weftFixture.PrimeRecords()
 
-	weftBranch := fabriclayout.RecordsBranchName("main")
+	weftBranch := fabricengine.RecordsBranchName("main")
 	gitkit.MustRun(t, weftPath, "git", "push", "-u", "origin", weftBranch)
 
 	cloneB := filepath.Join(fixturesDir, "weft-diverge-cloneB")
@@ -351,44 +350,6 @@ func newDivergedWeftFixture(t *testing.T, originRel, originContent, originMarker
 	return divergedWeftFixture{
 		f: f, warpPath: warpPath, weftPath: weftPath, weftBranch: gitkit.CurrentBranch(t, weftPath),
 		originSHA: originSHA, localSHA: localSHA, warpFFSHA: warpFFSHA, weftHeadWas: localSHA,
-	}
-}
-
-// TestPull_ReplayHeldByAPauseWithoutTheWeftLocks covers a pull whose weft replay a pause holds.
-// At every wait the pause makes, the weft write lock and the push lock are free for another holder.
-// The pull then replays the local weft commit onto origin's.
-// The replay makes no network call, so the admission before its locks is the only wait of its own.
-// The test pins the count of waits made while the weft head still sits at the local commit:
-// the pull's gated calls before the replay, plus that admission.
-// Serial: it installs the process's network gate.
-func TestPull_ReplayHeldByAPauseWithoutTheWeftLocks(t *testing.T) {
-	tiergate.Require(t, 1)
-	fx := newDivergedWeftFixture(t, "from-clone-b.txt", "b", "", "local-only.txt", "local weft change", "")
-	lockDir := fabriclayout.RecordsLockDirPath(fx.weftPath)
-	waitsBeforeReplay := 0
-	waits := fabricengine.PassingPauseGateForTest(t, func() {
-		for _, name := range []string{fabricengine.WeftWriteLockFileForTest, fabricengine.WeftPushLockFileForTest} {
-			if !fabricengine.LockFreeForTest(t, filepath.Join(lockDir, name)) {
-				t.Errorf("%s was held while the pause held a call of the pull; want it free", name)
-			}
-		}
-		if fabricengine.CurrentSHAForTest(t, fx.weftPath) == fx.localSHA {
-			waitsBeforeReplay++
-		}
-	})
-
-	result, err := fx.f.Pull(fabricengine.SyncOptions{})
-
-	if err != nil || !result.WeftPulled {
-		t.Errorf("Pull() = (%+v, %v); want the weft replayed", result, err)
-	}
-	if *waits == 0 {
-		t.Errorf("the pause held no call of the pull; want at least one")
-	}
-	const wantWaitsBeforeReplay = 3
-	if waitsBeforeReplay != wantWaitsBeforeReplay {
-		t.Errorf("waits before the replay = %d; want %d: the gated calls of the pull before it, and the admission before the weft locks",
-			waitsBeforeReplay, wantWaitsBeforeReplay)
 	}
 }
 
@@ -596,7 +557,7 @@ func TestPull_WeftDivergedWarpAdvancesCleanly(t *testing.T) {
 		t.Parallel()
 		fx := newDivergedWeftFixture(t, "from-clone-b.txt", "b", "", "local-only.txt", "local weft change", "")
 		warpHeadWas := fabricengine.CurrentSHAForTest(t, fx.warpPath)
-		writeMoveRecord(t, fx.weftPath, fabriclayout.MoveRecord{A: ".", B: "x", Kind: fabriclayout.MoveKindMove, PID: 4242})
+		writeMoveRecord(t, fx.weftPath, fabricengine.MoveRecord{A: ".", B: "x", Kind: fabricengine.MoveKindMove, PID: 4242})
 
 		result, err := fx.f.Pull(fabricengine.SyncOptions{})
 
@@ -683,39 +644,6 @@ func TestPull_WeftUpstreamUnreadableIsAnError(t *testing.T) {
 	}
 	if result.WeftPulled {
 		t.Errorf("Pull() WeftPulled = true; want false beside the error")
-	}
-}
-
-// TestPull_RecordsStoreWithNoNamespacedFetchRefspecFails covers a one-repository pair.
-// Its records store lost its fetch refspecs.
-// Origin's records branch is ahead, yet the store maps nothing from origin's namespace.
-// The pull fails naming the commands that restore the refspecs.
-// It reports no weft pull and leaves the records branch where it was.
-func TestPull_RecordsStoreWithNoNamespacedFetchRefspecFails(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-	const slug = "ns-pull-norefspec"
-	h := hubforge.NewOneRepoHub(t, hubforge.OneRepoOptions{})
-	recordsBranch := fabriclayout.RecordsBranchName(hubforge.AddPair(t, h, slug).Branch)
-	sibling := h.PairRecordsSibling(slug)
-	before := gitkit.RevParse(t, sibling, "HEAD")
-	gitkit.CommitFile(t, sibling, "ahead.txt", "ahead\n", "origin's next records commit")
-	oneRepoPushNamespaced(t, sibling, recordsBranch)
-	gitkit.Git(t, sibling, "reset", "--hard", before)
-	gitkit.Git(t, sibling, "config", "--unset-all", "remote.origin.fetch")
-	fabricengine.ForgetOriginNamespaceForTest(sibling)
-
-	result, err := oneRepoPairFabric(t, h, slug).Pull(fabricengine.SyncOptions{})
-
-	want := "`git -C " + sibling + " config --replace-all remote.origin.fetch"
-	if err == nil || !strings.Contains(err.Error(), want) {
-		t.Fatalf("Pull() = %+v, %v; want an error naming %q", result, err, want)
-	}
-	if result.WeftPulled {
-		t.Errorf("Pull() WeftPulled = true; want false beside the error")
-	}
-	if got := gitkit.RevParse(t, sibling, "HEAD"); got != before {
-		t.Errorf("records branch = %s after the pull; want it left at %s", got, before)
 	}
 }
 

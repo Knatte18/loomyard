@@ -9,8 +9,7 @@
 // the overview windows first, then the agents in start order, then the shell button.
 // A window carrying @lym_hidden gets no window or own-window button.
 // Line 2 lists the session carrying @lym_prime_session first, then every other session in the #{S:} loop's own order.
-// Line 2 ends with the hub's sync field, then the current session's check mark, before the clock.
-// The server-global @lym_sync_status_command holds the line of the sync field's `#()` job, beside the Slack state line.
+// Line 2 ends with the current session's check mark, before the clock.
 // The check mark is read from the session user options @lym_check, @lym_check_state and @lym_check_start.
 // Line 3 is the follow button, then the slack toggle, the RC button and the away toggle, then the action row.
 // The slack toggle is the button of the orch whose session it is, drawn only in a prime's or a beam's session.
@@ -19,7 +18,7 @@
 // The server-global @lym_slack_state_command holds the job's line.
 // The RC button belongs to the agent of the window's active pane.
 // It is drawn only while that pane carries @lym_strand_name and the session carries @lym_button_dir.
-// It is lit while that pane carries @lym_rc, the mark set once the pane's session records its remote control connecting.
+// It is lit while that pane carries @lym_rc, the mark a click on RC or a launch with remote control sets.
 // The action row is read from the session user options @lym_buttons_plain and @lym_buttons_agent.
 // No Go decision reads @strand_color, @lym_unseen or @lym_prime_session.
 // Neither does one read a check mark's options or the action row's options.
@@ -128,18 +127,8 @@ const (
 	// a user range labelled follow, lit green while the current session's @lym_follow is not off, and unlit while it is.
 	followButtonFormat = "#[range=user|follow #{?#{!=:#{@lym_follow},off},bg=green fg=black bold," + unlitButtonStyle + "}] follow #[norange list=on default] "
 
-	// syncStatusCommandOption is the server-global user option holding the shell line the sync field's job runs.
-	// Like the bar's other options it is display only, and no Go decision reads it.
-	syncStatusCommandOption = "@lym_sync_status_command"
-
-	// syncStatusFormat is the `#()` job of the sync field, drawing what the line in syncStatusCommandOption prints.
-	syncStatusFormat = "#(#{E:" + syncStatusCommandOption + "})"
-
-	// syncFieldFormat is the sync field and the space after it, drawing nothing while syncStatusCommandOption is unset.
-	syncFieldFormat = "#{?#{" + syncStatusCommandOption + "}," + syncStatusFormat + " ,}"
-
 	// statusFormatSessions is status-format[1]: the prime's session button, then one button per other session.
-	// The hub's sync field, the current session's check mark and the time follow, right-aligned.
+	// The current session's check mark and the time follow, right-aligned.
 	// The first loop draws only a session matching both reedSessionFilter and the prime mark;
 	// it draws nothing when no session is marked.
 	// The second draws every other session matching reedSessionFilter, in the #{S:} loop's own order:
@@ -148,7 +137,7 @@ const (
 	statusFormatSessions = listPrologueFormat +
 		"#{S:#{?#{&&:" + reedSessionFilter + ",#{==:#{" + primeSessionOption + "},1}}," + sessionButtonFormat + ",}}" +
 		"#{S:#{?#{&&:" + reedSessionFilter + ",#{!=:#{" + primeSessionOption + "},1}}," + sessionButtonFormat + ",}}" +
-		"#[nolist align=right]" + syncFieldFormat + checkMarkFormat + "%H:%M "
+		"#[nolist align=right]" + checkMarkFormat + "%H:%M "
 
 	// slackStateCommandOption is the server-global user option holding the shell line the Slack toggles' state job runs.
 	// Like the bar's other options it is display only, and no Go decision reads it.

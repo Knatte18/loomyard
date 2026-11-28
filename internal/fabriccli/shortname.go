@@ -10,7 +10,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/output"
 )
 
@@ -23,7 +22,7 @@ func runShortname(ctx context.Context, out io.Writer, args []string) int {
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
-	boltDir := fabriclayout.BoltDir(l.HubPath)
+	boltDir := fabricengine.BoltDir(l.HubPath)
 	recorded, found := fabricengine.ReadShortname(boltDir)
 
 	if len(args) == 0 {

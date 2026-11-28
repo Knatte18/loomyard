@@ -4,7 +4,6 @@ package samplerengine
 
 import (
 	"os"
-	"slices"
 	"strings"
 	"testing"
 
@@ -37,7 +36,6 @@ func TestSessionSpec(t *testing.T) {
 		Slug:               "try-the-thing",
 		WorktreeRoot:       "/work/try-the-thing",
 		DecisionRecordPath: "/work/try-the-thing/decision.md",
-		LanguageSkills:     []string{"scribe:golang-comments", "scribe:golang-testing"},
 		Engines:            fixedEngineNamer{},
 	}
 	cfg := Config{Agent: "opus[high]"}
@@ -48,8 +46,8 @@ func TestSessionSpec(t *testing.T) {
 		if err != nil {
 			t.Fatalf("SessionSpec() = _, %v; want nil error", err)
 		}
-		if !spec.Interactive || !spec.Unawaited || !spec.DenyPublish || !spec.AllowRawTmux {
-			t.Errorf("SessionSpec() Interactive, Unawaited, DenyPublish, AllowRawTmux = %v, %v, %v, %v; want all true", spec.Interactive, spec.Unawaited, spec.DenyPublish, spec.AllowRawTmux)
+		if !spec.Interactive || !spec.Unawaited || !spec.DenyPublish {
+			t.Errorf("SessionSpec() Interactive, Unawaited, DenyPublish = %v, %v, %v; want all true", spec.Interactive, spec.Unawaited, spec.DenyPublish)
 		}
 		if spec.Role != Role || spec.Segment != segmentcolor.Darn {
 			t.Errorf("SessionSpec() Role, Segment = %q, %q; want %q, %q", spec.Role, spec.Segment, Role, segmentcolor.Darn)
@@ -58,8 +56,8 @@ func TestSessionSpec(t *testing.T) {
 			t.Errorf("SessionSpec() PromptEngine = %q; want %q", spec.PromptEngine, "claude")
 		}
 		stencilkit.RequireEditDirectiveOf(t, stencilsDir, spec.Prompt, "claude", "codex")
-		if spec.ConfigRole != agentconfig.RoleSampler || !slices.Equal(spec.Skills, valid.LanguageSkills) {
-			t.Errorf("SessionSpec() ConfigRole, Skills = %q, %v; want %q, %v", spec.ConfigRole, spec.Skills, agentconfig.RoleSampler, valid.LanguageSkills)
+		if spec.ConfigRole != agentconfig.RoleSampler || len(spec.Skills) != 0 {
+			t.Errorf("SessionSpec() ConfigRole, Skills = %q, %v; want %q and no skills", spec.ConfigRole, spec.Skills, agentconfig.RoleSampler)
 		}
 		directive, err := parentdirective.Directive(stencilsDir, "hub:orch", true)
 		if err != nil {

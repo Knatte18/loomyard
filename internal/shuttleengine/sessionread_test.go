@@ -76,8 +76,6 @@ type readRun struct {
 	outputExists bool
 	// engine is the engine name the record carries; empty leaves the record naming none.
 	engine string
-	// relaunchingAt is the RFC 3339 relaunching mark the record carries; empty leaves none.
-	relaunchingAt string
 }
 
 func TestReadSessionStates(t *testing.T) {
@@ -110,23 +108,7 @@ func TestReadSessionStates(t *testing.T) {
 		wantSessionStartAt time.Time
 		// wantSessionID is the first reading's SessionID.
 		wantSessionID string
-		// wantRelaunching is the first reading's Relaunching.
-		wantRelaunching bool
 	}{
-		{
-			name:            "a relaunching record within its bound reads unknown relaunching, whatever its events end on",
-			runs:            map[string]readRun{"run-a": {outcome: runOutcomeRunning, events: startLine + endLine, relaunchingAt: now.Add(-time.Second).Format(time.RFC3339)}},
-			engine:          readEngine{apiError: true},
-			want:            []wanted{{"hub:task:driver", SessionUnknown, SessionCauseRelaunching, now}},
-			wantSessionID:   "recorded-session",
-			wantRelaunching: true,
-		},
-		{
-			name:          "a relaunching record past its bound reads from its events like any running record",
-			runs:          map[string]readRun{"run-a": {outcome: runOutcomeRunning, events: startLine, relaunchingAt: now.Add(-time.Hour).Format(time.RFC3339)}},
-			want:          []wanted{{"hub:task:driver", SessionBusy, SessionCauseTurn, start}},
-			wantSessionID: "recorded-session",
-		},
 		{
 			name:               "a session start after the turn end leaves the reading and is reported as SessionStartAt",
 			runs:               map[string]readRun{"run-a": {outcome: runOutcomeRunning, events: startLine + endLine + "SESSION@2026-10-08T07:10:00Z\n", outputExists: true}},
@@ -221,7 +203,7 @@ func TestReadSessionStates(t *testing.T) {
 				engine = tt.engine.fakeEngine
 			}
 
-			got, err := ReadSessionStates(Config{RunDir: root, StartupTimeoutS: 30}, t.TempDir(), singleEngineSet(engine), now)
+			got, err := ReadSessionStates(Config{RunDir: root}, t.TempDir(), singleEngineSet(engine), now)
 			if err != nil {
 				t.Fatalf("ReadSessionStates error = %v; want nil", err)
 			}
@@ -237,9 +219,6 @@ func TestReadSessionStates(t *testing.T) {
 			}
 			if len(got) > 0 && got[0].SessionID != tt.wantSessionID {
 				t.Errorf("ReadSessionStates SessionID = %q; want %q", got[0].SessionID, tt.wantSessionID)
-			}
-			if len(got) > 0 && got[0].Relaunching != tt.wantRelaunching {
-				t.Errorf("ReadSessionStates Relaunching = %v; want %v", got[0].Relaunching, tt.wantRelaunching)
 			}
 		})
 	}
@@ -332,7 +311,6 @@ func writeReadRun(t *testing.T, root, name string, run readRun) {
 	state := RunState{
 		RunID: name, StrandGUID: "guid-" + name, StrandName: "hub:task:driver", SessionID: run.sessionID,
 		EventsPath: eventsPath, Outcome: run.outcome, PID: 4343, PromptOffset: run.promptOffset, Engine: run.engine,
-		RelaunchingAt: run.relaunchingAt,
 	}
 	if run.outputExists {
 		output := filepath.Join(runDir, "report.md")

@@ -15,7 +15,6 @@ const verdictHeading = "## Regression check"
 // so a hand edit of a record never reaches the landing, and it runs no capture.
 // The section names the scope, the commit the counted baseline was captured at, and the last check's counts.
 // It names the expectation entries no cell used and the capture files and keys marked as metadata.
-// It also lists each loosened check of the last check with its ruling and cause.
 // It also names the open ranges the judge looked into and the parent's amendments.
 // It returns "" when no scope record exists,
 // so a task no Drift row recorded a scope for carries no section, and it creates no directory.
@@ -55,13 +54,12 @@ func renderVerdict(rec Records, baseHead string) string {
 			mode = scope.Diff
 		}
 		if baseHead != "" {
-			lines = append(lines, fmt.Sprintf("- Baseline: captured at `%s`, the base of this branch.", baseHead))
+			lines = append(lines, fmt.Sprintf("- Baseline: captured at `%s`, the task's branch point.", baseHead))
 		}
 		lines = append(lines, "- Diff: "+diffText(mode))
 		lines = append(lines, checkLines(scope.LastCheck)...)
-		lines = append(lines, loosenedLines(scope.LastCheck.Loosened)...)
 	default:
-		lines = append(lines, "- Check: not run.")
+		lines = append(lines, oldCheckLines(scope)...)
 	}
 	lines = append(lines, metadataLines(scope.Metadata)...)
 	lines = append(lines, rangeLines(rec.Judged.Ranges)...)
@@ -93,13 +91,20 @@ func metadataLines(marks Volatile) []string {
 
 // scopeText renders the scope line's value.
 func scopeText(scope ScopeRecord) string {
-	if scope.Scope != ScopeOff {
-		return "full."
+	switch scope.Scope {
+	case ScopeOff:
+		if scope.ScopeSource != "" {
+			return fmt.Sprintf("off, set by `%s`; the task is not regression-checked.", scope.ScopeSource)
+		}
+		return "off; the task is not regression-checked."
+	case ScopePartial:
+		quoted := make([]string, len(scope.Skip))
+		for i, test := range scope.Skip {
+			quoted[i] = "`" + test + "`"
+		}
+		return "partial, an old scope that left out the cases " + strings.Join(quoted, ", ") + "."
 	}
-	if scope.ScopeSource != "" {
-		return fmt.Sprintf("off, set by `%s`; this change is not regression-checked.", scope.ScopeSource)
-	}
-	return "off; this change is not regression-checked."
+	return "full."
 }
 
 // diffText renders the diff line's value.
@@ -162,4 +167,43 @@ func amendmentLines(amendments []Amendment) []string {
 		lines = append(lines, "    ```")
 	}
 	return lines
+}
+
+// oldCheckLines renders the check lines of a scope with no recorded last check.
+// It reads the old compare, waiver and acceptance fields.
+// It says the check ran under the old Drift, or that none ran.
+func oldCheckLines(scope ScopeRecord) []string {
+	if scope.ComparedAt == "" && scope.WaivedAt == "" && len(scope.Accepted) == 0 {
+		return []string{"- Check: not run."}
+	}
+	lines := []string{"- The check ran under the old Drift, which compared whole profiles."}
+	if scope.BaselineHead != "" {
+		lines = append(lines, fmt.Sprintf("- Baseline: captured at `%s`, the task's branch point.", scope.BaselineHead))
+	}
+	lines = append(lines, "- Compare: "+compareText(scope))
+	if len(scope.Accepted) == 0 {
+		return append(lines, "- Accepted drift: none.")
+	}
+	lines = append(lines, "- Accepted drift:")
+	for _, acceptance := range scope.Accepted {
+		line := fmt.Sprintf("  - `%s`, accepted by %s: %s", acceptance.Test, acceptance.By, acceptance.Reason)
+		if acceptance.Ruling == RulingUnruled {
+			line += " (not yet ruled on by the run's parent)"
+		}
+		lines = append(lines, line)
+	}
+	return lines
+}
+
+// compareText renders the old compare line's value.
+func compareText(scope ScopeRecord) string {
+	switch {
+	case scope.WaivedAt != "":
+		return "waived: " + scope.WaivedReason
+	case scope.ComparedAt == "":
+		return "not run."
+	case scope.ComparePassed:
+		return fmt.Sprintf("passed at `%s`.", scope.ComparedHead)
+	}
+	return fmt.Sprintf("showed drift at `%s`.", scope.ComparedHead)
 }

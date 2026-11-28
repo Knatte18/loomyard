@@ -371,28 +371,6 @@ func TestResume(t *testing.T) {
 				t.Errorf("report %+v, err %v, pushed %v; want only p1 pushed", report, err, e.pushedPairs)
 			}
 		}},
-		{"a lifted entry spawns the push of a pair holding commits origin lacks and of no level one", func(t *testing.T) {
-			e := newEnv(t, newPair("p1"), newPair("p2"))
-			e.pushOwed = map[string]bool{"p2": true}
-			e.seedLive(hubEntry(e.clock.Now()))
-
-			report, err := e.resume("")
-
-			if err != nil || !reflect.DeepEqual(e.pushedPairs, []string{"p2"}) || !reflect.DeepEqual(report.Spawned, []string{"pair:p2", "prime-records", "board-sync"}) {
-				t.Errorf("report %+v, err %v, pushed %v; want only p2, which is ahead", report, err, e.pushedPairs)
-			}
-		}},
-		{"a failing read of what a pair owes is listed under spawn_failed", func(t *testing.T) {
-			e := newEnv(t, newPair("p1"))
-			e.pushOwedErr = errors.New("ref unreadable")
-			e.seedLive(hubEntry(e.clock.Now()))
-
-			report, err := e.resume("")
-
-			if err != nil || len(e.pushedPairs) != 0 || len(report.SpawnFailed) != 1 || !strings.Contains(report.SpawnFailed[0].Reason, "ref unreadable") {
-				t.Errorf("report %+v, err %v, pushed %v; want no pair push and the read error listed", report, err, e.pushedPairs)
-			}
-		}},
 		{"a lifted entry whose pair is gone spawns no pair push", func(t *testing.T) {
 			e := newEnv(t, newPair("p1"))
 			e.seedLive(pauserecord.Entry{Scope: "gone", PausedAt: e.clock.Now(), GraceEnd: e.clock.Now(), Caller: "EXTERNAL"})
@@ -430,7 +408,7 @@ func TestResume(t *testing.T) {
 			e := newEnv(t, newPair("p1"))
 			e.seedLive(pauserecord.Entry{Scope: "p1", PausedAt: e.clock.Now(), GraceEnd: e.clock.Now(), Caller: "EXTERNAL"})
 			cleared := 0
-			wait := runfsm.Verdict{Answer: runfsm.AnswerWait, Reason: runfsm.ReasonHeld, HoldMachine: "oslo"}
+			wait := runfsm.Verdict{Answer: runfsm.AnswerWait, Reason: runfsm.ReasonHeld}
 
 			_, err := Resume(e.deps(), ResumeRequest{
 				Slug:    "p1",
@@ -438,104 +416,8 @@ func TestResume(t *testing.T) {
 				Clear:   func() error { cleared++; return nil },
 			})
 
-			if err == nil || !strings.Contains(err.Error(), "an adopt on machine oslo holds the hub") {
+			if err == nil || !strings.Contains(err.Error(), "an adopt holds the hub") {
 				t.Errorf("err = %v; want the verdict's refusal", err)
-			}
-			if live := e.record().Live; len(live) != 1 || cleared != 0 {
-				t.Errorf("live entries %+v, Clear calls %d; want the entry live and no Clear", live, cleared)
-			}
-		}},
-		{"a hub-wide resume under a standing hold lifts the hub entry and leaves every bolt-hold entry standing", func(t *testing.T) {
-			e := newEnv(t, newPair("p1"), newPair("p2"))
-			e.boltHold = &BoltHoldState{Standing: true, Machine: "oslo"}
-			now := e.clock.Now()
-			e.seedLive(hubEntry(now), pauserecord.Entry{Scope: "p1", PausedAt: now, GraceEnd: now, Caller: pauserecord.BoltHoldCaller, Machine: "oslo"})
-
-			report, err := e.resume("")
-
-			if err != nil || !reflect.DeepEqual(report.Resumed, []string{pauserecord.ScopeHub}) {
-				t.Errorf("report %+v, err %v; want the hub entry resumed alone", report, err)
-			}
-			if live := e.record().Live; len(live) != 1 || live[0].Scope != "p1" || live[0].Caller != pauserecord.BoltHoldCaller {
-				t.Errorf("live entries = %+v; want the bolt-hold entry of p1 standing", live)
-			}
-		}},
-		{"a resume of a slug only a bolt-hold entry covers refuses naming the hold's machine, with nothing lifted and no intent cleared", func(t *testing.T) {
-			e := newEnv(t, newPair("p1"))
-			e.boltHold = &BoltHoldState{Standing: true, Machine: "oslo"}
-			e.seedLive(pauserecord.Entry{Scope: "p1", PausedAt: e.clock.Now(), GraceEnd: e.clock.Now(), Caller: pauserecord.BoltHoldCaller, Machine: "oslo"})
-			cleared := 0
-
-			_, err := Resume(e.deps(), ResumeRequest{
-				Slug:    "p1",
-				Verdict: func() (runfsm.Verdict, error) { return runfsm.Verdict{Answer: runfsm.AnswerAct}, nil },
-				Clear:   func() error { cleared++; return nil },
-			})
-
-			want := "tender: p1 is held by an adopt on machine oslo; way forward: wait for that adopt's hold to clear, " +
-				"and the worktree's dobby lifts its entry at its next tick (with no dobby running, run lym beam start); " +
-				"if machine oslo has stopped, ask the operator"
-			if err == nil || err.Error() != want {
-				t.Errorf("err = %v; want %q", err, want)
-			}
-			if live := e.record().Live; len(live) != 1 || cleared != 0 {
-				t.Errorf("live entries %+v, Clear calls %d; want the entry live and no Clear", live, cleared)
-			}
-		}},
-		{"a slug entry of another caller lifted under a standing hold is replaced by a bolt-hold entry that keeps its session with no line", func(t *testing.T) {
-			p := newPair("p1", "a")
-			e := newEnv(t, p)
-			e.boltHold = &BoltHoldState{Standing: true, Machine: "oslo"}
-			now := e.clock.Now()
-			e.seedLive(pauserecord.Entry{Scope: "p1", PausedAt: now, GraceEnd: now, Caller: "EXTERNAL", Sessions: []pauserecord.Session{recorded("p1", "a")}})
-
-			report, err := e.resume("p1")
-
-			if err != nil || !reflect.DeepEqual(report.Resumed, []string{"p1"}) || !reflect.DeepEqual(report.Moved, []string{"a"}) || len(report.Lines) != 0 || len(p.sends) != 0 {
-				t.Errorf("report %+v, err %v, sends %v; want p1 resumed with a moved and no line", report, err, p.sends)
-			}
-			live := e.record().Live
-			if len(live) != 1 || live[0].Scope != "p1" || live[0].Caller != pauserecord.BoltHoldCaller || live[0].Machine != "oslo" ||
-				!reflect.DeepEqual(live[0].Sessions, []pauserecord.Session{recorded("p1", "a")}) {
-				t.Errorf("live entries = %+v; want one bolt-hold entry of p1 for oslo owning the session", live)
-			}
-		}},
-		{"the hold's fix task is lifted with no bolt-hold entry in its place", func(t *testing.T) {
-			p := newPair("p1", "a")
-			e := newEnv(t, p)
-			e.boltHold = &BoltHoldState{Standing: true, Machine: "oslo", FixTask: "p1"}
-			now := e.clock.Now()
-			e.seedLive(pauserecord.Entry{Scope: "p1", PausedAt: now, GraceEnd: now, Caller: "EXTERNAL", Sessions: []pauserecord.Session{recorded("p1", "a")}})
-
-			report, err := e.resume("p1")
-
-			if err != nil || !reflect.DeepEqual(report.Lines, []string{"a"}) || len(e.record().Live) != 0 {
-				t.Errorf("report %+v, err %v, live %+v; want a given its line and no entry left", report, err, e.record().Live)
-			}
-		}},
-		{"a bolt-hold entry whose hold no longer stands is lifted like any other entry", func(t *testing.T) {
-			p := newPair("p1", "a")
-			e := newEnv(t, p)
-			e.boltHold = &BoltHoldState{}
-			now := e.clock.Now()
-			e.seedLive(pauserecord.Entry{Scope: "p1", PausedAt: now, GraceEnd: now, Caller: pauserecord.BoltHoldCaller, Machine: "oslo", Sessions: []pauserecord.Session{recorded("p1", "a")}})
-
-			report, err := e.resume("p1")
-
-			if err != nil || !reflect.DeepEqual(report.Resumed, []string{"p1"}) || !reflect.DeepEqual(report.Lines, []string{"a"}) || len(e.record().Live) != 0 {
-				t.Errorf("report %+v, err %v, live %+v; want p1 lifted with a given its line", report, err, e.record().Live)
-			}
-		}},
-		{"a failed hold reading refuses with nothing lifted and no intent cleared", func(t *testing.T) {
-			e := newEnv(t, newPair("p1"))
-			e.boltHoldErr = errors.New("board unreadable")
-			e.seedLive(pauserecord.Entry{Scope: "p1", PausedAt: e.clock.Now(), GraceEnd: e.clock.Now(), Caller: "EXTERNAL"})
-			cleared := 0
-
-			_, err := Resume(e.deps(), ResumeRequest{Slug: "p1", Clear: func() error { cleared++; return nil }})
-
-			if !errors.Is(err, e.boltHoldErr) || !strings.Contains(err.Error(), "way forward: fix the cause") {
-				t.Errorf("err = %v; want the hold reading's error with its way forward", err)
 			}
 			if live := e.record().Live; len(live) != 1 || cleared != 0 {
 				t.Errorf("live entries %+v, Clear calls %d; want the entry live and no Clear", live, cleared)
@@ -625,20 +507,6 @@ func TestRevive(t *testing.T) {
 			}
 			if report.Skipped[0].Reason != "busy (turn)" {
 				t.Errorf("b's skip reason = %q; want the state read", report.Skipped[0].Reason)
-			}
-		}},
-		{"a pair with no reed session is skipped and the other pairs are still revived", func(t *testing.T) {
-			gone := newPair("p1")
-			gone.sessionsErr = errNoReedSession
-			p := newPair("p2", "b")
-			p.states["g-b"] = stalled
-			e := newEnv(t, gone, p)
-
-			report := revive(t, e, "")
-
-			wantSkipped := []SessionNote{{Slug: "p1", Reason: "no reed session, so no running turn: " + errNoReedSession.Error()}}
-			if !reflect.DeepEqual(report.Skipped, wantSkipped) || !reflect.DeepEqual(report.Sent, []string{"b"}) || !reflect.DeepEqual(p.conditioned, []string{"g-b"}) {
-				t.Errorf("report %+v, sent to %v; want p1 skipped for no reed session and b sent", report, p.conditioned)
 			}
 		}},
 		{"a session a live entry covers is reported paused and sent nothing", func(t *testing.T) {
@@ -937,37 +805,6 @@ func TestStatus(t *testing.T) {
 			if !session.Paused {
 				t.Errorf("session %+v under a hub entry; want it paused, the prime's included", session)
 			}
-		}
-	})
-
-	t.Run("a pair and a prime with no reed session are skipped and the other pairs still read", func(t *testing.T) {
-		gone, p2, prime := newPair("p1"), newPair("p2", "b"), newPair("prime")
-		gone.sessionsErr, prime.sessionsErr = errNoReedSession, errNoReedSession
-		e := newEnv(t, gone, p2)
-		e.prime = prime
-
-		report := read(t, e)
-
-		reason := "no reed session, so no running turn: " + errNoReedSession.Error()
-		wantSkipped := []SessionNote{{Slug: "p1", Reason: reason}, {Slug: "prime", Reason: reason}}
-		if !reflect.DeepEqual(report.Skipped, wantSkipped) {
-			t.Errorf("skipped = %+v; want %+v", report.Skipped, wantSkipped)
-		}
-		wantSessions := []SessionStatus{{Slug: "p2", Strand: "b", State: "idle-done", Cause: "done"}}
-		if !reflect.DeepEqual(report.Sessions, wantSessions) {
-			t.Errorf("sessions = %+v; want %+v", report.Sessions, wantSessions)
-		}
-	})
-
-	t.Run("a sessions error other than no reed session fails the status and lists the pair under no skipped", func(t *testing.T) {
-		broken := newPair("p1")
-		broken.sessionsErr = errSessionsRead
-		e := newEnv(t, broken)
-
-		report, err := Status(e.deps())
-
-		if !errors.Is(err, errSessionsRead) || len(report.Skipped) != 0 {
-			t.Errorf("Status() = %+v, %v; want the sessions error and nothing skipped", report, err)
 		}
 	})
 

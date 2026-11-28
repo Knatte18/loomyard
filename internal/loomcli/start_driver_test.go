@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -225,7 +225,7 @@ func TestStartLLMDriverArm(t *testing.T) {
 	})
 
 	// The refusal comes from shuttle's Start over an engine that meets no requirement, before any pane exists.
-	// The message names the loom.driver key in place of the generic way forward.
+	// The message names the driver key in place of the generic way forward.
 	t.Run("a requirements refusal names the driver key and adds no strand", func(t *testing.T) {
 		reed := &shuttlefake.Reed{}
 		root := t.TempDir()
@@ -329,8 +329,8 @@ func newTestSpawnAndWaitReceiver(t *testing.T, starter driverStarter, probe driv
 		registry:        modelspec.Registry{},
 		driverStarter:   starter,
 		driverPaneProbe: probe,
-		midMerge: func(*lymcwd.Location) (fabriclayout.MidMergeState, error) {
-			return fabriclayout.MidMergeState{Kind: fabriclayout.MidMergeNone}, nil
+		midMerge: func(*lymcwd.Location) (fabricengine.MidMergeState, error) {
+			return fabricengine.MidMergeState{Kind: fabricengine.MidMergeNone}, nil
 		},
 		shedPaths: shedbuild.ShedPaths{
 			LockPath:       filepath.Join(runLockDir, "run.lock"),

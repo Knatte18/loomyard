@@ -14,7 +14,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/battencli"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -24,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
+	"github.com/Knatte18/loomyard/internal/treadleengine"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -92,15 +93,18 @@ var pathRules = []pathRule{
 	{name: "loomengine.LoomBootstrapLock", class: classTransient, path: loomengine.LoomBootstrapLock},
 	{name: "loomengine.LoomFrictionLock", class: classTransient, path: loomengine.LoomFrictionLock},
 	{name: "logger.LogsDir", class: classTransient, path: logger.LogsDir},
+	{name: "treadleengine.PauseFlagPath", class: classTransient, path: func(l *lymcwd.Location) string {
+		return treadleengine.PauseFlagPath(filepath.Join(websterengine.ScratchDir(l.AnchorPath()), "blk"))
+	}},
 	{name: "battencli.BattenDir", class: classTransient, path: func(l *lymcwd.Location) string { return battencli.BattenDir(l, "slug") }},
 	{name: "battencli.RunLock", class: classTransient, path: func(l *lymcwd.Location) string { return battencli.RunLock(l, "slug") }},
 	{name: "battencli.StatusLock", class: classTransient, path: func(l *lymcwd.Location) string { return battencli.StatusLock(l, "slug") }},
 	{name: "battencli.PrimeRunLock", class: classTransient, path: battencli.PrimeRunLock},
 
 	// HubLogsDir is hub-anchored through the board, so one reed server per hub resolves to one place.
-	{name: "fabriclayout.HubLogsDir", class: classHub, path: func(l *lymcwd.Location) string { return fabriclayout.HubLogsDir(l.HubPath) }},
+	{name: "fabricengine.HubLogsDir", class: classHub, path: func(l *lymcwd.Location) string { return fabricengine.HubLogsDir(l.HubPath) }},
 	// gateslot.Dir is hub-wide, over the board dir of the hub.
-	{name: "gateslot.Dir", class: classHub, path: func(l *lymcwd.Location) string { return gateslot.Dir(fabriclayout.BoardDir(l.HubPath)) }},
+	{name: "gateslot.Dir", class: classHub, path: func(l *lymcwd.Location) string { return gateslot.Dir(fabricengine.BoardDir(l.HubPath)) }},
 }
 
 // under reports whether path is root or lies beneath it, by whole path segments.

@@ -21,7 +21,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -65,19 +64,17 @@ and deletes its task branch locally and on origin, and deletes batten's record w
 It refuses, before it ends or removes anything, while a hub pause covers the prime, when the run's
 work already reached its parent (finish the landing with "lym batten run"), when the slug already
 landed, when another machine owns it, when origin stopped the entry, when the cancel already finished
-with its pair kept (run it with --remove), when another cancel is under way, and when nothing is left
-(--remove counts an unfinished teardown).
+with its pair kept (run it with --remove), when another cancel is under way, and when nothing is left.
 It skips every wait a teardown makes for a working driver.
 With origin unreachable it only ends the run's processes and strands and posts a notice;
 running it again finishes the cancel.
 
-A beam's cancel first reconciles the hub with origin and refuses while members remain, naming each
-way forward. It ends the pawl run and dobby, then stops the orch and watcher; "lym beam create <slug>"
-restarts it. --remove passes a task with no pair here and no run status, and clears the beam flag.
+The cancel of a beam first runs the hub's origin reconcile and refuses while members remain,
+naming each to land or cancel first. A beam with no members ends the pawl run's processes and
+the beam's dobby, then stops its orch and watcher; "lym beam create <slug>" starts the run again.
 
-Output: a JSON envelope of the slug, state, row, what ended, whether the pair and record were removed
-or kept, the claim and beam flag (beam_ended) cleared, and push_spawned: whether the push
-started, not whether origin took it.
+Output: a JSON envelope of the slug, its state and row, what ended, and whether the pair and record were
+removed or kept, the claim cleared and the push spawned; push_spawned says the push was started, not that origin took it.
 
 Example:
   lym batten cancel some-slug
@@ -168,7 +165,6 @@ func cancelEnvelope(report cancelReport) map[string]any {
 		"records_removed":         report.RecordsRemoved,
 		"record_kept":             report.RecordKept,
 		"claim_cleared":           report.ClaimCleared,
-		"beam_ended":              report.BeamEnded,
 		"lifted":                  slices.Concat([]string{}, report.Lifted),
 		"push_spawned":            report.PushSpawned,
 		"notice_posted":           report.NoticePosted,
@@ -192,10 +188,10 @@ func hubCancelDeps(location *lymcwd.Location, slug string) (cancelDeps, error) {
 	if err != nil {
 		return cancelDeps{}, err
 	}
-	boardDir := fabriclayout.BoardDir(location.HubPath)
-	boltDir := fabriclayout.BoltDir(location.HubPath)
+	boardDir := fabricengine.BoardDir(location.HubPath)
+	boltDir := fabricengine.BoltDir(location.HubPath)
 	driverLock, runLock := shedrun.DriverLock(location, slug), shedrun.RunLock(location, slug)
-	runProcDir := fabriclayout.RunProcDir(location.HubPath)
+	runProcDir := fabricengine.RunProcDir(location.HubPath)
 	board := func() (*boardengine.Board, error) { return boardengine.OpenHub(location.HubPath) }
 
 	return cancelDeps{
@@ -205,35 +201,27 @@ func hubCancelDeps(location *lymcwd.Location, slug string) (cancelDeps, error) {
 		},
 		ExemptGate:          func() (func(), error) { return pauserecord.SetGateExemptAll(), nil },
 		TaskWorktreePresent: func() (bool, error) { return taskWorktreePresent(location, slug) },
-		Reconcile: func() (fabriclayout.OriginReport, error) {
-			return reconcileRun(location, slug, true, fabricengine.ReconcileOptions{})
-		},
-		PullBolt: func() error { return boardengine.PullBolt(boltDir) },
-		Owner: func() (string, string, bool, error) {
-			identity, err := machinename.ReadIdentity()
+		Reconcile:           func() (fabricengine.OriginReport, error) { return reconcileRun(location, slug, true) },
+		PullBolt:            func() error { return boardengine.PullBolt(boltDir) },
+		Owner: func() (string, string, string, error) {
+			machine, err := machinename.Name()
 			if err != nil {
-				return "", "", false, err
+				return "", "", "", err
 			}
 			owners, err := boardengine.ReadOwners(boardDir)
 			if err != nil {
-				return "", "", false, err
+				return "", "", "", err
 			}
 			parentOf := func(slug string) (string, error) { return hubgeom.ParentOf(location, slug) }
 			owner, err := owners.Effective(slug, parentOf)
 			if err != nil {
-				return "", "", false, err
+				return "", "", "", err
 			}
 			subject, err := owners.AdoptSubject(slug, parentOf)
-			return owner, subject, boardengine.OwnedElsewhere(owner, owners.Registry, identity), err
+			return machine, owner, subject, err
 		},
 		ReadStatus: func() (shedengine.Status, bool, error) { return readBattenStatus(location, slug) },
-		LandingStands: func() (bool, error) {
-			pair, err := lymcwd.NamedWorktree(location.HubPath, slug)
-			if err != nil {
-				return false, err
-			}
-			return pairteardown.LandingStands(location.HubPath, slug, pair)
-		},
+		OwnerHeld:  func() (bool, error) { return pairteardown.OwnerPauseHeld(location, slug) },
 		BoardStatus: func() (*string, bool, error) {
 			hubBoard, err := board()
 			if err != nil {
@@ -271,7 +259,7 @@ func hubCancelDeps(location *lymcwd.Location, slug string) (cancelDeps, error) {
 		GOOS:         runtime.GOOS,
 		LiveRecords:  func() ([]runproc.Record, error) { return runproc.List(runProcDir, slug) },
 		CreatedAt:    proc.CreationTime,
-		PairParts:    func() (fabriclayout.PairParts, error) { return topology.PairParts(location, slug) },
+		PairParts:    func() (fabricengine.PairParts, error) { return topology.PairParts(location, slug) },
 		SessionLive:  func() (bool, error) { return pairSessionLive(location, slug) },
 		EndForCancel: teardown.EndForCancel,
 		TakeBattenLocks: func() (func(), string, error) {
@@ -297,19 +285,7 @@ func hubCancelDeps(location *lymcwd.Location, slug string) (cancelDeps, error) {
 		},
 		RemovePair:         teardown.RemovePair,
 		TaskBranchOnOrigin: func() (bool, error) { return topology.TaskBranchOnOrigin(location, slug) },
-		DiscardTaskBranch: func() (fabriclayout.DiscardResult, error) {
-			return topology.DiscardTaskBranch(location, slug, cancelCommand(slug, true))
-		},
-		TeardownPending: func() (bool, error) {
-			pending, err := fabricengine.PendingTeardowns(location.HubPath)
-			return slices.ContainsFunc(pending, func(record fabriclayout.PendingTeardown) bool {
-				return record.Slug == slug && record.Rerun == cancelCommand(slug, true)
-			}), err
-		},
-		SettleTeardown: func() error {
-			_, _, err := topology.SettleGonePairTeardown(location, slug, cancelCommand(slug, true))
-			return err
-		},
+		DiscardTaskBranch:  func() (fabricengine.DiscardResult, error) { return topology.DiscardTaskBranch(location, slug) },
 		Verdict: func() (runfsm.Verdict, error) {
 			records, inputs, err := pairteardown.ReadRun(location, slug)
 			if err != nil {
@@ -371,12 +347,9 @@ func hubCancelDeps(location *lymcwd.Location, slug string) (cancelDeps, error) {
 			)
 		},
 		LiftPauses: func() ([]string, error) { return liftSlugPauses(location, slug, pauseGeometry.RecordPath) },
-		PushRecords: func() (bool, error) {
-			_, err := pairteardown.PushRun(location, location, slug, pairteardown.RunPush{LockWait: fabriclayout.StatusPushLockWait})
-			if fabricengine.IsPushOwed(err) {
-				return true, nil
-			}
-			return false, err
+		SpawnPush: func() error {
+			_, err := spawnStatusPush(location, "")
+			return err
 		},
 		Notify: func(line string) error {
 			_, err := notifyRunParent(location, slug, line)
@@ -390,8 +363,8 @@ func hubCancelDeps(location *lymcwd.Location, slug string) (cancelDeps, error) {
 			entry := owners.Entries[slug]
 			return entry.IsProject && entry.Beam, nil
 		},
-		ReconcileHub: func() (fabriclayout.OriginReport, error) {
-			return fabricengine.ReconcileOrigin(location, fabriclayout.ReconcileScope{}, teardown.OriginSeams(pairteardown.HubSeamOptions(location)), fabricengine.ReconcileOptions{})
+		ReconcileHub: func() (fabricengine.OriginReport, error) {
+			return fabricengine.ReconcileOrigin(location, fabricengine.ReconcileScope{}, teardown.OriginSeams(pairteardown.HubSeamOptions(location)), fabricengine.ReconcileOptions{})
 		},
 		LandRefusal:  func() error { return BeamLandRefusal(location, slug) },
 		LandingHeld:  func() (bool, error) { return hubgeom.LandingHeld(location, slug) },
@@ -405,20 +378,8 @@ func hubCancelDeps(location *lymcwd.Location, slug string) (cancelDeps, error) {
 			if err != nil {
 				return err
 			}
-			// A pair the pawl run ended before its Beam-Up marked it runs no orch, which refuses an unmarked pair.
-			origin, found, err := fabricengine.ReadOrigin(beamLocation)
-			if err != nil || !found || !origin.Beam {
-				return err
-			}
 			_, err = orchcli.BeamDown(beamLocation)
 			return err
-		},
-		EndBeam: func() (bool, error) {
-			hubBoard, err := board()
-			if err != nil {
-				return false, err
-			}
-			return hubBoard.EndBeam(slug)
 		},
 	}, nil
 }
@@ -505,32 +466,25 @@ func cancelVerdict(records runfsm.Records, inputs runfsm.Inputs) runfsm.Verdict 
 	return verdict
 }
 
-// refuseWhileMergeActive returns an error while a merge is in progress on the prime's records side.
-// A record written while it holds could not be committed.
-func refuseWhileMergeActive(deps commitStatusDeps) error {
+// commitCancelRecord commits batten's record with the run's other records and spawns the push of the records side.
+// It refuses while a merge is in progress on the prime's records side, so no cancel goes on with its record uncommitted.
+// A push that fails to start is logged, never returned, since the next push carries the commit.
+func commitCancelRecord(deps commitStatusDeps, slug string) (committed bool, err error) {
 	active, err := deps.MergeActive()
 	if err != nil {
-		return fmt.Errorf("read the prime's records merge state: %w", err)
+		return false, fmt.Errorf("read the prime's records merge state: %w", err)
 	}
 	if active {
-		return errors.New("a merge is in progress on the prime's records side; conclude or abort that merge there")
-	}
-	return nil
-}
-
-// commitCancelRecord commits batten's record with the run's other records and pushes the records side.
-// It refuses while a merge is in progress on the prime's records side, so no cancel goes on with its record uncommitted.
-// A push that is owed is logged and the commit stands, so the cancel goes on and its push stays owed;
-// any other push failure is returned with committed true.
-func commitCancelRecord(deps commitStatusDeps, slug string) (committed bool, err error) {
-	if err := refuseWhileMergeActive(deps); err != nil {
-		return false, err
+		return false, errors.New("a merge is in progress on the prime's records side; conclude or abort that merge there")
 	}
 	committed, err = deps.Commit("batten cancel: record the run state of " + slug)
 	if err != nil || !committed {
 		return committed, err
 	}
-	return true, pushRecordsOrOwe(deps, slug)
+	if err := deps.Spawn(); err != nil {
+		logger.Warn("battencli: the push of the cancel record did not start; the next push carries it", "slug", slug, "error", err)
+	}
+	return true, nil
 }
 
 // pairSessionLive reports whether the pair's reed session of slug is live on the hub's tmux server; a hub with no server has none.
@@ -568,7 +522,7 @@ func primeShuttleRunner(location *lymcwd.Location) (*shuttleengine.Runner, error
 	if err != nil {
 		return nil, err
 	}
-	engines, err := shuttleengines.NewForWorktree(shuttleConfig, dirs, hubgeom.EngineWorktree(location))
+	engines, err := shuttleengines.New(shuttleConfig, dirs)
 	if err != nil {
 		return nil, err
 	}

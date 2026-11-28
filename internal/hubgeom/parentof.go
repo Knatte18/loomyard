@@ -6,31 +6,10 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
-	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
-
-// ParentOrchName returns the agent name of the orch that parents the entry slug:
-// the orch of the pair ParentOf answers, or the prime's orch when it answers the prime.
-// It serves a run driven from the prime, whose own worktree tells no parent.
-// A hub with no recorded shortname yields "" and a warning, since no name can be formed.
-// A read error from ParentOf is returned.
-func ParentOrchName(prime *lymcwd.Location, slug string) (string, error) {
-	shortname, found := fabricengine.ReadShortname(fabriclayout.BoltDir(prime.HubPath))
-	if !found {
-		logger.Warn("hubgeom: hub has no recorded shortname; the run's prompts name no parent", "slug", slug)
-		return "", nil
-	}
-	parent, err := ParentOf(prime, slug)
-	if err != nil {
-		return "", err
-	}
-	return agentname.Format(shortname, parent, agentname.RoleOrch)
-}
 
 // ParentOf returns the slug of the pair that is the parent of the entry slug, "" meaning the prime.
 // A pair's origin record decides, read over the prime's location, and its recorded parent worktree is the answer.
@@ -45,7 +24,7 @@ func ParentOf(prime *lymcwd.Location, slug string) (string, error) {
 		return "", fmt.Errorf("hubgeom: read origin record for %q: %w", slug, err)
 	}
 	if !found {
-		tasks, err := boardengine.ReadTasks(fabriclayout.BoardDir(prime.HubPath))
+		tasks, err := boardengine.ReadTasks(fabricengine.BoardDir(prime.HubPath))
 		if err != nil {
 			return "", fmt.Errorf("hubgeom: read the board for the parent of %q: %w", slug, err)
 		}

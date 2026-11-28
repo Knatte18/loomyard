@@ -29,7 +29,7 @@ type Tier struct {
 	Env map[string]string
 	// AllTargets is the targets of a whole-scope run, which {targets} and {test_targets} take.
 	AllTargets string
-	// Parallel is the tier's parallelism, this machine's gate.tier_parallel entry when one is set.
+	// Parallel is the tier's parallelism, this machine's tier_parallel entry when one is set.
 	Parallel int
 	// TimeoutMin is the minutes the tier may run once its slots are held.
 	TimeoutMin int
@@ -37,16 +37,11 @@ type Tier struct {
 	TestTimeoutMin int
 	// Counter names how the command's output is counted: go-json or vstest.
 	Counter string
-	// Results is ResultsTRX or empty.
-	// ResultsTRX makes the gate ask the command for a TRX results file, which then decides the run's counts and failures.
-	// It fits only a vstest tier whose command holds {args}, where the gate puts the options that write the file.
-	Results string
 	// Covers lists lower tier numbers this tier's command runs anyway.
 	Covers []int
 	// Slots is how many gate slots the tier holds; 0 means every slot.
 	Slots int
 	// PrebuiltLym makes a run of the tier prebuild lym from the worktree first.
-	// It does so only when a test the run executes may use the binary.
 	PrebuiltLym bool
 	// Manual keeps the tier out of a tier range, so it runs only when named by number, such as a tier that spends tokens.
 	Manual bool
@@ -76,7 +71,6 @@ type tierFile struct {
 	TimeoutMin     *int              `yaml:"timeout_min"`
 	TestTimeoutMin *int              `yaml:"test_timeout_min"`
 	Counter        string            `yaml:"counter"`
-	Results        string            `yaml:"results"`
 	Covers         []int             `yaml:"covers"`
 	Slots          yaml.Node         `yaml:"slots"`
 	PrebuiltLym    bool              `yaml:"prebuilt_lym"`
@@ -96,9 +90,6 @@ const TestTimeoutPlaceholder = "{test_timeout}"
 // It stands where the targets reach `go test`, so a run starts no test binary that would find no test to run.
 const TestTargetsPlaceholder = "{test_targets}"
 
-// ResultsTRX is the Tier.Results value that makes the gate ask a vstest tier for a TRX results file.
-const ResultsTRX = "trx"
-
 // HoldsTargets reports whether command takes a run's targets, through {targets} or TestTargetsPlaceholder.
 func HoldsTargets(command string) bool {
 	return strings.Contains(command, "{targets}") || strings.Contains(command, TestTargetsPlaceholder)
@@ -112,10 +103,13 @@ const DefaultTestTimeoutMin = 20
 type GateKey struct {
 	// Tiers are the tier numbers the key runs, in order.
 	Tiers []int `yaml:"tiers"`
-	// Scope is card, diff, all or ScopeMarked.
+	// Scope is card, diff or all.
 	Scope string `yaml:"scope"`
 	// Lints are the lint steps the key's call runs after its tiers, in order, each LintComments or LintPattern; empty runs none.
 	Lints []string `yaml:"lints"`
+	// Reports are the advisory report steps the key's call runs after its lints, each ReportRedundancy; empty runs none.
+	// A report step never changes the call's result.
+	Reports []string `yaml:"reports"`
 	// Fixer is the model-spec of the cold fixer that a red agent call of this key hands its verdict to; empty turns it off.
 	// Only the card key may hold one.
 	Fixer string `yaml:"fixer"`
@@ -129,16 +123,10 @@ const (
 	scopeCard = "card"
 	scopeDiff = "diff"
 	scopeAll  = "all"
-	// ScopeMarked runs only the tests whose `//lym:only` marker names the key, each under its file's tier.
-	ScopeMarked = "marked"
 )
 
-// UpkeepGateKey is the gate key of the upkeep run: the checks that need not stop a task, run on the main branch.
-// Its template scope is ScopeMarked, so it runs the tests marked `//lym:only` for it and nothing else.
-const UpkeepGateKey = "upkeep"
-
 // retiredScopeCoverage is the gate key scope that once narrowed importing packages to the tests a coverage map selected.
-// The load refuses it, naming scopeDiff.
+// The load refuses it and MigrateConfig rewrites it to scopeDiff.
 const retiredScopeCoverage = "coverage"
 
 // Lint step names a gate key's lints may hold.
@@ -150,8 +138,13 @@ const (
 	LintPattern = "pattern"
 )
 
+// ReportRedundancy names the redundancy report step a gate key's reports may hold.
+// It judges the diff's new and changed tests against the per-package coverage maps.
+// It writes the verdicts to the worktree.
+const ReportRedundancy = "redundancy"
+
 // goReadGates are the gate keys the Go verify sites read, in the order TiersValue lists them.
-var goReadGates = []string{"card", "batch", "webster", "parent-align", "finalize", "adopt", "webster-fix", "darn-write", "code-burler-fix", "harden-burler-fix", "harden-live", "pr-review"}
+var goReadGates = []string{"card", "batch", "webster", "parent-align", "finalize", "adopt", "webster-fix", "darn-write", "code-burler-fix", "pr-review"}
 
 var (
 	tierKeyPattern   = regexp.MustCompile(`^tier(0|[1-9][0-9]*)$`)
@@ -169,11 +162,11 @@ func decodeTiers(files map[string]tierFile) (map[string]Tier, error) {
 	tiers := make(map[string]Tier, len(files))
 	for key, file := range files {
 		if !tierKeyPattern.MatchString(key) {
-			return nil, fmt.Errorf("config key %q: want a name spelled tier<N>, such as tier0", keyName("tiers."+key))
+			return nil, fmt.Errorf("gate config key %q under \"tiers\": want a name spelled tier<N>, such as tier0", key)
 		}
 		number, err := strconv.Atoi(strings.TrimPrefix(key, "tier"))
 		if err != nil {
-			return nil, fmt.Errorf("config key %q: want a tier number that fits an int, such as tier0", keyName("tiers."+key))
+			return nil, fmt.Errorf("gate config key %q under \"tiers\": want a tier number that fits an int, such as tier0", key)
 		}
 		tier, err := decodeTier(key, number, file)
 		if err != nil {
@@ -187,7 +180,7 @@ func decodeTiers(files map[string]tierFile) (map[string]Tier, error) {
 // decodeTier validates one tier and fills its defaults.
 func decodeTier(key string, number int, file tierFile) (Tier, error) {
 	refuse := func(field, want string) error {
-		return fmt.Errorf("config key %q: %s", keyName("tiers."+key+"."+field), want)
+		return fmt.Errorf("gate config key %q: %s", "tiers."+key+"."+field, want)
 	}
 	tier := Tier{
 		About:       file.About,
@@ -197,7 +190,6 @@ func decodeTier(key string, number int, file tierFile) (Tier, error) {
 		AllTargets:  file.AllTargets,
 		Parallel:    1,
 		Counter:     file.Counter,
-		Results:     file.Results,
 		Covers:      file.Covers,
 		Slots:       1,
 		PrebuiltLym: file.PrebuiltLym,
@@ -259,18 +251,6 @@ func decodeTier(key string, number int, file tierFile) (Tier, error) {
 	default:
 		return Tier{}, refuse("counter", fmt.Sprintf("%q; want go-json or vstest", tier.Counter))
 	}
-	switch tier.Results {
-	case "":
-	case ResultsTRX:
-		if tier.Counter != "vstest" {
-			return Tier{}, refuse("results", fmt.Sprintf("%q, but the counter is %q; want counter vstest or no results", tier.Results, tier.Counter))
-		}
-		if !strings.Contains(tier.Command, "{args}") {
-			return Tier{}, refuse("results", fmt.Sprintf("%q, but the command holds no {args}; want {args} in the command, where the gate puts the options that write the results file, or no results", tier.Results))
-		}
-	default:
-		return Tier{}, refuse("results", fmt.Sprintf("%q; want %s or no results", tier.Results, ResultsTRX))
-	}
 	for _, covered := range tier.Covers {
 		if covered < 0 || covered >= number {
 			return Tier{}, refuse("covers", fmt.Sprintf("%d; want tier numbers lower than %d", covered, number))
@@ -290,18 +270,17 @@ func decodeTier(key string, number int, file tierFile) (Tier, error) {
 	return tier, nil
 }
 
-// decodeRefuseRaw checks that every gate.refuse_raw entry is one or more plain words separated by single spaces.
+// decodeRefuseRaw checks that every refuse_raw entry is one or more plain words separated by single spaces.
 func decodeRefuseRaw(entries []string) error {
 	for _, entry := range entries {
 		if !refuseRawPattern.MatchString(entry) {
-			return fmt.Errorf("config key %q: %q; want one or more words of letters, digits, '.', '_' and '-' separated by single spaces", keyName("refuse_raw"), entry)
+			return fmt.Errorf("gate config key %q: %q; want one or more words of letters, digits, '.', '_' and '-' separated by single spaces", "refuse_raw", entry)
 		}
 	}
 	return nil
 }
 
-// applyTierParallel reads the gate.tier_parallel entries and lays them over the declared tiers' parallel.
-// A scalar --set writes the entries as strings.
+// applyTierParallel reads the tier_parallel entries, which a scalar --set writes as strings, and lays them over the declared tiers' parallel.
 // An entry for a tier the config does not declare is dropped with a warning that names the steps removing it.
 // It returns the entries kept.
 func applyTierParallel(entries map[string]yaml.Node, tiers map[string]Tier, machineLayerApplies bool) (map[string]int, error) {
@@ -310,11 +289,11 @@ func applyTierParallel(entries map[string]yaml.Node, tiers map[string]Tier, mach
 		node := entries[name]
 		count, err := strconv.Atoi(node.Value)
 		if node.Kind != yaml.ScalarNode || err != nil || count < 1 {
-			return nil, fmt.Errorf("config key %q: %q; want an integer of at least 1", keyName("tier_parallel."+name), node.Value)
+			return nil, fmt.Errorf("gate config key %q: %q; want an integer of at least 1", "tier_parallel."+name, node.Value)
 		}
 		tier, declared := tiers[name]
 		if !declared {
-			logger.Warn("gate config: a "+keyName("tier_parallel")+" entry names a tier the hub does not declare, so it is dropped", "tier", name, "way_forward", undeclaredTierParallelWayForward(name, machineLayerApplies))
+			logger.Warn("gate config: tier_parallel entry names a tier the hub does not declare, so it is dropped", "tier", name, "way_forward", undeclaredTierParallelWayForward(name, machineLayerApplies))
 			continue
 		}
 		tier.Parallel = count
@@ -324,13 +303,13 @@ func applyTierParallel(entries map[string]yaml.Node, tiers map[string]Tier, mach
 	return kept, nil
 }
 
-// undeclaredTierParallelWayForward returns the steps that remove a gate.tier_parallel entry for an undeclared tier.
+// undeclaredTierParallelWayForward returns the steps that remove a tier_parallel entry for an undeclared tier.
 // With a machine layer the stacked document cannot tell which layer holds the entry, so both steps are named.
 func undeclaredTierParallelWayForward(name string, machineLayerApplies bool) string {
 	if !machineLayerApplies {
-		return fmt.Sprintf("remove %s with \"lym config gate\"", keyName("tier_parallel."+name))
+		return fmt.Sprintf("remove tier_parallel.%s with \"lym config gate\"", name)
 	}
-	return fmt.Sprintf("remove %s with \"lym config gate\" when the hub file holds it, or in the editor session of \"lym config gate --layer machine\" when the machine file does", keyName("tier_parallel."+name))
+	return fmt.Sprintf("remove tier_parallel.%s with \"lym config gate\" when the hub file holds it, or in the editor session of \"lym config gate --layer machine\" when the machine file does", name)
 }
 
 // sortedKeys returns the keys of m in ascending order.
@@ -371,41 +350,30 @@ func (c Config) WithDefaultDir(dir string) Config {
 func (c Config) Tier(number int) (Tier, error) {
 	tier, ok := c.Tiers[tierKey(number)]
 	if !ok {
-		return Tier{}, useRefusal("the hub declares no %s, the key %s", tierKey(number), tierKeyName(tierKey(number)))
+		return Tier{}, useRefusal("the hub declares no %s", tierKey(number))
 	}
 	return tier, nil
 }
 
 // Gate returns the named gate key's tiers and scope.
-// A hub that declares no tier at all gets the key with no tiers.
-// A fresh hub with no tests yet then runs its gates with the key's lints and no tier.
-// It refuses a missing key, naming the keys the config holds;
-// an empty list, a hub that declares tiers but no tier0, or an undeclared tier.
-// Each refusal names lym config gate.
+// It refuses, naming lym config gate, a hub with no tier0, a missing key, an empty list, or an undeclared tier.
 func (c Config) Gate(key string) (GateKey, error) {
+	if _, declared := c.Tiers[tierKey(0)]; !declared {
+		return GateKey{}, useRefusal("the hub declares no tier0, so no gate has a tier to run")
+	}
 	gate, ok := c.Gates[key]
 	if !ok {
-		held := "it holds no key at all"
-		if len(c.Gates) > 0 {
-			held = "the keys it holds are " + strings.Join(sortedKeys(c.Gates), ", ")
-		}
-		return GateKey{}, useRefusal("gates holds no key %q; %s", key, held)
+		return GateKey{}, useRefusal("gates holds no key %q", key)
 	}
 	if len(gate.Tiers) == 0 {
 		return GateKey{}, useRefusal("gates.%s is empty, and every gate verifies at least one tier", key)
-	}
-	if len(c.Tiers) == 0 {
-		return GateKey{Scope: gate.Scope, Lints: slices.Clone(gate.Lints)}, nil
-	}
-	if _, declared := c.Tiers[tierKey(0)]; !declared {
-		return GateKey{}, useRefusal("the hub declares no tier0, so no gate has a tier to run; declare %s", tierKeyName(tierKey(0)))
 	}
 	for _, number := range gate.Tiers {
 		if _, declared := c.Tiers[tierKey(number)]; !declared {
 			return GateKey{}, useRefusal("gates.%s lists %s, which the hub does not declare", key, tierKey(number))
 		}
 	}
-	return GateKey{Tiers: slices.Clone(gate.Tiers), Scope: gate.Scope, Lints: slices.Clone(gate.Lints)}, nil
+	return GateKey{Tiers: slices.Clone(gate.Tiers), Scope: gate.Scope, Lints: slices.Clone(gate.Lints), Reports: slices.Clone(gate.Reports)}, nil
 }
 
 // TierList returns the tier numbers the named gate key runs, in order, with the refusals Gate gives.
@@ -434,53 +402,6 @@ func (c Config) AgentGateCall(key string, cards ...string) (string, error) {
 	return c.renderGateCall(key, false, cards)
 }
 
-// MeasureCall renders the call an agent runs to measure one test class through the named gate key.
-// It is `lym gate test --gate <key>`.
-// A tier the call runs that takes targets adds `<its package or test project>`.
-// Then comes `-- <args>` for the words by which the tier's runner selects the class.
-// A tier that a higher tier of the key covers is not run by the call, so it counts for neither check below.
-// It refuses, with the refusals Gate gives, a key the config cannot run.
-// It also refuses a key of scope card, which a call runs only with a card or targets it carries,
-// and a key that runs a tier whose command holds no {args}, which refuses the words after `--`.
-// The call it returns is therefore one the hub's gate config can run.
-func (c Config) MeasureCall(key string) (string, error) {
-	gate, err := c.Gate(key)
-	if err != nil {
-		return "", err
-	}
-	if gate.Scope == scopeCard {
-		return "", useRefusal("gates.%s has scope card, which a call runs only over the cards or targets it names, so no measuring call can name it", key)
-	}
-	ran := c.tiersRunBy(gate.Tiers)
-	for _, number := range ran {
-		if !strings.Contains(c.Tiers[tierKey(number)].Command, "{args}") {
-			return "", useRefusal("gates.%s lists %s, whose command holds no {args}, so the words after \"--\" that select a test class reach no command", key, tierKey(number))
-		}
-	}
-	words := []string{"lym", "gate", "test", "--gate", key}
-	if slices.ContainsFunc(ran, func(number int) bool { return HoldsTargets(c.Tiers[tierKey(number)].Command) }) {
-		words = append(words, "<its package or test project>")
-	}
-	return strings.Join(append(words, "--", "<args>"), " "), nil
-}
-
-// tiersRunBy returns numbers sorted ascending and without repeats, minus each tier a higher listed tier covers.
-// A covered tier runs inside the tier that covers it, never on its own.
-func (c Config) tiersRunBy(numbers []int) []int {
-	listed := slices.Clone(numbers)
-	slices.Sort(listed)
-	listed = slices.Compact(listed)
-	var kept []int
-	for i := len(listed) - 1; i >= 0; i-- {
-		number := listed[i]
-		if !slices.ContainsFunc(kept, func(higher int) bool { return slices.Contains(c.Tiers[tierKey(higher)].Covers, number) }) {
-			kept = append(kept, number)
-		}
-	}
-	slices.Reverse(kept)
-	return kept
-}
-
 // MainPackagesFlag is the `lym gate test` flag, without its dashes, that adds the main packages to a --card scope.
 const MainPackagesFlag = "main-packages"
 
@@ -494,10 +415,6 @@ func (c Config) AgentGateCallWithMainPackages(key string, cards ...string) (stri
 	}
 	return call + " --" + MainPackagesFlag, nil
 }
-
-// NoCarryFlag is the `lym gate test` flag, without its dashes, that keeps a green run from being carried for one call.
-// A call with it runs its tests even over an unchanged tree.
-const NoCarryFlag = "no-carry"
 
 // StopOnFailFlag is the `lym gate test` flag, without its dashes, that ends a call at its first failed run.
 const StopOnFailFlag = "stop-on-fail"
@@ -573,7 +490,6 @@ func (c Config) renderGateCall(key string, wait bool, cards []string) (string, e
 // TiersValue renders the value prompts take for the hub's tiers.
 // It holds one line per declared tier in number order: `- tier<N>: <about>`.
 // Then it holds one line per Go-read gate key the config lists: `- gate <key>: [<n>, ...] <scope>`.
-// A set plan tier0 budget ends it with one line naming the seconds a plan's tier0 tests may add.
 // It is `none` when no tier is declared.
 func (c Config) TiersValue() string {
 	if len(c.Tiers) == 0 {
@@ -599,9 +515,6 @@ func (c Config) TiersValue() string {
 			items[i] = strconv.Itoa(number)
 		}
 		lines = append(lines, fmt.Sprintf("- gate %s: [%s] %s", gate, strings.Join(items, ", "), key.Scope))
-	}
-	if c.PlanTier0BudgetSec > 0 {
-		lines = append(lines, fmt.Sprintf("- plan tier0 budget: %d seconds, the most a plan's new and changed tier0 tests may add to one tier0 run", c.PlanTier0BudgetSec))
 	}
 	return strings.Join(lines, "\n")
 }

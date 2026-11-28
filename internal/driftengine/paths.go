@@ -12,17 +12,12 @@ import (
 // driftDirName is the directory segment both the durable and the ephemeral drift directory carry.
 const driftDirName = "drift"
 
-// logsDirName is the directory segment of the durable drift logs, which the judge guard leaves out.
-const logsDirName = "logs"
-
 // The names of the durable files the records guard, the seal and the judge read.
-// findingsFileName is the findings file, which lies under the logs directory.
 const (
 	scopeFileName     = "scope.json"
 	judgedFileName    = "judged.json"
 	expectedFileName  = "expected.yaml"
 	judgementFileName = "judgement.yaml"
-	findingsFileName  = "verify-findings.md"
 )
 
 // Paths holds every path the drift module reads or writes, joined onto one anchor root.
@@ -40,8 +35,6 @@ type Paths struct {
 	Judgement string
 	// LogsDir holds the log of every capture, compare and child run.
 	LogsDir string
-	// Findings is the file under LogsDir a Stuck over judge rulings writes every finding to; the halt names it.
-	Findings string
 	// Capture is the ephemeral capture record.
 	Capture string
 	// CaptureLock is the lock a running capture holds.
@@ -65,14 +58,12 @@ func NewPaths(anchorRoot string) Paths {
 	durable := filepath.Join(anchorRoot, lymdirs.LymDirName, driftDirName)
 	ephemeral := filepath.Join(anchorRoot, lymdirs.DotLymDirName, driftDirName)
 	baselineDir := filepath.Join(ephemeral, "baseline")
-	logsDir := filepath.Join(durable, logsDirName)
 	return Paths{
 		Scope:           filepath.Join(durable, scopeFileName),
 		Judged:          filepath.Join(durable, judgedFileName),
 		Expected:        filepath.Join(durable, expectedFileName),
 		Judgement:       filepath.Join(durable, judgementFileName),
-		LogsDir:         logsDir,
-		Findings:        filepath.Join(logsDir, findingsFileName),
+		LogsDir:         filepath.Join(durable, "logs"),
 		Capture:         filepath.Join(ephemeral, "capture.json"),
 		CaptureLock:     filepath.Join(ephemeral, "capture.lock"),
 		CompareMarker:   filepath.Join(ephemeral, "compare.lock"),

@@ -41,7 +41,6 @@ func cgoImportFailures(t *testing.T, opts scankit.Options) (failures []string, s
 // TestNoCgo_NoFileOfTheModuleImportsC fails for every Go file of the module that imports "C".
 //
 //lym:guard
-//lym:only parent-align finalize
 func TestNoCgo_NoFileOfTheModuleImportsC(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

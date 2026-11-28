@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -75,9 +75,9 @@ func TestBattenPreRun_ReopensTheWindowWithNoClientAttached(t *testing.T) {
 			c.clientAttached = tt.clientAttached
 			c.noReopen = tt.noReopen
 			reconciles := 0
-			c.reconcile = func(string) (fabriclayout.OriginReport, error) {
+			c.reconcile = func(string) (fabricengine.OriginReport, error) {
 				reconciles++
-				return fabriclayout.OriginReport{}, nil
+				return fabricengine.OriginReport{}, nil
 			}
 			if tt.status != nil {
 				writeStatus(t, c, *tt.status)

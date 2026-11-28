@@ -13,7 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/driftengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -204,7 +204,7 @@ func startMainCapture(w *worktree) (any, error) {
 		Executable:     executable,
 		AnchorDir:      w.anchor(),
 		Paths:          w.paths,
-		RunProcDir:     fabriclayout.RunProcDir(w.location.HubPath),
+		RunProcDir:     fabricengine.RunProcDir(w.location.HubPath),
 		Owner:          w.location.WorktreeName,
 		FallbackDetach: true,
 		RecordWait:     captureRecordWait,
@@ -258,11 +258,6 @@ func runCaptureChild(cmd *cobra.Command) {
 	if err != nil {
 		// Only a refusal fixed by the directory is lasting; a read error on the anchor marker may pass on a fresh start.
 		if errors.Is(err, lymcwd.ErrNotAGitRepo) || errors.Is(err, lymcwd.ErrCwdOutsideAnchor) {
-			// No shell chose this child's cwd, and the start failure that quotes this text states its own way forward.
-			var gateErr *lymcwd.AnchorGateError
-			if errors.As(err, &gateErr) {
-				err = gateErr.Refusal
-			}
 			clihelp.SetExit(ctx, output.ErrFields(out, err.Error(), map[string]any{driftengine.LastingFaultKey: true}))
 			return
 		}
@@ -338,8 +333,8 @@ Drift-Baseline capture halt, and a halt of Drift-Expect, the writer,
 Drift-Verify or Drift-Recheck whose reason names it or whose baseline check
 fails. It is refused while a capture or a lym drift check holds the capture
 lock. After the writer it skips the regression check for the rest of the run,
-and the verdict states it, so only an orch on the run's beam chain above the
-pair, or the operator's own shell, runs it.
+and the verdict states it, so only the run's parent or the operator's own
+shell runs it.
 
 With a slug it acts on that task's worktree, so the parent need not stand in
 the run's worktree.

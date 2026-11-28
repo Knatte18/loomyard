@@ -1,8 +1,7 @@
-// parentreview.go implements the `parent-review` loom group over a run's asks to its parent orch:
-// a Discussion-Review or Code-Review round's, and the drift judge's.
+// parentreview.go implements the `parent-review` loom group over a run's Discussion-Review asks to its parent orch.
 // `answer` writes the parent's report for the run's latest ask and sets the ask done.
-// `await` is the asking agent's capped wait for that ask to end, setting it timeout once its deadline passed.
-// Each moves the ask only through burlerengine's ask record, under its one lock.
+// `await` is the review chair's capped wait for that ask to end, setting it timeout once its deadline passed.
+// Both move the ask only through burlerengine's ask record, under its one lock.
 // The caller check guards against a mistaken call, not a forged strand name.
 
 package loomcli
@@ -50,10 +49,8 @@ const (
 type parentReviewDeps struct {
 	// strandName is the full name reed exported to the calling session, empty for a shell reed did not spawn.
 	strandName string
-	// parent resolves the run's parent orch at call time, the one up the beam chain its notices go to.
+	// parent resolves the run's parent orch at call time.
 	parent func() (hubgeom.Parent, error)
-	// orchChain resolves every orch on the run's beam chain at call time, asking none whether it is live.
-	orchChain func() ([]hubgeom.Parent, error)
 	// files locates the run's ask record and the parent's reports.
 	files burlerengine.ParentReviewFiles
 	// now is the clock every deadline is judged against.
@@ -130,16 +127,16 @@ func containsWord[T comparable](words []T, word T) bool {
 }
 
 // parentAnswerCallerRefusal returns the refusal text for a caller that may not answer asked, or empty when it may.
-// The operator's own unnamed shell always may, and so does every orch on chain, the run's beam chain read at call time.
+// The operator's own unnamed shell always may, and so does the run's parent orch as resolved at call time.
 // So does the orch strand asked went to, which keeps an orch that came up or went down since the ask from refusing it.
-func parentAnswerCallerRefusal(caller string, chain []hubgeom.Parent, chainErr error, asked burlerengine.ParentAsk) string {
+func parentAnswerCallerRefusal(caller string, parent hubgeom.Parent, parentErr error, asked burlerengine.ParentAsk) string {
 	if caller == "" || (asked.Strand != "" && caller == asked.Strand) {
 		return ""
 	}
-	if chainErr != nil {
-		return fmt.Sprintf("the caller %q is not the strand the ask went to, and the run's parent orch could not be resolved (%s); %s", caller, chainErr, parentReviewWayParentAnswers)
+	if parentErr != nil {
+		return fmt.Sprintf("the caller %q is not the strand the ask went to, and the run's parent orch could not be resolved (%s); %s", caller, parentErr, parentReviewWayParentAnswers)
 	}
-	if onChain(chain, caller) {
+	if parent.Name != "" && caller == parent.Name {
 		return ""
 	}
 	return fmt.Sprintf("the caller %q is neither the run's parent orch nor the strand the ask went to; %s", caller, parentReviewWayParentAnswers)
@@ -147,7 +144,6 @@ func parentAnswerCallerRefusal(caller string, chain []hubgeom.Parent, chainErr e
 
 // parentReviewWayDecision returns the way forward of a refused answer that no later answer can take:
 // a call the parent still wants made goes in with `lym loom decision add`.
-// Once the task's scope is closed, it is filed as a board note instead.
 // It names who runs that verb as its guard resolves it: the run's parent orch,
 // or the operator's own unnamed shell when no parent orch resolves or the resolved one has no name.
 func parentReviewWayDecision(slug string, parent hubgeom.Parent, parentErr error) string {
@@ -155,7 +151,7 @@ func parentReviewWayDecision(slug string, parent hubgeom.Parent, parentErr error
 	if parentErr == nil && parent.Name != "" {
 		who = "the run's parent orch " + parent.Name
 	}
-	return fmt.Sprintf(`way forward: a call the parent still wants made goes in with "lym loom decision add %s --by parent", run by %s; once the task's scope is closed, as from Code-Review on, file it instead as a board note for a new task with "lym board upsert" and kind note`, slug, who)
+	return fmt.Sprintf(`way forward: a call the parent still wants made goes in with "lym loom decision add %s --by parent", run by %s`, slug, who)
 }
 
 // parentAnswerRefusalText returns the refusal text of an answer to the ask numbered number that refusal turned down.
@@ -167,8 +163,8 @@ func parentAnswerRefusalText(slug string, number int, refusal *burlerengine.Pare
 		return "the run has no parent-review ask; " + wayDecision
 	case burlerengine.ParentAnswerNotLatest:
 		if !latest.State.Ended() {
-			return fmt.Sprintf("ask %d is not the run's latest ask: a newer ask, ask %d, awaits an answer; way forward: review again what ask %d's own request names, then answer with --ask %d",
-				number, latest.Number, latest.Number, latest.Number)
+			return fmt.Sprintf("ask %d is not the run's latest ask: ask %d is, and it awaits an answer, so the decision record may have changed since ask %d; way forward: review the record again under ask %d's own request, then answer with --ask %d",
+				number, latest.Number, number, latest.Number, latest.Number)
 		}
 		return fmt.Sprintf("ask %d is not the run's latest ask, which is ask %d, already %s; %s", number, latest.Number, latest.State, wayDecision)
 	case burlerengine.ParentAnswerPastDeadline:
@@ -203,11 +199,10 @@ func parentReviewAnswerVerb(out io.Writer, slug string, deps parentReviewDeps, i
 		return refuse("read the run's parent-review asks: %s; %s", err, parentReviewWayRetry)
 	}
 	asked, _ := record.Ask(input.ask)
-	chain, chainErr := admissibleOrchs(deps.strandName, deps.orchChain, deps.parent)
-	if refusal := parentAnswerCallerRefusal(deps.strandName, chain, chainErr, asked); refusal != "" {
+	parent, parentErr := deps.parent()
+	if refusal := parentAnswerCallerRefusal(deps.strandName, parent, parentErr, asked); refusal != "" {
 		return refuse("%s", refusal)
 	}
-	parent, parentErr := deps.parent()
 
 	ask, err := burlerengine.AnswerParentAsk(deps.files, input.ask, deps.now(), findings)
 	var refusal *burlerengine.ParentAnswerRefusal
@@ -230,7 +225,7 @@ func parentReviewAnswerVerb(out io.Writer, slug string, deps parentReviewDeps, i
 // It reads the ask record once per poll interval.
 // An ask still pending-post or open at or past its deadline is set timeout, which ends it.
 // It answers ready true with the ask's state once the ask has ended.
-// That answer carries the reason of a not-sent or undelivered ask and the report of a done one.
+// That answer carries the reason of a not-sent ask and the report of a done one.
 // It answers ready false once the cap runs out first, and the caller runs it again.
 // A run with no ask is refused.
 func parentReviewAwaitVerb(ctx context.Context, out io.Writer, deps parentReviewDeps) int {
@@ -248,7 +243,7 @@ func parentReviewAwaitVerb(ctx context.Context, out io.Writer, deps parentReview
 		}
 		if ask.State.Ended() {
 			result := map[string]any{"ready": true, "ask": ask.Number, "state": string(ask.State)}
-			if ask.State == burlerengine.ParentAskNotSent || ask.State == burlerengine.ParentAskUndelivered {
+			if ask.State == burlerengine.ParentAskNotSent {
 				result["reason"] = ask.Reason
 			}
 			if ask.State == burlerengine.ParentAskDone {
@@ -318,7 +313,6 @@ func (s *parentReviewState) preRun(cmd *cobra.Command, args []string) error {
 	s.deps = parentReviewDeps{
 		strandName: strand,
 		parent:     func() (hubgeom.Parent, error) { return decisionParent(target, record, orchcli.OrchLive) },
-		orchChain:  func() ([]hubgeom.Parent, error) { return decisionOrchChain(target, record) },
 		files:      burlerengine.ParentReviewFilesOf(target.AnchorPath()),
 		now:        time.Now,
 		awaitCap:   shuttleengines.KeepWarm(fabricengine.ConfigDirs(target), strand).Cap,
@@ -333,11 +327,10 @@ func (c *loomCLI) parentReviewCmd() *cobra.Command {
 
 	group := &cobra.Command{
 		Use:   parentReviewGroup,
-		Short: "answer or await an ask to the run's parent orch",
-		Long: `parent-review holds the verbs of an ask to the run's parent orch: a
-Discussion-Review or Code-Review round's ask to review the round's subject, or
-the drift judge's ask to agree with its rulings. "parent-review answer" records
-the parent's answer; "parent-review await" is the asking agent's wait for it.
+		Short: "answer or await a Discussion-Review round's ask to the parent orch",
+		Long: `parent-review holds the verbs of a Discussion-Review round's ask to the run's
+parent orch. "parent-review answer" records the parent's review of the decision
+record; "parent-review await" is the review chair's wait for that answer.
 
 The verb takes an optional slug naming the task worktree. A task worktree
 addresses itself; from the prime the slug is required. The ask record and the
@@ -352,7 +345,7 @@ Example:
 
 	answer := &cobra.Command{
 		Use:         parentReviewAnswerName + " [<slug>]",
-		Short:       "record the parent orch's answer to the run's latest parent-review ask",
+		Short:       "record the parent orch's review of a Discussion-Review round's ask",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `answer writes the parent's report for the ask --ask names and sets the ask
 done. --ask is required, with exactly one of --satisfied, which writes a report
@@ -365,12 +358,11 @@ in the file's order.
 It answers only the run's latest ask while that ask is pending-post or open
 and before its deadline; an ask at or past its deadline is set timeout and the
 answer refused. A call the parent still wants made after a refusal goes in with
-"lym loom decision add <slug> --by parent"; once the task's scope is closed, as
-from Code-Review on, it is filed as a board note for a new task instead.
+"lym loom decision add <slug> --by parent".
 
-The callers are every orch on the run's beam chain, read at call time, the
-orch strand the ask went to, and the operator's own unnamed shell; the strand
-name is not verified. It edits no tracked file and never the decision record.
+The callers are the run's parent orch, resolved at call time, the orch strand
+the ask went to, and the operator's own unnamed shell; the strand name is not
+verified. It edits no tracked file and never the decision record.
 
 Example:
   lym loom parent-review answer <slug> --ask 2 --findings-file findings.yaml`,
@@ -392,8 +384,8 @@ Example:
 		Short:       "wait, capped, until the run's latest parent-review ask has ended",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceRole},
 		Long: `await waits until the run's latest parent-review ask has ended, and prints ok
-with ready true, the ask's state, the reason of a not-sent or undelivered ask
-and the report of a done one. An ask still pending-post or open at or past its deadline is set
+with ready true, the ask's state, the reason of a not-sent ask and the report
+of a done one. An ask still pending-post or open at or past its deadline is set
 timeout, which ends it. When the calling session's keep-warm cap elapses first
 it prints ok with ready false and exits 0: run it again, in a turn that does
 nothing else, with a shell command timeout above the cap. A run with no ask is

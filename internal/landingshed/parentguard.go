@@ -33,9 +33,6 @@ func newParentGuard(deps Deps) parentGuard {
 // ensure takes the parent lock for the run, waiting in the queue while another run holds it.
 // When front is set, the run waits at the front of the queue.
 // While it waits it keeps the run's wait record and the driver strand's pane mark, and removes both on every way out.
-// It logs the wait's start, each change of holder and the wait's end.
-// The end line carries the wall-clock and the awake time waited.
-// A gap between them points to a wall-clock step, or to a host suspend where the monotonic clock pauses in suspend.
 //
 // It returns "" once the lock is held.
 // It returns a non-empty reason when the operator halted the wait or the lock record is unreadable,
@@ -53,17 +50,10 @@ func (g parentGuard) ensure(ctx context.Context, producer string, front bool) (s
 
 	label := "parent lock " + g.parentBranch
 	var waiting bool
-	var waitStarted time.Time
 	var holderSlug string
 	var pauseFailures logger.Episode
 	waiter := parentlock.Waiter{
 		OnWait: func(holder parentlock.Record) {
-			if waiting {
-				logger.Info("landingshed: the parent lock changed holder during the wait", "producer", producer, "branch", g.parentBranch, "holder", holder.Owner.Slug)
-			} else {
-				waitStarted = time.Now()
-				logger.Info("landingshed: waiting for the parent lock", "producer", producer, "branch", g.parentBranch, "holder", holder.Owner.Slug)
-			}
 			waiting = true
 			holderSlug = holder.Owner.Slug
 			if err := parentlock.WriteWait(g.lock.WaitPath, parentlock.NewWait(g.parentBranch, holderSlug)); err != nil {
@@ -77,11 +67,6 @@ func (g parentGuard) ensure(ctx context.Context, producer string, front bool) (s
 	}
 	_, err = g.lock.Store.Acquire(ctx, g.parentBranch, owner, waiter)
 	if waiting {
-		// Round(0) strips the monotonic reading, so the wall-clock difference counts time the host spent suspended.
-		ended := time.Now()
-		logger.Info("landingshed: the parent lock wait ended", "producer", producer, "branch", g.parentBranch, "holder", holderSlug,
-			"granted", err == nil, "waited", ended.Round(0).Sub(waitStarted.Round(0)).Round(time.Second).String(),
-			"awake", ended.Sub(waitStarted).Round(time.Second).String())
 		if removeErr := parentlock.RemoveWait(g.lock.WaitPath); removeErr != nil {
 			logger.Warn("landingshed: could not remove the parent lock wait record", "cause", removeErr)
 		}
@@ -118,7 +103,7 @@ func (g parentGuard) release(producer string) {
 
 // stillHeld re-reads the parent lock record just before a landing and returns "" when it still names this run.
 // A record that no longer names the run, or none, means something released the lock:
-// another machine's ownership of the run, whose hand-over releases it, or an operator's `lym batten lock release`.
+// an owner pause, another machine's ownership of the run or an operator's `lym batten lock release`.
 // An unreadable record is a reason too, not an error.
 // Both reasons open with LandingStopPrefix, so only the orch's `lym loom resume` lifts the halt they make.
 // A guard with no lock store holds no lock and checks none.
@@ -140,7 +125,7 @@ func (g parentGuard) stillHeld(producer string) (string, error) {
 	case found && record.Owner.SameRun(owner):
 		return "", nil
 	}
-	return fmt.Sprintf("%sthe parent lock on %q no longer names this run, so something released it before the landing: another machine's ownership of the run, whose hand-over releases it, or an operator's `lym batten lock release`; nothing was landed; way forward: `lym loom resume` once the run is this machine's, which after an operator's release holds already", LandingStopPrefix, g.parentBranch), nil
+	return fmt.Sprintf("%sthe parent lock on %q no longer names this run, so something released it before the landing: an owner pause, another machine's ownership of the run or an operator's `lym batten lock release`; nothing was landed; way forward: `lym loom resume` once no owner pause stands and the run is this machine's, which after an operator's release holds already", LandingStopPrefix, g.parentBranch), nil
 }
 
 // pauseRequested reads the told pause seam, which reports a `--after` naming the waiting row.

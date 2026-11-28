@@ -13,7 +13,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -28,7 +27,7 @@ func TestCloneHub_FreshBindWithoutShortnameRefuses(t *testing.T) {
 	weftBare := makeEmptyBareRemote(t, fixtures, "noshortname-weft")
 
 	cloneParent := t.TempDir()
-	_, err := fabricengine.CloneHub(cloneParent, fabriclayout.CloneOptions{
+	_, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
 		WeftURL: filepath.ToSlash(weftBare),
 		WarpURL: filepath.ToSlash(warpBare),
 	})
@@ -55,7 +54,7 @@ func TestCloneHub_ShortnameRecordLifecycle(t *testing.T) {
 	weftURL := filepath.ToSlash(weftBare)
 
 	firstParent := t.TempDir()
-	first, err := fabriccli.CloneAndWire(firstParent, fabriclayout.CloneOptions{
+	first, err := fabriccli.CloneAndWire(firstParent, fabricengine.CloneOptions{
 		WeftURL:   weftURL,
 		WarpURL:   filepath.ToSlash(warpBare),
 		Shortname: "tst",
@@ -67,15 +66,15 @@ func TestCloneHub_ShortnameRecordLifecycle(t *testing.T) {
 	if first.Shortname != "tst" || !first.ShortnameRecorded {
 		t.Errorf("first clone Shortname = %q, ShortnameRecorded = %v; want %q, true", first.Shortname, first.ShortnameRecorded, "tst")
 	}
-	if got := gitOutput(t, weftBare, "show", "main:"+fabriclayout.ShortnameFileName); got != "tst" {
-		t.Errorf("weft:main %s = %q; want %q", fabriclayout.ShortnameFileName, got, "tst")
+	if got := gitOutput(t, weftBare, "show", "main:"+fabricengine.ShortnameFileName); got != "tst" {
+		t.Errorf("weft:main %s = %q; want %q", fabricengine.ShortnameFileName, got, "tst")
 	}
 
 	t.Run("SecondCloneDerivesShortname", func(t *testing.T) {
 		t.Parallel()
 
 		parent := t.TempDir()
-		res, err := fabricengine.CloneHub(parent, fabriclayout.CloneOptions{WeftURL: weftURL})
+		res, err := fabricengine.CloneHub(parent, fabricengine.CloneOptions{WeftURL: weftURL})
 		if err != nil {
 			t.Fatalf("CloneHub() error = %v; want nil", err)
 		}
@@ -89,7 +88,7 @@ func TestCloneHub_ShortnameRecordLifecycle(t *testing.T) {
 		t.Parallel()
 
 		parent := t.TempDir()
-		_, err := fabricengine.CloneHub(parent, fabriclayout.CloneOptions{WeftURL: weftURL, Shortname: "other"})
+		_, err := fabricengine.CloneHub(parent, fabricengine.CloneOptions{WeftURL: weftURL, Shortname: "other"})
 		if err == nil {
 			t.Fatal("CloneHub() with a disagreeing shortname = nil error; want a refusal")
 		}
@@ -111,7 +110,7 @@ func TestCloneHub_ShortnameRecordLifecycle(t *testing.T) {
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				_, err := fabricengine.CloneHub(firstParent, fabriclayout.CloneOptions{
+				_, err := fabricengine.CloneHub(firstParent, fabricengine.CloneOptions{
 					WeftURL:   weftURL,
 					WarpURL:   tt.warpURL,
 					Shortname: "other",
@@ -131,7 +130,7 @@ func TestCloneHub_ShortnameRecordLifecycle(t *testing.T) {
 	})
 
 	t.Run("ResetKeepsRecord", func(t *testing.T) {
-		res, err := fabricengine.CloneHub(firstParent, fabriclayout.CloneOptions{WeftURL: weftURL, Reset: true})
+		res, err := fabricengine.CloneHub(firstParent, fabricengine.CloneOptions{WeftURL: weftURL, Reset: true})
 		if err != nil {
 			t.Fatalf("CloneHub(Reset) error = %v; want nil", err)
 		}

@@ -11,35 +11,40 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
+	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
 // TestWarpLymLinkHere covers WarpLymLinkHere(l) with AnchorRel "." and subpath cases.
-// It verifies AnchorRel mirroring.
+// It verifies AnchorRel mirroring and junction pairing against the weft-sibling worktree.
 //
-//testtiming:keep WarpLymLinkHere mirroring AnchorRel; coverage of its blocks by other tests does not show an assertion of this
+//testtiming:keep WarpLymLinkHere mirroring AnchorRel and pairing with the weft sibling; coverage of its blocks by other tests does not show an assertion of this
 func TestWarpLymLinkHere(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
 		name                string
 		hub                 string
+		slug                string
 		relPath             string
 		wantWarpLymLinkHere string
 	}{
 		{
 			name:                "/h /h/main feat . case",
 			hub:                 "/h",
+			slug:                "x",
 			relPath:             ".",
 			wantWarpLymLinkHere: filepath.Join("/h", "feat", "_lym"),
 		},
 		{
 			name:                "/h /h/main feat sub case",
 			hub:                 "/h",
+			slug:                "x",
 			relPath:             "sub",
 			wantWarpLymLinkHere: filepath.Join("/h", "feat", "sub", "_lym"),
 		},
 		{
 			name:                "/h /h/main feat sub/dir case",
 			hub:                 "/h",
+			slug:                "y",
 			relPath:             "sub/dir",
 			wantWarpLymLinkHere: filepath.Join("/h", "feat", "sub/dir", "_lym"),
 		},
@@ -56,6 +61,24 @@ func TestWarpLymLinkHere(t *testing.T) {
 			if got := WarpLymLinkHere(loc); got != tt.wantWarpLymLinkHere {
 				t.Errorf("WarpLymLinkHere(l) = %q; want %q", got, tt.wantWarpLymLinkHere)
 			}
+
+			// A slug's warp worktree and its weft sibling differ only by the -weft suffix on the worktree dir.
+			warpWtName := filepath.Base(filepath.Join(loc.HubPath, tt.slug))
+			weftWtName := filepath.Base(weftname.SiblingPath(loc.HubPath, tt.slug))
+
+			if warpWtName != tt.slug {
+				t.Errorf("WorktreePath(%q) base = %q; want %q", tt.slug, warpWtName, tt.slug)
+			}
+			if weftWtName != tt.slug+"-weft" {
+				t.Errorf("weftname.SiblingPath(%q) base = %q; want %q", tt.slug, weftWtName, tt.slug+"-weft")
+			}
+
+			// Verify WarpLymLinkHere is based on WorktreePath+AnchorRel (documented intent).
+			warpLymLinkHereVal := WarpLymLinkHere(loc)
+			expectedWarpLymLinkHere := filepath.Join(loc.WorktreePath(), loc.AnchorRel, "_lym")
+			if warpLymLinkHereVal != expectedWarpLymLinkHere {
+				t.Errorf("WarpLymLinkHere(l) = %q; want %q", warpLymLinkHereVal, expectedWarpLymLinkHere)
+			}
 		})
 	}
 }
@@ -63,6 +86,7 @@ func TestWarpLymLinkHere(t *testing.T) {
 // TestWarpJunctions verifies that WarpJunctions(l, slug, names) returns one record per name, in the order given.
 // Link and Target are composed from the worktree, the weft sibling path and AnchorRel.
 // The cases cover AnchorRel "." and a nested AnchorRel; an empty names slice; a 3-name slice; a reversed 2-name slice.
+// They also check that WarpJunctions never adds a hub-structural entry of its own to the caller's names.
 // WarpJunctions takes names as a plain slice and does no sourcing, so the two-name set is passed literally.
 // The _extra row asserts against the generic join, not a pattern-specific accessor.
 //
@@ -150,14 +174,99 @@ func TestWarpJunctions(t *testing.T) {
 			}
 		})
 	}
+
+	// Sub-test: scope guard.
+	// WarpJunctions returns exactly the caller-supplied names, one record per entry in the slice's order.
+	// It never adds a hub-structural entry of its own.
+	// The Bolt directory name must not appear unless the caller supplies it; HubReservedNames() still reserves it.
+	t.Run("no_unsupplied_hub_structural_names", func(t *testing.T) {
+		loc := &lymcwd.Location{
+			HubPath:      "/h",
+			WorktreeName: "main",
+			AnchorRel:    ".",
+		}
+
+		junctions := WarpJunctions(loc, "slug", []string{"_lym", "_extra"})
+		for _, j := range junctions {
+			if j.Name == BoltDirName {
+				t.Errorf("WarpJunctions augmented the caller-supplied names with an unsupplied %q entry", BoltDirName)
+			}
+		}
+	})
 }
 
-// TestWarpJunctionsHere checks that WarpJunctionsHere agrees with WarpJunctions(l, slug, names), entry for entry.
+// TestWarpJunctionsHere verifies that WarpJunctionsHere returns the expected Name, Link and Target.
+// It covers a RelPath of "." and a nested RelPath.
+// It also checks agreement with WarpJunctions(l, slug, names), entry for entry.
 // That agreement holds when the slug is the current worktree's, and health-check call sites rely on it.
 //
-//testtiming:keep the slug-free junction accessor agreeing with WarpJunctions; coverage of its blocks by other tests does not show an assertion of this
+//testtiming:keep the slug-free junction accessor returning the expected Name, Link and Target at a root and nested anchor and agreeing with WarpJunctions; coverage of its blocks by other tests does not show an assertion of this
 func TestWarpJunctionsHere(t *testing.T) {
 	tiergate.Require(t, 0)
+	t.Run("at root", func(t *testing.T) {
+		loc := &lymcwd.Location{HubPath: "/h", WorktreeName: "feat", AnchorRel: "."}
+
+		junctions := WarpJunctionsHere(loc, []string{"_lym", "_extra"})
+		if len(junctions) != 2 {
+			t.Fatalf("WarpJunctionsHere() returned %d junctions; want 2", len(junctions))
+		}
+
+		lymJunction := junctions[0]
+		wantLymLink := WarpLymLinkHere(loc)
+		wantLymTarget := filepath.Join(RecordsWorktree(loc), loc.AnchorRel, "_lym")
+		if lymJunction.Name != "_lym" {
+			t.Errorf("WarpJunctionsHere()[0].Name = %q; want %q", lymJunction.Name, "_lym")
+		}
+		if lymJunction.Link != wantLymLink {
+			t.Errorf("WarpJunctionsHere()[0].Link = %q; want %q", lymJunction.Link, wantLymLink)
+		}
+		if lymJunction.Target != wantLymTarget {
+			t.Errorf("WarpJunctionsHere()[0].Target = %q; want %q", lymJunction.Target, wantLymTarget)
+		}
+
+		extraJunction := junctions[1]
+		wantExtraLink := filepath.Join(loc.WorktreePath(), loc.AnchorRel, "_extra")
+		wantExtraTarget := filepath.Join(RecordsWorktree(loc), loc.AnchorRel, "_extra")
+		if extraJunction.Name != "_extra" {
+			t.Errorf("WarpJunctionsHere()[1].Name = %q; want %q", extraJunction.Name, "_extra")
+		}
+		if extraJunction.Link != wantExtraLink {
+			t.Errorf("WarpJunctionsHere()[1].Link = %q; want %q", extraJunction.Link, wantExtraLink)
+		}
+		if extraJunction.Target != wantExtraTarget {
+			t.Errorf("WarpJunctionsHere()[1].Target = %q; want %q", extraJunction.Target, wantExtraTarget)
+		}
+	})
+
+	t.Run("at nested subpath", func(t *testing.T) {
+		loc := &lymcwd.Location{HubPath: "/h", WorktreeName: "feat", AnchorRel: filepath.Join("services", "api")}
+
+		junctions := WarpJunctionsHere(loc, []string{"_lym", "_extra"})
+		if len(junctions) != 2 {
+			t.Fatalf("WarpJunctionsHere() returned %d junctions; want 2", len(junctions))
+		}
+
+		lymJunction := junctions[0]
+		wantLymLink := WarpLymLinkHere(loc)
+		wantLymTarget := filepath.Join(RecordsWorktree(loc), loc.AnchorRel, "_lym")
+		if lymJunction.Link != wantLymLink {
+			t.Errorf("WarpJunctionsHere()[0].Link = %q; want %q", lymJunction.Link, wantLymLink)
+		}
+		if lymJunction.Target != wantLymTarget {
+			t.Errorf("WarpJunctionsHere()[0].Target = %q; want %q", lymJunction.Target, wantLymTarget)
+		}
+
+		extraJunction := junctions[1]
+		wantExtraLink := filepath.Join(loc.WorktreePath(), loc.AnchorRel, "_extra")
+		wantExtraTarget := filepath.Join(RecordsWorktree(loc), loc.AnchorRel, "_extra")
+		if extraJunction.Link != wantExtraLink {
+			t.Errorf("WarpJunctionsHere()[1].Link = %q; want %q", extraJunction.Link, wantExtraLink)
+		}
+		if extraJunction.Target != wantExtraTarget {
+			t.Errorf("WarpJunctionsHere()[1].Target = %q; want %q", extraJunction.Target, wantExtraTarget)
+		}
+	})
+
 	t.Run("agrees with WarpJunctions when slug matches current worktree", func(t *testing.T) {
 		loc := &lymcwd.Location{HubPath: "/h", WorktreeName: "feat", AnchorRel: "."}
 
@@ -176,6 +285,42 @@ func TestWarpJunctionsHere(t *testing.T) {
 			if here[i] != bySlug[i] {
 				t.Errorf("WarpJunctionsHere()[%d] = %+v; WarpJunctions(%q)[%d] = %+v", i, here[i], slug, i, bySlug[i])
 			}
+		}
+	})
+
+	t.Run("names ordering regressions", func(t *testing.T) {
+		loc := &lymcwd.Location{HubPath: "/h", WorktreeName: "feat", AnchorRel: "."}
+
+		regressionTests := []struct {
+			name  string
+			names []string
+		}{
+			{name: "empty names yields zero records", names: []string{}},
+			{name: "3-name slice yields three records in input order", names: []string{"_lym", "_extra", "_other"}},
+			{name: "reversed 2-name slice preserves given order, no forced sort", names: []string{"_extra", "_lym"}},
+		}
+
+		for _, rt := range regressionTests {
+			t.Run(rt.name, func(t *testing.T) {
+				junctions := WarpJunctionsHere(loc, rt.names)
+				if len(junctions) != len(rt.names) {
+					t.Fatalf("WarpJunctionsHere(%v) returned %d entries; want %d", rt.names, len(junctions), len(rt.names))
+				}
+				for i, wantName := range rt.names {
+					got := junctions[i]
+					if got.Name != wantName {
+						t.Errorf("WarpJunctionsHere(%v)[%d].Name = %q; want %q", rt.names, i, got.Name, wantName)
+					}
+					wantLink := filepath.Join(loc.WorktreePath(), loc.AnchorRel, wantName)
+					if got.Link != wantLink {
+						t.Errorf("WarpJunctionsHere(%v)[%d].Link = %q; want %q", rt.names, i, got.Link, wantLink)
+					}
+					wantTarget := filepath.Join(RecordsWorktree(loc), loc.AnchorRel, wantName)
+					if got.Target != wantTarget {
+						t.Errorf("WarpJunctionsHere(%v)[%d].Target = %q; want %q", rt.names, i, got.Target, wantTarget)
+					}
+				}
+			})
 		}
 	})
 }

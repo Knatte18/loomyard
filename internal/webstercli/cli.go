@@ -88,16 +88,13 @@ type websterCLI struct {
 	roles      map[websterengine.Role]shuttleengine.ModelChoice
 
 	// instructionFiles lists the instruction files Master's engine names, which count toward the start base; nil means none.
-	// It looks the engine up when called.
-	// So a verb that never prices a partition is never refused over the webster.master key.
+	// It looks the engine up when called, so a verb that never prices a partition is never refused over the master key.
 	instructionFiles func() ([]string, error)
 
 	// anchorRel is the hub-mode Location's anchor-relative path (loc.AnchorRel), and it is empty in standalone.
-	// Fabric sync needs it to scope its pathspec with fabriclayout.ScopedPathspec.
+	// Fabric sync needs it to scope its pathspec with fabricengine.ScopedPathspec.
 	// No other field supplies that path.
 	anchorRel string
-	// runID is the worktree's own run, whose transition a reset's records commit marks; it is empty in standalone.
-	runID string
 
 	// geom is the websterengine.Geometry that every verb's Deps construction reads.
 	// It is hubgeom.WebsterGeometry(loc) in hub mode and standalonegeom.WebsterGeometry(target, stateDir) in standalone.
@@ -112,11 +109,6 @@ type websterCLI struct {
 	// Opening it there would fail the pre-run in healthy but unwired locations.
 	// Those are the locations that validate and status run in, and neither verb commits to the fabric.
 	openFabric func() (*fabricengine.Fabric, error)
-	// pushRecords pushes the pair's records synchronously; wireHub sets it, and standalone leaves it nil.
-	pushRecords func() error
-	// syncOptions are the skip switches every fabric sync and reset of the pair's code runs under.
-	// wireHub and wireStandalone read them from the environment once per process; the zero value skips nothing.
-	syncOptions fabricengine.SyncOptions
 	// parentBranch lazily reads the pair's recorded parent branch from fabric's origin record.
 	// The clean-parent-merge rule needs it; standalone leaves it nil, since no merge commit is accepted.
 	parentBranch websterengine.ParentBranchFunc
@@ -159,10 +151,6 @@ type websterCLI struct {
 	// masterStrand returns the calling Master strand's name and guid.
 	// begin-batch and recover-batch claim them into a pause covering the pair; wireHub and wireStandalone set it.
 	masterStrand func() (name, guid string, err error)
-	// strandName is the calling strand's name, empty for an unnamed shell.
-	// wireHub and wireStandalone read it from the strand-name environment variable;
-	// the bracket verbs' orphaned-Master guard and masterStrand read it from here.
-	strandName string
 
 	// stencilsDirFlag, planDirFlag, and targetDirFlag hold the raw values of the three standalone-entry persistent flags.
 	// Command() binds each one.

@@ -6,7 +6,6 @@ package claudeengine
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -20,14 +19,13 @@ import (
 )
 
 // Each launch and resume line starts with the per-dialect env assignments:
-// CLAUDE_ENV_FILE, BASH_MAX_TIMEOUT_MS and the one-hour CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL.
-// The default 5m CLAUDE_CODE_PROMPT_CACHE_TTL follows them.
+// CLAUDE_ENV_FILE, BASH_MAX_TIMEOUT_MS, and the default 5m CLAUDE_CODE_PROMPT_CACHE_TTL.
 // The env file paths are the ones the tests below thread through.
 const (
 	pwshEnvFilePath  = `C:\run\bash-env.sh`
 	posixEnvFilePath = "/run/bash-env.sh"
-	pwshEnvLead      = `$env:CLAUDE_ENV_FILE = 'C:\run\bash-env.sh'; $env:BASH_MAX_TIMEOUT_MS = '3600000'; $env:CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL = '1h'; $env:CLAUDE_CODE_PROMPT_CACHE_TTL = '5m'; `
-	posixEnvLead     = `CLAUDE_ENV_FILE='/run/bash-env.sh' BASH_MAX_TIMEOUT_MS='3600000' CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL='1h' CLAUDE_CODE_PROMPT_CACHE_TTL='5m' `
+	pwshEnvLead      = `$env:CLAUDE_ENV_FILE = 'C:\run\bash-env.sh'; $env:BASH_MAX_TIMEOUT_MS = '3600000'; $env:CLAUDE_CODE_PROMPT_CACHE_TTL = '5m'; `
+	posixEnvLead     = `CLAUDE_ENV_FILE='/run/bash-env.sh' BASH_MAX_TIMEOUT_MS='3600000' CLAUDE_CODE_PROMPT_CACHE_TTL='5m' `
 )
 
 func TestClaudeBinary(t *testing.T) {
@@ -68,7 +66,6 @@ func TestBuildLaunchCmd(t *testing.T) {
 		// promptCacheTTL defaults to 5m when empty.
 		promptCacheTTL    string
 		remoteControlName string
-		account           accountEnv
 		want              string
 	}{
 		{
@@ -90,7 +87,7 @@ func TestBuildLaunchCmd(t *testing.T) {
 			settingsPath:   `C:\run\settings.json`,
 			sessionID:      "abc-123",
 			promptCacheTTL: "1h",
-			want:           `$env:CLAUDE_ENV_FILE = 'C:\run\bash-env.sh'; $env:BASH_MAX_TIMEOUT_MS = '3600000'; $env:CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL = '1h'; $env:CLAUDE_CODE_PROMPT_CACHE_TTL = '1h'; & 'claude' 'Read C:\run\prompt.md in full first; it is your complete, authoritative instructions.' --session-id 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYM_STRAND_NAME" --dangerously-skip-permissions`,
+			want:           `$env:CLAUDE_ENV_FILE = 'C:\run\bash-env.sh'; $env:BASH_MAX_TIMEOUT_MS = '3600000'; $env:CLAUDE_CODE_PROMPT_CACHE_TTL = '1h'; & 'claude' 'Read C:\run\prompt.md in full first; it is your complete, authoritative instructions.' --session-id 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYM_STRAND_NAME" --dangerously-skip-permissions`,
 		},
 		{
 			name:         "autonomous_no_model",
@@ -320,30 +317,6 @@ func TestBuildLaunchCmd(t *testing.T) {
 			want:             posixEnvLead + `CLAUDE_CODE_FORK_SUBAGENT='1' 'claude' 'Read /run/prompt.md in full first; it is your complete, authoritative instructions.' --session-id 'abc-123' --settings '/run/settings.json' --name "${LYM_STRAND_NAME}" --dangerously-skip-permissions --append-system-prompt-file '/run/append-system-prompt.txt'`,
 		},
 		{
-			// An exported account directory wraps the whole line outermost.
-			name:         "account_export_posix",
-			sh:           shell.Posix(),
-			bin:          "claude",
-			promptPath:   "/run/prompt.md",
-			settingsPath: "/run/settings.json",
-			sessionID:    "abc-123",
-			interactive:  true,
-			account:      accountEnv{dir: "/accounts/work"},
-			want:         `CLAUDE_CONFIG_DIR='/accounts/work' ` + posixEnvLead + `'claude' 'Read /run/prompt.md in full first; it is your complete, authoritative instructions.' --session-id 'abc-123' --settings '/run/settings.json' --name "${LYM_STRAND_NAME}"`,
-		},
-		{
-			// An account on the default directory unsets the variable ahead of the line.
-			name:         "account_unset_posix",
-			sh:           shell.Posix(),
-			bin:          "claude",
-			promptPath:   "/run/prompt.md",
-			settingsPath: "/run/settings.json",
-			sessionID:    "abc-123",
-			interactive:  true,
-			account:      accountEnv{unset: true},
-			want:         `unset CLAUDE_CONFIG_DIR; ` + posixEnvLead + `'claude' 'Read /run/prompt.md in full first; it is your complete, authoritative instructions.' --session-id 'abc-123' --settings '/run/settings.json' --name "${LYM_STRAND_NAME}"`,
-		},
-		{
 			// Fork mode off: the line carries no fork-subagent env assignment.
 			name:          "fork_mode_off",
 			bin:           "claude",
@@ -367,7 +340,7 @@ func TestBuildLaunchCmd(t *testing.T) {
 			if promptCacheTTL == "" {
 				promptCacheTTL = "5m"
 			}
-			got := buildLaunchCmd(sh, tt.bin, launchPointer(tt.promptPath), tt.settingsPath, tt.sessionID, tt.model, tt.effort, tt.appendPromptPath, envFilePath, promptCacheTTL, tt.remoteControlName, tt.account, false, !tt.interactive, tt.forkSubagents)
+			got := buildLaunchCmd(sh, tt.bin, launchPointer(tt.promptPath), tt.settingsPath, tt.sessionID, tt.model, tt.effort, tt.appendPromptPath, envFilePath, promptCacheTTL, tt.remoteControlName, false, !tt.interactive, tt.forkSubagents)
 			if got != tt.want {
 				t.Errorf("buildLaunchCmd(...) = %q; want %q", got, tt.want)
 			}
@@ -378,12 +351,12 @@ func TestBuildLaunchCmd(t *testing.T) {
 	}
 }
 
-// openLines returns an open launch's fresh and resume lines with their leading exports of the prompt-cache TTLs stripped.
-// It fails the test unless both lines open with the export of ttl and then the export of the one-hour subagent TTL.
+// openLines returns an open launch's fresh and resume lines with their leading export of the prompt-cache TTL stripped.
+// It fails the test unless both lines open with that export at ttl.
 func openLines(t *testing.T, sh shell.Shell, launch shuttleengine.Launch, ttl string) (fresh, resume string) {
 	t.Helper()
 	const marker = "|"
-	lead := strings.TrimSuffix(sh.Chain(sh.ExportEnv(promptCacheTTLEnvKey, ttl), sh.ExportEnv("CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL", "1h"), marker), marker)
+	lead := strings.TrimSuffix(sh.Chain(sh.ExportEnv(promptCacheTTLEnvKey, ttl), marker), marker)
 	fresh, freshFound := strings.CutPrefix(launch.Cmd, lead)
 	resume, resumeFound := strings.CutPrefix(launch.ResumeCmd, lead)
 	if !freshFound || !resumeFound {
@@ -393,19 +366,13 @@ func openLines(t *testing.T, sh shell.Shell, launch shuttleengine.Launch, ttl st
 }
 
 // TestOpenLaunch pins the open launch: the fresh line with the name reference and optional model flags;
-// the resume line that falls back to the fresh one;
-// the exports of the role's prompt-cache TTL and the one-hour subagent TTL ahead of both;
+// the resume line that falls back to the fresh one; the export of the role's prompt-cache TTL ahead of both;
 // and the refusals made before a session id is minted.
 func TestOpenLaunch(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	sh := shell.ForGOOS()
 	nameRef := "--name " + sh.EnvRef("LYM_STRAND_NAME")
-	const (
-		hubPinOnRoot    = "accounts:\n  - {name: work, config_dir: ROOT/work, weight: 1}\naccount_pins:\n  hub: work\n"
-		hubPinOnDefault = "accounts:\n  - {name: work, config_dir: '~/.claude', weight: 1}\naccount_pins:\n  hub: work\n"
-		noPin           = "accounts:\n  - {name: work, config_dir: ROOT/work, weight: 1}\n"
-	)
 	tests := []struct {
 		name string
 		spec shuttleengine.OpenSpec
@@ -424,15 +391,6 @@ func TestOpenLaunch(t *testing.T) {
 		wantErr              string
 		// withAgents hands the launch the agents.yaml template, which gives a spec with no effort one.
 		withAgents bool
-		// accounts is the machine-layer claude.yaml the engine loads, ROOT standing for a temp directory; empty loads none.
-		accounts string
-		// wantStatement is what both lines open with after the TTL export: "export" or "unset" of CLAUDE_CONFIG_DIR.
-		// Empty means neither line touches it.
-		wantStatement string
-		// wantRecord says the launch writes account.json naming the work account.
-		wantRecord bool
-		// wantStatusLine says the settings hold the lym status line of the work account beside the creel hooks.
-		wantStatusLine bool
 		// check gets the launch and its two lines with the TTL export stripped.
 		check func(t *testing.T, launch shuttleengine.Launch, fresh, resume string)
 	}{
@@ -453,10 +411,6 @@ func TestOpenLaunch(t *testing.T) {
 		{name: "an invalid TTL is refused", spec: shuttleengine.OpenSpec{Role: "explore"}, defaultTTL: "1H", wantErr: `prompt_cache_ttl "1H"`},
 		{name: "a failed append-prompt write removes the directory", spec: shuttleengine.OpenSpec{Role: "explore"}, board: true, obstructAppendPrompt: true, wantErr: "write open append system prompt"},
 		{name: "a board writes the creel settings and the append prompt", spec: shuttleengine.OpenSpec{Role: "explore"}, board: true},
-		{name: "a hub pin on another directory exports it ahead of both lines", spec: shuttleengine.OpenSpec{Role: "explore"}, board: true, accounts: hubPinOnRoot, wantStatement: "export", wantStatusLine: true},
-		{name: "a hub pin on the default directory unsets it ahead of both lines", spec: shuttleengine.OpenSpec{Role: "explore"}, board: true, accounts: hubPinOnDefault, wantStatement: "unset", wantStatusLine: true},
-		{name: "accounts with no pin touch neither and add no status line", spec: shuttleengine.OpenSpec{Role: "explore"}, board: true, accounts: noPin},
-		{name: "a board records the account the session launched under", spec: shuttleengine.OpenSpec{Role: "explore"}, board: true, accounts: hubPinOnRoot, wantStatement: "export", wantRecord: true, wantStatusLine: true},
 		{name: "a board refusal creates nothing", spec: shuttleengine.OpenSpec{Role: "explore", PermissionMode: "auto"}, board: true, wantErr: "invalid permission mode"},
 		{
 			name: "fresh line",
@@ -582,12 +536,8 @@ func TestOpenLaunch(t *testing.T) {
 			if tt.invalidConfig {
 				engine = engineWithInvalidConfig(t)
 			}
-			root := t.TempDir()
 			boardDir := ""
-			switch {
-			case tt.accounts != "":
-				engine, boardDir = engineWithAccounts(t, strings.ReplaceAll(tt.accounts, "ROOT", root), shuttleengine.Worktree{})
-			case tt.board:
+			if tt.board {
 				boardDir = t.TempDir()
 				engine.dirs.Board = boardDir
 			}
@@ -632,28 +582,8 @@ func TestOpenLaunch(t *testing.T) {
 				wantTTL = templateConfig(t).PromptCacheTTL
 			}
 			fresh, resume := openLines(t, sh, launch, wantTTL)
-			workDir := filepath.Join(root, "work")
-			wantStatement := map[string]string{"": "", "export": sh.ExportEnv(claudeConfigDirEnv, workDir), "unset": sh.UnsetEnv(claudeConfigDirEnv)}[tt.wantStatement]
-			for _, line := range []string{fresh, resume} {
-				if wantStatement == "" && strings.Contains(line, claudeConfigDirEnv) {
-					t.Errorf("line = %q; want no %s", line, claudeConfigDirEnv)
-				}
-				if wantStatement != "" && !strings.HasPrefix(line, wantStatement+"; ") {
-					t.Errorf("line = %q; want it to open with %q", line, wantStatement)
-				}
-			}
-			if tt.wantRecord {
-				got, found, err := readLaunchedAccount(dir)
-				if want := (launchedAccount{ConfigDir: workDir, Account: "work"}); err != nil || !found || got != want {
-					t.Errorf("account.json = %+v, found %v, err %v; want %+v", got, found, err, want)
-				}
-			}
 			if tt.board {
-				wantStatusLine := ""
-				if tt.wantStatusLine {
-					wantStatusLine = fmt.Sprintf("'%s' claude statusline 'work'", testLymPath)
-				}
-				checkOpenCreelFiles(t, launch, dir, boardDir, sh, wantStatusLine)
+				checkOpenCreelFiles(t, launch, dir, boardDir, sh)
 				return
 			}
 			if launch.CreelHooks {
@@ -677,10 +607,9 @@ func TestOpenLaunch(t *testing.T) {
 
 // checkOpenCreelFiles asserts what an open launch with a board directory leaves:
 // CreelHooks is set, and both launch lines name the settings and append-prompt files in dir.
-// The settings document holds creel's hooks and the session scope.
-// It also holds wantStatusLine as the status line command when that is set.
-// The append prompt holds the trust sentence alone.
-func checkOpenCreelFiles(t *testing.T, launch shuttleengine.Launch, dir, boardDir string, sh shell.Shell, wantStatusLine string) {
+// The settings document holds creel's hooks and the session scope alone,
+// and the append prompt holds the trust sentence alone.
+func checkOpenCreelFiles(t *testing.T, launch shuttleengine.Launch, dir, boardDir string, sh shell.Shell) {
 	t.Helper()
 	if !launch.CreelHooks {
 		t.Errorf("Launch.CreelHooks = false; want true for an engine told a board directory")
@@ -725,17 +654,8 @@ func checkOpenCreelFiles(t *testing.T, launch shuttleengine.Launch, dir, boardDi
 		t.Fatalf("parse settings.json %q: %v", data, err)
 	}
 	for key := range keys {
-		if key != "hooks" && !slices.Contains(scopeSettingsKeys, key) && !(key == "statusLine" && wantStatusLine != "") {
-			t.Errorf("settings.json holds %q; want the hooks, the session scope and a wanted status line alone (data: %s)", key, data)
-		}
-	}
-	if wantStatusLine != "" {
-		var statusLine struct {
-			Type    string `json:"type"`
-			Command string `json:"command"`
-		}
-		if err := json.Unmarshal(keys["statusLine"], &statusLine); err != nil || statusLine.Type != "command" || statusLine.Command != wantStatusLine {
-			t.Errorf("statusLine = %s, err %v; want a command entry running %q", keys["statusLine"], err, wantStatusLine)
+		if key != "hooks" && !slices.Contains(scopeSettingsKeys, key) {
+			t.Errorf("settings.json holds %q; want the hooks and the session scope alone (data: %s)", key, data)
 		}
 	}
 	if len(doc.Hooks) != 2 {
@@ -870,7 +790,7 @@ func TestBuildResumeCmd(t *testing.T) {
 			"fork_mode_on", "", "", "", true, true, "5m", "",
 			pwshEnvLead + `$env:CLAUDE_CODE_FORK_SUBAGENT = '1'; & 'claude' --resume 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYM_STRAND_NAME"`,
 		},
-		{"prompt_cache_ttl_one_hour", "", "", "", true, false, "1h", "", `$env:CLAUDE_ENV_FILE = 'C:\run\bash-env.sh'; $env:BASH_MAX_TIMEOUT_MS = '3600000'; $env:CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL = '1h'; $env:CLAUDE_CODE_PROMPT_CACHE_TTL = '1h'; & 'claude' --resume 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYM_STRAND_NAME"`},
+		{"prompt_cache_ttl_one_hour", "", "", "", true, false, "1h", "", `$env:CLAUDE_ENV_FILE = 'C:\run\bash-env.sh'; $env:BASH_MAX_TIMEOUT_MS = '3600000'; $env:CLAUDE_CODE_PROMPT_CACHE_TTL = '1h'; & 'claude' --resume 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYM_STRAND_NAME"`},
 		{
 			// A revived session must come back with the remote control it launched with.
 			"remote_control_on_resume", "", "", "", true, false, "5m", "neve::ly:orch",
@@ -879,29 +799,12 @@ func TestBuildResumeCmd(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := buildResumeCmd(shell.Pwsh(), "claude", `C:\run\settings.json`, "abc-123", tt.model, tt.effort, tt.appendPromptPath, pwshEnvFilePath, tt.ttl, tt.remoteControlName, accountEnv{}, !tt.interactive, tt.forkSubagents)
+			got := buildResumeCmd(shell.Pwsh(), "claude", `C:\run\settings.json`, "abc-123", tt.model, tt.effort, tt.appendPromptPath, pwshEnvFilePath, tt.ttl, tt.remoteControlName, !tt.interactive, tt.forkSubagents)
 			if got != tt.want {
 				t.Errorf("buildResumeCmd(...) = %q; want %q", got, tt.want)
 			}
 			if strings.ContainsAny(got, "\r\n") {
 				t.Errorf("buildResumeCmd(...) = %q; contains a newline, but the command is typed via a single send-keys call", got)
-			}
-		})
-	}
-
-	accountRows := []struct {
-		name    string
-		account accountEnv
-		lead    string
-	}{
-		{"account_export", accountEnv{dir: `C:\accounts\work`}, `$env:CLAUDE_CONFIG_DIR = 'C:\accounts\work'; `},
-		{"account_unset", accountEnv{unset: true}, shell.Pwsh().UnsetEnv("CLAUDE_CONFIG_DIR") + "; "},
-	}
-	for _, row := range accountRows {
-		t.Run(row.name, func(t *testing.T) {
-			want := row.lead + pwshEnvLead + `& 'claude' --resume 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYM_STRAND_NAME"`
-			if got := buildResumeCmd(shell.Pwsh(), "claude", `C:\run\settings.json`, "abc-123", "", "", "", pwshEnvFilePath, "5m", "", row.account, false, false); got != want {
-				t.Errorf("buildResumeCmd(...) = %q; want %q", got, want)
 			}
 		})
 	}
@@ -915,7 +818,7 @@ func TestBuildResumeCmd_NoticePosix(t *testing.T) {
 	tiergate.Require(t, 0)
 	want := posixEnvLead + `CLAUDE_CODE_FORK_SUBAGENT='1' 'claude' --resume 'abc-123' --settings '/run/settings.json' --name "${LYM_STRAND_NAME}" --dangerously-skip-permissions --append-system-prompt-file '/run/append-system-prompt.txt'`
 
-	got := buildResumeCmd(shell.Posix(), "claude", "/run/settings.json", "abc-123", "", "", "/run/append-system-prompt.txt", posixEnvFilePath, "5m", "", accountEnv{}, true, true)
+	got := buildResumeCmd(shell.Posix(), "claude", "/run/settings.json", "abc-123", "", "", "/run/append-system-prompt.txt", posixEnvFilePath, "5m", "", true, true)
 	if got != want {
 		t.Errorf("buildResumeCmd(...) = %q; want %q", got, want)
 	}

@@ -14,7 +14,7 @@ import (
 	"slices"
 	"sort"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 )
 
 // The commit trailers that hold the seal and the baseline digest.
@@ -126,7 +126,7 @@ func sealDigest(data []byte) string {
 // SealExpectation reads expected.yaml, hashes it and commits it alone.
 // The commit carries `Drift-Seal: <sha256>` followed by the extra trailers.
 // An extra trailer is, for example, the baseline digest of a counted capture that has none yet.
-func SealExpectation(d Deps, extra ...fabriclayout.Trailer) error {
+func SealExpectation(d Deps, extra ...fabricengine.Trailer) error {
 	if err := requireSeams("the seal", seam{"CommitWithTrailers", d.CommitWithTrailers != nil}); err != nil {
 		return err
 	}
@@ -134,7 +134,7 @@ func SealExpectation(d Deps, extra ...fabriclayout.Trailer) error {
 	if err != nil {
 		return fmt.Errorf("drift: read the expectation to seal it: %w", err)
 	}
-	trailers := append([]fabriclayout.Trailer{{Key: SealTrailerKey, Value: sealDigest(data)}}, extra...)
+	trailers := append([]fabricengine.Trailer{{Key: SealTrailerKey, Value: sealDigest(data)}}, extra...)
 	if err := d.CommitWithTrailers([]string{durableRel(expectedFileName)}, trailers); err != nil {
 		return fmt.Errorf("drift: commit the sealed expectation: %w", err)
 	}

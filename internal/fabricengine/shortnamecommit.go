@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
 )
@@ -28,18 +27,18 @@ func CommitShortname(hub, shortname, message string, rec *Mutations) (sha string
 	}
 	defer func() { _ = l.Release() }()
 
-	boardDir := fabriclayout.BoltDir(hub)
+	boardDir := BoltDir(hub)
 	if err := WriteShortname(boardDir, shortname); err != nil {
 		return "", false, err
 	}
-	rec.Append(fabriclayout.KindFileWritten, filepath.Join(boardDir, fabriclayout.ShortnameFileName), "")
+	rec.Append(KindFileWritten, filepath.Join(boardDir, ShortnameFileName), "")
 
-	sha, committed, err = gitrepo.New(boardDir).StageAndCommit(message, fabriclayout.ScopedPathspec("", []string{fabriclayout.ShortnameFileName}))
+	sha, committed, err = gitrepo.New(boardDir).StageAndCommit(message, ScopedPathspec("", []string{ShortnameFileName}))
 	if err != nil {
-		return "", false, fmt.Errorf("fabricengine: commit %s: %w", fabriclayout.ShortnameFileName, err)
+		return "", false, fmt.Errorf("fabricengine: commit %s: %w", ShortnameFileName, err)
 	}
 	if committed {
-		rec.Append(fabriclayout.KindCommitCreated, boardDir, sha)
+		rec.Append(KindCommitCreated, boardDir, sha)
 	}
 	return sha, committed, nil
 }

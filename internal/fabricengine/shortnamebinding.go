@@ -12,9 +12,12 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/logger"
 )
+
+// ShortnameFileName is the filename of the recorded repo shortname at the board root (<boardDir>/.lym-shortname).
+// It holds only the shortname, plus a trailing newline.
+const ShortnameFileName = ".lym-shortname"
 
 // ReadShortname reads the recorded repo shortname from <boardDir>/.lym-shortname.
 // It reports whether a usable one was found.
@@ -23,7 +26,7 @@ import (
 // so a damaged record reads as a hub with no shortname.
 // `lym fabric shortname <shortname>` or `clone --shortname` records a new one over it.
 func ReadShortname(boardDir string) (shortname string, found bool) {
-	data, err := os.ReadFile(filepath.Join(boardDir, fabriclayout.ShortnameFileName))
+	data, err := os.ReadFile(filepath.Join(boardDir, ShortnameFileName))
 	if err != nil {
 		return "", false
 	}
@@ -39,7 +42,7 @@ func usableShortname(raw, where string) (string, bool) {
 		return "", false
 	}
 	if err := agentname.ValidateShortname(trimmed); err != nil {
-		logger.Warn("fabricengine: recorded repo shortname is invalid; treating the hub as having no shortname", "file", fabriclayout.ShortnameFileName, "where", where, "value", trimmed, "error", err)
+		logger.Warn("fabricengine: recorded repo shortname is invalid; treating the hub as having no shortname", "file", ShortnameFileName, "where", where, "value", trimmed, "error", err)
 		return "", false
 	}
 	return trimmed, true
@@ -48,7 +51,7 @@ func usableShortname(raw, where string) (string, bool) {
 // WriteShortname writes shortname plus a trailing newline to <boardDir>/.lym-shortname, replacing any existing content.
 // The caller commits the result onto weft:main through Bolt; this function only touches the working tree.
 func WriteShortname(boardDir, shortname string) error {
-	path := filepath.Join(boardDir, fabriclayout.ShortnameFileName)
+	path := filepath.Join(boardDir, ShortnameFileName)
 	if err := os.WriteFile(path, []byte(shortname+"\n"), 0o644); err != nil {
 		return fmt.Errorf("write %s: %w", path, err)
 	}

@@ -112,12 +112,7 @@ func WaitUncovered(ctx context.Context, path, slug string, w Waiter) error {
 }
 
 // heldLine renders the line a wait writes when it starts, naming the pause and the resume that lifts it.
-// An entry carrying BoltHoldCaller names the adopt and its machine instead, and no resume.
 func heldLine(entry Entry) string {
-	if entry.Caller == BoltHoldCaller {
-		return fmt.Sprintf("lym: held by an adopt on machine %s since %s; it continues after that adopt's hold clears",
-			holdMachineName(entry), entry.PausedAt.Format(time.RFC3339))
-	}
 	pause, resume := "a hub-wide pause", `"lym tender resume"`
 	if entry.Scope != ScopeHub {
 		pause = fmt.Sprintf("the pause of %s", entry.Scope)
@@ -251,6 +246,8 @@ type Gate struct {
 	ExemptAll bool
 	// Defer makes a call that finds a live entry covering the process hand off to the deferral SetGateDeferral stored, before any wait.
 	Defer bool
+	// OwnerEntryExempt lets a live entry of the gate's own slug whose Caller is OwnerCaller pass.
+	OwnerEntryExempt bool
 }
 
 var (
@@ -310,10 +307,14 @@ func (g *Gate) waiter(onSleep func()) Waiter {
 	switch {
 	case g.ExemptAll:
 		waiter.ExemptEntry = func(Entry) bool { return true }
-	case g.ExemptScope != "":
+	case g.ExemptScope != "" || g.OwnerEntryExempt:
 		exemptScope, exemptPausedAt := g.ExemptScope, g.ExemptPausedAt
+		ownerEntryExempt := g.OwnerEntryExempt
 		waiter.ExemptEntry = func(entry Entry) bool {
-			return entry.Scope == exemptScope && entry.PausedAt.Equal(exemptPausedAt)
+			if ownerEntryExempt && entry.Scope == slug && entry.Caller == OwnerCaller {
+				return true
+			}
+			return exemptScope != "" && entry.Scope == exemptScope && entry.PausedAt.Equal(exemptPausedAt)
 		}
 	}
 	return waiter

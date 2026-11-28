@@ -13,7 +13,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -61,7 +60,7 @@ func TestCheckout_FailureDeletesWeftBranchAdoptedFromOrigin(t *testing.T) {
 			l := h.Location
 
 			const targetBranch = "checkout-rollback-origin"
-			weftBranch := fabriclayout.RecordsBranchName(targetBranch)
+			weftBranch := fabricengine.RecordsBranchName(targetBranch)
 
 			slug := filepath.Base(l.WorktreePath())
 			if err := fabricengine.WireJunctions(l, slug, []string{"_lym", "_extra"}); err != nil {

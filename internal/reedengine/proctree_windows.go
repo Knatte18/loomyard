@@ -52,8 +52,8 @@ $acc`, strings.Join(rootLiterals, ","))
 	return pids
 }
 
-// PaneProcessAge answers 0 and false on Windows, since the liveness rule that reads a pane's age is skipped there.
-func PaneProcessAge(pid int) (time.Duration, bool) {
+// paneProcessAge answers 0 and false on Windows, since the liveness rule that reads a pane's age is skipped there.
+func paneProcessAge(pid int) (time.Duration, bool) {
 	return 0, false
 }
 

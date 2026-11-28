@@ -18,7 +18,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -42,14 +42,14 @@ func TestRunDispatchesToBoard(t *testing.T) {
 	gitkit.Git(t, cwd, "init")
 
 	// The board config is the hub's: the hub is cwd's parent.
-	boardDir := fabriclayout.BoardDir(filepath.Dir(cwd))
+	boardDir := fabricengine.BoardDir(filepath.Dir(cwd))
 	configDir := configengine.ConfigDir(boardDir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("failed to create hub board config dir: %v", err)
 	}
 	configPath := configengine.ConfigFile(boardDir, "board")
 	// Write a template-complete board config.
-	// The board data dir is paths-owned, so the template keys are board.readme and board.design_prefix.
+	// The board data dir is paths-owned, so the template keys are readme and design_prefix.
 	boardConfig := "readme: Home.md\ndesign_prefix: proposal-\n"
 	if err := os.WriteFile(configPath, []byte(boardConfig), 0o644); err != nil {
 		t.Fatalf("failed to write hub board.yaml: %v", err)

@@ -8,12 +8,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // writeVerdictRecords commits scope and judged as the records of d, with trailers on the records commit.
-func writeVerdictRecords(t *testing.T, d Deps, scope ScopeRecord, judged JudgedRecord, trailers ...fabriclayout.Trailer) {
+func writeVerdictRecords(t *testing.T, d Deps, scope ScopeRecord, judged JudgedRecord, trailers ...fabricengine.Trailer) {
 	t.Helper()
 	err := WriteRecords(d, func(s *ScopeRecord, j *JudgedRecord) error {
 		*s, *j = scope, judged
@@ -25,7 +25,7 @@ func writeVerdictRecords(t *testing.T, d Deps, scope ScopeRecord, judged JudgedR
 }
 
 // TestVerdict covers the section for a missing record, an off scope, a deferral and a full check's counts.
-// It also covers a command-mode check and a hand-edited scope record after a records commit.
+// It also covers a command-mode check, an old partial scope, and a hand-edited scope record after a records commit.
 func TestVerdict(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -42,7 +42,7 @@ func TestVerdict(t *testing.T) {
 			"ScopeOffNamesItsSource",
 			&ScopeRecord{Scope: ScopeOff, ScopeSource: "drift.scope"},
 			JudgedRecord{},
-			join("## Regression check", "", "- Scope: off, set by `drift.scope`; this change is not regression-checked."),
+			join("## Regression check", "", "- Scope: off, set by `drift.scope`; the task is not regression-checked."),
 		},
 		{
 			"DeferredSaysNoCompareRan",
@@ -90,20 +90,38 @@ func TestVerdict(t *testing.T) {
 				"- Last check: did not pass at `head3`. The compare exited 3."),
 		},
 		{
-			"LoosenedChecksListEachWithItsRulingAndCause",
-			&ScopeRecord{Scope: ScopeFull, LastCheck: CheckResult{
-				Head: "head4", At: "2026-01-02T03:04:05Z", Mode: DiffLines,
-				Loosened: []LoosenedCheck{
-					{Path: "limits_test.go", Test: "TestLimit", Loosened: "the limit from 5 to 50", Ruling: RulingCaused, Cause: "measured 40 under load", Reason: "the trailer names a measurement"},
-					{Path: "retry_test.go", Test: "TestRetry", Loosened: "the retry count from 3 to 9", Ruling: RulingUncaused, Reason: "no measurement is named"},
-				},
-			}},
+			"OldPartialScopeNamesTheLeftOutCases",
+			&ScopeRecord{Scope: ScopePartial, Skip: []string{"slow", "flaky"}, LastCheck: CheckResult{Head: "head2", Passed: true, At: "2026-01-02T03:04:05Z", Mode: DiffLines}},
 			JudgedRecord{},
-			join("## Regression check", "", "- Scope: full.", "- Diff: lines.",
-				"- Last check: did not pass at `head4`. 0 changed cells, 0 expected, 0 judged as matching, 0 reused from stored rulings, 0 unexpected.",
-				"- Loosened checks:",
-				"  - `TestLimit` in `limits_test.go`: the limit from 5 to 50; caused; cause: measured 40 under load",
-				"  - `TestRetry` in `retry_test.go`: the retry count from 3 to 9; uncaused; cause: none"),
+			join("## Regression check", "", "- Scope: partial, an old scope that left out the cases `slow`, `flaky`.", "- Diff: lines.",
+				"- Last check: passed at `head2`. 0 changed cells, 0 expected, 0 judged as matching, 0 reused from stored rulings, 0 unexpected."),
+		},
+		{
+			"OldRecordRendersCompareAndAcceptanceFieldsUnderTheOldDriftLine",
+			&ScopeRecord{
+				Scope: ScopeFull, BaselineHead: "base1", ComparedHead: "head2", ComparedAt: "2026-01-02T03:04:05Z",
+				Accepted: []Acceptance{
+					{Test: "t1", Reason: "the model changed", By: AcceptedByCaller, Ruling: RulingRuled},
+					{Test: "t3", Reason: "intended", By: AcceptedByAgent, Ruling: RulingUnruled},
+				},
+			},
+			JudgedRecord{},
+			join("## Regression check", "", "- Scope: full.",
+				"- The check ran under the old Drift, which compared whole profiles.",
+				"- Baseline: captured at `base1`, the task's branch point.",
+				"- Compare: showed drift at `head2`.",
+				"- Accepted drift:",
+				"  - `t1`, accepted by caller: the model changed",
+				"  - `t3`, accepted by agent: intended (not yet ruled on by the run's parent)"),
+		},
+		{
+			"OldWaiverNamesTheReason",
+			&ScopeRecord{Scope: ScopeFull, WaivedAt: "2026-01-02T03:04:05Z", WaivedReason: "no baseline possible"},
+			JudgedRecord{},
+			join("## Regression check", "", "- Scope: full.",
+				"- The check ran under the old Drift, which compared whole profiles.",
+				"- Compare: waived: no baseline possible",
+				"- Accepted drift: none."),
 		},
 		{
 			"NoCheckSaysNoneRan",
@@ -142,9 +160,9 @@ func TestVerdict(t *testing.T) {
 			LastCheck: CheckResult{Head: "head2", Passed: true, At: "2026-01-02T03:04:05Z", Mode: DiffLines},
 			Metadata:  Volatile{Files: []string{"_source.txt", "b.txt"}, Keys: []string{"captured_at"}},
 		}
-		writeVerdictRecords(t, d, scope, JudgedRecord{}, fabriclayout.Trailer{Key: BaselineTrailerKey, Value: "digest"})
+		writeVerdictRecords(t, d, scope, JudgedRecord{}, fabricengine.Trailer{Key: BaselineTrailerKey, Value: "digest"})
 		want := strings.Join([]string{"## Regression check", "", "- Scope: full.",
-			"- Baseline: captured at `code-head-0`, the base of this branch.",
+			"- Baseline: captured at `code-head-0`, the task's branch point.",
 			"- Diff: lines.",
 			"- Last check: passed at `head2`. 0 changed cells, 0 expected, 0 judged as matching, 0 reused from stored rulings, 0 unexpected.",
 			"- Left out as capture metadata, not results: files `_source.txt`, `b.txt`; keys `captured_at`."}, "\n")

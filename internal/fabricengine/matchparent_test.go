@@ -1,5 +1,5 @@
 // matchparent_test.go covers matchParentBranch, the pure matcher over worktree entries.
-// It takes hand-built []fabriclayout.WorktreeEntry slices, so it needs no fixture.
+// It takes hand-built []fabricengine.WorktreeEntry slices, so it needs no fixture.
 
 package fabricengine_test
 
@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -20,14 +19,14 @@ func TestMatchParentBranch(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
 		name         string
-		entries      []fabriclayout.WorktreeEntry
+		entries      []fabricengine.WorktreeEntry
 		parentBranch string
 		wantPath     string
 		wantOK       bool
 	}{
 		{
 			name: "SingleMatch",
-			entries: []fabriclayout.WorktreeEntry{
+			entries: []fabricengine.WorktreeEntry{
 				{Path: "/hub/wt1", Branch: "main"},
 			},
 			parentBranch: "main",
@@ -36,7 +35,7 @@ func TestMatchParentBranch(t *testing.T) {
 		},
 		{
 			name: "NoMatch",
-			entries: []fabriclayout.WorktreeEntry{
+			entries: []fabricengine.WorktreeEntry{
 				{Path: "/hub/wt1", Branch: "other"},
 			},
 			parentBranch: "main",
@@ -45,7 +44,7 @@ func TestMatchParentBranch(t *testing.T) {
 		},
 		{
 			name: "DetachedCandidateNoPanic",
-			entries: []fabriclayout.WorktreeEntry{
+			entries: []fabricengine.WorktreeEntry{
 				{Path: "/hub/wt1", Branch: "(detached)"},
 			},
 			parentBranch: "main",
@@ -56,7 +55,7 @@ func TestMatchParentBranch(t *testing.T) {
 			// matchParentBranch matches an entry whose Branch equals parentBranch, including the acting worktree's own branch.
 			// Refusing a self-parent is loom policy, not fabric policy, so this case must not become an error here.
 			name: "SelfParentBranchStillMatches",
-			entries: []fabriclayout.WorktreeEntry{
+			entries: []fabricengine.WorktreeEntry{
 				{Path: "/hub/wt-self", Branch: "task-branch"},
 			},
 			parentBranch: "task-branch",
@@ -65,7 +64,7 @@ func TestMatchParentBranch(t *testing.T) {
 		},
 		{
 			name: "ForwardSlashPathNormalized",
-			entries: []fabriclayout.WorktreeEntry{
+			entries: []fabricengine.WorktreeEntry{
 				{Path: "C:/hub/wt1", Branch: "main"},
 			},
 			parentBranch: "main",
@@ -74,7 +73,7 @@ func TestMatchParentBranch(t *testing.T) {
 		},
 		{
 			name: "MainFieldPlaysNoRole",
-			entries: []fabriclayout.WorktreeEntry{
+			entries: []fabricengine.WorktreeEntry{
 				{Path: "/hub/wt-main", Branch: "other", Main: true},
 				{Path: "/hub/wt-match", Branch: "main", Main: false},
 			},
@@ -84,7 +83,7 @@ func TestMatchParentBranch(t *testing.T) {
 		},
 		{
 			name: "PrunableEntryNeverMatches",
-			entries: []fabriclayout.WorktreeEntry{
+			entries: []fabricengine.WorktreeEntry{
 				{Path: "/hub/wt1", Branch: "main", Prunable: true},
 			},
 			parentBranch: "main",

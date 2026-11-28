@@ -12,7 +12,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -47,8 +46,7 @@ type ResumeResult struct {
 	Resumed int
 	// Dropped counts the finished strands Resume removed from state instead of relaunching.
 	Dropped int
-	// Held names the strands Resume left down instead of relaunching:
-	// those a pause covering this pair holds, and those a caller ended on purpose (Strand.Held).
+	// Held names the strands a pause covering this pair left down instead of relaunching.
 	Held []string
 }
 
@@ -84,14 +82,9 @@ type StrandStatus struct {
 	// Elsewhere is the session:window placement of the strand's bound pane.
 	// It is set only when that pane sits in another session of the reed server, and empty otherwise.
 	Elsewhere string
-	// Down names why the strand is not live, and is empty for a live strand.
-	Down DownCause
 	// Retiring reports that a caller asked for this strand's removal.
 	// It grants nothing by itself: a caller that finds it set only completes the request.
 	Retiring bool
-	// Held reports that a caller ended the strand's process on purpose and means to relaunch it.
-	// Resume leaves a held strand down.
-	Held bool
 	// Color is the palette color the strand's segment resolves to, empty when it has none.
 	Color segmentcolor.Color
 	// LymBin is the absolute lym path the strand's pane prelude exported as LYM_BIN at its latest launch.
@@ -189,17 +182,11 @@ func pruneServerLogsLocked(logsDir, prefix string, keep int) error {
 // Every other non-live, non-hidden strand is relaunched;
 // a hidden strand that is not dropped is neither.
 // A live strand is in neither list.
-// A non-live strand a caller ended on purpose (Strand.Held) is returned in held.
-// It is never dropped or relaunched, whatever its done-when list.
 // When paused, every strand that would be relaunched is returned in held instead, so a pause leaves it down.
 func planResumeLaunches(strands []Strand, liveIDs map[string]bool, exists func(path string) bool, paused bool) (launch, drop, held []Strand) {
 	for _, s := range strands {
 		live := s.PaneID != "" && liveIDs[s.PaneID]
 		if live {
-			continue
-		}
-		if s.Held {
-			held = append(held, s)
 			continue
 		}
 		if len(s.DoneWhen) > 0 && allPathsExist(s.DoneWhen, exists) {
@@ -290,12 +277,11 @@ func (e *Engine) sessionSubstrateLocked() (up bool, usable bool, err error) {
 }
 
 // validateBootConfig refuses a boot-time config value that is wrong on its own, before any tmux round trip.
-// It validates reed.debug_log, reed.mouse, reed.watchdog and the segment colors.
-// It also validates reed.window_share_max and reed.window_split.
-// It returns the tmux global flags reed.debug_log selects and the mouse option value.
+// It validates debug_log, mouse, watchdog, the segment colors, window_share_max and window_split.
+// It returns the tmux global flags debug_log selects and the mouse option value.
 // It runs before the boot's first tmux read, so a pure config error surfaces ahead of it.
 func (e *Engine) validateBootConfig() (debugArgs []string, mouse string, err error) {
-	// Validate reed.debug_log before anything else touches tmux:
+	// Validate debug_log before anything else touches tmux:
 	// a misconfigured value is a pure config error, unrelated to server/session state,
 	// so it must surface before the capability probe or any spawn attempt.
 	debugArgs, err = debugLogArgs(e.cfg.DebugLog)
@@ -303,7 +289,7 @@ func (e *Engine) validateBootConfig() (debugArgs []string, mouse string, err err
 		return nil, "", err
 	}
 
-	// Validate reed.mouse alongside reed.debug_log, at the same early point:
+	// Validate mouse alongside debug_log, at the same early point:
 	// this too is a pure config error.
 	// It must surface before the capability probe or any spawn attempt, not partway through a boot.
 	mouse, err = mouseOption(e.cfg.Mouse)
@@ -332,12 +318,12 @@ func (e *Engine) validateBootConfig() (debugArgs []string, mouse string, err err
 
 // preflightBootHost refuses, before any tmux round trip, a socket path over the OS limit.
 // Its error names `TMUX_TMPDIR`.
-// It also refuses a configured shell that does not resolve; its error names the `reed.shell` key.
-// It refuses a non-empty `reed.tmux_conf` that does not name a usable file; its error names the `reed.tmux_conf` key.
+// It also refuses a configured shell that does not resolve; its error names the `shell` key.
+// It refuses a non-empty `tmux_conf` that does not name a usable file; its error names the `tmux_conf` key.
 // It returns the resolved shell path the boot pins on the session;
 // the validated tmux config path is empty when none is configured.
 // On Windows it checks nothing and returns empty strings: psmux keeps no socket file;
-// the boot keeps its current shell handling, and `reed.tmux_conf` is parsed but never validated or sourced.
+// the boot keeps its current shell handling, and `tmux_conf` is parsed but never validated or sourced.
 func (e *Engine) preflightBootHost() (shellPath, tmuxConf string, err error) {
 	if runtime.GOOS == "windows" {
 		return "", "", nil
@@ -345,7 +331,7 @@ func (e *Engine) preflightBootHost() (shellPath, tmuxConf string, err error) {
 	if err := checkSocketPathLength(resolvedSocketDir(), e.Socket(), unixSocketPathLimit(runtime.GOOS)); err != nil {
 		return "", "", err
 	}
-	shellPath, err = ResolveShellPath(e.cfg.Shell)
+	shellPath, err = resolveShellPath(e.cfg.Shell)
 	if err != nil {
 		return "", "", err
 	}
@@ -362,8 +348,7 @@ func (e *Engine) preflightBootHost() (shellPath, tmuxConf string, err error) {
 
 // ensureServerAndSessionLocked ensures this hub's tmux server and this worktree's session exist.
 // It reports booted=true on a fresh spawn.
-// It validates capability, reed.debug_log, reed.mouse, reed.watchdog, segment colors and reed.tmux_conf.
-// It does so before any tmux round trip.
+// It validates capability, debug_log, mouse, watchdog, segment colors and tmux_conf before any tmux round trip.
 func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []string, err error) {
 	debugArgs, mouse, err := e.validateBootConfig()
 	if err != nil {
@@ -434,7 +419,7 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 
 	// Route the server's tmux-server-<pid>.log to the hub's deterministic forensic location (Shared Decision hub-logs-dir).
 	// tmux writes that log to the server process's own cwd with no redirect flag, so cmd.Dir below is the only lever.
-	// This happens on every boot, regardless of reed.debug_log.
+	// This happens on every boot, regardless of debug_log.
 	// It runs before the boot loop, so a fresh server's log always lands in an existing, already pruned directory.
 	logsDir := e.geom.LogsDir
 	if err := os.MkdirAll(logsDir, 0o755); err != nil {
@@ -455,8 +440,7 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 		return false, nil, fmt.Errorf("prune client logs: %w", err)
 	}
 	// The -vv-only tmux-out-<pid>.log protocol log is the third shape a debug-armed boot can leave.
-	// It is pruned on the same budget,
-	// so it does not accumulate without limit across repeated boots with reed.debug_log: 2.
+	// It is pruned on the same budget, so it does not accumulate without limit across repeated boots with debug_log: 2.
 	if err := pruneServerLogsLocked(logsDir, outLogNamePrefix, serverLogPruneKeep); err != nil {
 		logger.Warn("reed: failed to prune out logs", "logsDir", logsDir, "err", err)
 		return false, nil, fmt.Errorf("prune out logs: %w", err)
@@ -474,14 +458,6 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	clean = stripTraceID(clean)
 	clean = stripIdentityEnv(clean)
 	spawnSession := func() error {
-		if e.toldTmux {
-			// A told tmux addresses its server itself, so it is handed the spawn's subcommands without the server flags.
-			argv := e.serverSpawnArgv(runtime.GOOS, debugArgs)
-			if err := e.tmux.run(argv[slices.Index(argv, "new-session"):]...); err != nil {
-				return fmt.Errorf("start tmux: %w", err)
-			}
-			return nil
-		}
 		if err := CheckTmuxFloor(e.cfg.Tmux); err != nil {
 			return fmt.Errorf("start tmux: %w", err)
 		}
@@ -759,7 +735,7 @@ func (e *Engine) upLocked() (UpResult, bool, error) {
 
 // withBootOpLock runs fn under the operation lock, for an op that always boots.
 // Before fn's first tmux round trip, it refuses these inputs:
-// a boot-time config error, an over-long socket path, an unresolvable shell, or an unusable `reed.tmux_conf`.
+// a boot-time config error, an over-long socket path, an unresolvable shell, or an unusable `tmux_conf`.
 // The boot refuses the same inputs on the paths that reach it without this wrapper.
 func (e *Engine) withBootOpLock(fn func() error) error {
 	return e.withOpLock(func() error {
@@ -893,7 +869,11 @@ func (e *Engine) Resume() (ResumeResult, error) {
 			if !launch[st.Strands[i].GUID] {
 				continue
 			}
-			if err := e.launchStrandLocked(st, &st.Strands[i], e.revivalCmd(st.Strands[i])); err != nil {
+			resumeCmd := st.Strands[i].ResumeCmd
+			if resumeCmd == "" {
+				resumeCmd = st.Strands[i].Cmd
+			}
+			if err := e.launchStrandLocked(st, &st.Strands[i], resumeCmd); err != nil {
 				return fmt.Errorf("resume strand %s: %w", st.Strands[i].GUID, err)
 			}
 			// Persist after each launch, before the apply below, so the pane is tracked at once.
@@ -1333,7 +1313,6 @@ func (e *Engine) Status() (StatusResult, error) {
 		// Present, OwnWindow and PanePID stay pane-level.
 		aliveIDs := e.engineAliveIDSet(present)
 		presentIDs := liveIDSet(present)
-		runningIDs := aliveIDSet(present)
 		alivePIDs := make(map[string]int, len(present))
 		for _, p := range present {
 			if !p.Dead {
@@ -1344,10 +1323,10 @@ func (e *Engine) Status() (StatusResult, error) {
 		// Selvage is not a strand and is never reported here (see ReedState.SelvagePaneID).
 		// Status still succeeds when st.Strands is empty but Selvage is alive, because the session is up.
 		// Appending a Selvage row here would be wrong.
-		elsewhere, unread := e.strandsElsewhereLocked(st.Strands, windows)
+		elsewhere := e.strandsElsewhereLocked(st.Strands, windows)
 		strands := make([]StrandStatus, len(st.Strands))
 		for i, s := range st.Strands {
-			strands[i] = StrandStatus{GUID: s.GUID, Name: s.Name, PaneID: s.PaneID, PanePID: alivePIDs[s.PaneID], Live: aliveIDs[s.PaneID], Present: presentIDs[s.PaneID], OwnWindow: isOwnWindow(s.Display), Elsewhere: elsewhere[s.PaneID], Down: downCause(s.PaneID, aliveIDs, runningIDs, presentIDs, elsewhere[s.PaneID], unread[s.PaneID]), Retiring: s.Retiring, Held: s.Held, Color: e.withColor(s).Color, LymBin: s.LymBin, Provider: s.Provider}
+			strands[i] = StrandStatus{GUID: s.GUID, Name: s.Name, PaneID: s.PaneID, PanePID: alivePIDs[s.PaneID], Live: aliveIDs[s.PaneID], Present: presentIDs[s.PaneID], OwnWindow: isOwnWindow(s.Display), Elsewhere: elsewhere[s.PaneID], Retiring: s.Retiring, Color: e.withColor(s).Color, LymBin: s.LymBin, Provider: s.Provider}
 		}
 
 		result = StatusResult{Session: session, Socket: e.Socket(), Strands: strands}

@@ -1,6 +1,5 @@
 // webster.go implements WebsterProducer, an adapter over websterengine.Run.
 // It maps the run's RunResult and error onto the shedengine.ShedProducer contract.
-// It also keeps the halt-reason file: written with the reason of every Stuck, removed on Done.
 
 package shedadapters
 
@@ -10,7 +9,6 @@ import (
 	"fmt"
 
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -35,7 +33,7 @@ const (
 
 // planConflictWayForward is the way-forward clause that ends the Stuck reason for a webster plan conflict.
 // It names the steps that clear the conflict.
-const planConflictWayForward = "the run's parent records the fix as a decision naming the conflicting pending cards by slug and number with \"lym loom decision add <slug> --by parent … --amends-plan\", then runs \"lym loom goto --to Plan-Burler-Review\" and \"lym loom resume\" in the task worktree; once the task's scope is closed no amendment enters the record and the settled plan takes no goto back to Plan-Burler-Review, so the parent files the fix as a board note for a new task with \"lym board upsert\" and kind note, then runs \"lym loom goto --to Plan-Write\" (\"--to Parts-Plan-Write\" for a split plan) and \"lym loom resume\", which writes the plan again from the record as it stands"
+const planConflictWayForward = "the run's parent records the fix as a decision naming the conflicting pending cards by slug and number with \"lym loom decision add <slug> --by parent … --amends-plan\", then runs \"lym loom goto --to Plan-Burler-Review\" and \"lym loom resume\" in the task worktree"
 
 // WebsterProducer is a shedengine.ShedProducer that runs websterengine.Run once per Call.
 // Each Call runs with Fresh false and AutoRebaseline true, and maps the result onto the shedengine contract.
@@ -59,20 +57,6 @@ func NewWebsterProducer(name string, run WebsterRunner, deps websterengine.RunDe
 	return &WebsterProducer{name: name, run: run, deps: deps}
 }
 
-// recordHaltReason writes reason to the halt-reason file in the conflict directory; a failure is logged.
-func (p *WebsterProducer) recordHaltReason(reason string) {
-	if err := runplan.WriteHaltReason(p.deps.Geom.ConflictDir(), reason); err != nil {
-		logger.Warn("shedadapters: webster halt reason was not written", "producer", p.name, "engine", websterEngineLabel, "error", err)
-	}
-}
-
-// clearHaltReason removes the halt-reason file from the conflict directory; a failure is logged.
-func (p *WebsterProducer) clearHaltReason() {
-	if err := runplan.RemoveHaltReason(p.deps.Geom.ConflictDir()); err != nil {
-		logger.Warn("shedadapters: webster halt reason was not removed", "producer", p.name, "engine", websterEngineLabel, "error", err)
-	}
-}
-
 // Call runs one iteration of the producer.
 // It checks the context on entry.
 // It invokes the run seam with Fresh false and AutoRebaseline true.
@@ -89,10 +73,6 @@ func (p *WebsterProducer) clearHaltReason() {
 //
 // No mid-run bridge is installed.
 // A cancel goes unobserved until Master reaches a terminal outcome or its configured whole-run timeout elapses.
-//
-// Every Stuck writes its final reason to the halt-reason file in the conflict directory, and Done removes the file.
-// A plan review the run is sent back to reads the file, so the reviewer sees why the plan executor halted.
-// A failed write or removal is logged and never changes the outcome.
 func (p *WebsterProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, p.name, websterEngineLabel); err != nil {
 		return "", shedengine.OutputPointer{}, err
@@ -106,7 +86,6 @@ func (p *WebsterProducer) Call(ctx context.Context) (shedengine.Outcome, shedeng
 			if cerr := cancelErr(ctx, p.name, websterEngineLabel); cerr != nil {
 				return "", shedengine.OutputPointer{}, cerr
 			}
-			p.recordHaltReason(err.Error())
 			return shedengine.Stuck, shedengine.OutputPointer{Reason: err.Error()}, nil
 		}
 
@@ -121,7 +100,6 @@ func (p *WebsterProducer) Call(ctx context.Context) (shedengine.Outcome, shedeng
 		// A success verdict survives cancellation, the one outcome cancelErr never applies to.
 		// The summary is Webster's account of the whole run and is present on this outcome.
 		// The webster dir is taken from the producer's geometry, never derived.
-		p.clearHaltReason()
 		return shedengine.Done, shedengine.OutputPointer{Path: summaryparser.Path(p.deps.Geom.WebsterDir), GateAttempts: gateAttemptsPointer(result.Gate), GateSpans: gateSpansOf(result.Gate)}, nil
 
 	case websterOutcomeStuck:
@@ -130,9 +108,7 @@ func (p *WebsterProducer) Call(ctx context.Context) (shedengine.Outcome, shedeng
 		}
 		logger.Warn("shedadapters: webster run is stuck", "producer", p.name, "engine", websterEngineLabel, "stuckReason", result.StuckReason, "batchesDone", result.BatchesDone)
 		ptr := shedengine.OutputPointer{GateAttempts: gateAttemptsPointer(result.Gate), GateSpans: gateSpansOf(result.Gate)}
-		claimed := claimConflict(p.name, websterEngineLabel, result.StuckReason, p.deps.Geom.ConflictDir(), ptr)
-		p.recordHaltReason(claimed.Reason)
-		return shedengine.Stuck, claimed, nil
+		return shedengine.Stuck, claimConflict(p.name, websterEngineLabel, result.StuckReason, p.deps.Geom.ConflictDir(), ptr), nil
 
 	default:
 		if cerr := cancelErr(ctx, p.name, websterEngineLabel); cerr != nil {

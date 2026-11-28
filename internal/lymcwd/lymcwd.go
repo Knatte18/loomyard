@@ -9,7 +9,7 @@
 //
 // `-LYMHUB` is the only hub container suffix; no code parses, trims or recognises the older `-HUB`.
 // The suffix is declared twice on purpose:
-// this package's private hubSuffix derives RepoName, and internal/fabriclayout's exported HubSuffix backs HubPath.
+// this package's private hubSuffix derives RepoName, and internal/fabricengine's exported HubSuffix backs HubPath.
 // Both change together, with the geometryTokenOwners row of TestEnforcement_GeometryLiterals as the third site.
 // Hub discovery ignores the name:
 // the hub is the worktree root's parent, and looksLikeHub checks its structure.
@@ -81,7 +81,7 @@ func Getwd() (string, error) {
 //
 // It returns the Location on success.
 // It returns ErrNotAGitRepo when cwd is outside a git repo.
-// It returns an *AnchorGateError, which wraps ErrCwdOutsideAnchor, when cwd is not exactly the anchored directory.
+// It returns ErrCwdOutsideAnchor when cwd is not exactly the anchored directory.
 func Resolve(cwd string) (*Location, error) {
 	return resolveCore(cwd, true)
 }

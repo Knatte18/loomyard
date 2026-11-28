@@ -81,8 +81,10 @@ func TestBouncerEntry_HappyPath(t *testing.T) {
 	const note = "Webster has begun these batches."
 	env.WebsterRecord = func() string { return note }
 	env.GateTiers = "- tier1: build first\n- gate card: [1]"
+	const redundancyReport = "No current redundancy report: none written."
+	env.RedundancyReport = func() string { return redundancyReport }
 	writeStencil(t, env.StencilsDir, "bouncer-template-seed", "{{.rubric}}\n")
-	writeStencil(t, env.StencilsDir, "bouncer-rubric", "Record: {{.webster_record}}\nTiers:\n{{.gate_tiers}}\n")
+	writeStencil(t, env.StencilsDir, "bouncer-rubric", "Record: {{.webster_record}}\nTiers:\n{{.gate_tiers}}\nRedundancy: {{.redundancy_report}}\n")
 	producer, err = bouncerEntry(reviewRow("review-bounce"), cfg, env)
 	if err != nil {
 		t.Fatalf("bouncerEntry() error = %v; want nil", err)
@@ -96,6 +98,9 @@ func TestBouncerEntry_HappyPath(t *testing.T) {
 	}
 	if len(fake.Specs) != 1 || !strings.Contains(fake.Specs[0].Prompt, env.GateTiers) {
 		t.Errorf("seed specs = %+v; want one whose prompt carries the env's gate tier lines", fake.Specs)
+	}
+	if len(fake.Specs) != 1 || !strings.Contains(fake.Specs[0].Prompt, "Redundancy: "+redundancyReport) {
+		t.Errorf("seed specs = %+v; want one whose prompt carries the env's redundancy report note", fake.Specs)
 	}
 }
 
@@ -353,7 +358,7 @@ func TestBouncerEntry_ConstructionFailures(t *testing.T) {
 		{"ReferenceWithEmptyModule", "reviewer_fan_setting", ".x", nil, false, []string{`row "review-bounce"`, "reviewer_fan_setting", `".x"`, "way forward: set reviewer_fan_setting to a module.key"}},
 		{"ReferenceWithEmptyKey", "reviewer_fan_setting", "loom.", nil, false, []string{`row "review-bounce"`, "reviewer_fan_setting", `"loom."`, "way forward: set reviewer_fan_setting to a module.key"}},
 		{"ReferenceNotAString", "reviewer_fan_setting", 3, nil, false, []string{"reviewer_fan_setting", "must be a string"}},
-		{"NamedSettingWithNilLookup", "auto_accept_setting", "loom.discussion.auto_accept", nil, true, []string{`row "review-bounce"`, "auto_accept_setting", "loom.discussion.auto_accept", "way forward: fill Env.Setting in the caller that builds this recipe"}},
+		{"NamedSettingWithNilLookup", "auto_accept_setting", "loom.discussion_auto_accept", nil, true, []string{`row "review-bounce"`, "auto_accept_setting", "loom.discussion_auto_accept", "way forward: fill Env.Setting in the caller that builds this recipe"}},
 		{"UnknownReference", "reviewer_fan_setting", "loom.unknown", map[string]any{}, false, []string{`row "review-bounce"`, "reviewer_fan_setting", "loom.unknown", "fake setting lookup: unknown setting loom.unknown"}},
 		{"FanValueNotAFanOrList", "reviewer_fan_setting", "loom.fan", map[string]any{"loom.fan": 3}, false, []string{`row "review-bounce"`, "reviewer_fan_setting", "loom.fan", "fan in loom.yaml", "int", "way forward: point reviewer_fan_setting at"}},
 		{"FanListHoldingANonString", "reviewer_fan_setting", "loom.fan", map[string]any{"loom.fan": []any{"a", 1}}, false, []string{`row "review-bounce"`, "reviewer_fan_setting", "loom.fan", "entry 1", "int"}},
@@ -630,28 +635,6 @@ func TestBouncerEntry_CommitSeam(t *testing.T) {
 		}
 	})
 
-	t.Run("HardenResolvesToTheCampaignsFinalLedgerArchive", func(t *testing.T) {
-		env := newTestEnv(t)
-		env.Shuttle = judgeSeamShuttle()
-		var recorder *campaignRecorder
-		env.Harden, recorder = newTestCampaign(t, env)
-		writeStencil(t, env.StencilsDir, "bouncer-template-judge", "judge template, no markers\n")
-		cfg := minimalBouncerConfig(t, env)
-		cfg["commit_seam"] = "harden"
-		layoutBouncerRound1Report(t, env)
-
-		producer, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
-		if err != nil {
-			t.Fatalf("bouncerEntry() error = %v; want nil", err)
-		}
-		if _, _, err := producer.Call(context.Background()); err != nil {
-			t.Fatalf("Call() error = %v; want nil", err)
-		}
-		if want := [][]string{{"_lym/harden/round-1-bouncer-ledger.md"}}; !reflect.DeepEqual(recorder.commits, want) {
-			t.Errorf("campaign commits = %v; want %v", recorder.commits, want)
-		}
-	})
-
 	t.Run("DiscussionResolvesToCommitDiscussion", func(t *testing.T) {
 		env := newTestEnv(t)
 		env.Shuttle = judgeSeamShuttle()
@@ -712,7 +695,6 @@ func TestBouncerEntry_CommitSeam(t *testing.T) {
 
 		_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 		assertErrContains(t, err, "commit_seam")
-		assertErrContains(t, err, `"plan", "discussion" or "harden"`)
 	})
 
 	t.Run("PresentButMissingEnvClosureIsConstructionError", func(t *testing.T) {
@@ -734,15 +716,6 @@ func TestBouncerEntry_CommitSeam(t *testing.T) {
 
 			_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 			assertErrContains(t, err, "CommitDiscussion")
-		})
-
-		t.Run("Harden", func(t *testing.T) {
-			env := newTestEnv(t)
-			cfg := minimalBouncerConfig(t, env)
-			cfg["commit_seam"] = "harden"
-
-			_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
-			assertErrContains(t, err, "Env.Harden")
 		})
 	})
 
@@ -1320,83 +1293,11 @@ func TestBouncerEntry_CirclingReasonSlugAndBudget(t *testing.T) {
 			t.Errorf("Reason = %q; want the circling cause without the seam", reason)
 		}
 	})
-
-	t.Run("UnchangedRoundsEscalateAsStalemateOnlyWhenEnabled", func(t *testing.T) {
-		outcome, reason := callStalemateBouncer(t, 2)
-		if outcome != shedengine.Awaiting || !strings.Contains(reason, "cause: stalemate") {
-			t.Errorf("Call() with ReviewStalemateRounds 2 = %v, Reason %q; want Awaiting with the stalemate cause", outcome, reason)
-		}
-		outcome, reason = callStalemateBouncer(t, 0)
-		if outcome == shedengine.Awaiting || strings.Contains(reason, "cause: stalemate") {
-			t.Errorf("Call() with ReviewStalemateRounds 0 = %v, Reason %q; want no stalemate escalation", outcome, reason)
-		}
-	})
-}
-
-// callStalemateBouncer builds a Bouncer over an Env whose tree id never changes and drives one Call.
-// Round 1 was judged CONTINUE and round 2 is the round the call judges CONTINUE.
-// Each round has a fixer-report answering the review's one finding.
-// Each round also has a snapshot record whose target id equals the tree id, so both rounds left the target unchanged.
-// It returns the call's outcome and Awaiting Reason.
-func callStalemateBouncer(t *testing.T, stalemateRounds int) (shedengine.Outcome, string) {
-	t.Helper()
-	env := newTestEnv(t)
-	env.ReviewCirclingCheckpoint = 3
-	env.ReviewStalemateRounds = stalemateRounds
-	env.ReviewTreeID = func() (string, error) { return "T0", nil }
-	env.Shuttle = &shedfake.Shuttle{
-		RunFn: func(spec shuttleengine.Spec) (shuttleengine.Result, error) {
-			if len(spec.OutputFiles) == 3 {
-				_ = os.WriteFile(spec.OutputFiles[0], []byte("---\nverdict: CONTINUE\nrationale: \"findings remain\"\n---\n"), 0o644)
-				_ = os.WriteFile(spec.OutputFiles[1], []byte("---\nround: 2\nledger: []\n---\nno open findings\n"), 0o644)
-			}
-			return shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil
-		},
-	}
-	writeStencil(t, env.StencilsDir, "bouncer-template-judge", "judge template, no markers\n")
-	cfg := minimalBouncerConfig(t, env)
-
-	runDir := filepath.Join(env.RunRoot, "review-segment")
-	if err := os.MkdirAll(runDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll(%q) = %v; want nil", runDir, err)
-	}
-	const (
-		review    = "---\nverdict: APPROVED\nfindings:\n  - id: F1\n    severity: MEDIUM\n    class: design\n    location: plan.md:4\n    summary: question F1 is open\n    fix: settle F1\n---\nreview prose\n"
-		report    = "---\ndispositions:\n  - id: F1\n    disposition: fixed\n---\n"
-		judgedOne = "{\"fix_scope\":\"source\",\"target_id\":\"T0\",\"post_fix_target_id\":\"T0\",\"decisions_routed\":false}"
-		judgedTwo = "{\"fix_scope\":\"source\",\"target_id\":\"T0\",\"decisions_routed\":false}"
-	)
-	files := map[string]string{
-		"round-1-review.md":          review,
-		"round-1-fixer-report.md":    report,
-		"round-1-snapshot.json":      judgedOne,
-		"round-1-bouncer-verdict.md": "---\nverdict: CONTINUE\nrationale: \"findings remain\"\n---\n",
-		"round-1-bouncer-ledger.md":  "---\nround: 1\nledger: []\n---\nno open findings\n",
-		"round-2-review.md":          review,
-		"round-2-fixer-report.md":    report,
-		"round-2-snapshot.json":      judgedTwo,
-	}
-	for name, content := range files {
-		if err := os.WriteFile(filepath.Join(runDir, name), []byte(content), 0o644); err != nil {
-			t.Fatalf("write %s: %v", name, err)
-		}
-	}
-
-	producer, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
-	if err != nil {
-		t.Fatalf("bouncerEntry() error = %v; want nil", err)
-	}
-	outcome, ptr, err := producer.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	return outcome, ptr.Reason
 }
 
 // TestBouncerEntry_BlockingEscalatesAndColorSegment covers the two optional keys the Merge-Review perch's Bouncer row carries.
 // A round-1 judge call writes a CONTINUE verdict over a ledger holding an open BLOCKING entry, with the row's budget spent and its auto-accept set.
 // blocking_escalates turns that auto-accept into an escalation, and color_segment colors the judge's session, the review color where absent.
-// scope_closed changes what a decision escalation tells the parent to do.
 func TestBouncerEntry_BlockingEscalatesAndColorSegment(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -1408,14 +1309,11 @@ func TestBouncerEntry_BlockingEscalatesAndColorSegment(t *testing.T) {
 		decisionReview bool
 		wantOutcome    shedengine.Outcome
 		wantSegment    segmentcolor.Segment
-		// wantReason, when set, is text the escalation reason holds.
-		wantReason string
 	}{
-		{name: "scope_closed names the closed-scope route in a decision escalation", extra: Config{"escalate_decisions": true, "scope_closed": true}, autoAccept: true, decisionReview: true, wantOutcome: shedengine.Awaiting, wantSegment: segmentcolor.Review, wantReason: "since the task's scope is closed"},
 		{name: "absent keys auto-accept in the review color", autoAccept: true, wantOutcome: shedengine.Done, wantSegment: segmentcolor.Review},
 		{name: "a decision finding without escalate_decisions settles as today", autoAccept: true, decisionReview: true, wantOutcome: shedengine.Done, wantSegment: segmentcolor.Review},
 		{name: "escalate_decisions escalates a decision finding to the parent", extra: Config{"escalate_decisions": true}, autoAccept: true, decisionReview: true, wantOutcome: shedengine.Awaiting, wantSegment: segmentcolor.Review},
-		{name: "blocking_escalates escalates the open BLOCKING entry to the parent", extra: Config{"blocking_escalates": true}, autoAccept: true, wantOutcome: shedengine.Awaiting, wantSegment: segmentcolor.Review},
+		{name: "blocking_escalates sends the open BLOCKING entry to the rule, which continues", extra: Config{"blocking_escalates": true}, autoAccept: true, wantOutcome: shedengine.Stuck, wantSegment: segmentcolor.Review},
 		{name: "a null auto-accept is false, so the soft-cap rule runs", autoAccept: nil, wantOutcome: shedengine.Stuck, wantSegment: segmentcolor.Review},
 		{name: "a hard cap of 1 offers only accept", extra: Config{"blocking_escalates": true}, autoAccept: true, hardCap: 1, wantOutcome: shedengine.Awaiting, wantSegment: segmentcolor.Review},
 		{name: "color_segment colors the judge", extra: Config{"color_segment": "merge"}, autoAccept: true, wantOutcome: shedengine.Done, wantSegment: segmentcolor.Merge},
@@ -1468,9 +1366,6 @@ func TestBouncerEntry_BlockingEscalatesAndColorSegment(t *testing.T) {
 			}
 			if len(segments) != 1 || segments[0] != tt.wantSegment {
 				t.Errorf("judge spawn segments = %v; want [%s]", segments, tt.wantSegment)
-			}
-			if !strings.Contains(ptr.Reason, tt.wantReason) {
-				t.Errorf("Reason = %q; want it to contain %q", ptr.Reason, tt.wantReason)
 			}
 		})
 	}

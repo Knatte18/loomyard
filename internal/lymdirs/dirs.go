@@ -27,11 +27,6 @@ const HibernateDirName = "hibernate"
 // CreelDirName is the directory under the hub's board-level `.lym` that holds creel's journal and the daemon lock.
 const CreelDirName = "creel"
 
-// BoardServeDirName is the directory under the hub's board-level `.lym`.
-// It holds the board server's state, lock, launcher page and log.
-// It holds the server's bearer token, so it is never tracked.
-const BoardServeDirName = "board-serve"
-
 // SlackDirName is the directory under the hub's board-level `.lym` that holds the Slack setup file and channel map.
 // It also holds the inbox, outbound record, relay state, relay lock and relay log.
 const SlackDirName = "slack"
@@ -43,21 +38,11 @@ const FailedPushDirName = "failed-push"
 // RunProcDirName is the directory under the hub's board-level `.lym` that holds the owner record of a run's processes.
 const RunProcDirName = "runproc"
 
-// AdoptDirName is the directory under the hub's board-level `.lym` for the adopt.
-// It holds each subject's adopt check files and fix scratch, and no record, lock or worker output.
+// AdoptDirName is the directory under the hub's board-level `.lym` for the adopt worker.
+// It holds the adopt record, its lock and the worker's output.
+// It sits beside the adopt check's record, output and lock.
 // It also holds the log of the test suite that an adopt starts.
 const AdoptDirName = "adopt"
-
-// ClaudeAccountsDirName is the directory under the hub's board-level `.lym`.
-// It holds the Claude account file and usage records.
-const ClaudeAccountsDirName = "claude"
-
-// ClaudeAccountsFileName is the name of the Claude account file under that directory.
-// It maps each worktree to its account and holds the pick counters.
-const ClaudeAccountsFileName = "accounts.json"
-
-// ClaudeUsageDirName is the directory under the Claude accounts directory that holds one usage record per account.
-const ClaudeUsageDirName = "usage"
 
 // FrontTaskDirName is the directory under the hub's board-level `.lym` that holds the front-task record and its lock.
 // It also holds the output of the actions it runs.
@@ -67,26 +52,10 @@ const FrontTaskDirName = "fronttask"
 // Each task's snapshot of its checkouts is taken before the drift judge runs.
 const DriftJudgeDirName = "drift-judge"
 
-// HandOverDirName is the directory under the hub's board-level `.lym` that holds this machine's hand-over marks.
-// It holds one mark per slug.
-// A pair removal does not take it, since it sits under the hub's `.lym` and never in a pair.
-const HandOverDirName = "hand-over"
-
-// PusherDirName is the directory under the hub's board-level `.lym` that holds the pusher locks.
-// It holds one lock per push target, which the target's one background pusher holds while it runs.
-const PusherDirName = "pusher"
-
-// PushLedgerDirName is the directory under the hub's board-level `.lym` that holds the ledger of owed pushes.
-// It holds one entry per push target, the ledger lock and the time the hub last had nothing owed.
-const PushLedgerDirName = "push-ledger"
-
-// IgnoreCheckDirName is the directory under the hub's board-level `.lym` that holds scratch repositories.
-// Ignore rules are checked in them, each in its own, removed after use.
-const IgnoreCheckDirName = "ignore-check"
-
-// OrphanDirName is the directory under the hub's board-level `.lym` that holds the dobby's record of orphan pairs.
-// The record keeps when each orphan was first noticed, so a dobby restart neither resets nor skips its grace.
-const OrphanDirName = "orphan"
+// TestCoverDirName is the directory under a `.lym` that holds per-package coverage maps.
+// Under the hub's board-level `.lym` it holds the maps every worktree of the hub on the machine shares;
+// under a worktree's `.lym` it holds the maps that worktree builds for itself.
+const TestCoverDirName = "testcover"
 
 // BeamDirName is the directory under a worktree's `.lym` that holds dobby's lock, state record and markers.
 const BeamDirName = "beam"
@@ -105,11 +74,6 @@ const ImplementerDirName = "implementer"
 // HeddleDirName is the directory under a worktree's `.lym` that holds heddle's render lock.
 const HeddleDirName = "heddle"
 
-// ReviewSnapshotDirName is the directory under a worktree's `.lym` that holds the review target snapshots.
-// It holds one copy of the overlay target files per snapshot id.
-// It is a never-tracked cache, and an absent one reads as empty.
-const ReviewSnapshotDirName = "review-snapshot"
-
 // UsageDirName is the directory under a worktree's `_lym` that holds a run's usage records.
 // It holds one file per agent session, plus the run's identity and its landed diff size.
 const UsageDirName = "usage"
@@ -125,11 +89,3 @@ const WeaverDirName = "weaver"
 
 // LocksDirName is the directory under a checkout's `.lym` that holds the lock files for the checkout's tracked files.
 const LocksDirName = "locks"
-
-// HardenSandboxDirName is the directory under a worktree's `.lym` that holds a run's throwaway sandbox hubs.
-// It is a never-tracked cache that goes with the worktree, and an absent one reads as empty.
-const HardenSandboxDirName = "harden-sandbox"
-
-// HardenDirName is the directory under a worktree's `_lym` that holds a Hardener campaign's archived rounds.
-// It also holds the campaign's final bouncer ledger.
-const HardenDirName = "harden"

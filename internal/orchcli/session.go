@@ -104,14 +104,3 @@ func (s runnerSession) CompactedSince(guid string, turnEnd shuttleengine.Event, 
 func (s runnerSession) UsageLimit(guid string, turnEnd shuttleengine.Event) (shuttleengine.UsageLimit, error) {
 	return s.runner.UsageLimit(guid, turnEnd)
 }
-
-// SwitchAccountOnLimit records the usage limit turnEnd names for the strand guid's run.
-// It reports whether the run's worktree now resolves to another account.
-func (s runnerSession) SwitchAccountOnLimit(guid string, turnEnd shuttleengine.Event) (bool, error) {
-	return s.runner.SwitchAccountOnLimit(guid, turnEnd)
-}
-
-// RefusedResume reports whether turnEnd is the first turn end of a refused resume of the strand guid's run.
-func (s runnerSession) RefusedResume(guid string, turnEnd shuttleengine.Event) (bool, error) {
-	return s.runner.RefusedResume(guid, turnEnd)
-}

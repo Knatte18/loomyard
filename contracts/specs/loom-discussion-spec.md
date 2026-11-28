@@ -53,17 +53,10 @@ A record without the section is valid.
 Each decision under `## Decisions` is one H3 headed `### D<n> — <title>`.
 `n` is a positive integer, and ids are unique within the record.
 An `### Added after Discussion` entry carries no id.
-An entry that drops a plan card's Create target carries one line `` Drops Create: `<target>` `` per target, after its Rationale paragraph.
-`<target>` is spelled as the card spells it, and `lym loom decision add --drops-create` writes the line;
-Webster's done-check skips a target some entry drops.
 Any other H3 there is refused as a `decision-heading-malformed` finding.
 A repeated id is a `decision-id-duplicate` finding.
 Each id appears as a whole word in a bullet of `## Acceptance criteria`.
 So `D1` is not met by `D10`, and a range such as "D1 to D4" covers only the ids it spells.
-A bullet runs on through the lines after it up to a blank line, the next bullet or a fenced line,
-and any other indented line continues it.
-An unindented line continues it as markdown's lazy continuation does,
-unless it is an ATX heading, a thematic break or a blockquote, or opens an HTML block that can interrupt a paragraph.
 An id no bullet names is a `decision-not-in-acceptance` finding.
 Both checks run for every loom record, in the discussion gates, Darn-Write's post-session guard and `lym loom validate-discussion`.
 They do not run in `lym loom decision add`.
@@ -119,32 +112,12 @@ The Discussion-Write and Discussion-Burler-Fix gates halt on a quarry outage as 
 - **A criterion is behavior a test can check, or a review check.**
   A criterion that a stencil, spec, doc or other prose names, says or contains a wording opens its bullet with `Review:`.
   The code review checks it by reading the text the diff leaves, and no test asserts that prose.
-- **`## Acceptance criteria` names what a reviewer of the landed change will check by hand.**
-  It names each figure the change must measure and state, with the case it is measured on and where the figure is stated;
-  each doc statement the change must make true, as a `Review:` bullet naming the doc;
-  and the intent of each test the change adds: the behavior it pins and its tier.
-  A criterion left for the reviewer to infer is checked only after the scope has closed, when no fix enters this task.
 - **A Decision that adds an edge or weakens a guard states its bound.**
   A Decision that adds a verb, flag, escape hatch or routing edge states what it can skip or let through and what bounds it.
   The same holds for a Decision that removes, downgrades or makes bypassable a guard.
   The discussion review flags one left unbounded.
 - **No italic prose-coaching.**
   Write terse, structured prose the plan writer can act on, not a template with meta-commentary about how to fill it in.
-
-### A bug entry's record
-
-The Discussion-Write lead's record for a `bug` entry states up front what the red-first gate later checks:
-
-- `## Goal` names the observed fault and the steps that reproduce it.
-- `## Constraints` states the root cause and the evidence it rests on, or names what is still unknown about it.
-- An `## Acceptance criteria` bullet names the test that fails on the merge base and passes after the fix,
-  states why no test seam exists, or states that the entry fixes no bug.
-  The test reaches the bug through code the merge base already has.
-
-A record's statement that no test seam exists does not lift the red-first gate;
-only the parent's `### Added after Discussion` entry whose title opens `No test seam` does.
-A `bug` entry that fixes no bug, such as one that only adds tests pinning existing behaviour,
-is lifted the same way by the parent's added entry whose title opens `No bug fixed`.
 
 ### Parts no writer authors
 

@@ -53,9 +53,9 @@ func newBindingsFixture(t *testing.T) *bindingsFixture {
 	}
 	recordPath := filepath.Join(t.TempDir(), "recorded-args")
 	scriptPath := filepath.Join(scriptDir, "lym-recorder")
-	// The bar's state jobs also run this script, as `slack bar` and `fabric sync-status`, at every redraw.
+	// The bar's state jobs also run this script, as `slack bar`, at every redraw.
 	// It records nothing for those.
-	script := "#!/bin/sh\ncase \"$1\" in slack|orch|fabric) exit 0;; esac\nprintf '%s\\n' \"$@\" > " + recordPath + "\n"
+	script := "#!/bin/sh\ncase \"$1\" in slack|orch) exit 0;; esac\nprintf '%s\\n' \"$@\" > " + recordPath + "\n"
 	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
 		t.Fatalf("write recorder script: %v", err)
 	}
@@ -159,7 +159,7 @@ func (f *bindingsFixture) assertFollow(t *testing.T, want string) {
 func (f *bindingsFixture) awaitRecord(t *testing.T) []string {
 	t.Helper()
 	var args []string
-	waitUntil(t, recorderDeadline, "the recorder never finished writing", func() bool {
+	waitUntil(t, 30*time.Second, "the recorder never finished writing", func() bool {
 		raw, err := os.ReadFile(f.recordPath)
 		args = strings.Split(strings.TrimSuffix(string(raw), "\n"), "\n")
 		return err == nil && len(args) == 8
@@ -385,12 +385,12 @@ func TestBindings_AltLeftRightRunTheSwitchCommandWithTheToldPaths(t *testing.T) 
 			t.Fatalf("remove stale record: %v", err)
 		}
 		f.send(t, step.key)
-		waitUntil(t, recorderDeadline, "the recorder never ran for "+step.direction, func() bool {
+		waitUntil(t, 5*time.Second, "the recorder never ran for "+step.direction, func() bool {
 			_, err := os.Stat(f.recordPath)
 			return err == nil
 		})
 		var args []string
-		waitUntil(t, recorderDeadline, "the recorder never finished writing", func() bool {
+		waitUntil(t, 30*time.Second, "the recorder never finished writing", func() bool {
 			raw, err := os.ReadFile(f.recordPath)
 			args = strings.Split(strings.TrimSuffix(string(raw), "\n"), "\n")
 			return err == nil && len(args) == 9
@@ -406,11 +406,6 @@ func TestBindings_AltLeftRightRunTheSwitchCommandWithTheToldPaths(t *testing.T) 
 	f.assertFollow(t, "on")
 }
 
-// recorderDeadline bounds how long a test waits for the recorder script a binding spawns through tmux.
-// The spawn goes through a tmux server shared with the package's other parallel tests.
-// Under that load it can take longer than a few seconds.
-const recorderDeadline = 30 * time.Second
-
 // TestBindings_ButtonClickRunsTheVerbInTheRunDirectory clicks a button and asserts what the pinned line runs.
 // It checks the run directory and the arguments and environment.
 // A failing verb must leave the pane out of view mode.
@@ -423,8 +418,7 @@ func TestBindings_ButtonClickRunsTheVerbInTheRunDirectory(t *testing.T) {
 	beamDir := t.TempDir()
 	recordPath := filepath.Join(t.TempDir(), "record")
 	scriptPath := filepath.Join(t.TempDir(), "lym-button-recorder")
-	// The bar's state jobs also run this script, as `slack bar` and `fabric sync-status`, and it records nothing for those.
-	script := "#!/bin/sh\ncase \"$1\" in slack|fabric) exit 0;; esac\n{ pwd; echo \"strand=${LYM_STRAND_NAME+set}\"; echo \"parent=${LYM_PARENT+set}\"; printf '%s\\n' \"$@\"; } > " + recordPath + "\nexit 3\n"
+	script := "#!/bin/sh\n[ \"$1\" = slack ] && exit 0\n{ pwd; echo \"strand=${LYM_STRAND_NAME+set}\"; echo \"parent=${LYM_PARENT+set}\"; printf '%s\\n' \"$@\"; } > " + recordPath + "\nexit 3\n"
 	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
 		t.Fatalf("write recorder script: %v", err)
 	}
@@ -465,7 +459,7 @@ func TestBindings_ButtonClickRunsTheVerbInTheRunDirectory(t *testing.T) {
 	socketPath := strings.TrimSpace(mustTmuxOutput(t, f.e, "display-message", "-p", "#{socket_path}"))
 	f.click(t, 2, "HALT")
 	var lines []string
-	waitUntil(t, recorderDeadline, "the recorder never finished writing", func() bool {
+	waitUntil(t, 30*time.Second, "the recorder never finished writing", func() bool {
 		raw, err := os.ReadFile(recordPath)
 		lines = strings.Split(strings.TrimSuffix(string(raw), "\n"), "\n")
 		return err == nil && len(lines) >= 14
@@ -501,7 +495,7 @@ func TestBindings_ButtonClickRunsTheVerbInTheRunDirectory(t *testing.T) {
 		t.Fatalf("remove the run directory: %v", err)
 	}
 	f.click(t, 2, "HALT")
-	waitUntil(t, recorderDeadline, "the recorder never ran after the run directory was removed", func() bool {
+	waitUntil(t, 5*time.Second, "the recorder never ran after the run directory was removed", func() bool {
 		_, err := os.Stat(recordPath)
 		return err == nil
 	})

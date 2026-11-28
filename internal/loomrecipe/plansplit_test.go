@@ -1,5 +1,5 @@
 // plansplit_test.go covers the Parts-Write and Parts-Plan-Write rows of the tapestry recipe:
-// their entry gates against tapestry.plan.split, their edges, and a flag-on run through them.
+// their entry gates against tapestry.plan_split, their edges, and a flag-on run through them.
 
 package loomrecipe
 
@@ -18,17 +18,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// planSplitSetting answers tapestry.plan.split as planSplit and every other setting from the templates.
+// planSplitSetting answers tapestry.plan_split as planSplit and every other setting from the templates.
 func planSplitSetting(planSplit bool) func(module, key string) (any, error) {
 	return func(module, key string) (any, error) {
-		if module == "tapestry" && key == "plan.split" {
+		if module == "tapestry" && key == "plan_split" {
 			return planSplit, nil
 		}
 		return envkit.TemplateSetting(module, key)
 	}
 }
 
-// TestPlanSplitRows asserts, for tapestry.plan.split false and true, the entry gates of both parts rows and Plan-Write.
+// TestPlanSplitRows asserts, for tapestry.plan_split false and true, the entry gates of both parts rows and Plan-Write.
 // The parts rows' gates hold exactly when the flag is true, and Plan-Write's exactly when it is false.
 // It also asserts the edges Drift-Baseline to Parts-Write to Parts-Plan-Write to Plan-Write to Plan-Bouncer.
 // It also asserts that neither parts row has an on_stuck.
@@ -41,7 +41,7 @@ func TestPlanSplitRows(t *testing.T) {
 		env.Setting = planSplitSetting(planSplit)
 		shed, err := New(shedrun.RecipeTapestry, env, paths)
 		if err != nil {
-			t.Fatalf("New() with plan.split %v error = %v; want nil", planSplit, err)
+			t.Fatalf("New() with plan_split %v error = %v; want nil", planSplit, err)
 		}
 		for _, row := range []struct {
 			name      string
@@ -53,10 +53,10 @@ func TestPlanSplitRows(t *testing.T) {
 		} {
 			def := producerDef(t, shed, row.name)
 			if def.EntryGate == nil {
-				t.Fatalf("%s EntryGate = nil; want a gate on tapestry.plan.split", row.name)
+				t.Fatalf("%s EntryGate = nil; want a gate on tapestry.plan_split", row.name)
 			}
 			if holds, _, err := def.EntryGate(); err != nil || holds != row.wantHolds {
-				t.Errorf("%s EntryGate() with plan.split %v = %v, %v; want %v, nil", row.name, planSplit, holds, err, row.wantHolds)
+				t.Errorf("%s EntryGate() with plan_split %v = %v, %v; want %v, nil", row.name, planSplit, holds, err, row.wantHolds)
 			}
 		}
 	}

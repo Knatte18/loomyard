@@ -13,16 +13,15 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// populatedMutations builds a non-empty fabriclayout.Mutations value the way a verb's recorder does,
+// populatedMutations builds a non-empty fabricengine.Mutations value the way a verb's recorder does,
 // so the value has the shape a real verb produces.
-func populatedMutations(hubRoot string) fabriclayout.Mutations {
+func populatedMutations(hubRoot string) fabricengine.Mutations {
 	rec := fabricengine.NewMutations(hubRoot)
-	rec.Append(fabriclayout.KindFileWritten, hubRoot+"/marker", "")
+	rec.Append(fabricengine.KindFileWritten, hubRoot+"/marker", "")
 	return rec.Snapshot()
 }
 
@@ -36,12 +35,12 @@ func TestOkWithRecord_SuccessShape(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
 		name   string
-		rec    fabriclayout.Mutations
+		rec    fabricengine.Mutations
 		fields map[string]any
 	}{
 		{
 			name: "EmptyRecord_RemoveShapedFields",
-			rec:  fabriclayout.Mutations{},
+			rec:  fabricengine.Mutations{},
 			fields: map[string]any{
 				"slug":          "my-task",
 				"path":          "/hub/my-task",
@@ -109,10 +108,10 @@ func TestErrWithRecord_FailureShape(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
 		name        string
-		rec         fabriclayout.Mutations
+		rec         fabricengine.Mutations
 		wantPartial bool
 	}{
-		{name: "EmptyRecord", rec: fabriclayout.Mutations{}, wantPartial: false},
+		{name: "EmptyRecord", rec: fabricengine.Mutations{}, wantPartial: false},
 		{name: "NonEmptyRecord", rec: populatedMutations("/hub"), wantPartial: true},
 	}
 	for _, tt := range tests {
@@ -161,10 +160,10 @@ func TestErrConflictsWithRecord_ConflictEnvelopeShape(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
 		name      string
-		rec       fabriclayout.Mutations
+		rec       fabricengine.Mutations
 		conflicts []string
 	}{
-		{name: "EmptyRecord", rec: fabriclayout.Mutations{}, conflicts: []string{"conflict.txt"}},
+		{name: "EmptyRecord", rec: fabricengine.Mutations{}, conflicts: []string{"conflict.txt"}},
 		{name: "NonEmptyRecord_PartialStaysFalse", rec: populatedMutations("/hub"), conflicts: []string{"_lym/conflict.txt", "conflict.txt"}},
 	}
 	for _, tt := range tests {

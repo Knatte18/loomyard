@@ -8,11 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -20,7 +18,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
-	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -66,12 +63,12 @@ func requireStatusState(t *testing.T, c *battenCLI, want shedengine.State) {
 
 // readoptReceiver builds a receiver over h whose re-adoption seams are the hub's.
 // It returns the receiver with the report its resume reconcile judged last.
-func readoptReceiver(h *hubforge.Hub, slug string) (*battenCLI, *fabriclayout.OriginReport) {
+func readoptReceiver(h *hubforge.Hub, slug string) (*battenCLI, *fabricengine.OriginReport) {
 	c := &battenCLI{location: h.Location, slug: slug}
-	c.readopt = hubReadoptSeams(h.Location, fabricengine.ReconcileOptions{})
-	var second fabriclayout.OriginReport
-	c.reconcile = func(slug string) (fabriclayout.OriginReport, error) {
-		report, err := reconcileRun(h.Location, slug, false, fabricengine.ReconcileOptions{})
+	c.readopt = hubReadoptSeams(h.Location)
+	var second fabricengine.OriginReport
+	c.reconcile = func(slug string) (fabricengine.OriginReport, error) {
+		report, err := reconcileRun(h.Location, slug, false)
 		second = report
 		return report, err
 	}
@@ -127,7 +124,7 @@ func TestBattenIntegration_GoneTaskWorktree(t *testing.T) {
 			const slug = "gone-pair"
 			res := hubforge.AddPair(t, h, slug)
 			taskBranch := res.Branch
-			recordsBranch := fabriclayout.RecordsBranchName(taskBranch)
+			recordsBranch := fabricengine.RecordsBranchName(taskBranch)
 			recordsRoot, err := fabricengine.RecordsRepoRoot(h.Location)
 			if err != nil {
 				t.Fatalf("RecordsRepoRoot: %v", err)
@@ -150,12 +147,12 @@ func TestBattenIntegration_GoneTaskWorktree(t *testing.T) {
 				t.Errorf("taskWorktreePresent() = %v, %v after the re-adoption; want true, nil", present, err)
 			}
 			for _, entry := range second.Entries {
-				if entry.Slug == slug && entry.State == fabriclayout.EntryStopped {
+				if entry.Slug == slug && entry.State == fabricengine.EntryStopped {
 					t.Errorf("resume reconcile entry = %+v; want the re-made pair not stopped", entry)
 				}
 			}
 			for _, branch := range second.Branches {
-				if branch.Slug == slug && branch.State == fabriclayout.BranchGone {
+				if branch.Slug == slug && branch.State == fabricengine.BranchGone {
 					t.Errorf("resume reconcile branch = %+v; want no branch of the re-made pair gone", branch)
 				}
 			}
@@ -172,12 +169,11 @@ func TestBattenIntegration_GoneTaskWorktree(t *testing.T) {
 
 	t.Run("ARemovedPairBeforeLandFailsTheRunNamingTheCancel", func(t *testing.T) {
 		t.Parallel()
-		boardkit.InstallReplay(t)
 
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		const slug = "removed-pair"
 		hubforge.AddPair(t, h, slug)
-		if _, err := h.Topology.Remove(h.Location, slug, false, true, ""); err != nil {
+		if _, err := h.Topology.Remove(h.Location, slug, false, true); err != nil {
 			t.Fatalf("Remove: %v", err)
 		}
 		c, _ := readoptReceiver(h, slug)
@@ -201,7 +197,7 @@ func TestBattenIntegration_GoneTaskWorktree(t *testing.T) {
 		const slug = "landed-pair"
 		res := hubforge.AddPair(t, h, slug)
 		taskBranch := res.Branch
-		recordsBranch := fabriclayout.RecordsBranchName(taskBranch)
+		recordsBranch := fabricengine.RecordsBranchName(taskBranch)
 		recordsRoot, err := fabricengine.RecordsRepoRoot(h.Location)
 		if err != nil {
 			t.Fatalf("RecordsRepoRoot: %v", err)
@@ -230,7 +226,7 @@ func TestBattenIntegration_GoneTaskWorktree(t *testing.T) {
 		gitkit.Git(t, prime, "merge", "--squash", taskBranch)
 		gitkit.Git(t, prime, "commit", "-m", "land "+slug)
 		gitkit.Git(t, prime, "push", "--quiet", "origin", "HEAD")
-		if _, err := h.Topology.Remove(h.Location, slug, false, true, ""); err != nil {
+		if _, err := h.Topology.Remove(h.Location, slug, false, true); err != nil {
 			t.Fatalf("Remove: %v", err)
 		}
 
@@ -247,7 +243,7 @@ func TestBattenIntegration_GoneTaskWorktree(t *testing.T) {
 		if recorder.notices != 1 || recorder.commits != 1 {
 			t.Errorf("notices = %d and failed-stop commits = %d; want 1 and 1", recorder.notices, recorder.commits)
 		}
-		tags := strings.Fields(gitkit.Git(t, recordsRoot, "tag", "--list", fabriclayout.ArchiveTagPrefix+slug+"/*"))
+		tags := strings.Fields(gitkit.Git(t, recordsRoot, "tag", "--list", fabricengine.ArchiveTagPrefix+slug+"/*"))
 		if len(tags) != 1 {
 			t.Fatalf("archive tags = %q; want the one tag the removal pushed", tags)
 		}
@@ -277,49 +273,6 @@ func TestBattenIntegration_GoneTaskWorktree(t *testing.T) {
 		}
 	})
 
-	t.Run("AResumeReconcileRetriesATransportFailureAndResumesOnceOriginAnswers", func(t *testing.T) {
-		t.Parallel()
-
-		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-		const slug = "retry-pair"
-		hubforge.AddPair(t, h, slug)
-		repos := []string{h.PrimeWorktree(), h.PrimeRecords()}
-		originURLs := make([]string, len(repos))
-		for i, repo := range repos {
-			originURLs[i] = gitkit.Git(t, repo, "remote", "get-url", "origin")
-			gitkit.Git(t, repo, "remote", "set-url", "origin", "http://127.0.0.1:1/x")
-		}
-		var sleeps int
-		opts := fabricengine.ReconcileOptions{
-			RetryBound:    time.Minute,
-			RetryInterval: time.Second,
-			Sleep: func(time.Duration) {
-				sleeps++
-				for i, repo := range repos {
-					gitkit.Git(t, repo, "remote", "set-url", "origin", originURLs[i])
-				}
-			},
-		}
-		c := &battenCLI{location: h.Location, slug: slug}
-		var report fabriclayout.OriginReport
-		c.reconcile = func(slug string) (fabriclayout.OriginReport, error) {
-			var err error
-			report, err = reconcileRun(h.Location, slug, false, opts)
-			return report, err
-		}
-
-		if err := c.reconcileResume(); err != nil {
-			t.Fatalf("reconcileResume() = %v; want nil, the run resumed", err)
-		}
-
-		if report.Unreachable {
-			t.Error("the reconcile reported origin unreachable; want it retried until origin answered")
-		}
-		if sleeps != 1 {
-			t.Errorf("retry sleeps = %d; want 1, the one wait before origin answered", sleeps)
-		}
-	})
-
 	t.Run("APrefixSetOverALiveBareSlugPairKeepsItsBranch", func(t *testing.T) {
 		t.Parallel()
 
@@ -327,7 +280,7 @@ func TestBattenIntegration_GoneTaskWorktree(t *testing.T) {
 		const slug = "bare-pair"
 		hubforge.AddPair(t, h, slug)
 		hubforge.SeedFabricConfig(t, h, "branch_prefix: hanf/\npathspec: \"\"\n")
-		seams := hubReadoptSeams(h.Location, fabricengine.ReconcileOptions{})
+		seams := hubReadoptSeams(h.Location)
 
 		if got, err := seams.TaskBranch(slug); err != nil || got != slug {
 			t.Errorf("TaskBranch(%q) = %q, %v; want the bare slug %q", slug, got, err, slug)

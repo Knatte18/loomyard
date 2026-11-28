@@ -81,17 +81,17 @@ func TestProcessAge(t *testing.T) {
 
 	t.Run("PlatformProbe", func(t *testing.T) {
 		t.Parallel()
-		age, ok := PaneProcessAge(os.Getpid())
+		age, ok := paneProcessAge(os.Getpid())
 		if runtime.GOOS == "linux" {
 			if !ok || age < 0 || age >= time.Hour {
-				t.Errorf("PaneProcessAge(own pid) = %v, %v; want an age in [0, 1h) and true", age, ok)
+				t.Errorf("paneProcessAge(own pid) = %v, %v; want an age in [0, 1h) and true", age, ok)
 			}
 		} else if ok {
-			t.Errorf("PaneProcessAge(own pid) = %v, %v; want false", age, ok)
+			t.Errorf("paneProcessAge(own pid) = %v, %v; want false", age, ok)
 		}
 		for _, pid := range []int{0, -1} {
-			if _, ok := PaneProcessAge(pid); ok {
-				t.Errorf("PaneProcessAge(%d) = true; want false", pid)
+			if _, ok := paneProcessAge(pid); ok {
+				t.Errorf("paneProcessAge(%d) = true; want false", pid)
 			}
 		}
 	})

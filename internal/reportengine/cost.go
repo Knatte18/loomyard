@@ -13,7 +13,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -133,7 +133,7 @@ func ComputeCost(src Sources, opts CostOptions) (CostReport, error) {
 		if tag.Committed.UTC().Before(since) {
 			continue
 		}
-		slug, named := fabriclayout.ArchiveTagSlug(tag.Name)
+		slug, named := fabricengine.ArchiveTagSlug(tag.Name)
 		if !named {
 			report.Findings = append(report.Findings, Finding{Tag: tag.Name, Error: "the tag names no run: expected a slug and a commit segment after the archive prefix"})
 			continue

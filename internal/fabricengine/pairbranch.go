@@ -10,7 +10,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
@@ -86,7 +85,7 @@ func (t *Topology) pairTaskBranchLocal(l *lymcwd.Location, slug string) (branch 
 		if err != nil {
 			return "", false, err
 		}
-		if branch != "" && (slices.Contains(names, branch) || weftBranchExists(l, fabriclayout.RecordsBranchName(branch))) {
+		if branch != "" && (slices.Contains(names, branch) || weftBranchExists(l, RecordsBranchName(branch))) {
 			return branch, true, nil
 		}
 	}
@@ -97,7 +96,7 @@ func (t *Topology) pairTaskBranchLocal(l *lymcwd.Location, slug string) (branch 
 			if err != nil {
 				return "", false, err
 			}
-			if warp, ok := fabriclayout.WeftWarpSlug(branch); ok {
+			if warp, ok := WeftWarpSlug(branch); ok {
 				exists, err := localBranchExists(l.WorktreePath(), warp)
 				if err != nil {
 					return "", false, err
@@ -113,7 +112,7 @@ func (t *Topology) pairTaskBranchLocal(l *lymcwd.Location, slug string) (branch 
 		if err != nil {
 			return "", false, err
 		}
-		if exists || weftBranchExists(l, fabriclayout.RecordsBranchName(name)) {
+		if exists || weftBranchExists(l, RecordsBranchName(name)) {
 			return name, true, nil
 		}
 	}
@@ -171,7 +170,7 @@ func (t *Topology) originPairBranch(l *lymcwd.Location, slug string) (string, er
 	if err != nil {
 		return "", fmt.Errorf("resolve weft repo root: %w", err)
 	}
-	found, err = firstOnOrigin(weftRoot, pairBranchNames(t.cfg, slug), fabriclayout.RecordsBranchName)
+	found, err = firstOnOrigin(weftRoot, pairBranchNames(t.cfg, slug), RecordsBranchName)
 	if err != nil || found != "" {
 		return found, err
 	}
@@ -214,7 +213,7 @@ func (t *Topology) originOtherPrefixBranch(l *lymcwd.Location, slug string) (str
 		return "", err
 	}
 	matches = slices.DeleteFunc(matches, func(branch string) bool {
-		_, held := weftTips[fabriclayout.RecordsBranchName(branch)]
+		_, held := weftTips[RecordsBranchName(branch)]
 		return !held
 	})
 	slices.Sort(matches)

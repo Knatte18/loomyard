@@ -169,44 +169,6 @@ func (c *GoClient) Log(filter creelengine.LogFilter) ([]creelengine.LogEntry, er
 	return resp.Log, err
 }
 
-// AwaitsReply reports whether strand awaits the reply to a question it asked.
-func (c *GoClient) AwaitsReply(strand string) (bool, error) {
-	resp, err := c.client.Call(creelengine.Request{Verb: creelengine.VerbAwaitsReply, From: strand}, goCallTimeout, nil)
-	return resp.AwaitsReply, err
-}
-
-// AwaitsReplyProbe returns a probe that reports whether a strand of the location's hub awaits a reply.
-// The reply is the answer to a question the strand asked.
-// Each call asks the hub's daemon.
-// A caller in the pane of a strand that is not an orch's signs as that strand.
-// It signs as program when the daemon refuses that claim as coming from outside the pane.
-// Any other caller signs as program.
-func AwaitsReplyProbe(location *lymcwd.Location, program string) func(strand string) (bool, error) {
-	return func(strand string) (bool, error) {
-		if claimed := os.Getenv(agentname.StrandNameEnv); claimsNonOrchStrand(claimed) {
-			client, err := NewStrandClient(location, claimed)
-			if err != nil {
-				return false, err
-			}
-			awaits, err := client.AwaitsReply(strand)
-			if !errors.Is(err, creelengine.ErrStrandClaimOutsidePane) {
-				return awaits, err
-			}
-		}
-		client, err := NewProgramClient(location, program)
-		if err != nil {
-			return false, err
-		}
-		return client.AwaitsReply(strand)
-	}
-}
-
-// claimsNonOrchStrand reports whether name is a strand name whose role is not an orch's.
-func claimsNonOrchStrand(name string) bool {
-	parsed, err := agentname.Parse(name)
-	return err == nil && !agentname.MatchesRole(parsed.Role, agentname.RoleOrch)
-}
-
 // Hold holds receiver's deliveries to the caller's own for duration.
 func (c *GoClient) Hold(receiver string, duration time.Duration) error {
 	_, err := c.client.Call(creelengine.Request{Verb: creelengine.VerbHold, Receiver: receiver, ForSeconds: int64(duration / time.Second)}, goCallTimeout, nil)
@@ -217,41 +179,6 @@ func (c *GoClient) Hold(receiver string, duration time.Duration) error {
 func (c *GoClient) Release(receiver string) (bool, error) {
 	resp, err := c.client.Call(creelengine.Request{Verb: creelengine.VerbRelease, Receiver: receiver}, goCallTimeout, nil)
 	return resp.Released, err
-}
-
-// TakeMachine answers the pending messages to other machines, oldest first.
-// Only the relay's program client may take.
-func (c *GoClient) TakeMachine() ([]creelengine.MachineOutbound, error) {
-	resp, err := c.client.Call(creelengine.Request{Verb: creelengine.VerbMachineTake}, goCallTimeout, nil)
-	return resp.MachineOutbound, err
-}
-
-// ReportMachine tells creel the relay holds message id for reason.
-// Only the relay's program client may report.
-func (c *GoClient) ReportMachine(id int64, reason string) error {
-	_, err := c.client.Call(creelengine.Request{Verb: creelengine.VerbMachineReport, ID: id, Reason: reason}, goCallTimeout, nil)
-	return err
-}
-
-// SettleMachineDelivered settles message id as posted to Slack at slackTS.
-// Only the relay's program client may settle.
-func (c *GoClient) SettleMachineDelivered(id int64, slackTS string) error {
-	_, err := c.client.Call(creelengine.Request{Verb: creelengine.VerbMachineSettle, ID: id, Delivered: true, SlackTS: slackTS}, goCallTimeout, nil)
-	return err
-}
-
-// SettleMachineReturned settles message id as returned to its sender for reason.
-// Only the relay's program client may settle.
-func (c *GoClient) SettleMachineReturned(id int64, reason string) error {
-	_, err := c.client.Call(creelengine.Request{Verb: creelengine.VerbMachineSettle, ID: id, Reason: reason}, goCallTimeout, nil)
-	return err
-}
-
-// DeliverMachine offers creel one message from an orch of another machine and answers the id it has here.
-// Only the relay's program client may deliver.
-func (c *GoClient) DeliverMachine(mail creelengine.MachineMail) (int64, error) {
-	resp, err := c.client.Call(creelengine.Request{Verb: creelengine.VerbMachineDeliver, Machine: &mail}, goCallTimeout, nil)
-	return resp.ID, err
 }
 
 // Withdraw removes the caller's own queued injects to receiver and its own unread mail held by receiver;

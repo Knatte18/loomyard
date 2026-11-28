@@ -20,7 +20,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -71,7 +70,7 @@ func TestMergeSiblings_Dispositions(t *testing.T) {
 
 	forkSHA := fabricengine.CurrentSHAForTest(t, warpDir)
 	setupConflictingDivergence(t, warpDir, "feature", "conflict.txt")
-	branchAtCurrentHEAD(t, weftDir, fabriclayout.RecordsBranchName("feature"))
+	branchAtCurrentHEAD(t, weftDir, fabricengine.RecordsBranchName("feature"))
 
 	preWarpSHA := fabricengine.CurrentSHAForTest(t, warpDir)
 	preWeftSHA := fabricengine.CurrentSHAForTest(t, weftDir)
@@ -137,7 +136,7 @@ func TestMergeSiblings_Dispositions(t *testing.T) {
 	})
 
 	t.Run("RemoveWithoutForce", func(t *testing.T) {
-		_, err := h.Topology.Remove(l, slug, false, false, "")
+		_, err := h.Topology.Remove(l, slug, false, false)
 		var refused *fabricengine.ErrMergeInProgress
 		if !errors.As(err, &refused) {
 			t.Fatalf("Remove(force=false) error = %v (%T); want *ErrMergeInProgress", err, err)
@@ -152,7 +151,7 @@ func TestMergeSiblings_Dispositions(t *testing.T) {
 
 	t.Run("RemoveWithForce", func(t *testing.T) {
 		// force answers dirtiness only, never a live merge record.
-		_, err := h.Topology.Remove(l, slug, true, false, "")
+		_, err := h.Topology.Remove(l, slug, true, false)
 		var refused *fabricengine.ErrMergeInProgress
 		if !errors.As(err, &refused) {
 			t.Fatalf("Remove(force=true) error = %v (%T); want *ErrMergeInProgress even with --force", err, err)

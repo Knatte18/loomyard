@@ -8,7 +8,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 )
 
-// DefaultName is the profile name that an empty batcher.active key resolves to.
+// DefaultName is the profile name that an empty active key resolves to.
 const DefaultName = "identity"
 
 // constructors maps a profile's batchifier kind to the constructor that builds it, given the profile's name and settings.
@@ -27,16 +27,16 @@ func newCostFromProfile(name string, p profile) (Batcher, error) {
 		return nil, retiredKeyError(p.file, p.layer, name, "alone_above")
 	}
 	if p.Budget == nil {
-		return nil, configengine.MarkInvalid(fmt.Errorf("batcher.yaml: %s is missing", profileKeyName(name, budgetLeaf)))
+		return nil, configengine.MarkInvalid(fmt.Errorf("batcher.yaml profile %q is missing budget", name))
 	}
 	if p.MaxCards == nil {
-		return nil, configengine.MarkInvalid(fmt.Errorf("batcher.yaml: %s is missing", profileKeyName(name, maxCardsLeaf)))
+		return nil, configengine.MarkInvalid(fmt.Errorf("batcher.yaml profile %q is missing max_cards", name))
 	}
 	if *p.Budget <= 0 {
-		return nil, configengine.MarkInvalid(fmt.Errorf("batcher.yaml: %s must be positive: %v", profileKeyName(name, budgetLeaf), *p.Budget))
+		return nil, configengine.MarkInvalid(fmt.Errorf("batcher.yaml profile %q budget must be positive: %v", name, *p.Budget))
 	}
 	if *p.MaxCards < 2 {
-		return nil, configengine.MarkInvalid(fmt.Errorf("batcher.yaml: %s must be at least 2: %d", profileKeyName(name, maxCardsLeaf), *p.MaxCards))
+		return nil, configengine.MarkInvalid(fmt.Errorf("batcher.yaml profile %q max_cards must be at least 2: %d", name, *p.MaxCards))
 	}
 	weights, err := profileWeights(name, p)
 	if err != nil {

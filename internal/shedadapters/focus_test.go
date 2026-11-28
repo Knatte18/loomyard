@@ -40,7 +40,7 @@ func stringSlicesEqual(got, want []string) bool {
 // A fixture can therefore never assert a shape the writer does not produce.
 func writeFocusFile(t *testing.T, runDir string, round int, f focusFile) string {
 	t.Helper()
-	path := FocusPath(runDir, round)
+	path := focusPath(runDir, round)
 	if err := writeFocus(path, f); err != nil {
 		t.Fatalf("writeFocus(%s): %v", path, err)
 	}
@@ -51,7 +51,7 @@ func writeFocusFile(t *testing.T, runDir string, round int, f focusFile) string 
 // It serves the malformed-input rows, which cannot go through the renderer.
 func writeFocusFileRaw(t *testing.T, runDir string, round int, content string) string {
 	t.Helper()
-	path := FocusPath(runDir, round)
+	path := focusPath(runDir, round)
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("WriteFile(%s): %v", path, err)
 	}
@@ -155,7 +155,7 @@ func TestReadRoundFocus_DegradesToTheZeroDirective(t *testing.T) {
 		// A directory at the focus file's own path produces a deterministic read failure;
 		// file
 		// permissions do not fail for a privileged test process.
-		if err := os.Mkdir(FocusPath(dir, 1), 0o755); err != nil {
+		if err := os.Mkdir(focusPath(dir, 1), 0o755); err != nil {
 			t.Fatalf("Mkdir: %v", err)
 		}
 		got := readRoundFocus("bouncer", dir, 1)
@@ -197,7 +197,7 @@ func TestReadRoundFocus_DegradesToTheZeroDirective(t *testing.T) {
 func TestReadRoundFocus_FrontmatterRoundMustMatchItsOwnFilename(t *testing.T) {
 	tiergate.Require(t, 0)
 	dir := t.TempDir()
-	// The file lands at round-3-focus.md, per FocusPath(dir, 3), but its frontmatter claims round: 1.
+	// The file lands at round-3-focus.md, per focusPath(dir, 3), but its frontmatter claims round: 1.
 	path := writeFocusFile(t, dir, 3, focusFile{Round: 1, ExcludeLenses: []string{"lensA"}, Focus: []string{"a directive"}})
 
 	got := readRoundFocus("bouncer", dir, 3)

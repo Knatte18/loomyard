@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -101,7 +101,7 @@ func TestArmSeed_OwnDriverLLMRefusesTheSameWayOnASeededRun(t *testing.T) {
 
 func listRunRecords(t *testing.T, loc *lymcwd.Location, slug string) []runproc.Record {
 	t.Helper()
-	records, err := runproc.List(fabriclayout.RunProcDir(loc.HubPath), slug)
+	records, err := runproc.List(fabricengine.RunProcDir(loc.HubPath), slug)
 	if err != nil {
 		t.Fatalf("runproc.List(%q) = %v; want nil", slug, err)
 	}
@@ -288,7 +288,7 @@ func TestRefuseAdoptedSeed(t *testing.T) {
 			seed:            battenSeedNoChildParam,
 			childDriverFlag: shedrun.DriverLLM,
 			childDriverSet:  true,
-			wantSubstr:      "delete the run's seed to re-seed it with the flag, or drop the flag to take the child recipe's driver_kind, then shed.driver_kind",
+			wantSubstr:      "delete the run's seed to re-seed it with the flag, or drop the flag to take the child recipe's driver_kind, then shed.yaml's",
 		},
 		{
 			name: "an_untyped_child_driver_passes_a_seed_recording_none",

@@ -10,7 +10,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/entrymerge"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 )
 
 // Replayer is heddle's Bolt replayer, named heddle.
@@ -47,7 +46,7 @@ var entryFields = entrymerge.Table[Entry]{
 type replayRun struct {
 	store   Store
 	base    Store
-	result  fabriclayout.ReplayResult
+	result  fabricengine.ReplayResult
 	applied bool
 }
 
@@ -62,7 +61,7 @@ type replayRun struct {
 // It then renders the overview from what origin now holds, so the commit's own overview never lands;
 // a replay that changed neither file is empty.
 // It takes no lock, since its caller holds the Bolt write and push locks.
-func (Replayer) Apply(req fabriclayout.ReplayRequest) (fabriclayout.ReplayResult, error) {
+func (Replayer) Apply(req fabricengine.ReplayRequest) (fabricengine.ReplayResult, error) {
 	var baseBytes, parentBytes, commitBytes []byte
 	for _, file := range req.Files {
 		if file.Path == FileName {
@@ -71,19 +70,19 @@ func (Replayer) Apply(req fabriclayout.ReplayRequest) (fabriclayout.ReplayResult
 	}
 	base, err := Decode(baseBytes)
 	if err != nil {
-		return fabriclayout.ReplayResult{}, fmt.Errorf("merge base %s: %w", FileName, err)
+		return fabricengine.ReplayResult{}, fmt.Errorf("merge base %s: %w", FileName, err)
 	}
 	parent, err := Decode(parentBytes)
 	if err != nil {
-		return fabriclayout.ReplayResult{}, fmt.Errorf("parent %s: %w", FileName, err)
+		return fabricengine.ReplayResult{}, fmt.Errorf("parent %s: %w", FileName, err)
 	}
 	commit, err := Decode(commitBytes)
 	if err != nil {
-		return fabriclayout.ReplayResult{}, fmt.Errorf("commit %s: %w", FileName, err)
+		return fabricengine.ReplayResult{}, fmt.Errorf("commit %s: %w", FileName, err)
 	}
 	origin, err := Load(req.Dir)
 	if err != nil {
-		return fabriclayout.ReplayResult{}, err
+		return fabricengine.ReplayResult{}, err
 	}
 
 	run := &replayRun{store: origin, base: base}
@@ -103,23 +102,23 @@ func (Replayer) Apply(req fabriclayout.ReplayRequest) (fabriclayout.ReplayResult
 
 	if run.applied {
 		if err := Save(req.Dir, run.store); err != nil {
-			return fabriclayout.ReplayResult{}, fmt.Errorf("save %s: %w", FileName, err)
+			return fabricengine.ReplayResult{}, fmt.Errorf("save %s: %w", FileName, err)
 		}
 	}
 	rendered, err := RenderOverview(req.Dir)
 	if err != nil {
-		return fabriclayout.ReplayResult{}, fmt.Errorf("render %s: %w", OverviewFileName, err)
+		return fabricengine.ReplayResult{}, fmt.Errorf("render %s: %w", OverviewFileName, err)
 	}
 	run.result.Empty = !run.applied && !rendered
 	return run.result, nil
 }
 
 func (r *replayRun) lost(entry, field, reason, local string) {
-	r.result.Lost = append(r.result.Lost, fabriclayout.ReplayFinding{Entry: entry, Field: field, Reason: reason, Local: local})
+	r.result.Lost = append(r.result.Lost, fabricengine.ReplayFinding{Entry: entry, Field: field, Reason: reason, Local: local})
 }
 
 func (r *replayRun) refuse(entry, field string, err error) {
-	r.result.Refused = append(r.result.Refused, fabriclayout.ReplayFinding{Entry: entry, Field: field, Reason: err.Error()})
+	r.result.Refused = append(r.result.Refused, fabricengine.ReplayFinding{Entry: entry, Field: field, Reason: err.Error()})
 }
 
 // originIndex returns the index of the entry origin holds under slug, or -1.

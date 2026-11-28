@@ -35,8 +35,6 @@ const (
 	ParentAskTimeout ParentAskState = "timeout"
 	// ParentAskNoParent is an ask that never went out because no parent orch resolved.
 	ParentAskNoParent ParentAskState = "no-parent"
-	// ParentAskUndelivered is an ask whose post to a resolved parent orch creel refused or failed; Reason carries the error.
-	ParentAskUndelivered ParentAskState = "undelivered"
 	// ParentAskNotSent is an ask that never went out because its deadline cap left no room; Reason says why.
 	ParentAskNotSent ParentAskState = "not-sent"
 )
@@ -47,22 +45,16 @@ func (s ParentAskState) Ended() bool {
 	return s != ParentAskPendingPost && s != ParentAskOpen
 }
 
-// ParentAsk is one ask to the parent orch, from a review round or from the drift judge.
+// ParentAsk is one ask to the parent orch to review a round.
 type ParentAsk struct {
 	// Number is the ask's number within the run, from 1 up in the order the asks were recorded.
 	Number int `json:"number"`
-	// Round is the round the ask belongs to: a review round, or the drift judge's ask counted from 1 within its seed.
+	// Round is the review round the ask belongs to.
 	Round int `json:"round"`
-	// Seed names what the ask belongs to, since round numbers restart at 1 under each seed.
-	// A review generation's seed is the write time of its round-1 focus file, in RFC 3339 with nanoseconds.
-	// The drift judge's seed is its fixed prefix followed by the judge spawn's id.
-	Seed string `json:"seed,omitempty"`
-	// Tag is the line tag of the seat that made the ask, which tells one seat's asks from another's in the run's one record.
-	Tag string `json:"tag,omitempty"`
-	// Digest names the content the ask put to the parent when that content can change under the ask, empty otherwise.
-	// The drift judge records the digest of its rulings.
-	Digest string         `json:"digest,omitempty"`
-	State  ParentAskState `json:"state"`
+	// Seed names the review generation the ask belongs to, since round numbers restart at 1 in each generation.
+	// It is the write time of the generation's round-1 focus file, in RFC 3339 with nanoseconds.
+	Seed  string         `json:"seed,omitempty"`
+	State ParentAskState `json:"state"`
 	// Strand is the orch strand the ask went to, which may answer it whichever orch the run's parent resolves to later.
 	Strand  string    `json:"strand,omitempty"`
 	AskedAt time.Time `json:"asked_at"`
@@ -73,8 +65,6 @@ type ParentAsk struct {
 	// Report is the parent report's path, set once the ask is done.
 	Report     string    `json:"report,omitempty"`
 	AnsweredAt time.Time `json:"answered_at,omitzero"`
-	// Cleared marks an ended ask that answers nothing, so the seat that made it asks again.
-	Cleared bool `json:"cleared,omitempty"`
 }
 
 // ParentAskRecord is a run's record of its parent-review asks, oldest first.
@@ -104,26 +94,6 @@ func (r ParentAskRecord) Ask(number int) (ParentAsk, bool) {
 func (r ParentAskRecord) RoundAsk(seed string, round int) (ParentAsk, bool) {
 	for i := len(r.Asks) - 1; i >= 0; i-- {
 		if r.Asks[i].Seed == seed && r.Asks[i].Round == round {
-			return r.Asks[i], true
-		}
-	}
-	return ParentAsk{}, false
-}
-
-// LatestTagged returns the run's latest ask made under tag, and false when the run holds none.
-func (r ParentAskRecord) LatestTagged(tag string) (ParentAsk, bool) {
-	for i := len(r.Asks) - 1; i >= 0; i-- {
-		if r.Asks[i].Tag == tag {
-			return r.Asks[i], true
-		}
-	}
-	return ParentAsk{}, false
-}
-
-// LatestOfSeed returns the run's latest ask made under seed, whatever its round, and false when the run holds none.
-func (r ParentAskRecord) LatestOfSeed(seed string) (ParentAsk, bool) {
-	for i := len(r.Asks) - 1; i >= 0; i-- {
-		if r.Asks[i].Seed == seed {
 			return r.Asks[i], true
 		}
 	}
@@ -261,30 +231,6 @@ func EndParentAsk(files ParentReviewFiles, number int, end ParentAskState, reaso
 		return ParentAsk{}, false, fmt.Errorf("burler: end parent-review ask %d: %w", number, err)
 	}
 	return ask, found, nil
-}
-
-// ClearParentAsk marks the ended ask numbered number cleared, under the record's lock.
-// A cleared ask answers nothing, so the seat that made it asks again.
-// An ask already cleared is no error.
-// The caller passes an ask it found present and ended; a record that lacks the number is an error naming it.
-func ClearParentAsk(files ParentReviewFiles, number int) error {
-	err := state.UpdateJSON(files.Record, files.Lock, func(record ParentAskRecord, _ bool) (ParentAskRecord, error) {
-		for i := range record.Asks {
-			if record.Asks[i].Number != number {
-				continue
-			}
-			if record.Asks[i].Cleared {
-				return record, errParentAskUnchanged
-			}
-			record.Asks[i].Cleared = true
-			return record, nil
-		}
-		return record, fmt.Errorf("the record holds no ask numbered %d", number)
-	})
-	if err != nil && !errors.Is(err, errParentAskUnchanged) {
-		return fmt.Errorf("burler: clear parent-review ask %d: %w", number, err)
-	}
-	return nil
 }
 
 // SettleParentAsk closes the ask numbered number once its round's review at reviewPath is accepted.

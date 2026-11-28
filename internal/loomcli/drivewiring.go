@@ -154,25 +154,6 @@ func loomArbiterSeam(arbiterDeps shedarbiter.Deps, runID string) *sheddriver.Arb
 	return seam
 }
 
-// handBackNotify returns the driver's hand-back notice seam for the run in the pair at location.
-// It posts each line to the nearest live orch, stamped with the run's autonomy.
-func handBackNotify(location *lymcwd.Location) func(_ sheddriver.Stop, line string) (bool, error) {
-	return func(_ sheddriver.Stop, line string) (bool, error) {
-		return orchcli.NotifyParentHalt(location, loomProgram, line)
-	}
-}
-
-// tacklerPrompt returns what the tackler's prompt is told about the run the pre-run armed.
-func (c *loomCLI) tacklerPrompt() sheddriver.TacklerPromptInput {
-	return sheddriver.TacklerPromptInput{
-		Slug:       seedSlug(c.location.WorktreeName),
-		ParentName: c.parentName,
-		Worktree:   c.location.WorktreePath(),
-		TraceDir:   logger.TraceDir(),
-		DriverLog:  loomengine.LoomDriverLog(c.location),
-	}
-}
-
 // goDriverDepsFor assembles the Go driver's seams for the run the pre-run armed.
 // release is the driver lock's early release, which the hand-over calls before it spawns its successor.
 // Every closure reads on demand, and the on-disk lym path is resolved once, here.
@@ -188,14 +169,6 @@ func (c *loomCLI) goDriverDepsFor(release func() error) (sheddriver.Deps, error)
 	executable, err := os.Executable()
 	if err != nil {
 		return sheddriver.Deps{}, fmt.Errorf("loom: drive: resolve the lym executable: %w", err)
-	}
-	fabricConfig, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(c.location))
-	if err != nil {
-		return sheddriver.Deps{}, err
-	}
-	timing, timingWarnings := fabricConfig.PushTiming()
-	for _, warning := range timingWarnings {
-		logger.Warn("loom: drive: " + warning)
 	}
 
 	location := c.location
@@ -241,10 +214,15 @@ func (c *loomCLI) goDriverDepsFor(release func() error) (sheddriver.Deps, error)
 		Recipe:         tacklerRecipe,
 		GotoRoutedFrom: true,
 		GotoGuard:      gotoGuard,
-		Prompt:         c.tacklerPrompt(),
-		StencilsDir:    c.runDeps.Geom.StencilsDir,
-		Shuttle:        sheddriver.RunnerShuttle{Runner: c.runner},
-		Now:            time.Now,
+		Prompt: sheddriver.TacklerPromptInput{
+			Slug:      seedSlug(location.WorktreeName),
+			Worktree:  location.WorktreePath(),
+			TraceDir:  logger.TraceDir(),
+			DriverLog: loomengine.LoomDriverLog(location),
+		},
+		StencilsDir: c.runDeps.Geom.StencilsDir,
+		Shuttle:     sheddriver.RunnerShuttle{Runner: c.runner},
+		Now:         time.Now,
 	}
 
 	deps := sheddriver.Deps{
@@ -260,10 +238,8 @@ func (c *loomCLI) goDriverDepsFor(release func() error) (sheddriver.Deps, error)
 			}
 			return path, os.WriteFile(path, raw, 0o644)
 		},
-		SettlePath:         settlePath,
-		NetworkWaitCeiling: timing.Ceiling,
-		WaitRecordPath:     shedrun.DriveWaitRecord(location, c.runID),
-		FrictionDir:        loomengine.LoomFrictionDir(location),
+		SettlePath:  settlePath,
+		FrictionDir: loomengine.LoomFrictionDir(location),
 		Pause: func(now time.Time) (pauserecord.Coverage, error) {
 			geometry, err := pauseGeometry()
 			if err != nil {
@@ -280,7 +256,9 @@ func (c *loomCLI) goDriverDepsFor(release func() error) (sheddriver.Deps, error)
 		},
 		NewReportPath: func() string { return driverReportPath(location, c.runID, time.Now, reportRand) },
 		HandBack: sheddriver.HandBackDeps{
-			Notify:       handBackNotify(location),
+			Notify: func(_ sheddriver.Stop, line string) (bool, error) {
+				return orchcli.NotifyParent(location, loomProgram, line)
+			},
 			OrchRecorded: func() (bool, error) { return orchcli.ParentOrchRecorded(location) },
 			Park:         loomPark(loomCommitStatusDeps(location, c.runID), shedrun.ParkMarker(location, runID)),
 			Now:          time.Now,
@@ -301,7 +279,15 @@ func (c *loomCLI) goDriverDepsFor(release func() error) (sheddriver.Deps, error)
 			return call.Settle()
 		},
 		ConsumeTackler: func(attemptDir string) error {
-			return sheddriver.ConsumeTacklerAttempt(attemptDir, c.relaunchRequest(runID, gotoGuard))
+			return sheddriver.ConsumeTacklerAttempt(attemptDir, shedengine.RelaunchRequest{
+				StatusPath:              c.shedPaths.StatusPath,
+				LockPath:                c.shedPaths.LockPath,
+				StatusLockPath:          c.shedPaths.StatusLockPath,
+				Producers:               c.routing.Producers,
+				RunID:                   runID,
+				MissingStatusWayForward: c.shedPaths.MissingStatusWayForward,
+				Guard:                   c.gotoGuardEndingFixers(gotoGuard),
+			})
 		},
 		OpenAttempts: func(key sheddriver.StopKey) (string, string, bool, error) {
 			return newestAttemptsFor(shedrun.TacklerDir(location, c.runID), shedrun.ArbiterDir(location, c.runID), key)
@@ -317,6 +303,7 @@ func (c *loomCLI) goDriverDepsFor(release func() error) (sheddriver.Deps, error)
 			BuildChanged: func(onDisk buildvcs.Identity) bool {
 				return shedverbs.LastStepBuildChanged(c.spec.StepsDir, onDisk)
 			},
+			DirtyPaths:  func() ([]string, error) { return dirtyPathsOutsideRecords(location, c.runID) },
 			ReleaseLock: release,
 			Executable:  executable,
 			SpawnSuccessor: func(executable string) error {
@@ -399,6 +386,24 @@ func writeDrivePausedNote(frictionDir, runID string, stop sheddriver.Stop) error
 		return fmt.Errorf("loom: write go-driver-paused note %s: %w", path, err)
 	}
 	return nil
+}
+
+// dirtyPathsOutsideRecords lists the pair's uncommitted or untracked paths outside the run's own records directories.
+// Both sides join onto the task worktree, since the records side reaches it through the `_lym` junction.
+func dirtyPathsOutsideRecords(location *lymcwd.Location, runID string) ([]string, error) {
+	fab, err := fabricengine.Open(location)
+	if err != nil {
+		return nil, err
+	}
+	entries, err := fab.Status()
+	if err != nil {
+		return nil, err
+	}
+	paths := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		paths = append(paths, filepath.Join(location.WorktreePath(), filepath.FromSlash(entry.Path)))
+	}
+	return loomengine.PathsOutsideRunRecords(location, runID, paths), nil
 }
 
 // newestAttemptsFor names the newest tackler and arbiter attempt directories recorded for key.

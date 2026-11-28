@@ -106,10 +106,7 @@ func TestReadForEngine(t *testing.T) {
 	writeNamed(t, dir, EngineBlockName("claude", "tool"), "<!-- Header. -->\nthe Edit tool\n")
 	writeNamed(t, dir, EngineBlockName("codex", "tool"), "<!-- Header. -->\n`apply_patch`\n")
 	writeNamed(t, dir, EngineBlockName("claude", "nesting"), "{{template \"engine-tool\"}}\n")
-	writeNamed(t, dir, "inline", "<!-- Pulls in {{template \"engine-absent\"}}. -->\nChange it with {{template \"engine-tool\"}}.\n")
-	writeNamed(t, dir, "fragment", "<!-- Fragment header. -->\nFragment: {{template \"engine-tool\"}}.\n")
-	writeNamed(t, dir, "withfragment", "Lead.\n{{template \"fragment\"}}Tail.\n")
-	writeNamed(t, dir, "withmissing", "Lead.\n{{template \"absent-fragment\"}}\n")
+	writeNamed(t, dir, "inline", "<!-- Pulls in {{template \"engine-absent\"}}. -->\nChange it with {{template \"engine-tool\"}}.\n{{template \"plain\"}}\n")
 	writeNamed(t, dir, "trimmed", "Use {{- template \"engine-tool\"}}.\n")
 	writeNamed(t, dir, "nested", "Use {{template \"engine-nesting\"}}.\n")
 
@@ -121,11 +118,8 @@ func TestReadForEngine(t *testing.T) {
 		wantErr    string
 		wantMissed bool
 	}{
-		{name: "ClaudeCopyStandsInsideTheLine", engine: "claude", stencil: "inline", want: "<!-- Pulls in {{template \"engine-absent\"}}. -->\nChange it with the Edit tool.\n"},
-		{name: "PlainFragmentStandsInPlaceWithItsEngineBlock", engine: "claude", stencil: "withfragment", want: "Lead.\nFragment: the Edit tool.\nTail.\n"},
-		{name: "PlainFragmentTakesTheLaunchEnginesBlock", engine: "codex", stencil: "withfragment", want: "Lead.\nFragment: `apply_patch`.\nTail.\n"},
-		{name: "MissingPlainFragmentNamesBothStencilsAndTheWayForward", engine: "claude", stencil: "withmissing", wantErr: `stencilstore: stencil "withmissing" includes stencil "absent-fragment", which does not exist; way forward: run lym stencil diff, then lym stencil sync to seed the missing stencil`},
-		{name: "CodexCopyStandsInsideTheLine", engine: "codex", stencil: "inline", want: "<!-- Pulls in {{template \"engine-absent\"}}. -->\nChange it with `apply_patch`.\n"},
+		{name: "ClaudeCopyStandsInsideTheLine", engine: "claude", stencil: "inline", want: "<!-- Pulls in {{template \"engine-absent\"}}. -->\nChange it with the Edit tool.\n{{template \"plain\"}}\n"},
+		{name: "CodexCopyStandsInsideTheLine", engine: "codex", stencil: "inline", want: "<!-- Pulls in {{template \"engine-absent\"}}. -->\nChange it with `apply_patch`.\n{{template \"plain\"}}\n"},
 		{name: "EngineWithNoCopyIsAMissingBlock", engine: "gemini", stencil: "inline", wantMissed: true},
 		{name: "NoEngineIsRefused", stencil: "inline", wantErr: `but no engine was named to read it for; way forward:`},
 		{name: "TrimmedActionIsRefused", engine: "claude", stencil: "trimmed", wantErr: `stencilstore: stencil "trimmed" leaves engine block "tool" unresolved; way forward:`},

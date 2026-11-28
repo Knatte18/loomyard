@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 )
 
 // checkEndedWithoutVerdict is the state shown for a running record whose process is gone.
@@ -41,7 +41,7 @@ type CheckView struct {
 // An absent scratch directory or record creates no directory or lock file.
 // A running record whose process is gone, or whose pid a later boot reused, shows as ended without a verdict.
 func ReadCheckViews(hubPath string) ([]CheckView, error) {
-	adoptDir := fabriclayout.AdoptScratchDir(hubPath)
+	adoptDir := fabricengine.AdoptScratchDir(hubPath)
 	entries, err := os.ReadDir(adoptDir)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
@@ -94,8 +94,8 @@ func checkView(record CheckRecord, alive bool, dir string) CheckView {
 		view.Running = nil
 		view.Lines = []string{
 			fmt.Sprintf("%s %s; %s", opening, checkEndedWithoutVerdict, doneText),
-			fmt.Sprintf("  see %s and %s, or re-run the adopt that lym beam status shows under the adopt hold", view.SuiteLog, view.CheckOut),
-			"  the record clears when that adopt starts a fresh check",
+			fmt.Sprintf("  see %s and %s, or re-run lym adopt %s", view.SuiteLog, view.CheckOut, record.Subject),
+			"  the record clears at the next lym adopt with an owner write, which starts a fresh check",
 		}
 	case record.State == checkRunning:
 		inFlight := "between tiers"

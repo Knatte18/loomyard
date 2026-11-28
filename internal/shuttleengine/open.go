@@ -1,6 +1,5 @@
 // open.go implements Runner.Open: it opens a named interactive provider session with no prompt in a window of its own.
-// An open writes no run directory, run record or output file.
-// The file also holds the pane line that ends a session's own strand, and the start refusal under a pause.
+// It writes no run directory, run record or output file.
 
 package shuttleengine
 
@@ -45,56 +44,6 @@ func openSessionDir(anchorPath, token string) string {
 	return filepath.Join(anchorPath, lymdirs.DotLymDirName, openMarkerDirName, token)
 }
 
-// sessionExitMarkerPath returns the exit marker a run whose spec sets EndsWithSession touches when its provider ends.
-func sessionExitMarkerPath(runDir string) string {
-	return filepath.Join(runDir, "session.exited")
-}
-
-// endSessionLine returns the pane line that runs cmd and then ends the session's strand.
-// After cmd, the line writes the exit marker, asks reed to remove the strand and exits the shell.
-// A cmd that only exits the shell, a resume line that revives no session, is left out so the rest still runs.
-func endSessionLine(cmd, marker string) string {
-	sh := shell.ForGOOS()
-	if cmd == sh.Exit() {
-		cmd = ""
-	}
-	selfRemove := sh.Invoke("lym") + " reed remove --name " + sh.EnvRef(agentname.StrandNameEnv) + " --detach"
-	return sh.Chain(cmd, sh.Touch(marker), selfRemove, sh.Exit())
-}
-
-// withSessionEnd returns launch as the strand of a run of spec in runDir is given it.
-// For a spec that sets EndsWithSession, both pane lines end the strand when the provider exits.
-func withSessionEnd(spec Spec, runDir string, launch Launch) Launch {
-	if !spec.EndsWithSession {
-		return launch
-	}
-	marker := sessionExitMarkerPath(runDir)
-	launch.Cmd = endSessionLine(launch.Cmd, marker)
-	launch.ResumeCmd = endSessionLine(launch.ResumeCmd, marker)
-	return launch
-}
-
-// RefuseCovered returns an error when a live pause covers the runner's worktree, naming wayForward as what to do next.
-// It is the check of a session start that refuses under a pause instead of waiting it out.
-// A runner told no pause geometry is never covered, and an unreadable pause record is warned about and reads uncovered.
-func (r *Runner) RefuseCovered(wayForward string) error {
-	if r.toldErr != nil {
-		return r.toldErr
-	}
-	if r.pause.RecordPath == "" {
-		return nil
-	}
-	coverage, err := pauserecord.ReadCoverage(r.pause.RecordPath, r.pause.Slug, r.clock.Now())
-	if err != nil {
-		logger.Warn("shuttle: opening despite an unreadable pause record", "path", r.pause.RecordPath, "cause", err)
-		return nil
-	}
-	if coverage.Covered {
-		return pauserecord.CoveredError(coverage.Entry, r.pause.Slug, wayForward)
-	}
-	return nil
-}
-
 // Open opens a named interactive session with no prompt in its own window and returns without waiting.
 // The strand takes its name from spec.Role, numbered by reed when the role is held.
 // It carries the launch's CreelHooks mark.
@@ -120,8 +69,13 @@ func (r *Runner) Open(spec OpenSpec) (OpenResult, error) {
 	if err != nil {
 		return OpenResult{}, err
 	}
-	if err := r.RefuseCovered("re-run lym shuttle open"); err != nil {
-		return OpenResult{}, err
+	if r.pause.RecordPath != "" {
+		coverage, err := pauserecord.ReadCoverage(r.pause.RecordPath, r.pause.Slug, r.clock.Now())
+		if err != nil {
+			logger.Warn("shuttle: opening despite an unreadable pause record", "path", r.pause.RecordPath, "cause", err)
+		} else if coverage.Covered {
+			return OpenResult{}, pauserecord.CoveredError(coverage.Entry, r.pause.Slug, "re-run lym shuttle open")
+		}
 	}
 	opener, ok := engine.(SessionOpener)
 	if !ok {
@@ -147,13 +101,15 @@ func (r *Runner) Open(spec OpenSpec) (OpenResult, error) {
 		return OpenResult{}, fmt.Errorf("shuttle: open: create the exit marker directory: %w", err)
 	}
 
+	sh := shell.ForGOOS()
+	selfRemove := sh.Invoke("lym") + " reed remove --name " + sh.EnvRef(agentname.StrandNameEnv) + " --detach"
 	strand, err := r.reed.AddStrand(reedengine.AddSpec{
 		Role:       spec.Role,
 		Segment:    string(spec.Segment),
 		Provider:   engineName,
 		CreelHooks: launch.CreelHooks,
-		Cmd:        endSessionLine(launch.Cmd, marker),
-		ResumeCmd:  endSessionLine(launch.ResumeCmd, marker),
+		Cmd:        sh.Chain(launch.Cmd, sh.Touch(marker), selfRemove, sh.Exit()),
+		ResumeCmd:  sh.Chain(launch.ResumeCmd, sh.Touch(marker), selfRemove, sh.Exit()),
 		SessionID:  launch.SessionID,
 		Display:    render.Display{Anchor: render.AnchorOwnWindow},
 		DoneWhen:   []string{marker},

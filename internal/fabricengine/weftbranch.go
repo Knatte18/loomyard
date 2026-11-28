@@ -7,7 +7,6 @@ package fabricengine
 import (
 	"fmt"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -22,8 +21,7 @@ import (
 // A failed probe, fetch or branch creation returns an error that names origin and the branch.
 // It never falls through to exists=false.
 // It pushes, replaces and deletes nothing on origin.
-// readOrigin runs each of the probe and the fetch, so the caller decides whether a failed one runs again.
-func resolveWeftBranch(rec *Mutations, l *lymcwd.Location, weftBranch string, consultOrigin bool, readOrigin func(side string, read func() error) error) (exists bool, fromOrigin bool, err error) {
+func resolveWeftBranch(rec *Mutations, l *lymcwd.Location, weftBranch string, consultOrigin bool) (exists bool, fromOrigin bool, err error) {
 	if weftBranchExists(l, weftBranch) {
 		return true, false, nil
 	}
@@ -39,37 +37,21 @@ func resolveWeftBranch(rec *Mutations, l *lymcwd.Location, weftBranch string, co
 		return false, false, nil
 	}
 
-	var tip string
-	if err := readOrigin("weft", func() error {
-		var err error
-		tip, err = remoteHeadTip(weftRepoRoot, weftBranch)
-		return err
-	}); err != nil {
+	tip, err := remoteHeadTip(weftRepoRoot, weftBranch)
+	if err != nil {
 		return false, false, err
 	}
 	if tip == "" {
 		return false, false, nil
 	}
 
-	ns, err := originNamespaceAt(weftRepoRoot)
-	if err != nil {
-		return false, false, err
-	}
 	trackingRef := originRemoteName + "/" + weftBranch
-	if err := readOrigin("weft", func() error {
-		_, err := gitrepo.New(weftRepoRoot).FetchWithArgs("--no-tags", originRemoteName, ns.Branch(weftBranch)+":refs/remotes/"+trackingRef)
-		return err
-	}); err != nil {
+	if _, err := gitrepo.New(weftRepoRoot).FetchWithArgs("--no-tags", originRemoteName, "refs/heads/"+weftBranch+":refs/remotes/"+trackingRef); err != nil {
 		return false, false, fmt.Errorf("fetch weft branch %q from %q: %w", weftBranch, originRemoteName, err)
 	}
 	if _, err := gitexec.Run([]string{"branch", "--track", weftBranch, trackingRef}, weftRepoRoot); err != nil {
 		return false, false, fmt.Errorf("create weft branch %q tracking %q: %w", weftBranch, trackingRef, err)
 	}
-	rec.AppendRef(fabriclayout.KindBranchCreated, weftBranch, refDetail("records", weftRepoRoot, originRemoteName))
+	rec.AppendRef(KindBranchCreated, weftBranch, refDetail("records", weftRepoRoot, originRemoteName))
 	return true, true, nil
-}
-
-// readOriginOnce runs read a single time, for a verb that does not run a failed origin read again.
-func readOriginOnce(_ string, read func() error) error {
-	return read()
 }

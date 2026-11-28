@@ -5,11 +5,9 @@ package landingshed
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/parentlock"
@@ -28,30 +26,6 @@ type resolver interface {
 }
 
 var _ resolver = (*mergeresolve.Resolver)(nil)
-
-// newResolver builds the resolver over the task pair deps opens; its errors open with the constructor named caller.
-func newResolver(deps Deps, caller string) (resolver, error) {
-	fabricHandle, err := deps.OpenFabric()
-	if err != nil {
-		return nil, fmt.Errorf("landingshed: %s: open pair: %w", caller, err)
-	}
-	res, err := mergeresolve.New(mergeresolve.Deps{
-		Fabric:         fabricHandle,
-		Shuttle:        deps.Shuttle,
-		WorktreeRoot:   deps.WorktreeRoot,
-		ScratchDir:     deps.ScratchDir,
-		StencilsDir:    deps.StencilsDir,
-		ParentName:     deps.ParentName,
-		LanguageSkills: deps.LanguageSkills,
-		ConflictSpec:   deps.Config.Conflict,
-		Registry:       deps.Registry,
-		Timeout:        time.Duration(deps.Config.ConflictTimeoutMin) * time.Minute,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("landingshed: %s: build resolver: %w", caller, err)
-	}
-	return res, nil
-}
 
 // Deps carries every told value the producers in this package need to construct and run.
 // It derives nothing; `landingDeps` in internal/loomcli sets every field, and a drift test asserts that it does.
@@ -83,7 +57,7 @@ type Deps struct {
 	// The run's transition commit stages it, so a spent count reaches the pair's records.
 	RecordsDir string
 
-	// PushSkipped is the told decision to push nothing, so a landing records no pending push.
+	// PushSkipped is the told decision to skip the parent push.
 	PushSkipped bool
 
 	// EscalateJudgedFirst is the told decision whether a merge fixer's escalate halts with `EscalateStopPrefix`,
@@ -112,13 +86,6 @@ type Deps struct {
 	//
 	// Nil means no status file to commit.
 	CommitStatus func() error
-	// Reap ends the processes and removes the files a hardener campaign's sandbox hubs left in the task worktree.
-	// Finalize calls it once, after the change description parses and before it takes the parent lock,
-	// so the worktree's teardown meets no sandbox hub.
-	// A returned error halts Finalize Stuck, naming the verb that clears the sandbox.
-	//
-	// Nil means the run leaves no sandbox.
-	Reap func() error
 
 	// Reconcile runs the origin reconcile over the run's own scope and returns its report.
 	// The producers read the report before they act on the parent.
@@ -128,7 +95,7 @@ type Deps struct {
 	// A returned error is returned from Call.
 	//
 	// Nil means no reconcile.
-	Reconcile func() (fabriclayout.OriginReport, error)
+	Reconcile func() (fabricengine.OriginReport, error)
 	// RemoveFollowUp returns the step that settles the run's batten record.
 	// A stopped reason whose way forward names `lym fabric remove` ends in that step instead of the resume.
 	// The removal deletes the task worktree the resume runs in.
@@ -157,37 +124,17 @@ type Deps struct {
 	//
 	// Nil means the parent is owned here.
 	ParentOwner func() (ParentOwnership, error)
-	// OwnedElsewhere reads whether another machine owns the run now, from a board it pulls first.
-	// owner is that machine and subject is what `lym adopt` takes to move the run.
-	// The finalize step reads it after the parent-side merge, before it records or marks the landing.
-	// A returned error is returned from Call as a transient failure, so the driver re-steps the landing once origin answers.
+	// OriginParentHoldsWork reports whether origin's parent branch already holds the task's work.
+	// It is read after a failed parent push.
+	// A returned error adds no repair note.
 	//
-	// Nil means the run is owned here.
-	OwnedElsewhere func() (owner, subject string, elsewhere bool, err error)
-	// HandOver hands the run over to owner, under a takeover entry naming owner and subject.
-	// It ends the run's processes, archives its local tips and removes or leaves its pair as the caller's wiring decides.
-	// The error it returns wraps `fabricengine.ErrHandedOver` once the run is handed over, and any other error is a failure.
+	// Nil means no repair note.
+	OriginParentHoldsWork func() (bool, error)
+	// ParentCommitsOriginLacks lists the SHAs of the parent branch's commits that origin's tracking ref lacks, newest first.
+	// It is read for the repair note only when origin's parent branch already holds the task's work.
 	//
-	// Nil is never called, since a nil OwnedElsewhere never answers elsewhere.
-	HandOver func(owner, subject string) error
-	// LandLocally records the landing whose parent head is tip and hands its push to the parent's pusher.
-	// It commits the run's status records, and holds that commit back from origin until the landing's push is made.
-	// The finalize step calls it after the parent-side merge, on every pass that lands, unless PushSkipped is set.
-	// A returned error is returned from Call.
-	//
-	// Nil records no landing, and the finalize step then commits the run's status records itself.
-	LandLocally func(tip string) error
-	// ParentAheadByOwed reports whether the local parent branch is ahead of origin by landing tips alone.
-	// Each of those tips must be recorded as a push still owed.
-	// Such a parent takes the landing as a level one does.
-	// A returned error is returned from Call.
-	//
-	// Nil reads as no owed tip.
-	ParentAheadByOwed func() (bool, error)
-	// ParentPushState reads the state of the push the parent branch owes.
-	//
-	// Nil reads as no landing owed and none refused.
-	ParentPushState func() (ParentPush, error)
+	// Nil means no repair note.
+	ParentCommitsOriginLacks func() ([]string, error)
 
 	// LandBlockers reads what still works under the beam the run lands:
 	// its open member entries and the local pairs forked from it.
@@ -221,22 +168,9 @@ type Deps struct {
 	//
 	// A nil MergeState skips the step, a nil AbortMerge aborts nothing, and a nil StopConflictSession stops nothing.
 	// `internal/loomcli`'s `landingDeps` fills them all, and its drift guard keeps them filled.
-	MergeState          func() (fabriclayout.MidMergeState, error)
+	MergeState          func() (fabricengine.MidMergeState, error)
 	AbortMerge          func() error
 	StopConflictSession func() (guid string, err error)
-
-	// MergeInBasePath is the file, in the run's scratch directory, that holds the task head a merge-in started from.
-	// The finalize step writes it before its merge-in, unless it already stands.
-	// It removes the file once RemoveLeftovers ran over it.
-	MergeInBasePath string
-	// RemoveLeftovers removes the ignored files left in the directories a merge-in deleted since the commit base.
-	// It returns the paths of the removed files.
-	// The finalize step calls it before each clean check of its merge-in while the base file stands.
-	// A returned error is returned from Call, and the base file stays.
-	//
-	// An empty MergeInBasePath or a nil RemoveLeftovers removes nothing.
-	// `internal/loomcli`'s `landingDeps` fills both, and its drift guard keeps them filled.
-	RemoveLeftovers func(base string) ([]string, error)
 
 	// TaskHead returns the task branch's local HEAD SHA.
 	// The Parent-Align row refuses a nil TaskHead when it is built.
@@ -244,9 +178,8 @@ type Deps struct {
 	TaskHead func() (string, error)
 
 	// MarkTaskDone marks the task's board entry done.
-	// The finalize step calls it only under PushSkipped, after it committed the run's records.
-	// It returns once the mark is made.
-	// A returned error is returned from Call, so the driver re-steps the landing and the mark is written again.
+	// The finalize step calls it once the parent-side merge has landed, before the parent push.
+	// It only logs a failure: the change is on the parent whatever the board says.
 	// landingshed names no board path, so the board wiring lives in the closure.
 	//
 	// Nil means "no board to update", and the step fails safe by leaving the board untouched.
@@ -255,28 +188,24 @@ type Deps struct {
 
 	// RecordLanding records commit as the run's landing commit, so the dobby driving the run can name it.
 	// The commit is the parent pair's head right after a parent-side merge that landed.
-	// emptyDiff reports that the landing changed no code path against the parent head merged into the task worktree.
-	// None of the run's work then reached the parent branch.
-	// The finalize step calls it after the parent-side merge and before it hands the push on.
+	// The finalize step calls it after marking the task done and before the push.
 	// It only logs a failure, of the head read or of the record; nil records nothing.
-	RecordLanding func(commit string, emptyDiff bool) error
+	RecordLanding func(commit string) error
 	// RecordLandedSize records the size of the diff the run landed.
 	// The diff runs from the parent head merged into the task worktree to the landing commit.
-	// The finalize step calls it after recording the landing and before it hands the push on.
+	// The finalize step calls it after recording the landing and before the push.
 	// It only logs a failure; nil records nothing.
 	// A finalize step that read no such parent head in its process, as one resumed past the merge, does not call it.
 	RecordLandedSize func(from, to string) error
 
 	// ConfigChanges returns the task's changes to its own per-worktree config files since its fork point.
-	// The finalize step calls it before its own first merge of the parent into the task, for the changes and their base.
-	// That base is the fork point or the parent tip an earlier merge brought in.
-	// It calls it again under the parent lock, before any merge there, for the parent's current values.
+	// The finalize step calls it before the catch-up merge-in, so before any parent-side mutation.
 	// It only reports the result as a notice: landing never carries those files to the parent.
 	// A returned error is logged and reported as a notice, never a stop.
 	//
 	// Nil means "no config changes to report".
 	// `internal/loomcli`'s `landingDeps` fills it, and its drift guard keeps it filled.
-	ConfigChanges func() (fabriclayout.ConfigChanges, error)
+	ConfigChanges func() (fabricengine.ConfigChanges, error)
 
 	// Notify queues one single-line notice for the hub's orchestrator.
 	// The finalize step calls it once, at Done, when the config changes produced a line.
@@ -360,6 +289,7 @@ type Deps struct {
 
 	// DriftVerdict returns the task's regression check as a markdown section.
 	// PR-Review and the finalize step append it to the change description's body in the pull request and the landing commit.
+	// The PR-Review session's prompt shows it as well.
 	// An empty answer carries no section, and a returned error is returned from Call.
 	//
 	// Nil means "no regression check".
@@ -374,7 +304,7 @@ type Deps struct {
 	// Lock is the parent lock's told seams, which the lock-taking rows share through one guard.
 	Lock ParentLockDeps
 	// ReadParentTips reads the parent branch's local and upstream tips over the task pair, fetching first when fetch is true.
-	ReadParentTips func(fetch bool) (fabriclayout.ParentTips, error)
+	ReadParentTips func(fetch bool) (fabricengine.ParentTips, error)
 	// HoldsWork reports whether merging source into base adds nothing, over the task pair.
 	HoldsWork func(base, source string) (bool, error)
 	// ChangedPaths returns the sorted paths that differ between from and to, over the task pair.
@@ -393,7 +323,7 @@ type Deps struct {
 	PlanDir string
 	// LineChange reads the paths, line count and added lines of the change between two commits of the task pair.
 	// The fixer's caps judge that change.
-	LineChange func(from, to string) (fabriclayout.LineChange, error)
+	LineChange func(from, to string) (fabricengine.LineChange, error)
 	// IsTestFile reports whether a slash-separated repository-relative path is a test file of the run's language.
 	// The fixer's kind cap uses it to judge a change.
 	IsTestFile func(path string) bool
@@ -402,11 +332,8 @@ type Deps struct {
 	RowEntry func(row string) (int, error)
 	// TaskRemoteTip reads the task branch's remote-tracking tip, `origin/<task branch>`, without a fetch.
 	// It answers "" when there is none.
-	// A changed tip shows that some writer moved that ref during a fixer session, which need not be the session.
+	// A push the fixer session makes from the task pair updates that ref, so a changed tip shows the push.
 	TaskRemoteTip func() (string, error)
-	// IsAncestor reports whether the commit sha is ref or one of its ancestors, over the task pair.
-	// The fixer loop uses it to tell a remote tip the session cannot have added from one it could have.
-	IsAncestor func(sha, ref string) (bool, error)
 	// CodeReviewOff reports whether the Code-Perch reads as off:
 	// its effective review budget is 0, or the Code-Review rows' entry gate leaves them out.
 	// With the perch off no review follows Parent-Align and its fixer's change is judged against the caps instead.
@@ -418,7 +345,7 @@ type Deps struct {
 }
 
 // PullRequestDeps carries the told seams the PR-Review row decides and opens the run's pull request through.
-// The row treats every field as required but the ones `optionalPullRequestSeams` names.
+// The row treats every field but `BeamRecord` and `DropBeamRecord` as required.
 // It returns an error naming the first one left unset.
 type PullRequestDeps struct {
 	// RecordPath is the run's pull-request record file, tracked with the run's records.
@@ -428,11 +355,12 @@ type PullRequestDeps struct {
 	// CommitRecord commits the record's file, or its removal, to the pair's records and starts their push.
 	// The row calls it after every successful write or removal of the record, and returns its error.
 	CommitRecord func() error
-	// Mode reads `beam.pull_request` for the landing run through the per-task lookup.
-	// The run's own worktree's files apply first, then the nearest parent worktree's value.
-	// After those come the hub's default layer and the template.
-	// A returned error is a lookup that failed, and it names the file to fix.
-	Mode func() (string, error)
+	// ParentMode reads the receiving branch's beam.yaml `pull_request`.
+	// It returns that value with the name of the worktree it was read in.
+	// On an error the worktree name is still returned, so the halt names where to fix the file.
+	ParentMode func() (mode, worktree string, err error)
+	// EntryField reads the landing entry's `pull_request` field, empty when the entry has none.
+	EntryField func() (string, error)
 	// Origin reads the facts about the task pair's origin that a pull request needs.
 	Origin func() (Origin, error)
 	// API opens the GitHub calls for the repository the origin URL names.
@@ -447,13 +375,6 @@ type PullRequestDeps struct {
 	DirtyPaths func() ([]string, error)
 	// MailAgent posts line to the creel strand named strandName.
 	MailAgent func(strandName, line string) error
-	// Sessions starts and stops the interactive session the operator works the pull request with.
-	// `*shuttleengine.Runner` satisfies it.
-	Sessions prSessions
-	// SessionLive reports whether the strand guid names is live.
-	SessionLive func(guid string) (bool, error)
-	// RegisterSession registers the process of the session's pane under the run, so a teardown ends it.
-	RegisterSession func(guid string) error
 	// PauseCovered reports whether a pause covers the run at the time of the call.
 	PauseCovered func() (bool, error)
 	// Now reads the clock the wait's poll spacing runs on.
@@ -464,22 +385,25 @@ type PullRequestDeps struct {
 	// It also returns the function that ends the watch.
 	// A nil channel, as when no watch can be opened, leaves the wait on its timer.
 	RecordChanges func() (changes <-chan struct{}, stop func())
+	// Sessions starts and stops the interactive session the operator discusses the pull request with.
+	// `*shuttleengine.Runner` satisfies it.
+	Sessions prSessions
+	// SessionLive reports whether the strand guid names is live.
+	SessionLive func(guid string) (bool, error)
+	// RegisterSession registers the process of the session's pane under the run, so a teardown ends it.
+	RegisterSession func(guid string) error
+	// ParentReviewWanted reports whether the hub or the task turns on the parent orch's review of the pull request.
+	// It is read at each entry of the row, and nil reads as off.
+	ParentReviewWanted func() (bool, error)
+	// AskParent posts line to the orch the run's agents reach as their parent, and reports whether it posted.
+	// It reports false with no error when no orch is recorded to take the line.
+	AskParent func(line string) (bool, error)
 	// BeamRecord reads the pull request the beam's landing record holds and reports whether it holds one.
 	// A non-nil BeamRecord marks the landing as a beam's, and is nil on every run but a beam's.
 	BeamRecord func() (pullRequest BeamPullRequest, recorded bool, err error)
 	// DropBeamRecord drops the pull request from the beam's landing record and commits the landing directory.
 	// It is nil on every run but a beam's.
 	DropBeamRecord func() error
-}
-
-// ParentPush is the state of the push a parent branch owes.
-type ParentPush struct {
-	// Owed reports whether a landing on the parent still waits for its push.
-	Owed bool
-	// Refused reports whether a refused push of the parent stands, which no retry clears.
-	Refused bool
-	// WayForward is the way forward of the refused push, empty without one.
-	WayForward string
 }
 
 // ParentOwnership is who owns the parent a run lands on.

@@ -20,12 +20,10 @@ import (
 const tacklerStencilName = "shed-template-tackler"
 
 // TacklerPromptInput carries what the tackler stencil's markers are filled from.
-// ReportPath and ParentName may be empty; every other field is required.
+// ReportPath may be empty; every other field is required.
 type TacklerPromptInput struct {
 	RunID string
 	Slug  string
-	// ParentName is the run's parent orch, empty for a run with no parent.
-	ParentName string
 	// Recipe is the one-line description of the recipe the run belongs to.
 	Recipe string
 	// GotoRows names the rows a resume may name in its goto.
@@ -43,9 +41,8 @@ type TacklerPromptInput struct {
 
 // RenderTacklerPrompt composes the tackler session's launch prompt for the engine named engine.
 // It reads the tackler stencil from stencilsDir through stencilstore.Read.
-// It fills the stencil with the input and the edit directive of engine.
-// It also fills in the hand-back parent directive, naming the input's parent.
-// The hand-back directive is rendered because the verdict file is the tackler's only channel.
+// It fills the stencil with the input, the no-parent directive and the edit directive of engine.
+// The no-parent directive is rendered because the verdict file is the tackler's only channel.
 // An empty report path is filled as the literal "none".
 // An empty Recipe or GotoRows is a wiring fault and is refused, naming the marker.
 // A read or fill error is returned wrapped with the stencil's name.
@@ -55,7 +52,7 @@ func RenderTacklerPrompt(stencilsDir, engine string, in TacklerPromptInput) (str
 			return "", fmt.Errorf("sheddriver: tackler prompt: the %s marker is empty", required.marker)
 		}
 	}
-	directive, err := parentdirective.HandBack(stencilsDir, in.ParentName)
+	directive, err := parentdirective.Directive(stencilsDir, "", false)
 	if err != nil {
 		return "", err
 	}

@@ -30,7 +30,7 @@
 // It covers untagged files too, so this file needs no TestMain of its own.
 //
 // The test also proves that shuttle's blocking Start succeeds against a real reed pane.
-// Each "loom start" below blocks inside StartDriver's call to Start.
+// Each "loom start --no-attach" below blocks inside StartDriver's call to Start.
 // That call returns once the provider is ready, or it reports the run as a refusal naming shuttle's ErrNotStarted.
 // Asserting each invocation's exit code makes a readiness regression surface as that refusal, not a silent pass.
 package loomcli
@@ -74,7 +74,7 @@ record_session_start "$@"
 // It then prints claudeengine's idle-input-box fixture and sleeps for a long, harmless duration.
 // The fixture is required: without it, shuttle's startup step never observes readiness,
 // and no verified send finds the session idle.
-// Every "loom start" below would then refuse instead of succeeding.
+// Every "loom start --no-attach" below would then refuse instead of succeeding.
 // claudeengine owns the fixture text and how a provider's panes are classified.
 // This package needs only a realistic stand-in, never those classification details.
 // The driver spec names no skill, so the prompt pointer rides the launch line.
@@ -98,7 +98,7 @@ sleep 3600
 	return path
 }
 
-// driverShuttleConfig returns shuttle's shipped config template with shuttle.startup_timeout_s lowered from 90 to 10.
+// driverShuttleConfig returns shuttle's shipped config template with startup_timeout_s lowered from 90 to 10.
 // A readiness regression is shuttle's startup step never observing the ready marker.
 // The lowered window makes that regression surface as a refusal, not as a timeout.
 // The refusal lands inside the per-invocation timeout runLoomCLINoFatal enforces, so that timeout does not mask it.
@@ -143,7 +143,7 @@ func waitDriverStrandDead(t *testing.T, eng *reedengine.Engine, timeout time.Dur
 }
 
 // TestSmokeDriverStrand_ReentrantAcrossThreeBootstraps drives three successive bootstraps.
-// Each one runs "loom start" against one llm-seeded worktree.
+// Each one runs "loom start --no-attach" against one llm-seeded worktree.
 // It asserts the driver strand count after each bootstrap, in order.
 //
 // A first bootstrap leaves exactly one driver strand.
@@ -185,7 +185,7 @@ func TestSmokeDriverStrand_ReentrantAcrossThreeBootstraps(t *testing.T) {
 	eng := probeReedEngine(t, loc)
 
 	// (1) a first bootstrap leaves exactly one strand under the driver name, live.
-	firstOut, firstExit, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, 30*time.Second, "loom", "start")
+	firstOut, firstExit, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, 30*time.Second, "loom", "start", "--no-attach")
 	if err != nil {
 		t.Fatalf("first loom start: %v; output: %s", err, firstOut)
 	}
@@ -208,7 +208,7 @@ func TestSmokeDriverStrand_ReentrantAcrossThreeBootstraps(t *testing.T) {
 	// Follow goes off first: a start that enters a run with a live driver is the path a parked run's resume takes,
 	// and that path re-arms follow.
 	setFollow(t, eng, "off")
-	secondOut, secondExit, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, 30*time.Second, "loom", "start")
+	secondOut, secondExit, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, 30*time.Second, "loom", "start", "--no-attach")
 	if err != nil {
 		t.Fatalf("second loom start: %v; output: %s", err, secondOut)
 	}
@@ -247,7 +247,7 @@ func TestSmokeDriverStrand_ReentrantAcrossThreeBootstraps(t *testing.T) {
 	// That is the case the random suffix in driverReportPath exists for:
 	// Two attempts composing a report path in the same clock second would otherwise collide.
 	// Spec.validate would then refuse the second.
-	thirdOut, thirdExit, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, 30*time.Second, "loom", "start")
+	thirdOut, thirdExit, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, 30*time.Second, "loom", "start", "--no-attach")
 	if err != nil {
 		t.Fatalf("third loom start: %v; output: %s", err, thirdOut)
 	}

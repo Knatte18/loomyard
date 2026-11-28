@@ -17,7 +17,7 @@ import (
 
 	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
@@ -56,7 +56,7 @@ func newPromoteCmd(loc func() *lymcwd.Location) *cobra.Command {
 				return nil
 			}
 
-			stencilsDir := fabriclayout.StencilsDir(l.HubPath)
+			stencilsDir := fabricengine.StencilsDir(l.HubPath)
 			boardPath := stencilstore.Path(stencilsDir, name)
 			boardContent, err := os.ReadFile(boardPath)
 			if err != nil {

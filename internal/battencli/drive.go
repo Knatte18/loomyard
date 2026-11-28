@@ -22,10 +22,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/creelcli"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -47,15 +45,12 @@ import (
 )
 
 // battenTacklerRecipe is the one-line description of a batten run the tackler's prompt names under its run heading.
-const battenTacklerRecipe = "batten: a task worktree's whole lifecycle run from the hub's prime (create the pair, seed and run the task's own run, tear the pair down and land it). " +
-	"A run whose Worktree-Create row never finished done has made no pair yet: " +
-	"its absent task worktree and the absence of its records branch on origin are its fresh state, never a pair to restore or abandon."
+const battenTacklerRecipe = "batten: a task worktree's whole lifecycle run from the hub's prime (create the pair, seed and run the task's own run, tear the pair down and land it)"
 
 // battenArbiterRecipe describes batten's rows and the arbiter's moves.
 // The arbiter's prompt names it under its run heading.
 const battenArbiterRecipe = "batten: a task worktree's whole lifecycle run from the hub's prime, in rows. " +
-	"Worktree-Create claims the task and makes the pair, " +
-	"so until it has finished done once, an absent task worktree and a records branch absent from origin are the fresh state, never a pair to restore; " +
+	"Worktree-Create claims the task and makes the pair; " +
 	"Seed-Child writes the child's seed and run settings; " +
 	"Open-Window, Seed-IDE and Open-IDE run the optional window and IDE commands; " +
 	"Run-Shed watches the child's own run; " +
@@ -112,6 +107,11 @@ func (c *battenCLI) driveRun(cmd *cobra.Command) error {
 		return battenRunEnvelope(exit, status, found, abandonedSession, yieldReason, c.spec.RunBusyMessage)
 	})
 	clihelp.SetExit(ctx, exit)
+	// A pass that reached origin and exited 0 pays the origin the earlier resume owed;
+	// any other pass leaves the marker standing.
+	if exit == 0 && c.originReached {
+		c.clearOriginOwed()
+	}
 	// A hand pass leaves the run to its parent's dobby, so the dobby is made live once the pass is over.
 	if err := c.ensureDobby(); err != nil {
 		logger.Warn("battencli: the pass ended but its parent's dobby is not live", "slug", c.slug, "error", err.Error())
@@ -121,15 +121,11 @@ func (c *battenCLI) driveRun(cmd *cobra.Command) error {
 
 // passExitCode returns the exit code of a pass that refused with err before the step loop:
 // the owned-elsewhere code for a run another machine owns; the covered code for a run a pause covers;
-// the continue-refused code for a continue pass of a run dobby may not continue;
-// the origin-wait code for a pass whose catch-up could not reach origin;
-// the refused-catch-up code for a pass whose catch-up failed otherwise or was refused;
-// and 1 for any other refusal.
+// the continue-refused code for a continue pass of a run dobby may not continue; and 1 for any other refusal.
 func passExitCode(err error) int {
 	var owned *OwnedElsewhereError
 	var covered *coveredRefusal
 	var continueRefused *continueRefusal
-	var catchUpRefused *catchUpRefusal
 	switch {
 	case errors.As(err, &owned):
 		return dobbyengine.PassExitOwnedElsewhere
@@ -137,10 +133,6 @@ func passExitCode(err error) int {
 		return dobbyengine.PassExitCovered
 	case errors.As(err, &continueRefused):
 		return dobbyengine.PassExitContinueRefused
-	case errors.As(err, &catchUpRefused) && errors.Is(err, dobbyengine.ErrOriginUnreachable):
-		return dobbyengine.PassExitOriginWait
-	case errors.As(err, &catchUpRefused):
-		return dobbyengine.PassExitCatchUpRefused
 	default:
 		return 1
 	}
@@ -251,8 +243,8 @@ func battenHandBackNotice(deps battenshed.RowNoticeDeps, slug, scratchDir string
 
 // driverDepsFor fills the shed driver's seams for batten's run in the prime.
 // Every path comes from shedrun over the prime's location and the slug.
-// Only fabric's push timing is read here, and nothing is built.
-// The other configs, the model registry and the shuttle runner load when the `Tackler` or `Arbiter` seam is called.
+// Nothing is read or built here.
+// The configs, the model registry and the shuttle runner load when the `Tackler` or `Arbiter` seam is called.
 // A seam left nil removes its rows from the driver's rule table.
 // The stop report and the done step's envelope are written after the transition's own commit,
 // so a hand-back's park and a done stop commit the run's records on the prime's pair.
@@ -261,14 +253,6 @@ func (c *battenCLI) driverDepsFor() (sheddriver.Deps, error) {
 	runID := shedrun.ResolveRunID(location, slug)
 	pauseGeometry := func() (pauserecord.Geometry, error) { return hubgeom.PauseGeometry(location) }
 	var reportPath string
-	fabricConfig, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(location))
-	if err != nil {
-		return sheddriver.Deps{}, err
-	}
-	timing, timingWarnings := fabricConfig.PushTiming()
-	for _, warning := range timingWarnings {
-		logger.Warn("battencli: " + warning)
-	}
 
 	return sheddriver.Deps{
 		RunID:       runID,
@@ -283,9 +267,7 @@ func (c *battenCLI) driverDepsFor() (sheddriver.Deps, error) {
 			}
 			return path, os.WriteFile(path, raw, 0o644)
 		},
-		SettlePath:         shedrun.SettleRecords(location, slug),
-		NetworkWaitCeiling: timing.Ceiling,
-		WaitRecordPath:     shedrun.DriveWaitRecord(location, slug),
+		SettlePath: shedrun.SettleRecords(location, slug),
 		Pause: func(now time.Time) (pauserecord.Coverage, error) {
 			geometry, err := pauseGeometry()
 			if err != nil {
@@ -423,11 +405,10 @@ func (c *battenCLI) withTaskWorktree(deps shedarbiter.Deps) (shedarbiter.Deps, e
 	return deps, nil
 }
 
-// tacklerDepsFor fills the tackler call's seams and fixed values over settings, shuttle and parentName.
-// parentName is the run's parent orch.
+// tacklerDepsFor fills the tackler call's seams and fixed values over settings and shuttle.
 // A batten tackler has no worktree snapshot, since the prime has other writers,
 // and a resume names the halted row only.
-func (c *battenCLI) tacklerDepsFor(settings sheddriver.TacklerSettings, shuttle sheddriver.AgentShuttle, parentName string) sheddriver.TacklerDeps {
+func (c *battenCLI) tacklerDepsFor(settings sheddriver.TacklerSettings, shuttle sheddriver.AgentShuttle) sheddriver.TacklerDeps {
 	location, slug := c.location, c.slug
 	settlePath := shedrun.SettleRecords(location, slug)
 	return sheddriver.TacklerDeps{
@@ -463,13 +444,12 @@ func (c *battenCLI) tacklerDepsFor(settings sheddriver.TacklerSettings, shuttle 
 		Recipe:         battenTacklerRecipe,
 		GotoRoutedFrom: false,
 		Prompt: sheddriver.TacklerPromptInput{
-			Slug:       slug,
-			ParentName: parentName,
-			Worktree:   location.WorktreePath(),
-			TraceDir:   logger.TraceDir(),
-			DriverLog:  logger.TraceFile(),
+			Slug:      slug,
+			Worktree:  location.WorktreePath(),
+			TraceDir:  logger.TraceDir(),
+			DriverLog: logger.TraceFile(),
 		},
-		StencilsDir: fabriclayout.StencilsDir(location.HubPath),
+		StencilsDir: fabricengine.StencilsDir(location.HubPath),
 		Shuttle:     shuttle,
 		Now:         time.Now,
 	}
@@ -501,18 +481,7 @@ func (c *battenCLI) loadedTacklerDeps() (sheddriver.TacklerDeps, error) {
 	if err != nil {
 		return sheddriver.TacklerDeps{}, err
 	}
-	return c.tacklerDepsFor(settings, shuttle, c.promptParentName()), nil
-}
-
-// promptParentName returns the run's parent orch name for the parent line of its tackler and arbiter prompts.
-// A failed read answers "" with a warning: the line is optional, and the stop is still judged without it.
-func (c *battenCLI) promptParentName() string {
-	name, err := hubgeom.ParentOrchName(c.location, c.slug)
-	if err != nil {
-		logger.Warn("battencli: read the run's parent orch failed; its prompts name no parent", "slug", c.slug, "error", err)
-		return ""
-	}
-	return name
+	return c.tacklerDepsFor(settings, shuttle), nil
 }
 
 // primeShuttle builds the prime's shuttle runner, shared by the tackler and the arbiter.
@@ -536,7 +505,7 @@ func (c *battenCLI) primeShuttle(dirs configengine.Dirs) (sheddriver.AgentShuttl
 	if err != nil {
 		return nil, err
 	}
-	engines, err := shuttleengines.NewForWorktree(shuttleConfig, dirs, hubgeom.EngineWorktree(location))
+	engines, err := shuttleengines.New(shuttleConfig, dirs)
 	if err != nil {
 		return nil, err
 	}
@@ -546,20 +515,12 @@ func (c *battenCLI) primeShuttle(dirs configengine.Dirs) (sheddriver.AgentShuttl
 		_, err := notifyRunParent(location, c.slug, line)
 		return err
 	})
-	runner.SetReplyProbe(creelcli.AwaitsReplyProbe(location, battenProgram))
 	// The tackler and the arbiter work for the task's run,
 	// so their sessions count toward the task worktree's usage records.
-	// Before Worktree-Create has made the pair there is no task worktree to record them in, which is no failure.
-	present, err := taskWorktreePresent(location, c.slug)
-	if err == nil && present {
-		var taskLocation *lymcwd.Location
-		taskLocation, err = taskWorktreeLocation(location, c.slug)
-		if err == nil {
-			runner.SetSessionEnd(shedadapters.UsageRecorder(taskLocation, shuttleengines.RecordReaders(dirs)))
-		}
-	}
-	if err != nil {
+	if taskLocation, err := taskWorktreeLocation(location, c.slug); err != nil {
 		logger.Warn("battencli: locate the task worktree to record its tackler and arbiter sessions failed; they stay unrecorded", "slug", c.slug, "error", err)
+	} else {
+		runner.SetSessionEnd(shedadapters.UsageRecorder(taskLocation, shuttleengines.RecordReaders()))
 	}
 	return sheddriver.RunnerShuttle{Runner: runner}, nil
 }
@@ -599,12 +560,11 @@ func (c *battenCLI) loadedArbiterDeps() (shedarbiter.Deps, error) {
 		GotoGuard:  c.haltedRowGuard(),
 		Stop:       arbiterstop.NewBattenReaders(),
 		Prompt: shedarbiter.PromptInput{
-			Recipe:     battenArbiterRecipe,
-			ParentName: c.promptParentName(),
-			Slug:       slug,
-			Worktree:   location.WorktreePath(),
+			Recipe:   battenArbiterRecipe,
+			Slug:     slug,
+			Worktree: location.WorktreePath(),
 		},
-		StencilsDir:        fabriclayout.StencilsDir(location.HubPath),
+		StencilsDir:        fabricengine.StencilsDir(location.HubPath),
 		AmendmentTarget:    func() string { return "" },
 		Shuttle:            shuttle,
 		Now:                time.Now,
@@ -616,8 +576,6 @@ func (c *battenCLI) loadedArbiterDeps() (shedarbiter.Deps, error) {
 // haltedRowGuard returns the arbiter's goto guard, which admits only the row the run is halted at.
 // The guard reads the halted row from the status on each call.
 // A goto to an earlier row would re-run Seed-Child over a live pair's local config layer and seed, or Worktree-Create.
-// The batten recipe has no PR-Review row, so no batten goto or relaunch moves a run onto that row:
-// the goto and relaunch requests built here pass no hook that resets a PR-Review review.
 func (c *battenCLI) haltedRowGuard() shedengine.GotoGuard {
 	return func(target string) (string, error) {
 		status, found, err := c.readRunStatus()

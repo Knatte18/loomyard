@@ -1,4 +1,4 @@
-// walk.go declares the lookups of an orch's strand name and the walk up a beam chain to the orch a notice goes to.
+// walk.go declares the lookups of an orch's strand name and the walk up a beam chain to the nearest live orch.
 // It includes Asker, which answers the orch strand the agents of a worktree reach as their parent orch.
 
 package orchroute
@@ -10,7 +10,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
@@ -31,12 +30,16 @@ func StrandOf(worktree *lymcwd.Location) (name string, recorded bool, err error)
 	if orch.Strand == "" {
 		return "", false, nil
 	}
-	held, found, err := reedStrandName(worktree, orch.Strand)
+	reedState, err := reedengine.LoadState(filepath.Join(worktree.AnchorPath(), lymdirs.DotLymDirName))
 	if err != nil {
 		return "", false, err
 	}
-	if found {
-		return held, true, nil
+	if reedState != nil {
+		for _, strand := range reedState.Strands {
+			if strand.GUID == orch.Strand {
+				return strand.Name, true, nil
+			}
+		}
 	}
 	fixed, err := FixedStrandName(worktree)
 	if err != nil {
@@ -45,35 +48,10 @@ func StrandOf(worktree *lymcwd.Location) (name string, recorded bool, err error)
 	return fixed, true, nil
 }
 
-// reedStrandName answers the name reed's state of worktree holds for the strand guid, and whether it holds that strand.
-func reedStrandName(worktree *lymcwd.Location, guid string) (name string, found bool, err error) {
-	reedState, err := reedengine.LoadState(filepath.Join(worktree.AnchorPath(), lymdirs.DotLymDirName))
-	if err != nil || reedState == nil {
-		return "", false, err
-	}
-	for _, strand := range reedState.Strands {
-		if strand.GUID == guid {
-			return strand.Name, true, nil
-		}
-	}
-	return "", false, nil
-}
-
-// holdsOrchStrand reports whether the orch state of worktree records a strand that reed's state still holds.
-// Stopping an orch removes its strand from reed's state, while the orch state keeps the record.
-func holdsOrchStrand(worktree *lymcwd.Location) (bool, error) {
-	orch, err := orchengine.LoadState(Paths(worktree))
-	if err != nil || orch.Strand == "" {
-		return false, err
-	}
-	_, found, err := reedStrandName(worktree, orch.Strand)
-	return found, err
-}
-
 // FixedStrandName answers the name the orch strand of worktree takes when reed holds none for it:
 // `<shortname>:orch` for the prime and `<shortname>:<slug>:orch` for a beam.
 func FixedStrandName(worktree *lymcwd.Location) (string, error) {
-	shortname, found := fabricengine.ReadShortname(fabriclayout.BoltDir(worktree.HubPath))
+	shortname, found := fabricengine.ReadShortname(fabricengine.BoltDir(worktree.HubPath))
 	if !found {
 		return "", fmt.Errorf("orch: the hub of %s has no usable shortname record to name the orch strand; way forward: run `lym fabric shortname <shortname>`", worktree.WorktreePath())
 	}
@@ -109,26 +87,10 @@ func WorktreeOrPrime(location *lymcwd.Location, worktree string) (*lymcwd.Locati
 	return Prime(location)
 }
 
-// Destination answers the orch a notice starting at the worktree start goes to, as its agent name and worktree.
-// start takes it while reed still holds its orch strand, live or not, since creel holds the mail of a down orch.
-// Otherwise it is the nearest worktree up start's beam chain whose orch live reports live, else the prime.
-// So a stopped orch, whose strand is removed, passes its notices up.
-// The answer's Worktree is empty for the prime.
-func Destination(start *lymcwd.Location, live func(worktree *lymcwd.Location) (bool, error)) (hubgeom.Parent, error) {
-	return hubgeom.NearestLiveOrch(start, func(worktree *lymcwd.Location) (bool, error) {
-		if worktree.WorktreeName == start.WorktreeName {
-			held, err := holdsOrchStrand(worktree)
-			if err != nil || held {
-				return held, err
-			}
-		}
-		return live(worktree)
-	})
-}
-
-// From answers the strand of the orch a notice starting at start goes to, and whether its state records one.
+// From answers the orch strand of the nearest worktree up start's beam chain whose orch live reports live.
+// When no such worktree exists, it answers the orch strand of the prime.
 func From(start *lymcwd.Location, live func(worktree *lymcwd.Location) (bool, error)) (name string, recorded bool, err error) {
-	destination, err := Destination(start, live)
+	destination, err := hubgeom.NearestLiveOrch(start, live)
 	if err != nil {
 		return "", false, err
 	}
@@ -140,7 +102,7 @@ func From(start *lymcwd.Location, live func(worktree *lymcwd.Location) (bool, er
 }
 
 // FromPair answers the orch strand a notice of pair goes to.
-// The walk to it starts at the pair's parent.
+// It walks up from the pair's parent to the nearest worktree whose orch live reports live, or else to the prime.
 // The parent comes from the pair's origin record, and the prime stands in when it names none or does not exist.
 func FromPair(pair *lymcwd.Location, live func(worktree *lymcwd.Location) (bool, error)) (name string, recorded bool, err error) {
 	parent, err := hubgeom.ResolveParent(pair)

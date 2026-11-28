@@ -43,11 +43,6 @@ const (
 	NameCodeBurlerFix    = "Code-Burler-Fix"
 	NamePRReview         = "PR-Review"
 
-	// NameHardenBouncer, NameHardenBurlerReview and NameHardenBurlerFix are the hardener recipe's Harden-Review ring.
-	NameHardenBouncer      = "Harden-Bouncer"
-	NameHardenBurlerReview = "Harden-Burler-Review"
-	NameHardenBurlerFix    = "Harden-Burler-Fix"
-
 	// NameMotif is the block row of the tapestry recipe that runs the motif recipe.
 	NameMotif = "Motif"
 

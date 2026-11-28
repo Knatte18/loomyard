@@ -3,13 +3,12 @@
 package driftengine
 
 import (
-	"maps"
 	"os"
 	"path/filepath"
 	"slices"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -21,48 +20,25 @@ const (
 	testFrictionPrefix = testFrictionRel + "-"
 	testReviewRel      = "_lym/loom/reviews/review-1.md"
 	testJudgementRel   = "_lym/drift/judgement.yaml"
-	testRecordRel      = "_lym/discussion/decision-record.md"
-)
-
-// Decision records the parent's decision verb and other edits leave behind.
-const (
-	testRecord      = "## Goal\n\nDo it.\n\n## Decisions\n\n## Constraints\n"
-	testRecordEntry = "## Goal\n\nDo it.\n\n## Decisions\n\n### Added after Discussion (parent, 2026-11-18): Retry\n\nDecision: retry.\n\nRationale: flaky.\n\n## Constraints\n"
-	testRecordEdit  = "## Goal\n\nDo more.\n\n## Decisions\n\n### Added after Discussion (parent, 2026-11-18): Retry\n\nDecision: retry.\n\nRationale: flaky.\n\n## Constraints\n"
-	// testRecordReplaced is the record a `lym loom decision replace` of testRecord wrote; testRecordEdit appends to it.
-	testRecordReplaced = "## Goal\n\nDo more.\n\n## Decisions\n\n## Constraints\n"
-
-	testRecordRisks       = "## Goal\n\nDo it.\n\n## Decisions\n\n## Open risks\n\n<!-- lym:carry-over Plan-Review -->\n- Plan-Review, round 1: converged.\n<!-- /lym:carry-over Plan-Review -->\n\n## Constraints\n"
-	testRecordRisksEdited = "## Goal\n\nDo it.\n\n## Decisions\n\n## Open risks\n\n<!-- lym:carry-over Plan-Review -->\n- Plan-Review, round 2: converged.\n<!-- /lym:carry-over Plan-Review -->\n\n## Constraints\n"
-	testRecordRisksEntry  = "## Goal\n\nDo it.\n\n## Decisions\n\n### Added after Discussion (parent, 2026-11-18): Retry\n\nDecision: retry.\n\nRationale: flaky.\n\n## Open risks\n\n<!-- lym:carry-over Plan-Review -->\n- Plan-Review, round 1: converged.\n<!-- /lym:carry-over Plan-Review -->\n\n## Constraints\n"
 )
 
 // judgeFixture holds the fake code and records checkouts and a scratch directory.
 // It also holds the records history a test changes between the snapshot and the comparison.
 type judgeFixture struct {
-	code, records fabriclayout.CheckoutState
+	code, records fabricengine.CheckoutState
 	// recordsChanged is what RecordsChangedSince answers.
 	recordsChanged []string
 	// sinceRevs records each revision RecordsChangedSince was asked about.
 	sinceRevs []string
-	// replaced is what ReplacedDecisionRecord answers, and empty answers found false.
-	// replacedAt is the records head that replace was committed at, and the seam finds it only when asked since another head.
-	// replacedSince records each records head ReplacedDecisionRecord was asked about.
-	replaced      string
-	replacedAt    string
-	replacedSince []string
-	// lockHeld says the decision lock is held; unlockedReads counts the checkout reads made without it.
-	lockHeld      bool
-	unlockedReads int
-	scratch       string
-	deps          Deps
+	scratch   string
+	deps      Deps
 }
 
 func newJudgeFixture(t *testing.T) *judgeFixture {
 	t.Helper()
 	f := &judgeFixture{
-		code:    fabriclayout.CheckoutState{Root: t.TempDir(), Head: "code-1"},
-		records: fabriclayout.CheckoutState{Root: t.TempDir(), Head: "records-1"},
+		code:    fabricengine.CheckoutState{Root: t.TempDir(), Head: "code-1"},
+		records: fabricengine.CheckoutState{Root: t.TempDir(), Head: "records-1"},
 		scratch: t.TempDir(),
 	}
 	f.deps = Deps{
@@ -70,27 +46,15 @@ func newJudgeFixture(t *testing.T) *judgeFixture {
 		WorktreeRoot:     f.code.Root,
 		JudgeSnapshotDir: filepath.Join(t.TempDir(), "snapshot"),
 		LoomRecordsDirs:  []string{testRunDirRel, testFrictionRel, testFrictionPrefix},
-		DecisionRecord:   filepath.Join(f.code.Root, filepath.FromSlash(testRecordRel)),
-		Checkouts: func() (fabriclayout.CheckoutState, fabriclayout.CheckoutState, error) {
-			if f.deps.DecisionRecord != "" && !f.lockHeld {
-				f.unlockedReads++
-			}
+		Checkouts: func() (fabricengine.CheckoutState, fabricengine.CheckoutState, error) {
 			return f.code, f.records, nil
 		},
 		RecordsChangedSince: func(rev string) ([]string, error) {
 			f.sinceRevs = append(f.sinceRevs, rev)
 			return f.recordsChanged, nil
 		},
-		LockDecisionRecord: func() (func() error, error) {
-			f.lockHeld = true
-			return func() error { f.lockHeld = false; return nil }, nil
-		},
-		ReplacedDecisionRecord: func(sinceHead string) ([]byte, bool, error) {
-			f.replacedSince = append(f.replacedSince, sinceHead)
-			return []byte(f.replaced), f.replaced != "" && sinceHead != f.replacedAt, nil
-		},
-		TrailerCommit: func(string, bool) (fabriclayout.TrailerCommit, bool, error) {
-			return fabriclayout.TrailerCommit{}, false, nil
+		TrailerCommit: func(string, bool) (fabricengine.TrailerCommit, bool, error) {
+			return fabricengine.TrailerCommit{}, false, nil
 		},
 		FileAt: func(string, string) ([]byte, bool, error) { return nil, false, nil },
 	}
@@ -348,149 +312,6 @@ func TestJudgeSnapshot(t *testing.T) {
 			nil,
 		},
 		{
-			"DecisionEntryCommittedIsNoChange",
-			func(t *testing.T, f *judgeFixture) { writeTestFile(t, f.records.Root, testRecordRel, testRecord) },
-			func(t *testing.T, f *judgeFixture) {
-				writeTestFile(t, f.records.Root, testRecordRel, testRecordEntry)
-				f.records.Head, f.recordsChanged = "records-2", []string{testRecordRel}
-			},
-			nil,
-		},
-		{
-			"DecisionRecordEditedBesideAnEntryIsNamed",
-			func(t *testing.T, f *judgeFixture) { writeTestFile(t, f.records.Root, testRecordRel, testRecord) },
-			func(t *testing.T, f *judgeFixture) {
-				writeTestFile(t, f.records.Root, testRecordRel, testRecordEdit)
-				f.records.Head, f.recordsChanged = "records-2", []string{testRecordRel}
-			},
-			[]string{"records: " + testRecordRel + " was changed"},
-		},
-		{
-			"DecisionEntryDroppedIsNamed",
-			func(t *testing.T, f *judgeFixture) { writeTestFile(t, f.records.Root, testRecordRel, testRecordEntry) },
-			func(t *testing.T, f *judgeFixture) {
-				writeTestFile(t, f.records.Root, testRecordRel, testRecord)
-				f.records.Changed = []string{testRecordRel}
-			},
-			[]string{"records: " + testRecordRel + " was changed"},
-		},
-		{
-			"DecisionEntryUncommittedIsNamed",
-			func(t *testing.T, f *judgeFixture) { writeTestFile(t, f.records.Root, testRecordRel, testRecord) },
-			func(t *testing.T, f *judgeFixture) {
-				writeTestFile(t, f.records.Root, testRecordRel, testRecordEntry)
-				f.records.Changed = []string{testRecordRel}
-			},
-			[]string{"records: " + testRecordRel + " was changed"},
-		},
-		{
-			"DecisionRecordReplacedIsNoChange",
-			func(t *testing.T, f *judgeFixture) { writeTestFile(t, f.records.Root, testRecordRel, testRecord) },
-			func(t *testing.T, f *judgeFixture) {
-				writeTestFile(t, f.records.Root, testRecordRel, testRecordReplaced)
-				f.replaced = testRecordReplaced
-				f.records.Head, f.recordsChanged = "records-2", []string{testRecordRel}
-			},
-			nil,
-		},
-		{
-			"DecisionEntryAfterAReplaceIsNoChange",
-			func(t *testing.T, f *judgeFixture) { writeTestFile(t, f.records.Root, testRecordRel, testRecord) },
-			func(t *testing.T, f *judgeFixture) {
-				writeTestFile(t, f.records.Root, testRecordRel, testRecordEdit)
-				f.replaced = testRecordReplaced
-				f.records.Head, f.recordsChanged = "records-2", []string{testRecordRel}
-			},
-			nil,
-		},
-		{
-			"DecisionRecordEditedAfterAReplaceIsNamed",
-			func(t *testing.T, f *judgeFixture) { writeTestFile(t, f.records.Root, testRecordRel, testRecord) },
-			func(t *testing.T, f *judgeFixture) {
-				writeTestFile(t, f.records.Root, testRecordRel, testRecordRisks)
-				f.replaced = testRecordReplaced
-				f.records.Head, f.recordsChanged = "records-2", []string{testRecordRel}
-			},
-			[]string{"records: " + testRecordRel + " was changed"},
-		},
-		{
-			"DecisionRecordRolledBackToAReplaceBeforeTheSnapshotIsNamed",
-			func(t *testing.T, f *judgeFixture) {
-				// The replace was committed at the snapshot's records head, and the entry added after it is in the snapshot's copy.
-				writeTestFile(t, f.records.Root, testRecordRel, testRecordEdit)
-				f.replaced, f.replacedAt = testRecordReplaced, "records-1"
-			},
-			func(t *testing.T, f *judgeFixture) {
-				writeTestFile(t, f.records.Root, testRecordRel, testRecordReplaced)
-				f.records.Head, f.recordsChanged = "records-2", []string{testRecordRel}
-			},
-			[]string{"records: " + testRecordRel + " was changed"},
-		},
-		{
-			"DecisionRecordReplacedButUncommittedIsNamed",
-			func(t *testing.T, f *judgeFixture) { writeTestFile(t, f.records.Root, testRecordRel, testRecord) },
-			func(t *testing.T, f *judgeFixture) {
-				writeTestFile(t, f.records.Root, testRecordRel, testRecordReplaced)
-				f.replaced = testRecordReplaced
-				f.records.Changed = []string{testRecordRel}
-			},
-			[]string{"records: " + testRecordRel + " was changed"},
-		},
-		{
-			"DecisionEntryBesideAKeptCarryOverBlockIsNoChange",
-			func(t *testing.T, f *judgeFixture) { writeTestFile(t, f.records.Root, testRecordRel, testRecordRisks) },
-			func(t *testing.T, f *judgeFixture) {
-				writeTestFile(t, f.records.Root, testRecordRel, testRecordRisksEntry)
-				f.records.Head, f.recordsChanged = "records-2", []string{testRecordRel}
-			},
-			nil,
-		},
-		{
-			"DecisionCarryOverBlockEditedIsNamed",
-			func(t *testing.T, f *judgeFixture) { writeTestFile(t, f.records.Root, testRecordRel, testRecordRisks) },
-			func(t *testing.T, f *judgeFixture) {
-				writeTestFile(t, f.records.Root, testRecordRel, testRecordRisksEdited)
-				f.records.Head, f.recordsChanged = "records-2", []string{testRecordRel}
-			},
-			[]string{"records: " + testRecordRel + " was changed"},
-		},
-		{
-			"DecisionEntryWithNoDecisionRecordSetIsNamed",
-			func(t *testing.T, f *judgeFixture) {
-				f.deps.DecisionRecord = ""
-				writeTestFile(t, f.records.Root, testRecordRel, testRecord)
-			},
-			func(t *testing.T, f *judgeFixture) {
-				writeTestFile(t, f.records.Root, testRecordRel, testRecordEntry)
-				f.records.Head, f.recordsChanged = "records-2", []string{testRecordRel}
-			},
-			[]string{"records: " + testRecordRel + " was changed"},
-		},
-		{
-			"DecisionRecordAbsentAtTheSnapshotIsNamed",
-			func(*testing.T, *judgeFixture) {},
-			func(t *testing.T, f *judgeFixture) {
-				writeTestFile(t, f.records.Root, testRecordRel, testRecordEntry)
-				f.records.Head, f.recordsChanged = "records-2", []string{testRecordRel}
-			},
-			[]string{"records: " + testRecordRel + " was changed"},
-		},
-		{
-			"DecisionRecordCopyClearedByALaterSnapshotIsNamed",
-			func(t *testing.T, f *judgeFixture) {
-				writeTestFile(t, f.records.Root, testRecordRel, testRecord)
-				if _, err := TakeJudgeSnapshot(f.deps, f.scratch); err != nil {
-					t.Fatalf("first TakeJudgeSnapshot() = _, %v; want nil error", err)
-				}
-				removeTestFile(t, f.records.Root, testRecordRel)
-			},
-			func(t *testing.T, f *judgeFixture) {
-				writeTestFile(t, f.records.Root, testRecordRel, testRecordEntry)
-				f.records.Head, f.recordsChanged = "records-2", []string{testRecordRel}
-			},
-			[]string{"records: " + testRecordRel + " was changed"},
-		},
-		{
 			"DeletedScratchDirectoryIsLeftOut",
 			func(t *testing.T, f *judgeFixture) { writeTestFile(t, f.scratch, "case.txt", "one") },
 			func(t *testing.T, f *judgeFixture) {
@@ -519,118 +340,13 @@ func TestJudgeSnapshot(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Changes() = _, %v; want nil error", err)
 			}
-			texts := make([]string, len(got))
-			for i, change := range got {
-				texts[i] = change.Text
-			}
-			if !slices.Equal(texts, tt.want) {
-				t.Errorf("Changes() = %q; want %q", texts, tt.want)
-			}
-			if f.unlockedReads != 0 || f.lockHeld {
-				t.Errorf("%d checkout reads without the decision lock, lock still held %v; want every read under the lock and the lock released", f.unlockedReads, f.lockHeld)
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("Changes() = %q; want %q", got, tt.want)
 			}
 			for _, rev := range f.sinceRevs {
 				if rev != "records-1" {
 					t.Errorf("RecordsChangedSince asked about %q; want the snapshot's records head records-1", rev)
 				}
-			}
-			for _, since := range f.replacedSince {
-				if since != "records-1" {
-					t.Errorf("ReplacedDecisionRecord asked about %q; want the snapshot's records head records-1", since)
-				}
-			}
-		})
-	}
-
-	pathTests := []struct {
-		name   string
-		before func(t *testing.T, f *judgeFixture)
-		after  func(t *testing.T, f *judgeFixture)
-		// want maps each named change's text to the path it carries, which is empty for a moved HEAD or a deleted path.
-		want func(f *judgeFixture) map[string]string
-	}{
-		{
-			"CodeCheckoutFile",
-			func(t *testing.T, f *judgeFixture) {
-				writeTestFile(t, f.code.Root, "a.go", "one")
-				f.code.Changed = []string{"a.go"}
-			},
-			func(t *testing.T, f *judgeFixture) { writeTestFile(t, f.code.Root, "a.go", "two") },
-			func(f *judgeFixture) map[string]string {
-				return map[string]string{"code: a.go was changed": filepath.Join(f.code.Root, "a.go")}
-			},
-		},
-		{
-			"RecordsCheckoutDecisionRecord",
-			func(t *testing.T, f *judgeFixture) { writeTestFile(t, f.records.Root, testRecordRel, testRecord) },
-			func(t *testing.T, f *judgeFixture) {
-				writeTestFile(t, f.records.Root, testRecordRel, testRecordEdit)
-				f.records.Head, f.recordsChanged = "records-2", []string{testRecordRel}
-			},
-			func(f *judgeFixture) map[string]string {
-				return map[string]string{
-					"records: " + testRecordRel + " was changed": filepath.Join(f.records.Root, filepath.FromSlash(testRecordRel)),
-				}
-			},
-		},
-		{
-			"RecordsCheckoutAddedFile",
-			func(*testing.T, *judgeFixture) {},
-			func(t *testing.T, f *judgeFixture) {
-				writeTestFile(t, f.records.Root, "notes.md", "one")
-				f.records.Untracked = []string{"notes.md"}
-			},
-			func(f *judgeFixture) map[string]string {
-				return map[string]string{"records: notes.md was added": filepath.Join(f.records.Root, "notes.md")}
-			},
-		},
-		{
-			"ScratchFile",
-			func(t *testing.T, f *judgeFixture) { writeTestFile(t, f.scratch, "case.txt", "one") },
-			func(t *testing.T, f *judgeFixture) { writeTestFile(t, f.scratch, "case.txt", "two") },
-			func(f *judgeFixture) map[string]string {
-				return map[string]string{"scratch: case.txt was changed": filepath.Join(f.scratch, "case.txt")}
-			},
-		},
-		{
-			"DeletedPathHasNoPath",
-			func(t *testing.T, f *judgeFixture) {
-				writeTestFile(t, f.code.Root, "u.txt", "one")
-				f.code.Untracked = []string{"u.txt"}
-			},
-			func(t *testing.T, f *judgeFixture) { removeTestFile(t, f.code.Root, "u.txt") },
-			func(*judgeFixture) map[string]string { return map[string]string{"code: u.txt was deleted": ""} },
-		},
-		{
-			"MovedHeadHasNoPath",
-			func(*testing.T, *judgeFixture) {},
-			func(_ *testing.T, f *judgeFixture) { f.code.Head = "code-2" },
-			func(*judgeFixture) map[string]string {
-				return map[string]string{`code: HEAD moved from "code-1" to "code-2"`: ""}
-			},
-		},
-	}
-	for _, tt := range pathTests {
-		t.Run("ChangePath_"+tt.name, func(t *testing.T) {
-			t.Parallel()
-			f := newJudgeFixture(t)
-			tt.before(t, f)
-			snapshot, err := TakeJudgeSnapshot(f.deps, f.scratch)
-			if err != nil {
-				t.Fatalf("TakeJudgeSnapshot() = _, %v; want nil error", err)
-			}
-			tt.after(t, f)
-
-			changes, err := snapshot.Changes(f.deps)
-			if err != nil {
-				t.Fatalf("Changes() = _, %v; want nil error", err)
-			}
-			got := map[string]string{}
-			for _, change := range changes {
-				got[change.Text] = change.Path
-			}
-			if want := tt.want(f); !maps.Equal(got, want) {
-				t.Errorf("Changes() texts and paths = %q; want %q", got, want)
 			}
 		})
 	}

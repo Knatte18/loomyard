@@ -1,15 +1,10 @@
-// usage.go declares the usage records a run keeps under its worktree's _lym/usage.
-// They are one file per agent session, the run's identity and its landed diff size.
-// It holds each record's writer, the one parser of the directory and a reader of the run's identity.
+// usage.go declares the usage records a run keeps under its worktree's _lym/usage: one file per agent session, the run's identity and its landed diff size, with the writer of each and the one reader of the directory.
 
 package shedrun
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io/fs"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -120,23 +115,6 @@ func writeUsageRecord[T any](path string, rec T) error {
 		return fmt.Errorf("shedrun: write usage record %s: %w", path, err)
 	}
 	return nil
-}
-
-// ReadRunUsageRecord reads the identity record run.json in dir and reports whether it was found.
-// A record that does not decode is an error naming it.
-func ReadRunUsageRecord(dir string) (RunUsageRecord, bool, error) {
-	data, err := os.ReadFile(filepath.Join(dir, runUsageFileName))
-	if errors.Is(err, fs.ErrNotExist) {
-		return RunUsageRecord{}, false, nil
-	}
-	if err != nil {
-		return RunUsageRecord{}, false, fmt.Errorf("shedrun: read usage record %s: %w", runUsageFileName, err)
-	}
-	usage, err := ParseRunUsage(map[string][]byte{runUsageFileName: data})
-	if err != nil {
-		return RunUsageRecord{}, false, err
-	}
-	return usage.Run, true, nil
 }
 
 // ParseRunUsage reads a usage directory's files, given as a map from file name to bytes the way a git tree read hands them.

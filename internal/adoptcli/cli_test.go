@@ -1,90 +1,103 @@
-// cli_test.go pins the adopt envelope's fields: the always-present ones and the ones that appear only when set.
+// cli_test.go pins the adopt envelope's fields that depend on the outcome of the adopt checks' start;
+// it also pins the fields that depend on the reconcile's warnings, on the deploy and on the owner writes that stood.
 
 package adoptcli
 
 import (
 	"reflect"
-	"slices"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-//testtiming:keep pins which envelope keys appear only when set and the keys the retired worker envelope held, which TestAdopt never reads from the map
+//testtiming:keep pins which envelope keys appear only when set and that runs is always present, which TestAdopt never reads from the map
 func TestAdoptFields(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	hold := &boardengine.Hold{Kind: boardengine.HoldKindAdoptFix, Machine: here, FixTask: "fix1"}
+	started := []suiteStart{{Subject: "root", PID: 42}, {Subject: "alpha", PID: 43}}
 	tests := []struct {
-		name   string
-		result outcome
-		// want holds the optional fields the envelope carries, with their values.
-		want map[string]any
+		name          string
+		result        outcome
+		wantMessage   string
+		wantWarnings  []string
+		wantReconcile []string
+		wantChecks    []suiteStart
+		wantRuns      []runReport
+		wantArchives  string
 	}{
 		{
 			name: "OwnerWritesThatStoodNameTheArchivesCall",
 			result: outcome{PrimeRecorded: true, Slugs: []slugOutcome{
 				{Slug: "beta", OwnerRecorded: true}, {Slug: "gamma"}, {Slug: "alpha", OwnerRecorded: true},
 			}},
-			want: map[string]any{"archives": "lym adopt --archives alpha beta root"},
+			wantArchives: "lym adopt --archives alpha beta root",
 		},
 		{
-			name:   "AStandingHoldAndItsFixTaskAreFields",
-			result: outcome{Hold: hold, FixTask: "fix1", PrimeCheck: checkFailed, CheckLines: []string{"the adopt check of root failed"}},
-			want: map[string]any{
-				"hold": hold, "fix_task": "fix1", "prime_check": checkFailed, "check_lines": []string{"the adopt check of root failed"},
-			},
+			name:        "StartedChecksCarryTheirMessageAndTheChecks",
+			result:      outcome{Checks: started, SuiteMessage: "the adopt checks run"},
+			wantMessage: "the adopt checks run",
+			wantChecks:  started,
 		},
 		{
-			name:   "WarningsAreTheWarningsField",
-			result: outcome{Warnings: []string{"the hub workspace files were not regenerated"}},
-			want:   map[string]any{"warnings": []string{"the hub workspace files were not regenerated"}},
+			name:         "FailedStartCarriesOnlyTheWarning",
+			result:       outcome{CheckWarnings: []string{"the adopt check of alpha was not started"}},
+			wantWarnings: []string{"the adopt check of alpha was not started"},
+		},
+		{
+			name:          "ReconcileWarningsAreTheWarningsField",
+			result:        outcome{Warnings: []string{"code-alpha is diverged against origin"}},
+			wantReconcile: []string{"code-alpha is diverged against origin"},
+		},
+		{
+			name:     "RunsAreAlwaysPresentAndCarryTheReports",
+			result:   outcome{Runs: []runReport{{Slug: "t1", State: runStatePausedByAdopt, Line: "t1: paused by adopt: `lym tender resume t1` lifts it"}}},
+			wantRuns: []runReport{{Slug: "t1", State: runStatePausedByAdopt, Line: "t1: paused by adopt: `lym tender resume t1` lifts it"}},
 		},
 		{
 			name:   "ARunDeployIsTheDeployField",
 			result: outcome{Deploy: &deployOutcome{Installed: "87553450ec14", Head: "2d319fe5", Log: "deploy.log"}},
-			want:   map[string]any{"deploy": &deployOutcome{Installed: "87553450ec14", Head: "2d319fe5", Log: "deploy.log"}},
 		},
-		{
-			name:   "ThePrimesBeamStepsAndWarningAreFields",
-			result: outcome{PrimeBeamSteps: &beamStepsOutcome{Dobby: "started"}, PrimeBeamWarning: "the beam steps of the prime failed"},
-			want:   map[string]any{"prime_beam_steps": &beamStepsOutcome{Dobby: "started"}, "prime_beam_warning": "the beam steps of the prime failed"},
-		},
-		{name: "NothingSetCarriesOnlyTheAlwaysPresentFields"},
+		{name: "NoCheckCarriesNoneAndAnEmptyRunsArray"},
 	}
-	optional := []string{"hold", "fix_task", "prime_check", "check_lines", "deploy", "warnings", "prime_beam_steps", "prime_beam_warning", "archives"}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			fields := adoptFields(tt.result)
 
-			if _, present := fields["slugs"]; !present {
-				t.Errorf("adoptFields() lacks the always-present slugs")
+			message, hasMessage := fields["message"]
+			if hasMessage != (tt.wantMessage != "") || (hasMessage && message != tt.wantMessage) {
+				t.Errorf("adoptFields()[message] = %v, present %v; want %q", message, hasMessage, tt.wantMessage)
 			}
-			if recorded, present := fields["prime_recorded"]; !present || recorded != tt.result.PrimeRecorded {
-				t.Errorf("adoptFields()[prime_recorded] = %v, present %v; want %v", recorded, present, tt.result.PrimeRecorded)
+			warnings, hasWarnings := fields["check_warnings"]
+			if hasWarnings != (tt.wantWarnings != nil) || (hasWarnings && !reflect.DeepEqual(warnings, tt.wantWarnings)) {
+				t.Errorf("adoptFields()[check_warnings] = %v, present %v; want %v", warnings, hasWarnings, tt.wantWarnings)
 			}
-			for _, key := range optional {
-				got, present := fields[key]
-				want, wanted := tt.want[key]
-				if present != wanted || (wanted && !reflect.DeepEqual(got, want)) {
-					t.Errorf("adoptFields()[%s] = %v, present %v; want %v, present %v", key, got, present, want, wanted)
-				}
+			reconcile, hasReconcile := fields["warnings"]
+			if hasReconcile != (tt.wantReconcile != nil) || (hasReconcile && !reflect.DeepEqual(reconcile, tt.wantReconcile)) {
+				t.Errorf("adoptFields()[warnings] = %v, present %v; want %v", reconcile, hasReconcile, tt.wantReconcile)
 			}
-			for _, retired := range []string{"reconcile", "mutations", "partial", "runs", "checks", "message", "check_warnings", "prime_lost_to"} {
+			checks, hasChecks := fields["checks"]
+			if hasChecks != (tt.wantChecks != nil) || (hasChecks && !reflect.DeepEqual(checks, tt.wantChecks)) {
+				t.Errorf("adoptFields()[checks] = %v, present %v; want %v", checks, hasChecks, tt.wantChecks)
+			}
+			wantRuns := tt.wantRuns
+			if wantRuns == nil {
+				wantRuns = []runReport{}
+			}
+			if runs, hasRuns := fields["runs"]; !hasRuns || !reflect.DeepEqual(runs, wantRuns) {
+				t.Errorf("adoptFields()[runs] = %v, present %v; want %v", runs, hasRuns, wantRuns)
+			}
+			if deploy, hasDeploy := fields["deploy"]; hasDeploy != (tt.result.Deploy != nil) || (hasDeploy && deploy != tt.result.Deploy) {
+				t.Errorf("adoptFields()[deploy] = %v, present %v; want %v", deploy, hasDeploy, tt.result.Deploy)
+			}
+			if archives, hasArchives := fields["archives"]; hasArchives != (tt.wantArchives != "") || (hasArchives && archives != tt.wantArchives) {
+				t.Errorf("adoptFields()[archives] = %v, present %v; want %q", archives, hasArchives, tt.wantArchives)
+			}
+			for _, retired := range []string{"suite", "suite_warning"} {
 				if _, present := fields[retired]; present {
 					t.Errorf("adoptFields() holds the retired field %q", retired)
 				}
-			}
-			if len(fields) != 2+len(tt.want) {
-				keys := make([]string, 0, len(fields))
-				for key := range fields {
-					keys = append(keys, key)
-				}
-				slices.Sort(keys)
-				t.Errorf("adoptFields() holds %v; want the two always-present fields and %d optional", keys, len(tt.want))
 			}
 		})
 	}

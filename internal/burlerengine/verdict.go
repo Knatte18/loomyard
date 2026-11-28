@@ -63,9 +63,7 @@ const GatingClass = ClassDesign
 
 // Finding is one review-file finding.
 // Its ID is unique within the file, so cross-round hydration and audit can cite it unambiguously.
-// Location names the site the fix changes.
-// When Fix opens with site not found, Location names where the defect shows instead.
-// Summary states the problem in prose.
+// Location points at the offending content, and Summary states the problem in prose.
 type Finding struct {
 	ID       string   `yaml:"id"`
 	Severity Severity `yaml:"severity"`
@@ -85,18 +83,13 @@ type Finding struct {
 	// ParentIDs names the ids of the parent's report that a finding kept from that report covers, such as P1.
 	// It is optional and never validated; the parent coverage gate entry reads it.
 	ParentIDs []string `yaml:"parent_ids"`
-	// Carries names the id of the earlier round's finding this finding carries forward, empty for a new finding.
-	// The round checks read it; the shape checks never do.
-	Carries string `yaml:"carries"`
 }
 
 // reviewHeader mirrors the review file's YAML frontmatter shape.
 // The decoder tolerates unknown keys, since agent-written metadata in the header is harmless.
-// Prior holds the review's answer to each finding of the round before it.
 type reviewHeader struct {
-	Verdict  string       `yaml:"verdict"`
-	Prior    []PriorEntry `yaml:"prior"`
-	Findings []Finding    `yaml:"findings"`
+	Verdict  string    `yaml:"verdict"`
+	Findings []Finding `yaml:"findings"`
 }
 
 // ParseReview parses the raw bytes of a review file into a Verdict and Findings.
@@ -118,7 +111,7 @@ func ParseReview(content []byte) (Verdict, []Finding, error) {
 
 	var parsed reviewHeader
 	if err := yaml.Unmarshal([]byte(header), &parsed); err != nil {
-		return "", nil, fmt.Errorf("burler: review file frontmatter is not valid YAML: %w%s", err, quotingHint(header, err))
+		return "", nil, fmt.Errorf("burler: review file frontmatter is not valid YAML: %w%s", err, quotedSummaryHint(header))
 	}
 
 	verdict, err := parseVerdict(parsed.Verdict)
@@ -158,7 +151,7 @@ var proseFindingHeading = regexp.MustCompile(`(?m)^### \[(BLOCKING|MEDIUM|LOW|NI
 // ParseCurrentReview is the strict parse of the current round's review file.
 // It first runs the base parse, then refuses:
 //   - a finding whose fix is empty or whitespace;
-//   - a top-level frontmatter key other than verdict, findings and prior;
+//   - a top-level frontmatter key other than verdict and findings;
 //   - prose finding blocks whose count per severity differs from the frontmatter's.
 //
 // Each refusal is a burler-prefixed error that ends with what to rewrite.
@@ -186,7 +179,7 @@ func ParseCurrentReview(content []byte) (Verdict, []Finding, error) {
 	return verdict, findings, nil
 }
 
-// checkReviewKeys refuses a frontmatter header holding a top-level key other than verdict, findings and prior.
+// checkReviewKeys refuses a frontmatter header holding a top-level key other than verdict and findings.
 // Findings under a misspelled key would otherwise decode as no findings at all.
 func checkReviewKeys(header string) error {
 	var keys map[string]yaml.Node
@@ -195,7 +188,7 @@ func checkReviewKeys(header string) error {
 	}
 	var stray []string
 	for key := range keys {
-		if key != "verdict" && key != "findings" && key != "prior" {
+		if key != "verdict" && key != "findings" {
 			stray = append(stray, key)
 		}
 	}
@@ -203,7 +196,7 @@ func checkReviewKeys(header string) error {
 		return nil
 	}
 	sort.Strings(stray)
-	return fmt.Errorf("burler: review file frontmatter has the top-level key %q; its only keys are `verdict`, `findings` and `prior`, so rewrite the frontmatter with those three", stray[0])
+	return fmt.Errorf("burler: review file frontmatter has the top-level key %q; its only keys are `verdict` and `findings`, so rewrite the frontmatter with those two", stray[0])
 }
 
 // checkProseBlocks refuses a review body whose `### [SEVERITY]` block count per severity differs from the frontmatter.
@@ -265,23 +258,13 @@ func ReviewGateEntry(reviewPath string) shuttleengine.GateEntry {
 // malformedQuotedSummary matches a `summary:` line whose value opens with a double-quoted fragment.
 // The value then carries more, unquoted content on the same line: `summary: "capital" is misspelled as "captial"`.
 // That is invalid YAML, since a quoted scalar must end the value.
-// The match stays on one line, so a fully quoted summary never matches, and the fragment skips backslash-escaped quotes.
-// A `#` after the closing quote opens a YAML comment,
-// so a fully quoted summary with a trailing comment never matches either.
-var malformedQuotedSummary = regexp.MustCompile(`(?m)^[ \t]*summary:[ \t]*"(?:[^"\\]|\\.)*"[ \t]*[^\s#]`)
+var malformedQuotedSummary = regexp.MustCompile(`(?m)^\s*summary:\s*"[^"]*"\s*\S`)
 
-// unquotedColonError is the text the YAML parser's error carries when a plain value holds a colon followed by a space.
-const unquotedColonError = "mapping values are not allowed"
-
-// quotingHint returns a diagnostic suffix for a header that parseErr refused, or "" when no hint fits.
-// It covers a quoted summary fragment followed by trailing prose, and a plain value holding a colon followed by a space.
+// quotedSummaryHint returns a diagnostic suffix for a header with a quoted summary fragment and trailing prose.
 // The suffix points the reviewer or the operator at the fix instead of a bare YAML parser error.
-func quotingHint(header string, parseErr error) string {
+func quotedSummaryHint(header string) string {
 	if malformedQuotedSummary.MatchString(header) {
 		return " (a summary containing a \" character must be ONE double-quoted string covering the whole value, not a quoted fragment followed by trailing prose)"
-	}
-	if strings.Contains(parseErr.Error(), unquotedColonError) {
-		return " (a value holding \": \" must be ONE double-quoted string covering the whole value, with each \" and \\ inside it escaped by a backslash)"
 	}
 	return ""
 }

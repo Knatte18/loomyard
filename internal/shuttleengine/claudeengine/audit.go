@@ -1,9 +1,7 @@
-// audit.go implements Claude's AuditForks/AuditForksIncremental.
-// It reads the on-disk session transcript layout Claude Code itself maintains under ~/.claude/projects/<encoded-cwd>/.
-// From it, it recovers mechanical facts about a fork-authorized run's subagents.
-// It can filter to only the subagent transcripts a long-lived caller has not yet seen.
-// A transcript's sibling .meta.json tells a fork from a subagent started with a fresh context.
-// It also names the subagent that spawned it, whose tool calls the transcript replays as inherited history.
+// audit.go implements Claude's AuditForks/AuditForksIncremental: reading the on-disk session
+// transcript layout Claude Code itself maintains under ~/.claude/projects/<encoded-cwd>/ to recover
+// mechanical facts about a fork-authorized run's fork subagents, optionally filtered to only the
+// fork transcripts a long-lived caller has not yet seen.
 // All of this file's knowledge — the project directory's cwd-encoding scheme, the parent/fork
 // transcript paths, and the JSONL message shape — is Claude-specific and stays contained here, per
 // the Shuttle Provider-Seam Invariant;
@@ -26,40 +24,27 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// AuditForks implements shuttleengine.ForkAuditor for Claude, reporting every subagent transcript
+// AuditForks implements shuttleengine.ForkAuditor for Claude, reporting every fork transcript
 // by calling AuditForksIncremental with nil seenTranscripts.
 func (c *Claude) AuditForks(sessionID, workdir string) (shuttleengine.ForkAudit, error) {
 	return c.AuditForksIncremental(sessionID, workdir, nil)
 }
 
-// AuditForksIncremental implements shuttleengine.ForkAuditor for Claude.
-// It reads transcripts under the project directory of workdir, in the config directory the session was launched with.
-// A nil seenTranscripts reports every subagent transcript; missing subagents/ is not an error (zero
+// AuditForksIncremental implements shuttleengine.ForkAuditor for Claude, deriving
+// the session's project directory from workdir and reading transcripts.
+// A nil seenTranscripts reports every fork transcript; missing subagents/ is not an error (zero
 // forks).
-// A missing parent transcript or unreadable subagent transcript is an error (audit incomplete).
-// A subagent another subagent spawned carries that subagent's earlier tool calls as inherited history,
-// so its report leaves out every tool call whose id its spawning transcript also holds;
-// that spawning subagent's transcript missing or unreadable is an error too.
+// A missing parent transcript or unreadable fork transcript is an error (audit incomplete).
 func (c *Claude) AuditForksIncremental(sessionID, workdir string, seenTranscripts map[string]bool) (shuttleengine.ForkAudit, error) {
-	projectDir, err := c.sessionProjectDir(sessionID, workdir)
+	projectDir, err := claudeProjectDirFor(workdir)
 	if err != nil {
 		return shuttleengine.ForkAudit{}, err
 	}
 
 	parentPath := filepath.Join(projectDir, sessionID+".jsonl")
-	parent, err := auditParentTranscript(parentPath)
+	spawnCalls, namedSpawns, writeCalls, writes, writeEvents, bashCommands, err := auditParentTranscript(parentPath)
 	if err != nil {
 		return shuttleengine.ForkAudit{}, err
-	}
-	audit := shuttleengine.ForkAudit{
-		Forks:              []shuttleengine.ForkReport{},
-		SpawnCalls:         parent.spawnCalls,
-		NamedSpawns:        parent.namedSpawns,
-		NamedForkSpawns:    parent.namedForkSpawns,
-		ParentWriteCalls:   parent.writeCalls,
-		ParentWrites:       parent.writes,
-		ParentWriteEvents:  parent.writeEvents,
-		ParentBashCommands: parent.bashCommands,
 	}
 
 	subagentsDir := filepath.Join(projectDir, sessionID, subagentsDirName)
@@ -69,12 +54,20 @@ func (c *Claude) AuditForksIncremental(sessionID, workdir string, seenTranscript
 			// The run never actually spawned a fork (or Claude has not yet
 			// created the subagents/ directory) — a legitimate, zero-fork
 			// finding, not a failure to complete the audit.
-			return audit, nil
+			return shuttleengine.ForkAudit{
+				Forks:              []shuttleengine.ForkReport{},
+				SpawnCalls:         spawnCalls,
+				NamedSpawns:        namedSpawns,
+				ParentWriteCalls:   writeCalls,
+				ParentWrites:       writes,
+				ParentWriteEvents:  writeEvents,
+				ParentBashCommands: bashCommands,
+			}, nil
 		}
 		return shuttleengine.ForkAudit{}, fmt.Errorf("claudeengine: read subagents dir %q: %w", subagentsDir, err)
 	}
 
-	spawnerToolUseIDs := map[string]map[string]bool{}
+	forks := []shuttleengine.ForkReport{}
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".jsonl") {
 			continue
@@ -86,55 +79,32 @@ func (c *Claude) AuditForksIncremental(sessionID, workdir string, seenTranscript
 			// already acted on.
 			continue
 		}
-		meta, metaFound := readSubagentMeta(transcriptPath)
-		spawnerPath := ""
-		inherited := parent.toolUseIDs
-		if meta.ParentAgentID != "" {
-			spawnerPath = filepath.Join(subagentsDir, subagentTranscriptPrefix+meta.ParentAgentID+".jsonl")
-			inherited, err = subagentToolUseIDs(spawnerPath, spawnerToolUseIDs)
-			if err != nil {
-				return shuttleengine.ForkAudit{}, err
-			}
-		}
-		report, err := auditForkTranscript(transcriptPath, meta, metaFound, inherited)
+		report, err := auditForkTranscript(transcriptPath)
 		if err != nil {
 			return shuttleengine.ForkAudit{}, err
 		}
-		report.SpawnerTranscriptPath = spawnerPath
-		audit.Forks = append(audit.Forks, report)
+		forks = append(forks, report)
 	}
-	return audit, nil
+
+	return shuttleengine.ForkAudit{
+		Forks:              forks,
+		SpawnCalls:         spawnCalls,
+		NamedSpawns:        namedSpawns,
+		ParentWriteCalls:   writeCalls,
+		ParentWrites:       writes,
+		ParentWriteEvents:  writeEvents,
+		ParentBashCommands: bashCommands,
+	}, nil
 }
 
-// subagentToolUseIDs returns the tool_use ids in the subagent transcript at path.
-// It reads each transcript once, keeping its ids in cache by path.
-// Its error never matches fs.ErrNotExist.
-func subagentToolUseIDs(path string, cache map[string]map[string]bool) (map[string]bool, error) {
-	if ids, ok := cache[path]; ok {
-		return ids, nil
-	}
-	ids := map[string]bool{}
-	err := forEachTranscriptLine(path, func(line transcriptLine) {
-		if line.Type == "assistant" {
-			collectToolUseIDs(line, ids)
-		}
-	})
+// claudeProjectDirFor derives the ~/.claude/projects/<encoded-workdir> directory,
+// encoding workdir by replacing non-alphanumeric bytes with '-'.
+func claudeProjectDirFor(workdir string) (string, error) {
+	projects, err := projectsRoot()
 	if err != nil {
-		// %v, not %w: a caller reads fs.ErrNotExist as the session's own transcript being absent from this machine,
-		// and a missing spawner transcript is an incomplete audit instead.
-		return nil, fmt.Errorf("claudeengine: read spawning subagent transcript %q: %v", path, err)
+		return "", err
 	}
-	cache[path] = ids
-	return ids, nil
-}
-
-// collectToolUseIDs adds the id of every tool_use block of line to ids.
-func collectToolUseIDs(line transcriptLine, ids map[string]bool) {
-	for _, block := range line.Message.Content {
-		if block.Type == "tool_use" && block.ID != "" {
-			ids[block.ID] = true
-		}
-	}
+	return projectDirUnder(projects, workdir), nil
 }
 
 // claudeHomeDir resolves the home directory Claude Code uses for ~/.claude/projects/,
@@ -273,113 +243,77 @@ func writePath(block transcriptBlock) string {
 	return notebookPath
 }
 
-// parentTranscriptFacts is what the audit reads from the parent session's own transcript.
-type parentTranscriptFacts struct {
-	// spawnCalls counts Agent tool_use blocks, and namedSpawns those with a non-empty name.
-	spawnCalls  int
-	namedSpawns int
-	// namedForkSpawns counts the named spawns whose subagent_type is the fork type.
-	namedForkSpawns int
-	// writeCalls counts Write/Edit/NotebookEdit blocks; writes and writeEvents hold those with a path.
-	writeCalls  int
-	writes      []string
-	writeEvents []shuttleengine.WriteEvent
-	// bashCommands holds every Bash command, in transcript order.
-	bashCommands []string
-	// toolUseIDs holds the id of every tool_use block, the calls a subagent's inherited history can replay.
-	toolUseIDs map[string]bool
-}
-
-// auditParentTranscript reads the parent session's transcript at path into its facts.
-func auditParentTranscript(path string) (parentTranscriptFacts, error) {
-	facts := parentTranscriptFacts{toolUseIDs: map[string]bool{}}
+// auditParentTranscript reads the parent session's transcript and extracts
+// spawnCalls (Agent tool_use count), namedSpawns (non-empty name fields),
+// writeCalls (Write/Edit/NotebookEdit count), writes (file paths), their timed events,
+// and bashCommands.
+func auditParentTranscript(path string) (spawnCalls, namedSpawns, writeCalls int, writes []string, events []shuttleengine.WriteEvent, bashCommands []string, err error) {
 	var tracker writeTracker
-	err := forEachTranscriptLine(path, func(line transcriptLine) {
+	err = forEachTranscriptLine(path, func(line transcriptLine) {
 		if line.Type != "assistant" {
 			tracker.resolveResults(line)
 			return
 		}
-		collectToolUseIDs(line, facts.toolUseIDs)
 		for _, block := range line.Message.Content {
 			if block.Type != "tool_use" {
 				continue
 			}
 			switch block.Name {
 			case "Agent":
-				facts.spawnCalls++
+				spawnCalls++
 				if name, _ := block.Input["name"].(string); name != "" {
-					facts.namedSpawns++
-					if subagentType, _ := block.Input["subagent_type"].(string); subagentType == forkSubagentType {
-						facts.namedForkSpawns++
-					}
+					namedSpawns++
 				}
 			case "Write", "Edit", "NotebookEdit":
-				facts.writeCalls++
+				writeCalls++
 				// NotebookEdit carries its path under notebook_path, not file_path.
 				if filePath := writePath(block); filePath != "" {
-					facts.writes = append(facts.writes, filePath)
+					writes = append(writes, filePath)
 					tracker.call(block.ID, filePath, line)
 				}
 			case "Bash":
 				if cmd, _ := block.Input["command"].(string); cmd != "" {
-					facts.bashCommands = append(facts.bashCommands, cmd)
+					bashCommands = append(bashCommands, cmd)
 				}
 			}
 		}
 	})
 	if err != nil {
-		return parentTranscriptFacts{}, fmt.Errorf("claudeengine: read parent transcript %q: %w", path, err)
+		return 0, 0, 0, nil, nil, nil, fmt.Errorf("claudeengine: read parent transcript %q: %w", path, err)
 	}
-	facts.writeEvents = tracker.events
-	return facts, nil
+	return spawnCalls, namedSpawns, writeCalls, writes, tracker.events, bashCommands, nil
 }
 
-// subagentMeta is what Claude Code records in the .meta.json beside a subagent's transcript.
-type subagentMeta struct {
-	// ToolUseID is the parent's Agent tool_use id that spawned the subagent.
-	ToolUseID string `json:"toolUseId"`
-	// AgentType is the subagent type the spawn named, forkSubagentType for a fork.
-	AgentType string `json:"agentType"`
-	// IsFork is true for a fork, which inherits the parent's context.
-	IsFork bool `json:"isFork"`
-	// ParentAgentID is the agent id of the subagent that spawned this one, empty when the session itself spawned it.
-	ParentAgentID string `json:"parentAgentId"`
-}
-
-// readSubagentMeta reads the .meta.json beside the subagent transcript at transcriptPath.
-// It reports false when the file is missing or unparseable.
-func readSubagentMeta(transcriptPath string) (subagentMeta, bool) {
+// forkSpawnToolUseID returns the parent's Agent tool_use id that spawned the fork,
+// read from the sibling .meta.json file. Returns "" if meta file is missing or unparseable.
+func forkSpawnToolUseID(transcriptPath string) string {
 	metaPath := strings.TrimSuffix(transcriptPath, ".jsonl") + ".meta.json"
 	data, err := os.ReadFile(metaPath)
 	if err != nil {
-		return subagentMeta{}, false
+		return ""
 	}
-	var meta subagentMeta
+	var meta struct {
+		ToolUseID string `json:"toolUseId"`
+	}
 	if err := json.Unmarshal(data, &meta); err != nil {
-		return subagentMeta{}, false
+		return ""
 	}
-	return meta, true
+	return meta.ToolUseID
 }
 
-// auditForkTranscript reads one subagent's transcript into a ForkReport,
+// auditForkTranscript reads one fork subagent's transcript into a ForkReport,
 // extracting ToolCalls, AgentCalls, WriteCalls, BashCommands, and ReportReturned
 // (whether the final assistant message carried a text block).
-// meta and metaFound are what readSubagentMeta read beside the transcript.
-// A tool call whose id is in inherited, the ids its spawning transcript holds, is inherited history and is left out.
-// A transcript reads as a fresh subagent only on positive evidence:
-// a parsed .meta.json that names a subagent type other than the fork type and does not flag a fork.
-// A transcript whose .meta.json is missing, unparseable or records no kind reads as a fork.
-func auditForkTranscript(path string, meta subagentMeta, metaFound bool, inherited map[string]bool) (shuttleengine.ForkReport, error) {
+func auditForkTranscript(path string) (shuttleengine.ForkReport, error) {
 	// The parent's own spawning Agent call is replayed as the fork
 	// transcript's inherited-context boundary entry; counting it would flag
 	// every legitimate fork as a nested-Agent violation, so it is excluded by
 	// its tool_use id (from the sibling .meta.json).
-	spawnToolUseID := meta.ToolUseID
+	spawnToolUseID := forkSpawnToolUseID(path)
 
 	report := shuttleengine.ForkReport{
 		TranscriptPath: path,
 		ToolCalls:      map[string]int{},
-		FreshSubagent:  metaFound && !meta.IsFork && meta.AgentType != "" && meta.AgentType != forkSubagentType,
 	}
 	reportReturned := false
 	var tracker writeTracker
@@ -396,8 +330,8 @@ func auditForkTranscript(path string, meta subagentMeta, metaFound bool, inherit
 		for _, block := range line.Message.Content {
 			switch block.Type {
 			case "tool_use":
-				if (spawnToolUseID != "" && block.ID == spawnToolUseID) || inherited[block.ID] {
-					// The parent's spawning call or inherited history, not something this fork did.
+				if spawnToolUseID != "" && block.ID == spawnToolUseID {
+					// The parent's spawning call, not something this fork did.
 					continue
 				}
 				report.ToolCalls[block.Name]++
@@ -427,7 +361,7 @@ func auditForkTranscript(path string, meta subagentMeta, metaFound bool, inherit
 		reportReturned = hasText
 	})
 	if err != nil {
-		return shuttleengine.ForkReport{}, fmt.Errorf("claudeengine: read subagent transcript %q: %w", path, err)
+		return shuttleengine.ForkReport{}, fmt.Errorf("claudeengine: read fork transcript %q: %w", path, err)
 	}
 	report.ReportReturned = reportReturned
 	report.WriteEvents = tracker.events

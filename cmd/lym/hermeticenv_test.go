@@ -31,7 +31,6 @@ var allowedNonHermetic = []scankit.Entry{
 	{Key: "cmd/lym/hermeticenv_test.go", Why: "this guard file itself; carries the tokens as its own test data"},
 	{Key: "tools/sandbox/pathresolve_guard_test.go", Why: "contains the banned `exec.Command`/`exec.CommandContext` token strings as its own scan data (Dev/Prod Binary Separation guard)"},
 	{Key: "internal/testkit/tmuxkit/", Why: "its tests spawn the tmux binary against the kit's own sockets, never git"},
-	{Key: "internal/testkit/tmuxrec/", Why: "its real-tmux test spawns the tmux binary against tmuxkit sockets to record reed's calls, never git"},
 	{Key: "internal/reedengine/attachgeometry_integration_test.go", Why: "spawns a real tmux/pty client process via exec.Command to prove the attach handover — a real non-git process, not a git spawn"},
 	{Key: "internal/termwindow/termwindow_integration_test.go", Why: "spawns bash over the window's shell line with a stub executable standing in for lym — a real non-git process, not a git spawn"},
 }
@@ -75,7 +74,6 @@ type pkgHermeticStatus struct {
 // So skipping the tiered files would make this guard vacuous.
 //
 //lym:guard
-//lym:only parent-align finalize
 func TestHermeticGitEnv_GitSpawningPackagesHaveTestMain(t *testing.T) {
 	tiergate.Require(t, 0)
 	var fileEntries, dirEntries []scankit.Entry

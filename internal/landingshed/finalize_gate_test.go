@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,7 +15,6 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -40,7 +40,7 @@ type finalizeGateFixture struct {
 	// entry is the row entry RowEntry answers.
 	entry int
 	// lineChange is what LineChange answers, and lineChangeCalls records each "from..to".
-	lineChange      fabriclayout.LineChange
+	lineChange      fabricengine.LineChange
 	lineChangeCalls []string
 }
 
@@ -51,7 +51,7 @@ func newFinalizeGateFixture(t *testing.T) *finalizeGateFixture {
 	fx := &finalizeGateFixture{
 		gate:   newGateFixture(t, "finalize", "go test ./...", nil),
 		seats:  &fakeFixerSeats{},
-		merger: &recordingParentMerger{results: []mergeCallResult{{result: fabriclayout.MergeResult{Committed: true}}}},
+		merger: &recordingParentMerger{results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}}},
 		head:   "t2",
 		entry:  1,
 	}
@@ -68,7 +68,7 @@ func newFinalizeGateFixture(t *testing.T) *finalizeGateFixture {
 	deps.IsTestFile = func(path string) bool { return strings.HasSuffix(path, "_test.go") }
 	deps.RowEntry = func(string) (int, error) { return fx.entry, nil }
 	deps.TaskHead = func() (string, error) { return fx.head, nil }
-	deps.LineChange = func(from, to string) (fabriclayout.LineChange, error) {
+	deps.LineChange = func(from, to string) (fabricengine.LineChange, error) {
 		fx.lineChangeCalls = append(fx.lineChangeCalls, from+".."+to)
 		return fx.lineChange, nil
 	}
@@ -192,14 +192,6 @@ func (fx *finalizeGateFixture) sessionRoles() string {
 	return strings.Join(roles, ",")
 }
 
-// stopAfterMerge makes the landing end in an error after its parent-side merge.
-// The error keeps the record a Done would remove.
-func (fx *finalizeGateFixture) stopAfterMerge() {
-	fx.fz.deps.OwnedElsewhere = func() (string, string, bool, error) {
-		return "", "", false, errors.New("owner unreadable")
-	}
-}
-
 // requireLanded asserts that the call ended Done after one parent-side merge.
 // It also asserts that the entry's attempt record and the landing failure record are gone.
 func (fx *finalizeGateFixture) requireLanded(t *testing.T, outcome shedengine.Outcome, ptr shedengine.OutputPointer) {
@@ -321,7 +313,7 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 	tiergate.Require(t, 0)
 	failing := verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1}
 	passing := verifytree.Result{Status: verifytree.StatusPassed}
-	small := fabriclayout.LineChange{Lines: 3, Paths: []string{"a/a.go"}}
+	small := fabricengine.LineChange{Lines: 3, Paths: []string{"a/a.go"}}
 
 	t.Run("a failing gate frees the parent lock for the fixer, and the run takes it again to merge and verify before it lands", func(t *testing.T) {
 		tests := []struct {
@@ -447,7 +439,7 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 				if tt.headBeforeSecondMerge != "" {
 					fetches := 0
 					readTips := fx.fz.deps.ReadParentTips
-					fx.fz.deps.ReadParentTips = func(fetch bool) (fabriclayout.ParentTips, error) {
+					fx.fz.deps.ReadParentTips = func(fetch bool) (fabricengine.ParentTips, error) {
 						if fetch {
 							fetches++
 							if fetches == 2 {
@@ -476,8 +468,8 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 		g, store, _ := newGuardFixture(t)
 		fx.fz.guard = g
 		fx.head = "f1"
-		fx.lineChange = fabriclayout.LineChange{Lines: 500, Paths: []string{"a/a.go"}}
-		fx.stopAfterMerge()
+		fx.lineChange = fabricengine.LineChange{Lines: 500, Paths: []string{"a/a.go"}}
+		fx.merger.pushErr = errors.New("push refused")
 		fx.seed(t, FixerAttempts{Entry: 1, Spent: 1, Baseline: "t2"})
 		fx.scriptGate(passing)
 		var heldDuringReview []bool
@@ -490,9 +482,8 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 			fx.review(t, approvedReview)()
 		}}
 
-		if _, _, err := fx.fz.Call(context.Background()); err == nil {
-			t.Fatal("Call() error = nil; want the stop after the merge")
-		}
+		// The refused push stops the landing after the merge, which keeps the record the landing would otherwise remove.
+		fx.call(t)
 
 		if len(heldDuringReview) != 1 || heldDuringReview[0] {
 			t.Errorf("lock held during each fix review session = %v; want one session with the lock freed", heldDuringReview)
@@ -512,18 +503,17 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 			return false
 		}}
 		fx.head = "f1"
-		fx.lineChange = fabriclayout.LineChange{Lines: 500, Paths: []string{"a/a.go"}}
-		fx.stopAfterMerge()
+		fx.lineChange = fabricengine.LineChange{Lines: 500, Paths: []string{"a/a.go"}}
+		fx.merger.pushErr = errors.New("push refused")
 		fx.seed(t, FixerAttempts{Entry: 1, Spent: 1, Baseline: "t2", Halt: fixerHaltReviewCapped, ReviewRounds: 2, Findings: []string{"f1 loosens the assertion"}, AcceptedHead: "f1"})
 		fx.scriptGate(passing)
 
-		if _, _, err := fx.fz.Call(context.Background()); err == nil {
-			t.Fatal("first Call() error = nil; want the stop after the merge")
-		}
+		// The refused push stops the first Call after the merge, which keeps the record for the second.
+		fx.call(t)
 		if rec, found := fx.attempts(t); !found || rec.Judged != "f1" {
 			t.Fatalf("attempt record = %+v, %v; want Judged f1, the HEAD the operator accepted", rec, found)
 		}
-		fx.fz.deps.OwnedElsewhere = nil
+		fx.merger.pushErr = nil
 		outcome, ptr := fx.call(t)
 
 		if outcome != shedengine.Done {
@@ -545,7 +535,7 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 		fx.fz.resolver = resolver
 		fx.merger.results = []mergeCallResult{
 			{err: &fabricengine.ErrMergeInRequired{Source: "main"}},
-			{result: fabriclayout.MergeResult{Committed: true}},
+			{result: fabricengine.MergeResult{Committed: true}},
 		}
 		var heldAtRecordsCommit []bool
 		fx.fz.deps.CommitParentRecords = func() error {
@@ -660,7 +650,7 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 
 	t.Run("two turns each under the line cap but past it together are over the cap, measured from the entry's baseline", func(t *testing.T) {
 		fx := newFinalizeGateFixture(t)
-		fx.lineChange = fabriclayout.LineChange{Lines: 60, Paths: []string{"a/a.go"}}
+		fx.lineChange = fabricengine.LineChange{Lines: 60, Paths: []string{"a/a.go"}}
 		fx.scriptGate(failing, failing, passing)
 		fx.seats.turns = []func(){fx.turn(t, fixedReport, "f1"), fx.turn(t, fixedReport, "f2")}
 		fx.seats.reviewTurns = []func(){fx.review(t, approvedReview)}
@@ -695,7 +685,7 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 		tests := []struct {
 			name   string
 			gate   verifytree.Result
-			change fabriclayout.LineChange
+			change fabricengine.LineChange
 			// review is the fix review's report, written when the row reaches one.
 			review     string
 			wantLand   bool
@@ -703,7 +693,7 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 		}{
 			{name: "a failing gate halts as a spent cap", gate: failing, wantReason: []string{"spent every attempt", "verify-", "fixer commits: t2..f1", "way forward: fix the failure on the task branch"}},
 			{name: "a passing gate over a change within the caps proceeds", gate: passing, change: small, wantLand: true},
-			{name: "a passing gate over a change past the caps lands on the fix review's approval", gate: passing, change: fabriclayout.LineChange{Lines: 500}, review: approvedReview, wantLand: true},
+			{name: "a passing gate over a change past the caps lands on the fix review's approval", gate: passing, change: fabricengine.LineChange{Lines: 500}, review: approvedReview, wantLand: true},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -750,17 +740,39 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 		}
 	})
 
+	t.Run("an attempt record found only under the scratch directory is moved to the records directory with its spent count", func(t *testing.T) {
+		fx := newFinalizeGateFixture(t)
+		fx.scriptGate(failing)
+		scratchPath := FixerAttemptsPath(fx.deps.ScratchDir, finalizeName)
+		if err := WriteFixerAttempts(scratchPath, FixerAttempts{Entry: 1, Spent: 2, Baseline: "t2"}); err != nil {
+			t.Fatal(err)
+		}
+
+		outcome, ptr := fx.call(t)
+
+		fx.requireHaltNoLanding(t, outcome, ptr, "spent every attempt")
+		if rec, found := fx.attempts(t); !found || rec.Spent != 2 {
+			t.Errorf("attempt record under the records directory = %+v, %v; want the 2 spent turns kept", rec, found)
+		}
+		if _, err := os.Stat(scratchPath); !errors.Is(err, fs.ErrNotExist) {
+			t.Errorf("stat of the scratch attempt record = %v; want it gone", err)
+		}
+		if len(fx.seats.tables) != 0 {
+			t.Errorf("fixer sessions = %d; want none over the spent attempts the scratch record carried", len(fx.seats.tables))
+		}
+	})
+
 	t.Run("a fix over the caps goes to the fix review over the fixer's commits, whatever makes it over, and each rejection goes back to the fixer until the rounds run out", func(t *testing.T) {
 		tests := []struct {
 			name       string
-			change     fabriclayout.LineChange
+			change     fabricengine.LineChange
 			isTestFile func(path string) bool
 			wantReason string
 		}{
-			{name: "past finalize_fix_max_lines", change: fabriclayout.LineChange{Lines: 500, Paths: []string{"a/a.go"}}, wantReason: "over the cap of 50"},
-			{name: "a three-line change editing a test file under a Go matcher", change: fabriclayout.LineChange{Lines: 3, Paths: []string{"a/a_test.go"}}, wantReason: "the test file a/a_test.go"},
+			{name: "past finalize_fix_max_lines", change: fabricengine.LineChange{Lines: 500, Paths: []string{"a/a.go"}}, wantReason: "over the cap of 50"},
+			{name: "a three-line change editing a test file under a Go matcher", change: fabricengine.LineChange{Lines: 3, Paths: []string{"a/a_test.go"}}, wantReason: "the test file a/a_test.go"},
 			{
-				name: "a three-line change editing a C# test file under the darn union", change: fabriclayout.LineChange{Lines: 3, Paths: []string{"a/FooTests.cs"}},
+				name: "a three-line change editing a C# test file under the darn union", change: fabricengine.LineChange{Lines: 3, Paths: []string{"a/FooTests.cs"}},
 				isTestFile: func(path string) bool {
 					return strings.HasSuffix(path, "_test.go") || strings.HasSuffix(path, "Tests.cs")
 				},
@@ -815,7 +827,7 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 
 	t.Run("a rejection the fixer answers is judged again, and the review's approval lands it", func(t *testing.T) {
 		fx := newFinalizeGateFixture(t)
-		fx.lineChange = fabriclayout.LineChange{Lines: 500, Paths: []string{"a/a.go"}}
+		fx.lineChange = fabricengine.LineChange{Lines: 500, Paths: []string{"a/a.go"}}
 		fx.scriptGate(failing, passing)
 		fx.seats.turns = []func(){fx.turn(t, fixedReport, "f1")}
 		fx.seats.reviewTurns = []func(){fx.reviewsInTurn(t, rejectedReview, approvedReview)}
@@ -859,7 +871,7 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 				name:          "a session past its timeout runs again, and the last round halts naming the timeout key",
 				review:        func(*testing.T, *finalizeGateFixture) func() { return func() {} },
 				reviewTimeout: true,
-				wantReason:    []string{"the fix review gave no verdict", "fixer_timeout_min", "session: " + fakeFixerSession, "fixer commits: t2..f1"},
+				wantReason:    []string{"the fix review gave no verdict", "fixer_timeout_min", "session log: " + fakeFixerRunDir, "fixer commits: t2..f1"},
 				wantReviews:   2,
 			},
 			{
@@ -870,9 +882,9 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 				wantReviews: 1,
 			},
 			{
-				name:        "a session that leaves no report runs again, and the last round halts naming the session",
+				name:        "a session that leaves no report runs again, and the last round halts naming the session log",
 				review:      func(*testing.T, *finalizeGateFixture) func() { return func() {} },
-				wantReason:  []string{"the fix review gave no verdict", "session: " + fakeFixerSession, "fixer commits: t2..f1"},
+				wantReason:  []string{"the fix review gave no verdict", "session log: " + fakeFixerRunDir, "fixer commits: t2..f1"},
 				wantReviews: 2,
 			},
 			{
@@ -891,7 +903,7 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 					}
 				},
 				wantReviews:  1,
-				wantReason:   []string{"the fix review session of Finalize changed the task branch", "a/a.go", "session: " + fakeFixerSession, "way forward: restore the task branch to the fixer's commits t2..f1", "`lym loom resume`"},
+				wantReason:   []string{"the fix review session of Finalize changed the task branch", "a/a.go", "way forward: restore the task branch to the fixer's commits t2..f1", "`lym loom resume`"},
 				absentReason: "commit or remove them",
 			},
 			{
@@ -909,7 +921,7 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				fx := newFinalizeGateFixture(t)
-				fx.lineChange = fabriclayout.LineChange{Lines: 3, Paths: []string{"a/a_test.go"}}
+				fx.lineChange = fabricengine.LineChange{Lines: 3, Paths: []string{"a/a_test.go"}}
 				fx.scriptGate(failing, passing)
 				fx.seats.turns = []func(){fx.turn(t, fixedReport, "f1")}
 				fx.seats.reviewTurns = []func(){tt.review(t, fx)}
@@ -947,14 +959,15 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 
 	t.Run("an approval is kept in the attempt record as the HEAD it approved", func(t *testing.T) {
 		fx := newFinalizeGateFixture(t)
-		fx.lineChange = fabriclayout.LineChange{Lines: 3, Paths: []string{"a/a_test.go"}}
-		fx.stopAfterMerge()
+		fx.lineChange = fabricengine.LineChange{Lines: 3, Paths: []string{"a/a_test.go"}}
+		fx.merger.pushErr = errors.New("push refused")
 		fx.scriptGate(failing, passing)
 		fx.seats.turns = []func(){fx.turn(t, fixedReport, "f1")}
 		fx.seats.reviewTurns = []func(){fx.review(t, approvedReview)}
 
-		if _, _, err := fx.fz.Call(context.Background()); err == nil {
-			t.Fatal("Call() error = nil; want the stop after the merge")
+		// The refused push stops the landing after the merge, which keeps the record the landing would otherwise remove.
+		if _, _, err := fx.fz.Call(context.Background()); err != nil {
+			t.Fatalf("Call() error = %v", err)
 		}
 
 		if len(fx.merger.calls) != 1 {
@@ -980,7 +993,7 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 			t.Run(tt.name, func(t *testing.T) {
 				fx := newFinalizeGateFixture(t)
 				fx.head = "f1"
-				fx.lineChange = fabriclayout.LineChange{Lines: 3, Paths: []string{"a/a_test.go"}}
+				fx.lineChange = fabricengine.LineChange{Lines: 3, Paths: []string{"a/a_test.go"}}
 				fx.seed(t, FixerAttempts{Entry: 1, Spent: 1, Baseline: "t2", Reviewed: tt.reviewed})
 				fx.scriptGate(passing)
 				if tt.review != "" {
@@ -1004,7 +1017,7 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 
 	t.Run("a fix review session that fails to start returns a transient error and lands nothing", func(t *testing.T) {
 		fx := newFinalizeGateFixture(t)
-		fx.lineChange = fabriclayout.LineChange{Lines: 3, Paths: []string{"a/a_test.go"}}
+		fx.lineChange = fabricengine.LineChange{Lines: 3, Paths: []string{"a/a_test.go"}}
 		fx.scriptGate(failing, passing)
 		fx.seats.turns = []func(){fx.turn(t, fixedReport, "f1")}
 		fx.seats.reviewStartErr = fmt.Errorf("seat chair: %w", shuttleengine.ErrNotStarted)
@@ -1051,7 +1064,7 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 			t.Run(tt.name, func(t *testing.T) {
 				fx := newFinalizeGateFixture(t)
 				fx.head = "f1"
-				fx.lineChange = fabriclayout.LineChange{Lines: 500, Paths: []string{"a/a.go"}}
+				fx.lineChange = fabricengine.LineChange{Lines: 500, Paths: []string{"a/a.go"}}
 				fx.seed(t, FixerAttempts{Entry: 1, Spent: 1, Baseline: "t2", Halt: fixerHaltReviewCapped, ReviewRounds: 2, Findings: []string{"f1 loosens the assertion"}, AcceptedHead: tt.acceptedHead})
 				fx.scriptGate(passing)
 				fx.seats.turns = []func(){fx.turn(t, fixedReport, "f2")}
@@ -1072,7 +1085,7 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 	t.Run("a fixer change made after the operator's acceptance is reviewed, whatever the caps the earlier rounds spent", func(t *testing.T) {
 		fx := newFinalizeGateFixture(t)
 		fx.head = "f1"
-		fx.lineChange = fabriclayout.LineChange{Lines: 500, Paths: []string{"a/a.go"}}
+		fx.lineChange = fabricengine.LineChange{Lines: 500, Paths: []string{"a/a.go"}}
 		fx.seed(t, FixerAttempts{Entry: 1, Spent: 1, Baseline: "t2", Halt: fixerHaltReviewCapped, ReviewRounds: 2, Findings: []string{"f1 loosens the assertion"}, AcceptedHead: "f1"})
 		fx.scriptGate(failing, passing)
 		fx.seats.turns = []func(){fx.turn(t, fixedReport, "f2")}
@@ -1100,7 +1113,7 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 			t.Run(tt.name, func(t *testing.T) {
 				fx := newFinalizeGateFixture(t)
 				fx.head = "f1"
-				fx.lineChange = fabriclayout.LineChange{Lines: 500, Paths: []string{"a/a.go"}}
+				fx.lineChange = fabricengine.LineChange{Lines: 500, Paths: []string{"a/a.go"}}
 				if tt.wantLand {
 					fx.lineChange = small
 				}
@@ -1177,7 +1190,7 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 
 		outcome, ptr := fx.call(t)
 
-		requireEscalateHalt(t, outcome, ptr, finalizeName, fx.reportPath(), "decision D3", "`lym loom decision add`", "kind note")
+		requireEscalateHalt(t, outcome, ptr, finalizeName, fx.reportPath(), "decision D3", "`lym loom decision add`")
 	})
 
 	t.Run("a re-entry from another row starts at zero attempts while a resume keeps the spent ones", func(t *testing.T) {

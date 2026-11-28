@@ -52,7 +52,7 @@ type Config struct {
 	BatchingNudge BatchingNudgeConfig `yaml:"batching_nudge"`
 }
 
-// The modes codex.sandbox_mode may name.
+// The modes codex.yaml's sandbox_mode may name.
 // A launch runs one of the two Codex sandbox modes, workspace-write or danger-full-access;
 // auto is lym's own and resolves to one of them at each launch.
 const (
@@ -95,10 +95,10 @@ func ConfigSpec() configengine.Spec {
 
 // LoadConfig resolves codex.yaml from the layer stack under dirs.
 // An absent file in every layer resolves the template; a layer file that exists but is invalid is an error.
-// A codex.sandbox_mode other than auto, workspace-write or danger-full-access is invalid.
-// So is a codex.max_subagent_threads below 1.
-// So is a codex.plugin_hook_timeout that is not a positive Go duration.
-// While the batching nudge is on, a negative codex.batching_nudge.context_tokens is invalid.
+// A sandbox_mode other than auto, workspace-write or danger-full-access is invalid.
+// So is a max_subagent_threads below 1.
+// So is a plugin_hook_timeout that is not a positive Go duration.
+// While the batching nudge is on, a negative batching_nudge.context_tokens is invalid.
 // So is any other threshold of the block below 1.
 func LoadConfig(dirs configengine.Dirs) (Config, error) {
 	resolved, err := configengine.LoadOrTemplate(dirs, ConfigSpec())
@@ -110,13 +110,13 @@ func LoadConfig(dirs configengine.Dirs) (Config, error) {
 		return Config{}, configengine.MarkInvalid(fmt.Errorf("unmarshal codex config: %w", err))
 	}
 	if cfg.SandboxMode != sandboxAuto && cfg.SandboxMode != sandboxWorkspaceWrite && cfg.SandboxMode != sandboxFullAccess {
-		return Config{}, configengine.MarkInvalid(fmt.Errorf("%s %q is none of %s, %s and %s", keyName(sandboxModeConfigKey), cfg.SandboxMode, sandboxAuto, sandboxWorkspaceWrite, sandboxFullAccess))
+		return Config{}, configengine.MarkInvalid(fmt.Errorf("codex.yaml's sandbox_mode %q is none of %s, %s and %s", cfg.SandboxMode, sandboxAuto, sandboxWorkspaceWrite, sandboxFullAccess))
 	}
 	if cfg.MaxSubagentThreads < 1 {
-		return Config{}, configengine.MarkInvalid(fmt.Errorf("%s %d is below 1", keyName("max_subagent_threads"), cfg.MaxSubagentThreads))
+		return Config{}, configengine.MarkInvalid(fmt.Errorf("codex.yaml's max_subagent_threads %d is below 1", cfg.MaxSubagentThreads))
 	}
 	if timeout, err := time.ParseDuration(cfg.PluginHookTimeout); err != nil || timeout <= 0 {
-		return Config{}, configengine.MarkInvalid(fmt.Errorf("%s %q is not a positive Go duration such as 10s", keyName("plugin_hook_timeout"), cfg.PluginHookTimeout))
+		return Config{}, configengine.MarkInvalid(fmt.Errorf("codex.yaml's plugin_hook_timeout %q is not a positive Go duration such as 10s", cfg.PluginHookTimeout))
 	}
 	if err := validateBatchingNudge(cfg.BatchingNudge); err != nil {
 		return Config{}, configengine.MarkInvalid(err)
@@ -149,7 +149,7 @@ type homeDirs struct {
 	operator string
 }
 
-// resolveHomes resolves the codex.home and codex.operator_home keys into absolute paths.
+// resolveHomes resolves codex.yaml's home and operator_home keys into absolute paths.
 // It refuses an empty or relative value by its key.
 func resolveHomes(codex Config) (homeDirs, error) {
 	lym, err := expandHomePath("home", codex.Home)
@@ -170,24 +170,24 @@ func expandHomePath(key, value string) (string, error) {
 	if rest, ok := strings.CutPrefix(value, "~/"); ok {
 		userHome, err := os.UserHomeDir()
 		if err != nil {
-			return "", fmt.Errorf("codexengine: resolve %s %q: %w", keyName(key), value, err)
+			return "", fmt.Errorf("codexengine: resolve codex.yaml's %s %q: %w", key, value, err)
 		}
 		value = filepath.Join(userHome, rest)
 	}
 	if value == "" || !filepath.IsAbs(value) {
-		return "", fmt.Errorf("codexengine: %s %q is not an absolute path or one under ~/; way forward: set it with lym config codex", keyName(key), value)
+		return "", fmt.Errorf("codexengine: codex.yaml's %s %q is not an absolute path or one under ~/; way forward: set it with lym config codex", key, value)
 	}
 	return filepath.Clean(value), nil
 }
 
-// configuredWritableRoots returns codex.writable_roots as absolute, symlink-resolved folders.
+// configuredWritableRoots returns codex.yaml's writable_roots as absolute, symlink-resolved folders.
 // It refuses an empty or relative value by its key.
 // A folder that does not exist is left out,
 // so a root the machine has not made, such as a cache of a toolchain it lacks, adds nothing to the launch.
 func configuredWritableRoots(codex Config) ([]string, error) {
 	var roots []string
 	for _, root := range codex.WritableRoots {
-		expanded, err := expandHomePath(writableRootsKey, root)
+		expanded, err := expandHomePath("writable_roots", root)
 		if err != nil {
 			return nil, err
 		}
@@ -196,17 +196,17 @@ func configuredWritableRoots(codex Config) ([]string, error) {
 			continue
 		}
 		if err != nil {
-			return nil, fmt.Errorf("codexengine: resolve %s %q: %w", keyName(writableRootsKey), root, err)
+			return nil, fmt.Errorf("codexengine: resolve codex.yaml's writable_roots %q: %w", root, err)
 		}
 		roots = append(roots, resolved)
 	}
 	return roots, nil
 }
 
-// validateEffort refuses a non-empty effort that codex.efforts does not list, naming the key.
+// validateEffort refuses a non-empty effort that codex.yaml's efforts does not list, naming the key.
 func validateEffort(effort string, codex Config) error {
 	if effort == "" || slices.Contains(codex.Efforts, effort) {
 		return nil
 	}
-	return fmt.Errorf("codexengine: effort %q is not in %s %v; way forward: name one of them in the model-spec, or add it to %s with lym config codex", effort, keyName(effortsKey), codex.Efforts, keyName(effortsKey))
+	return fmt.Errorf("codexengine: effort %q is not in codex.yaml's efforts %v; way forward: name one of them in the model-spec, or add it to efforts with lym config codex", effort, codex.Efforts)
 }

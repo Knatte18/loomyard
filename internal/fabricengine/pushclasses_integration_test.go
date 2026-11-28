@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -33,12 +32,6 @@ const refusedOriginURL = "http://127.0.0.1:1/x"
 
 // authRefusingHook is a pre-receive hook that declines every push the way GitHub declines one for want of permission.
 const authRefusingHook = "#!/bin/sh\necho 'Permission to hub denied to tester.' >&2\nexit 1\n"
-
-// protectedRefusingHook returns a pre-receive hook that declines every push to branch.
-// It declines the way GitHub declines a push to a protected branch.
-func protectedRefusingHook(branch string) string {
-	return "#!/bin/sh\necho 'GH006: Protected branch update failed for refs/heads/" + branch + ".' >&2\nexit 1\n"
-}
 
 // newFailureFixture builds a hub with the board replay installed and a notifier counting the mails of its own hub.
 // A push reaches the notifier only through the options the notifier builds.
@@ -56,7 +49,7 @@ func newFailureFixtureAt(t *testing.T, anchor string) (*recordsFixture, *fakePus
 }
 
 // failedPushesOf returns the hub's failed-push records.
-func failedPushesOf(t *testing.T, hubPath string) []fabriclayout.FailedPush {
+func failedPushesOf(t *testing.T, hubPath string) []fabricengine.FailedPush {
 	t.Helper()
 	records, err := fabricengine.ListFailedPushes(hubPath)
 	if err != nil {
@@ -66,7 +59,7 @@ func failedPushesOf(t *testing.T, hubPath string) []fabriclayout.FailedPush {
 }
 
 // requireOneFailedPush fails the test unless the hub holds exactly one failed-push record, and returns it.
-func requireOneFailedPush(t *testing.T, hubPath, repo string, class fabriclayout.PushFailureClass) fabriclayout.FailedPush {
+func requireOneFailedPush(t *testing.T, hubPath, repo string, class fabricengine.PushFailureClass) fabricengine.FailedPush {
 	t.Helper()
 	records := failedPushesOf(t, hubPath)
 	if len(records) != 1 || records[0].Repo != repo || records[0].Class != class {
@@ -102,7 +95,7 @@ func countingBackoff(sleeps *int, onSleep func(call int)) func(time.Duration) {
 // holdWeftWriteLock takes the weft write lock of the weft worktree at weft until the test ends.
 func holdWeftWriteLock(t *testing.T, weft string) *lock.FileLock {
 	t.Helper()
-	lockDir := fabriclayout.RecordsLockDirPath(weft)
+	lockDir := fabricengine.RecordsLockDirPath(weft)
 	if err := os.MkdirAll(lockDir, 0o755); err != nil {
 		t.Fatalf("mkdir %s: %v", lockDir, err)
 	}
@@ -145,9 +138,9 @@ func newPairFixtureAt(t *testing.T, anchor, slug string) *pairFixture {
 		warpPath:       f.hub.PairCodeWorktree(slug),
 		weftPath:       f.hub.PairRecordsSibling(slug),
 		warpBranch:     added.Branch,
-		weftBranch:     fabriclayout.RecordsBranchName(added.Branch),
+		weftBranch:     fabricengine.RecordsBranchName(added.Branch),
 	}
-	if _, err := fabricengine.PushPairAnchored(location, fake.options(nil), fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded}); err != nil {
+	if _, err := fabricengine.PushPairAnchored(location, fake.options(nil), fabricengine.LockWaitUnbounded); err != nil {
 		t.Fatalf("PushPairAnchored() priming push error = %v; want nil", err)
 	}
 	return p
@@ -172,7 +165,7 @@ func requireRewoundHoldBack(t *testing.T, p *pairFixture, err error, originHead,
 	t.Helper()
 
 	var failed *fabricengine.PushFailedError
-	if !errors.As(err, &failed) || failed.Record.Class != fabriclayout.PushFailureRewound {
+	if !errors.As(err, &failed) || failed.Record.Class != fabricengine.PushFailureRewound {
 		t.Fatalf("PushBranch() error = %v; want a rewound *PushFailedError", err)
 	}
 	if failed.Record.OriginHead != originHead || !slices.Contains(failed.Record.Commits, dropped) {
@@ -184,7 +177,7 @@ func requireRewoundHoldBack(t *testing.T, p *pairFixture, err error, originHead,
 	if got := bareBranchTip(t, p.hub.CodeBare, p.warpBranch); got != originHead {
 		t.Errorf("origin tip = %s; want it left where the rewind put it, %s", got, originHead)
 	}
-	requireOneFailedPush(t, p.hub.Location.HubPath, "code", fabriclayout.PushFailureRewound)
+	requireOneFailedPush(t, p.hub.Location.HubPath, "code", fabricengine.PushFailureRewound)
 	if len(p.fake.lines) != 1 {
 		t.Errorf("mails = %q; want one", p.fake.lines)
 	}
@@ -203,7 +196,7 @@ func TestPushFailureClasses(t *testing.T) {
 		f.originCommit(branch, "other.txt", "other\n", "other machine")
 		gitkit.CommitFile(t, weft, "local.txt", "local\n", "local")
 
-		if _, err := fabricengine.CoalescePushRequest(fabriclayout.PushSpawn{WeftPath: weft}, fake.options(nil), fabriclayout.MachineNames{}); err != nil {
+		if _, err := fabricengine.CoalescePushRequest(fabricengine.PushSpawn{WeftPath: weft}, fake.options(nil)); err != nil {
 			t.Fatalf("CoalescePushRequest() error = %v; want nil", err)
 		}
 
@@ -227,18 +220,18 @@ func TestPushFailureClasses(t *testing.T) {
 		before := bareBranchTip(t, f.hub.RecordsBare, branch)
 		held := holdWeftWriteLock(t, weft)
 
-		if _, err := fabricengine.CoalescePushRequest(fabriclayout.PushSpawn{WeftPath: weft}, fake.options(nil), fabriclayout.MachineNames{}); err != nil {
+		if _, err := fabricengine.CoalescePushRequest(fabricengine.PushSpawn{WeftPath: weft}, fake.options(nil)); err != nil {
 			t.Fatalf("CoalescePushRequest() with the write lock held error = %v; want nil", err)
 		}
 
 		if got := bareBranchTip(t, f.hub.RecordsBare, branch); got != before {
 			t.Errorf("origin tip = %s; want it unchanged at %s", got, before)
 		}
-		requireOneFailedPush(t, f.hub.Location.HubPath, "records", fabriclayout.PushFailureDeferred)
+		requireOneFailedPush(t, f.hub.Location.HubPath, "records", fabricengine.PushFailureDeferred)
 		if len(fake.lines) != 0 {
 			t.Errorf("mails = %q; want none for a deferral", fake.lines)
 		}
-		if _, err := os.Stat(filepath.Join(fabriclayout.RecordsLockDirPath(weft), "pending.records")); !os.IsNotExist(err) {
+		if _, err := os.Stat(filepath.Join(fabricengine.RecordsLockDirPath(weft), "pending.records")); !os.IsNotExist(err) {
 			t.Errorf("pending flag stat error = %v; want the flag absent, since a deferral leaves the commits to the next push", err)
 		}
 
@@ -246,7 +239,7 @@ func TestPushFailureClasses(t *testing.T) {
 			t.Fatalf("release the weft write lock: %v", err)
 		}
 		gitkit.CommitFile(t, weft, "second.txt", "second\n", "second local")
-		if _, err := fabricengine.CoalescePushRequest(fabriclayout.PushSpawn{WeftPath: weft}, fake.options(nil), fabriclayout.MachineNames{}); err != nil {
+		if _, err := fabricengine.CoalescePushRequest(fabricengine.PushSpawn{WeftPath: weft}, fake.options(nil)); err != nil {
 			t.Fatalf("CoalescePushRequest() after the release error = %v; want nil", err)
 		}
 		if got, want := bareBranchTip(t, f.hub.RecordsBare, branch), gitkit.RevParse(t, weft, "HEAD"); got != want {
@@ -263,14 +256,14 @@ func TestPushFailureClasses(t *testing.T) {
 		before := bareBranchTip(t, f.hub.RecordsBare, branch)
 		sleeps := 0
 
-		if _, err := fabricengine.CoalescePushRequest(fabriclayout.PushSpawn{WeftPath: weft}, fake.options(countingBackoff(&sleeps, nil)), fabriclayout.MachineNames{}); err != nil {
+		if _, err := fabricengine.CoalescePushRequest(fabricengine.PushSpawn{WeftPath: weft}, fake.options(countingBackoff(&sleeps, nil))); err != nil {
 			t.Fatalf("CoalescePushRequest() error = %v; want nil, a detached push never fails", err)
 		}
 		if sleeps != 0 {
 			t.Errorf("backoff sleeps = %d; want none, a replay conflict is not retried", sleeps)
 		}
 
-		record := requireOneFailedPush(t, f.hub.Location.HubPath, "records", fabriclayout.PushFailureNotFastForward)
+		record := requireOneFailedPush(t, f.hub.Location.HubPath, "records", fabricengine.PushFailureNotFastForward)
 		if !slices.Equal(record.Paths, []string{"status.json"}) || !slices.Contains(record.Commits, local) {
 			t.Errorf("record = %+v; want the conflicting path status.json and the local commit %s", record, local)
 		}
@@ -306,7 +299,7 @@ func TestPushFailureClasses(t *testing.T) {
 				// The first push never reaches the hook, since git refuses it against the other machine's tip;
 				// the replay retry's pushes do.
 				installPreReceive(t, f.hub.RecordsBare, declining)
-				if _, err := fabricengine.CoalescePushRequest(fabriclayout.PushSpawn{WeftPath: weft}, opts, fabriclayout.MachineNames{}); err != nil {
+				if _, err := fabricengine.CoalescePushRequest(fabricengine.PushSpawn{WeftPath: weft}, opts); err != nil {
 					t.Fatalf("CoalescePushRequest() error = %v; want nil", err)
 				}
 				return "records", nil
@@ -322,7 +315,7 @@ func TestPushFailureClasses(t *testing.T) {
 				weft := f.hub.PrimeRecords()
 				gitkit.CommitFile(t, weft, "local.txt", "local\n", "local")
 				installPreReceive(t, f.hub.RecordsBare, declining)
-				if _, err := fabricengine.CoalescePushRequest(fabriclayout.PushSpawn{WeftPath: weft}, opts, fabriclayout.MachineNames{}); err != nil {
+				if _, err := fabricengine.CoalescePushRequest(fabricengine.PushSpawn{WeftPath: weft}, opts); err != nil {
 					t.Fatalf("CoalescePushRequest() error = %v; want nil", err)
 				}
 				return "records", nil
@@ -338,7 +331,7 @@ func TestPushFailureClasses(t *testing.T) {
 				if err != nil && !fabricengine.IsPushRejected(err) {
 					t.Errorf("push error = %v; want nil or IsPushRejected", err)
 				}
-				record := requireOneFailedPush(t, f.hub.Location.HubPath, side, fabriclayout.PushFailureOther)
+				record := requireOneFailedPush(t, f.hub.Location.HubPath, side, fabricengine.PushFailureOther)
 				if want := "(pre-receive hook declined)"; !strings.Contains(record.Error, want) {
 					t.Errorf("record error = %q; want git's refusal line holding %q", record.Error, want)
 				}
@@ -367,49 +360,13 @@ func TestPushFailureClasses(t *testing.T) {
 		gitkit.Git(t, other, "checkout", "-B", branch)
 		gitkit.CommitFile(t, other, "other.txt", "other\n", "other machine")
 		gitkit.Git(t, other, "push", "origin", branch)
-		local := gitkit.CommitFile(t, weft, "local.txt", "local\n", "local")
+		gitkit.CommitFile(t, weft, "local.txt", "local\n", "local")
 
-		if _, err := fabricengine.CoalescePushRequest(fabriclayout.PushSpawn{WeftPath: weft}, fake.options(countingBackoff(new(int), nil)), fabriclayout.MachineNames{}); err != nil {
+		if _, err := fabricengine.CoalescePushRequest(fabricengine.PushSpawn{WeftPath: weft}, fake.options(countingBackoff(new(int), nil))); err != nil {
 			t.Fatalf("CoalescePushRequest() error = %v; want nil", err)
 		}
 
-		record := requireOneFailedPush(t, f.hub.Location.HubPath, "records", fabriclayout.PushFailureNotFastForward)
-		if !slices.Contains(record.Commits, local) {
-			t.Errorf("record commits = %v; want the local commit %s the reset in its way forward would drop", record.Commits, local)
-		}
-		if len(fake.lines) != 1 {
-			t.Errorf("mails = %q; want one", fake.lines)
-		}
-	})
-
-	t.Run("APairPushFromARecordsStoreWithNoNamespacedFetchRefspecRecordsTheRestoreCommands", func(t *testing.T) {
-		const slug = "ns-norefspec"
-		h := hubforge.NewOneRepoHub(t, hubforge.OneRepoOptions{})
-		fake := &fakePushNotifier{hub: h.Location.HubPath, posted: true}
-		hubforge.AddPair(t, h, slug)
-		sibling := h.PairRecordsSibling(slug)
-		gitkit.CommitFile(t, sibling, "local.txt", "local\n", "local")
-		gitkit.Git(t, sibling, "config", "--unset-all", "remote.origin.fetch")
-		fabricengine.ForgetOriginNamespaceForTest(sibling)
-		location, err := lymcwd.ResolveWorktree(h.PairCodeWorktree(slug))
-		if err != nil {
-			t.Fatalf("ResolveWorktree: %v", err)
-		}
-
-		_, err = fabricengine.PushPairAnchored(location, fake.options(nil), fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded})
-
-		var failed *fabricengine.PushFailedError
-		if !errors.As(err, &failed) || failed.Record.Class != fabriclayout.PushFailureOther {
-			t.Fatalf("PushPairAnchored() error = %v; want an other-class *PushFailedError", err)
-		}
-		want := "`git -C " + sibling + " config --replace-all remote.origin.fetch"
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("PushPairAnchored() error = %q; want it to name %q", err, want)
-		}
-		record := requireOneFailedPush(t, h.Location.HubPath, "records", fabriclayout.PushFailureOther)
-		if !strings.Contains(record.Error, want) {
-			t.Errorf("record error = %q; want it to name %q", record.Error, want)
-		}
+		requireOneFailedPush(t, f.hub.Location.HubPath, "records", fabricengine.PushFailureNotFastForward)
 		if len(fake.lines) != 1 {
 			t.Errorf("mails = %q; want one", fake.lines)
 		}
@@ -431,7 +388,7 @@ func TestPushFailureClasses(t *testing.T) {
 		if !errors.As(err, &failed) {
 			t.Fatalf("PushBranch() error = %v; want a *PushFailedError", err)
 		}
-		record := requireOneFailedPush(t, f.hub.Location.HubPath, "code", fabriclayout.PushFailureOther)
+		record := requireOneFailedPush(t, f.hub.Location.HubPath, "code", fabricengine.PushFailureOther)
 		for _, want := range []string{"(pre-receive hook declined)", "gitrepo: fetch in"} {
 			if !strings.Contains(record.Error, want) {
 				t.Errorf("record error = %q; want it to hold both the rejection line and the fetch error, missing %q", record.Error, want)
@@ -456,29 +413,9 @@ func TestPushFailureClasses(t *testing.T) {
 		if err == nil {
 			t.Fatal("PushBranch() error = nil; want a failed push")
 		}
-		requireOneFailedPush(t, f.hub.Location.HubPath, "code", fabriclayout.PushFailureAuth)
+		requireOneFailedPush(t, f.hub.Location.HubPath, "code", fabricengine.PushFailureAuth)
 		if sleeps != 0 {
 			t.Errorf("backoff sleeps = %d; want none, an auth refusal of the retry is not retried", sleeps)
-		}
-	})
-
-	// The hook's refusal text reaches fabric only through the `remote:` lines the rejection carries.
-	t.Run("AProtectedBranchRefusalRecordsTheRejectionClassAndIsNotRetried", func(t *testing.T) {
-		f, fake := newFailureFixture(t)
-		prime := f.hub.PrimeWorktree()
-		gitkit.CommitFile(t, prime, "local.txt", "local\n", "local")
-		branch := gitkit.CurrentBranch(t, prime)
-		installPreReceive(t, f.hub.CodeBare, protectedRefusingHook(branch))
-		sleeps := 0
-
-		_, err := hubforge.OpenFabric(t, f.hub).PushBranch(fake.options(countingBackoff(&sleeps, nil)))
-
-		if err == nil || !fabricengine.ProtectedBranchRefusal(err) {
-			t.Fatalf("PushBranch() error = %v; want a protected-branch refusal", err)
-		}
-		requireOneFailedPush(t, f.hub.Location.HubPath, "code", fabriclayout.PushFailureOther)
-		if sleeps != 0 {
-			t.Errorf("backoff sleeps = %d; want none, a protected refusal is not retried", sleeps)
 		}
 	})
 
@@ -507,7 +444,7 @@ func TestPushFailureClasses(t *testing.T) {
 				weft, branch := f.primeWeft()
 				local := gitkit.CommitFile(t, weft, "local.txt", "local\n", "local")
 				declineTwice(t, f.hub.RecordsBare)
-				if _, err := fabricengine.CoalescePushRequest(fabriclayout.PushSpawn{WeftPath: weft}, opts, fabriclayout.MachineNames{}); err != nil {
+				if _, err := fabricengine.CoalescePushRequest(fabricengine.PushSpawn{WeftPath: weft}, opts); err != nil {
 					t.Fatalf("CoalescePushRequest() error = %v; want nil", err)
 				}
 				return local, f.hub.RecordsBare, branch
@@ -570,7 +507,7 @@ func TestPushFailureClasses(t *testing.T) {
 				func(t *testing.T, p *pairFixture) string {
 					p.originCommit(p.weftBranch, "other.txt", "other\n", "other machine")
 					gitkit.CommitFile(t, p.weftPath, "local.txt", "local\n", "local")
-					writeMoveRecord(t, p.weftPath, fabriclayout.MoveRecord{A: ".", B: "x", Kind: fabriclayout.MoveKindMove, PID: 4242})
+					writeMoveRecord(t, p.weftPath, fabricengine.MoveRecord{A: ".", B: "x", Kind: fabricengine.MoveKindMove, PID: 4242})
 					return "lym fabric anchor"
 				},
 			},
@@ -583,7 +520,7 @@ func TestPushFailureClasses(t *testing.T) {
 				originTipWas := bareBranchTip(t, p.hub.RecordsBare, p.weftBranch)
 				sleeps := 0
 
-				_, err := fabricengine.PushPairAnchored(p.location, p.fake.options(countingBackoff(&sleeps, nil)), fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded})
+				_, err := fabricengine.PushPairAnchored(p.location, p.fake.options(countingBackoff(&sleeps, nil)), fabricengine.LockWaitUnbounded)
 
 				var failed *fabricengine.PushFailedError
 				if !errors.As(err, &failed) || !errors.Is(err, fabricengine.ErrAnchorChange) {
@@ -592,7 +529,7 @@ func TestPushFailureClasses(t *testing.T) {
 				if sleeps != 0 {
 					t.Errorf("backoff sleeps = %d; want none, an anchor stop is not retried", sleeps)
 				}
-				record := requireOneFailedPush(t, p.hub.Location.HubPath, "records", fabriclayout.PushFailureAnchorChange)
+				record := requireOneFailedPush(t, p.hub.Location.HubPath, "records", fabricengine.PushFailureAnchorChange)
 				wayForward := fabricengine.FailedPushWayForward(record)
 				if !strings.Contains(wayForward, wantNamed) || strings.Contains(wayForward, "git merge") {
 					t.Errorf("way forward = %q; want it to name %q and no git merge", wayForward, wantNamed)
@@ -622,7 +559,7 @@ func TestPushFailureClasses(t *testing.T) {
 			}
 		}
 
-		record := requireOneFailedPush(t, f.hub.Location.HubPath, "records", fabriclayout.PushFailureAuth)
+		record := requireOneFailedPush(t, f.hub.Location.HubPath, "records", fabricengine.PushFailureAuth)
 		if record.Count != 2 || !record.Notified {
 			t.Errorf("record = %+v; want count 2 and notified", record)
 		}
@@ -644,29 +581,18 @@ func TestPushFailureClasses(t *testing.T) {
 
 	t.Run("APushToAnUnreachableOriginWritesATransportRecord", func(t *testing.T) {
 		t.Run("OfABranchNeverPushed", func(t *testing.T) {
-			tests := []struct {
-				name      string
-				originURL string
-			}{
-				{"ARefusedConnection", refusedOriginURL},
-				{"ARemovedLocalOrigin", filepath.Join(t.TempDir(), "removed.git")},
+			f, fake := newFailureFixture(t)
+			weft := f.hub.PrimeRecords()
+			gitkit.CommitFile(t, weft, "local.txt", "local\n", "local")
+			gitkit.Git(t, weft, "remote", "set-url", "origin", refusedOriginURL)
+
+			if _, err := fabricengine.CoalescePushRequest(fabricengine.PushSpawn{WeftPath: weft}, fake.options(nil)); err != nil {
+				t.Fatalf("CoalescePushRequest() error = %v; want nil", err)
 			}
-			for _, tt := range tests {
-				t.Run(tt.name, func(t *testing.T) {
-					f, fake := newFailureFixture(t)
-					weft := f.hub.PrimeRecords()
-					gitkit.CommitFile(t, weft, "local.txt", "local\n", "local")
-					gitkit.Git(t, weft, "remote", "set-url", "origin", tt.originURL)
 
-					if _, err := fabricengine.CoalescePushRequest(fabriclayout.PushSpawn{WeftPath: weft}, fake.options(func(time.Duration) {}), fabriclayout.MachineNames{}); err != nil {
-						t.Fatalf("CoalescePushRequest() error = %v; want nil", err)
-					}
-
-					requireOneFailedPush(t, f.hub.Location.HubPath, "records", fabriclayout.PushFailureTransport)
-					if len(fake.lines) != 1 {
-						t.Errorf("mails = %q; want one", fake.lines)
-					}
-				})
+			requireOneFailedPush(t, f.hub.Location.HubPath, "records", fabricengine.PushFailureTransport)
+			if len(fake.lines) != 1 {
+				t.Errorf("mails = %q; want one", fake.lines)
 			}
 		})
 
@@ -687,7 +613,7 @@ func TestPushFailureClasses(t *testing.T) {
 						weft, _ := f.primeWeft()
 						gitkit.CommitFile(t, weft, "local.txt", "local\n", "local")
 						gitkit.Git(t, weft, "remote", "set-url", "origin", refusedOriginURL)
-						_, err := fabricengine.CoalescePushRequest(fabriclayout.PushSpawn{WeftPath: weft}, fake.options(backoff), fabriclayout.MachineNames{})
+						_, err := fabricengine.CoalescePushRequest(fabricengine.PushSpawn{WeftPath: weft}, fake.options(backoff))
 						return f.hub.Location.HubPath, fake, err
 					},
 				},
@@ -697,7 +623,7 @@ func TestPushFailureClasses(t *testing.T) {
 						p := newPairFixture(t, "stuckpair")
 						gitkit.CommitFile(t, p.weftPath, "local.txt", "local\n", "local")
 						gitkit.Git(t, p.weftPath, "remote", "set-url", "origin", refusedOriginURL)
-						_, err := fabricengine.PushPairAnchored(p.location, p.fake.options(backoff), fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded})
+						_, err := fabricengine.PushPairAnchored(p.location, p.fake.options(backoff), fabricengine.LockWaitUnbounded)
 						return p.hub.Location.HubPath, p.fake, err
 					},
 					wantFailed: true,
@@ -711,13 +637,13 @@ func TestPushFailureClasses(t *testing.T) {
 
 					if tt.wantFailed {
 						var failed *fabricengine.PushFailedError
-						if !errors.As(err, &failed) || failed.Record.Class != fabriclayout.PushFailureTransport {
+						if !errors.As(err, &failed) || failed.Record.Class != fabricengine.PushFailureTransport {
 							t.Fatalf("push error = %v; want a transport *PushFailedError", err)
 						}
 					} else if err != nil {
 						t.Fatalf("push error = %v; want nil", err)
 					}
-					requireOneFailedPush(t, hubPath, "records", fabriclayout.PushFailureTransport)
+					requireOneFailedPush(t, hubPath, "records", fabricengine.PushFailureTransport)
 					if want := len(gitrepo.PushBackoffDelays()); sleeps != want {
 						t.Errorf("backoff sleeps = %d; want %d", sleeps, want)
 					}
@@ -729,42 +655,17 @@ func TestPushFailureClasses(t *testing.T) {
 		})
 	})
 
-	t.Run("APushOfABranchNeverPushedThatFailsInTransitLandsOnTheRetryOnceOriginAnswers", func(t *testing.T) {
-		f, fake := newFailureFixture(t)
-		weft := f.hub.PrimeRecords()
-		realURL := gitkit.Git(t, weft, "remote", "get-url", "origin")
-		gitkit.CommitFile(t, weft, "local.txt", "local\n", "local")
-		gitkit.Git(t, weft, "remote", "set-url", "origin", refusedOriginURL)
-		var sleeps int
-		backoff := countingBackoff(&sleeps, func(int) { gitkit.Git(t, weft, "remote", "set-url", "origin", realURL) })
-
-		if _, err := fabricengine.CoalescePushRequest(fabriclayout.PushSpawn{WeftPath: weft}, fake.options(backoff), fabriclayout.MachineNames{}); err != nil {
-			t.Fatalf("CoalescePushRequest() error = %v; want nil", err)
-		}
-
-		if got, want := bareBranchTip(t, f.hub.RecordsBare, gitkit.CurrentBranch(t, weft)), gitkit.RevParse(t, weft, "HEAD"); got != want {
-			t.Errorf("origin tip = %s; want the pushed local HEAD %s", got, want)
-		}
-		if sleeps != 1 {
-			t.Errorf("backoff sleeps = %d; want 1", sleeps)
-		}
-		requireNoFailedPush(t, f.hub.Location.HubPath)
-		if len(fake.lines) != 0 {
-			t.Errorf("mails = %q; want none", fake.lines)
-		}
-	})
-
 	t.Run("APushFailingForNoNamedReasonWritesAnOtherRecordAndMails", func(t *testing.T) {
 		f, fake := newFailureFixture(t)
 		weft := f.hub.PrimeRecords()
 		gitkit.CommitFile(t, weft, "local.txt", "local\n", "local")
-		gitkit.Git(t, weft, "remote", "set-url", "origin", t.TempDir())
+		gitkit.Git(t, weft, "remote", "set-url", "origin", filepath.Join(t.TempDir(), "no-such-repository"))
 
-		if _, err := fabricengine.CoalescePushRequest(fabriclayout.PushSpawn{WeftPath: weft}, fake.options(nil), fabriclayout.MachineNames{}); err != nil {
+		if _, err := fabricengine.CoalescePushRequest(fabricengine.PushSpawn{WeftPath: weft}, fake.options(nil)); err != nil {
 			t.Fatalf("CoalescePushRequest() error = %v; want nil", err)
 		}
 
-		requireOneFailedPush(t, f.hub.Location.HubPath, "records", fabriclayout.PushFailureOther)
+		requireOneFailedPush(t, f.hub.Location.HubPath, "records", fabricengine.PushFailureOther)
 		if len(fake.lines) != 1 {
 			t.Errorf("mails = %q; want one", fake.lines)
 		}
@@ -777,10 +678,10 @@ func TestPushFailureClasses(t *testing.T) {
 			gitkit.CommitFile(t, p.weftPath, "local.txt", "local\n", "local")
 			var sleeps int
 
-			_, err := fabricengine.PushPairAnchored(p.location, p.fake.options(countingBackoff(&sleeps, nil)), fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded})
+			_, err := fabricengine.PushPairAnchored(p.location, p.fake.options(countingBackoff(&sleeps, nil)), fabricengine.LockWaitUnbounded)
 
 			var failed *fabricengine.PushFailedError
-			if !errors.As(err, &failed) || failed.Record.Class != fabriclayout.PushFailureGone || !errors.Is(err, fabricengine.ErrBranchGone) {
+			if !errors.As(err, &failed) || failed.Record.Class != fabricengine.PushFailureGone || !errors.Is(err, fabricengine.ErrBranchGone) {
 				t.Fatalf("PushPairAnchored() error = %v; want a gone *PushFailedError wrapping ErrBranchGone", err)
 			}
 			if !strings.HasSuffix(err.Error(), "way forward: "+fabricengine.FailedPushWayForward(failed.Record)) {
@@ -792,7 +693,7 @@ func TestPushFailureClasses(t *testing.T) {
 			if want := len(gitrepo.PushBackoffDelays()); sleeps != want {
 				t.Errorf("backoff sleeps = %d; want %d", sleeps, want)
 			}
-			requireOneFailedPush(t, p.hub.Location.HubPath, "records", fabriclayout.PushFailureGone)
+			requireOneFailedPush(t, p.hub.Location.HubPath, "records", fabricengine.PushFailureGone)
 			if len(p.fake.lines) != 1 {
 				t.Errorf("mails = %q; want one", p.fake.lines)
 			}
@@ -805,9 +706,8 @@ func TestPushFailureClasses(t *testing.T) {
 			gitkit.CommitFile(t, p.weftPath, "local.txt", "local\n", "local")
 			var sleeps int
 
-			_, err := fabricengine.PushPairAnchored(p.location, p.fake.options(countingBackoff(&sleeps, nil)), fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded})
-			if err == nil || !strings.Contains(err.Error(), "ended on origin") {
-				t.Fatalf("PushPairAnchored() error = %v; want one naming the ended entry, whose branch is left to its teardown", err)
+			if _, err := fabricengine.PushPairAnchored(p.location, p.fake.options(countingBackoff(&sleeps, nil)), fabricengine.LockWaitUnbounded); err != nil {
+				t.Fatalf("PushPairAnchored() error = %v; want nil, the ended entry's branch is left to its teardown", err)
 			}
 
 			if originHasBranch(t, p.hub.RecordsBare, p.weftBranch) {
@@ -829,9 +729,8 @@ func TestPushFailureClasses(t *testing.T) {
 			var sleeps int
 			backoff := countingBackoff(&sleeps, func(int) { p.endEntryOnOrigin("latepair") })
 
-			_, err := fabricengine.PushPairAnchored(p.location, p.fake.options(backoff), fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded})
-			if err == nil || !strings.Contains(err.Error(), "ended on origin") {
-				t.Fatalf("PushPairAnchored() error = %v; want one naming the ended entry", err)
+			if _, err := fabricengine.PushPairAnchored(p.location, p.fake.options(backoff), fabricengine.LockWaitUnbounded); err != nil {
+				t.Fatalf("PushPairAnchored() error = %v; want nil", err)
 			}
 
 			if sleeps != 1 {
@@ -851,7 +750,7 @@ func TestPushFailureClasses(t *testing.T) {
 			var sleeps int
 			backoff := countingBackoff(&sleeps, func(int) { gitkit.Git(t, p.weftPath, "remote", "set-url", "origin", realURL) })
 
-			if _, err := fabricengine.PushPairAnchored(p.location, p.fake.options(backoff), fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded}); err != nil {
+			if _, err := fabricengine.PushPairAnchored(p.location, p.fake.options(backoff), fabricengine.LockWaitUnbounded); err != nil {
 				t.Fatalf("PushPairAnchored() error = %v; want nil", err)
 			}
 
@@ -881,7 +780,7 @@ func TestPushFailureClasses(t *testing.T) {
 		f.originCommit(branch, "notes/up.md", "up\n", "upstream work")
 		f.endEntryOnOrigin("neve")
 
-		if _, err := fabricengine.CoalescePushRequest(fabriclayout.PushSpawn{WeftPath: weft}, fake.options(nil), fabriclayout.MachineNames{}); err != nil {
+		if _, err := fabricengine.CoalescePushRequest(fabricengine.PushSpawn{WeftPath: weft}, fake.options(nil)); err != nil {
 			t.Fatalf("CoalescePushRequest() error = %v; want nil", err)
 		}
 
@@ -922,7 +821,7 @@ func TestPushFailureClasses(t *testing.T) {
 		branch := f.boardBranch()
 		gitkit.CommitFile(t, board, "notes/a.md", "a\n", "board change")
 		f.originCommit(branch, "notes/up.md", "up\n", "upstream work")
-		boardLockPath, err := fabricengine.BoltLockPath(board, fabriclayout.BoardWriteLockFile)
+		boardLockPath, err := fabricengine.BoltLockPath(board, fabricengine.BoardWriteLockFile)
 		if err != nil {
 			t.Fatalf("locate the board lock: %v", err)
 		}
@@ -936,7 +835,7 @@ func TestPushFailureClasses(t *testing.T) {
 			t.Fatalf("Bolt.Push() with the board lock held error = %v; want nil", err)
 		}
 
-		requireOneFailedPush(t, f.hub.Location.HubPath, "bolt", fabriclayout.PushFailureDeferred)
+		requireOneFailedPush(t, f.hub.Location.HubPath, "bolt", fabricengine.PushFailureDeferred)
 		if got := bareBranchTip(t, f.hub.RecordsBare, branch); got != before {
 			t.Errorf("origin tip = %s; want it unchanged at %s", got, before)
 		}
@@ -1053,7 +952,7 @@ func TestPushFailureClasses(t *testing.T) {
 			_, err := opened.PushBranch(fake.options(countingBackoff(&sleeps, nil)))
 
 			var failed *fabricengine.PushFailedError
-			if !errors.As(err, &failed) || failed.Record.Class != fabriclayout.PushFailureNotFastForward || !failed.Record.Prime {
+			if !errors.As(err, &failed) || failed.Record.Class != fabricengine.PushFailureNotFastForward || !failed.Record.Prime {
 				t.Fatalf("PushBranch() error = %v; want a not-fast-forward *PushFailedError of the prime", err)
 			}
 			if sleeps != 0 {
@@ -1065,7 +964,7 @@ func TestPushFailureClasses(t *testing.T) {
 			if strings.Contains(err.Error(), "lym fabric push") {
 				t.Errorf("PushBranch() error = %q; want no `lym fabric push`, which leaves the prime's code branch unpushed", err)
 			}
-			requireOneFailedPush(t, f.hub.Location.HubPath, "code", fabriclayout.PushFailureNotFastForward)
+			requireOneFailedPush(t, f.hub.Location.HubPath, "code", fabricengine.PushFailureNotFastForward)
 		})
 
 		t.Run("RefusedForWantOfPermission", func(t *testing.T) {
@@ -1078,13 +977,13 @@ func TestPushFailureClasses(t *testing.T) {
 			_, err := opened.PushBranch(fake.options(nil))
 
 			var failed *fabricengine.PushFailedError
-			if !errors.As(err, &failed) || failed.Record.Class != fabriclayout.PushFailureAuth || !failed.Record.Prime || !errors.Is(err, gitrepo.ErrPushAuthRefused) {
+			if !errors.As(err, &failed) || failed.Record.Class != fabricengine.PushFailureAuth || !failed.Record.Prime || !errors.Is(err, gitrepo.ErrPushAuthRefused) {
 				t.Fatalf("PushBranch() error = %v; want an auth *PushFailedError of the prime wrapping ErrPushAuthRefused", err)
 			}
 			if want := fmt.Sprintf("`git push` in %s", prime); !strings.HasSuffix(err.Error(), want) {
 				t.Errorf("PushBranch() error = %q; want it to end naming %q", err, want)
 			}
-			requireOneFailedPush(t, f.hub.Location.HubPath, "code", fabriclayout.PushFailureAuth)
+			requireOneFailedPush(t, f.hub.Location.HubPath, "code", fabricengine.PushFailureAuth)
 		})
 	})
 }

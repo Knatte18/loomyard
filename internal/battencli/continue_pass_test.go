@@ -8,18 +8,18 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -27,9 +27,8 @@ import (
 // It also uses a temp dobby state and a pause covering the slug, and checks these outcomes:
 // a continue pass of a running Run-Shed run the state names runs no reconcile, no reopening and no pause refusal;
 // a run at Land, a run blocked at Run-Shed, a run with no status, a run the state does not name;
-// and a run with a full pass owed;
+// a run with a full pass owed, and a run with an origin-owed marker;
 // each of these refuses, naming `lym batten run <slug>`, with the continue-refused exit code.
-// A continue pass runs no catch-up and starts no pusher, whether it passes or refuses.
 func TestBattenPreRun_ContinuePass(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -47,6 +46,7 @@ func TestBattenPreRun_ContinuePass(t *testing.T) {
 		name      string
 		status    *shedengine.Status
 		dobbyRuns map[string]dobbyengine.RunState
+		marker    bool
 		// goneReads makes the receiver's re-adoption seam read the task worktree as gone.
 		goneReads bool
 		// goneErrors makes the receiver's re-adoption seam fail to read whether the task worktree is gone.
@@ -60,6 +60,7 @@ func TestBattenPreRun_ContinuePass(t *testing.T) {
 		{name: "a run the state does not name refuses", status: runShed(shedengine.StateRunning, battenrecipe.NameRunShed), dobbyRuns: map[string]dobbyengine.RunState{"other-slug": {}}, wantRefusal: "does not name it"},
 		{name: "a run with no state record refuses", status: runShed(shedengine.StateRunning, battenrecipe.NameRunShed), wantRefusal: "does not name it"},
 		{name: "a run with a full pass owed refuses", status: runShed(shedengine.StateRunning, battenrecipe.NameRunShed), dobbyRuns: map[string]dobbyengine.RunState{slug: {FullPassOwed: true}}, wantRefusal: "owes it a full pass"},
+		{name: "a run with an origin-owed marker refuses", status: runShed(shedengine.StateRunning, battenrecipe.NameRunShed), dobbyRuns: driven, marker: true, wantRefusal: "without origin"},
 		{name: "a run whose task worktree is gone refuses", status: runShed(shedengine.StateRunning, battenrecipe.NameRunShed), dobbyRuns: driven, goneReads: true, wantRefusal: "its task worktree is gone"},
 		{name: "a run whose task worktree cannot be read as present refuses", status: runShed(shedengine.StateRunning, battenrecipe.NameRunShed), dobbyRuns: driven, goneErrors: true, wantRefusal: "whether its task worktree is gone does not read"},
 	}
@@ -72,8 +73,6 @@ func TestBattenPreRun_ContinuePass(t *testing.T) {
 				t.Fatal(err)
 			}
 			c.continuePass = true
-			pusherStarts := 0
-			c.startPusher = func() { pusherStarts++ }
 			if tt.goneReads {
 				c.readopt.Gone = func(string) (bool, error) { return true, nil }
 			}
@@ -104,19 +103,23 @@ func TestBattenPreRun_ContinuePass(t *testing.T) {
 			}); err != nil {
 				t.Fatalf("pauserecord.Update: %v", err)
 			}
+			if tt.marker {
+				marker := shedrun.OriginOwedMarker(c.location, slug)
+				if err := os.MkdirAll(filepath.Dir(marker), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(marker, []byte("{}"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
 			if tt.status != nil {
 				writeStatus(t, c, *tt.status)
 			}
 
-			catchUps := 0
-			c.catchUp = func() (dobbyengine.CatchUpReport, error) {
-				catchUps++
-				return dobbyengine.CatchUpReport{}, nil
-			}
 			reconciles := 0
-			c.reconcile = func(string) (fabriclayout.OriginReport, error) {
+			c.reconcile = func(string) (fabricengine.OriginReport, error) {
 				reconciles++
-				return fabriclayout.OriginReport{}, nil
+				return fabricengine.OriginReport{}, nil
 			}
 			var commands []string
 			c.env.Setting = func(module, key string) (any, error) { return true, nil }
@@ -139,8 +142,8 @@ func TestBattenPreRun_ContinuePass(t *testing.T) {
 				if err != nil {
 					t.Fatalf("battenPreRun() = %v; want nil", err)
 				}
-				if reconciles != 0 || len(commands) != 0 || catchUps != 0 || pusherStarts != 0 {
-					t.Errorf("battenPreRun() ran the reconcile %d times, the catch-up %d times, commands %q and the pusher start %d times; want none", reconciles, catchUps, commands, pusherStarts)
+				if reconciles != 0 || len(commands) != 0 {
+					t.Errorf("battenPreRun() ran the reconcile %d times and commands %q; want neither", reconciles, commands)
 				}
 				return
 			}
@@ -156,51 +159,8 @@ func TestBattenPreRun_ContinuePass(t *testing.T) {
 			if got := passExitCode(err); got != dobbyengine.PassExitContinueRefused {
 				t.Errorf("passExitCode(%v) = %d; want %d", err, got, dobbyengine.PassExitContinueRefused)
 			}
-			if reconciles != 0 || len(commands) != 0 || catchUps != 0 || pusherStarts != 0 {
-				t.Errorf("a refused continue pass ran the reconcile %d times, the catch-up %d times, commands %q and the pusher start %d times; want none", reconciles, catchUps, commands, pusherStarts)
-			}
-		})
-	}
-}
-
-// TestBattenPreRun_ResumeStartsThePusher runs the pre-run over a found status with no --continue-pass.
-// It asserts a resume starts the pusher once, before the terminal window reopens,
-// and that a --no-reopen resume starts it once too.
-func TestBattenPreRun_ResumeStartsThePusher(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	tests := []struct {
-		name       string
-		noReopen   bool
-		wantEvents []string
-	}{
-		{name: "a resume starts the pusher before the reopening", wantEvents: []string{"pusher", "client-attached"}},
-		{name: "a no-reopen resume starts the pusher and reopens nothing", noReopen: true, wantEvents: []string{"pusher"}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			c := newFakeReceiver(t, nil)
-			c.noReopen = tt.noReopen
-			writeStatus(t, c, shedengine.Status{
-				CurrentProducer: battenrecipe.NameRunShed,
-				State:           shedengine.StateRunning,
-				History:         []shedengine.HistoryEntry{{Producer: battenrecipe.NameOpenWindow, Outcome: shedengine.Done}},
-			})
-			var events []string
-			c.startPusher = func() { events = append(events, "pusher") }
-			c.clientAttached = func() (bool, error) {
-				events = append(events, "client-attached")
-				return true, nil
-			}
-
-			if err := c.battenPreRun(context.Background()); err != nil {
-				t.Fatalf("battenPreRun() = %v; want nil", err)
-			}
-			if !slices.Equal(events, tt.wantEvents) {
-				t.Errorf("battenPreRun() events = %v; want %v", events, tt.wantEvents)
+			if reconciles != 0 || len(commands) != 0 {
+				t.Errorf("a refused continue pass ran the reconcile %d times and commands %q; want neither", reconciles, commands)
 			}
 		})
 	}

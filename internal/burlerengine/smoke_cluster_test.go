@@ -21,7 +21,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lenses"
@@ -124,7 +123,7 @@ func newClusterSmokeEngine(t *testing.T) (*burlerengine.Engine, *hubforge.Hub) {
 	}
 	// Every seat's edit directive is its engine's copy, so a seat naming no engine needs a default.
 	burlerGeom.DefaultEngine = "claude"
-	engine := burlerengine.New(seatengine.RunnerShuttle(runner), burlerGeom, cfg, fabriclayout.StencilsDir(h.Location.HubPath), "", nil)
+	engine := burlerengine.New(seatengine.RunnerShuttle(runner), burlerGeom, cfg, fabricengine.StencilsDir(h.Location.HubPath), "", nil)
 	return engine, h
 }
 

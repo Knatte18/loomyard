@@ -13,7 +13,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -181,8 +180,6 @@ func useShippedLayer(t *testing.T, json string) {
 }
 
 // TestShowAndPassagesReadTheShippedLayerFirst is not parallel: it replaces shippedStore, which every render reads.
-//
-//testtiming:keep pins the Show and Passages output of a prompt target under a shipped entry with the lym override on and off, which TestRender and TestOverrides do not assert
 func TestShowAndPassagesReadTheShippedLayerFirst(t *testing.T) {
 	tiergate.Require(t, 0)
 	useShippedLayer(t, `{"entries": [
@@ -227,76 +224,12 @@ func TestShowAndPassagesReadTheShippedLayerFirst(t *testing.T) {
 				t.Errorf("Show(claude-prompt) = %q, %v; want %q", shown, err, tt.wantPrompt)
 			}
 			passages, err := r.Passages(f.bolt, "claude", "")
-			if want := strings.Split(tt.wantPrompt, "\n\n"); err != nil || !slices.Equal(passageTexts(passages), want) {
+			if want := strings.Split(tt.wantPrompt, "\n\n"); err != nil || !slices.Equal(passages, want) {
 				t.Errorf("Passages(claude) = %q, %v; want %q", passages, err, want)
 			}
 			shown, err = r.Show(f.bolt, "claude-file", f.anchor)
 			if want := strings.Join([]string{Marker, shippedHeading, tt.wantFileText}, "\n\n") + "\n"; err != nil || shown != want {
 				t.Errorf("Show(claude-file) = %q, %v; want %q", shown, err, want)
-			}
-		})
-	}
-}
-
-// passageTexts returns the text of each passage in order.
-func passageTexts(passages []Passage) []string {
-	var texts []string
-	for _, passage := range passages {
-		texts = append(texts, passage.Text)
-	}
-	return texts
-}
-
-// TestRenderer_EntryKeys is not parallel: it replaces shippedStore, which every render reads.
-// It pins each passage's slug and engine key from Passages and FileEntries:
-// a single-engine target keys its entry to the engine, and a shared or engine-neutral target leaves the key empty.
-func TestRenderer_EntryKeys(t *testing.T) {
-	tiergate.Require(t, 0)
-	useShippedLayer(t, `{"entries": []}`)
-	f := newRenderFixture(t, Store{Entries: []Entry{
-		entryFor("claude-only", "claude prompt", 1, "claude-prompt"),
-		entryFor("codex-only", "codex prompt", 2, "codex-prompt"),
-		entryFor("orch-only", "orch prompt", 3, "orch-prompt"),
-		entryFor("shared", "shared prompt", 4, "agents-prompt"),
-		entryFor("double", "double prompt", 5, "agents-prompt", "claude-prompt"),
-		entryFor("claude-file", "claude file", 6, "claude-file"),
-		entryFor("codex-file", "codex file", 7, "codex-file"),
-		entryFor("shared-file", "shared file", 8, "agents-file"),
-	}})
-	r := Renderer{}
-	tests := []struct {
-		name string
-		got  func() ([]Passage, error)
-		want []Passage
-	}{
-		{
-			"PassagesClaude", func() ([]Passage, error) { return r.Passages(f.bolt, "claude", "") },
-			[]Passage{{"claude-only", "claude prompt", "claude"}, {"shared", "shared prompt", ""}, {"double", "double prompt", ""}},
-		},
-		{
-			"PassagesCodex", func() ([]Passage, error) { return r.Passages(f.bolt, "codex", "") },
-			[]Passage{{"codex-only", "codex prompt", "codex"}, {"shared", "shared prompt", ""}, {"double", "double prompt", ""}},
-		},
-		{
-			"PassagesClaudeOrch", func() ([]Passage, error) { return r.Passages(f.bolt, "claude", "orch") },
-			[]Passage{{"claude-only", "claude prompt", "claude"}, {"orch-only", "orch prompt", ""}, {"shared", "shared prompt", ""}, {"double", "double prompt", ""}},
-		},
-		{
-			"FileEntriesClaude", func() ([]Passage, error) { return r.FileEntries(f.bolt, "claude") },
-			[]Passage{{"claude-file", "claude file", "claude"}, {"shared-file", "shared file", ""}},
-		},
-		{
-			"FileEntriesCodex", func() ([]Passage, error) { return r.FileEntries(f.bolt, "codex") },
-			[]Passage{{"codex-file", "codex file", "codex"}, {"shared-file", "shared file", ""}},
-		},
-		{"FileEntriesUnknownEngine", func() ([]Passage, error) { return r.FileEntries(f.bolt, "gemini") }, nil},
-		{"FileEntriesNoEngine", func() ([]Passage, error) { return r.FileEntries(f.bolt, "") }, nil},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := tt.got()
-			if err != nil || !slices.Equal(got, tt.want) {
-				t.Errorf("%s = %v, %v; want %v", tt.name, got, err, tt.want)
 			}
 		})
 	}
@@ -719,7 +652,7 @@ func TestRender(t *testing.T) {
 	t.Run("HeldBoltLockFailsTheRender", func(t *testing.T) {
 		t.Parallel()
 		f := newRenderFixture(t, claudeStore)
-		boltLockPath, err := fabricengine.BoltLockPath(f.bolt, fabriclayout.BoardWriteLockFile)
+		boltLockPath, err := fabricengine.BoltLockPath(f.bolt, fabricengine.BoardWriteLockFile)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -743,7 +676,7 @@ func TestRender(t *testing.T) {
 		if err := os.Remove(filepath.Join(f.bolt, FileName)); err != nil {
 			t.Fatal(err)
 		}
-		boltLockPath, err := fabricengine.BoltLockPath(f.bolt, fabriclayout.BoardWriteLockFile)
+		boltLockPath, err := fabricengine.BoltLockPath(f.bolt, fabricengine.BoardWriteLockFile)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -819,16 +752,15 @@ func TestRender(t *testing.T) {
 			t.Errorf("Show(agents-prompt) = %v; want a refusal naming the targets it renders into and lym heddle show", err)
 		}
 		claude, err := r.Passages(f.bolt, "claude", "")
-		if err != nil || !slices.Equal(passageTexts(claude), []string{"prompt one", "prompt two", "shared text", "shared and orch text"}) {
+		if err != nil || !slices.Equal(claude, []string{"prompt one", "prompt two", "shared text", "shared and orch text"}) {
 			t.Errorf("Passages(claude) = %v, %v", claude, err)
 		}
 		claudeOrch, err := r.Passages(f.bolt, "claude", "orch")
-		glossary := strings.TrimRight(Glossary(), "\n")
-		if err != nil || !slices.Equal(passageTexts(claudeOrch), []string{glossary, "prompt one", "prompt two", "shared text", "shared and orch text"}) {
+		if err != nil || !slices.Equal(claudeOrch, []string{"prompt one", "prompt two", "shared text", "shared and orch text"}) {
 			t.Errorf("Passages(claude, orch) = %v, %v; want each text once", claudeOrch, err)
 		}
 		codex, err := r.Passages(f.bolt, "codex", "")
-		if err != nil || !slices.Equal(passageTexts(codex), []string{"shared text", "shared and orch text"}) {
+		if err != nil || !slices.Equal(codex, []string{"shared text", "shared and orch text"}) {
 			t.Errorf("Passages(codex) = %v, %v; want the two agents-prompt texts", codex, err)
 		}
 		if f.anchorHas("CLAUDE.local.md") || f.anchorHas(".heddle") {
@@ -844,29 +776,28 @@ func TestRender(t *testing.T) {
 			entryFor("house", "house rule", 1, "claude-prompt"),
 		}})
 		r := Renderer{}
-		glossary := strings.TrimRight(Glossary(), "\n")
 		tests := []struct {
 			name   string
 			engine string
 			role   string
 			want   []string
 		}{
-			{"ClaudeOrch", "claude", "orch", []string{glossary, "house rule", "orch rule", "shared rule"}},
-			{"ClaudeNumberedOrch", "claude", "orch-2", []string{glossary, "house rule", "orch rule", "shared rule"}},
-			{"CodexOrch", "codex", "orch", []string{glossary, "orch rule", "shared rule"}},
+			{"ClaudeOrch", "claude", "orch", []string{"house rule", "orch rule", "shared rule"}},
+			{"ClaudeNumberedOrch", "claude", "orch-2", []string{"house rule", "orch rule", "shared rule"}},
+			{"CodexOrch", "codex", "orch", []string{"orch rule", "shared rule"}},
 			{"ClaudeWriter", "claude", "writer", []string{"house rule", "shared rule"}},
 			{"ClaudeOrchLookalike", "claude", "orchard", []string{"house rule", "shared rule"}},
 			{"CodexWriter", "codex", "writer", nil},
 		}
 		for _, tt := range tests {
 			got, err := r.Passages(f.bolt, tt.engine, tt.role)
-			if err != nil || !slices.Equal(passageTexts(got), tt.want) {
+			if err != nil || !slices.Equal(got, tt.want) {
 				t.Errorf("%s: Passages(%q, %q) = %v, %v; want %v", tt.name, tt.engine, tt.role, got, err, tt.want)
 			}
 		}
 		shown, err := r.Show(f.bolt, "orch-prompt", f.anchor)
-		if err != nil || shown != glossary+"\n\norch rule\n\nshared rule" {
-			t.Errorf("Show(orch-prompt) = %q, %v; want the glossary then the two orch passages", shown, err)
+		if err != nil || shown != "orch rule\n\nshared rule" {
+			t.Errorf("Show(orch-prompt) = %q, %v; want the two orch passages", shown, err)
 		}
 	})
 }

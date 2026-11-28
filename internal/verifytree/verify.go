@@ -105,34 +105,10 @@ type Result struct {
 	// RunnerCrash is set when the failed command's log holds the gate's runner crash line; the status stays StatusFailed.
 	// It means every failed run, its one rerun included, crashed its test runner on a signal, so no test judged the code.
 	RunnerCrash bool
-	// MemoryPressure is set when the failed command's log holds the gate's memory pressure line;
-	// the status stays StatusFailed.
-	// It means the memory guard stopped runs, their one rerun included, for a memory limit other load filled,
-	// and no failed run judged the code.
-	MemoryPressure bool
-	// Detail names a shell start failure, the tier and timeout of a timed-out run, or the runs of an unjudged result.
+	// Detail names a shell start failure, the tier and timeout of a timed-out run, or the crashed runs of a runner crash.
 	Detail string
 	// Log is this run's own verify log, empty for a dirty or skipped result.
 	Log string
-}
-
-// Unjudged reports whether the failed command judged no code, so no change to the code mends it and no fixer gets it.
-func (r Result) Unjudged() bool { return r.RunnerCrash || r.MemoryPressure }
-
-// UnjudgedStop says what stopped an unjudged result, as words that follow a possessive such as "the verify command's".
-func (r Result) UnjudgedStop() string {
-	if r.MemoryPressure {
-		return "run was stopped for a memory limit other load filled, as was its one rerun"
-	}
-	return "test runner crashed in its run and its one rerun"
-}
-
-// UnjudgedAdvice is the clause that closes the way forward of running an unjudged result's command again.
-func (r Result) UnjudgedAdvice() string {
-	if r.MemoryPressure {
-		return "the other load has to end before that run"
-	}
-	return "when the runner crashes again, find the runtime's own fault in the output"
 }
 
 // record is the verified-tree record Verify writes after a pass: one entry per command.
@@ -331,7 +307,7 @@ func parsePorcelainZ(out string) []string {
 // Once the log is written, whatever the exit, every log beyond the newest verifyLogKeep is pruned.
 // The log the landing failure record names is kept.
 // A prune failure is logged and leaves the result unchanged.
-// The command is one `lym gate test --wait` call, or such calls joined by `&&`, or one `lym gate red-first` call.
+// The command is one `lym gate test --wait` call, or such calls joined by `&&`.
 // Those calls take their own slots and bound themselves, so Verify takes no slot and applies no timeout.
 // The pass writes the record only when HEAD still names the tree and commit the run started on,
 // so a commit that lands mid-run costs the next call a re-run rather than recording a tree the command did not run on.
@@ -342,7 +318,6 @@ func parsePorcelainZ(out string) []string {
 // Detail names the tier and its timeout, and ExitCode stays the command's own exit code.
 // One whose log holds no timeout line but the gate's runner crash line is marked RunnerCrash instead.
 // Detail names the crashed runs.
-// One with neither line but the gate's memory pressure line is marked MemoryPressure, and Detail names the stopped runs.
 // A cancelled ctx is a returned error and writes no record.
 // With a site.Hold, a covering pause holds Verify before its command,
 // and it stops a running command at the pause's grace end.
@@ -364,7 +339,7 @@ func Verify(ctx context.Context, p Paths, site Site, command string) (Result, er
 			return Result{Status: StatusDirty, Dirty: dirty}, nil
 		}
 
-		tree, err := HeadTree(p.Worktree)
+		tree, err := headTree(p.Worktree)
 		if err != nil {
 			return Result{}, err
 		}
@@ -464,15 +439,12 @@ func runAndRecord(ctx context.Context, p Paths, site Site, command, tree, commit
 		if !failed.TimedOut {
 			failed.RunnerCrash, failed.Detail = runnerCrashDetail(logPath)
 		}
-		if !failed.TimedOut && !failed.RunnerCrash {
-			failed.MemoryPressure, failed.Detail = memoryPressureDetail(logPath)
-		}
 		return failed, false, nil
 	}
 
 	// A commit that landed mid-run means the command may have read a tree other than the one it started on,
 	// so the pass is not recorded.
-	afterTree, err := HeadTree(p.Worktree)
+	afterTree, err := headTree(p.Worktree)
 	if err != nil {
 		return Result{}, false, err
 	}
@@ -540,14 +512,14 @@ func tierTimeoutDetail(logPath string) (bool, string) {
 	if !ok {
 		return false, ""
 	}
-	detail := fmt.Sprintf("gate %s outlived its %s and was killed", tier, gateslot.TimeoutKeyName(tier))
+	detail := fmt.Sprintf("gate %s outlived its timeout_min and was killed", tier)
 	for _, line := range strings.Split(string(data), "\n") {
 		_, after, found := strings.Cut(line, tier+" exceeded timeout_min ")
 		if !found {
 			continue
 		}
 		timeout, _, _ := strings.Cut(after, ";")
-		detail = fmt.Sprintf("gate %s exceeded %s %s and was killed", tier, gateslot.TimeoutKeyName(tier), strings.TrimSpace(timeout))
+		detail = fmt.Sprintf("gate %s exceeded timeout_min %s and was killed", tier, strings.TrimSpace(timeout))
 		break
 	}
 	return true, detail
@@ -567,22 +539,8 @@ func runnerCrashDetail(logPath string) (bool, string) {
 	return true, "gate test runner crashed with no failing test: " + runs
 }
 
-// memoryPressureDetail reports whether the log at logPath holds the gate's memory pressure line.
-// When it does, the detail names the stopped runs.
-func memoryPressureDetail(logPath string) (bool, string) {
-	data, err := os.ReadFile(logPath)
-	if err != nil {
-		return false, ""
-	}
-	runs, ok := gateslot.FindMemoryPressureStop(string(data))
-	if !ok {
-		return false, ""
-	}
-	return true, "gate test stopped for a memory limit other load filled: " + runs
-}
-
-// HeadTree returns HEAD's tree SHA in worktree, so a caller can tell whether the tree a verify judged is still HEAD's.
-func HeadTree(worktree string) (string, error) {
+// headTree returns HEAD's tree SHA in worktree.
+func headTree(worktree string) (string, error) {
 	out, err := gitexec.Run([]string{"rev-parse", "HEAD^{tree}"}, worktree)
 	if err != nil {
 		return "", fmt.Errorf("verifytree: resolve HEAD tree in %s: %w", worktree, err)

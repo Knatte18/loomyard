@@ -14,7 +14,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hibernateengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -44,7 +43,7 @@ const (
 // hibernateDir returns the hub's board-level hibernate directory.
 // It holds the request, its lock and the whole text of a notice too long for one creel line.
 func hibernateDir(location *lymcwd.Location) string {
-	return filepath.Join(fabriclayout.HubScratchDir(location.HubPath), lymdirs.HibernateDirName)
+	return filepath.Join(fabricengine.HubScratchDir(location.HubPath), lymdirs.HibernateDirName)
 }
 
 // RequestPath is the hibernate request file of the hub location belongs to.
@@ -65,18 +64,6 @@ func NewDobbyCarrier(prime *lymcwd.Location) (*hibernateengine.Carrier, error) {
 		return nil, fmt.Errorf("create the hibernate directory: %w", err)
 	}
 	return hibernateengine.NewCarrier(deps), nil
-}
-
-// PauseHub pauses the hub of location and confirms the pause with the engine's own pause-and-confirm.
-// The entry it adds records caller as its caller label;
-// requester is the strand the confirmation leaves out when it is the orch's.
-// It serves a caller that needs the hub quiet on this machine before it takes the hub down.
-func PauseHub(location *lymcwd.Location, caller, requester string) (hibernateengine.HubPause, error) {
-	deps, err := hubDeps(location)
-	if err != nil {
-		return hibernateengine.HubPause{}, err
-	}
-	return hibernateengine.PauseAndConfirm(deps, hibernateengine.PauseConfirmRequest{Caller: caller, Requester: requester})
 }
 
 // hubDeps fills the engine's Deps for the hub location belongs to.
@@ -142,6 +129,10 @@ func hubDeps(location *lymcwd.Location) (hibernateengine.Deps, error) {
 			return tenderengine.Lift(deps, ref)
 		},
 		Reconcile: func() (hibernateengine.WakeReconcile, error) { return wakeReconcile(prime) },
+		EndOwned: func(slug string) error {
+			_, err := tendercli.EndOwnedElsewhere(prime, slug)
+			return err
+		},
 		ExemptNetwork: func(ref tenderengine.EntryRef) func() {
 			return pauserecord.SetGateExempt(ref.Scope, ref.PausedAt)
 		},

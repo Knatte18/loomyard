@@ -1,4 +1,4 @@
-// diff.go lists the `.go` files that differ between the base and the new side, and reads both sides of each.
+// diff.go lists the `.go` files that differ between the base and the worktree, and reads both sides of each through git.
 
 package commentlint
 
@@ -20,16 +20,13 @@ type fileChange struct {
 	basePath string
 }
 
-// changedGoFiles lists the `.go` files of worktree that differ from baseRevision, sorted by path.
-// With workingTree it diffs the working tree against baseRevision and adds the untracked files;
-// otherwise it diffs HEAD against baseRevision.
+// changedGoFiles lists the `.go` files of worktree that differ from the base, sorted by path.
+// An empty base diffs the working tree against HEAD and adds the untracked files; otherwise it diffs base against HEAD.
 // A deleted file is not listed, and a rename keeps its old path as the base side.
-// An untracked file that baseRevision holds keeps its own path as the base side.
-// Only the lines it changed count as new.
-func changedGoFiles(worktree, baseRevision string, workingTree bool) ([]fileChange, error) {
-	diffArgs := []string{"diff", "--name-status", "-z", "--find-renames", baseRevision}
-	if !workingTree {
-		diffArgs = append(diffArgs, "HEAD")
+func changedGoFiles(worktree, base string) ([]fileChange, error) {
+	diffArgs := []string{"diff", "--name-status", "-z", "--find-renames", "HEAD"}
+	if base != "" {
+		diffArgs = []string{"diff", "--name-status", "-z", "--find-renames", base, "HEAD"}
 	}
 	diffOutput, err := gitexec.Run(diffArgs, worktree)
 	if err != nil {
@@ -37,25 +34,15 @@ func changedGoFiles(worktree, baseRevision string, workingTree bool) ([]fileChan
 	}
 	changes := parseNameStatus(diffOutput)
 
-	if workingTree {
+	if base == "" {
 		untrackedOutput, err := gitexec.Run([]string{"ls-files", "--others", "--exclude-standard", "-z"}, worktree)
 		if err != nil {
 			return nil, fmt.Errorf("commentlint: list the untracked files: %w", err)
 		}
 		for _, path := range strings.Split(untrackedOutput, "\x00") {
-			if !strings.HasSuffix(path, ".go") {
-				continue
+			if path != "" {
+				changes = append(changes, fileChange{path: path})
 			}
-			//gitexec:raw cat-file -e signals a missing path through its exit code, which is the answer sought here
-			_, _, exitCode, err := gitexec.RunGit([]string{"cat-file", "-e", baseRevision + ":" + path}, worktree)
-			if err != nil {
-				return nil, fmt.Errorf("commentlint: look for %s at %s: %w", path, baseRevision, err)
-			}
-			change := fileChange{path: path}
-			if exitCode == 0 {
-				change.basePath = path
-			}
-			changes = append(changes, change)
 		}
 	}
 
@@ -102,17 +89,21 @@ func parseNameStatus(output string) []fileChange {
 }
 
 // readChange returns the base text and the new text of one changed file.
-// The base side comes from git at baseRevision;
-// the new side comes from the working tree with workingTree, and from HEAD otherwise.
+// The base side comes from git at the base commit, or at HEAD when the base is empty;
+// the new side comes from the working tree when the base is empty, and from HEAD otherwise.
 // A file with no base side has an empty base text.
-func readChange(worktree, baseRevision string, workingTree bool, change fileChange) (baseText, newText string, err error) {
+func readChange(worktree, base string, change fileChange) (baseText, newText string, err error) {
+	baseRevision := base
+	if base == "" {
+		baseRevision = "HEAD"
+	}
 	if change.basePath != "" {
 		baseText, err = gitexec.Run([]string{"show", baseRevision + ":" + change.basePath}, worktree)
 		if err != nil {
 			return "", "", fmt.Errorf("commentlint: read %s at %s: %w", change.basePath, baseRevision, err)
 		}
 	}
-	if workingTree {
+	if base == "" {
 		data, err := os.ReadFile(filepath.Join(worktree, filepath.FromSlash(change.path)))
 		if err != nil {
 			return "", "", fmt.Errorf("commentlint: read %s: %w", change.path, err)
