@@ -7,6 +7,7 @@ package fabricengine_test
 import (
 	"encoding/json"
 	"errors"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -158,8 +159,8 @@ func recordedFileWrite(rec *fabricengine.Mutations, hubPath, path string) bool {
 
 // TestRegenerateHubWorkspace covers the folder list, skip exits, mutation record, lock and failures.
 // The top level is not parallel.
-// The lock-ordering, folder-naming and log-capture cases touch process-global state:
-// a test hook, the pair folder namer and the logger output.
+// The lock-ordering, folder-naming, content-hook and log-capture cases touch process-global state:
+// a test hook, the pair folder namer, the workspace-content hook and the logger output.
 // They run before the parallel cases are released, so no regeneration runs beside them.
 func TestRegenerateHubWorkspace(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -183,6 +184,83 @@ func TestRegenerateHubWorkspace(t *testing.T) {
 		requireFolderNames(t, path, prime, "Bolt", "b", "P1: m", "plain")
 		requireFolderNames(t, fabricengine.BeamWorkspacePath(h.Location, "b"), "b", prime, "Bolt", "m")
 	})
+
+	t.Run("CarriesNoExtraMemberWithoutAContentHook", func(t *testing.T) {
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+		hubforge.AddPairWith(t, h, "b", beamAddOptions)
+
+		path, _ := regenerateHub(t, h)
+
+		for _, file := range []string{path, fabricengine.BeamWorkspacePath(h.Location, "b")} {
+			if _, ok := workspaceDocument(t, file)["tasks"]; ok {
+				t.Errorf("%s carries a tasks key with no hook installed", filepath.Base(file))
+			}
+		}
+	})
+
+	t.Run("HandsTheContentHookEachFilesBeamAndAnchorAndSplicesItsMembers", func(t *testing.T) {
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "backend"})
+		hubforge.AddPairWith(t, h, "b", beamAddOptions)
+		anchors := map[string]string{}
+		t.Cleanup(fabricengine.InstallWorkspaceContent(func(hubPath, beam, anchorPath string) map[string]json.RawMessage {
+			if hubPath != h.Path {
+				t.Errorf("hook hub path = %q; want %q", hubPath, h.Path)
+			}
+			anchors[beam] = anchorPath
+			return map[string]json.RawMessage{"extra": json.RawMessage(`"for ` + beam + `"`)}
+		}))
+
+		path, _ := regenerateHub(t, h)
+
+		want := map[string]string{
+			"":  filepath.Join(h.PrimeWorktree(), "backend"),
+			"b": filepath.Join(h.PairCodeWorktree("b"), "backend"),
+		}
+		if !maps.Equal(anchors, want) {
+			t.Errorf("hook beams and anchors = %v; want %v", anchors, want)
+		}
+		for file, wantExtra := range map[string]string{path: "for ", fabricengine.BeamWorkspacePath(h.Location, "b"): "for b"} {
+			if got := workspaceDocument(t, file)["extra"]; got != wantExtra {
+				t.Errorf("%s extra = %v; want %q", filepath.Base(file), got, wantExtra)
+			}
+		}
+	})
+
+	for _, member := range []string{"lym.generated", "folders", "settings"} {
+		t.Run("WritesNoFileWhenTheContentHookReturnsABeamMemberNamed_"+member, func(t *testing.T) {
+			h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+			hubforge.AddPairWith(t, h, "b", beamAddOptions)
+			path, _ := regenerateHub(t, h)
+			beamPath := fabricengine.BeamWorkspacePath(h.Location, "b")
+			before := map[string]string{}
+			for _, file := range []string{path, beamPath} {
+				data, err := os.ReadFile(file)
+				if err != nil {
+					t.Fatalf("read %s: %v", file, err)
+				}
+				before[file] = string(data)
+			}
+			// A new folder changes the hub file's bytes, so a write of it would show.
+			addRawWorktree(t, h, "added")
+			t.Cleanup(fabricengine.InstallWorkspaceContent(func(_, beam, _ string) map[string]json.RawMessage {
+				if beam == "" {
+					return nil
+				}
+				return map[string]json.RawMessage{member: json.RawMessage("1")}
+			}))
+
+			_, err := fabricengine.RegenerateHubWorkspace(fabricengine.NewMutations(h.Path), h.Location)
+
+			if err == nil || !strings.Contains(err.Error(), `"`+member+`"`) {
+				t.Errorf("RegenerateHubWorkspace error = %v; want one naming the member %q", err, member)
+			}
+			for file, want := range before {
+				if got, _ := os.ReadFile(file); string(got) != want {
+					t.Errorf("%s changed by a refused regeneration:\n%s", filepath.Base(file), got)
+				}
+			}
+		})
+	}
 
 	t.Run("ListsFolderAddedWhileWaitingForTheLock", func(t *testing.T) {
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -705,6 +783,20 @@ func writeSettingsAt(t *testing.T, dir, content string) {
 	if err := os.WriteFile(filepath.Join(dir, ".vscode", "settings.json"), []byte(content), 0o644); err != nil {
 		t.Fatalf("write settings: %v", err)
 	}
+}
+
+// workspaceDocument returns the top-level members of the workspace file at path.
+func workspaceDocument(t *testing.T, path string) map[string]any {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	var document map[string]any
+	if err := json.Unmarshal(data, &document); err != nil {
+		t.Fatalf("%s is not valid JSON: %v\n%s", path, err, data)
+	}
+	return document
 }
 
 // workspaceSettings returns the settings the workspace file at path carries.
