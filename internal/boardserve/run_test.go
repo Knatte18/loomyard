@@ -96,7 +96,8 @@ func newLifecycle(t *testing.T) *lifecycle {
 		Paths:     Paths(t.TempDir()),
 		Board:     boardengine.New(boardengine.Config{Path: boardDir, Readme: "Home.md", DesignPrefix: "proposal-", SkipGit: true, Clock: l.clock.Now, Types: []boardengine.Label{{Name: "bug"}}}),
 		BoardPath: boardDir,
-		LockWait:  10 * time.Millisecond,
+		// A free lock is taken at once; a short wait could run out on a loaded machine before the first try.
+		LockWait:  deadline,
 		IdleBound: testIdleBound,
 		PollBound: time.Hour,
 		Log:       l.log,
@@ -267,6 +268,7 @@ func testRunSecondServer(t *testing.T) {
 	held, err := lock.AcquireWriteLock(l.opts.Paths.Lock)
 	must(t, err)
 	defer func() { must(t, held.Release()) }()
+	l.opts.LockWait = 10 * time.Millisecond
 
 	if err := Run(context.Background(), l.opts); !errors.Is(err, ErrRunning) {
 		t.Errorf("Run() = %v; want ErrRunning", err)
