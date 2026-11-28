@@ -23,6 +23,14 @@
 // The reconcile drops a starting profile's arras block that the hub left as shipped.
 // A `defaults.arras` naming a profile left with no arras block would then keep the file from loading.
 // A one-time reinterpretation drops that default.
+// Each profile holding a `tapestry` block also holds a `jacquard` block.
+// The two hold the same settings, except that the jacquard block holds no `loom.discussion`.
+// The reason is that a jacquard run holds tapestry's rows after Discussion.
+// The reconcile would give a starting profile the template's jacquard block whatever the hub tuned in its tapestry block.
+// A one-time reinterpretation therefore sets each profile's jacquard block from its tapestry block.
+// It also sets `defaults.jacquard` to the profile `defaults.tapestry` names.
+// It drops that default when the profile holds no jacquard block.
+// Once written, a derived block that differs from `profiles.template-base` is the hub's own on later reconciles.
 // A round count of 0 turns a perch off, since its Bouncer then settles approved with no review round.
 // A darn run has no Discussion or Plan review,
 // so its Code-Review reviewer also judges whether the run did what the entry asks.

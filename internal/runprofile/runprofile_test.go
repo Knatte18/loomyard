@@ -45,7 +45,7 @@ func TestLoad(t *testing.T) {
 		{
 			name:         "no file reads the template's ladder, docs and defaults",
 			wantNames:    []string{"docs", "light", "solid", "speed", "wide"},
-			wantDefaults: map[string]string{"tapestry": "solid", "motif": "solid", "darn": "light", "pawl": "light", "raddle": "light"},
+			wantDefaults: map[string]string{"tapestry": "solid", "motif": "solid", "jacquard": "solid", "darn": "light", "pawl": "light", "raddle": "light"},
 		},
 		{
 			name:         "a removed starting profile stays removed",
@@ -100,6 +100,7 @@ func TestLoad(t *testing.T) {
 // sampler.code_review is on from light up, and sampler has no default profile.
 // Only the darn block sets the Code-Review reviewer, to opus[medium].
 // Each profile's motif block holds its tapestry block's Discussion perch and nothing else.
+// Each profile's jacquard block holds its tapestry block's Plan and Code perches and no Discussion perch.
 // No profile holds an arras block, since the arras recipe is not offered.
 //
 //testtiming:keep pins the template's per-block loom.code.reviewer_model values, which the lookup tests over a fixture file cannot see
@@ -128,7 +129,7 @@ func TestTemplateLadder(t *testing.T) {
 		darnCode               int
 		solo                   []string
 	}{
-		{"speed", 0, 0, 1, 0, []string{"tapestry"}},
+		{"speed", 0, 0, 1, 0, []string{"tapestry", "jacquard"}},
 		{"light", 1, 1, 1, 1, nil},
 		{"solid", 2, 2, 1, 2, nil},
 		{"wide", 3, 2, 1, 3, nil},
@@ -169,6 +170,18 @@ func TestTemplateLadder(t *testing.T) {
 			samplerLoom := sampler["loom"].(map[string]any)
 			got["sampler code"] = areaRounds(samplerLoom, "code")
 			want["sampler code"] = perch(tt.darnCode)
+			jacquard, err := profiles.Settings(tt.profile, "jacquard")
+			if err != nil {
+				t.Fatal(err)
+			}
+			jacquardLoom := jacquard["loom"].(map[string]any)
+			got["jacquard code"] = areaRounds(jacquardLoom, "code")
+			got["jacquard plan"] = areaRounds(jacquard["tapestry"], "plan")
+			want["jacquard code"] = perch(tt.code)
+			want["jacquard plan"] = perch(tt.plan)
+			if _, held := jacquardLoom["discussion"]; held || len(jacquard) != 2 {
+				t.Errorf("Settings(%s, jacquard) = %v; want the loom and tapestry modules only, with no loom.discussion", tt.profile, jacquard)
+			}
 			if !reflect.DeepEqual(got, want) {
 				t.Errorf("Settings(%s) rounds = %v; want %v", tt.profile, got, want)
 			}
@@ -194,7 +207,7 @@ func TestTemplateLadder(t *testing.T) {
 			if !wantReview && sampler["sampler"] != nil {
 				t.Errorf("Settings(%s, sampler) sampler = %v; want no sampler key, leaving code_review false", tt.profile, sampler["sampler"])
 			}
-			blockKeys := map[string]map[string]any{"tapestry": tapestry["loom"].(map[string]any), "darn": darnKeys, "pawl": pawlKeys, "sampler": samplerLoom}
+			blockKeys := map[string]map[string]any{"tapestry": tapestry["loom"].(map[string]any), "jacquard": jacquardLoom, "darn": darnKeys, "pawl": pawlKeys, "sampler": samplerLoom}
 			for block, keys := range blockKeys {
 				code := keys["code"].(map[string]any)
 				fan, present := code["reviewer_fan"]

@@ -2,7 +2,8 @@
 # Each top-level key but defaults is a profile name, and its value holds one block per recipe it configures;
 # a raddle block sets loom.raddle.auto_approve, which tells a raddle run to file its proposal without waiting for the operator's approval, and which a run whose recipe rows hold a split perch never reads;
 # a block has the shape of a board task's run_settings: module name to that module's config keys;
-# a tapestry block sets the plan perch's keys under the tapestry module and the other perches' keys under loom.
+# a tapestry block sets the plan perch's keys under the tapestry module and the other perches' keys under loom;
+# a jacquard block holds its profile's tapestry block but loom.discussion, since a jacquard run has no Discussion.
 # A task names a profile in its board entry's profile field, or takes its recipe's entry under defaults when it names none;
 # batten's Seed-Child writes the block of the recipe the task runs into the pair's local config, with the task's own run_settings layered on top.
 # Each perch's hard cap is its rounds plus one, so `lym loom circling continue` can grant one more round.
@@ -19,12 +20,16 @@
 defaults:
   tapestry: solid
   motif: solid
+  jacquard: solid
   darn: light
   pawl: light
   raddle: light
 speed:
   tapestry:
     loom: {discussion: {max_bounces: 0, hard_max_bounces: 1}, code: {max_bounces: 1, hard_max_bounces: 2, reviewer_fan: ""}}
+    tapestry: {plan: {max_bounces: 0, hard_max_bounces: 1}}
+  jacquard:
+    loom: {code: {max_bounces: 1, hard_max_bounces: 2, reviewer_fan: ""}}
     tapestry: {plan: {max_bounces: 0, hard_max_bounces: 1}}
   motif:
     loom: {discussion: {max_bounces: 0, hard_max_bounces: 1}}
@@ -39,6 +44,9 @@ speed:
 light:
   tapestry:
     loom: {discussion: {max_bounces: 1, hard_max_bounces: 2}, code: {max_bounces: 1, hard_max_bounces: 2}}
+    tapestry: {plan: {max_bounces: 1, hard_max_bounces: 2}}
+  jacquard:
+    loom: {code: {max_bounces: 1, hard_max_bounces: 2}}
     tapestry: {plan: {max_bounces: 1, hard_max_bounces: 2}}
   motif:
     loom: {discussion: {max_bounces: 1, hard_max_bounces: 2}}
@@ -55,6 +63,9 @@ solid:
   tapestry:
     loom: {discussion: {max_bounces: 2, hard_max_bounces: 3}, code: {max_bounces: 1, hard_max_bounces: 2}}
     tapestry: {plan: {max_bounces: 2, hard_max_bounces: 3}}
+  jacquard:
+    loom: {code: {max_bounces: 1, hard_max_bounces: 2}}
+    tapestry: {plan: {max_bounces: 2, hard_max_bounces: 3}}
   motif:
     loom: {discussion: {max_bounces: 2, hard_max_bounces: 3}}
   darn:
@@ -69,6 +80,9 @@ solid:
 wide:
   tapestry:
     loom: {discussion: {max_bounces: 3, hard_max_bounces: 4}, code: {max_bounces: 1, hard_max_bounces: 2}}
+    tapestry: {plan: {max_bounces: 2, hard_max_bounces: 3}}
+  jacquard:
+    loom: {code: {max_bounces: 1, hard_max_bounces: 2}}
     tapestry: {plan: {max_bounces: 2, hard_max_bounces: 3}}
   motif:
     loom: {discussion: {max_bounces: 3, hard_max_bounces: 4}}

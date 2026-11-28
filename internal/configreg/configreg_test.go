@@ -45,6 +45,31 @@ func TestLookup_BeamCarriesThePullRequestModesReinterpretationAfterThePerTaskOne
 	}
 }
 
+// TestLookup_ProfilesCarriesTheJacquardBlocksReinterpretationAfterTheArrasOne pins the profiles reinterpretations.
+// The jacquard blocks' carry runs last, so it judges the defaults the arras drop left.
+// Dropping it gives a tuned profile's jacquard runs the template's values instead of the hub's tapestry ones.
+//
+//testtiming:keep pins the order of the profiles module's Reinterpretations entries, which no walk test reads
+func TestLookup_ProfilesCarriesTheJacquardBlocksReinterpretationAfterTheArrasOne(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	module, ok := Lookup("profiles")
+	if !ok {
+		t.Fatal("Lookup(profiles) found = false; want true")
+	}
+	var ids []string
+	for _, change := range module.Reinterpretations {
+		ids = append(ids, change.ID)
+		if change.Rewrite == nil {
+			t.Errorf("reinterpretation %q has no Rewrite; want one", change.ID)
+		}
+	}
+	want := []string{"profiles-pull-request-modes", "profiles-arras-default-dropped", "profiles-jacquard-blocks"}
+	if !slices.Equal(ids, want) {
+		t.Errorf("Lookup(profiles).Reinterpretations IDs = %q; want %q", ids, want)
+	}
+}
+
 // TestNames pins the registry's ORDER and shape: every `lym config` surface renders it in registry order,
 // so an out-of-sort or repeated entry is user-visible, and every module carries a template and a load check.
 // Membership is pinned by TestRegistration_MatchesDeclarers.
