@@ -5,6 +5,7 @@ package boardengine
 
 import (
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -25,14 +26,14 @@ func TestBoard_SetStatusPushed(t *testing.T) {
 	const slug = "alpha"
 	done := StatusDone
 
-	openBoard := func(t *testing.T, f *ownerFixture) *Board {
+	openBoard := func(t *testing.T, f *ownerFixture, backoffSleep func(time.Duration)) *Board {
 		t.Helper()
 		cfg, err := LoadConfig(configengine.Dirs{Board: f.boardDir}, "board")
 		if err != nil {
 			t.Fatalf("load the board config: %v", err)
 		}
 		cfg.Path = f.boardDir
-		cfg.BackoffSleep = func(time.Duration) {}
+		cfg.BackoffSleep = backoffSleep
 		return New(ApplySkipEnv(cfg))
 	}
 	statusOf := func(t *testing.T, tasks []Task) string {
@@ -75,6 +76,8 @@ func TestBoard_SetStatusPushed(t *testing.T) {
 		wantErr error
 		// wantOriginStatus is the status origin holds afterwards.
 		wantOriginStatus string
+		// wantBackoff is the delays the push waits out between its attempts.
+		wantBackoff []time.Duration
 	}{
 		{
 			name:             "PushesBeforeItReturns",
@@ -86,7 +89,8 @@ func TestBoard_SetStatusPushed(t *testing.T) {
 			setup: func(t *testing.T, f *ownerFixture) {
 				gitkit.Git(t, f.boardDir, "remote", "set-url", "--push", "origin", unreachableOrigin)
 			},
-			wantErr: ErrOwnerOriginUnreachable,
+			wantErr:     ErrOwnerOriginUnreachable,
+			wantBackoff: []time.Duration{time.Second, 2 * time.Second, 4 * time.Second},
 		},
 	}
 	for _, tt := range rows {
@@ -94,10 +98,14 @@ func TestBoard_SetStatusPushed(t *testing.T) {
 			t.Parallel()
 			f := newOwnerFixture(t, "neve")
 			tt.setup(t, f)
-			board := openBoard(t, f)
+			var delays []time.Duration
+			board := openBoard(t, f, func(delay time.Duration) { delays = append(delays, delay) })
 
 			err := board.SetStatusPushed(slug, &done)
 
+			if !slices.Equal(delays, tt.wantBackoff) {
+				t.Errorf("SetStatusPushed() backoff delays = %v; want %v", delays, tt.wantBackoff)
+			}
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("SetStatusPushed() error = %v; want %v", err, tt.wantErr)
 			}
@@ -116,7 +124,7 @@ func TestBoard_SetStatusPushed(t *testing.T) {
 	t.Run("SkipPushCommitsOnly", func(t *testing.T) {
 		t.Setenv("BOARD_SKIP_PUSH", "1")
 		f := newOwnerFixture(t, "neve")
-		board := openBoard(t, f)
+		board := openBoard(t, f, nil)
 
 		if err := board.SetStatusPushed(slug, &done); err != nil {
 			t.Fatalf("SetStatusPushed() error = %v; want nil", err)

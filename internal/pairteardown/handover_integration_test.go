@@ -187,7 +187,9 @@ func TestHandOverOwnedElsewhere(t *testing.T) {
 
 	const slug = "owned-elsewhere-run"
 	handOver := func(f *handOverFixture, push pairteardown.RunPush) error {
-		push.BackoffSleep = skipBackoff
+		if push.BackoffSleep == nil {
+			push.BackoffSleep = skipBackoff
+		}
 		return pairteardown.HandOverOwnedElsewhere(f.h.Location, slug, f.entry.Machine, push)
 	}
 	archiveTagsOn := func(t *testing.T, bare string) string {
@@ -286,10 +288,20 @@ func TestHandOverOwnedElsewhere(t *testing.T) {
 			t.Fatalf("write the pre-receive hook: %v", err)
 		}
 
-		err := handOver(f, pairteardown.RunPush{})
+		notify, lines := recordNotices()
+		sleeps := 0
+		primeBranch := gitkit.CurrentBranch(t, f.h.PrimeRecords())
+
+		err := handOver(f, pairteardown.RunPush{Notifier: notify, BackoffSleep: func(time.Duration) { sleeps++ }})
 
 		if err == nil || !strings.Contains(err.Error(), "push its owed commits") {
 			t.Errorf("HandOverOwnedElsewhere() error = %v; want one naming the push step", err)
+		}
+		if sleeps == 0 {
+			t.Errorf("backoff sleeps = 0; want the retries of the declined push to sleep through BackoffSleep")
+		}
+		if want := "records branch " + primeBranch + " failed"; len(*lines) != 1 || !strings.Contains((*lines)[0], want) {
+			t.Errorf("notices = %q; want one holding %q", *lines, want)
 		}
 		for name, bare := range map[string]string{"code": f.h.CodeBare, "records": f.h.RecordsBare} {
 			if tags := archiveTagsOn(t, bare); tags != "" {
@@ -550,11 +562,12 @@ func TestPushRun_HandsOverOnATakeover(t *testing.T) {
 		f.plantRunRecord(t, branch, slug, shedengine.Status{State: shedengine.StateRunning}, &f.entry)
 		return f, branch, head
 	}
-	runPrime := func(f *handOverFixture, named string) error {
-		notify, _ := recordNotices()
+	// runPrime pushes the prime's records and returns the notice lines the push posted.
+	runPrime := func(f *handOverFixture, named string) ([]string, error) {
+		notify, lines := recordNotices()
 		push := pairteardown.RunPush{LockWait: fabriclayout.LockWaitUnbounded, BackoffSleep: skipBackoff, Notifier: notify}
 		_, err := pairteardown.PushRun(f.h.Location, f.h.Location, named, push)
-		return err
+		return *lines, err
 	}
 	// originTransitions returns the subjects of the transition commits on origin's prime records branch, oldest first.
 	originTransitions := func(t *testing.T, f *handOverFixture, branch string) []string {
@@ -581,10 +594,14 @@ func TestPushRun_HandsOverOnATakeover(t *testing.T) {
 		t.Parallel()
 		f, branch, primeHead := primeAhead(t)
 
-		if err := runPrime(f, ""); err != nil {
+		lines, err := runPrime(f, "")
+		if err != nil {
 			t.Fatalf("PushRun(prime) error = %v; want nil", err)
 		}
 
+		if want := "the run " + slug + " was handed over"; len(lines) != 1 || !strings.Contains(lines[0], want) {
+			t.Errorf("notices = %q; want one holding %q", lines, want)
+		}
 		f.requireMark(t)
 		f.requireProcessEnded(t)
 		requirePairGone(t, f)
@@ -606,7 +623,7 @@ func TestPushRun_HandsOverOnATakeover(t *testing.T) {
 		t.Parallel()
 		f, branch, _ := primeAhead(t)
 
-		err := runPrime(f, slug)
+		_, err := runPrime(f, slug)
 
 		f.requireHandedOver(t, err)
 		if got := originTransitions(t, f, branch); !slices.Equal(got, wantKeptOnly) {
@@ -627,7 +644,7 @@ func TestPushRun_HandsOverOnATakeover(t *testing.T) {
 		}
 		before := gitkit.RevParse(t, f.h.RecordsBare, "refs/heads/"+branch)
 
-		err := runPrime(f, "")
+		_, err := runPrime(f, "")
 
 		if !errors.Is(err, fabricengine.ErrTakeoverPassOwed) || !fabricengine.IsPushOwed(err) {
 			t.Fatalf("PushRun(prime) error = %v; want one wrapping ErrTakeoverPassOwed that IsPushOwed reads owed", err)
@@ -642,7 +659,7 @@ func TestPushRun_HandsOverOnATakeover(t *testing.T) {
 		if err := os.Remove(hook); err != nil {
 			t.Fatalf("remove the pre-receive hook: %v", err)
 		}
-		if err := runPrime(f, ""); err != nil {
+		if _, err := runPrime(f, ""); err != nil {
 			t.Fatalf("second PushRun(prime) error = %v; want nil", err)
 		}
 		f.requireMark(t)

@@ -325,6 +325,8 @@ func TestSetOwners(t *testing.T) {
 		wantSubstr string
 		// wantKept requires the owner commit to stay in the local board, ahead of origin.
 		wantKept bool
+		// wantBackoff is the delays the push to origin waits out between its attempts.
+		wantBackoff []time.Duration
 	}{
 		{
 			name:       "EmptyMachineIsRefused",
@@ -346,9 +348,10 @@ func TestSetOwners(t *testing.T) {
 			setup: func(t *testing.T, f *ownerFixture) func() {
 				return func() { gitkit.Git(t, f.boardDir, "remote", "set-url", "origin", unreachableOrigin) }
 			},
-			machine:  "neve",
-			wantIs:   ErrOwnerOriginUnreachable,
-			wantKept: true,
+			machine:     "neve",
+			wantIs:      ErrOwnerOriginUnreachable,
+			wantKept:    true,
+			wantBackoff: []time.Duration{time.Second, 2 * time.Second, 4 * time.Second},
 		},
 		{
 			name: "DivergedPull",
@@ -384,8 +387,13 @@ func TestSetOwners(t *testing.T) {
 				t.Fatalf("read board.json: %v", err)
 			}
 
-			req := OwnerRequest{Machine: tt.machine, Slugs: []string{"beamer"}, BeforePush: beforePush, Sleep: failOnSleep(t), BackoffSleep: func(time.Duration) {}}
+			var delays []time.Duration
+			recordDelay := func(delay time.Duration) { delays = append(delays, delay) }
+			req := OwnerRequest{Machine: tt.machine, Slugs: []string{"beamer"}, BeforePush: beforePush, Sleep: failOnSleep(t), BackoffSleep: recordDelay}
 			got, err := SetOwners(f.boardDir, req)
+			if !slices.Equal(delays, tt.wantBackoff) {
+				t.Errorf("SetOwners() backoff delays = %v; want %v", delays, tt.wantBackoff)
+			}
 			if err == nil {
 				t.Fatalf("SetOwners() error = nil; want a refusal")
 			}
