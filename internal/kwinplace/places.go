@@ -201,6 +201,8 @@ func removeUndecodablePlaces(path string) error {
 
 // updatePlaces returns cur as a report leaves it.
 // The placed window is settled where it landed, and windows moved by hand are rehomed.
+// A home of the placed window that is no longer a desktop is forgotten,
+// so a window placed without taking a home is left with none.
 // An entry that names a newer window of the placed one's worktree is left unchanged.
 // The order keys of disturbed desktops are renumbered, and the entries of removed worktrees are dropped.
 func updatePlaces(cur Places, update ReportUpdate) Places {
@@ -225,9 +227,12 @@ func updatePlaces(cur Places, update ReportUpdate) Places {
 	}
 	if placed.PID == update.PID {
 		placed.SettledBy, placed.Output, placed.RecordedAt = update.PID, update.Output, update.Now
+		if update.HomeGone {
+			placed.Home, placed.OrderKey = "", 0
+		}
 		if update.Landed != "" {
 			placed.LastDesktop = update.Landed
-			if (placed.Home == "" || update.HomeGone) && !update.Fallback && !update.Overflowed {
+			if placed.Home == "" && !update.Fallback && !update.Overflowed {
 				rehome(places, &placed, update.Landed)
 			}
 		}

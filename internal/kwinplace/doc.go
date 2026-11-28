@@ -24,6 +24,8 @@
 // The planner is pure.
 // From a snapshot, the remembered places and the mode, it chooses the desktop, the grid and the window order.
 // A window goes back to its home desktop; one without a home is counted from its parent window's desktop.
+// A home that is no longer a desktop is forgotten once the window is placed,
+// and the window takes the desktop it lands on as its home unless it was placed on a stand-in anchor.
 // A full desktop is never a target, and only the target desktop's windows are rearranged.
 //
 // A placement records its window, waits for it to appear, and then waits for its parent window's place.

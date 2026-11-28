@@ -121,6 +121,13 @@ func TestUpdatePlaces(t *testing.T) {
 			want: map[string]remembered{"p": at("d1", 0)},
 		},
 		{
+			name:   "GoneHomeIsForgottenUnderAFallbackAnchor",
+			cur:    map[string]remembered{"p": unsettled(at("d9", 2))},
+			placed: "p", landed: "d1", homeGone: true, fallback: true,
+			seen: []SeenWindow{seenAt("p", "d1", 0)},
+			want: map[string]remembered{"p": {last: "d1", settled: true}},
+		},
+		{
 			name:   "MinimizedWindowKeepsItsKey",
 			cur:    map[string]remembered{"a": at("d1", 0), "b": at("d1", 1), "c": at("d1", 2)},
 			placed: "c", landed: "d1",
@@ -196,6 +203,12 @@ func TestUpdatePlaces(t *testing.T) {
 			cur:    map[string]remembered{"p": unsettled(at("d1", 2))},
 			placed: "p",
 			want:   map[string]remembered{"p": at("d1", 2)},
+		},
+		{
+			name:   "GoneHomeIsForgottenWithNoLandedDesktop",
+			cur:    map[string]remembered{"p": unsettled(at("d9", 2))},
+			placed: "p", homeGone: true,
+			want: map[string]remembered{"p": {last: "d9", settled: true}},
 		},
 	}
 	for _, tt := range tests {
