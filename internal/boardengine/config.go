@@ -43,6 +43,9 @@ type Config struct {
 	// Clock is the time a write stamps entry dates with and renders the README's ages as of;
 	// nil is the wall clock.
 	Clock func() time.Time `yaml:"-"`
+	// BackoffSleep sleeps one delay of the push backoff between the retries of a write's push to origin;
+	// nil sleeps for real.
+	BackoffSleep func(time.Duration) `yaml:"-"`
 	// ParentOf names the slug of an entry's parent pair, "" for the prime.
 	// Reads and writes both resolve an effective owner from it;
 	// nil reads every parent as the prime.

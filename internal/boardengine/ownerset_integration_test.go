@@ -384,7 +384,8 @@ func TestSetOwners(t *testing.T) {
 				t.Fatalf("read board.json: %v", err)
 			}
 
-			got, err := SetOwners(f.boardDir, OwnerRequest{Machine: tt.machine, Slugs: []string{"beamer"}, BeforePush: beforePush, Sleep: failOnSleep(t)})
+			req := OwnerRequest{Machine: tt.machine, Slugs: []string{"beamer"}, BeforePush: beforePush, Sleep: failOnSleep(t), BackoffSleep: func(time.Duration) {}}
+			got, err := SetOwners(f.boardDir, req)
 			if err == nil {
 				t.Fatalf("SetOwners() error = nil; want a refusal")
 			}

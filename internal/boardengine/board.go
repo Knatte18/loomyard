@@ -26,7 +26,9 @@ type Board struct {
 	skipGit   bool
 	skipPush  bool
 	now       func() time.Time
-	parentOf  func(slug string) (string, error)
+	// backoffSleep sleeps one delay of the push backoff of a pushed write; nil sleeps for real.
+	backoffSleep func(time.Duration)
+	parentOf     func(slug string) (string, error)
 	// pairExists is copied onto every store the board builds.
 	pairExists func(slug string) bool
 	// validateSlug is applied to the task and project slugs a write makes.
@@ -50,6 +52,7 @@ func New(cfg Config) *Board {
 		skipGit:      cfg.SkipGit,
 		skipPush:     cfg.SkipPush,
 		now:          now,
+		backoffSleep: cfg.BackoffSleep,
 		parentOf:     cfg.ParentOf,
 		pairExists:   cfg.PairExists,
 		validateSlug: cfg.ValidateSlug,
@@ -242,7 +245,7 @@ func (b *Board) SetStatus(idOrSlug any, status *string) error {
 // An unreachable origin returns an error wrapping ErrOwnerOriginUnreachable; a push that failed leaves the commit local.
 // BOARD_SKIP_GIT writes board.json with no pull, commit or push, and BOARD_SKIP_PUSH commits with no pull or push.
 func (b *Board) SetStatusPushed(slug string, status *string) error {
-	opts := fabricengine.SyncOptions{SkipGit: b.skipGit, SkipPush: b.skipPush}
+	opts := fabricengine.SyncOptions{SkipGit: b.skipGit, SkipPush: b.skipPush, BackoffSleep: b.backoffSleep}
 	bolt := fabricengine.NewBolt(b.boardPath)
 	write := func() ([]string, error) {
 		store := NewStore(b.boardPath)

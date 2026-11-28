@@ -94,6 +94,8 @@ type OwnerRequest struct {
 	ParentOf func(slug string) (string, error)
 	// Sleep waits out the retry delay after a held lock deferred the push; nil sleeps.
 	Sleep func(time.Duration)
+	// BackoffSleep sleeps one delay of the push backoff between the retries of the push to origin; nil sleeps.
+	BackoffSleep func(time.Duration)
 	// BeforePush runs once between the commit and the first push; nil in production.
 	BeforePush func()
 }
@@ -137,7 +139,7 @@ func SetOwners(boardDir string, req OwnerRequest) (OwnerWrite, error) {
 	}
 
 	cfg := ApplySkipEnv(Config{Path: boardDir})
-	opts := fabricengine.SyncOptions{SkipGit: cfg.SkipGit, SkipPush: cfg.SkipPush}
+	opts := fabricengine.SyncOptions{SkipGit: cfg.SkipGit, SkipPush: cfg.SkipPush, BackoffSleep: req.BackoffSleep}
 	bolt := fabricengine.NewBolt(boardDir)
 
 	var written []string

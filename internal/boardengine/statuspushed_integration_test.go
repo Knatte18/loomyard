@@ -6,6 +6,7 @@ package boardengine
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
@@ -31,6 +32,7 @@ func TestBoard_SetStatusPushed(t *testing.T) {
 			t.Fatalf("load the board config: %v", err)
 		}
 		cfg.Path = f.boardDir
+		cfg.BackoffSleep = func(time.Duration) {}
 		return New(ApplySkipEnv(cfg))
 	}
 	statusOf := func(t *testing.T, tasks []Task) string {
