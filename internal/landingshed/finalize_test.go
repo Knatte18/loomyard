@@ -507,6 +507,27 @@ func TestFinalize_RecordLandingFailureKeepsDone(t *testing.T) {
 	}
 }
 
+// TestFinalize_HeadReadFailureFailsAWiredLanding pins that a wired landing needs the head after the parent-side merge.
+// A failed read of that head fails the call, and no landing is recorded.
+func TestFinalize_HeadReadFailureFailsAWiredLanding(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	headFailure := errors.New("no head")
+	var landed []string
+	deps := newTestDeps(t)
+	deps.LandLocally = func(tip string) error { landed = append(landed, tip); return nil }
+	merger := &recordingParentMerger{results: []mergeCallResult{{result: fabriclayout.MergeResult{Committed: true}}}, headSHA: "landed1", headErr: headFailure, preMergeHeadSHA: stringPointer("parent0")}
+	fz := &Finalize{deps: deps, resolver: &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}, guard: newParentGuard(deps), parentOpener: func() (parentMerger, error) { return merger, nil }}
+
+	if _, _, err := fz.Call(context.Background()); !errors.Is(err, headFailure) {
+		t.Errorf("Call() error = %v; want it to wrap %v", err, headFailure)
+	}
+	if len(landed) != 0 {
+		t.Errorf("LandLocally tips = %q; want no call", landed)
+	}
+}
+
 // TestFinalize_RecordsWhetherTheLandedDiffIsEmpty pins the empty-diff flag handed to RecordLanding.
 // It is set only when the landing changed no code path against the parent head merged into the task worktree.
 // A failed path read, or no merged head held, records the landing as not empty.

@@ -170,7 +170,11 @@ type Deps struct {
 	//
 	// Nil is never called, since a nil OwnedElsewhere never answers elsewhere.
 	HandOver func(owner, subject string) error
-	// LandLocally records the landing whose parent head is tip and hands its push to the parent's pusher.
+	// LandLocally records the run's landing with tip as its tip, and hands its push to the parent's pusher.
+	// tip is the parent's head right after the parent-side merge.
+	// On a pass whose merge commits, that head is the run's own landing commit.
+	// On a re-run over a parent that already holds the run's work, it is the parent's head.
+	// A standing landing of the run is rewritten with that tip.
 	// It commits the run's status records, and holds that commit back from origin until the landing's push is made.
 	// The finalize step calls it after the parent-side merge, on every pass that lands, unless PushSkipped is set.
 	// A returned error is returned from Call.

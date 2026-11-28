@@ -919,7 +919,8 @@ func parentLedgerKey(parent runpusher.Target) pushledger.Key {
 }
 
 // landLocally returns the seam that records the landing of the run slug, whose task pair is l, on its parent branch.
-// It commits the run's status records and records the landing with the parent head and that commit.
+// The seam takes the landing's tip from its caller.
+// It commits the run's status records and records the landing with that tip and the records commit it holds back.
 // It then asks the pushers of the parent branch and of the pair to push at once.
 // The pair's push lock is held across the commit and the record,
 // so no push of the pair sends the commit before it is held back.
@@ -946,6 +947,7 @@ func landLocally(l *lymcwd.Location, slug string) func(tip string) error {
 // It holds the pair's push lock across both.
 // A run recorded again keeps holding its earlier records commit while origin lacks it.
 func recordHeldLanding(l *lymcwd.Location, slug string, parent runpusher.Target, tip string) error {
+	// Read before the status commit, so a failed read leaves no commit that no landing holds back.
 	branch, err := gitrepo.New(parent.Location.WorktreePath()).CurrentBranch()
 	if err != nil {
 		return fmt.Errorf("read the branch of the parent pair %s: %w", parent.Location.WorktreePath(), err)
@@ -971,6 +973,15 @@ func recordHeldLanding(l *lymcwd.Location, slug string, parent runpusher.Target,
 	if err != nil {
 		return err
 	}
+	return writeLedgerLanding(parent, branch, slug, tip, records)
+}
+
+// writeLedgerLanding writes the push-ledger landing of the run slug on branch, the parent branch.
+// parent is the parent pair's pusher target.
+// tip is the commit the landing records on branch and records is the records commit it holds back from origin.
+// A standing landing of the run is replaced.
+// Every value is an argument, so a caller may record a run other than its own.
+func writeLedgerLanding(parent runpusher.Target, branch, slug, tip, records string) error {
 	now := time.Now()
 	return runpusher.RecordLanding(parent, pushledger.Landing{Run: slug, Tip: tip, RecordsCommit: records, ParentBranch: branch, At: now}, now)
 }

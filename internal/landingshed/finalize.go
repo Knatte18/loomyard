@@ -566,8 +566,11 @@ func (fz *Finalize) landUnderLock(ctx context.Context, front bool, summary summa
 		if mergeErr == nil {
 			// The landing has happened on the local parent, and its push is handed to the parent's pusher.
 			// A beam's spent pull request record is dropped once that hand-off answers Done.
-			fz.recordLanding(parentHandle)
-			end := fz.pushParent(ctx, parentHandle, notice)
+			// The parent's head right after the merge goes to both landing records.
+			// On a pass whose merge commits, it is the run's own landing commit.
+			landed, headErr := parentHandle.HeadSHA()
+			fz.recordLanding(landed, headErr)
+			end := fz.pushParent(ctx, landed, headErr, notice)
 			if end.err == nil && end.outcome == shedengine.Done && landing.dropBeamRecord {
 				fz.dropBeamRecord()
 			}
@@ -953,17 +956,18 @@ func (fz *Finalize) pushRecords() *ending {
 	return nil
 }
 
-// recordLanding hands the parent pair's head, the commit the landing put on the parent branch, to `Deps.RecordLanding`.
+// recordLanding hands commit, the parent's head right after the parent-side merge, to `Deps.RecordLanding`.
+// On a pass whose merge commits, it is the run's own landing commit.
 // With it goes whether the landed diff is empty.
 // It then hands the landed diff's size to `Deps.RecordLandedSize`.
-// A failed head read or record is logged and never changes the verdict.
-func (fz *Finalize) recordLanding(parentHandle parentMerger) {
+// A non-nil headErr is the failed read of that commit.
+// It is logged and records nothing; a failed record is logged too, and neither changes the verdict.
+func (fz *Finalize) recordLanding(commit string, headErr error) {
 	if fz.deps.RecordLanding == nil && fz.deps.RecordLandedSize == nil {
 		return
 	}
-	commit, err := parentHandle.HeadSHA()
-	if err != nil {
-		logger.Warn("landingshed: read the landing commit failed", "producer", finalizeName, "cause", err)
+	if headErr != nil {
+		logger.Warn("landingshed: read the landing commit failed", "producer", finalizeName, "cause", headErr)
 		return
 	}
 	if fz.deps.RecordLanding != nil {
@@ -1024,14 +1028,17 @@ func (fz *Finalize) keepParentHead(parentHandle parentMerger) {
 // pushParent hands the push of the parent branch the merge just landed on to that parent's pusher, and reports Done,
 // so no failed push fails a landing.
 // It first reads whether another machine owns the run now, and one that does takes the run over and halts.
-// It records the parent's head as the landing through `Deps.LandLocally`.
+// It records landed as the landing's tip through `Deps.LandLocally`.
+// landed is the parent's head right after the parent-side merge.
+// On a pass whose merge commits, that head is the run's own landing commit.
+// A non-nil headErr is the failed read of landed, which fails the call only when that seam is reached.
 // It writes no board `done`, since that write is made once origin holds the landing.
 // With a nil `Deps.LandLocally` it records no landing and commits the run's records.
 // Under `Deps.PushSkipped` it records no landing, commits the run's records and writes the board `done` itself.
 // The hand-off is the same whether the landing went through a pull request merged on GitHub or not.
 // On its Done return only, a non-empty notice is queued through `Deps.Notify`;
 // a failure there is a logged warning that never changes the verdict.
-func (fz *Finalize) pushParent(ctx context.Context, parentHandle parentMerger, notice string) *ending {
+func (fz *Finalize) pushParent(ctx context.Context, landed string, headErr error, notice string) *ending {
 	if end := fz.handedOverStop(ctx); end != nil {
 		return end
 	}
@@ -1045,11 +1052,10 @@ func (fz *Finalize) pushParent(ctx context.Context, parentHandle parentMerger, n
 			}
 		}
 	} else {
-		tip, err := parentHandle.HeadSHA()
-		if err != nil {
-			return fail(ctx, finalizeName, fmt.Errorf("landingshed: %s: read the head of parent branch %q: %w", finalizeName, fz.deps.ParentBranch, err))
+		if headErr != nil {
+			return fail(ctx, finalizeName, fmt.Errorf("landingshed: %s: read the head of parent branch %q: %w", finalizeName, fz.deps.ParentBranch, headErr))
 		}
-		if err := fz.deps.LandLocally(tip); err != nil {
+		if err := fz.deps.LandLocally(landed); err != nil {
 			return fail(ctx, finalizeName, fmt.Errorf("landingshed: %s: record the landing on parent branch %q: %w", finalizeName, fz.deps.ParentBranch, err))
 		}
 	}

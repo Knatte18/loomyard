@@ -464,3 +464,51 @@ func TestLandLocally(t *testing.T) {
 		t.Errorf("landLocally() from the prime = %v; want a refusal naming a way forward", err)
 	}
 }
+
+// TestWriteLedgerLanding_AChainOfOwnTipsReadsAsOwed lands three runs on the prime as a chain of landing commits.
+// Each run's ledger landing carries its own landing commit, and a run recorded again keeps that tip.
+func TestWriteLedgerLanding_AChainOfOwnTipsReadsAsOwed(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	f := newParentFixture(t)
+	slugs := []string{"one", "two", "three"}
+	tips, records := map[string]string{}, map[string]string{}
+	for _, slug := range slugs {
+		f.addRun(slug, "", false)
+	}
+	for _, slug := range slugs {
+		tips[slug] = f.merge(slug, f.h.PrimeWorktree())
+		records[slug] = gitkit.CommitFile(t, f.h.PairRecordsSibling(slug), "finalize.txt", slug+"\n", "finalize records")
+	}
+	target := runpusher.LandingTarget(f.h.Location)
+	pairOne := f.location("one")
+	aheadByOwed := parentAheadByOwed(pairOne)
+	requireAheadByOwed := func(when string, want bool) {
+		t.Helper()
+		if got, err := aheadByOwed(); err != nil || got != want {
+			t.Errorf("parentAheadByOwed() %s = %v, %v; want %v", when, got, err, want)
+		}
+	}
+	for _, slug := range slugs {
+		if err := writeLedgerLanding(target, f.branch, slug, tips[slug], records[slug]); err != nil {
+			t.Fatalf("writeLedgerLanding(%s) = %v; want nil", slug, err)
+		}
+	}
+	requireAheadByOwed("with every landing commit recorded", true)
+
+	f.atFinalize("one")
+	if err := landLocally(pairOne, "one")(tips["one"]); err != nil {
+		t.Fatalf("landLocally(one) = %v; want nil", err)
+	}
+	requireAheadByOwed("after run one is recorded again", true)
+	landings := f.entry(pushledger.LandingKey).Landings
+	if len(landings) != len(slugs) {
+		t.Fatalf("landings = %+v; want one per run", landings)
+	}
+	for _, landing := range landings {
+		if landing.Tip != tips[landing.Run] || landing.RecordsCommit != records[landing.Run] || landing.ParentBranch != f.branch {
+			t.Errorf("landing = %+v; want run %s at its own tip %s holding %s on %s", landing, landing.Run, tips[landing.Run], records[landing.Run], f.branch)
+		}
+	}
+}
