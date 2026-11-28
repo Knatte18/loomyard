@@ -14,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -64,6 +65,8 @@ func TestCloneHub_ShortnameRecordLifecycle(t *testing.T) {
 		t.Fatalf("first CloneAndWire() error = %v; want nil", err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(first.HubPath) })
+	// A reset refuses a hub holding records commits origin lacks, so origin takes them first.
+	gitkit.Git(t, filepath.Join(first.HubPath, "life-warp-weft"), "push", "-q", "origin", "--all")
 	if first.Shortname != "tst" || !first.ShortnameRecorded {
 		t.Errorf("first clone Shortname = %q, ShortnameRecorded = %v; want %q, true", first.Shortname, first.ShortnameRecorded, "tst")
 	}

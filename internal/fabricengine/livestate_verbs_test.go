@@ -1009,12 +1009,13 @@ func cloneHubResetRealHubCase() VerbCase {
 		Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabriclayout.Mutations, error) {
 			tb.Helper()
 			// The hub's anchor marker is committed on the prime's weft branch and not pushed,
-			// so the re-clone names the anchor again.
+			// so the re-clone discards that commit and names the anchor again.
 			res, err := fabriccli.CloneAndWire(f.ResetCwd, fabriclayout.CloneOptions{
-				WeftURL: f.ResetWeftURL,
-				WarpURL: f.ResetWarpURL,
-				Subpath: h.Anchor,
-				Reset:   true,
+				WeftURL:     f.ResetWeftURL,
+				WarpURL:     f.ResetWarpURL,
+				Subpath:     h.Anchor,
+				Reset:       true,
+				DiscardWork: true,
 			})
 			return res.Mutated(), err
 		},

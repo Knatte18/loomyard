@@ -571,7 +571,7 @@
 // Pushing it unleased could replace another hub's board.
 // A clone killed after its seed push leaves origin holding the seed.
 // The refusal therefore fetches and reads origin's board first.
-// Origin holding no board names a `--reset` clone.
+// Origin holding no board names a `--reset --discard-work` clone, which discards the unpushed seed.
 // Origin holding a board that shares history with this one names the upstream settings.
 // Origin holding an unrelated board, or this board holding no commits, names a join.
 //
@@ -595,16 +595,30 @@
 // A board origin holds at another tip is another hub's: it is left alone and the way forward is a join.
 // A clone killed after its records store and before its Bolt checkout leaves a hub no verb finishes.
 // `RefuseHubWithoutBolt` refuses it naming the `--reset` clone that replaces it.
+// When the stores hold work origin lacks and nothing uses the hub, that clone takes `--discard-work`,
+// and the refusal names the work and the move that keeps it.
+// For a hub in use it names what uses the hub and the ways past that, since the clone is refused until then.
 // For a one-repository hub it names the join, for an origin holding the board, and the seed, for an origin holding none.
 // A records store whose layout cannot be read is named as one-repository, and the refusal carries that error.
 // `CloneHub` names the same re-clone for any existing hub a clone did not finish that holds no work origin lacks;
 // for a one-repository hub that is the join alone.
 // A hub that already exists whole is never named for `--reset`: the way forward is working in it or moving it aside.
 // The move aside carries the repair of the moved hub's worktree links.
-// `--reset` refuses a hub holding work origin lacks.
-// Such work is a pair's worktree or an unfinished teardown.
-// It is also uncommitted changes, a stash or a commit of the prime code store.
-// The records store is not read, since a seed stopped before its push leaves commits there for `--reset` to replace.
+// `--reset` refuses a hub holding work origin lacks, and names that work.
+// A pair's worktree or an unfinished teardown uses the hub, and no flag lets `--reset` remove it.
+// The rest is the work the hub's stores hold: the prime code store, the prime's records store and the Bolt checkout.
+// In each it is uncommitted or untracked changes and ignored files;
+// in the code store and the records store also a stash and commits origin lacks, the board's branches included;
+// in the Bolt checkout also the commits its HEAD alone holds.
+// Every ignored path counts, since git cannot tell output from work, except links and what lym writes itself.
+// lym writes its never-tracked directories, and in the prime the warp exclude list's files and the editor config.
+// In the Bolt checkout it skips the board's render manifest and the board lock files an earlier layout left at its root.
+// Other lock files left there are still named.
+// A skipped file is skipped whole, so an operator's own keys in the editor or agent settings are removed unnamed.
+// So is whatever else the operator put on the warp exclude list.
+// A store that cannot be read refuses `--reset`, with or without `--discard-work`, naming the move aside.
+// `--discard-work` accepts the loss of the stores' work, and a refusal over that work alone names it.
+// A clone that stopped before its push leaves its own commits in the records store, so its replacement takes the flag.
 //
 // **Platform verification: Linux only.**
 // Fabric is written cross-platform,

@@ -202,6 +202,7 @@ func TestCloneHub_OldOrderInvocationIsRefused(t *testing.T) {
 // The refusals are: a warp URL that disagrees with the recorded binding; the old-order bootstrap guard;
 // a --subpath that disagrees with the recorded anchor; or a --subpath absent from the warp.
 // A sentinel file written into the hub proves it survives, since a removed hub takes the file with it.
+// Each reset passes DiscardWork, so it gets past the work a bare CloneHub leaves to the refusal under test.
 func TestCloneHub_ResetRefusalKeepsExistingHub(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -240,9 +241,10 @@ func TestCloneHub_ResetRefusalKeepsExistingHub(t *testing.T) {
 		sentinel := plantSentinel(t, first.HubPath)
 
 		_, err = fabricengine.CloneHub(cloneParent, fabriclayout.CloneOptions{
-			WeftURL: filepath.ToSlash(weftBare),
-			WarpURL: filepath.ToSlash(suppliedWarpBare),
-			Reset:   true,
+			WeftURL:     filepath.ToSlash(weftBare),
+			WarpURL:     filepath.ToSlash(suppliedWarpBare),
+			Reset:       true,
+			DiscardWork: true,
 		})
 		if !errors.Is(err, fabricengine.ErrWarpBindingMismatch) {
 			t.Errorf("CloneHub(Reset) error = %v; want errors.Is ErrWarpBindingMismatch", err)
@@ -275,6 +277,7 @@ func TestCloneHub_ResetRefusalKeepsExistingHub(t *testing.T) {
 
 		opts.ForceBootstrap = false
 		opts.Reset = true
+		opts.DiscardWork = true
 		_, err = fabricengine.CloneHub(cloneParent, opts)
 		if err == nil || !strings.Contains(err.Error(), "refusing to bootstrap") {
 			t.Errorf("CloneHub(Reset) error = %v; want it to contain %q", err, "refusing to bootstrap")
@@ -307,6 +310,7 @@ func TestCloneHub_ResetRefusalKeepsExistingHub(t *testing.T) {
 
 		opts.Subpath = "elsewhere"
 		opts.Reset = true
+		opts.DiscardWork = true
 		_, err = fabricengine.CloneHub(cloneParent, opts)
 		if err == nil || !strings.Contains(err.Error(), "does not match the recorded anchor") {
 			t.Errorf("CloneHub(Reset) error = %v; want it to contain %q", err, "does not match the recorded anchor")
@@ -340,6 +344,7 @@ func TestCloneHub_ResetRefusalKeepsExistingHub(t *testing.T) {
 
 		opts.Subpath = "backedn"
 		opts.Reset = true
+		opts.DiscardWork = true
 		_, err = fabricengine.CloneHub(cloneParent, opts)
 		if err == nil || !strings.Contains(err.Error(), "does not exist as a directory") {
 			t.Errorf("CloneHub(Reset) error = %v; want it to contain %q", err, "does not exist as a directory")
@@ -408,6 +413,7 @@ func TestCloneHub_ResetSubpathCheckReadsRecordedAnchor(t *testing.T) {
 
 			opts.Subpath = tt.subpath
 			opts.Reset = true
+			opts.DiscardWork = true
 			res, err := fabricengine.CloneHub(cloneParent, opts)
 			if tt.wantRecordedAnchor == "" {
 				if err != nil {
@@ -484,7 +490,23 @@ func TestCloneHub_HubExistsCheckPrecedesProbeInTwoArgForm(t *testing.T) {
 		WeftURL: filepath.ToSlash(weftBare),
 		WarpURL: warpURL,
 	})
-	if err == nil || !strings.Contains(err.Error(), "way forward: replace it with `lym fabric clone ") || !strings.Contains(err.Error(), "--reset") {
+	// The clone left its records commits unpushed and its board files uncommitted,
+	// so the way forward names that work and the clone that discards it.
+	discardClone := " --reset --" + fabricengine.DiscardWorkFlag + "`"
+	if err == nil || !strings.Contains(err.Error(), "holds work origin lacks: ") || !strings.Contains(err.Error(), discardClone) {
+		t.Errorf("CloneHub() over an unfinished hub holding work error = %v; want its work named with the clone that discards it", err)
+	}
+
+	// Once origin holds that work, the unfinished hub holds none, and the way forward is the plain --reset clone.
+	board := filepath.Join(firstRes.HubPath, fabriclayout.BoltDirName)
+	gitkit.Git(t, board, "add", "-A")
+	gitkit.Git(t, board, "commit", "-q", "-m", "commit the clone's board files")
+	gitkit.Git(t, records, "push", "-q", "origin", "--all")
+	_, err = fabricengine.CloneHub(cloneParent, fabriclayout.CloneOptions{
+		WeftURL: filepath.ToSlash(weftBare),
+		WarpURL: warpURL,
+	})
+	if err == nil || !strings.Contains(err.Error(), "way forward: replace it with `lym fabric clone ") || !strings.HasSuffix(err.Error(), " --reset`") {
 		t.Errorf("CloneHub() over an unfinished hub error = %v; want the --reset clone named", err)
 	}
 

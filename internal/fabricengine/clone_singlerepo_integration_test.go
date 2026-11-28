@@ -44,6 +44,60 @@ func refLines(t *testing.T, dir, format string, patterns ...string) []string {
 	return strings.Split(out, "\n")
 }
 
+// pushRecordsStore pushes every branch of h's records store, the board's included, through its push refspecs.
+// The hub's records then hold no commit origin lacks.
+func pushRecordsStore(t *testing.T, h *hubforge.Hub) {
+	t.Helper()
+
+	gitkit.Git(t, h.PrimeRecords(), "push", "origin")
+}
+
+// ignoreInStore appends patterns to the info/exclude of the store at dir, which is not a linked worktree.
+func ignoreInStore(t *testing.T, dir string, patterns ...string) {
+	t.Helper()
+
+	exclude := filepath.Join(dir, ".git", "info", "exclude")
+	content, err := os.ReadFile(exclude)
+	if err != nil {
+		t.Fatalf("read %s: %v", exclude, err)
+	}
+	content = append(content, []byte("\n"+strings.Join(patterns, "\n")+"\n")...)
+	if err := os.WriteFile(exclude, content, 0o644); err != nil {
+		t.Fatalf("write %s: %v", exclude, err)
+	}
+}
+
+// writeFiles writes a file at each of the slash-separated paths under dir, making its directories.
+func writeFiles(t *testing.T, dir string, paths ...string) {
+	t.Helper()
+
+	for _, path := range paths {
+		full := filepath.Join(dir, filepath.FromSlash(path))
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatalf("make the directory of %s: %v", full, err)
+		}
+		if err := os.WriteFile(full, []byte("content\n"), 0o644); err != nil {
+			t.Fatalf("write %s: %v", full, err)
+		}
+	}
+}
+
+// leaveLymsIgnoredFiles gives h ignored files and a link of the kinds a used hub holds and no operator wrote.
+// It pushes the records store first, so the hub then holds no work origin lacks.
+func leaveLymsIgnoredFiles(t *testing.T, h *hubforge.Hub) {
+	t.Helper()
+
+	pushRecordsStore(t, h)
+	ignoreInStore(t, h.PrimeWorktree(), "/.vscode/", "/cache-link")
+	writeFiles(t, h.PrimeWorktree(), "CLAUDE.local.md", ".claude/settings.local.json", ".vscode/settings.json", ".vscode/tasks.json")
+	if err := os.Symlink(t.TempDir(), filepath.Join(h.PrimeWorktree(), "cache-link")); err != nil {
+		t.Fatalf("make an ignored link: %v", err)
+	}
+	ignoreInStore(t, h.PrimeRecords(), "board.lock", "board.push.lock", ".board-rendered.json")
+	writeFiles(t, h.BoardDir(), "board.lock", "board.push.lock", ".board-rendered.json")
+	writeFiles(t, h.PrimeRecords(), ".weft/weft.write.lock")
+}
+
 // requireEmptyDirectory fails t when dir holds an entry.
 // For a clone container that means a hub or probe was left behind.
 func requireEmptyDirectory(t *testing.T, dir string) {
@@ -272,11 +326,13 @@ func TestCloneOneURL_JoinsTheNamespacedHub(t *testing.T) {
 		first := hubforge.NewOneRepoHub(t, hubforge.OneRepoOptions{})
 		second := hubforge.CloneSecond(t, first)
 
+		// DiscardWork passes over whatever the stores hold, so the subpath check is what refuses.
 		_, err := fabricengine.CloneHub(second.Container, fabriclayout.CloneOptions{
-			WeftURL:   filepath.ToSlash(first.CodeBare),
-			Subpath:   "backend",
-			Reset:     true,
-			Shortname: hubforge.TestShortname,
+			WeftURL:     filepath.ToSlash(first.CodeBare),
+			Subpath:     "backend",
+			Reset:       true,
+			DiscardWork: true,
+			Shortname:   hubforge.TestShortname,
 		})
 		if err == nil || !strings.Contains(err.Error(), `recorded anchor "."`) {
 			t.Errorf("CloneHub --reset with --subpath backend error = %v; want a refusal naming the recorded anchor \".\"", err)
@@ -291,50 +347,85 @@ func TestCloneOneURL_JoinsTheNamespacedHub(t *testing.T) {
 
 		tests := []struct {
 			name string
+			// discardable reports whether DiscardWork lets the reset remove the hub, so the refusal names that clone.
+			discardable bool
 			// leaveWork gives the hub work origin lacks and returns a text the refusal names it by.
 			leaveWork func(t *testing.T, h *hubforge.Hub) string
 		}{
-			{"Pair", func(t *testing.T, h *hubforge.Hub) string {
+			{"Pair", false, func(t *testing.T, h *hubforge.Hub) string {
 				hubforge.AddPairWith(t, h, "kept", fabricengine.AddOptions{SkipPush: true})
 				return "the pair worktree " + fabricengine.WorktreePath(h.Location, "kept")
 			}},
-			{"UnpushedCodeCommit", func(t *testing.T, h *hubforge.Hub) string {
+			{"UnpushedCodeCommit", true, func(t *testing.T, h *hubforge.Hub) string {
 				gitkit.CommitFile(t, h.PrimeWorktree(), "local.txt", "local\n", "a commit origin lacks")
 				return "1 commit(s) of " + h.PrimeWorktree() + " that origin lacks"
 			}},
-			{"CommitOnlyALocalTagHolds", func(t *testing.T, h *hubforge.Hub) string {
+			{"UnpushedRecordsCommit", true, func(t *testing.T, h *hubforge.Hub) string {
+				pushRecordsStore(t, h)
+				gitkit.CommitFile(t, h.PrimeRecords(), "record.md", "record\n", "a records commit origin lacks")
+				return "1 commit(s) of " + h.PrimeRecords() + " that origin lacks"
+			}},
+			{"UnpushedBoardCommit", true, func(t *testing.T, h *hubforge.Hub) string {
+				pushRecordsStore(t, h)
+				gitkit.CommitFile(t, h.BoardDir(), "note.md", "note\n", "a board commit origin lacks")
+				return "1 commit(s) of " + h.PrimeRecords() + " that origin lacks"
+			}},
+			{"UncommittedBoltChange", true, func(t *testing.T, h *hubforge.Hub) string {
+				if err := os.WriteFile(filepath.Join(h.BoardDir(), "draft.md"), []byte("draft\n"), 0o644); err != nil {
+					t.Fatalf("write an uncommitted board file: %v", err)
+				}
+				return "uncommitted or untracked changes in " + h.BoardDir()
+			}},
+			{"IgnoredFilesBesideTheOnesLymWrites", true, func(t *testing.T, h *hubforge.Hub) string {
+				leaveLymsIgnoredFiles(t, h)
+				ignoreInStore(t, h.PrimeWorktree(), "secret.env")
+				writeFiles(t, h.PrimeWorktree(), "secret.env", ".vscode/launch.json")
+				return "ignored files in " + h.PrimeWorktree() + ": .vscode/launch.json, secret.env"
+			}},
+			{"MoreIgnoredFilesThanARefusalNames", true, func(t *testing.T, h *hubforge.Hub) string {
+				ignoreInStore(t, h.PrimeWorktree(), "*.env")
+				writeFiles(t, h.PrimeWorktree(), "a.env", "b.env", "c.env", "d.env", "e.env", "f.env", "g.env")
+				return "ignored files in " + h.PrimeWorktree() + ": a.env, b.env, c.env, d.env, e.env and 2 more"
+			}},
+			{"CommitOnADetachedBoltHead", true, func(t *testing.T, h *hubforge.Hub) string {
+				pushRecordsStore(t, h)
+				gitkit.Git(t, h.BoardDir(), "checkout", "--detach")
+				gitkit.CommitFile(t, h.BoardDir(), "detached.md", "detached\n", "a board commit on a detached HEAD")
+				return "1 commit(s) of " + h.BoardDir() + "'s HEAD that origin lacks"
+			}},
+			{"CommitOnlyALocalTagHolds", true, func(t *testing.T, h *hubforge.Hub) string {
 				gitkit.CommitFile(t, h.PrimeWorktree(), "tagged.txt", "tagged\n", "a commit only a local tag holds")
 				gitkit.Git(t, h.PrimeWorktree(), "tag", fabriclayout.ArchiveTagPrefix+"old/tip")
 				gitkit.Git(t, h.PrimeWorktree(), "reset", "--hard", "HEAD~1")
 				return "1 commit(s) of " + h.PrimeWorktree() + " that origin lacks"
 			}},
-			{"CommitOnADetachedHead", func(t *testing.T, h *hubforge.Hub) string {
+			{"CommitOnADetachedHead", true, func(t *testing.T, h *hubforge.Hub) string {
 				gitkit.Git(t, h.PrimeWorktree(), "checkout", "--detach")
 				gitkit.CommitFile(t, h.PrimeWorktree(), "detached.txt", "detached\n", "a commit on a detached HEAD")
 				return "1 commit(s) of " + h.PrimeWorktree() + " that origin lacks"
 			}},
-			{"UncommittedFileInThePrime", func(t *testing.T, h *hubforge.Hub) string {
+			{"UncommittedFileInThePrime", true, func(t *testing.T, h *hubforge.Hub) string {
 				gitkit.Git(t, h.PrimeWorktree(), "config", "status.showUntrackedFiles", "no")
 				if err := os.WriteFile(filepath.Join(h.PrimeWorktree(), "edit.txt"), []byte("edit\n"), 0o644); err != nil {
 					t.Fatalf("write an uncommitted file: %v", err)
 				}
 				return "uncommitted or untracked changes in " + h.PrimeWorktree()
 			}},
-			{"Stash", func(t *testing.T, h *hubforge.Hub) string {
+			{"Stash", true, func(t *testing.T, h *hubforge.Hub) string {
 				if err := os.WriteFile(filepath.Join(h.PrimeWorktree(), "stashed.txt"), []byte("stashed\n"), 0o644); err != nil {
 					t.Fatalf("write a file to stash: %v", err)
 				}
 				gitkit.Git(t, h.PrimeWorktree(), "stash", "push", "--include-untracked")
 				return "a stash in " + h.PrimeWorktree()
 			}},
-			{"PendingTeardown", func(t *testing.T, h *hubforge.Hub) string {
+			{"PendingTeardown", false, func(t *testing.T, h *hubforge.Hub) string {
 				record := fabriclayout.PendingTeardown{Slug: "gone", Kind: "remove", Worktree: h.PrimeWorktree(), Rerun: "lym fabric remove gone --remote"}
 				if err := fabricengine.WritePendingTeardownForTest(h.Path, record); err != nil {
 					t.Fatalf("write the pending teardown: %v", err)
 				}
 				return "the unfinished teardown of \"gone\" (run `lym fabric remove gone --remote` again"
 			}},
-			{"TeardownStillRunning", func(t *testing.T, h *hubforge.Hub) string {
+			{"TeardownStillRunning", false, func(t *testing.T, h *hubforge.Hub) string {
 				record := fabriclayout.PendingTeardown{Slug: "running", Kind: "remove", Worktree: h.PrimeWorktree()}
 				if err := fabricengine.WritePendingTeardownForTest(h.Path, record); err != nil {
 					t.Fatalf("write the pending teardown: %v", err)
@@ -361,6 +452,21 @@ func TestCloneOneURL_JoinsTheNamespacedHub(t *testing.T) {
 				if !strings.Contains(err.Error(), "`mv "+h.Path+" "+h.Path+".old && git -C ") {
 					t.Errorf("CloneHub --reset error = %q; want the move that keeps the hub as its way forward", err.Error())
 				}
+				discardClone := " --reset --" + fabricengine.DiscardWorkFlag + "`"
+				if got := strings.Contains(err.Error(), discardClone); got != tt.discardable {
+					t.Errorf("CloneHub --reset error = %q; naming the clone that discards the work = %v, want %v", err.Error(), got, tt.discardable)
+				}
+				if !tt.discardable {
+					_, err = fabricengine.CloneHub(h.Container, fabriclayout.CloneOptions{
+						WeftURL:     filepath.ToSlash(h.CodeBare),
+						Reset:       true,
+						DiscardWork: true,
+						Shortname:   hubforge.TestShortname,
+					})
+					if err == nil || !strings.Contains(err.Error(), wantNamed) {
+						t.Errorf("CloneHub --reset --discard-work over a hub in use error = %v; want a refusal naming %q", err, wantNamed)
+					}
+				}
 				if _, statErr := os.Stat(filepath.Join(h.PrimeRecords(), lymcwd.AnchorFileName)); statErr != nil {
 					t.Errorf("the hub holding work lost its anchor marker: %v", statErr)
 				}
@@ -368,10 +474,75 @@ func TestCloneOneURL_JoinsTheNamespacedHub(t *testing.T) {
 		}
 	})
 
+	t.Run("ResetProceedsOverTheIgnoredFilesLymWrites", func(t *testing.T) {
+		t.Parallel()
+
+		h := hubforge.NewOneRepoHub(t, hubforge.OneRepoOptions{})
+		leaveLymsIgnoredFiles(t, h)
+
+		_, err := fabricengine.CloneHub(h.Container, fabriclayout.CloneOptions{
+			WeftURL:   filepath.ToSlash(h.CodeBare),
+			Reset:     true,
+			Shortname: hubforge.TestShortname,
+		})
+		if err != nil {
+			t.Errorf("CloneHub --reset error = %v; want the hub replaced, since no operator wrote its ignored files", err)
+		}
+	})
+
+	t.Run("ResetOfAHubWithAnUnreadableStoreNamesTheMove", func(t *testing.T) {
+		t.Parallel()
+
+		h := hubforge.NewOneRepoHub(t, hubforge.OneRepoOptions{})
+		pointer := "gitdir: " + filepath.ToSlash(filepath.Join(t.TempDir(), "missing")) + "\n"
+		if err := os.WriteFile(filepath.Join(h.BoardDir(), ".git"), []byte(pointer), 0o644); err != nil {
+			t.Fatalf("point the board at a missing git dir: %v", err)
+		}
+
+		_, err := fabricengine.CloneHub(h.Container, fabriclayout.CloneOptions{
+			WeftURL:     filepath.ToSlash(h.CodeBare),
+			Reset:       true,
+			DiscardWork: true,
+			Shortname:   hubforge.TestShortname,
+		})
+		if err == nil || !strings.Contains(err.Error(), "way forward: move it aside") {
+			t.Errorf("CloneHub --reset over an unreadable store error = %v; want a refusal naming the move aside", err)
+		}
+		if _, statErr := os.Stat(filepath.Join(h.PrimeRecords(), lymcwd.AnchorFileName)); statErr != nil {
+			t.Errorf("the hub with an unreadable store lost its anchor marker: %v", statErr)
+		}
+	})
+
+	t.Run("ResetWithDiscardWorkReplacesAHubHoldingStoreWork", func(t *testing.T) {
+		t.Parallel()
+
+		h := hubforge.NewOneRepoHub(t, hubforge.OneRepoOptions{})
+		gitkit.CommitFile(t, h.PrimeRecords(), "record.md", "record\n", "a records commit origin lacks")
+		untracked := filepath.Join(h.PrimeWorktree(), "edit.txt")
+		if err := os.WriteFile(untracked, []byte("edit\n"), 0o644); err != nil {
+			t.Fatalf("write an untracked file: %v", err)
+		}
+
+		_, err := fabricengine.CloneHub(h.Container, fabriclayout.CloneOptions{
+			WeftURL:     filepath.ToSlash(h.CodeBare),
+			Reset:       true,
+			DiscardWork: true,
+			Shortname:   hubforge.TestShortname,
+		})
+		if err != nil {
+			t.Fatalf("CloneHub --reset --discard-work error = %v; want the hub replaced", err)
+		}
+		if _, statErr := os.Stat(untracked); !os.IsNotExist(statErr) {
+			t.Errorf("stat %s after the replacement = %v; want the discarded file gone", untracked, statErr)
+		}
+	})
+
 	t.Run("ResetProceedsOverACommitOriginHoldsUnderATagAlone", func(t *testing.T) {
 		t.Parallel()
 
 		h := hubforge.NewOneRepoHub(t, hubforge.OneRepoOptions{})
+		// Origin takes the records store's commits first, so the tagged code commit is the only work in question.
+		pushRecordsStore(t, h)
 		gitkit.CommitFile(t, h.PrimeWorktree(), "released.txt", "released\n", "a commit origin holds under a tag")
 		gitkit.Git(t, h.PrimeWorktree(), "tag", "released")
 		gitkit.Git(t, h.PrimeWorktree(), "push", "origin", "refs/tags/released")
@@ -420,11 +591,13 @@ func TestCloneOneURL_JoinsTheNamespacedHub(t *testing.T) {
 		first := hubforge.NewOneRepoHub(t, hubforge.OneRepoOptions{})
 		gitkit.Git(t, first.CodeBare, "update-ref", "-d", namespaceHeadsPrefix+"main-weft")
 
+		// DiscardWork passes over whatever the stores hold, so the subpath check is what refuses.
 		_, err := fabricengine.CloneHub(first.Container, fabriclayout.CloneOptions{
-			WeftURL:   filepath.ToSlash(first.CodeBare),
-			Subpath:   "no-such-directory",
-			Reset:     true,
-			Shortname: hubforge.TestShortname,
+			WeftURL:     filepath.ToSlash(first.CodeBare),
+			Subpath:     "no-such-directory",
+			Reset:       true,
+			DiscardWork: true,
+			Shortname:   hubforge.TestShortname,
 		})
 		if err == nil || !strings.Contains(err.Error(), "does not exist as a directory") {
 			t.Errorf("CloneHub --reset with a missing --subpath error = %v; want a refusal naming the missing directory", err)
@@ -760,7 +933,7 @@ func TestCloneSingleRepo_FailedSeedPushLeavesNothing(t *testing.T) {
 	})
 
 	t.Run("BoardWithNoUpstreamIsNeverPushed", func(t *testing.T) {
-		const resetWayForward = "run the same `lym fabric clone --single-repo` again with `--reset`"
+		const resetWayForward = "run the same `lym fabric clone --single-repo` again with `--reset --discard-work`"
 		tests := []struct {
 			name string
 			// originHoldsSeed seeds origin through a whole clone.

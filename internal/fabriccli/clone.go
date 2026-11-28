@@ -194,6 +194,17 @@ func cloneDestination(cwd, into string) string {
 	return filepath.Join(cwd, into)
 }
 
+// cloneFlags carries the clone subcommand's flag values.
+type cloneFlags struct {
+	reset          bool
+	discardWork    bool
+	subpath        string
+	forceBootstrap bool
+	into           string
+	shortname      string
+	singleRepo     bool
+}
+
 // runCloneWithReset executes the clone subcommand.
 // The hub teardown of an idempotent re-clone is driven through CloneOptions.Reset inside CloneHub.
 // CloneHub can derive the hub path in either the one- or two-argument form.
@@ -205,7 +216,7 @@ func cloneDestination(cwd, into string) string {
 // "warning" is empty when there is none.
 // "seam_warning" is the warning of a failed render into the prime, naming `lym heddle render` there; empty when none.
 // Every field is always present, so a consumer never has to tell an absent field from a false one.
-func runCloneWithReset(ctx context.Context, out io.Writer, args []string, reset bool, subpath string, forceBootstrap bool, into string, shortname string, singleRepo bool) int {
+func runCloneWithReset(ctx context.Context, out io.Writer, args []string, flags cloneFlags) int {
 	// Nothing has been mutated yet at cwd resolution: a bare output.Err carries no record.
 	cwd, err := lymcwd.CwdFrom(ctx)
 	if err != nil {
@@ -213,7 +224,7 @@ func runCloneWithReset(ctx context.Context, out io.Writer, args []string, reset 
 	}
 
 	if len(args) != 1 && len(args) != 2 {
-		return output.Err(out, "usage: lym fabric clone [--shortname <shortname>] [--reset] [--subpath <rel>] [--force-bootstrap] [--single-repo] [--into <dir>] <weft-url> [<warp-url>]")
+		return output.Err(out, "usage: lym fabric clone [--shortname <shortname>] [--reset [--"+fabricengine.DiscardWorkFlag+"]] [--subpath <rel>] [--force-bootstrap] [--single-repo] [--into <dir>] <weft-url> [<warp-url>]")
 	}
 	weftURL := args[0]
 	warpURL := ""
@@ -221,14 +232,15 @@ func runCloneWithReset(ctx context.Context, out io.Writer, args []string, reset 
 		warpURL = args[1]
 	}
 
-	res, err := CloneAndWire(cloneDestination(cwd, into), fabriclayout.CloneOptions{
+	res, err := CloneAndWire(cloneDestination(cwd, flags.into), fabriclayout.CloneOptions{
 		WeftURL:        weftURL,
 		WarpURL:        warpURL,
-		Subpath:        subpath,
-		Reset:          reset,
-		ForceBootstrap: forceBootstrap,
-		Shortname:      shortname,
-		SingleRepo:     singleRepo,
+		Subpath:        flags.subpath,
+		Reset:          flags.reset,
+		DiscardWork:    flags.discardWork,
+		ForceBootstrap: flags.forceBootstrap,
+		Shortname:      flags.shortname,
+		SingleRepo:     flags.singleRepo,
 	})
 	if err != nil {
 		// CloneAndWire's defer sets res.Mutations before it returns,

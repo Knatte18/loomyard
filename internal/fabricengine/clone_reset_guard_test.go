@@ -1,12 +1,12 @@
-// clone_reset_guard_test.go pins --reset's hub predicate.
+// clone_reset_guard_test.go pins --reset's hub predicate, and the refusal of --discard-work without --reset.
 //
 // The hub name --reset acts on is derived, never typed:
 // in the two-argument form from the warp URL, and in the one-argument form from the weft's recorded warp URL.
 // --reset tears down only a directory carrying a structural hub mark:
 // a directory merely named `<name>-LYMHUB` is left alone.
 //
-// These tests drive resetHub directly rather than CloneHub, so they spawn no git and stay in the
-// untagged Tier-1 tier per the Test Tier Purity Invariant.
+// These tests drive resetHub directly, or CloneHub only up to a refusal before any git.
+// They therefore spawn no git and stay in tier0 per the Test Tier Purity Invariant.
 
 package fabricengine
 
@@ -39,7 +39,7 @@ func TestResetHub_RefusesADirectoryThatIsNotAHub(t *testing.T) {
 		t.Fatalf("write %s: %v", precious, err)
 	}
 
-	err := resetHub(NewMutations(""), parent, hubPath)
+	err := resetHub(NewMutations(""), parent, hubPath, fabriclayout.CloneOptions{})
 	if err == nil {
 		t.Fatalf("resetHub(%s) = nil; want a refusal for a directory that is not a fabric hub", hubPath)
 	}
@@ -82,7 +82,7 @@ func TestResetHub_RemovesARealHub(t *testing.T) {
 				t.Fatalf("seed hub: %v", err)
 			}
 
-			if err := resetHub(NewMutations(""), parent, hubPath); err != nil {
+			if err := resetHub(NewMutations(""), parent, hubPath, fabriclayout.CloneOptions{}); err != nil {
 				t.Fatalf("resetHub(%s) = %v; want nil for a directory carrying %s", hubPath, err, tt.child)
 			}
 			if _, statErr := os.Stat(hubPath); !os.IsNotExist(statErr) {
@@ -100,7 +100,28 @@ func TestResetHub_AbsentPathIsANoop(t *testing.T) {
 
 	parent := t.TempDir()
 	hubPath := filepath.Join(parent, "never-created"+fabriclayout.HubSuffix)
-	if err := resetHub(NewMutations(""), parent, hubPath); err != nil {
+	if err := resetHub(NewMutations(""), parent, hubPath, fabriclayout.CloneOptions{}); err != nil {
 		t.Fatalf("resetHub(absent) = %v; want nil", err)
+	}
+}
+
+// TestCloneHub_DiscardWorkWithoutResetIsRefused asserts that --discard-work alone is refused.
+// The refusal names --reset as the way forward and comes before anything in the destination is created.
+func TestCloneHub_DiscardWorkWithoutResetIsRefused(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	parent := t.TempDir()
+	_, err := CloneHub(parent, fabriclayout.CloneOptions{WeftURL: "unread-url", DiscardWork: true})
+	const want = "--discard-work only widens --reset; way forward: pass --reset with it, or leave it out"
+	if err == nil || err.Error() != want {
+		t.Errorf("CloneHub(DiscardWork without Reset) error = %v; want %q", err, want)
+	}
+	entries, readErr := os.ReadDir(parent)
+	if readErr != nil {
+		t.Fatalf("read %s: %v", parent, readErr)
+	}
+	if len(entries) != 0 {
+		t.Errorf("%s holds %d entries after the refusal; want none", parent, len(entries))
 	}
 }

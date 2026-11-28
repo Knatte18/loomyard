@@ -13,7 +13,11 @@
 // A failed render of heddle's files never fails the clone: the envelope's `seam_warning` names `lym heddle render`.
 //
 // `--reset` tears down only a real fabric hub; a directory named `<name>-LYMHUB` without hub content is left alone.
-// It refuses a hub holding a pair, an unfinished teardown, or code work origin lacks, naming the move that keeps the hub.
+// It refuses a hub holding a pair, an unfinished teardown, or work origin lacks.
+// The refusal names that work and the move that keeps the hub.
+// That work is the stores' unpushed commits, uncommitted changes, stashes and the ignored files lym did not write.
+// The unpushed commits are those of the code, the records and the board.
+// `--discard-work` accepts its loss, and never that of a pair or a teardown.
 // A clone into a hub that already stands whole names no `--reset`.
 // A clone into an unfinished hub names `--reset` when the hub holds none of that work, and the move otherwise.
 // `--subpath` must stay inside the warp repo, and a re-clone refuses a value that disagrees with the recorded one.
@@ -28,7 +32,9 @@
 //
 // A clone killed before its Bolt checkout leaves a hub `lym fabric reconcile` refuses, before its first pull.
 // The refusal names the `--reset` clone that replaces the hub.
-// A plain re-clone into the same directory names it too, unless the hub holds work origin lacks.
+// When the stores hold work origin lacks and nothing uses the hub, it adds `--discard-work` and names the lost work.
+// A plain re-clone into the same directory names that clone too.
+// Over such work it names the ways to keep it first.
 // For a one-repository hub that is the join, and the refusal adds the seed.
 //
 // # Add

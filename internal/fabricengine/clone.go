@@ -18,14 +18,19 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/vscode"
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
@@ -37,12 +42,19 @@ const staleFabricAnchorName = lymcwd.StaleAnchorFileName
 // movedHubSuffix is appended to a hub's path to name the directory the printed way forward moves it to.
 const movedHubSuffix = ".old"
 
+// DiscardWorkFlag is the clone flag that lets --reset remove a hub whose stores hold work origin lacks.
+const DiscardWorkFlag = "discard-work"
+
+// ignoredPathsNamed caps the ignored paths a refusal names for one store; the rest are counted.
+const ignoredPathsNamed = 5
+
 // existingHubError refuses a clone into hubPath, which already exists.
 // A hub a clone finished is whole, and may hold work a replacement would lose:
 // its way forward is working in it, or moving it aside before the same clone.
 // Any other hub is what a stopped clone left, which no other verb finishes:
 // its way forward is the same clone with --reset, unless it holds work origin lacks.
-// Then the refusal names that work and the move aside.
+// Then the refusal names that work and the ways to keep it.
+// For a hub no pair or teardown uses, it also names the --reset clone that discards it.
 func existingHubError(cwd, hubPath string, opts fabriclayout.CloneOptions) error {
 	if hubCloneCompleted(hubPath) {
 		return fmt.Errorf("hub already exists at %s and is whole; way forward: work in it, or %s", hubPath, moveAsideWayForward(hubPath))
@@ -51,11 +63,25 @@ func existingHubError(cwd, hubPath string, opts fabriclayout.CloneOptions) error
 	if err != nil {
 		return fmt.Errorf("hub already exists at %s, and what it holds cannot be read: %w; way forward: %s", hubPath, err, moveAsideWayForward(hubPath))
 	}
-	if len(work) > 0 {
+	if lost := work.all(); len(lost) > 0 {
 		return fmt.Errorf("hub already exists at %s and holds work origin lacks: %s; way forward: %s",
-			hubPath, strings.Join(work, "; "), moveAsideWayForward(hubPath))
+			hubPath, strings.Join(lost, "; "), hubWorkWayForward(cwd, hubPath, opts, work))
 	}
 	return fmt.Errorf("hub already exists at %s; way forward: replace it with `%s`", hubPath, cloneResetCommand(cwd, opts))
+}
+
+// hubWorkWayForward spells the way forward of a refused clone into the hub at hubPath, which holds work.
+// A hub a pair or a teardown uses keeps its work by landing or removing it, or by moving the hub aside.
+// Work only in the hub's stores is kept by pushing, committing or removing it, or by moving the hub aside;
+// or it is lost to the clone opts asks for into cwd, with --reset and --discard-work.
+func hubWorkWayForward(cwd, hubPath string, opts fabriclayout.CloneOptions, work hubWork) string {
+	if len(work.inUse) > 0 {
+		return "land or remove that work, or " + moveAsideWayForward(hubPath)
+	}
+	discard := opts
+	discard.DiscardWork = true
+	return fmt.Sprintf("push or commit that work, or remove it yourself; or %s; or replace the hub and lose that work with `%s`",
+		moveAsideWayForward(hubPath), cloneResetCommand(cwd, discard))
 }
 
 // hubCloneCompleted reports whether the hub at hubPath holds what a clone makes after its two repositories:
@@ -124,6 +150,7 @@ func moveAsideWayForward(hubPath string) string {
 }
 
 // cloneResetCommand spells the clone opts asks for into the directory cwd, with --reset added.
+// It adds --discard-work when opts carries it.
 func cloneResetCommand(cwd string, opts fabriclayout.CloneOptions) string {
 	args := []string{"lym", "fabric", "clone"}
 	if opts.SingleRepo {
@@ -142,7 +169,11 @@ func cloneResetCommand(cwd string, opts fabriclayout.CloneOptions) string {
 	if opts.WarpURL != "" {
 		args = append(args, opts.WarpURL)
 	}
-	return strings.Join(append(args, "--into", cwd, "--reset"), " ")
+	args = append(args, "--into", cwd, "--reset")
+	if opts.DiscardWork {
+		args = append(args, "--"+DiscardWorkFlag)
+	}
+	return strings.Join(args, " ")
 }
 
 // RefuseHubWithoutBolt refuses the hub of l when its Bolt checkout holds no repository.
@@ -152,7 +183,10 @@ func cloneResetCommand(cwd string, opts fabriclayout.CloneOptions) string {
 // A one-repository hub's clone takes the code store's URL alone.
 // Its refusal names the join, for an origin that holds the hub's board, and the seed, for an origin that holds none.
 // A records store whose layout is lost is named as a one-repository hub.
-// Any layout read failure is carried on the refusal.
+// A hub whose stores hold work origin lacks, and that nothing uses, is named with the clone that discards that work;
+// the refusal names the work and the move that keeps it.
+// A hub in use is refused that clone, so the refusal also names what uses it and the ways past that.
+// Any failure to read the layout or the hub's work is carried on the refusal.
 // A URL that cannot be read is named by a placeholder, and so is the seed's shortname.
 func RefuseHubWithoutBolt(l *lymcwd.Location) error {
 	boltDir := fabriclayout.BoltDir(l.HubPath)
@@ -180,20 +214,39 @@ func RefuseHubWithoutBolt(l *lymcwd.Location) error {
 		}
 	}
 
+	work, workErr := hubWorkOriginLacks(l.HubPath)
+	discardsWork := workErr == nil && len(work.inUse) == 0 && len(work.stores) > 0
+
 	parent := filepath.Dir(l.HubPath)
-	replacement := "`" + cloneResetCommand(parent, fabriclayout.CloneOptions{WeftURL: recordsURL, WarpURL: codeURL}) + "`"
+	resetClone := func(opts fabriclayout.CloneOptions) string {
+		opts.DiscardWork = discardsWork
+		return "`" + cloneResetCommand(parent, opts) + "`"
+	}
+	replacement := resetClone(fabriclayout.CloneOptions{WeftURL: recordsURL, WarpURL: codeURL})
 	if oneRepository {
-		join := cloneResetCommand(parent, fabriclayout.CloneOptions{WeftURL: codeURL})
-		seed := cloneResetCommand(parent, fabriclayout.CloneOptions{SingleRepo: true, Shortname: "<shortname>", WeftURL: codeURL})
-		replacement = fmt.Sprintf("`%s` when origin holds the hub's board, or `%s` when it holds none", join, seed)
+		join := resetClone(fabriclayout.CloneOptions{WeftURL: codeURL})
+		seed := resetClone(fabriclayout.CloneOptions{SingleRepo: true, Shortname: "<shortname>", WeftURL: codeURL})
+		replacement = fmt.Sprintf("%s when origin holds the hub's board, or %s when it holds none", join, seed)
 	}
 	refusal := fmt.Sprintf("the hub at %s has no repository at its %s checkout %s, as a clone that stopped before making it leaves; "+
 		"way forward: replace the hub with %s",
 		l.HubPath, fabriclayout.BoltDirName, boltDir, replacement)
-	if layoutErr != nil {
-		return fmt.Errorf("%s; the records store's layout also cannot be read: %w", refusal, layoutErr)
+	if discardsWork {
+		refusal += "; that clone loses the work origin lacks: " + strings.Join(work.stores, "; ") +
+			"; to keep it, push or commit it first, or " + moveAsideWayForward(l.HubPath)
 	}
-	return errors.New(refusal)
+	if len(work.inUse) > 0 {
+		refusal += "; that clone is refused while the hub is in use by " + strings.Join(work.inUse, "; ") +
+			": land or remove that work first, or " + moveAsideWayForward(l.HubPath)
+	}
+	refused := errors.New(refusal)
+	if layoutErr != nil {
+		refused = fmt.Errorf("%w; the records store's layout also cannot be read: %w", refused, layoutErr)
+	}
+	if workErr != nil {
+		refused = fmt.Errorf("%w; what the hub holds also cannot be read: %w", refused, workErr)
+	}
+	return refused
 }
 
 // CloneResult carries the geometry that CloneHub returns once the clone, board worktree and anchor are set up.
@@ -309,6 +362,9 @@ func CloneHub(cwd string, opts fabriclayout.CloneOptions) (res CloneResult, err 
 	if opts.WeftURL == "" {
 		return CloneResult{}, fmt.Errorf("weft URL is required")
 	}
+	if opts.DiscardWork && !opts.Reset {
+		return CloneResult{}, fmt.Errorf("--%s only widens --reset; way forward: pass --reset with it, or leave it out", DiscardWorkFlag)
+	}
 
 	// Validate the requested subpath before anything is created or fetched.
 	// This refuses a structurally impossible anchor before teardown is the only way out.
@@ -355,7 +411,7 @@ func CloneHub(cwd string, opts fabriclayout.CloneOptions) (res CloneResult, err 
 		hubPath = fabriclayout.HubPath(cwd, name)
 		rec = NewMutations(hubPath)
 		if opts.Reset {
-			if _, err := checkResetTarget(hubPath); err != nil {
+			if _, err := checkResetTarget(cwd, hubPath, opts); err != nil {
 				return CloneResult{}, err
 			}
 		} else if _, err := os.Stat(hubPath); err == nil {
@@ -394,7 +450,7 @@ func CloneHub(cwd string, opts fabriclayout.CloneOptions) (res CloneResult, err 
 		rec = NewMutations(hubPath)
 		effective = opts.WeftURL
 		if opts.Reset {
-			if _, err := checkResetTarget(hubPath); err != nil {
+			if _, err := checkResetTarget(cwd, hubPath, opts); err != nil {
 				return CloneResult{}, err
 			}
 		} else if _, err := os.Stat(hubPath); err == nil {
@@ -447,7 +503,7 @@ func CloneHub(cwd string, opts fabriclayout.CloneOptions) (res CloneResult, err 
 	// Offline, a two-argument clone fails here: with --reset as a non-hub refusal, without it as "hub already exists".
 	// An offline one-argument clone fails earlier, at "probe weft <url>:", because the hub name comes from a remote fact.
 	if opts.Reset {
-		if err := resetHub(rec, cwd, hubPath); err != nil {
+		if err := resetHub(rec, cwd, hubPath, opts); err != nil {
 			return CloneResult{}, err
 		}
 	} else if _, err := os.Stat(hubPath); err == nil {
@@ -862,8 +918,9 @@ func refuseUncheckedOutWarpClone(warpWorktreePath, warpURL string) error {
 // So is one whose board is not yet materialised mid-clone.
 // An absent path is a silent no-op, so --reset stays idempotent.
 // rec records the mutations of the enclosing clone and is passed through to removePath.
-func resetHub(rec *Mutations, cwd, hubPath string) error {
-	present, err := checkResetTarget(hubPath)
+// opts is the clone's, and its DiscardWork accepts the loss of the work the hub's stores hold.
+func resetHub(rec *Mutations, cwd, hubPath string, opts fabriclayout.CloneOptions) error {
+	present, err := checkResetTarget(cwd, hubPath, opts)
 	if err != nil || !present {
 		return err
 	}
@@ -874,7 +931,7 @@ func resetHub(rec *Mutations, cwd, hubPath string) error {
 		target:    hubPath,
 		slug:      nil,
 		ownership: ownedFabricHub(),
-		dirtiness: dirtinessNA("a hub holding work origin lacks is refused before this removal, so ownership is the check that matters here"),
+		dirtiness: dirtinessNA("a hub holding work origin lacks is refused before this removal unless --discard-work accepts its loss, so ownership is the check that matters here"),
 		force:     false,
 	}
 	if err := removePath(rec, req); err != nil {
@@ -884,12 +941,15 @@ func resetHub(rec *Mutations, cwd, hubPath string) error {
 }
 
 // checkResetTarget refuses a --reset target that exists but is not a fabric hub.
-// It also refuses a hub holding work origin lacks, naming that work and the move that keeps it.
+// It also refuses a hub holding work origin lacks, naming that work and the ways to keep or discard it.
+// opts.DiscardWork accepts the loss of the work the hub's stores hold;
+// a hub a pair or an unfinished teardown uses is refused whatever opts says.
+// cwd and opts spell the clone a refusal names.
 // It reports whether the target is present.
 // It removes nothing.
-// It reads the hub's own origin only when its code store holds a commit no remote-tracking ref holds.
+// It reads a store's origin only when the store holds a commit no remote-tracking ref holds.
 // The hub is removed only once every argument has been checked against the remotes.
-func checkResetTarget(hubPath string) (present bool, err error) {
+func checkResetTarget(cwd, hubPath string, opts fabriclayout.CloneOptions) (present bool, err error) {
 	info, statErr := os.Stat(hubPath)
 	if os.IsNotExist(statErr) {
 		return false, nil
@@ -907,71 +967,230 @@ func checkResetTarget(hubPath string) (present bool, err error) {
 	}
 	work, err := hubWorkOriginLacks(hubPath)
 	if err != nil {
-		return false, fmt.Errorf("reset: %w", err)
+		return false, fmt.Errorf("reset: what the hub at %s holds cannot be read: %w; way forward: %s", hubPath, err, moveAsideWayForward(hubPath))
 	}
-	if len(work) > 0 {
+	lost := work.all()
+	if opts.DiscardWork {
+		lost = work.inUse
+	}
+	if len(lost) > 0 {
 		return false, &destructiveRefusal{
 			Check: CheckDirtiness, What: "reset hub", Target: hubPath,
-			Reason: fmt.Sprintf("it holds work origin lacks: %s; way forward: land or remove that work, or %s",
-				strings.Join(work, "; "), moveAsideWayForward(hubPath)),
+			Reason: fmt.Sprintf("it holds work origin lacks: %s; way forward: %s",
+				strings.Join(lost, "; "), hubWorkWayForward(cwd, hubPath, opts, work)),
 		}
 	}
 	return true, nil
 }
 
-// hubWorkOriginLacks names the work in the hub at hubPath that a replacement would lose and origin does not hold:
-// each linked worktree but the Bolt checkout, which is a pair's side;
-// each unfinished teardown, a running one included, whose tip this machine's tag alone may hold;
-// and in the prime code store, uncommitted or untracked changes, a stash, and commits origin lacks.
-// A clone that stopped partway leaves none of these, so its hub stays replaceable.
-// A hub with no prime code store names nothing of one.
-func hubWorkOriginLacks(hubPath string) ([]string, error) {
+// hubWork names the work in a hub that a replacement of the hub would lose and origin does not hold.
+type hubWork struct {
+	// inUse names the pair worktrees and unfinished teardowns that use the hub; no flag lets --reset remove them.
+	inUse []string
+	// stores names the work the hub's stores hold, which --discard-work lets --reset remove.
+	stores []string
+}
+
+// all returns every item of the work, the hub's uses first.
+func (w hubWork) all() []string {
+	return append(append([]string{}, w.inUse...), w.stores...)
+}
+
+// hubWorkOriginLacks names the work in the hub at hubPath that a replacement would lose and origin does not hold.
+// Each linked worktree but the Bolt checkout is a pair's side, and puts the hub in use.
+// So does each unfinished teardown, a running one included, whose tip this machine's tag alone may hold.
+// The work its stores hold is read from the prime code store, the prime's records store and the Bolt checkout:
+// in each, uncommitted or untracked changes and ignored files lym did not write;
+// in the code store and the records store, a stash and commits origin lacks.
+// The records store's commits include the board's branches, since the Bolt checkout is one of its worktrees;
+// commits only the Bolt checkout's HEAD holds are read there.
+// A store with no repository names nothing.
+func hubWorkOriginLacks(hubPath string) (hubWork, error) {
 	linked, err := linkedWorktreeNames(hubPath)
 	if err != nil {
-		return nil, err
+		return hubWork{}, err
 	}
-	var work []string
+	var work hubWork
 	for _, name := range linked {
 		if name != fabriclayout.BoltDirName {
-			work = append(work, "the pair worktree "+filepath.Join(hubPath, name))
+			work.inUse = append(work.inUse, "the pair worktree "+filepath.Join(hubPath, name))
 		}
 	}
 
 	pending, err := pendingTeardownRecords(hubPath)
 	if err != nil {
-		return nil, err
+		return hubWork{}, err
 	}
 	for _, record := range pending {
-		work = append(work, fmt.Sprintf("the unfinished teardown of %q (%s)", record.Slug, record.WayForward))
+		work.inUse = append(work.inUse, fmt.Sprintf("the unfinished teardown of %q (%s)", record.Slug, record.WayForward))
 	}
 
-	codeStore := filepath.Join(hubPath, primeNameOfHub(hubPath))
-	if info, err := os.Lstat(filepath.Join(codeStore, ".git")); err != nil || !info.IsDir() {
-		return work, nil
+	prime := primeNameOfHub(hubPath)
+	stores := []struct {
+		dir string
+		// ownsRefs reports whether the store's refs are its own, so its stash and commits are read there.
+		ownsRefs bool
+		// written lists the paths lym itself writes in the store and git ignores.
+		written []string
+	}{
+		{dir: filepath.Join(hubPath, prime), ownsRefs: true, written: lymWrittenInPrime(hubPath, prime)},
+		{dir: weftname.SiblingPath(hubPath, prime), ownsRefs: true},
+		{dir: fabriclayout.BoltDir(hubPath), ownsRefs: false, written: []string{
+			fabriclayout.BoardWriteLockFile, fabriclayout.BoardPushLockFile, fabriclayout.BoardRenderManifestFile,
+		}},
 	}
-	// The untracked files are asked for by flag, since a user's status.showUntrackedFiles would hide them.
-	status, err := gitexec.Run([]string{"status", "--porcelain", "--untracked-files=normal"}, codeStore)
-	if err != nil {
-		return nil, fmt.Errorf("read the status of %s: %w", codeStore, err)
-	}
-	if strings.TrimSpace(status) != "" {
-		work = append(work, "uncommitted or untracked changes in "+codeStore)
-	}
-	stash, err := gitexec.Run([]string{"for-each-ref", "refs/stash"}, codeStore)
-	if err != nil {
-		return nil, fmt.Errorf("look for a stash in %s: %w", codeStore, err)
-	}
-	if strings.TrimSpace(stash) != "" {
-		work = append(work, "a stash in "+codeStore)
-	}
-	count, err := countCommitsOriginLacks(codeStore)
-	if err != nil {
-		return nil, fmt.Errorf("count the commits of %s that origin lacks: %w", codeStore, err)
-	}
-	if count != "0" {
-		work = append(work, fmt.Sprintf("%s commit(s) of %s that origin lacks", count, codeStore))
+	for _, store := range stores {
+		storeWork, err := storeWorkOriginLacks(store.dir, store.ownsRefs, store.written)
+		if err != nil {
+			return hubWork{}, err
+		}
+		work.stores = append(work.stores, storeWork...)
 	}
 	return work, nil
+}
+
+// lymWrittenInPrime lists the paths lym itself writes in the prime code store and git ignores.
+// They are the editor config and the fabric config's warp exclude list under the anchor, relative to the store's root.
+// A hub whose anchor or config cannot be read, as a stopped clone leaves, lists fewer paths, so more is named as work.
+func lymWrittenInPrime(hubPath, prime string) []string {
+	l, err := lymcwd.NamedWorktree(hubPath, prime)
+	if err != nil {
+		logger.Warn("fabricengine: read the prime's anchor; counting every ignored file as work", "hub", hubPath, "error", err)
+		return nil
+	}
+	anchor := filepath.ToSlash(l.AnchorRel)
+	written := []string{
+		path.Join(anchor, vscode.ConfigDirName, vscode.SettingsFileName),
+		path.Join(anchor, vscode.ConfigDirName, vscode.TasksFileName),
+	}
+	cfg, err := LoadConfig(ConfigDirs(l))
+	if err != nil {
+		logger.Warn("fabricengine: load the fabric config; counting the warp exclude list's files as work", "hub", hubPath, "error", err)
+		return written
+	}
+	for _, listed := range cfg.WarpExcludePaths() {
+		written = append(written, path.Join(anchor, listed))
+	}
+	return written
+}
+
+// storeWorkOriginLacks names the work in the checkout at dir that origin does not hold:
+// uncommitted or untracked changes, ignored files but the written ones, and commits origin lacks.
+// With ownsRefs those are a stash and every ref's commits; without, only the commits its HEAD alone holds.
+// A dir holding no repository names nothing.
+func storeWorkOriginLacks(dir string, ownsRefs bool, written []string) ([]string, error) {
+	if _, err := os.Lstat(filepath.Join(dir, ".git")); errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	} else if err != nil {
+		return nil, fmt.Errorf("look for the repository of %s: %w", dir, err)
+	}
+	var work []string
+	// The untracked files are asked for by flag, since a user's status.showUntrackedFiles would hide them.
+	status, err := gitexec.Run([]string{"status", "--porcelain", "--untracked-files=normal"}, dir)
+	if err != nil {
+		return nil, fmt.Errorf("read the status of %s: %w", dir, err)
+	}
+	if strings.TrimSpace(status) != "" {
+		work = append(work, "uncommitted or untracked changes in "+dir)
+	}
+	ignored, err := ignoredWork(dir, written)
+	if err != nil {
+		return nil, err
+	}
+	if len(ignored) > 0 {
+		named := ignored
+		if len(named) > ignoredPathsNamed {
+			named = named[:ignoredPathsNamed]
+		}
+		item := fmt.Sprintf("ignored files in %s: %s", dir, strings.Join(named, ", "))
+		if more := len(ignored) - len(named); more > 0 {
+			item += fmt.Sprintf(" and %d more", more)
+		}
+		work = append(work, item)
+	}
+	if !ownsRefs {
+		// The branches and tags are counted where the refs are owned; a detached HEAD is seen only from here.
+		count, err := gitexec.Run([]string{"rev-list", "--ignore-missing", "--count", "HEAD", "--not", "--branches", "--tags", "--remotes"}, dir)
+		if err != nil {
+			return nil, fmt.Errorf("count the commits of %s's HEAD that origin lacks: %w", dir, err)
+		}
+		if count = strings.TrimSpace(count); count != "0" {
+			work = append(work, fmt.Sprintf("%s commit(s) of %s's HEAD that origin lacks", count, dir))
+		}
+		return work, nil
+	}
+	stash, err := gitexec.Run([]string{"for-each-ref", "refs/stash"}, dir)
+	if err != nil {
+		return nil, fmt.Errorf("look for a stash in %s: %w", dir, err)
+	}
+	if strings.TrimSpace(stash) != "" {
+		work = append(work, "a stash in "+dir)
+	}
+	count, err := countCommitsOriginLacks(dir)
+	if err != nil {
+		return nil, fmt.Errorf("count the commits of %s that origin lacks: %w", dir, err)
+	}
+	if count != "0" {
+		work = append(work, fmt.Sprintf("%s commit(s) of %s that origin lacks", count, dir))
+	}
+	return work, nil
+}
+
+// ignoredWork lists the ignored paths of the checkout at dir that may hold work, in git's order.
+// A wholly ignored directory is one entry ending in a slash.
+// One that holds a written path is replaced by its other files.
+// Git cannot tell a build output from a kept secret, so every ignored path counts but lym's own:
+// the written paths, a link, whose content lives at its target, and the never-tracked cache and records lock directories.
+func ignoredWork(dir string, written []string) ([]string, error) {
+	entries, err := ignoredPaths(dir, "--directory")
+	if err != nil {
+		return nil, err
+	}
+	var paths []string
+	seen := map[string]bool{}
+	for _, entry := range entries {
+		candidates := []string{entry}
+		holdsWritten := strings.HasSuffix(entry, "/") &&
+			slices.ContainsFunc(written, func(own string) bool { return strings.HasPrefix(own, entry) })
+		if holdsWritten {
+			if candidates, err = ignoredPaths(dir, "--", ":(literal)"+entry); err != nil {
+				return nil, err
+			}
+		}
+		for _, candidate := range candidates {
+			if !seen[candidate] && mayHoldWork(dir, candidate, written) {
+				seen[candidate] = true
+				paths = append(paths, candidate)
+			}
+		}
+	}
+	return paths, nil
+}
+
+// ignoredPaths returns the ignored paths of the checkout at dir that git lists under the further arguments args.
+func ignoredPaths(dir string, args ...string) ([]string, error) {
+	out, err := gitexec.Run(append([]string{"ls-files", "-z", "--others", "--ignored", "--exclude-standard"}, args...), dir)
+	if err != nil {
+		return nil, fmt.Errorf("list the ignored files of %s: %w", dir, err)
+	}
+	return strings.FieldsFunc(out, func(r rune) bool { return r == 0 }), nil
+}
+
+// mayHoldWork reports whether the ignored path entry of the checkout at dir is none of lym's own.
+func mayHoldWork(dir, entry string, written []string) bool {
+	trimmed := strings.TrimSuffix(entry, "/")
+	for _, segment := range strings.Split(trimmed, "/") {
+		if segment == lymdirs.DotLymDirName || segment == fabriclayout.RecordsLockDirName {
+			return false
+		}
+	}
+	for _, own := range written {
+		if trimmed == own || strings.HasPrefix(trimmed, own+"/") {
+			return false
+		}
+	}
+	isLink, err := fslink.IsLink(filepath.Join(dir, filepath.FromSlash(trimmed)))
+	return err != nil || !isLink
 }
 
 // countCommitsOriginLacks counts the commits of the repository at dir that origin lacks.

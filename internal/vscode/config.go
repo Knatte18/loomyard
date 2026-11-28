@@ -19,6 +19,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
+// The directory and the files lym writes a worktree's VS Code configuration to.
+const (
+	ConfigDirName    = ".vscode"
+	SettingsFileName = "settings.json"
+	TasksFileName    = "tasks.json"
+)
+
 // Settings keys lym owns in a worktree's settings.json.
 const (
 	colorCustomizationsKey        = "workbench.colorCustomizations"
@@ -73,14 +80,14 @@ func WriteConfig(worktreeDir, relpath string, look Look, renderMarkdown bool, ly
 		lymPath = "lym"
 	}
 
-	vscodePath := filepath.Join(worktreeDir, relpath, ".vscode")
+	vscodePath := filepath.Join(worktreeDir, relpath, ConfigDirName)
 	if err := os.MkdirAll(vscodePath, 0o755); err != nil {
 		return err
 	}
-	if err := writeSettings(filepath.Join(vscodePath, "settings.json"), look, renderMarkdown); err != nil {
+	if err := writeSettings(filepath.Join(vscodePath, SettingsFileName), look, renderMarkdown); err != nil {
 		return err
 	}
-	return writeWorktreeTasks(filepath.Join(vscodePath, "tasks.json"), lymPath)
+	return writeWorktreeTasks(filepath.Join(vscodePath, TasksFileName), lymPath)
 }
 
 // writeSettings creates settingsPath with lym's defaults, look and the markdown association renderMarkdown asks for.

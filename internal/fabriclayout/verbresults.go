@@ -95,6 +95,9 @@ type CloneOptions struct {
 	Subpath string
 	// Reset tears down an existing hub before cloning, for an idempotent re-clone.
 	Reset bool
+	// DiscardWork lets Reset tear down a hub whose stores hold work origin lacks, losing that work.
+	// It never lets Reset tear down a hub a pair or an unfinished teardown uses, and it is refused without Reset.
+	DiscardWork bool
 	// ForceBootstrap bypasses the old-order guard that refuses to bootstrap a warp-shaped repository as a weft.
 	// The guard is reached only when a fresh binding is written, so the field has no effect on other paths.
 	// Every other path ignores it.

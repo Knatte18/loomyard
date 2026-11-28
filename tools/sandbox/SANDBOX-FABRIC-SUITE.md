@@ -433,9 +433,15 @@ The hub name is derived rather than typed.
 In the one-argument form it comes from the binding recorded on the weft.
 The operator never sees the name being deleted.
 Then re-run `--reset` against a real hub that holds no work origin lacks:
-no pair, no unfinished teardown, and a clean prime with no stash and no unpushed commit.
+no pair, no unfinished teardown, and clean code store, records store and `_bolt` checkout,
+with no stash, no unpushed commit and no ignored file but links and the files and directories lym writes itself.
 Confirm the idempotent re-clone still works.
-Then add a pair and run `--reset` over that hub again.
+Then commit a file in `_bolt` without pushing it, and leave an ignored `secret.env` in the prime.
+Run `--reset` again.
+It must be **refused**, naming the unpushed commit of the records store and the ignored `secret.env`,
+with a way forward that moves the hub aside with `mv` and one that adds `--discard-work`, and the hub must survive.
+Run the named `--discard-work` clone and confirm it replaces the hub.
+Then add a pair and run `--reset --discard-work` over that hub.
 It must be **refused**, naming the pair worktree and a way forward that moves the hub aside with `mv`,
 and the hub must survive.
 

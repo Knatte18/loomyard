@@ -65,7 +65,11 @@ and wires the junctions and configs; no follow-up step is needed.
 
 Reach for it to start working on a repository pair on this machine, or with
 --reset to rebuild an existing hub from its remotes. --reset refuses a hub
-that holds a pair, an unfinished teardown, or code work origin lacks.
+that holds a pair, an unfinished teardown, or work origin lacks, and names
+it: unpushed code, records or board commits, uncommitted changes, stashes, and
+ignored files lym did not write in the code store, the records store or ` + fabriclayout.BoltDirName + `.
+--` + fabricengine.DiscardWorkFlag + ` with --reset accepts the loss of that work; a pair or an
+unfinished teardown still refuses.
 
 <weft-url> is the records repository. <warp-url> is the code repository: pass
 it, with --shortname, the first time a weft is bound; afterwards it is read
@@ -90,16 +94,21 @@ Example:
   lym fabric clone --into ~/repos https://github.com/user/repo-weft`,
 		RunE: clihelp.WrapRunCtx(func(ctx context.Context, out io.Writer, args []string) int {
 			reset, _ := cloneCmd.Flags().GetBool("reset")
+			discardWork, _ := cloneCmd.Flags().GetBool(fabricengine.DiscardWorkFlag)
 			subpath, _ := cloneCmd.Flags().GetString("subpath")
 			forceBootstrap, _ := cloneCmd.Flags().GetBool("force-bootstrap")
 			into, _ := cloneCmd.Flags().GetString("into")
 			shortname, _ := cloneCmd.Flags().GetString("shortname")
 			singleRepo, _ := cloneCmd.Flags().GetBool("single-repo")
-			return runCloneWithReset(ctx, out, args, reset, subpath, forceBootstrap, into, shortname, singleRepo)
+			return runCloneWithReset(ctx, out, args, cloneFlags{
+				reset: reset, discardWork: discardWork, subpath: subpath, forceBootstrap: forceBootstrap,
+				into: into, shortname: shortname, singleRepo: singleRepo,
+			})
 		}),
 	}
 	cloneCmd.Flags().String("shortname", "", "the repo's shortname, 2-6 characters matching [a-z][a-z0-9]{1,5}; required when the weft is bound for the first time, recorded as "+fabriclayout.ShortnameFileName)
-	cloneCmd.Flags().Bool("reset", false, "remove an existing hub before cloning (idempotent re-clone)")
+	cloneCmd.Flags().Bool("reset", false, "remove an existing hub before cloning, unless it is in use or holds work origin lacks")
+	cloneCmd.Flags().Bool(fabricengine.DiscardWorkFlag, false, "with --reset, remove a hub whose stores hold work origin lacks, losing that work")
 	// The default is empty, not ".": only an empty default lets CloneHub tell an omitted --subpath from an explicit one.
 	// CloneHub normalises empty to the "." root anchor.
 	// An explicit "." against a hub recorded at a real subpath is refused like any other disagreeing value.

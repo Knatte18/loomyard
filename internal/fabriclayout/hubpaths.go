@@ -19,6 +19,10 @@ const BoardWriteLockFile = "board.lock"
 // It is held across a board sync's whole commit-and-push loop.
 const BoardPushLockFile = "board.push.lock"
 
+// BoardRenderManifestFile is the name of the file in the board directory that records the last render's files.
+// It is never tracked.
+const BoardRenderManifestFile = ".board-rendered.json"
+
 // BoltDirName is the name of the Bolt checkout inside a hub.
 // Use BoltDir(hub) to obtain the full path.
 const BoltDirName = lymdirs.BoltDirName

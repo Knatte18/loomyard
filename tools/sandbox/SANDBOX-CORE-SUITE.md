@@ -241,7 +241,8 @@ Finally, tear the pair down with `lym fabric unwire --apply`."
 S6 therefore cannot retrofit the already-root-anchored main sandbox hub.
 S6 instead clones a separate scratch hub from the same warp/weft URLs.
 For its own duration it is not bound by the Black-box rule's "operate only inside the main Hub" scope.
-Use `--reset` on the clone so repeated sandbox sessions are idempotent.
+When an earlier session's scratch hub still stands at the same place, clone with `--reset --discard-work`.
+A clone leaves its module-config commit unpushed, so a plain `--reset` is refused until the records are pushed.
 At session end, run `lym fabric unwire --apply` from inside the anchored subpath.
 It removes the junctions, clears the weft-side `_lym` content, and reverts `.gitignore` there.
 It is not purely local:

@@ -67,6 +67,13 @@ func TestCommand_RefusesBeforeAnyHubWork(t *testing.T) {
 			wantErrorContains: "give --single-repo one URL, the code repository",
 		},
 		{
+			name:              "CloneDiscardWorkWithoutReset",
+			args:              []string{"clone", "--discard-work", "https://example.com/weft", "https://example.com/warp"},
+			wantExit:          1,
+			wantErrorContains: "--discard-work only widens --reset",
+			wantErrorExact:    "--discard-work only widens --reset; way forward: pass --reset with it, or leave it out",
+		},
+		{
 			name:              "MergeContinueRejectsExtraArg",
 			args:              []string{"merge", "--continue", "extra-arg"},
 			wantExit:          1,

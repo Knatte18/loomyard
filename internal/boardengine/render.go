@@ -14,12 +14,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fsx"
 )
 
 // renderManifestFile is the name of the sidecar that records the filenames the last render produced.
 // `ensureBoardIgnores` gitignores it, so it adds no commit churn, and it is never a member of the rendered file set.
-const renderManifestFile = ".board-rendered.json"
+const renderManifestFile = fabriclayout.BoardRenderManifestFile
 
 // RenderToDisk renders the board as of now and writes its output files under boardPath.
 // It rewrites an existing output file in place, keeping its inode.

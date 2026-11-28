@@ -227,7 +227,7 @@ func (j *pushJob) retryTransportPush(pushErr error) error {
 // A clone killed mid-seed can leave origin holding the whole seed,
 // so the refusal reads origin's board to pick its way forward.
 // It fetches origin's board first, so the comparison holds even for a commit another clone pushed after the seed.
-// Origin holding no board names a --reset clone.
+// Origin holding no board names a --reset clone that discards the unpushed seed.
 // Origin holding a board that shares history with this board is this hub's own seed,
 // and it names the upstream settings the clone never wrote.
 // Origin holding a board with no history in common with this one names a join of the hub that seeded it.
@@ -253,7 +253,7 @@ func (j *pushJob) refuseUnseededBoard() error {
 	}
 	if !found {
 		return fmt.Errorf("%s, and origin holds no board under %s, so it was never seeded onto origin; "+
-			"way forward: run the same `lym fabric clone --single-repo` again with `--reset`", refused, fabriclayout.RecordsNamespaceRoot)
+			"way forward: run the same `lym fabric clone --single-repo` again with `--reset --%s`", refused, fabriclayout.RecordsNamespaceRoot, DiscardWorkFlag)
 	}
 	cannotCompare := func(err error) error {
 		return fmt.Errorf("%s, and origin's board could not be compared with this board: %w; "+
