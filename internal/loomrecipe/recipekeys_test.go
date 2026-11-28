@@ -227,6 +227,35 @@ func TestRecipeKeys(t *testing.T) {
 	}
 }
 
+// TestNeedsStoredRecord covers the predicate a start refuses by:
+// a recipe whose rows hold a seed row and no record row needs a stored decision record.
+func TestNeedsStoredRecord(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		recipe string
+		want   bool
+	}{
+		{shedrun.RecipeJacquard, true},
+		{shedrun.RecipeTapestry, false},
+		{shedrun.RecipeDarn, false},
+		{shedrun.RecipeMotif, false},
+		{shedrun.RecipeRaddle, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.recipe, func(t *testing.T) {
+			t.Parallel()
+			if got, err := NeedsStoredRecord(tt.recipe); err != nil || got != tt.want {
+				t.Errorf("NeedsStoredRecord(%q) = %v, %v; want %v, nil", tt.recipe, got, err, tt.want)
+			}
+		})
+	}
+	if _, err := NeedsStoredRecord("nope"); err == nil || !strings.Contains(err.Error(), "nope") {
+		t.Errorf("NeedsStoredRecord(%q) error = %v; want a refusal naming the recipe", "nope", err)
+	}
+}
+
 // assertRefusedByEveryAccessor fails unless every error-returning accessor refuses the recipe naming it.
 func assertRefusedByEveryAccessor(t *testing.T, recipe string) {
 	t.Helper()

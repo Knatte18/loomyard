@@ -16,7 +16,8 @@
 //
 // # The loom engine sets
 //
-// LoomRecordEngines, LoomSeedEngine, LoomBuildEngines and LoomFinalizeEngine name the engines of a loom recipe's rows.
+// The engines of a loom recipe's rows are named by these identifiers.
+// They are LoomRecordEngines, LoomRecordWriteEngine, LoomSeedEngine, LoomBuildEngines and LoomFinalizeEngine.
 // A seed row writes a missing record from the board entry's stored record, beside or in place of the record row.
 // shedbuild reads them to check a recipe declaring `contract: loom`, so a new loom recipe needs no change to the check.
 //

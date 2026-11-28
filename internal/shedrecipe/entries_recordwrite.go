@@ -13,7 +13,7 @@ import (
 // The record, support log and discussion directory paths must be absolute.
 // ReadBody, ReadStored and Commit must be non-nil; the refusal names the Env field.
 func recordWriteEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
-	const entry = "RecordWrite"
+	const entry = LoomRecordWriteEngine
 	if err := configRejectUnknown(cfg); err != nil {
 		return nil, err
 	}

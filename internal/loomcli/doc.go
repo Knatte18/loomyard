@@ -53,6 +53,8 @@
 // `decision store` admits the same orchs.
 // A chain that cannot be read still admits the orch the run's notices go to, here and at `parent-review answer`.
 // `decision add`, `replace` and `store` refuse a raddle run, naming the goto or the filed parts.
+// Some recipes write the record in a Record-Write row, or in a Record-Seed row in place of a record row.
+// On those, `decision add` and `replace` refuse a record that row has not committed, and each way forward names that row.
 // `decision add` with `--amends-plan` or a PATTERN change is refused while the run's drift judge session is open.
 // `decision add` and `replace` refuse every caller once the task's scope is closed:
 // from the recipe's first Code-Review row, or once that segment has run, until its Finalize row.
@@ -83,6 +85,11 @@
 // A first seed clears the friction directory and pins the body hash of every installed registry stencil.
 // An unseeded run is seeded with the driver `shed.driver_kind` resolves to, `llm` by default;
 // a seeded run keeps its recorded driver, and no flag chooses one.
+// A first start is one with no status file.
+// Some recipes build only from a stored decision record.
+// A first start of such a recipe refuses an entry that holds none.
+// It refuses before the status file is seeded, naming the re-run as tapestry.
+// A resume, and a start over an existing status file, pass over that check.
 // It brings up the worktree's tmux session, ensures the status strand and spawns the per-hub watchdog best-effort.
 // A failure of the follow-state and window selection is logged and never fails the start.
 //

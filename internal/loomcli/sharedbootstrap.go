@@ -12,6 +12,7 @@ package loomcli
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
@@ -20,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -49,6 +51,7 @@ const (
 	// bootstrapStageSeed means the failure occurred while writing loom's shedrun.Seed or while seeding the status file.
 	// An existing seed or status file that already agrees with this run is not a failure.
 	// A seed that disagrees with an existing one fails here, as does any other write error.
+	// A first start also fails here, before the status file is seeded, when its stored-record check fails or refuses it.
 	bootstrapStageSeed
 	// bootstrapStageOwnership means the failure occurred while verifying the seeded status file's owner.
 	// The status file must belong to this task's own slug.
@@ -74,6 +77,9 @@ const (
 // An operator who wants a driver on one run pre-seeds it with "lym shed seed self --recipe tapestry --driver go".
 // Without this read-through, a run already seeded for the llm driver would be refused here.
 // WriteSeed rejects a disagreeing existing seed.
+// Some recipes build only from a stored decision record.
+// With no status file yet, such a recipe refuses an entry that holds none.
+// That refusal comes at bootstrapStageSeed and before the status file is seeded.
 func (c *loomCLI) seedAndCommitBootstrap(slug, parentFlag string) (string, string, bootstrapStage, error) {
 	// Step 1: resolve the recorded parent branch, writing the provenance record only for a legacy
 	// worktree created before it existed.
@@ -117,6 +123,13 @@ func (c *loomCLI) seedAndCommitBootstrap(slug, parentFlag string) (string, strin
 		if errors.Is(err, shedrun.ErrDisagreeingSeed) {
 			err = disagreeingSeedRefusal(shedrun.SeedFile(c.location, shedrun.SelfRunID), existingSeed, parent)
 		}
+		return "", "", bootstrapStageSeed, err
+	}
+
+	// Step 1c: a first start of a recipe that builds only from a stored decision record refuses an entry that holds none.
+	// The stat of the status file judges this check alone: seeding still goes through loomshed.Seed's lock below,
+	// and a refused start writes no status file.
+	if err := c.refuseMissingStoredRecord(slug, seedRecipe, driver, parent); err != nil {
 		return "", "", bootstrapStageSeed, err
 	}
 
@@ -252,8 +265,58 @@ func runUsageRecord(recipe string, entry boardengine.Task, found bool, defaultPr
 // Its way forward clears the one file and re-seeds with the existing recipe, driver and recorded parent.
 // Following it therefore cannot loop on the same refusal.
 func disagreeingSeedRefusal(seedPath string, existing shedrun.Seed, parent string) error {
-	return fmt.Errorf("%w: loom: the seed at %s records recipe %q, driver %q and params %v, which disagree with the recorded parent branch %q; way forward: rm %s, then lym shed seed self --recipe %s --driver %s --param %s=%s",
+	return fmt.Errorf("%w: loom: the seed at %s records recipe %q, driver %q and params %v, which disagree with the recorded parent branch %q; way forward: rm '%s', then lym shed seed self --recipe %s --driver %s --param %s=%s",
 		shedrun.ErrDisagreeingSeed, seedPath, existing.Recipe, existing.Driver, existing.Params, parent, seedPath, existing.Recipe, existing.Driver, loomshed.SeedParentParam, parent)
+}
+
+// refuseMissingStoredRecord refuses the first start of the run of slug when a needed stored record is missing.
+// It is missing when the recipe builds only from a stored decision record and the board entry holds none.
+// An entry the board lacks holds none, so it is refused too.
+// A run with a status file passes, since its Record-Seed row guards an entry that lost its record later.
+// A recipe that writes a record of its own passes too.
+// driver and parent are the run's recorded driver and parent branch, which the re-seed of the way forward keeps.
+func (c *loomCLI) refuseMissingStoredRecord(slug, recipe, driver, parent string) error {
+	const wayForward = "way forward: fix the cause it names, then run the verb again"
+	if _, err := os.Stat(c.shedPaths.StatusPath); !errors.Is(err, fs.ErrNotExist) {
+		if err != nil {
+			return fmt.Errorf("loom: probe the run's status file: %w; %s", err, wayForward)
+		}
+		return nil
+	}
+	needs, err := loomrecipe.NeedsStoredRecord(recipe)
+	if err != nil || !needs {
+		return err
+	}
+	board, err := boardengine.OpenHub(c.location.HubPath)
+	if err != nil {
+		return fmt.Errorf("loom: open the board to read the entry's stored decision record: %w; %s", err, wayForward)
+	}
+	_, found, err := board.DecisionRecord(slug)
+	if err != nil {
+		return fmt.Errorf("loom: read the entry's stored decision record: %w; %s", err, wayForward)
+	}
+	if found {
+		return nil
+	}
+	return noStoredRecordStartRefusal(slug, shedrun.SeedFile(c.location, shedrun.SelfRunID), driver, parent)
+}
+
+// noStoredRecordStartRefusal renders the refusal of a first start that lacks a stored record.
+// The recipe needs that record and the entry slug holds none.
+// The run's recipe comes from the seed at seedPath, which a board edit does not change,
+// so the way forward runs the task as tapestry in both of its cases:
+// a pair batten made is cancelled and run again from the prime with its entry's recipe set to tapestry;
+// any other pair re-seeds as tapestry, keeping its driver and parent, and starts again.
+func noStoredRecordStartRefusal(slug, seedPath, driver, parent string) error {
+	return fmt.Errorf("loom: %s; way forward: run the task as %s, which discusses it first. "+
+		"For a pair batten made, from the hub's prime worktree: \"lym batten cancel %s --remove\", "+
+		"\"lym board upsert '{\"slug\":\"%s\",\"recipe\":\"%s\"}'\", "+
+		"\"lym board set-status '{\"slug\":\"%s\",\"status\":null}'\", then \"lym batten run %s\". "+
+		"For any other pair, from its task worktree: \"rm '%s'\", "+
+		"\"lym shed seed self --recipe %s --driver %s --param %s=%s\", then \"lym loom start\"",
+		loomrecipe.NoStoredRecordRefusal(slug), shedrun.RecipeTapestry,
+		slug, slug, shedrun.RecipeTapestry, slug, slug,
+		seedPath, shedrun.RecipeTapestry, driver, loomshed.SeedParentParam, parent)
 }
 
 // resolveSeedDriver returns the driver a run records when it is seeded.

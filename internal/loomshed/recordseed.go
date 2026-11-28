@@ -88,7 +88,7 @@ func recordSeedStuckReason(deps RecordSeedDeps) (string, error) {
 		"For a pair batten made, from the hub's prime worktree: \"lym batten cancel %s --remove\", "+
 		"\"lym board upsert '{\"slug\":\"%s\",\"recipe\":\"%s\"}'\", "+
 		"\"lym board set-status '{\"slug\":\"%s\",\"status\":null}'\", then \"lym batten run %s\". "+
-		"For any other pair, from its task worktree: \"rm %s\", "+
+		"For any other pair, from its task worktree: \"rm '%s'\", "+
 		"\"lym shed seed self --recipe %s --driver %s --param %s=%s\", "+
 		"\"lym loom goto --to %s\", \"lym loom start\", then \"lym loom resume\"",
 		noStoredRecordReason, seed.Recipe,

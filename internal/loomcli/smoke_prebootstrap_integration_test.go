@@ -331,7 +331,7 @@ func TestLoomFailedReedUpRefuses(t *testing.T) {
 		}
 		message, _ := env["error"].(string)
 		for _, want := range []string{
-			"rm " + shedrun.SeedFile(loc, shedrun.SelfRunID),
+			"rm '" + shedrun.SeedFile(loc, shedrun.SelfRunID) + "'",
 			"lym shed seed self --recipe tapestry --driver go --param parent=" + recorded.ParentBranch,
 		} {
 			if !strings.Contains(message, want) {

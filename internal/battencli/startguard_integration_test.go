@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
@@ -142,6 +143,50 @@ func TestArmAt_StartGuardRefusesBeforeAnyWrite(t *testing.T) {
 		}
 		assertNothingWritten(t, fake)
 	})
+}
+
+// TestArmAt_JacquardEntryWithNoStoredRecordRefusesBeforeAnyWrite runs a jacquard entry that holds no stored record.
+// The guard refuses before any write: no board pull or claim, no seed, no status file and no task worktree.
+// The refusal names the upsert that runs the entry as tapestry.
+func TestArmAt_JacquardEntryWithNoStoredRecordRefusesBeforeAnyWrite(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	const slug = "jacquard-task"
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	cfg, err := boardengine.LoadConfig(configengine.Dirs{Board: h.BoardDir()}, "board")
+	if err != nil {
+		t.Fatalf("load board config: %v", err)
+	}
+	cfg.Path = h.BoardDir()
+	board := boardengine.New(cfg)
+	if _, err := board.UpsertTask(map[string]any{"slug": slug, "title": slug, "kind": "task", "labels": []string{"bug"}, "recipe": shedrun.RecipeJacquard}); err != nil {
+		t.Fatalf("seed board entry %s: %v", slug, err)
+	}
+	// A new task is a draft, which a fresh run refuses before this check.
+	if err := board.SetStatus(slug, nil); err != nil {
+		t.Fatalf("release board task %s: %v", slug, err)
+	}
+	fake := &fakeOwners{machine: "here", owners: boardengine.Owners{Prime: "here", Entries: map[string]boardengine.OwnerEntry{}}}
+	c := &battenCLI{owner: fake.seams()}
+
+	_, err = c.armAt(h.Location, slug, true, "run")
+
+	if err == nil {
+		t.Fatal("armAt(run) of a jacquard entry with no stored record = nil; want a refusal")
+	}
+	for _, want := range []string{loomrecipe.NoStoredRecordRefusal(slug), `lym board upsert '{"slug":"` + slug + `","recipe":"tapestry"}'`} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("armAt(run) error = %q; want it to carry %q", err.Error(), want)
+		}
+	}
+	if fake.pulls != 0 || len(fake.sets) != 0 {
+		t.Errorf("owner seams saw %d pulls and writes %v; want none", fake.pulls, fake.sets)
+	}
+	assertNoRunWritten(t, h.Location, slug)
+	if _, err := os.Stat(h.PairCodeWorktree(slug)); !os.IsNotExist(err) {
+		t.Errorf("task worktree after the refused run: stat err %v; want none made", err)
+	}
 }
 
 // assertNoRunWritten fails the test when slug has a seed or a status file under location.

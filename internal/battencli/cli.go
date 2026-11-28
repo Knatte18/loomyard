@@ -10,6 +10,9 @@
 // Without --apply it is a dry run.
 // `ClearMotifRun` (cleanup.go) removes one slug's records the same way.
 // It acts only if its run is done and the child-recipe record Seed-Child writes in batten's run directory names motif.
+// A jacquard entry builds only from a stored decision record.
+// The start guard refuses its fresh run or step when it holds none, before any worktree is made.
+// A slug whose run is done meets the done-run refusal first.
 // A run or step of a task with recipe raddle has the start guard judge the start as a fresh one first (startguard.go).
 // `claimStart` (startguard.go) runs once the start's owner check has passed.
 // A refused start therefore leaves the run in place.

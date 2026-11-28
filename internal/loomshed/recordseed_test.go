@@ -120,8 +120,8 @@ func TestRecordSeed_Call(t *testing.T) {
 				`For a pair batten made, from the hub's prime worktree: "lym batten cancel my-task --remove", ` +
 					`"lym board upsert '{"slug":"my-task","recipe":"tapestry"}'", ` +
 					`"lym board set-status '{"slug":"my-task","status":null}'", then "lym batten run my-task".`,
-				`For any other pair, from its task worktree: "rm `,
-				`seed.json", "lym shed seed self --recipe tapestry --driver llm --param parent=main", ` +
+				`For any other pair, from its task worktree: "rm '`,
+				`seed.json'", "lym shed seed self --recipe tapestry --driver llm --param parent=main", ` +
 					`"lym loom goto --to Discussion-Write", "lym loom start", then "lym loom resume"`,
 			},
 		},

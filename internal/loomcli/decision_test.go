@@ -75,6 +75,8 @@ type decisionFake struct {
 	// noPlan makes the has-a-Plan-Write-row seam answer false; recordRow makes the record-written seam answer true.
 	noPlan    bool
 	recordRow bool
+	// recordRowName is the row the record-written seam names, Record-Write when empty.
+	recordRowName string
 	// recipeErr is the error both recipe seams return.
 	recipeErr error
 	// readRecordErr, when set, is what the record's working-copy read returns in place of the file.
@@ -345,9 +347,9 @@ func (f *decisionFake) deps() decisionDeps {
 			f.darnCalls++
 			return !f.noPlan, f.recipeErr
 		},
-		rowWritten: func() (bool, error) {
+		recordRow: func() (string, bool, error) {
 			f.darnCalls++
-			return f.recordRow, f.recipeErr
+			return cmp.Or(f.recordRowName, loomshed.NameRecordWrite), f.recordRow, f.recipeErr
 		},
 		readRecord: func() ([]byte, error) {
 			f.darnCalls++
@@ -700,6 +702,36 @@ func TestDecisionVerb_AppendsAndCommits(t *testing.T) {
 	}
 }
 
+// TestEntryRecordRow pins the row the decision verbs read as the one that writes the record from the board entry.
+// Darn's Record-Write row and jacquard's Record-Seed row write it; tapestry's and motif's Discussion writes it instead.
+func TestEntryRecordRow(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		recipe      string
+		wantRow     string
+		wantWritten bool
+	}{
+		{shedrun.RecipeDarn, loomshed.NameRecordWrite, true},
+		{shedrun.RecipeJacquard, loomshed.NameRecordSeed, true},
+		{shedrun.RecipeTapestry, "", false},
+		{shedrun.RecipeMotif, "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.recipe, func(t *testing.T) {
+			t.Parallel()
+			row, written, err := entryRecordRow(tt.recipe)
+			if err != nil || row != tt.wantRow || written != tt.wantWritten {
+				t.Errorf("entryRecordRow(%q) = %q, %v, %v; want %q, %v, nil", tt.recipe, row, written, err, tt.wantRow, tt.wantWritten)
+			}
+		})
+	}
+	if _, _, err := entryRecordRow("nope"); err == nil {
+		t.Errorf("entryRecordRow(%q) error = nil; want a refusal of the unknown recipe", "nope")
+	}
+}
+
 func TestDecisionVerb_Refusals(t *testing.T) {
 	tiergate.Require(t, 0)
 	type refusalCase struct {
@@ -757,6 +789,28 @@ func TestDecisionVerb_Refusals(t *testing.T) {
 			},
 			inputRefusal: true,
 			want:         []string{"not committed at HEAD", "way forward:", `"lym loom goto --to Record-Write", then "lym loom resume"`, "without overwriting them"},
+		},
+		{
+			name: "Record-Seed record not committed at HEAD with the current row Drift-Baseline",
+			setup: func(f *decisionFake, _ *decisionInput) {
+				f.recordRow, f.recordRowName = true, loomshed.NameRecordSeed
+				f.committedFound = false
+				f.found, f.status = true, shedengine.Status{CurrentProducer: loomshed.NameDriftBaseline}
+			},
+			inputRefusal: true,
+			want:         []string{"not committed at HEAD", "way forward:", `"lym loom goto --to Record-Seed", then "lym loom resume"`, "without overwriting them"},
+			notWant:      []string{loomshed.NameRecordWrite},
+		},
+		{
+			name: "Record-Seed record not committed at HEAD with the current row Record-Seed",
+			setup: func(f *decisionFake, _ *decisionInput) {
+				f.recordRow, f.recordRowName = true, loomshed.NameRecordSeed
+				f.committedFound = false
+				f.found, f.status = true, shedengine.Status{CurrentProducer: loomshed.NameRecordSeed}
+			},
+			inputRefusal: true,
+			want:         []string{"not committed at HEAD", "way forward:", `run "lym loom resume", which commits the record and support log`},
+			notWant:      []string{"goto"},
 		},
 		{
 			name: "Record-Write record with a working copy differing by an appended entry whose commit failed",
@@ -1224,10 +1278,12 @@ func TestDecisionVerb_Refusals(t *testing.T) {
 			want:        []string{"no entry under \"Added after Discussion (parent, 2026-03-04): Drop the flag\"", "way forward:", `re-run "lym loom decision add"`},
 		},
 	}
+	// A row with recordRowName set is a run whose Record-Seed row seeds the record, which no refusal names as Record-Write.
 	missingRecord := []struct {
-		name, row string
-		committed bool
-		want      []string
+		name, row     string
+		recordRowName string
+		committed     bool
+		want          []string
 	}{
 		{name: "no status file", want: []string{`run "lym loom start"`, "once the run passed Record-Write"}},
 		{name: "Preflight", row: loomshed.NamePreflight, want: []string{`run "lym loom resume"`}},
@@ -1236,12 +1292,21 @@ func TestDecisionVerb_Refusals(t *testing.T) {
 		{name: "Drift-Await", row: "Drift-Await", want: []string{`"lym loom goto --to Record-Write", then "lym loom resume"`}},
 		{name: "Darn-Write", row: loomshed.NameDarnWrite, want: []string{`"lym loom goto --to Record-Write", then "lym loom resume"`}},
 		{name: "Darn-Write with a committed record at HEAD", row: loomshed.NameDarnWrite, committed: true, want: []string{"git -C _lym checkout HEAD -- discussion/decision-record.md"}},
+		{name: "no status file before Record-Seed", recordRowName: loomshed.NameRecordSeed, want: []string{`run "lym loom start"`, "once the run passed Record-Seed"}},
+		{name: "Preflight before Record-Seed", row: loomshed.NamePreflight, recordRowName: loomshed.NameRecordSeed, want: []string{"once Record-Seed has run", `run "lym loom resume"`}},
+		{name: "Record-Seed", row: loomshed.NameRecordSeed, recordRowName: loomshed.NameRecordSeed, want: []string{"once Record-Seed has run", `run "lym loom resume"`}},
+		{name: "Plan-Write past Record-Seed", row: loomshed.NamePlanWrite, recordRowName: loomshed.NameRecordSeed, want: []string{`"lym loom goto --to Record-Seed", then "lym loom resume"`}},
 	}
 	for _, mr := range missingRecord {
+		var notWant []string
+		if mr.recordRowName != "" {
+			notWant = []string{loomshed.NameRecordWrite}
+		}
 		tests = append(tests, refusalCase{
-			name: "Record-Write record missing with " + mr.name,
+			name:    "record row's record missing with " + mr.name,
+			notWant: notWant,
 			setup: func(f *decisionFake, _ *decisionInput) {
-				f.recordRow = true
+				f.recordRow, f.recordRowName = true, mr.recordRowName
 				f.readRecordErr = fmt.Errorf("read: %w", fs.ErrNotExist)
 				if mr.row != "" {
 					f.found, f.status = true, shedengine.Status{CurrentProducer: mr.row}

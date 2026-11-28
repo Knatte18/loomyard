@@ -57,6 +57,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
@@ -83,12 +84,8 @@ const (
 	decisionWayPattern   = `way forward: pass --pattern-entry and --pattern-action together, and --pattern-text for adds or changes, never for withdraws`
 	decisionWayWithdraw  = `way forward: read the record's "## PATTERN changes" section, then re-run the verb naming an entry it declares, or without the withdrawal when the entry was never declared`
 
-	decisionWayRecordStart     = `the record exists once Record-Write has run; way forward: run "lym loom start", then re-run the verb once the run passed Record-Write`
-	decisionWayRecordResume    = `the record exists once Record-Write has run; way forward: run "lym loom resume", then re-run the verb`
-	decisionWayRecordGoto      = `way forward: run "lym loom goto --to Record-Write", then "lym loom resume", then re-run the verb`
-	decisionWayUncommitted     = `way forward: run "lym loom resume", which commits the record and support log, then re-run the verb`
-	decisionWayUncommittedGoto = `way forward: run "lym loom goto --to Record-Write", then "lym loom resume", which commits the existing record and support log without overwriting them, then re-run the verb`
-	decisionWayEntryMissing    = `way forward: restore the entry and commit the record under _lym, then re-run the verb`
+	decisionWayUncommitted  = `way forward: run "lym loom resume", which commits the record and support log, then re-run the verb`
+	decisionWayEntryMissing = `way forward: restore the entry and commit the record under _lym, then re-run the verb`
 
 	decisionWayFromAlone = `way forward: put every entry's fields in the --from file and drop --title, --decision, --rationale and the --pattern-* flags`
 	decisionWayFromFile  = `way forward: write the --from file as a non-empty JSON array of objects with the keys title, decision, rationale and, for a PATTERN change, pattern_entry, pattern_action and pattern_text, then re-run the verb`
@@ -119,6 +116,29 @@ const (
 	replaceWayTrailer   = `way forward: HEAD holds the file's bytes without the replace trailer; re-read the record, rebuild the --from file from it and re-run "lym loom decision replace", which lands the trailer commit`
 	replaceWayTitle     = `way forward: shorten --title, then re-run "lym loom decision replace"`
 )
+
+// decisionWayRecordStart returns the way forward for a run with no status file whose recordRow writes the record.
+func decisionWayRecordStart(recordRow string) string {
+	return fmt.Sprintf(`the record exists once %s has run; way forward: run "lym loom start", then re-run the verb once the run passed %s`, recordRow, recordRow)
+}
+
+// decisionWayRecordResume returns the way forward for a run that stands at or before recordRow.
+// recordRow is the row that writes the record.
+func decisionWayRecordResume(recordRow string) string {
+	return fmt.Sprintf(`the record exists once %s has run; way forward: run "lym loom resume", then re-run the verb`, recordRow)
+}
+
+// decisionWayRecordGoto returns the way forward for a run past recordRow with no record anywhere.
+// recordRow is the row that writes the record.
+func decisionWayRecordGoto(recordRow string) string {
+	return fmt.Sprintf(`way forward: run "lym loom goto --to %s", then "lym loom resume", then re-run the verb`, recordRow)
+}
+
+// decisionWayUncommittedGoto returns the way forward for a run past recordRow with an uncommitted record on disk.
+// recordRow is the row that writes the record.
+func decisionWayUncommittedGoto(recordRow string) string {
+	return fmt.Sprintf(`way forward: run "lym loom goto --to %s", then "lym loom resume", which commits the existing record and support log without overwriting them, then re-run the verb`, recordRow)
+}
 
 // decisionWayRecordRestore returns the way forward for a run past its record row.
 // It applies when the record is missing from the working copy but committed at HEAD.
@@ -321,8 +341,10 @@ type decisionDeps struct {
 	now func() time.Time
 	// hasPlan reports whether the target's recipe has a Plan-Write row, so a plan exists to amend.
 	hasPlan func() (bool, error)
-	// rowWritten reports whether the target's recipe writes the decision record in its Record-Write row.
-	rowWritten func() (bool, error)
+	// recordRow returns the row of the target's recipe that writes the decision record from the board entry:
+	// its Record-Write row, or its Record-Seed row for a recipe that seeds the record from the stored one.
+	// written is false for a recipe whose Discussion writes the record, and row is then empty.
+	recordRow func() (row string, written bool, err error)
 	// readRecord reads the decision record's working copy.
 	readRecord func() ([]byte, error)
 	// committed reads the decision record as committed at HEAD; found is false when HEAD holds no record.
@@ -599,21 +621,37 @@ func notifyLiveRuns(deps decisionDeps, halted shedengine.State, headings []strin
 	return notified, heldBack, failures
 }
 
-// recordWritePending reports whether the run's current row is Record-Write or an earlier one, so Record-Write has yet to finish.
+// recordWritePending reports whether the run's current row is recordRow or an earlier one.
+// recordRow is the row that writes the record, and a true result means it has yet to finish.
 // An empty row, a run with no status file, is such a run.
-func recordWritePending(currentRow string) bool {
-	return currentRow == "" || currentRow == loomshed.NamePreflight || currentRow == loomshed.NameRecordWrite
+func recordWritePending(currentRow, recordRow string) bool {
+	return currentRow == "" || currentRow == loomshed.NamePreflight || currentRow == recordRow
 }
 
-// checkDarnRecord returns the refusal text for a Record-Write run's record that is not safe to append to, or empty when it is.
-// The record is safe once Record-Write has committed it and nothing touched it since:
+// entryRecordRow returns the row of recipe that writes the decision record from the run's board entry, and true.
+// That is the row running Record-Write, or the Record-Seed row of a recipe whose only record source is its seed row.
+// It returns false for a recipe whose Discussion writes the record, and for one with no record row.
+func entryRecordRow(recipe string) (string, bool, error) {
+	engine, err := loomrecipe.RecordEngine(recipe)
+	if err != nil {
+		return "", false, err
+	}
+	if engine != shedrecipe.LoomRecordWriteEngine && engine != shedrecipe.LoomSeedEngine {
+		return "", false, nil
+	}
+	return loomrecipe.EngineRow(recipe, engine)
+}
+
+// checkDarnRecord judges whether the record that recordRow wrote is safe to append to.
+// It returns the refusal text when it is not, and empty when it is.
+// The record is safe once recordRow has committed it and nothing touched it since:
 // it exists, is committed, equals its committed copy and holds every added entry its history held.
 // Each refusal names the way forward by currentRow, the run's current row, empty for a run with no status file.
 // A failed read of the record, its committed copy or its history is returned as an error.
-func checkDarnRecord(deps decisionDeps, currentRow string) (string, error) {
+func checkDarnRecord(deps decisionDeps, recordRow, currentRow string) (string, error) {
 	working, err := deps.readRecord()
 	if errors.Is(err, fs.ErrNotExist) {
-		return missingRecordRefusal(deps, currentRow)
+		return missingRecordRefusal(deps, recordRow, currentRow)
 	}
 	if err != nil {
 		return "", err
@@ -623,10 +661,10 @@ func checkDarnRecord(deps decisionDeps, currentRow string) (string, error) {
 		return "", err
 	}
 	if !found {
-		if recordWritePending(currentRow) {
+		if recordWritePending(currentRow, recordRow) {
 			return "the decision record is not committed at HEAD; " + decisionWayUncommitted, nil
 		}
-		return "the decision record is not committed at HEAD; " + decisionWayUncommittedGoto, nil
+		return "the decision record is not committed at HEAD; " + decisionWayUncommittedGoto(recordRow), nil
 	}
 	if !bytes.Equal(working, committed) {
 		return "the decision record differs from its committed copy; " + decisionWayDiffers(deps.recordUnderLym), nil
@@ -641,15 +679,16 @@ func checkDarnRecord(deps decisionDeps, currentRow string) (string, error) {
 	return "", nil
 }
 
-// missingRecordRefusal returns the refusal text for a Record-Write run whose decision record is absent from the working copy.
-// A run past Record-Write is sent to restore the record from HEAD when HEAD holds one, else to redo the row.
-func missingRecordRefusal(deps decisionDeps, currentRow string) (string, error) {
+// missingRecordRefusal returns the refusal text for a decision record that is absent from the working copy.
+// recordRow is the row of the run that writes that record.
+// A run past recordRow is sent to restore the record from HEAD when HEAD holds one, else to redo the row.
+func missingRecordRefusal(deps decisionDeps, recordRow, currentRow string) (string, error) {
 	prefix := fmt.Sprintf("the run has no decision record at %s; ", deps.recordPath)
 	switch {
 	case currentRow == "":
-		return prefix + decisionWayRecordStart, nil
-	case recordWritePending(currentRow):
-		return prefix + decisionWayRecordResume, nil
+		return prefix + decisionWayRecordStart(recordRow), nil
+	case recordWritePending(currentRow, recordRow):
+		return prefix + decisionWayRecordResume(recordRow), nil
 	}
 	_, found, err := deps.committed()
 	if err != nil {
@@ -658,7 +697,7 @@ func missingRecordRefusal(deps decisionDeps, currentRow string) (string, error) 
 	if found {
 		return prefix + decisionWayRecordRestore(deps.recordUnderLym), nil
 	}
-	return prefix + decisionWayRecordGoto, nil
+	return prefix + decisionWayRecordGoto(recordRow), nil
 }
 
 // committedLacksEntry returns the heading of the first entry of added that HEAD's record does not hold.
@@ -1051,14 +1090,14 @@ func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionI
 	if input.amendsPlan && !hasPlan {
 		return refuse("--amends-plan has no plan to amend on this run's recipe, which has no Plan-Write row; %s", decisionWayAmendsDarn)
 	}
-	rowWritten, err := deps.rowWritten()
+	recordRow, rowWritten, err := deps.recordRow()
 	if err != nil {
 		return refuse("read the run's recipe: %s; %s", err, decisionWayRetry)
 	}
 	if rowWritten {
-		refusal, err := checkDarnRecord(deps, currentRow)
+		refusal, err := checkDarnRecord(deps, recordRow, currentRow)
 		if err != nil {
-			return refuse("read the darn run's decision record: %s; %s", err, decisionWayRetry)
+			return refuse("read the run's decision record: %s; %s", err, decisionWayRetry)
 		}
 		if refusal != "" {
 			return refuse("%s", refusal)
@@ -1478,14 +1517,14 @@ func decisionReplaceVerb(out io.Writer, slug string, deps decisionDeps, input re
 	if inSpan {
 		return refuse(`the run stands at %s, past its plan's approval and not past its last Webster row, where each fresh Webster prompt renders only the record's Added after Discussion entries, so a fold would hide a call from every Webster session spawned later; %s, whose notice reaches Webster inline, and fold it with "lym loom decision replace" once the run has left its Webster rows`, currentRow, replaceWayAdd)
 	}
-	rowWritten, err := deps.rowWritten()
+	recordRow, rowWritten, err := deps.recordRow()
 	if err != nil {
 		return refuse("read the run's recipe: %s; %s", err, replaceWayRetry)
 	}
 	if rowWritten {
-		refusal, err := checkDarnRecord(deps, currentRow)
+		refusal, err := checkDarnRecord(deps, recordRow, currentRow)
 		if err != nil {
-			return refuse("read the darn run's decision record: %s; %s", err, replaceWayRetry)
+			return refuse("read the run's decision record: %s; %s", err, replaceWayRetry)
 		}
 		if refusal != "" {
 			return refuse("%s", refusal)
@@ -1721,13 +1760,12 @@ func (s *decisionState) preRun(cmd *cobra.Command, args []string) error {
 			}
 			return loomrecipe.HasEngine(recipe, "PlanWrite")
 		},
-		rowWritten: func() (bool, error) {
+		recordRow: func() (string, bool, error) {
 			recipe, err := seedRecipe(target)
 			if err != nil {
-				return false, err
+				return "", false, err
 			}
-			engine, err := loomrecipe.RecordEngine(recipe)
-			return engine == "RecordWrite", err
+			return entryRecordRow(recipe)
 		},
 		readRecord: func() ([]byte, error) { return os.ReadFile(recordPath) },
 		committed: func() ([]byte, bool, error) {
@@ -2117,7 +2155,8 @@ It then notifies the run's other live agents.
 strand). --title, --decision and --rationale are required without --from.
 Callers other than an orch on the run's beam chain, the arbiter or the sampler
 session (--by operator only) are refused, as is any call while Discussion-Write
-runs or before a Record-Write recipe has committed the record.
+runs or before a recipe's Record-Write or Record-Seed row has committed the
+record.
 
 From the first Code-Review round until Finalize only a bug's "No test seam" or
 "No bug fixed" entry that changes nothing else is taken: file any other call

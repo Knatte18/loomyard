@@ -537,6 +537,8 @@ It refuses with the kind "owned_elsewhere" over a run another machine owns,
 naming the owner and "lym adopt".
 While a pause covers this task it refuses and names "lym tender resume".
 A run the act rule waits on, such as a cancelling or cancelled one, is refused with its way forward.
+A first start of a recipe that builds only from a stored decision record refuses an entry that holds none,
+and names how to run the task as tapestry.
 
 Example:
   lym loom start

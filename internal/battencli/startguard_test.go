@@ -6,6 +6,7 @@ package battencli
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -67,6 +68,8 @@ func TestStartGuard_Refuse(t *testing.T) {
 		unreleasedErr error
 		// raddle is the Raddle seam; nil leaves it unset.
 		raddle func() error
+		// storedRecord is the StoredRecord seam; nil leaves it unset.
+		storedRecord func() error
 		// noSeams leaves every seam nil.
 		noSeams bool
 		// wantExact is the refusal's whole text, "{verb}" standing for the verb under test.
@@ -393,13 +396,13 @@ func TestStartGuard_Refuse(t *testing.T) {
 		{
 			name:      "RaddleRefusalOfAFreshStartIsReturnedAsItStands",
 			verbs:     []string{"run", "step"},
-			raddle:    func() error { return raddleRefusal{"some-slug holds no record"} },
+			raddle:    func() error { return startRefusal{"some-slug holds no record"} },
 			wantExact: "some-slug holds no record",
 		},
 		{
 			name:     "RaddleRefusalIsNotJudgedForAResume",
 			verbs:    []string{"run", "step"},
-			raddle:   func() error { return raddleRefusal{"some-slug holds no record"} },
+			raddle:   func() error { return startRefusal{"some-slug holds no record"} },
 			found:    true,
 			producer: battenrecipe.NameRunShed,
 		},
@@ -408,6 +411,25 @@ func TestStartGuard_Refuse(t *testing.T) {
 			verbs:      []string{"run", "step"},
 			raddle:     func() error { return errors.New("store unreadable") },
 			wantErrors: []string{"the raddle entry's start", "store unreadable", `run "lym batten {verb} some-slug" again`},
+		},
+		{
+			name:         "StoredRecordRefusalOfAFreshStartIsReturnedAsItStands",
+			verbs:        []string{"run", "step"},
+			storedRecord: func() error { return startRefusal{"some-slug holds no stored record"} },
+			wantExact:    "some-slug holds no stored record",
+		},
+		{
+			name:         "StoredRecordRefusalIsNotJudgedForAResume",
+			verbs:        []string{"run", "step"},
+			storedRecord: func() error { return startRefusal{"some-slug holds no stored record"} },
+			found:        true,
+			producer:     battenrecipe.NameRunShed,
+		},
+		{
+			name:         "StoredRecordProbeErrorRefusesNamingTheProbeAndTheRerun",
+			verbs:        []string{"run", "step"},
+			storedRecord: func() error { return errors.New("board unreadable") },
+			wantErrors:   []string{"the entry's stored decision record", "board unreadable", `run "lym batten {verb} some-slug" again`},
 		},
 		{
 			name:    "NilSeamsCheckNothing",
@@ -441,6 +463,7 @@ func TestStartGuard_Refuse(t *testing.T) {
 						PairMark:     func() (bool, bool, error) { return tt.marked, !tt.unreadable, nil },
 						Unreleased:   func() (string, error) { return tt.unreleased, tt.unreleasedErr },
 						Raddle:       tt.raddle,
+						StoredRecord: tt.storedRecord,
 					}
 				}
 
@@ -500,7 +523,7 @@ func TestRefuseAtStart_JudgesADoneMotifRunAsTheFreshStartItsClearMakes(t *testin
 	tiergate.Require(t, 0)
 	t.Parallel()
 	clearsErr := errors.New("child recipe unreadable")
-	refusal := raddleRefusal{"some-slug holds no record"}
+	refusal := startRefusal{"some-slug holds no record"}
 	tests := []struct {
 		name         string
 		verb         string
@@ -811,6 +834,79 @@ func TestRaddleStartRefusal(t *testing.T) {
 				if !strings.Contains(got.Error(), want) {
 					t.Errorf("raddleStartRefusal = %q; want it to carry %q", got.Error(), want)
 				}
+			}
+		})
+	}
+}
+
+// Over a fixture board, readStoredRecordStartRefusal refuses a jacquard entry that holds no stored record.
+// The recipe may be the entry's own or the board's default.
+// The refusal names the upsert to tapestry and the re-run.
+// An entry flagged discussed with its record file passes.
+// A tapestry entry, an absent entry and a recipe no task worktree runs pass too.
+// A board that does not read is a probe error.
+func TestReadStoredRecordStartRefusal(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	const slug = "some-slug"
+	entryOf := func(name, recipe string, discussed bool) string {
+		return fmt.Sprintf(`{"id":0,"slug":%q,"title":"J","kind":"task","labels":["bug"],"recipe":%q,"discussed":%v}`, name, recipe, discussed)
+	}
+	refusal := "some-slug runs the jacquard recipe, which builds from a stored decision record, and it holds none; " +
+		"way forward: run its Discussion first as tapestry: " +
+		"`lym board upsert '{\"slug\":\"some-slug\",\"recipe\":\"tapestry\"}'`, then `lym batten run some-slug`"
+	tests := []struct {
+		name string
+		// board is the entry list of board.json, or the whole file when rawBoard is set.
+		board         string
+		rawBoard      bool
+		defaultRecipe string
+		// recordFile writes the slug's decision record file into the board directory.
+		recordFile  bool
+		wantRefusal bool
+		wantErr     bool
+	}{
+		{name: "AJacquardEntryWithNoStoredRecordIsRefused", board: entryOf(slug, shedrun.RecipeJacquard, false), wantRefusal: true},
+		{name: "AFlaggedJacquardEntryWithNoRecordFileIsRefused", board: entryOf(slug, shedrun.RecipeJacquard, true), wantRefusal: true},
+		{name: "AnEntryWithNoRecipeUnderAJacquardDefaultIsRefused", board: entryOf(slug, "", false), defaultRecipe: shedrun.RecipeJacquard, wantRefusal: true},
+		{name: "AnUnflaggedJacquardEntryWithAStaleRecordFileIsRefused", board: entryOf(slug, shedrun.RecipeJacquard, false), recordFile: true, wantRefusal: true},
+		{name: "AJacquardEntryWithAStoredRecordPasses", board: entryOf(slug, shedrun.RecipeJacquard, true), recordFile: true},
+		{name: "AnUndiscussedTapestryEntryPasses", board: entryOf(slug, shedrun.RecipeTapestry, false)},
+		{name: "ASlugTheBoardLacksPasses", board: entryOf("other-slug", shedrun.RecipeJacquard, false)},
+		{name: "ARecipeNoTaskWorktreeRunsIsLeftToTheChildSeed", board: entryOf(slug, "no-such-recipe", false)},
+		{name: "ABoardThatDoesNotReadIsAnError", board: "{not json", rawBoard: true, wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			location := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "main", AnchorRel: "."}
+			board := tt.board
+			if !tt.rawBoard {
+				board = `{"version":1,"entries":[` + board + `]}`
+			}
+			writeBoardHub(t, location, tt.defaultRecipe, board)
+			if tt.recordFile {
+				path := filepath.Join(fabriclayout.BoardDir(location.HubPath), boardengine.DecisionFileName(slug))
+				if err := os.WriteFile(path, []byte("# Record\n"), 0o644); err != nil {
+					t.Fatalf("write the stored record: %v", err)
+				}
+			}
+
+			err := readStoredRecordStartRefusal(location, slug)
+
+			var refused startRefusal
+			switch {
+			case tt.wantRefusal:
+				if !errors.As(err, &refused) || err.Error() != refusal {
+					t.Errorf("readStoredRecordStartRefusal() = %v; want the start refusal %q", err, refusal)
+				}
+			case tt.wantErr:
+				if err == nil || errors.As(err, &refused) {
+					t.Errorf("readStoredRecordStartRefusal() = %v; want a probe error", err)
+				}
+			case err != nil:
+				t.Errorf("readStoredRecordStartRefusal() = %v; want nil", err)
 			}
 		})
 	}

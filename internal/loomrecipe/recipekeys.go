@@ -1,5 +1,5 @@
 // recipekeys.go holds the accessors that answer questions about a recipe, selected by name.
-// They cover its contract, engines, Code-Review perch gate, record engine and verify source.
+// They cover its contract, engines, Code-Review perch gate, record engine, stored-record need and verify source.
 // Consumers read a recipe's rows and keys through them instead of comparing the recipe name.
 
 package loomrecipe
@@ -13,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 // loomContract is the value of a recipe's top-level contract key that declares it a loom recipe.
@@ -170,6 +171,35 @@ func RecordEngine(recipe string) (string, error) {
 	}
 
 	return engine, nil
+}
+
+// NeedsStoredRecord reports whether the named recipe builds only from a stored decision record:
+// its expanded rows hold a seed row and no record row, so no row of the run writes a record of its own.
+// A start of such a recipe on an entry that holds no stored record has nothing to build from.
+// An empty recipe name reads as the tapestry recipe, and a name that selects no embedded recipe is refused.
+func NeedsStoredRecord(recipe string) (bool, error) {
+	parsed, err := parseEmbeddedRecipe(recipe)
+	if err != nil {
+		return false, err
+	}
+	seed := false
+	for _, row := range parsed.Producers {
+		if slices.Contains(shedrecipe.LoomRecordEngines, row.Engine) {
+			return false, nil
+		}
+		if row.Engine == shedrecipe.LoomSeedEngine {
+			seed = true
+		}
+	}
+
+	return seed, nil
+}
+
+// NoStoredRecordRefusal words the opening of the refusal of a start that lacks a stored decision record.
+// The recipe needs that record and the entry slug holds none.
+// Each start site appends its own way forward.
+func NoStoredRecordRefusal(slug string) string {
+	return fmt.Sprintf("%s runs the %s recipe, which builds from a stored decision record, and it holds none", slug, shedrun.RecipeJacquard)
 }
 
 // VerifySource returns the named recipe's top-level verify_source, empty when it sets none.

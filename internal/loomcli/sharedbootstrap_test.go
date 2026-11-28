@@ -84,6 +84,26 @@ func TestSeedAndCommitBootstrap_SecondCallDoesNotDivergeOnErrSeedExists(t *testi
 	}
 }
 
+// TestNoStoredRecordStartRefusal pins the first start's refusal of an entry with no stored record, filled in.
+// Both of its ways forward must run as typed: the batten pair's cancel and re-run, and any other pair's re-seed.
+func TestNoStoredRecordStartRefusal(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	got := noStoredRecordStartRefusal("t1", "/hub/t1/_lym/shed/self/seed.json", "go", "main").Error()
+
+	want := `loom: t1 runs the jacquard recipe, which builds from a stored decision record, and it holds none; ` +
+		`way forward: run the task as tapestry, which discusses it first. ` +
+		`For a pair batten made, from the hub's prime worktree: "lym batten cancel t1 --remove", ` +
+		`"lym board upsert '{"slug":"t1","recipe":"tapestry"}'", "lym board set-status '{"slug":"t1","status":null}'", ` +
+		`then "lym batten run t1". ` +
+		`For any other pair, from its task worktree: "rm '/hub/t1/_lym/shed/self/seed.json'", ` +
+		`"lym shed seed self --recipe tapestry --driver go --param parent=main", then "lym loom start"`
+	if got != want {
+		t.Errorf("noStoredRecordStartRefusal() = %q; want %q", got, want)
+	}
+}
+
 // TestLoomSeedFor_WriteSeedIsIdempotent asserts that loomSeedFor's shape carries RecipeTapestry and the given driver.
 // It also asserts that writing that shape a second time leaves the seed unchanged.
 // The same parent, driver, location and run-id are used both times.

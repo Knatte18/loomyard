@@ -1,6 +1,7 @@
 // startguard.go holds batten's pre-run guard.
 // It refuses a run a cancel is ending, a start over a dirty source, and a start over the left parts of an earlier pair.
 // They are all raised before the pre-run writes anything.
+// It refuses a fresh start of an entry whose recipe builds only from a stored decision record when the entry holds none.
 // It also judges a raddle entry's start over the done motif run under its own slug.
 // It treats that start as the fresh start the run's removal makes.
 // It removes the run only once the start's owner check has passed.
@@ -20,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -63,10 +65,15 @@ type startGuard struct {
 	// A nil Unreleased reads every entry as released.
 	Unreleased func() (string, error)
 	// Raddle judges the start of a raddle entry.
-	// It returns a raddleRefusal when the entry cannot start;
+	// It returns a startRefusal when the entry cannot start;
 	// any other error is a failed probe, and nil means an entry of another recipe.
 	// A nil Raddle checks nothing.
 	Raddle func() error
+	// StoredRecord judges the start of an entry whose recipe builds only from a stored decision record.
+	// It returns a startRefusal when the entry holds none;
+	// any other error is a failed probe, and nil means an entry that holds one or whose recipe writes its own.
+	// A nil StoredRecord checks nothing.
+	StoredRecord func() error
 	// ClearsMotifRun reports whether the slug's done run is the motif run of the raddle entry about to start.
 	// That start would remove the run; this reports without removing anything.
 	// A nil ClearsMotifRun reads every done run as one the start does not clear.
@@ -77,14 +84,14 @@ type startGuard struct {
 	ClearMotifRun func() (bool, error)
 }
 
-// raddleRefusal reports that a raddle entry cannot start, as opposed to a failed probe.
+// startRefusal reports that an entry cannot start, as opposed to a failed probe.
 // The guard returns it as it stands, and wraps any other probe error.
-type raddleRefusal struct {
+type startRefusal struct {
 	message string
 }
 
 // Error returns the refusal's message.
-func (r raddleRefusal) Error() string { return r.message }
+func (r startRefusal) Error() string { return r.message }
 
 // hubStartGuard builds the startGuard over the hub of location:
 // the cancel's intent and lock, the prime's tracked dirty paths, the slug's pair parts and its beam.
@@ -155,6 +162,7 @@ func hubStartGuard(location *lymcwd.Location, slug string) startGuard {
 			return fabricengine.NewTopology(cfg).PairParts(location, slug)
 		},
 		Raddle:         func() error { return readRaddleStartRefusal(location, slug) },
+		StoredRecord:   func() error { return readStoredRecordStartRefusal(location, slug) },
 		ClearsMotifRun: func() (bool, error) { return clearsMotifRunOfRaddleEntry(location, slug) },
 		ClearMotifRun:  func() (bool, error) { return ClearMotifRun(location, slug) },
 	}
@@ -217,19 +225,67 @@ func readRaddleStartRefusal(location *lymcwd.Location, slug string) error {
 	if boardRecipe(board, entry) != shedrun.RecipeRaddle {
 		return nil
 	}
-	recordStored := false
-	if entry.Discussed {
-		_, statErr := os.Stat(filepath.Join(boardDir, boardengine.DecisionFileName(slug)))
-		if statErr != nil && !errors.Is(statErr, fs.ErrNotExist) {
-			return statErr
-		}
-		recordStored = statErr == nil
+	recordStored, err := entryRecordStored(boardDir, entry)
+	if err != nil {
+		return err
 	}
 	store, err := boardengine.ReadRaddleStore(boardDir)
 	if err != nil {
 		return err
 	}
 	return raddleStartRefusal(entry, recordStored, store)
+}
+
+// entryRecordStored reports whether entry is flagged discussed with its decision record in the board directory boardDir.
+func entryRecordStored(boardDir string, entry boardengine.Task) (bool, error) {
+	if !entry.Discussed {
+		return false, nil
+	}
+	_, err := os.Stat(filepath.Join(boardDir, boardengine.DecisionFileName(entry.Slug)))
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return false, err
+	}
+	return err == nil, nil
+}
+
+// readStoredRecordStartRefusal reads the slug's board entry and judges its start.
+// Only an entry whose recipe builds solely from a stored decision record is refused.
+// An absent entry passes, and so does an entry whose recipe no task worktree runs, which the child seed refuses itself.
+func readStoredRecordStartRefusal(location *lymcwd.Location, slug string) error {
+	boardDir := fabriclayout.BoardDir(location.HubPath)
+	tasks, err := boardengine.ReadTasks(boardDir)
+	if err != nil {
+		return err
+	}
+	index := slices.IndexFunc(tasks, func(task boardengine.Task) bool { return task.Slug == slug })
+	if index < 0 {
+		return nil
+	}
+	entry := tasks[index]
+	board, err := boardengine.OpenHub(location.HubPath)
+	if err != nil {
+		return err
+	}
+	recipe := boardRecipe(board, entry)
+	if !childRecipeSupported(recipe) {
+		return nil
+	}
+	needs, err := loomrecipe.NeedsStoredRecord(recipe)
+	if err != nil || !needs {
+		return err
+	}
+	recordStored, err := entryRecordStored(boardDir, entry)
+	if err != nil || recordStored {
+		return err
+	}
+	return storedRecordStartRefusal(slug)
+}
+
+// storedRecordStartRefusal refuses the start of slug, whose recipe builds from a stored decision record its entry lacks.
+// Its way forward sets the entry's recipe to tapestry, which discusses the entry first, and runs it again.
+func storedRecordStartRefusal(slug string) error {
+	return startRefusal{fmt.Sprintf("%s; way forward: run its Discussion first as %s: `lym board upsert '{\"slug\":\"%s\",\"recipe\":\"%s\"}'`, then `lym batten run %s`",
+		loomrecipe.NoStoredRecordRefusal(slug), shedrun.RecipeTapestry, slug, shedrun.RecipeTapestry, slug)}
 }
 
 // raddleStartRefusal judges the start of a raddle entry.
@@ -243,7 +299,7 @@ func readRaddleStartRefusal(location *lymcwd.Location, slug string) error {
 func raddleStartRefusal(entry boardengine.Task, recordStored bool, store boardengine.RaddleStore) error {
 	slug := entry.Slug
 	if !recordStored {
-		return raddleRefusal{fmt.Sprintf("%s runs the raddle recipe, which splits a Sketch's stored decision record, and it holds none; way forward: run its Discussion first with a motif run: `lym board upsert '{\"slug\":\"%s\",\"recipe\":\"motif\"}'`, release it with `lym board set-status '{\"slug\":\"%s\",\"status\":null}'`, and once the motif run has made it a Sketch, `%s`", slug, slug, slug, boardengine.SketchPromoteCommand(slug))}
+		return startRefusal{fmt.Sprintf("%s runs the raddle recipe, which splits a Sketch's stored decision record, and it holds none; way forward: run its Discussion first with a motif run: `lym board upsert '{\"slug\":\"%s\",\"recipe\":\"motif\"}'`, release it with `lym board set-status '{\"slug\":\"%s\",\"status\":null}'`, and once the motif run has made it a Sketch, `%s`", slug, slug, slug, boardengine.SketchPromoteCommand(slug))}
 	}
 	held, isHeld := store.Holds(slug)
 	if !isHeld || (held.Sketch == slug && held.Created.Equal(entry.Created)) {
@@ -256,7 +312,7 @@ func raddleStartRefusal(entry boardengine.Task, recordStored bool, store boarden
 		}
 		free = fmt.Sprintf("%s-%d", slug, suffix)
 	}
-	return raddleRefusal{fmt.Sprintf("the raddle store holds %s as a slug of the Sketch %s, so a run of %s would collide with what that Sketch filed; way forward: run `lym board rename %s %s`, then `lym batten run %s`", slug, held.Sketch, slug, slug, free, free)}
+	return startRefusal{fmt.Sprintf("the raddle store holds %s as a slug of the Sketch %s, so a run of %s would collide with what that Sketch filed; way forward: run `lym board rename %s %s`, then `lym batten run %s`", slug, held.Sketch, slug, slug, free, free)}
 }
 
 // refuse judges verb's start or resume of slug, in order.
@@ -279,6 +335,8 @@ func raddleStartRefusal(entry boardengine.Task, recordStored bool, store boarden
 // A beam's cancel leaves its entry draft, and `lym beam create` starts its run again from there.
 // A run or step with no status file of a raddle entry refuses when the entry holds no stored record.
 // It also refuses when the entry's slug collides with the raddle store.
+// A run or step with no status file also checks recipes that build only from a stored decision record.
+// It refuses an entry of such a recipe that holds none, naming the re-run as tapestry.
 // A run or step with no status file refuses on a leftover task worktree, records worktree or local records branch.
 // A probe error refuses naming the probe and the verb's re-run.
 // found and status describe the run's status file.
@@ -338,11 +396,21 @@ func (g startGuard) refuse(slug, verb string, status shedengine.Status, found, t
 
 	if !found && g.Raddle != nil {
 		if err := g.Raddle(); err != nil {
-			var refusal raddleRefusal
+			var refusal startRefusal
 			if errors.As(err, &refusal) {
 				return err
 			}
 			return probeRefusal("the raddle entry's start", slug, rerun, err)
+		}
+	}
+
+	if !found && g.StoredRecord != nil {
+		if err := g.StoredRecord(); err != nil {
+			var refusal startRefusal
+			if errors.As(err, &refusal) {
+				return err
+			}
+			return probeRefusal("the entry's stored decision record", slug, rerun, err)
 		}
 	}
 
