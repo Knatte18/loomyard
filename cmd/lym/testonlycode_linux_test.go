@@ -57,6 +57,8 @@ var testOnlyCodeAllowed = []scankit.Entry{
 	{Key: "internal/shuttleengine/claudeengine.New", Why: "builds the engine, unexported state included, for the tests of the packages that drive it"},
 	{Key: "internal/slackengine.WriteSetup", Why: "writes the credentials file slackengine alone writes, for internal/slackcli's and internal/beamcli's tests"},
 	{Key: "internal/websterengine.ConflictRecordRel", Why: "oracle of the conflict record path in internal/loomrecipe's recipe test"},
+	{Key: "internal/boardengine.BoardRevision", Why: "temporary: its caller, the board server, is reached by a main only once card 6 wires lym board serve"},
+	{Key: "internal/boardengine.Board.View", Why: "temporary: its caller, the board server, is reached by a main only once card 6 wires lym board serve"},
 }
 
 // testOnlyCodeMinFunctions is the vacuous-scan floor for the functions of production files the guard examines.
