@@ -131,7 +131,7 @@ func newVerbsFixture(t *testing.T) *verbsFixture {
 	}
 
 	// The default (empty) batcher name resolves to the identity batchifier.
-	// PersistentPreRunE would resolve the same batcher via Active and store it on c.batcher.
+	// PersistentPreRunE would resolve the same batcher from webster.yaml's batch_profile and store it on c.batcher.
 	// This fixture bypasses that step along with the rest of PersistentPreRunE.
 	activeBatcher := batcher.Identity()
 
@@ -1538,7 +1538,7 @@ func TestRunCmd_DiedMasterNotesExpiredShellOutcome(t *testing.T) {
 
 // seedPersistentPreRunFixture returns a fresh real hub, built at anchor ("." or "backend").
 // It seeds shuttle, reed, webster and batcher config.
-// The batcher.yaml content is caller-supplied, so a test can override its active: key.
+// The batcher.yaml content is caller-supplied, so a test can override its profiles.
 // Tests that use it drive Command()'s real PersistentPreRunE, never a hand-built *websterCLI literal.
 // Load-time batcher selection is wired in PersistentPreRunE.
 // Callers pass h.PrimeWorktree() (unanchored) or h.Location.AnchorPath() (anchored) to clihelp.ExecuteIn.
@@ -1563,15 +1563,25 @@ func seedPersistentPreRunConfig(t *testing.T, h *hubforge.Hub, batcherConfig str
 	})
 }
 
+// seedWebsterBatchProfile rewrites h's webster.yaml as the template with batch_profile set to profile.
+func seedWebsterBatchProfile(t *testing.T, h *hubforge.Hub, profile string) {
+	t.Helper()
+	hubforge.SeedConfig(t, h, map[string]string{
+		"webster": strings.Replace(websterengine.ConfigTemplate(), "batch_profile: wide", "batch_profile: "+profile, 1),
+	})
+}
+
 // TestPersistentPreRunE_BatcherSelection proves the load-time batcher selection.
-// PersistentPreRunE wires it through batcher.Active(baseDir).
+// PersistentPreRunE resolves the profile webster.yaml's batch_profile names under batcher.yaml's profiles.
 // It runs through the `status` verb, which never touches the batcher itself.
-// The test uses one hub whose batcher.yaml each step rewrites.
-// An active: key naming no profile is a fail-fast gate: it aborts before any verb's RunE runs,
-// and the output.Err envelope names batcher.yaml and the bad key.
+// The test uses one hub whose config each step rewrites.
+// A batch_profile naming no profile is a fail-fast gate: it aborts before any verb's RunE runs,
+// and the output.Err envelope names batcher.yaml, the key and the bad name.
+// A batcher.yaml that still sets the retired active key is refused with a way forward naming
+// batcher.active and webster.batch_profile.
 // A rebaseline under a profile with a negative coefficient is refused the same way,
 // and it leaves state.json byte-identical.
-// The template's default active: key resolves its wide profile,
+// The template's default batch_profile resolves its wide profile,
 // so the command proceeds through the rest of PersistentPreRunE into the verb's own RunE.
 // A last step drives the config-load refusals of batcher.yaml and webster.yaml.
 // Broken content, including a retired key whose way forward is the reconcile, carries `config_invalid: true`.
@@ -1585,7 +1595,8 @@ func TestPersistentPreRunE_BatcherSelection(t *testing.T) {
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 
 	if !t.Run("unknown batcher fails fast", func(t *testing.T) {
-		seedPersistentPreRunConfig(t, h, strings.Replace(batcher.ConfigTemplate(), `active: "wide"`, `active: "bogus"`, 1))
+		seedPersistentPreRunConfig(t, h, batcher.ConfigTemplate())
+		seedWebsterBatchProfile(t, h, "bogus")
 
 		var out strings.Builder
 		exitCode := clihelp.ExecuteIn(Command(), h.PrimeWorktree(), &out, []string{"status"})
@@ -1599,7 +1610,7 @@ func TestPersistentPreRunE_BatcherSelection(t *testing.T) {
 		}
 		// The message is JSON-encoded, so its literal quotes appear as \".
 		// Match the substrings separately, not the raw Go-quoted form.
-		for _, want := range []string{"batcher.yaml did not load", "bogus", "way forward: fix batcher.yaml under _lym/config"} {
+		for _, want := range []string{"batcher.yaml did not load", "webster.batch_profile", "bogus", "names no profile under batcher.profiles", "way forward: fix batcher.yaml under _lym/config"} {
 			if !strings.Contains(got, want) {
 				t.Errorf("output missing %q; got %q", want, got)
 			}
@@ -1677,6 +1688,14 @@ func TestPersistentPreRunE_BatcherSelection(t *testing.T) {
 				},
 				wantConfig:   true,
 				wantContains: []string{"batcher.yaml did not load", "fork_messages", "way forward: fix batcher.yaml under _lym/config, then re-run the verb"},
+			},
+			{
+				name: "a batcher.yaml still setting the retired active key",
+				seed: func(t *testing.T) {
+					seedPersistentPreRunConfig(t, h, "active: wide\n"+batcher.ConfigTemplate())
+				},
+				wantConfig:   true,
+				wantContains: []string{"batcher.yaml did not load", "batcher.active", "retired key", "webster.batch_profile"},
 			},
 			{
 				name: "a batcher profile carrying master_base",

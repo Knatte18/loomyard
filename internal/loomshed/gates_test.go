@@ -58,7 +58,6 @@ func TestGateRows_StopsNameAWayForward(t *testing.T) {
 		{"Webster", func(c func() error) shedengine.ShedProducer {
 			fake := &fakeWebsterRun{}
 			anchorPath := t.TempDir()
-			writeBatcherConfig(t, anchorPath, `active: "identity"`+"\n")
 			return NewWebsterProducer("Webster", configengine.Dirs{Anchor: anchorPath}, fake.run, websterengine.RunDeps{}, c, weaverengine.ActiveDeps{AnchorRoot: anchorPath})
 		}},
 	} {
@@ -148,26 +147,25 @@ func TestGateRows_StopsNameAWayForward(t *testing.T) {
 		make func(anchorPath string) shedengine.ShedProducer
 	}{
 		{"Webster", func(a string) shedengine.ShedProducer {
-			return NewWebsterProducer("Webster", configengine.Dirs{Anchor: a}, (&fakeWebsterRun{}).run, websterengine.RunDeps{}, func() error { return nil }, weaverengine.ActiveDeps{AnchorRoot: a})
+			return NewWebsterProducer("Webster", configengine.Dirs{Anchor: a}, (&fakeWebsterRun{}).run, websterengine.RunDeps{Config: websterengine.Config{BatchProfile: "no-such-batcher"}}, func() error { return nil }, weaverengine.ActiveDeps{AnchorRoot: a})
 		}},
 	} {
 		t.Run("BrokenBatcherConfig"+tt.name, func(t *testing.T) {
 			anchorPath := t.TempDir()
-			writeBatcherConfig(t, anchorPath, `active: "no-such-batcher"`+"\n")
 			p := tt.make(anchorPath)
 
 			outcome, pointer, err := p.Call(context.Background())
 			if err != nil || outcome != shedengine.Stuck {
 				t.Fatalf("Call() = (%q, %v); want Stuck with no error", outcome, err)
 			}
-			if !strings.Contains(pointer.Reason, "way forward: fix batcher.yaml (batcher.active or the profile it names)") {
-				t.Errorf("Reason = %q; want the batcher.yaml way forward", pointer.Reason)
+			if !strings.Contains(pointer.Reason, "way forward: fix webster.batch_profile or the batcher.yaml profile it names, then re-step") {
+				t.Errorf("Reason = %q; want the batch profile way forward", pointer.Reason)
 			}
 
-			writeBatcherConfig(t, anchorPath, `active: "identity"`+"\n")
+			writeBatcherConfig(t, anchorPath, "profiles:\n  no-such-batcher:\n    batchifier: identity\n")
 			outcome, _, err = p.Call(context.Background())
 			if err != nil || outcome != shedengine.Done {
-				t.Errorf("re-step Call() = (%q, %v); want Done after fixing active:", outcome, err)
+				t.Errorf("re-step Call() = (%q, %v); want Done after defining the profile", outcome, err)
 			}
 		})
 	}

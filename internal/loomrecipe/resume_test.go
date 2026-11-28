@@ -61,7 +61,7 @@ func resetCurrentProducer(t *testing.T, statusPath, statusLockPath, currentProdu
 func TestResume_DoesNotRestartAtRowOne(t *testing.T) {
 	tiergate.Require(t, 0)
 	_, env, paths := buildSequenceFixture(t)
-	writeBatcherConfig(t, env.AnchorPath, "active: [not valid yaml\n")
+	writeBatcherConfig(t, env.AnchorPath, "profiles: [not valid yaml\n")
 
 	shed1, err := New(shedrun.RecipeTapestry, env, paths)
 	if err != nil {
@@ -79,7 +79,7 @@ func TestResume_DoesNotRestartAtRowOne(t *testing.T) {
 		t.Fatalf("first Run() HaltedProducer = %q; want %q", result1.HaltedProducer, loomshed.NameWebster)
 	}
 
-	writeBatcherConfig(t, env.AnchorPath, `active: "identity"`+"\n")
+	writeBatcherConfig(t, env.AnchorPath, "profiles: {}\n")
 
 	shed2, err := New(shedrun.RecipeTapestry, env, paths)
 	if err != nil {
@@ -275,7 +275,7 @@ func TestBounceRouting_StuckContinuesAtDeclaredTarget(t *testing.T) {
 func TestBounceRouting_EmptyTargetBlocksInstead(t *testing.T) {
 	tiergate.Require(t, 0)
 	_, env, paths := buildSequenceFixture(t)
-	writeBatcherConfig(t, env.AnchorPath, "active: [not valid yaml\n")
+	writeBatcherConfig(t, env.AnchorPath, "profiles: [not valid yaml\n")
 
 	shed, err := New(shedrun.RecipeTapestry, env, paths)
 	if err != nil {
@@ -293,7 +293,7 @@ func TestBounceRouting_EmptyTargetBlocksInstead(t *testing.T) {
 		t.Errorf("Run() HaltedProducer = %q; want %q", result.HaltedProducer, loomshed.NameWebster)
 	}
 	// The block reason carries the batcher fault's own cause, not a generic missing-OnStuck message.
-	const wantPrefix = "active batchifier did not resolve: "
+	const wantPrefix = "batchifier did not resolve: "
 	if !strings.HasPrefix(result.Reason, wantPrefix) {
 		t.Errorf("Run() Reason = %q; want prefix %q", result.Reason, wantPrefix)
 	}

@@ -466,7 +466,7 @@ func writeBatcherConfig(t *testing.T, anchorPath, content string) {
 // Its shape matches the files under internal/planparser/testdata/goodplan.
 // It is seeded unapproved, because both gate sites run planglyph.ValidateFormat, which never demands the approval flag.
 // An approved seed would show a state the real Plan-Write producer never writes.
-// No batcher.yaml is written, so batcher.Active resolves the embedded template.
+// No batcher.yaml is written, so batcher.Named resolves its profile from the embedded template.
 //
 // The status file is seeded through the production loomshed.Seed, never by hand-writing JSON.
 // A regression in Seed therefore shows up here.

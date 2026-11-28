@@ -193,7 +193,6 @@ func TestWeaverProducer_Call(t *testing.T) {
 	t.Run("GuardRefusalIsStuckAndSpawnsNothing", func(t *testing.T) {
 		t.Parallel()
 		anchorPath := t.TempDir()
-		writeBatcherConfig(t, anchorPath, `active: "identity"`+"\n")
 		plantWebsterBegun(t, anchorPath)
 
 		fake := &fakeWeaverRun{}
@@ -211,7 +210,6 @@ func TestWeaverProducer_Call(t *testing.T) {
 	t.Run("ProceedingRunReachesRunnerWithTheResolvedBatcher", func(t *testing.T) {
 		t.Parallel()
 		anchorPath := t.TempDir()
-		writeBatcherConfig(t, anchorPath, `active: "identity"`+"\n")
 
 		fake := &fakeWeaverRun{}
 		active := weaverengine.ActiveDeps{AnchorRoot: anchorPath}
@@ -228,11 +226,11 @@ func TestWeaverProducer_Call(t *testing.T) {
 	t.Run("BrokenBatcherConfigIsStuckAndSpawnsNothing", func(t *testing.T) {
 		t.Parallel()
 		anchorPath := t.TempDir()
-		writeBatcherConfig(t, anchorPath, `active: "no-such-batcher"`+"\n")
 
 		fake := &fakeWeaverRun{}
 		active := weaverengine.ActiveDeps{AnchorRoot: anchorPath}
-		p := NewWeaverProducer("Weaver", configengine.Dirs{Anchor: anchorPath}, fake.run, weaverengine.RunDeps{}, active)
+		deps := weaverengine.RunDeps{Config: weaverengine.Config{BatchProfile: "no-such-batcher"}}
+		p := NewWeaverProducer("Weaver", configengine.Dirs{Anchor: anchorPath}, fake.run, deps, active)
 		pointer := shedfake.RequireOutcome(t, p, shedengine.Stuck)
 		if !strings.HasPrefix(pointer.Reason, batchifierReasonPrefix) {
 			t.Errorf("Call() Reason = %q; want the batchifier prefix", pointer.Reason)

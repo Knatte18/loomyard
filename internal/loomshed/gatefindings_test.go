@@ -128,7 +128,7 @@ func TestPlanGate_FailureSurfacesItsFindings(t *testing.T) {
 
 // TestBatcherRows_StuckSurfacesTheBatcherError checks that a batcher-backed row logs its batcher error.
 // The row carries no OnStuck, so its Stuck halts the run for a human.
-// batcher.Active reports unknown-name, malformed YAML and I/O failure as one bare error with no sentinel,
+// batcher.Named reports unknown-name, malformed YAML and I/O failure as one bare error with no sentinel,
 // so the error text is the only thing that tells an operator which of the three happened.
 // It does not call t.Parallel, because logcapture.Capture redirects the process-global logger output.
 //
@@ -140,13 +140,12 @@ func TestBatcherRows_StuckSurfacesTheBatcherError(t *testing.T) {
 		new  func(anchorPath string) shedengine.ShedProducer
 	}{
 		{"Webster", func(anchorPath string) shedengine.ShedProducer {
-			return NewWebsterProducer("Webster", configengine.Dirs{Anchor: anchorPath}, nil, websterengine.RunDeps{}, func() error { return nil }, weaverengine.ActiveDeps{AnchorRoot: anchorPath})
+			return NewWebsterProducer("Webster", configengine.Dirs{Anchor: anchorPath}, nil, websterengine.RunDeps{Config: websterengine.Config{BatchProfile: "no-such-batcher"}}, func() error { return nil }, weaverengine.ActiveDeps{AnchorRoot: anchorPath})
 		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			anchorPath := t.TempDir()
-			writeBatcherConfig(t, anchorPath, `active: "no-such-batcher"`+"\n")
 
 			buf := logcapture.Capture(t)
 			shedfake.RequireOutcome(t, tt.new(anchorPath), shedengine.Stuck)

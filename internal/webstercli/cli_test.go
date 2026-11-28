@@ -935,7 +935,7 @@ func TestStatusCmd(t *testing.T) {
 var fakeDigest = websterengine.Digest{Batch: "01-first", Status: websterengine.DigestStatusDone}
 
 // newRunTestCLI returns a newTestCLI CLI with the identity batcher selected.
-// PersistentPreRunE selects that batcher for an empty active: value.
+// PersistentPreRunE selects that batcher for an empty or identity batch_profile value.
 // The one-card plan is seeded too.
 func newRunTestCLI(t *testing.T) *websterCLI {
 	t.Helper()

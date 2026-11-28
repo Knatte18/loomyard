@@ -66,7 +66,7 @@ func wayForward(report preflight.Report) string {
 // Checks holds the optional checks the Preflight row runs after the hub reconcile and before preflight.Check.
 // They run in field order, and a nil field runs no check.
 type Checks struct {
-	// Batcher loads batcher.yaml.
+	// Batcher loads batcher.yaml and resolves each implementer's batch profile in it.
 	// A failure makes the row stuck, with the batchifier reason and the way forward its error calls for.
 	Batcher func() error
 	// Stencils composes the recipe's seat tables.
@@ -93,11 +93,13 @@ type preflightProducer struct {
 var _ shedengine.ShedProducer = (*preflightProducer)(nil)
 
 // batchifierReasonPrefix leads the stuck reason of a failed batcher check; the error text follows.
-const batchifierReasonPrefix = "active batchifier did not resolve: "
+const batchifierReasonPrefix = "batchifier did not resolve: "
 
 // batchifierWayForward closes the batchifier reason;
-// the fault is in batcher.yaml, so the operator fixes it there.
-var batchifierWayForward = "; way forward: fix batcher.yaml (" + configengine.KeyName("batcher", "active") + " or the profile it names), then re-step"
+// the fault is in batcher.yaml or in an implementer's profile choice, so the step names both.
+var batchifierWayForward = "; way forward: fix batcher.yaml, or the implementer key (" +
+	configengine.KeyName("webster", batcher.ChoiceKey) + " or " + configengine.KeyName("weaver", batcher.ChoiceKey) +
+	") whose profile the error names, then re-step"
 
 // retiredKeyWayForward completes the way forward that a retired-key error already ends with.
 // The error's own text names the reconcile that removes the key from a worktree or local file,

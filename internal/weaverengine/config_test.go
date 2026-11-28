@@ -36,10 +36,11 @@ func TestLoadConfig(t *testing.T) {
 	t.Parallel()
 
 	templateDefaults := weaverengine.Config{
-		Ladder:            []string{"sonnet[medium]", "opus[medium]", "opus[high]"},
+		Ladder:            []string{"haiku[medium]", "sonnet[medium]", "opus[high]"},
 		AttemptTimeoutMin: 90,
 		FixerTimeoutMin:   60,
 		VerifyGate:        "webster",
+		BatchProfile:      "identity",
 	}
 	tests := []struct {
 		name       string
@@ -51,7 +52,7 @@ func TestLoadConfig(t *testing.T) {
 		{
 			name: "an absent key loads the template default",
 			body: "fixer_timeout_min: 30\n",
-			want: weaverengine.Config{Ladder: templateDefaults.Ladder, AttemptTimeoutMin: 90, FixerTimeoutMin: 30, VerifyGate: "webster"},
+			want: weaverengine.Config{Ladder: templateDefaults.Ladder, AttemptTimeoutMin: 90, FixerTimeoutMin: 30, VerifyGate: "webster", BatchProfile: "identity"},
 		},
 		{name: "an unparseable ladder spec names the key", body: "ladder:\n  - \"opus \"\n", wantErrKey: "ladder"},
 		{name: "a zero attempt_timeout_min names the key", body: "attempt_timeout_min: 0\n", wantErrKey: "attempt_timeout_min"},
@@ -98,6 +99,7 @@ func TestResolveLadder(t *testing.T) {
 	t.Parallel()
 
 	registry := modelspec.Registry{
+		"haiku":  {Engine: "claude", Model: "haiku"},
 		"sonnet": {Engine: "claude", Model: "sonnet"},
 		"opus":   {Engine: "claude", Model: "opus"},
 	}
@@ -113,8 +115,8 @@ func TestResolveLadder(t *testing.T) {
 			t.Fatalf("ResolveLadder() error = %v; want nil", err)
 		}
 		want := []shuttleengine.ModelChoice{
+			{Engine: "claude", Model: "haiku", Effort: "medium"},
 			{Engine: "claude", Model: "sonnet", Effort: "medium"},
-			{Engine: "claude", Model: "opus", Effort: "medium"},
 			{Engine: "claude", Model: "opus", Effort: "high"},
 		}
 		if !reflect.DeepEqual(got, want) {

@@ -1,4 +1,4 @@
-// config_test.go tests batcher.yaml: its template, Active's profile resolution and ProfileWeights.
+// config_test.go tests batcher.yaml: its template, Named's and LoadProfiles's profile resolution and ProfileWeights.
 // Its fixtures are plain files in a temporary directory, with no git repository.
 
 package batcher_test
@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -15,6 +16,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"gopkg.in/yaml.v3"
 )
+
+// chooser is the implementer key the Named calls of these tests cite as the one that chose the profile.
+const chooser = "webster.batch_profile"
 
 // assertRetiredKey fails the test unless err wraps ErrRetiredKey exactly when want is set.
 // A retired-key error offers the reconcile way forward exactly when handDeleteOnly is not set.
@@ -36,6 +40,22 @@ func assertRetiredKey(t *testing.T, err error, want, handDeleteOnly bool) {
 	}
 }
 
+// assertLoadError fails the test unless err is a load error marked configengine.ErrInvalid holding every wantErrWith.
+func assertLoadError(t *testing.T, call string, err error, wantErrWith []string) {
+	t.Helper()
+	if err == nil {
+		t.Fatalf("%s = nil error; want a load error", call)
+	}
+	for _, want := range wantErrWith {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("%s error = %q; want it to contain %q", call, err.Error(), want)
+		}
+	}
+	if !errors.Is(err, configengine.ErrInvalid) {
+		t.Errorf("%s error = %q; want it marked configengine.ErrInvalid", call, err.Error())
+	}
+}
+
 // seedConfig writes content to <baseDir>/_lym/config/<module>.yaml, creating the directories as needed.
 // It writes the file directly, with no git spawn, since the config loader needs no repository.
 func seedConfig(t *testing.T, baseDir, module, content string) {
@@ -51,21 +71,29 @@ func seedConfig(t *testing.T, baseDir, module, content string) {
 	}
 }
 
-// TestActive asserts Active resolves the configured profile from batcher.yaml.
+// TestNamed asserts Named builds the profile it is told from batcher.yaml.
 // Each layer's profiles add to the template's by name, merging key by key.
-// An absent batcher.yaml or _lym/ degrades to the embedded template's wide batchifier,
+// An absent batcher.yaml or _lym/ degrades to the embedded template's profiles,
+// an empty name or identity resolves to the identity batchifier,
 // and every load error names batcher.yaml.
-func TestActive(t *testing.T) {
+// A layer that still sets the retired active key is refused whatever profile is asked for.
+func TestNamed(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	template := batcher.ConfigTemplate()
-	if !strings.HasPrefix(template, `active: "wide"`) {
-		t.Fatalf("ConfigTemplate() does not open with active: \"wide\":\n%s", template)
+	var templateKeys map[string]any
+	if err := yaml.Unmarshal([]byte(template), &templateKeys); err != nil {
+		t.Fatalf("ConfigTemplate() does not parse as YAML: %v", err)
 	}
+	if _, held := templateKeys["active"]; held {
+		t.Fatalf("ConfigTemplate() holds the retired active key:\n%s", template)
+	}
+	activeWayForward := []string{"batcher.active", "no longer exists", "webster.batch_profile", "weaver.batch_profile"}
 	tests := []struct {
 		name string
 		// seed prepares baseDir; a nil seed leaves it bare, with no _lym/ at all.
 		seed        func(t *testing.T, baseDir string)
+		profile     string
 		wantName    string
 		wantErrWith []string
 		// wantRetired asserts the error wraps ErrRetiredKey.
@@ -74,35 +102,25 @@ func TestActive(t *testing.T) {
 		wantHandDeleteOnly bool
 	}{
 		{
-			name: "templateDefaultResolvesWide",
-			seed: func(t *testing.T, baseDir string) {
-				var out map[string]any
-				if err := yaml.Unmarshal([]byte(template), &out); err != nil {
-					t.Fatalf("ConfigTemplate() does not parse as YAML: %v", err)
-				}
-				seedConfig(t, baseDir, "batcher", template)
-			},
+			name:     "templateProfileResolvesByName",
+			seed:     func(t *testing.T, baseDir string) { seedConfig(t, baseDir, "batcher", template) },
+			profile:  "wide",
 			wantName: "wide",
 		},
 		{
-			name: "emptyActiveOnTemplateResolvesIdentity",
-			seed: func(t *testing.T, baseDir string) {
-				seedConfig(t, baseDir, "batcher", strings.Replace(template, `active: "wide"`, `active: ""`, 1))
-			},
+			name:     "emptyNameOnTemplateResolvesIdentity",
+			seed:     func(t *testing.T, baseDir string) { seedConfig(t, baseDir, "batcher", template) },
 			wantName: batcher.DefaultName,
 		},
 		{
-			name: "emptyActiveWithoutProfilesResolvesIdentity",
-			seed: func(t *testing.T, baseDir string) {
-				seedConfig(t, baseDir, "batcher", `active: ""`+"\n")
-			},
+			name:     "emptyNameWithoutProfilesResolvesIdentity",
+			seed:     func(t *testing.T, baseDir string) { seedConfig(t, baseDir, "batcher", "profiles: {}\n") },
 			wantName: batcher.DefaultName,
 		},
 		{
-			name: "identityActiveWithoutProfilesResolvesIdentity",
-			seed: func(t *testing.T, baseDir string) {
-				seedConfig(t, baseDir, "batcher", `active: "identity"`+"\n")
-			},
+			name:     "identityWithoutProfilesResolvesIdentity",
+			seed:     func(t *testing.T, baseDir string) { seedConfig(t, baseDir, "batcher", "profiles: {}\n") },
+			profile:  "identity",
 			wantName: "identity",
 		},
 		{
@@ -112,46 +130,53 @@ func TestActive(t *testing.T) {
 					t.Fatalf("mkdir _lym: %v", err)
 				}
 			},
+			profile:  "wide",
 			wantName: "wide",
 		},
 		{
 			name:     "absentLymDirResolvesTemplate",
-			wantName: "wide",
+			profile:  "cautious",
+			wantName: "cautious",
 		},
 		{
-			name: "noSuchProfileErrors",
+			name: "noSuchProfileNamesTheChooser",
 			seed: func(t *testing.T, baseDir string) {
-				seedConfig(t, baseDir, "batcher", "active: \"nope\"\nprofiles:\n  mine:\n    batchifier: identity\n")
+				seedConfig(t, baseDir, "batcher", "profiles:\n  mine:\n    batchifier: identity\n")
 			},
-			wantErrWith: []string{"batcher.yaml", "nope"},
+			profile:     "nope",
+			wantErrWith: []string{"batcher.yaml", chooser, `"nope"`, "batcher.profiles"},
 		},
 		{
 			name: "profilesThatIsAListErrors",
 			seed: func(t *testing.T, baseDir string) {
 				seedConfig(t, baseDir, "batcher", "profiles:\n  - cautious\n")
 			},
+			profile:     "cautious",
 			wantErrWith: []string{"batcher.yaml", "profiles", "sequence"},
 		},
 		{
 			name: "operatorProfileAddsToTheTemplates",
 			seed: func(t *testing.T, baseDir string) {
-				seedConfig(t, baseDir, "batcher", "active: \"cautious\"\nprofiles:\n  mine:\n    batchifier: identity\n")
+				seedConfig(t, baseDir, "batcher", "profiles:\n  mine:\n    batchifier: identity\n")
 			},
+			profile:  "cautious",
 			wantName: "cautious",
 		},
 		{
 			name: "unknownBatchifierErrors",
 			seed: func(t *testing.T, baseDir string) {
-				seedConfig(t, baseDir, "batcher", "active: \"mine\"\nprofiles:\n  mine:\n    batchifier: bogus\n")
+				seedConfig(t, baseDir, "batcher", "profiles:\n  mine:\n    batchifier: bogus\n")
 			},
+			profile:     "mine",
 			wantErrWith: []string{"batcher.yaml", "mine", "bogus"},
 		},
 		{
 			name: "missingThresholdErrors",
 			seed: func(t *testing.T, baseDir string) {
-				operatorCopy := strings.NewReplacer(`active: "wide"`, `active: "mine"`, "  wide:", "  mine:", "    budget: ", "    renamed_budget: ").Replace(template)
+				operatorCopy := strings.NewReplacer("  wide:", "  mine:", "    budget: ", "    renamed_budget: ").Replace(template)
 				seedConfig(t, baseDir, "batcher", operatorCopy)
 			},
+			profile:     "mine",
 			wantErrWith: []string{"batcher.yaml", "mine", "budget"},
 		},
 		{
@@ -159,6 +184,7 @@ func TestActive(t *testing.T) {
 			seed: func(t *testing.T, baseDir string) {
 				seedConfig(t, baseDir, "batcher", strings.Replace(template, "budget: 300000", "budget: 0", 1))
 			},
+			profile:     "wide",
 			wantErrWith: []string{"batcher.yaml", "wide", "budget"},
 		},
 		{
@@ -166,6 +192,7 @@ func TestActive(t *testing.T) {
 			seed: func(t *testing.T, baseDir string) {
 				seedConfig(t, baseDir, "batcher", strings.Replace(template, "    budget: ", "    alone_above: 1200000\n    budget: ", 1))
 			},
+			profile:     "wide",
 			wantErrWith: []string{"batcher.yaml", "wide", "alone_above"},
 			wantRetired: true,
 		},
@@ -174,15 +201,17 @@ func TestActive(t *testing.T) {
 			seed: func(t *testing.T, baseDir string) {
 				seedConfig(t, baseDir, "batcher", strings.Replace(template, "orientation: 31400", "master_base: 52000", 1))
 			},
+			profile:     "wide",
 			wantErrWith: []string{"batcher.yaml", "wide", "master_base"},
 			wantRetired: true,
 		},
 		{
 			name: "retiredAloneAboveInAnOperatorNamedProfileOffersOnlyTheHandDelete",
 			seed: func(t *testing.T, baseDir string) {
-				operatorCopy := strings.NewReplacer(`active: "wide"`, `active: "mine"`, "  wide:", "  mine:").Replace(template)
+				operatorCopy := strings.Replace(template, "  wide:", "  mine:", 1)
 				seedConfig(t, baseDir, "batcher", strings.Replace(operatorCopy, "    budget: ", "    alone_above: 1200000\n    budget: ", 1))
 			},
+			profile:            "mine",
 			wantErrWith:        []string{"batcher.yaml", "mine", "alone_above"},
 			wantRetired:        true,
 			wantHandDeleteOnly: true,
@@ -192,7 +221,25 @@ func TestActive(t *testing.T) {
 			seed: func(t *testing.T, baseDir string) {
 				seedConfig(t, baseDir, "batcher", strings.Replace(template, "max_cards: 6", "max_cards: 1", 1))
 			},
+			profile:     "wide",
 			wantErrWith: []string{"batcher.yaml", "wide", "max_cards"},
+		},
+		{
+			name: "retiredActiveIsRefusedNamingTheImplementerKeys",
+			seed: func(t *testing.T, baseDir string) {
+				seedConfig(t, baseDir, "batcher", "active: wide\n"+template)
+			},
+			profile:     "wide",
+			wantErrWith: activeWayForward,
+			wantRetired: true,
+		},
+		{
+			name: "retiredEmptyActiveIsRefusedToo",
+			seed: func(t *testing.T, baseDir string) {
+				seedConfig(t, baseDir, "batcher", `active: ""`+"\n")
+			},
+			wantErrWith: activeWayForward,
+			wantRetired: true,
 		},
 	}
 	for _, tt := range tests {
@@ -203,27 +250,17 @@ func TestActive(t *testing.T) {
 				tt.seed(t, baseDir)
 			}
 
-			got, err := batcher.Active(configengine.Dirs{Anchor: baseDir})
+			got, err := batcher.Named(configengine.Dirs{Anchor: baseDir}, tt.profile, chooser)
 			if len(tt.wantErrWith) > 0 {
-				if err == nil {
-					t.Fatal("Active = nil error; want a load error")
-				}
-				for _, want := range tt.wantErrWith {
-					if !strings.Contains(err.Error(), want) {
-						t.Errorf("Active error = %q; want it to contain %q", err.Error(), want)
-					}
-				}
-				if !errors.Is(err, configengine.ErrInvalid) {
-					t.Errorf("Active error = %q; want it marked configengine.ErrInvalid", err.Error())
-				}
+				assertLoadError(t, "Named", err, tt.wantErrWith)
 				assertRetiredKey(t, err, tt.wantRetired, tt.wantHandDeleteOnly)
 				return
 			}
 			if err != nil {
-				t.Fatalf("Active = _, %v; want nil error", err)
+				t.Fatalf("Named(%q) = _, %v; want nil error", tt.profile, err)
 			}
 			if got.Name() != tt.wantName {
-				t.Errorf("Active().Name() = %q; want %q", got.Name(), tt.wantName)
+				t.Errorf("Named(%q).Name() = %q; want %q", tt.profile, got.Name(), tt.wantName)
 			}
 		})
 	}
@@ -232,38 +269,45 @@ func TestActive(t *testing.T) {
 		name         string
 		repoDefault  string
 		worktreeFile string
+		profile      string
 		wantName     string
 		wantErrWith  []string
-		// wantDefaultFileInError asserts the error names the repo default's file.
+		// wantDefaultFileInError asserts the error names the repo default's file and wraps ErrRetiredKey.
 		wantDefaultFileInError bool
 	}{
-		{
-			name:         "activeSetOnlyInRepoDefaultSelectsItsProfile",
-			repoDefault:  `active: "identity"` + "\n",
-			worktreeFile: "profiles:\n  mine:\n    batchifier: identity\n",
-			wantName:     "identity",
-		},
 		{
 			name:         "worktreeProfilesAddToTheDefaults",
 			repoDefault:  template,
 			worktreeFile: "profiles:\n  mine:\n    batchifier: identity\n",
-			wantName:     "wide",
+			profile:      "mine",
+			wantName:     "mine",
 		},
 		{
 			name:        "repoDefaultTuningOneKeyKeepsTheTemplatesOthers",
 			repoDefault: "profiles:\n  wide:\n    budget: 250000\n",
+			profile:     "wide",
 			wantName:    "wide",
 		},
 		{
 			name:        "repoDefaultTunedKeyReachesTheProfile",
 			repoDefault: "profiles:\n  wide:\n    max_cards: 1\n",
+			profile:     "wide",
 			wantErrWith: []string{"batcher.yaml", "wide", "max_cards"},
 		},
 		{
 			name:                   "retiredKeyInRepoDefaultNamesDefaultFileAndDefaultLayerReconcile",
 			repoDefault:            strings.Replace(template, "    budget: ", "    alone_above: 1200000\n    budget: ", 1),
 			worktreeFile:           "profiles:\n  mine:\n    batchifier: identity\n",
+			profile:                "wide",
 			wantErrWith:            []string{"alone_above", `or run "lym config reconcile --layer default --apply"`, "the orch runs it"},
+			wantDefaultFileInError: true,
+		},
+		{
+			name:                   "retiredActiveInRepoDefaultNamesDefaultFileAndDefaultLayerReconcile",
+			repoDefault:            "profiles: {}\nactive: wide\n",
+			worktreeFile:           "profiles:\n  mine:\n    batchifier: identity\n",
+			profile:                "mine",
+			wantErrWith:            []string{"batcher.active", "webster.batch_profile", `or run "lym config reconcile --layer default --apply"`},
 			wantDefaultFileInError: true,
 		},
 	}
@@ -276,31 +320,89 @@ func TestActive(t *testing.T) {
 				seedConfig(t, anchor, "batcher", tt.worktreeFile)
 			}
 
-			got, err := batcher.Active(configengine.Dirs{Anchor: anchor, Board: boardDir})
+			got, err := batcher.Named(configengine.Dirs{Anchor: anchor, Board: boardDir}, tt.profile, chooser)
 			if len(tt.wantErrWith) > 0 {
-				if err == nil {
-					t.Fatal("Active = nil error; want a load error")
-				}
-				for _, want := range tt.wantErrWith {
-					if !strings.Contains(err.Error(), want) {
-						t.Errorf("Active error = %q; want it to contain %q", err.Error(), want)
-					}
-				}
+				assertLoadError(t, "Named", err, tt.wantErrWith)
 				if tt.wantDefaultFileInError {
 					if wantFile := configengine.ConfigFile(boardDir, "batcher"); !strings.Contains(err.Error(), wantFile) {
-						t.Errorf("Active error = %q; want it to name the repo default %q", err.Error(), wantFile)
+						t.Errorf("Named error = %q; want it to name the repo default %q", err.Error(), wantFile)
 					}
-					if !errors.Is(err, batcher.ErrRetiredKey) || !errors.Is(err, configengine.ErrInvalid) {
-						t.Errorf("Active error = %q; want it to wrap ErrRetiredKey and be marked configengine.ErrInvalid", err.Error())
+					if !errors.Is(err, batcher.ErrRetiredKey) {
+						t.Errorf("Named error = %q; want it to wrap ErrRetiredKey", err.Error())
 					}
 				}
 				return
 			}
 			if err != nil {
-				t.Fatalf("Active = _, %v; want nil error", err)
+				t.Fatalf("Named(%q) = _, %v; want nil error", tt.profile, err)
 			}
 			if got.Name() != tt.wantName {
-				t.Errorf("Active().Name() = %q; want %q", got.Name(), tt.wantName)
+				t.Errorf("Named(%q).Name() = %q; want %q", tt.profile, got.Name(), tt.wantName)
+			}
+		})
+	}
+}
+
+// TestLoadProfiles asserts LoadProfiles builds every profile batcher.yaml holds, keyed by name,
+// and refuses a file holding any profile that does not build, or the retired active key.
+func TestLoadProfiles(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	tests := []struct {
+		name        string
+		config      string
+		wantNames   []string
+		wantErrWith []string
+		wantRetired bool
+	}{
+		{
+			name:      "templateBuildsItsProfiles",
+			wantNames: []string{"cautious", "identity", "wide"},
+		},
+		{
+			name:      "operatorProfileJoinsTheTemplates",
+			config:    "profiles:\n  mine:\n    batchifier: identity\n",
+			wantNames: []string{"cautious", "identity", "mine", "wide"},
+		},
+		{
+			name:        "profileNoImplementerNamesStillRefuses",
+			config:      "profiles:\n  mine:\n    batchifier: bogus\n",
+			wantErrWith: []string{"batcher.yaml", "mine", "bogus"},
+		},
+		{
+			name:        "retiredActiveRefuses",
+			config:      "active: cautious\n",
+			wantErrWith: []string{"batcher.active", "webster.batch_profile", "weaver.batch_profile"},
+			wantRetired: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			baseDir := t.TempDir()
+			if tt.config != "" {
+				seedConfig(t, baseDir, "batcher", tt.config)
+			}
+
+			got, err := batcher.LoadProfiles(configengine.Dirs{Anchor: baseDir})
+			if len(tt.wantErrWith) > 0 {
+				assertLoadError(t, "LoadProfiles", err, tt.wantErrWith)
+				assertRetiredKey(t, err, tt.wantRetired, false)
+				return
+			}
+			if err != nil {
+				t.Fatalf("LoadProfiles = _, %v; want nil error", err)
+			}
+			var names []string
+			for name, built := range got {
+				if built.Name() != name {
+					t.Errorf("LoadProfiles()[%q].Name() = %q; want %q", name, built.Name(), name)
+				}
+				names = append(names, name)
+			}
+			slices.Sort(names)
+			if !slices.Equal(names, tt.wantNames) {
+				t.Errorf("LoadProfiles() names = %v; want %v", names, tt.wantNames)
 			}
 		})
 	}

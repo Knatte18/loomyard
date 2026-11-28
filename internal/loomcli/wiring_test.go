@@ -231,7 +231,7 @@ func TestWire_DefaultConfig(t *testing.T) {
 			t.Error("runDeps.Roles = nil; want the resolved role map")
 		}
 		if deps.Batcher == nil {
-			t.Error("runDeps.Batcher = nil; want the active batchifier")
+			t.Error("runDeps.Batcher = nil; want the batchifier webster.yaml names")
 		}
 		if deps.Geom.WebsterDir == "" {
 			t.Error("runDeps.Geom.WebsterDir = \"\"; want the told webster geometry")

@@ -106,7 +106,7 @@ type moduleWant struct {
 	wantFile        *string
 	fileContains    []string
 	fileNotContains []string
-	// loadsAsBatcher pins that batcher.Active loads the file after the run.
+	// loadsAsBatcher pins that batcher.LoadProfiles loads the file after the run.
 	loadsAsBatcher bool
 	// wantLoadedLenses is what lenses.Load resolves after the run; nil skips the check.
 	wantLoadedLenses *lenses.Config
@@ -367,8 +367,8 @@ func TestReconcileAll(t *testing.T) {
 					}
 				}
 				if want.loadsAsBatcher {
-					if _, err := batcher.Active(configengine.Dirs{Anchor: baseDir}); err != nil {
-						t.Errorf("batcher.Active after the run = %v; want nil error", err)
+					if _, err := batcher.LoadProfiles(configengine.Dirs{Anchor: baseDir}); err != nil {
+						t.Errorf("batcher.LoadProfiles after the run = %v; want nil error", err)
 					}
 				}
 				if want.wantLoadedLenses != nil {

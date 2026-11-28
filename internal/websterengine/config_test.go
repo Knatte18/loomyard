@@ -90,6 +90,7 @@ func TestLoadConfig(t *testing.T) {
 		MasterTimeoutMin:   480,
 		RecoveryTimeoutMin: 60,
 		VerifyGateAttempts: 2,
+		BatchProfile:       "wide",
 	}
 	absentKnobs := websterengine.Config{
 		Master:             "sonnet",
@@ -98,6 +99,7 @@ func TestLoadConfig(t *testing.T) {
 		MasterTimeoutMin:   480,
 		RecoveryTimeoutMin: 60,
 		VerifyGateAttempts: 2,
+		BatchProfile:       "wide",
 	}
 	tests := []struct {
 		name string
@@ -117,6 +119,7 @@ func TestLoadConfig(t *testing.T) {
 				MasterTimeoutMin:   120,
 				RecoveryTimeoutMin: 30,
 				VerifyGateAttempts: 4,
+				BatchProfile:       "wide",
 			},
 		},
 		{

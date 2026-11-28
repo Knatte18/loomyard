@@ -47,9 +47,9 @@ func (f *fakeWebsterRun) run(deps websterengine.RunDeps, _ websterengine.RunOpti
 
 func TestWebsterProducer_Call(t *testing.T) {
 	tiergate.Require(t, 0)
-	t.Run("BatcherActiveErrorMapsToStuckNotError", func(t *testing.T) {
+	t.Run("BatcherErrorMapsToStuckNotError", func(t *testing.T) {
 		anchorPath := t.TempDir()
-		writeBatcherConfig(t, anchorPath, "active: [not valid yaml\n")
+		writeBatcherConfig(t, anchorPath, "profiles: [not valid yaml\n")
 
 		fake := &fakeWebsterRun{}
 		p := NewWebsterProducer("Webster", configengine.Dirs{Anchor: anchorPath}, fake.run, websterengine.RunDeps{}, func() error { return nil }, weaverengine.ActiveDeps{AnchorRoot: anchorPath})
@@ -58,13 +58,12 @@ func TestWebsterProducer_Call(t *testing.T) {
 			t.Errorf("Call() Reason = %q; want the batchifier prefix", pointer.Reason)
 		}
 		if len(fake.receivedDeps) != 0 {
-			t.Errorf("fake runner was called %d time(s); want 0 -- a batcher.Active error must never reach run", len(fake.receivedDeps))
+			t.Errorf("fake runner was called %d time(s); want 0 -- a batcher.Named error must never reach run", len(fake.receivedDeps))
 		}
 	})
 
 	t.Run("SuccessfulResolutionReachesRunnerWithNonNilBatcher", func(t *testing.T) {
 		anchorPath := t.TempDir()
-		writeBatcherConfig(t, anchorPath, `active: "identity"`+"\n")
 
 		fake := &fakeWebsterRun{}
 		p := NewWebsterProducer("Webster", configengine.Dirs{Anchor: anchorPath}, fake.run, websterengine.RunDeps{}, func() error { return nil }, weaverengine.ActiveDeps{AnchorRoot: anchorPath})
@@ -73,7 +72,7 @@ func TestWebsterProducer_Call(t *testing.T) {
 			t.Fatalf("fake runner was called %d time(s); want 1", len(fake.receivedDeps))
 		}
 		if fake.receivedDeps[0].Batcher == nil {
-			t.Fatal("run() received a nil Batcher; want the resolved active batchifier")
+			t.Fatal("run() received a nil Batcher; want the resolved batchifier")
 		}
 		if got, want := fake.receivedDeps[0].Batcher.Name(), batcher.DefaultName; got != want {
 			t.Errorf("run() received Batcher.Name() = %q; want %q", got, want)
@@ -82,14 +81,13 @@ func TestWebsterProducer_Call(t *testing.T) {
 
 	t.Run("NoCachedValue_SecondCallObservesMutatedConfig", func(t *testing.T) {
 		anchorPath := t.TempDir()
-		writeBatcherConfig(t, anchorPath, `active: "identity"`+"\n")
 
 		fake := &fakeWebsterRun{}
 		p := NewWebsterProducer("Webster", configengine.Dirs{Anchor: anchorPath}, fake.run, websterengine.RunDeps{}, func() error { return nil }, weaverengine.ActiveDeps{AnchorRoot: anchorPath})
 
 		shedfake.RequireOutcome(t, p, shedengine.Done)
 
-		writeBatcherConfig(t, anchorPath, `active: "no-such-batcher"`+"\n")
+		writeBatcherConfig(t, anchorPath, "profiles: [not valid yaml\n")
 
 		outcome2, _, err := p.Call(context.Background())
 		if err != nil {
@@ -102,7 +100,6 @@ func TestWebsterProducer_Call(t *testing.T) {
 
 	t.Run("WeaversBegunBatchesStopTheRowBeforeTheRunner", func(t *testing.T) {
 		anchorPath := t.TempDir()
-		writeBatcherConfig(t, anchorPath, `active: "identity"`+"\n")
 		plantWeaverBegun(t, anchorPath)
 
 		fake := &fakeWebsterRun{}
@@ -118,7 +115,6 @@ func TestWebsterProducer_Call(t *testing.T) {
 
 	t.Run("CancelledContextReturnsErrorNotVerdict", func(t *testing.T) {
 		anchorPath := t.TempDir()
-		writeBatcherConfig(t, anchorPath, `active: "identity"`+"\n")
 
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
@@ -159,7 +155,6 @@ func TestWebsterProducer_CommitsTheRunRecordOnDoneOnly(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			anchorPath := t.TempDir()
-			writeBatcherConfig(t, anchorPath, `active: "identity"`+"\n")
 
 			commits := 0
 			commit := func() error {
@@ -195,7 +190,6 @@ func TestWebsterProducer_CommitsTheRunRecordOnDoneOnly(t *testing.T) {
 func TestWebsterProducer_PassesStuckReasonThrough(t *testing.T) {
 	tiergate.Require(t, 0)
 	anchorPath := t.TempDir()
-	writeBatcherConfig(t, anchorPath, `active: "identity"`+"\n")
 
 	run := func(websterengine.RunDeps, websterengine.RunOptions) (websterengine.RunResult, error) {
 		return websterengine.RunResult{Outcome: "stuck", StuckReason: "batch 03 exhausted recovery"}, nil
