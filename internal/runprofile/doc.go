@@ -18,6 +18,11 @@
 // The template's starting profiles are a ladder of review rounds per perch, `speed`, `light`, `solid` and `wide`.
 // Each perch's hard cap is its rounds plus one.
 // `docs` is a darn-only profile for prose and config value edits.
+// No starting profile or default covers the `arras` recipe, which is kept in code but not offered,
+// so an arras run naming no profile runs on the hub's own config.
+// The reconcile drops a starting profile's arras block that the hub left as shipped.
+// A `defaults.arras` naming a profile left with no arras block would then keep the file from loading.
+// A one-time reinterpretation drops that default.
 // A round count of 0 turns a perch off, since its Bouncer then settles approved with no review round.
 // A darn run has no Discussion or Plan review,
 // so its Code-Review reviewer also judges whether the run did what the entry asks.

@@ -45,7 +45,7 @@ func TestLoad(t *testing.T) {
 		{
 			name:         "no file reads the template's ladder, docs and defaults",
 			wantNames:    []string{"docs", "light", "solid", "speed", "wide"},
-			wantDefaults: map[string]string{"tapestry": "solid", "motif": "solid", "darn": "light", "pawl": "light", "raddle": "light", "arras": "solid"},
+			wantDefaults: map[string]string{"tapestry": "solid", "motif": "solid", "darn": "light", "pawl": "light", "raddle": "light"},
 		},
 		{
 			name:         "a removed starting profile stays removed",
@@ -100,7 +100,7 @@ func TestLoad(t *testing.T) {
 // sampler.code_review is on from light up, and sampler has no default profile.
 // Only the darn block sets the Code-Review reviewer, to opus[medium].
 // Each profile's motif block holds its tapestry block's Discussion perch and nothing else.
-// Each profile's arras block holds that Discussion perch's rounds and the split perch's alike, with a hard cap one above.
+// No profile holds an arras block, since the arras recipe is not offered.
 //
 //testtiming:keep pins the template's per-block code.reviewer_model values, which the lookup tests over a fixture file cannot see
 func TestTemplateLadder(t *testing.T) {
@@ -183,13 +183,8 @@ func TestTemplateLadder(t *testing.T) {
 			if !reflect.DeepEqual(motif, wantMotif) {
 				t.Errorf("Settings(%s, motif) = %v; want %v", tt.profile, motif, wantMotif)
 			}
-			arras, err := profiles.Settings(tt.profile, "arras")
-			if err != nil {
-				t.Fatal(err)
-			}
-			wantArras := map[string]any{"loom": map[string]any{"discussion": caps(), "split": caps()}}
-			if !reflect.DeepEqual(arras, wantArras) {
-				t.Errorf("Settings(%s, arras) = %v; want %v", tt.profile, arras, wantArras)
+			if arras, err := profiles.Settings(tt.profile, "arras"); err == nil {
+				t.Errorf("Settings(%s, arras) = %v, nil; want the refusal for a profile holding no arras block", tt.profile, arras)
 			}
 			wantReview := tt.profile != "speed"
 			samplerKeys, _ := sampler["sampler"].(map[string]any)

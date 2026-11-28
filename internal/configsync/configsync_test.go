@@ -1140,6 +1140,84 @@ func TestReconcileHubWideAt_SeedOnlyFileFollowsItsTemplate(t *testing.T) {
 	}
 }
 
+// TestReconcileHubWideAt_ProfilesStillLoadAfterTheArrasBlocksDrop pins a hub's upgrade past the arras blocks.
+// Its profiles.yaml and template base hold the template that still covered arras, with an operator's defaults.arras.
+// The follow and then the module's registered reinterpretations leave a file that loads.
+// The default stays only while the profile it names keeps an arras block.
+func TestReconcileHubWideAt_ProfilesStillLoadAfterTheArrasBlocksDrop(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	const (
+		raddleBlock = "  raddle:\n    loom: {raddle: {auto_approve: false}}\n"
+		arrasBlock  = "  arras:\n    loom: {split: {max_bounces: 1, hard_max_bounces: 2}}\n"
+		ownBlock    = "  arras:\n    loom: {split: {max_bounces: 4, hard_max_bounces: 5}}\n"
+	)
+	withBlocks := strings.ReplaceAll(runprofile.ConfigTemplate(), raddleBlock, raddleBlock+arrasBlock)
+	older := strings.Replace(withBlocks, "  raddle: light\n", "  raddle: light\n  arras: solid\n", 1)
+	repointed := strings.Replace(older, "  arras: solid\n", "  arras: light\n", 1)
+	m, ok := configreg.Lookup(runprofile.ModuleName)
+	if !ok {
+		t.Fatalf("module %q is not registered", runprofile.ModuleName)
+	}
+
+	tests := []struct {
+		name    string
+		hubFile string
+		// wantDefault is the arras default the loaded file holds, empty for none.
+		wantDefault string
+		// wantLines holds the opening of each rewrote or flagged line, in order.
+		wantLines []string
+	}{
+		{
+			name:      "a default repointed at a profile left as shipped is dropped",
+			hubFile:   repointed,
+			wantLines: []string{"defaults.arras: light is dropped"},
+		},
+		{
+			name:        "a default naming a profile whose arras block the operator edited stays",
+			hubFile:     strings.Replace(repointed, raddleBlock+arrasBlock+"solid:", raddleBlock+ownBlock+"solid:", 1),
+			wantDefault: "light",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			boardDir := t.TempDir()
+			writeModuleFile(t, boardDir, runprofile.ModuleName, tt.hubFile)
+			if err := os.WriteFile(configengine.TemplateBaseFile(boardDir, runprofile.ModuleName), []byte(older), 0o644); err != nil {
+				t.Fatalf("write the template base: %v", err)
+			}
+			if _, err := ReconcileHubWideAt(boardDir, "", HubWideOptions{Apply: true}); err != nil {
+				t.Fatalf("ReconcileHubWideAt(): %v", err)
+			}
+			hubPath := configengine.ConfigFile(boardDir, runprofile.ModuleName)
+			hub, err := os.ReadFile(hubPath)
+			if err != nil {
+				t.Fatalf("read the hub file: %v", err)
+			}
+			var lines []string
+			for _, change := range m.Reinterpretations {
+				rewritten, rewrote, flagged, err := change.Rewrite(hub, nil)
+				if err != nil {
+					t.Fatalf("Rewrite(%s) error = %v; want none", change.ID, err)
+				}
+				hub, lines = rewritten, append(append(lines, rewrote...), flagged...)
+			}
+			if !slices.EqualFunc(lines, tt.wantLines, strings.HasPrefix) {
+				t.Errorf("reinterpretation lines = %q; want lines opening %q", lines, tt.wantLines)
+			}
+			writeModuleFile(t, boardDir, runprofile.ModuleName, string(hub))
+			profiles, err := runprofile.Load(configengine.Dirs{Board: boardDir})
+			if err != nil {
+				t.Fatalf("Load() after the upgrade: %v; file:\n%s", err, hub)
+			}
+			if got := profiles.Defaults["arras"]; got != tt.wantDefault {
+				t.Errorf("Load() defaults.arras = %q; want %q", got, tt.wantDefault)
+			}
+		})
+	}
+}
+
 // findResult returns the Result for the named module, or nil if absent.
 func findResult(results []Result, module string) *Result {
 	for i := range results {
