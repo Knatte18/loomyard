@@ -11,4 +11,6 @@
 // A package an import cycle bars from a kit keeps exactly one local copy.
 //
 // PATTERN-test-isolation states the rules; enforcement_test.go scans the import rules.
+// gofmt_test.go fails every Go file of the module that differs from its gofmt form, at every task's tier0 gate.
+// Fixtures under testdata directories are exempt.
 package testkit

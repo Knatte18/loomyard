@@ -1,7 +1,9 @@
-// gofmt_test.go enforces that every Go file in the module is gofmt-formatted, whatever its build tags.
+// gofmt_test.go enforces that the module's Go files are gofmt-formatted, whatever their build tags.
+// Fixtures under testdata directories are exempt.
 // It compares each source with go/format.Source's output for that source, so no gofmt binary is needed.
+// It lives in this small package, not in cmd/lym, so that its test binary stays cheap enough for every task's tier0.
 
-package main
+package testkit
 
 import (
 	"bytes"
@@ -18,7 +20,8 @@ import (
 const gofmtScanFloor = 500
 
 // gofmtFinding describes how src, the content of the module-relative file, differs from its gofmt form.
-// It returns false for a formatted source; otherwise the finding names the first differing line.
+// It returns false for a formatted source.
+// Otherwise the finding names the first differing line, or the line where only the file's ending differs.
 func gofmtFinding(file string, src []byte) (string, bool) {
 	formatted, err := format.Source(src)
 	if err != nil {
@@ -29,6 +32,9 @@ func gofmtFinding(file string, src []byte) (string, bool) {
 	}
 	current := strings.Split(string(src), "\n")
 	want := strings.Split(string(formatted), "\n")
+	// A missing final newline or extra trailing blank lines leave every compared line equal.
+	// The formatted form ends in one newline, so its split length is the line after its last one.
+	line, difference := len(want), "the file's ending differs from its formatted form"
 	for i := 0; i < len(current) || i < len(want); i++ {
 		var have, wanted string
 		if i < len(current) {
@@ -38,16 +44,17 @@ func gofmtFinding(file string, src []byte) (string, bool) {
 			wanted = want[i]
 		}
 		if have != wanted {
-			return fmt.Sprintf("%s:%d: not gofmt-formatted; current %q, formatted %q; edit the file to match the formatted line", file, i+1, have, wanted), true
+			line, difference = i+1, fmt.Sprintf("current %q, formatted %q", have, wanted)
+			break
 		}
 	}
-	return "", false
+	return fmt.Sprintf("%s:%d: not gofmt-formatted; %s; run \"lym loom fmt %s\" to rewrite the file to its formatted form", file, line, difference, file), true
 }
 
-// TestGofmt_ModuleFilesAreFormatted fails for every Go file in the module that differs from its gofmt form.
+// TestGofmt_ModuleFilesAreFormatted fails for every Go file of the module that differs from its gofmt form.
+// Fixtures under testdata directories are exempt.
 //
 //lym:guard
-//lym:only parent-align finalize
 func TestGofmt_ModuleFilesAreFormatted(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -57,9 +64,11 @@ func TestGofmt_ModuleFilesAreFormatted(t *testing.T) {
 		src  string
 		want []string
 	}{
-		{"unformatted source names file, line, current and formatted text", "package a\n\nfunc f() {\nx:=1\n_ = x\n}\n", []string{"a.go:4:", `"x:=1"`, `"\tx := 1"`}},
+		{"unformatted source names file, line, current and formatted text", "package a\n\nfunc f() {\nx:=1\n_ = x\n}\n", []string{"a.go:4:", `"x:=1"`, `"\tx := 1"`, `"lym loom fmt a.go"`}},
 		{"unparseable source names the file", "package a\nfunc (", []string{"a.go", "does not parse"}},
 		{"formatted source passes", "package a\n\nfunc f() {}\n", nil},
+		{"missing final newline fails", "package a", []string{"a.go:2:", "ending differs", `"lym loom fmt a.go"`}},
+		{"extra trailing blank lines fail", "package a\n\n\n", []string{"a.go:2:", "ending differs", `"lym loom fmt a.go"`}},
 		{"import order alone still fails with that line", "package a\n\nimport (\n\t\"os\"\n\t\"fmt\"\n)\n\nvar _ = fmt.Sprint\nvar _ = os.Args\n", []string{"a.go:4:", `"\t\"os\""`, `"\t\"fmt\""`}},
 	}
 	for _, row := range rows {
