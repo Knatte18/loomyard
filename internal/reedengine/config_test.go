@@ -37,7 +37,7 @@ func seedLymConfig(t *testing.T, tmpDir, module, content string) {
 	}
 }
 
-//testtiming:keep pins every shipped template default through a seeded reed.yaml: reed.tmux and reed.shell per GOOS, reed.width, reed.height, reed.debug_log off, reed.mouse on, reed.window_share_max 2, reed.window_split width and reed.pane_memory_max_mib 8192; its covering tests run this code without asserting it
+//testtiming:keep pins every shipped template default through a seeded reed.yaml: tmux and shell per GOOS, width, height, debug_log off, mouse on, window_share_max 2 and window_split width; its covering tests run this code without asserting it
 func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 	tiergate.Require(t, 0)
 	tmpDir := t.TempDir()
@@ -73,9 +73,6 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 	if cfg.WindowSplit != "width" {
 		t.Errorf("WindowSplit = %q, want %q", cfg.WindowSplit, "width")
 	}
-	if cfg.PaneMemoryMaxMiB != 8192 {
-		t.Errorf("PaneMemoryMaxMiB = %d, want 8192", cfg.PaneMemoryMaxMiB)
-	}
 	if cfg.DebugLog != "0" {
 		t.Errorf("DebugLog = %q, want %q", cfg.DebugLog, "0")
 	}
@@ -99,12 +96,12 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 		{Label: "CANCEL", Run: "lym batten cancel {slug}", Confirm: "Cancel {slug}?"},
 		{Label: "code", Run: "lym ide spawn {slug}"},
 		{Label: "terminal", Run: "lym reed window {worktree}"},
-		{Label: "agent", Run: "cd {worktree} && lym shuttle agent --name {answer} --model 'opus[high]'", Ask: "Agent name (lowercase letters/digits/dashes; spaces become dashes):", AskDefault: "agent"},
+		{Label: "agent", Run: "cd {worktree} && lym shuttle open --role {answer} --model 'opus[high]'", Ask: "Agent name:", AskDefault: "agent"},
 	}
 	wantBeamButtons := []buttonWant{
 		{Label: "code", Run: "lym ide spawn {slug}"},
 		{Label: "terminal", Run: "lym reed window {worktree}"},
-		{Label: "agent", Run: "cd {worktree} && lym shuttle agent --name {answer} --model 'opus[high]'", Ask: "Agent name (lowercase letters/digits/dashes; spaces become dashes):", AskDefault: "agent"},
+		{Label: "agent", Run: "cd {worktree} && lym shuttle open --role {answer} --model 'opus[high]'", Ask: "Agent name:", AskDefault: "agent"},
 		{Label: "distill", Run: "lym orch distill", Confirm: "Distill the orch?"},
 		{Label: "refresh", Run: "lym orch refresh", Confirm: "Refresh the orch?"},
 		{Label: "merge-in", Run: "lym beam merge-parent {slug}", Confirm: "Merge the parent into {slug}?"},
@@ -116,8 +113,8 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 	wantPrimeButtons := []buttonWant{
 		{Label: "code", Run: "lym ide spawn {slug}"},
 		{Label: "terminal", Run: "lym reed window {worktree}"},
-		{Label: "agent", Run: "cd {worktree} && lym shuttle agent --name {answer} --model 'opus[high]'", Ask: "Agent name (lowercase letters/digits/dashes; spaces become dashes):", AskDefault: "agent"},
-		{Label: "board", Run: "cd {worktree} && lym shuttle open --role {answer} --model 'opus[high]' --skill scribe:prose --skill scribe:conversation --skill ly:board-policy --skill ly:board", Ask: "Board agent name (lowercase letters/digits/dashes; spaces become dashes):", AskDefault: "board"},
+		{Label: "agent", Run: "cd {worktree} && lym shuttle open --role {answer} --model 'opus[high]'", Ask: "Agent name:", AskDefault: "agent"},
+		{Label: "board", Run: "cd {worktree} && lym shuttle open --role {answer} --model 'opus[high]' --skill scribe:prose --skill scribe:conversation --skill ly:board-policy --skill ly:board", Ask: "Board agent name:", AskDefault: "board"},
 		{Label: "distill", Run: "lym orch distill", Confirm: "Distill the orch?"},
 		{Label: "refresh", Run: "lym orch refresh", Confirm: "Refresh the orch?"},
 		{Label: "stop", Run: "lym beam stop --all", Confirm: "Stop every orch, dobby, run and reed session of the hub on this machine?"},
@@ -195,7 +192,7 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 		if !errors.Is(err, configengine.ErrInvalid) {
 			t.Fatalf("err = %v, want ErrInvalid", err)
 		}
-		if !strings.Contains(err.Error(), localFile) || !strings.Contains(err.Error(), `"reed.buttons.task"`) {
+		if !strings.Contains(err.Error(), localFile) || !strings.Contains(err.Error(), `"buttons.task"`) {
 			t.Errorf("err = %q, want it to name %s and key buttons.task", err, localFile)
 		}
 	})
@@ -231,7 +228,7 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 		if !errors.Is(err, configengine.ErrInvalid) {
 			t.Fatalf("err = %v, want ErrInvalid", err)
 		}
-		if !strings.Contains(err.Error(), localFile) || !strings.Contains(err.Error(), `"reed.shell"`) {
+		if !strings.Contains(err.Error(), localFile) || !strings.Contains(err.Error(), `"shell"`) {
 			t.Errorf("err = %q, want it to name %s and key shell", err, localFile)
 		}
 	})
@@ -368,7 +365,7 @@ func TestLoadConfig_UnknownKeysFromAnOlderConfigAreIgnored(t *testing.T) {
 		{"StaleHeaderBlock", "\nheader:\n  template: \"stale\"\n  height_rows: 5\n", nil},
 		{"RetiredStrandNameKey", "\nstrand_name: '<ROLE>:<ROUND>:<SHORT_GUID>'\n", nil},
 		{"RetiredStatusLineBlock", "\nstatus_line:\n  template: \"{{.repo}}\"\n", nil},
-		{"RetiredLayoutKeys", "\ncollapsed_rows: 3\nmin_full_rows: 3\nselvage:\n  height_rows: 1\n", nil},
+		{"RetiredLayoutKeys", "\ncollapsed_rows: 3\nmin_full_rows: 3\nselvage:\n  height_rows: 1\n", []string{"collapsed_rows", "min_full_rows", "selvage"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

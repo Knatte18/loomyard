@@ -2,9 +2,8 @@
 // a live pair's branches on origin are adopted,
 // and a leftover remote branch from a removed pair is refused with an *ErrRemoteLeftover before Add's first mutation.
 // A provably replaceable leftover does not block the add.
-// A probe that fails in transit is retried, so an origin that answers again within the backoff does not fail the add.
 //
-// Every hub here is built through hubforge.CopyHub with an empty fabric.branch_prefix,
+// Every hub here is built through hubforge.CopyHub with an empty branch_prefix,
 // so a slug's warp branch is the bare slug and its weft branch is <slug>-weft.
 // pushCommitToOrigin plants the leftover's divergence from a throwaway clone of the fixture's bare.
 //
@@ -17,13 +16,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -75,93 +70,8 @@ func requireNothingCreated(t *testing.T, h *hubforge.Hub, slug string) {
 	if gitkit.BranchExists(t, h.PrimeWorktree(), slug) {
 		t.Errorf("local warp branch %q exists after a refused Add", slug)
 	}
-	if gitkit.BranchExists(t, h.PrimeRecords(), fabriclayout.RecordsBranchName(slug)) {
-		t.Errorf("local weft branch %q exists after a refused Add", fabriclayout.RecordsBranchName(slug))
-	}
-}
-
-// TestAdd_RetriesOriginProbesThatFailInTransit pins that Add runs an origin probe again after a transport failure.
-// An origin that answers again during the backoff makes the pair.
-// An origin that stays unreachable fails the Add with the transport failure after three re-runs of each probe.
-// That Add leaves nothing created.
-// A probe failure that is not a transport failure, an origin that is no repository, fails the Add with no re-run.
-func TestAdd_RetriesOriginProbesThatFailInTransit(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	// git refuses this URL with `connection refused`, which reads as a transport failure.
-	const refused = "http://127.0.0.1:1/x"
-	tests := []struct {
-		name string
-		// brokenURL is both stores' origin when the Add starts; empty names a directory that holds no repository.
-		brokenURL     string
-		originReturns bool
-		wantTransport bool
-		// wantSleeps is the exact count of backoff waits, and the least count when origin returns.
-		wantSleeps int32
-	}{
-		{"OriginAnswersAgain", refused, true, false, 1},
-		{"OriginStaysDown", refused, false, true, 6},
-		{"OriginNotARepository", "", false, false, 0},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-			const slug = "transient"
-			stores := []string{h.PrimeWorktree(), h.PrimeRecords()}
-			brokenURL := tt.brokenURL
-			if brokenURL == "" {
-				brokenURL = t.TempDir()
-			}
-			urls := map[string]string{}
-			for _, store := range stores {
-				urls[store] = strings.TrimSpace(gitkit.Git(t, store, "config", "--get", "remote.origin.url"))
-				gitkit.Git(t, store, "remote", "set-url", "origin", brokenURL)
-			}
-
-			var sleeps atomic.Int32
-			var restore sync.Once
-			// The hook runs on Add's probe goroutines, where a test must not be failed fatally.
-			var restoreErr error
-			opts := fabricengine.AddOptions{BackoffSleep: func(time.Duration) {
-				sleeps.Add(1)
-				if tt.originReturns {
-					restore.Do(func() {
-						for store, url := range urls {
-							if _, err := gitexec.Run([]string{"remote", "set-url", "origin", url}, store); err != nil && restoreErr == nil {
-								restoreErr = err
-							}
-						}
-					})
-				}
-			}}
-
-			_, err := fabricengine.NewTopology(fabricengine.Config{}).Add(h.Location, slug, opts)
-			if restoreErr != nil {
-				t.Fatalf("restore origin: %v", restoreErr)
-			}
-			if tt.originReturns {
-				if err != nil {
-					t.Fatalf("Add() = %v; want nil once origin answers again", err)
-				}
-				if got := sleeps.Load(); got < tt.wantSleeps {
-					t.Errorf("backoff delays waited out = %d; want at least %d after the refused probe", got, tt.wantSleeps)
-				}
-				if _, statErr := os.Stat(fabricengine.WorktreePath(h.Location, slug)); statErr != nil {
-					t.Errorf("task worktree after Add() = %v; want it made", statErr)
-				}
-				return
-			}
-			if err == nil || gitexec.IsTransportFailure(err) != tt.wantTransport {
-				t.Fatalf("Add() = %v; want the probe's error with transport failure = %v", err, tt.wantTransport)
-			}
-			if got := sleeps.Load(); got != tt.wantSleeps {
-				t.Errorf("backoff delays waited out = %d; want %d", got, tt.wantSleeps)
-			}
-			requireNothingCreated(t, h, slug)
-		})
+	if gitkit.BranchExists(t, h.PrimeRecords(), fabricengine.RecordsBranchName(slug)) {
+		t.Errorf("local weft branch %q exists after a refused Add", fabricengine.RecordsBranchName(slug))
 	}
 }
 
@@ -172,7 +82,7 @@ func removedPair(t *testing.T, slug string) *hubforge.Hub {
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
-	if _, err := topology.Remove(h.Location, slug, false, false, ""); err != nil {
+	if _, err := topology.Remove(h.Location, slug, false, false); err != nil {
 		t.Fatalf("setup Remove(%q): %v", slug, err)
 	}
 	return h
@@ -198,12 +108,12 @@ func TestAdd_LiveLocalWeftAgainstOrigin(t *testing.T) {
 			t.Parallel()
 
 			const slug = "leftover-adopt"
-			weftBranch := fabriclayout.RecordsBranchName(slug)
+			weftBranch := fabricengine.RecordsBranchName(slug)
 			h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 			topology := h.Topology
 			hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 			oldTip := gitkit.RevParse(t, h.RecordsBare, weftBranch)
-			if _, err := topology.Remove(h.Location, slug, false, false, ""); err != nil {
+			if _, err := topology.Remove(h.Location, slug, false, false); err != nil {
 				t.Fatalf("setup Remove: %v", err)
 			}
 			mustGit(h.PrimeRecords(), "branch", weftBranch, oldTip)
@@ -223,9 +133,6 @@ func TestAdd_LiveLocalWeftAgainstOrigin(t *testing.T) {
 					t.Fatalf("Add succeeded; want a leftover refusal")
 				}
 				requireRemoteLeftover(t, err, weftBranch)
-				if want := `"git push origin --delete refs/heads/` + weftBranch + `"`; !strings.Contains(err.Error(), want) {
-					t.Errorf("message %q does not hold the delete command %s", err.Error(), want)
-				}
 				if n := res.Mutations.Len(); n != 0 {
 					t.Errorf("record has %d entries; want empty", n)
 				}
@@ -244,7 +151,7 @@ func TestAdd_LiveLocalWeftAgainstOrigin(t *testing.T) {
 			}
 			advanced := 0
 			for _, m := range res.Mutations.Entries() {
-				if m.Kind == fabriclayout.KindRepoAdvanced && strings.Contains(m.Detail, originTip) {
+				if m.Kind == fabricengine.KindRepoAdvanced && strings.Contains(m.Detail, originTip) {
 					advanced++
 				}
 			}
@@ -264,7 +171,7 @@ func TestAdd_LiveLocalWeftAdoptsDivergedWarpFromOrigin(t *testing.T) {
 	t.Parallel()
 
 	const slug = "leftover-live-warp"
-	weftBranch := fabriclayout.RecordsBranchName(slug)
+	weftBranch := fabricengine.RecordsBranchName(slug)
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
@@ -272,7 +179,7 @@ func TestAdd_LiveLocalWeftAdoptsDivergedWarpFromOrigin(t *testing.T) {
 	warpTip := gitkit.CommitFile(t, wt, "work.txt", "work\n", "warp work")
 	mustGit(wt, "push", "--quiet", "origin", slug)
 	weftTip := gitkit.RevParse(t, h.RecordsBare, weftBranch)
-	if _, err := topology.Remove(h.Location, slug, false, false, ""); err != nil {
+	if _, err := topology.Remove(h.Location, slug, false, false); err != nil {
 		t.Fatalf("setup Remove: %v", err)
 	}
 	requireArchiveCovers(t, h.RecordsBare, slug, weftTip)
@@ -310,7 +217,7 @@ func TestAdd_WarpLeftoverRefusedAtPreflight(t *testing.T) {
 	mustGit(wt, "push", "--quiet", "origin", slug)
 	mustGit(h.PrimeWorktree(), "merge", "--squash", slug)
 	gitkit.Git(t, h.PrimeWorktree(), "commit", "-m", "land "+slug)
-	if _, err := topology.Remove(h.Location, slug, false, false, ""); err != nil {
+	if _, err := topology.Remove(h.Location, slug, false, false); err != nil {
 		t.Fatalf("setup Remove: %v", err)
 	}
 
@@ -336,7 +243,7 @@ func TestAdd_SkipPushSkipsLeftoverProbes(t *testing.T) {
 	t.Parallel()
 
 	const slug = "leftover-skippush"
-	weftBranch := fabriclayout.RecordsBranchName(slug)
+	weftBranch := fabricengine.RecordsBranchName(slug)
 	h := removedPair(t, slug)
 	pushCommitToOrigin(t, h.RecordsBare, weftBranch)
 	weftBefore := gitkit.RevParse(t, h.RecordsBare, weftBranch)
@@ -383,14 +290,14 @@ func TestAdd_DivergedArchivedWeftLeftoverReplaced(t *testing.T) {
 	t.Parallel()
 
 	const slug = "leftover-diverged"
-	weftBranch := fabriclayout.RecordsBranchName(slug)
+	weftBranch := fabricengine.RecordsBranchName(slug)
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 	gitkit.CommitFile(t, fabricengine.RecordsWorktreePath(h.Location, slug), "extra.txt", "extra.txt\n", "extra weft work")
 	mustGit(fabricengine.RecordsWorktreePath(h.Location, slug), "push", "--quiet", "origin", weftBranch)
 	oldTip := gitkit.RevParse(t, h.RecordsBare, weftBranch)
-	if _, err := topology.Remove(h.Location, slug, false, false, ""); err != nil {
+	if _, err := topology.Remove(h.Location, slug, false, false); err != nil {
 		t.Fatalf("setup Remove: %v", err)
 	}
 
@@ -404,7 +311,7 @@ func TestAdd_DivergedArchivedWeftLeftoverReplaced(t *testing.T) {
 	}
 	var deleted bool
 	for _, m := range res.Mutations.Entries() {
-		deleted = deleted || (m.Kind == fabriclayout.KindRemoteBranchDeleted && m.Target == weftBranch)
+		deleted = deleted || (m.Kind == fabricengine.KindRemoteBranchDeleted && m.Target == weftBranch)
 	}
 	if !deleted {
 		t.Errorf("record %+v carries no remote_branch_deleted entry for %q", res.Mutations.Entries(), weftBranch)
@@ -433,7 +340,7 @@ func TestAdd_WeftReplaceLeaseRaceRefused(t *testing.T) {
 	tiergate.Require(t, 1)
 	// Serial: SetAddBeforeWeftReplaceHookForTest sets the package-level addBeforeWeftReplaceHook.
 	const slug = "leftover-race"
-	weftBranch := fabriclayout.RecordsBranchName(slug)
+	weftBranch := fabricengine.RecordsBranchName(slug)
 	h := removedPair(t, slug)
 
 	var moved string
@@ -501,7 +408,7 @@ func staleTrackingHub(t *testing.T, slug string, records bool) *hubforge.Hub {
 		mustGit(h.PrimeWorktree(), "branch", "-D", slug)
 	}
 	if records {
-		weftBranch := fabriclayout.RecordsBranchName(slug)
+		weftBranch := fabricengine.RecordsBranchName(slug)
 		tip := gitkit.RevParse(t, h.RecordsBare, weftBranch)
 		mustGit(h.RecordsBare, "branch", "-D", weftBranch)
 		plantStaleTracking(h.PrimeRecords(), weftBranch, tip)
@@ -523,7 +430,7 @@ func TestAdd_DropsStaleTrackingRef(t *testing.T) {
 		t.Parallel()
 
 		const slug = "stale-records"
-		weftBranch := fabriclayout.RecordsBranchName(slug)
+		weftBranch := fabricengine.RecordsBranchName(slug)
 		h := staleTrackingHub(t, slug, true)
 		requireTrackingStanding(t, h.PrimeRecords(), weftBranch, true)
 
@@ -532,12 +439,12 @@ func TestAdd_DropsStaleTrackingRef(t *testing.T) {
 		}
 
 		requireTrackingStanding(t, h.PrimeRecords(), weftBranch, false)
-		report, err := fabricengine.ReconcileOrigin(h.Location, fabriclayout.ReconcileScope{Run: slug, JudgeOnly: true}, fabricengine.OriginSeams{}, fabricengine.ReconcileOptions{})
+		report, err := fabricengine.ReconcileOrigin(h.Location, fabricengine.ReconcileScope{Run: slug, JudgeOnly: true}, fabricengine.OriginSeams{}, fabricengine.ReconcileOptions{})
 		if err != nil {
 			t.Fatalf("ReconcileOrigin: %v", err)
 		}
 		for _, outcome := range report.Branches {
-			if outcome.State == fabriclayout.BranchGone && (outcome.Branch == slug || outcome.Branch == weftBranch) {
+			if outcome.State == fabricengine.BranchGone && (outcome.Branch == slug || outcome.Branch == weftBranch) {
 				t.Errorf("reconcile read the new pair's branch %q as gone from origin", outcome.Branch)
 			}
 		}
@@ -561,7 +468,7 @@ func TestAdd_DropsStaleTrackingRef(t *testing.T) {
 		t.Parallel()
 
 		const slug = "stale-locked"
-		weftBranch := fabriclayout.RecordsBranchName(slug)
+		weftBranch := fabricengine.RecordsBranchName(slug)
 		h := staleTrackingHub(t, slug, true)
 		commonDir := gitkit.Git(t, h.PrimeRecords(), "rev-parse", "--git-common-dir")
 		if !filepath.IsAbs(commonDir) {
@@ -591,7 +498,7 @@ func TestRecordsBranchLive(t *testing.T) {
 	t.Parallel()
 
 	const slug = "weft-live"
-	weftBranch := fabriclayout.RecordsBranchName(slug)
+	weftBranch := fabricengine.RecordsBranchName(slug)
 
 	for _, tc := range []struct {
 		name    string

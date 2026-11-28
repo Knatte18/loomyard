@@ -15,9 +15,10 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedtransient"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -30,42 +31,43 @@ import (
 type recordingParentMerger struct {
 	calls   []mergeCall
 	results []mergeCallResult
+	// pushCalls records every PushBranch call's options; pushErr is returned by each of them.
+	pushCalls []fabricengine.SyncOptions
+	pushErr   error
 	// headSHA and headErr script HeadSHA's return.
 	headSHA string
 	headErr error
 	// preMergeHeadSHA, when non-nil, is the parent head `HeadSHA` returns before any merge, which Finalize reads.
 	preMergeHeadSHA *string
-	// order, when non-nil, receives "merge" and "fast-forward" as those calls happen,
+	// order, when non-nil, receives "merge" and "push" as those calls happen,
 	// so a test can assert their order against other seams that append to the same slice.
 	order *[]string
 	// midMerge and midMergeErr script MidMerge's return after a parent-side merge, where the guard's refusal reads it;
 	// probeMidMerge scripts the return before any merge, which Finalize's pre-merge probe reads.
-	midMerge      fabriclayout.MidMergeState
+	midMerge      fabricengine.MidMergeState
 	midMergeErr   error
-	probeMidMerge fabriclayout.MidMergeState
+	probeMidMerge fabricengine.MidMergeState
 	// dirtyCheckout, dirtyPaths and dirtyErr script CodeDirtyPaths's return.
 	dirtyCheckout string
 	dirtyPaths    []string
 	dirtyErr      error
 	// ffCalls records every FastForwardPair call's options; ffResult and ffErr script its return.
 	ffCalls  []fabricengine.SyncOptions
-	ffResult fabriclayout.FastForwardResult
+	ffResult fabricengine.FastForwardResult
 	ffErr    error
-	// onFastForward, when set, runs on each FastForwardPair call, so a test can move the head it fast-forwards.
-	onFastForward func()
 }
 
 type mergeCall struct {
 	source string
-	opts   fabriclayout.MergeOptions
+	opts   fabricengine.MergeOptions
 }
 
 type mergeCallResult struct {
-	result fabriclayout.MergeResult
+	result fabricengine.MergeResult
 	err    error
 }
 
-func (m *recordingParentMerger) Merge(source string, opts fabriclayout.MergeOptions) (fabriclayout.MergeResult, error) {
+func (m *recordingParentMerger) Merge(source string, opts fabricengine.MergeOptions) (fabricengine.MergeResult, error) {
 	idx := len(m.calls)
 	m.calls = append(m.calls, mergeCall{source: source, opts: opts})
 	if m.order != nil {
@@ -75,9 +77,17 @@ func (m *recordingParentMerger) Merge(source string, opts fabriclayout.MergeOpti
 		idx = len(m.results) - 1
 	}
 	if idx < 0 {
-		return fabriclayout.MergeResult{}, nil
+		return fabricengine.MergeResult{}, nil
 	}
 	return m.results[idx].result, m.results[idx].err
+}
+
+func (m *recordingParentMerger) PushBranch(opts fabricengine.SyncOptions) (fabricengine.PushResult, error) {
+	m.pushCalls = append(m.pushCalls, opts)
+	if m.order != nil {
+		*m.order = append(*m.order, "push")
+	}
+	return fabricengine.PushResult{}, m.pushErr
 }
 
 func (m *recordingParentMerger) HeadSHA() (string, error) {
@@ -90,7 +100,7 @@ func (m *recordingParentMerger) HeadSHA() (string, error) {
 // stringPointer returns a pointer to s.
 func stringPointer(s string) *string { return &s }
 
-func (m *recordingParentMerger) MidMerge() (fabriclayout.MidMergeState, error) {
+func (m *recordingParentMerger) MidMerge() (fabricengine.MidMergeState, error) {
 	if len(m.calls) == 0 {
 		return m.probeMidMerge, nil
 	}
@@ -101,13 +111,10 @@ func (m *recordingParentMerger) CodeDirtyPaths() (string, []string, error) {
 	return m.dirtyCheckout, m.dirtyPaths, m.dirtyErr
 }
 
-func (m *recordingParentMerger) FastForwardPair(opts fabricengine.SyncOptions) (fabriclayout.FastForwardResult, error) {
+func (m *recordingParentMerger) FastForwardPair(opts fabricengine.SyncOptions) (fabricengine.FastForwardResult, error) {
 	m.ffCalls = append(m.ffCalls, opts)
 	if m.order != nil {
 		*m.order = append(*m.order, "fast-forward")
-	}
-	if m.onFastForward != nil {
-		m.onFastForward()
 	}
 	return m.ffResult, m.ffErr
 }
@@ -151,82 +158,188 @@ func TestNewFinalize_Refusals(t *testing.T) {
 
 // --- Call behaviour ---
 
-// TestFinalize_MergeMarkPushOrderAndVerdict pins the landing order and its merge options.
-// A landed merge pushes nothing and writes no board mark, and its message ends in the landing trailer.
-// With `Deps.PushSkipped` set, the records are committed and the task is marked done, and a failing write is an error.
+// TestFinalize_MergeMarkPushOrderAndVerdict pins the landing order:
+// a landed merge is pushed to the parent's upstream, its records are committed and pushed, then it is marked done.
+// With `Deps.PushSkipped` set, no push is made and the landing is Done.
+// A failed push is Stuck rather than Done and leaves no mark, and a failing board write returns an error.
+// A rejected push over a parent that already holds the work archives the local merge and goes on.
+// A failed push carries the adopter-first repair note only when origin's parent holds the work,
+// and a parent commit is listed.
+// With only the squash listed, the note is a reset;
+// with another commit listed too, it is a rebase that drops the squash.
 // No case makes a GitHub call.
 func TestFinalize_MergeMarkPushOrderAndVerdict(t *testing.T) {
 	tiergate.Require(t, 0)
-	for _, tt := range []struct {
-		name  string
-		reaps bool
-	}{{"a set Reap runs before the merge", true}, {"a nil Reap is skipped", false}} {
-		t.Run(tt.name, func(t *testing.T) {
-			var order []string
-			deps := newTestDeps(t)
-			if tt.reaps {
-				deps.Reap = func() error { order = append(order, "reap"); return nil }
-			}
-			merger := &recordingParentMerger{results: []mergeCallResult{{result: fabriclayout.MergeResult{Committed: true}}}, headSHA: "squash111", order: &order}
-			fz := &Finalize{deps: deps, resolver: &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}, parentOpener: func() (parentMerger, error) { return merger, nil }}
-
-			shedfake.RequireOutcome(t, fz, shedengine.Done)
-			reapAt, mergeAt := slices.Index(order, "reap"), slices.Index(order, "merge")
-			if tt.reaps && (reapAt < 0 || reapAt > mergeAt) {
-				t.Errorf("call order = %v; want the reap before the merge", order)
-			}
-			if !tt.reaps && reapAt >= 0 {
-				t.Errorf("call order = %v; want no reap", order)
-			}
-		})
+	failedPush := func(record fabricengine.FailedPush, cause error) *fabricengine.PushFailedError {
+		return &fabricengine.PushFailedError{Record: record, Err: cause}
 	}
-	markFailure := errors.New("board unavailable")
+	rewound := failedPush(fabricengine.FailedPush{Repo: "code", RepoPath: "/hub/parent", Branch: "parent", Class: fabricengine.PushFailureRewound, OriginHead: "abc123", Commits: []string{"def456"}}, errors.New("push held back"))
+	primeDiverged := failedPush(fabricengine.FailedPush{Repo: "code", RepoPath: "/hub/main", Branch: "main", Prime: true, Class: fabricengine.PushFailureNotFastForward}, gitrepo.ErrPushRejected)
+	authRefused := failedPush(fabricengine.FailedPush{Repo: "code", RepoPath: "/hub/parent", Branch: "parent", Class: fabricengine.PushFailureAuth}, gitrepo.ErrPushAuthRefused)
+	// repairSeams scripts the reads behind the adopter-first repair note:
+	// whether origin's parent holds the work and the parent commits origin lacks.
+	type repairSeams struct {
+		holds    bool
+		holdsErr error
+		lacks    []string
+		lacksErr error
+	}
+	squash := "squash111"
 	tests := []struct {
 		name        string
 		pushSkipped bool
+		pushErr     error
 		markErr     error
-		wantOrder   string
+		wantOutcome shedengine.Outcome
+		// wantWayForward is the exact way-forward line the Stuck reason ends in, with no hand-push advice after it.
+		wantWayForward string
+		// repair scripts the repair note's reads; nil wires none.
+		repair *repairSeams
+		// wantRepair names what the reason must carry; empty means the reason must carry no repair note.
+		wantRepair []string
 	}{
-		{"a landing hands the push on and writes no mark", false, nil, "commit,merge,commit"},
-		{"pushes off commit the records and mark the task done", true, nil, "commit,merge,commit,mark"},
-		{"a failing board write returns an error", true, markFailure, "commit,merge,commit,mark"},
+		{"pushed", false, nil, nil, shedengine.Done, "", nil, nil},
+		{"push skipped", true, nil, nil, shedengine.Done, "", nil, nil},
+		{"failing push still marks", false, errors.New("remote rejected"), nil, shedengine.Stuck, "", nil, nil},
+		{"a failing board write returns an error", false, nil, errors.New("board unavailable"), "", "", nil, nil},
+		{"rewound hold-back", false, rewound, nil, shedengine.Stuck, fabricengine.FailedPushWayForward(rewound.Record), nil, nil},
+		{"prime not fast-forward", false, primeDiverged, nil, shedengine.Stuck, fabricengine.FailedPushWayForward(primeDiverged.Record), nil, nil},
+		{"auth refusal", false, authRefused, nil, shedengine.Stuck, fabricengine.FailedPushWayForward(authRefused.Record), nil, nil},
+		{
+			"the squash alone names the reset", false, errors.New("remote rejected"), nil, shedengine.Stuck, "",
+			&repairSeams{holds: true, lacks: []string{squash}},
+			[]string{squash, `git reset --keep origin/main`, `lym fabric remove me`},
+		},
+		{
+			"another commit listed names the rebase with the squash SHA", false, errors.New("remote rejected"), nil, shedengine.Stuck, "",
+			&repairSeams{holds: true, lacks: []string{squash, "other222"}},
+			[]string{"git rebase --onto " + squash + "~1 " + squash + " main", "git rebase --abort", `lym fabric remove me`},
+		},
+		{
+			"a protected branch refusal names the merge mode and the hand landing", false,
+			errors.New("gitrepo: push rejected: ! [remote rejected] main -> main (protected branch hook declined)"), nil, shedengine.Stuck,
+			protectedParentWayForward("task-branch", "main", false), nil,
+			[]string{"protected branch hook declined", `"lym config beam --set pull_request=merge"`, "--layer default", `"git reset --keep origin/main"`, `"lym loom resume"`},
+		},
+		{
+			"a classified repository-rules refusal names the merge mode in place of its class's way forward", false,
+			&fabricengine.PushFailedError{Record: fabricengine.FailedPush{Class: fabricengine.PushFailureOther}, Err: errors.New("gitrepo: push rejected: ! [remote rejected] main -> main (push declined due to repository rule violations)")},
+			nil, shedengine.Stuck, protectedParentWayForward("task-branch", "main", false), &repairSeams{holds: true, lacks: []string{squash}},
+			[]string{"repository rule violations", "pull_request=merge"},
+		},
+		{"origin's parent lacking the work names no repair", false, errors.New("remote rejected"), nil, shedengine.Stuck, "", &repairSeams{lacks: []string{squash}}, nil},
+		{"a failed read of origin's parent names no repair", false, errors.New("remote rejected"), nil, shedengine.Stuck, "", &repairSeams{holdsErr: errors.New("fetch failed")}, nil},
+		{"a failed commit listing names no repair", false, errors.New("remote rejected"), nil, shedengine.Stuck, "", &repairSeams{holds: true, lacksErr: errors.New("no branch")}, nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var order []string
 			deps := newTestDeps(t)
 			deps.Slug = "me"
-			deps.PushSkipped = tt.pushSkipped
-			if tt.pushSkipped {
-				// A wired landing seam that pushes off must not reach, so no landing entry is recorded.
-				deps.LandLocally = func(string) error { order = append(order, "land"); return nil }
+			if tt.repair != nil {
+				deps.OriginParentHoldsWork = func() (bool, error) { return tt.repair.holds, tt.repair.holdsErr }
+				deps.ParentCommitsOriginLacks = func() ([]string, error) { return tt.repair.lacks, tt.repair.lacksErr }
 			}
+			deps.PushSkipped = tt.pushSkipped
 			deps.CommitStatus = func() error { order = append(order, "commit"); return nil }
+			deps.PushRecords = func() error { order = append(order, "push-records"); return nil }
 			deps.MarkTaskDone = func() error {
 				order = append(order, "mark")
 				return tt.markErr
 			}
-			merger := &recordingParentMerger{results: []mergeCallResult{{result: fabriclayout.MergeResult{Committed: true}}}, headSHA: "squash111", order: &order}
-			fz := &Finalize{deps: deps, resolver: &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}, parentOpener: func() (parentMerger, error) { return merger, nil }}
+			res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
+			merger := &recordingParentMerger{
+				results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}},
+				pushErr: tt.pushErr,
+				headSHA: squash,
+				order:   &order,
+			}
+			fz := &Finalize{deps: deps, resolver: res, parentOpener: func() (parentMerger, error) { return merger, nil }}
 
 			if tt.markErr != nil {
-				if _, _, err := fz.Call(context.Background()); !errors.Is(err, tt.markErr) {
+				_, _, err := fz.Call(context.Background())
+				if !errors.Is(err, tt.markErr) {
 					t.Fatalf("Call() error = %v; want it to wrap %v", err, tt.markErr)
 				}
-			} else {
-				shedfake.RequireOutcome(t, fz, shedengine.Done)
+				if got, want := strings.Join(order, ","), "commit,merge,push,commit,push-records,mark"; got != want {
+					t.Errorf("call order = %q; want %q", got, want)
+				}
+				return
 			}
-			if got := strings.Join(order, ","); got != tt.wantOrder {
-				t.Errorf("call order = %q; want %q", got, tt.wantOrder)
+
+			ptr := shedfake.RequireOutcome(t, fz, tt.wantOutcome)
+			wantOrder := "commit,merge,push"
+			switch {
+			case tt.wantOutcome != shedengine.Done:
+			case tt.pushSkipped:
+				wantOrder += ",commit,mark"
+			default:
+				wantOrder += ",commit,push-records,mark"
 			}
-			if len(merger.calls) != 1 {
-				t.Fatalf("parent-side merge calls = %d; want 1", len(merger.calls))
+			if got := strings.Join(order, ","); got != wantOrder {
+				t.Errorf("call order = %q; want %q", got, wantOrder)
 			}
-			if got := merger.calls[0].opts; !got.NoFastForward || !strings.HasSuffix(got.Message, "\n\nLym-Landing: me") {
-				t.Errorf("MergeOptions = %+v; want no fast-forward and a message ending in the landing trailer", got)
+			if len(merger.pushCalls) != 1 {
+				t.Fatalf("PushBranch calls = %d; want 1", len(merger.pushCalls))
+			}
+			if got := merger.pushCalls[0].SkipPush; got != tt.pushSkipped {
+				t.Errorf("PushBranch SkipPush = %v; want %v", got, tt.pushSkipped)
+			}
+			switch {
+			case tt.wantWayForward != "":
+				if got := requireFinalizeReason(t, ptr); !strings.HasSuffix(got, tt.wantWayForward) || strings.Contains(got, "push it by hand") {
+					t.Errorf("reason = %q; want it to end in %q with no `push it by hand`", got, tt.wantWayForward)
+				}
+			case tt.pushErr != nil:
+				if got := requireFinalizeReason(t, ptr); !strings.Contains(got, "push it by hand") {
+					t.Errorf("reason = %q; want it to tell the operator to push by hand", got)
+				}
+			}
+			if tt.pushErr == nil {
+				return
+			}
+			reason := requireFinalizeReason(t, ptr)
+			for _, want := range tt.wantRepair {
+				if !strings.Contains(reason, want) {
+					t.Errorf("reason = %q; want the repair note to carry %q", reason, want)
+				}
+			}
+			// A case with an exact way forward carries no adopter-first repair note;
+			// its wantRepair strings belong to that way forward.
+			wantNote := len(tt.wantRepair) > 0 && tt.wantWayForward == ""
+			if hasNote := strings.Contains(reason, "duplicates it"); hasNote != wantNote {
+				t.Errorf("reason = %q; repair note present = %v; want %v", reason, hasNote, wantNote)
+			}
+			if strings.Contains(reason, "lym batten cancel") {
+				t.Errorf("reason = %q; want it free of `lym batten cancel`, since a cancel lifts the owner pause of a landed run", reason)
 			}
 		})
 	}
+
+	t.Run("a rejected push over a parent that holds the work archives and marks", func(t *testing.T) {
+		var order []string
+		merger := &recordingParentMerger{
+			results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}},
+			pushErr: errors.New("remote rejected"),
+			headSHA: squash,
+			order:   &order,
+		}
+		deps := newTestDeps(t)
+		deps.Slug = "me"
+		deps.OriginParentHoldsWork = func() (bool, error) { return true, nil }
+		// The archive resets the parent branch to origin's tip, so the head the pair reads afterwards is another commit.
+		deps.ArchiveParentMerge = func() error { order = append(order, "archive"); merger.headSHA = "originTip"; return nil }
+		deps.CommitStatus = func() error { order = append(order, "commit"); return nil }
+		deps.PushRecords = func() error { order = append(order, "push-records"); return nil }
+		deps.RecordLanding = func(commit string, _ bool) error { order = append(order, "record "+commit); return nil }
+		deps.MarkTaskDone = func() error { order = append(order, "mark"); return nil }
+		fz := &Finalize{deps: deps, resolver: &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}, parentOpener: func() (parentMerger, error) { return merger, nil }}
+
+		shedfake.RequireOutcome(t, fz, shedengine.Done)
+		if got, want := strings.Join(order, ","), "commit,merge,record "+squash+",push,archive,record originTip,commit,push-records,mark"; got != want {
+			t.Errorf("call order = %q; want %q", got, want)
+		}
+	})
 }
 
 // TestFinalize_MergeOptionsCarriesComposedMessage asserts that the merge-in runs first.
@@ -268,7 +381,7 @@ func TestFinalize_MergeOptionsCarriesComposedMessage(t *testing.T) {
 				t.Fatalf("summaryparser.Parse() error = %v; want nil", err)
 			}
 			res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
-			merger := &recordingParentMerger{results: []mergeCallResult{{result: fabriclayout.MergeResult{Committed: true}}}}
+			merger := &recordingParentMerger{results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}}}
 			fz := &Finalize{deps: deps, resolver: res, parentOpener: func() (parentMerger, error) { return merger, nil }}
 
 			shedfake.RequireOutcome(t, fz, shedengine.Done)
@@ -286,12 +399,11 @@ func TestFinalize_MergeOptionsCarriesComposedMessage(t *testing.T) {
 			if tt.verdict != "" {
 				want = strings.TrimRight(summary.CommitMessage(), "\n") + "\n\n" + tt.verdict + "\n\n" + deps.Config.CreditBlock(enginesRun)
 			}
-			want = strings.TrimRight(want, "\n") + "\n\nLym-Landing: me"
 			if got.Message != want {
 				t.Errorf("MergeOptions.Message = %q; want %q", got.Message, want)
 			}
 			engineLine := " - " + deps.Config.CreditEngines["claude"]
-			if hasLine := strings.Contains(got.Message, "\n"+engineLine+"\n"); hasLine == tt.nilEnginesRun {
+			if hasLine := strings.HasSuffix(got.Message, "\n"+engineLine); hasLine == tt.nilEnginesRun {
 				t.Errorf("MergeOptions.Message = %q; engine line %q present = %v; want %v", got.Message, engineLine, hasLine, !tt.nilEnginesRun)
 			}
 			for _, absent := range []string{"Lym-Task", "Co-Authored-By"} {
@@ -338,7 +450,7 @@ func TestFinalize_UnusableMessageInput_ErrorBeforeMergeOrCommit(t *testing.T) {
 			committed := false
 			deps.CommitStatus = func() error { committed = true; return nil }
 			res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
-			merger := &recordingParentMerger{results: []mergeCallResult{{result: fabriclayout.MergeResult{Committed: true}}}}
+			merger := &recordingParentMerger{results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}}}
 			fz := &Finalize{deps: deps, resolver: res, parentOpener: func() (parentMerger, error) { return merger, nil }}
 
 			outcome, _, err := fz.Call(context.Background())
@@ -371,9 +483,10 @@ func (r *orderedResolver) Resolve(ctx context.Context, source, tip string) (merg
 
 // TestFinalize_MergeInRequiredRetry pins that an ErrMergeInRequired merge is retried exactly once.
 // The retry carries the same composed message.
+// The board seam runs once, after the retry that lands, never after a failed attempt.
 // The parent run records are committed after each merge-in and before the parent-side merge.
 // This holds on the first pass and on the retry alike.
-// The parent pair's head is recorded as the landing commit after the retry that lands, never after a failed attempt.
+// The parent pair's head is recorded as the landing commit before the push, and the board seam runs after the push.
 func TestFinalize_MergeInRequiredRetry(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -386,15 +499,15 @@ func TestFinalize_MergeInRequiredRetry(t *testing.T) {
 		// parentMoves moves the parent tip from p2 to p3 at the first parent-side merge call, as a code-side commit would.
 		parentMoves bool
 	}{
-		{"retry lands", mergeCallResult{result: fabriclayout.MergeResult{Committed: true}}, shedengine.Done, "merge-in,records,merge,merge-in,records,merge,record landed1", 2, false, false},
+		{"retry lands", mergeCallResult{result: fabricengine.MergeResult{Committed: true}}, shedengine.Done, "merge-in,records,merge,merge-in,records,merge,record landed1,push,mark", 2, false, false},
 		{"retry also required stays Stuck", mergeCallResult{err: &fabricengine.ErrMergeInRequired{}}, shedengine.Stuck, "merge-in,records,merge,merge-in,records,merge", 2, false, false},
-		{"a code-side parent commit between the passes lands through the retry", mergeCallResult{result: fabriclayout.MergeResult{Committed: true}}, shedengine.Done, "merge-in,records,merge,merge-in,records,merge,record landed1", 2, false, true},
+		{"a code-side parent commit between the passes lands through the retry", mergeCallResult{result: fabricengine.MergeResult{Committed: true}}, shedengine.Done, "merge-in,records,merge,merge-in,records,merge,record landed1,push,mark", 2, false, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var order []string
 			deps := newTestDeps(t)
-			deps.Slug = "me"
+			deps.MarkTaskDone = func() error { order = append(order, "mark"); return nil }
 			deps.RecordLanding = func(commit string, _ bool) error { order = append(order, "record "+commit); return nil }
 			deps.CommitParentRecords = func() error { order = append(order, "records"); return nil }
 			summary, err := summaryparser.Parse(deps.DescriptionPath)
@@ -410,12 +523,12 @@ func TestFinalize_MergeInRequiredRetry(t *testing.T) {
 			var changed []string
 			if tt.parentMoves {
 				deps.MergeBase = func(string) (string, error) { return "b0", nil }
-				deps.ReadParentTips = func(bool) (fabriclayout.ParentTips, error) {
+				deps.ReadParentTips = func(bool) (fabricengine.ParentTips, error) {
 					tip := "p2"
 					if len(merger.calls) > 0 {
 						tip = "p3"
 					}
-					return fabriclayout.ParentTips{Local: tip, Upstream: tip, Relation: fabriclayout.ParentEqual}, nil
+					return fabricengine.ParentTips{Local: tip, Upstream: tip, Relation: fabricengine.ParentEqual}, nil
 				}
 				deps.ChangedPaths = func(from, to string) ([]string, error) {
 					changed = append(changed, from+".."+to)
@@ -434,7 +547,7 @@ func TestFinalize_MergeInRequiredRetry(t *testing.T) {
 			if ptr.Reroute != tt.wantReroute {
 				t.Errorf("OutputPointer.Reroute = %v; want %v", ptr.Reroute, tt.wantReroute)
 			}
-			want := strings.TrimRight(summary.LandingMessage(deps.Config.CreditBlock([]string{"claude"})), "\n") + "\n\nLym-Landing: me"
+			want := summary.LandingMessage(deps.Config.CreditBlock([]string{"claude"}))
 			for i, call := range merger.calls {
 				if call.opts.Message != want {
 					t.Errorf("attempt %d MergeOptions.Message = %q; want %q (the same composed message every attempt)", i+1, call.opts.Message, want)
@@ -451,29 +564,30 @@ func TestFinalize_MergeInRequiredRetry(t *testing.T) {
 }
 
 // TestFinalize_RecordsTheLandingCommitOnTheFirstTry pins that a parent-side merge lands on the first call:
-// the parent pair's head is recorded after the merge.
+// the parent pair's head is recorded after the merge and before the push, and the board seam runs last.
 // It then pins that the landed size is recorded from the parent head read before the merge-in to the landing commit.
 //
-//testtiming:keep pins the landed-size range recorded from the pre-merge parent head and the record order on the first-try merge
+//testtiming:keep pins the landed-size range recorded from the pre-merge parent head and the record-before-push order on the first-try merge
 func TestFinalize_RecordsTheLandingCommitOnTheFirstTry(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
 	var order []string
 	deps := newTestDeps(t)
+	deps.MarkTaskDone = func() error { order = append(order, "mark"); return nil }
 	deps.RecordLanding = func(commit string, _ bool) error { order = append(order, "record "+commit); return nil }
 	deps.RecordLandedSize = func(from, to string) error { order = append(order, "size "+from+".."+to); return nil }
-	merger := &recordingParentMerger{results: []mergeCallResult{{result: fabriclayout.MergeResult{Committed: true}}}, order: &order, headSHA: "landed1", preMergeHeadSHA: stringPointer("parent0")}
+	merger := &recordingParentMerger{results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}}, order: &order, headSHA: "landed1", preMergeHeadSHA: stringPointer("parent0")}
 	fz := &Finalize{deps: deps, resolver: &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}, guard: newParentGuard(deps), parentOpener: func() (parentMerger, error) { return merger, nil }}
 
 	shedfake.RequireOutcome(t, fz, shedengine.Done)
-	if got, want := strings.Join(order, ","), "merge,record landed1,size parent0..landed1"; got != want {
+	if got, want := strings.Join(order, ","), "merge,record landed1,size parent0..landed1,push,mark"; got != want {
 		t.Errorf("call order = %q; want %q", got, want)
 	}
 }
 
 // TestFinalize_RecordLandingFailureKeepsDone pins that a failed head read or record is only logged:
-// the landing is still Done.
+// the landing still pushes and is Done.
 // The landed size is recorded whatever RecordLanding returned, and not at all when no merged parent head is held.
 func TestFinalize_RecordLandingFailureKeepsDone(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -496,10 +610,13 @@ func TestFinalize_RecordLandingFailureKeepsDone(t *testing.T) {
 			deps := newTestDeps(t)
 			deps.RecordLanding = func(string, bool) error { return tt.recordErr }
 			deps.RecordLandedSize = func(string, string) error { sizeCalls++; return tt.sizeErr }
-			merger := &recordingParentMerger{results: []mergeCallResult{{result: fabriclayout.MergeResult{Committed: true}}}, headSHA: "landed1", headErr: tt.headErr, preMergeHeadSHA: tt.preMergeHeadSHA}
+			merger := &recordingParentMerger{results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}}, headSHA: "landed1", headErr: tt.headErr, preMergeHeadSHA: tt.preMergeHeadSHA}
 			fz := &Finalize{deps: deps, resolver: &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}, guard: newParentGuard(deps), parentOpener: func() (parentMerger, error) { return merger, nil }}
 
 			shedfake.RequireOutcome(t, fz, shedengine.Done)
+			if len(merger.pushCalls) != 1 {
+				t.Errorf("parent push calls = %d; want 1", len(merger.pushCalls))
+			}
 			if sizeCalls != tt.wantSizeCalls {
 				t.Errorf("RecordLandedSize calls = %d; want %d", sizeCalls, tt.wantSizeCalls)
 			}
@@ -530,14 +647,14 @@ func TestFinalize_RecordsWhetherTheLandedDiffIsEmpty(t *testing.T) {
 			t.Parallel()
 			var recorded []bool
 			deps := newTestDeps(t)
-			deps.ChangedPaths = func(from, to string) ([]string, error) {
+			deps.ChangedCodePaths = func(from, to string) ([]string, error) {
 				if from == "parent0" && to == "landed1" {
 					return tt.landedPaths, tt.pathsErr
 				}
 				return []string{"another.go"}, nil
 			}
 			deps.RecordLanding = func(_ string, emptyDiff bool) error { recorded = append(recorded, emptyDiff); return nil }
-			merger := &recordingParentMerger{results: []mergeCallResult{{result: fabriclayout.MergeResult{Committed: true}}}, headSHA: "landed1", preMergeHeadSHA: stringPointer(tt.preMergeHeadSHA)}
+			merger := &recordingParentMerger{results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}}, headSHA: "landed1", preMergeHeadSHA: stringPointer(tt.preMergeHeadSHA)}
 			fz := &Finalize{deps: deps, resolver: &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}, guard: newParentGuard(deps), parentOpener: func() (parentMerger, error) { return merger, nil }}
 
 			shedfake.RequireOutcome(t, fz, shedengine.Done)
@@ -570,7 +687,7 @@ func TestFinalize_StuckReasons(t *testing.T) {
 		openerErr error
 		mergeErr  error
 		// midMerge and midMergeErr are what the parent pair's parked-merge read returns.
-		midMerge    fabriclayout.MidMergeState
+		midMerge    fabricengine.MidMergeState
 		midMergeErr error
 		// wantInOrder names substrings the reason must carry, each found after the previous one.
 		wantInOrder []string
@@ -580,19 +697,17 @@ func TestFinalize_StuckReasons(t *testing.T) {
 		// wantInReason names what the stuck reason must carry, given the deps the case ran under.
 		wantInReason func(d Deps) string
 		// report is what the run-scope reconcile returns; nil wires none.
-		report *fabriclayout.OriginReport
+		report *fabricengine.OriginReport
 		// wantHalt is whether the Stuck must carry Halt, and wantNotInReason names text the reason must not carry.
 		wantHalt        bool
 		wantNotInReason string
 		// followUp is what Deps.RemoveFollowUp returns, empty wiring none; parentHolds makes Deps.ParentHoldsTaskWork read true.
 		followUp    string
 		parentHolds bool
-		// reapErr is what Deps.Reap returns, nil wiring none.
-		reapErr error
 	}{
 		{
 			name:     "run origin ended after its landing halts naming the landing and the cleanup from the prime",
-			report:   &fabriclayout.OriginReport{Entries: []fabriclayout.EntryOutcome{{Slug: "me", State: fabriclayout.EntryEnded, How: "done"}}},
+			report:   &fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: "me", State: fabricengine.EntryEnded, How: "done"}}},
 			wantHalt: true,
 			wantInReason: func(Deps) string {
 				return `its landing is done and its board entry is done; way forward: pause the run, then run "lym cleanup --apply" from the prime`
@@ -600,9 +715,9 @@ func TestFinalize_StuckReasons(t *testing.T) {
 		},
 		{
 			name: "run stopped by a branch names it and its way forward verbatim, then the resume",
-			report: &fabriclayout.OriginReport{
-				Branches: []fabriclayout.BranchOutcome{{Branch: "parent", State: fabriclayout.BranchDiverged, WayForward: "reconcile parent in the prime"}},
-				Entries:  []fabriclayout.EntryOutcome{{Slug: "me", State: fabriclayout.EntryStopped, WayForward: "reconcile parent in the prime"}},
+			report: &fabricengine.OriginReport{
+				Branches: []fabricengine.BranchOutcome{{Branch: "parent", State: fabricengine.BranchDiverged, WayForward: "reconcile parent in the prime"}},
+				Entries:  []fabricengine.EntryOutcome{{Slug: "me", State: fabricengine.EntryStopped, WayForward: "reconcile parent in the prime"}},
 			},
 			wantInReason: func(Deps) string {
 				return `branch parent is diverged against origin; way forward: reconcile parent in the prime; then run "lym loom resume"`
@@ -611,9 +726,9 @@ func TestFinalize_StuckReasons(t *testing.T) {
 		},
 		{
 			name: "stopped branch naming the removal ends in the follow-up in place of the resume",
-			report: &fabriclayout.OriginReport{
-				Branches: []fabriclayout.BranchOutcome{{Branch: "parent", State: fabriclayout.BranchDiverged, WayForward: "run `lym fabric remove me` to clear it"}},
-				Entries:  []fabriclayout.EntryOutcome{{Slug: "me", State: fabriclayout.EntryStopped, WayForward: "run `lym fabric remove me` to clear it"}},
+			report: &fabricengine.OriginReport{
+				Branches: []fabricengine.BranchOutcome{{Branch: "parent", State: fabricengine.BranchDiverged, WayForward: "run `lym fabric remove me` to clear it"}},
+				Entries:  []fabricengine.EntryOutcome{{Slug: "me", State: fabricengine.EntryStopped, WayForward: "run `lym fabric remove me` to clear it"}},
 			},
 			followUp:        "then run `lym batten cancel me --remove`",
 			wantInOrder:     []string{"lym fabric remove me", "then run `lym batten cancel me --remove`"},
@@ -621,9 +736,9 @@ func TestFinalize_StuckReasons(t *testing.T) {
 		},
 		{
 			name: "a parent already holding the task's work keeps the resume and carries no follow-up",
-			report: &fabriclayout.OriginReport{
-				Branches: []fabriclayout.BranchOutcome{{Branch: "parent", State: fabriclayout.BranchDiverged, WayForward: "run `lym fabric remove me` to clear it"}},
-				Entries:  []fabriclayout.EntryOutcome{{Slug: "me", State: fabriclayout.EntryStopped, WayForward: "run `lym fabric remove me` to clear it"}},
+			report: &fabricengine.OriginReport{
+				Branches: []fabricengine.BranchOutcome{{Branch: "parent", State: fabricengine.BranchDiverged, WayForward: "run `lym fabric remove me` to clear it"}},
+				Entries:  []fabricengine.EntryOutcome{{Slug: "me", State: fabricengine.EntryStopped, WayForward: "run `lym fabric remove me` to clear it"}},
 			},
 			followUp:        "then run `lym batten cancel me --remove`",
 			parentHolds:     true,
@@ -672,10 +787,19 @@ func TestFinalize_StuckReasons(t *testing.T) {
 			name:            "merge already in progress names the parked merge and the continue or abort way forward",
 			resolved:        mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved},
 			mergeErr:        guardWith("merge already in progress", "worktree dirty"),
-			midMerge:        fabriclayout.MidMergeState{Kind: fabriclayout.MidMergeParked, Verb: fabriclayout.MergeVerbMerge, Source: "task-x"},
+			midMerge:        fabricengine.MidMergeState{Kind: fabricengine.MidMergeParked, Verb: fabricengine.MergeVerbMerge, Source: "task-x"},
 			wantMerges:      1,
 			wantInOrder:     []string{"merge already in progress; worktree dirty", "/hub/parent", "merge of task-x", "lym fabric merge --continue", "lym fabric merge --abort", gotoResume, "lym loom resume", "hard-resets the parent's code checkout", "reports status: FAILED and the orch runs it"},
 			wantNotInReason: `"a b.go"`,
+		},
+		{
+			name:            "UnsettledParkedMergeNamesOnlyAbort",
+			resolved:        mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved},
+			mergeErr:        guardWith("merge already in progress", "worktree dirty"),
+			midMerge:        fabricengine.MidMergeState{Kind: fabricengine.MidMergeRecordsUnsettled, Verb: fabricengine.MergeVerbMergeIn, Source: "task-x"},
+			wantMerges:      1,
+			wantInOrder:     []string{"merge already in progress; worktree dirty", "/hub/parent", "merge-in of task-x", "lym fabric merge --abort", gotoResume, "lym loom resume"},
+			wantNotInReason: "merge --continue",
 		},
 		{
 			name:            "merge already in progress with an unreadable parked merge names no verb and keeps the way forward",
@@ -690,7 +814,7 @@ func TestFinalize_StuckReasons(t *testing.T) {
 			name:            "merge already in progress with no parked merge left names only the goto and the resume",
 			resolved:        mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved},
 			mergeErr:        guardWith("merge already in progress", "worktree dirty"),
-			midMerge:        fabriclayout.MidMergeState{Kind: fabriclayout.MidMergeNone},
+			midMerge:        fabricengine.MidMergeState{Kind: fabricengine.MidMergeNone},
 			wantMerges:      1,
 			wantInOrder:     []string{"/hub/parent", gotoResume, "lym loom resume"},
 			wantNotInReason: "merge --continue",
@@ -699,7 +823,7 @@ func TestFinalize_StuckReasons(t *testing.T) {
 			name:            "merge already in progress with a foreign merge names only the goto and the resume",
 			resolved:        mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved},
 			mergeErr:        guardWith("merge already in progress", "worktree dirty"),
-			midMerge:        fabriclayout.MidMergeState{Kind: fabriclayout.MidMergeForeign},
+			midMerge:        fabricengine.MidMergeState{Kind: fabricengine.MidMergeForeign},
 			wantMerges:      1,
 			wantInOrder:     []string{"/hub/parent", gotoResume, "lym loom resume"},
 			wantNotInReason: "merge --continue",
@@ -738,15 +862,6 @@ func TestFinalize_StuckReasons(t *testing.T) {
 			resolved:     mergeresolve.Result{Outcome: mergeresolve.OutcomeStuck, Reason: "conflict could not be resolved"},
 			wantInReason: func(Deps) string { return "conflict could not be resolved" },
 		},
-		{
-			name:     "a failing sandbox reap halts naming the reap's error and the clear verb, and merges nothing",
-			resolved: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved},
-			reapErr:  errors.New("a reed server would not stop"),
-			wantHalt: true,
-			wantInReason: func(Deps) string {
-				return "a reed server would not stop; way forward: run `lym harden sandbox clear` in the task worktree, then `lym loom resume`"
-			},
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -754,9 +869,6 @@ func TestFinalize_StuckReasons(t *testing.T) {
 			markCalled := false
 			deps.MarkTaskDone = func() error { markCalled = true; return nil }
 			deps.RecordLanding = func(string, bool) error { markCalled = true; return nil }
-			if tt.reapErr != nil {
-				deps.Reap = func() error { return tt.reapErr }
-			}
 			if tt.recordsErr != nil {
 				deps.CommitParentRecords = func() error { return tt.recordsErr }
 			}
@@ -767,7 +879,7 @@ func TestFinalize_StuckReasons(t *testing.T) {
 				deps.ParentHoldsTaskWork = func() (bool, error) { return true, nil }
 			}
 			if tt.report != nil {
-				deps.Reconcile = func() (fabriclayout.OriginReport, error) { return *tt.report, nil }
+				deps.Reconcile = func() (fabricengine.OriginReport, error) { return *tt.report, nil }
 			}
 			res := &recordingResolver{result: tt.resolved}
 			merger := &recordingParentMerger{midMerge: tt.midMerge, midMergeErr: tt.midMergeErr}
@@ -826,18 +938,18 @@ func TestFinalize_ReconcileProceedsOrErrors(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
 		name         string
-		report       fabriclayout.OriginReport
+		report       fabricengine.OriginReport
 		reconcileErr error
 		wantMerges   int
 	}{
-		{"active run proceeds", fabriclayout.OriginReport{Entries: []fabriclayout.EntryOutcome{{Slug: "me", State: fabriclayout.EntryActive}}}, nil, 1},
-		{"reconcile error is returned", fabriclayout.OriginReport{}, errors.New("ls-remote failed"), 0},
+		{"active run proceeds", fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: "me", State: fabricengine.EntryActive}}}, nil, 1},
+		{"reconcile error is returned", fabricengine.OriginReport{}, errors.New("ls-remote failed"), 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			deps := newTestDeps(t)
-			deps.Reconcile = func() (fabriclayout.OriginReport, error) { return tt.report, tt.reconcileErr }
-			merger := &recordingParentMerger{results: []mergeCallResult{{result: fabriclayout.MergeResult{Committed: true}}}}
+			deps.Reconcile = func() (fabricengine.OriginReport, error) { return tt.report, tt.reconcileErr }
+			merger := &recordingParentMerger{results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}}}
 			fz := &Finalize{deps: deps, resolver: &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}, parentOpener: func() (parentMerger, error) { return merger, nil }}
 
 			if tt.reconcileErr != nil {
@@ -860,48 +972,28 @@ func TestFinalize_ReconcileProceedsOrErrors(t *testing.T) {
 // A read error is reported instead of stopping, and neither a failing nor an absent Notify changes the verdict.
 func TestFinalize_ConfigChangeNotice(t *testing.T) {
 	tiergate.Require(t, 0)
-	changed := fabriclayout.ConfigChanges{
+	changed := fabricengine.ConfigChanges{
 		Files: []string{"loom.yaml", "shuttle.yaml"}, Base: "base111", Tip: "tip222", ParentTip: "parent333",
-		Contents: map[string]fabriclayout.ConfigFileContents{
+		Contents: map[string]fabricengine.ConfigFileContents{
 			"loom.yaml":    {Base: []byte("code_max_bounces: 2\n"), Tip: []byte("code_max_bounces: 1\n"), Parent: []byte("code_max_bounces: 2\n")},
 			"shuttle.yaml": {Tip: []byte("model: x\n")},
 		},
 	}
-	commentsOnly := fabriclayout.ConfigChanges{
+	commentsOnly := fabricengine.ConfigChanges{
 		Files: []string{"loom.yaml"}, Base: "base111", Tip: "tip222", ParentTip: "parent333",
-		Contents: map[string]fabriclayout.ConfigFileContents{
+		Contents: map[string]fabricengine.ConfigFileContents{
 			"loom.yaml": {Base: []byte("a: 1\n"), Tip: []byte("# note\na: 1\n"), Parent: []byte("a: 1\n")},
 		},
 	}
-	unparseable := fabriclayout.ConfigChanges{
+	unparseable := fabricengine.ConfigChanges{
 		Files: []string{"loom.yaml"}, Base: "base111", Tip: "tip222", ParentTip: "parent333",
-		Contents: map[string]fabriclayout.ConfigFileContents{
+		Contents: map[string]fabricengine.ConfigFileContents{
 			"loom.yaml": {Base: []byte("a: 1\n"), Tip: []byte("a: [1\n"), Parent: []byte("a: 1\n")},
 		},
 	}
-	autonomyOnly := fabriclayout.ConfigChanges{
-		Files: []string{"beam.yaml"}, Base: "base111", Tip: "tip222", ParentTip: "parent333",
-		Contents: map[string]fabriclayout.ConfigFileContents{
-			"beam.yaml": {Base: []byte("autonomy: false\n"), Tip: []byte("autonomy: true\n"), Parent: []byte("autonomy: false\n")},
-		},
-	}
-	autonomyAndMaxRuns := fabriclayout.ConfigChanges{
-		Files: []string{"beam.yaml"}, Base: "base111", Tip: "tip222", ParentTip: "parent333",
-		Contents: map[string]fabriclayout.ConfigFileContents{
-			"beam.yaml": {Base: []byte("autonomy: false\nmax_runs: 3\n"), Tip: []byte("autonomy: true\nmax_runs: 5\n"), Parent: []byte("autonomy: false\nmax_runs: 3\n")},
-		},
-	}
-	parentMoved := fabriclayout.ConfigChanges{
-		Files: []string{"loom.yaml"}, Base: "base111", Tip: "tip222", ParentTip: "parent444",
-		Contents: map[string]fabriclayout.ConfigFileContents{
-			"loom.yaml": {Base: []byte("code_max_bounces: 3\n"), Tip: []byte("code_max_bounces: 1\n"), Parent: []byte("code_max_bounces: 3\n")},
-		},
-	}
 	tests := []struct {
-		name    string
-		changes fabriclayout.ConfigChanges
-		// later, when set, is what every read after the first answers.
-		later       *fabriclayout.ConfigChanges
+		name        string
+		changes     fabricengine.ConfigChanges
 		readErr     error
 		notifyErr   error
 		noNotify    bool
@@ -909,22 +1001,12 @@ func TestFinalize_ConfigChangeNotice(t *testing.T) {
 		wantOutcome shedengine.Outcome
 		// wantInNotice is empty when no notice may be queued.
 		wantInNotice []string
-		// wantNotInNotice names text the queued notice must not carry.
-		wantNotInNotice []string
 	}{
 		{
 			name:         "changed keys queue one notice naming the branch, each file and module, each key with its base, tip and parent values, absent included, and the re-apply instruction",
 			changes:      changed,
 			wantOutcome:  shedengine.Done,
 			wantInNotice: []string{"loom:", `"task-branch"`, "loom.yaml (module loom)", "loom.code_max_bounces: base 2, tip 1, parent 2", "shuttle.yaml (module shuttle)", "shuttle.model: base absent, tip x, parent absent", "does not carry them", "re-apply"},
-		},
-		{
-			name:            "the base is the first read's, the parent values are the later read's, and a file the parent came to hold is left out",
-			changes:         changed,
-			later:           &parentMoved,
-			wantOutcome:     shedengine.Done,
-			wantInNotice:    []string{"loom.code_max_bounces: base 2, tip 1, parent 3"},
-			wantNotInNotice: []string{"shuttle"},
 		},
 		{
 			name:        "an empty diff queues none",
@@ -934,18 +1016,6 @@ func TestFinalize_ConfigChangeNotice(t *testing.T) {
 			name:        "a comments-only change queues none",
 			changes:     commentsOnly,
 			wantOutcome: shedengine.Done,
-		},
-		{
-			name:        "a beam.yaml whose only changed key is autonomy queues none",
-			changes:     autonomyOnly,
-			wantOutcome: shedengine.Done,
-		},
-		{
-			name:            "a beam.yaml changing autonomy and max_runs names only max_runs",
-			changes:         autonomyAndMaxRuns,
-			wantOutcome:     shedengine.Done,
-			wantInNotice:    []string{"beam.max_runs: base 3, tip 5, parent 3"},
-			wantNotInNotice: []string{"autonomy"},
 		},
 		{
 			name:         "a file that does not parse is reported as not compared and still reaches Done",
@@ -983,21 +1053,14 @@ func TestFinalize_ConfigChangeNotice(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var notices []string
 			deps := newTestDeps(t)
-			reads := 0
-			deps.ConfigChanges = func() (fabriclayout.ConfigChanges, error) {
-				reads++
-				if reads > 1 && tt.later != nil {
-					return *tt.later, nil
-				}
-				return tt.changes, tt.readErr
-			}
+			deps.ConfigChanges = func() (fabricengine.ConfigChanges, error) { return tt.changes, tt.readErr }
 			if !tt.noNotify {
 				deps.Notify = func(line string) error {
 					notices = append(notices, line)
 					return tt.notifyErr
 				}
 			}
-			merger := &recordingParentMerger{results: []mergeCallResult{{result: fabriclayout.MergeResult{Committed: true}, err: tt.mergeErr}}}
+			merger := &recordingParentMerger{results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}, err: tt.mergeErr}}}
 			fz := &Finalize{
 				deps:         deps,
 				resolver:     &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}},
@@ -1017,11 +1080,6 @@ func TestFinalize_ConfigChangeNotice(t *testing.T) {
 			for _, want := range tt.wantInNotice {
 				if !strings.Contains(notices[0], want) {
 					t.Errorf("notice %q does not carry %q", notices[0], want)
-				}
-			}
-			for _, unwanted := range tt.wantNotInNotice {
-				if strings.Contains(notices[0], unwanted) {
-					t.Errorf("notice %q carries %q; want it left out", notices[0], unwanted)
 				}
 			}
 			if strings.ContainsAny(notices[0], "\r\n") {
@@ -1049,6 +1107,45 @@ func TestFinalize_CancellationAtEntry_SurfacesAsError(t *testing.T) {
 	}
 }
 
+// TestFinalize_TransportPushFailure_ReturnsClassifiedError pins a parent push that fails on transport.
+// The error is one the Shed classifier marks; a plain push error keeps its Stuck verdict.
+func TestFinalize_TransportPushFailure_ReturnsClassifiedError(t *testing.T) {
+	tiergate.Require(t, 0)
+	deps := newTestDeps(t)
+	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
+	merger := &recordingParentMerger{
+		results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}},
+		pushErr: transportPushErr(),
+	}
+	fz := &Finalize{deps: deps, resolver: res, parentOpener: func() (parentMerger, error) { return merger, nil }}
+
+	_, _, err := fz.Call(context.Background())
+	if err == nil {
+		t.Fatal("Call() error = nil; want a transient error")
+	}
+	if got := shedtransient.Class(err); got != shedengine.TransientGitTransport {
+		t.Errorf("Class(err) = %q; want %q", got, shedengine.TransientGitTransport)
+	}
+
+	t.Run("a re-step whose merge is already in the parent pushes the parent before the records", func(t *testing.T) {
+		var order []string
+		deps := newTestDeps(t)
+		deps.CommitStatus = func() error { order = append(order, "commit"); return nil }
+		deps.PushRecords = func() error { order = append(order, "push-records"); return nil }
+		deps.MarkTaskDone = func() error { order = append(order, "mark"); return nil }
+		merger := &recordingParentMerger{
+			results: []mergeCallResult{{result: fabricengine.MergeResult{AlreadyUpToDate: true}}},
+			order:   &order,
+		}
+		fz := &Finalize{deps: deps, resolver: res, parentOpener: func() (parentMerger, error) { return merger, nil }}
+
+		shedfake.RequireOutcome(t, fz, shedengine.Done)
+		if got, want := strings.Join(order, ","), "commit,merge,push,commit,push-records,mark"; got != want {
+			t.Errorf("call order = %q; want %q", got, want)
+		}
+	})
+}
+
 // TestFinalize_LockFirstAndFastForward pins Finalize's entry.
 // The parent lock is held before the run-scope reconcile and every read of the parent,
 // and a parent behind its upstream is fast-forwarded under the lock.
@@ -1060,24 +1157,24 @@ func TestFinalize_LockFirstAndFastForward(t *testing.T) {
 		rec, found, _ := deps.Lock.Store.Read("main")
 		return found && rec.Owner.Slug == "me"
 	}
-	tipsOf := func(relation fabriclayout.ParentRelation) fabriclayout.ParentTips {
-		return fabriclayout.ParentTips{Local: "p1", Upstream: "u2", Relation: relation}
+	tipsOf := func(relation fabricengine.ParentRelation) fabricengine.ParentTips {
+		return fabricengine.ParentTips{Local: "p1", Upstream: "u2", Relation: relation}
 	}
 
 	t.Run("the lock is held at the reconcile and the tips read, and a parent behind its upstream is fast-forwarded", func(t *testing.T) {
 		deps := newTestDeps(t)
 		var held []string
-		deps.Reconcile = func() (fabriclayout.OriginReport, error) {
+		deps.Reconcile = func() (fabricengine.OriginReport, error) {
 			held = append(held, fmt.Sprintf("reconcile:%v", lockHeld(deps)))
-			return fabriclayout.OriginReport{}, nil
+			return fabricengine.OriginReport{}, nil
 		}
-		deps.ReadParentTips = func(fetch bool) (fabriclayout.ParentTips, error) {
+		deps.ReadParentTips = func(fetch bool) (fabricengine.ParentTips, error) {
 			held = append(held, fmt.Sprintf("tips:%v:%v", fetch, lockHeld(deps)))
-			return tipsOf(fabriclayout.ParentBehind), nil
+			return tipsOf(fabricengine.ParentBehind), nil
 		}
 		var order []string
 		res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
-		merger := &recordingParentMerger{results: []mergeCallResult{{result: fabriclayout.MergeResult{Committed: true}}}, order: &order}
+		merger := &recordingParentMerger{results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}}, order: &order}
 		fz := &Finalize{deps: deps, resolver: res, guard: newParentGuard(deps), parentOpener: func() (parentMerger, error) { return merger, nil }}
 
 		shedfake.RequireOutcome(t, fz, shedengine.Done)
@@ -1085,7 +1182,7 @@ func TestFinalize_LockFirstAndFastForward(t *testing.T) {
 		if got, want := strings.Join(held, ","), "reconcile:true,tips:true:true,tips:false:true"; got != want {
 			t.Errorf("lock holds at the seams = %q; want %q", got, want)
 		}
-		if got, want := strings.Join(order, ","), "fast-forward,merge"; got != want {
+		if got, want := strings.Join(order, ","), "fast-forward,merge,push"; got != want {
 			t.Errorf("call order = %q; want %q", got, want)
 		}
 		if len(merger.ffCalls) != 1 || merger.ffCalls[0].SkipPush {
@@ -1097,28 +1194,28 @@ func TestFinalize_LockFirstAndFastForward(t *testing.T) {
 		name       string
 		openerErr  error
 		dirty      []string
-		midMerge   fabriclayout.MidMergeState
+		midMerge   fabricengine.MidMergeState
 		wantReason string
 	}{
-		{"a missing pair", errors.New("no such worktree"), nil, fabriclayout.MidMergeState{}, `no live pair for parent branch "main": no such worktree; way forward: re-create the parent pair, then run "lym loom resume"`},
-		{"a dirty code checkout", nil, []string{"a.go"}, fabriclayout.MidMergeState{}, DirtyParentRefusal("/hub/parent", []string{"a.go"})},
-		{"a pair mid-merge", nil, nil, fabriclayout.MidMergeState{Kind: fabriclayout.MidMergeParked}, `a merge is in progress in the parent pair of "main"; way forward: finish or abort that merge in the parent pair, then run "lym loom resume"`},
+		{"a missing pair", errors.New("no such worktree"), nil, fabricengine.MidMergeState{}, `no live pair for parent branch "main": no such worktree; way forward: re-create the parent pair, then run "lym loom resume"`},
+		{"a dirty code checkout", nil, []string{"a.go"}, fabricengine.MidMergeState{}, DirtyParentRefusal("/hub/parent", []string{"a.go"})},
+		{"a pair mid-merge", nil, nil, fabricengine.MidMergeState{Kind: fabricengine.MidMergeParked}, `a merge is in progress in the parent pair of "main"; way forward: finish or abort that merge in the parent pair, then run "lym loom resume"`},
 	}
 	states := []struct {
 		name        string
-		tips        fabriclayout.ParentTips
+		tips        fabricengine.ParentTips
 		pushSkipped bool
 	}{
-		{"equal to its upstream", tipsOf(fabriclayout.ParentEqual), false},
-		{"without an upstream", fabriclayout.ParentTips{Local: "p1", Relation: fabriclayout.ParentNoUpstream}, false},
-		{"under the push skip", tipsOf(fabriclayout.ParentBehind), true},
+		{"equal to its upstream", tipsOf(fabricengine.ParentEqual), false},
+		{"without an upstream", fabricengine.ParentTips{Local: "p1", Relation: fabricengine.ParentNoUpstream}, false},
+		{"under the push skip", tipsOf(fabricengine.ParentBehind), true},
 	}
 	for _, refusal := range refusals {
 		for _, state := range states {
 			t.Run(refusal.name+" with the parent "+state.name+" is Stuck before any merge", func(t *testing.T) {
 				deps := newTestDeps(t)
 				deps.PushSkipped = state.pushSkipped
-				deps.ReadParentTips = func(bool) (fabriclayout.ParentTips, error) { return state.tips, nil }
+				deps.ReadParentTips = func(bool) (fabricengine.ParentTips, error) { return state.tips, nil }
 				res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
 				merger := &recordingParentMerger{dirtyCheckout: "/hub/parent", dirtyPaths: refusal.dirty, probeMidMerge: refusal.midMerge}
 				fz := &Finalize{deps: deps, resolver: res, guard: newParentGuard(deps), parentOpener: func() (parentMerger, error) {
@@ -1142,18 +1239,18 @@ func TestFinalize_LockFirstAndFastForward(t *testing.T) {
 
 	moves := []struct {
 		name       string
-		tips       fabriclayout.ParentTips
-		ff         fabriclayout.FastForwardResult
+		tips       fabricengine.ParentTips
+		ff         fabricengine.FastForwardResult
 		wantReason string
 	}{
-		{"a behind parent that is no longer a fast-forward", tipsOf(fabriclayout.ParentBehind), fabriclayout.FastForwardResult{Refusal: fabriclayout.FastForwardNotFastForward}, `the upstream of "main" is no longer a fast-forward of the parent pair; way forward: reconcile "main" with its upstream in its own pair, then run "lym loom resume"`},
-		{"a parent ahead of its upstream", tipsOf(fabriclayout.ParentAhead), fabriclayout.FastForwardResult{}, `the local parent branch "main" is ahead of its upstream; way forward: push or reconcile "main" in its own pair, then run "lym loom resume"`},
-		{"a parent diverged from its upstream", tipsOf(fabriclayout.ParentDiverged), fabriclayout.FastForwardResult{}, `the local parent branch "main" has diverged from its upstream; way forward: push or reconcile "main" in its own pair, then run "lym loom resume"`},
+		{"a behind parent that is no longer a fast-forward", tipsOf(fabricengine.ParentBehind), fabricengine.FastForwardResult{Refusal: fabricengine.FastForwardNotFastForward}, `the upstream of "main" is no longer a fast-forward of the parent pair; way forward: reconcile "main" with its upstream in its own pair, then run "lym loom resume"`},
+		{"a parent ahead of its upstream", tipsOf(fabricengine.ParentAhead), fabricengine.FastForwardResult{}, `the local parent branch "main" is ahead of its upstream; way forward: push or reconcile "main" in its own pair, then run "lym loom resume"`},
+		{"a parent diverged from its upstream", tipsOf(fabricengine.ParentDiverged), fabricengine.FastForwardResult{}, `the local parent branch "main" has diverged from its upstream; way forward: push or reconcile "main" in its own pair, then run "lym loom resume"`},
 	}
 	for _, move := range moves {
 		t.Run(move.name+" is Stuck before any merge", func(t *testing.T) {
 			deps := newTestDeps(t)
-			deps.ReadParentTips = func(bool) (fabriclayout.ParentTips, error) { return move.tips, nil }
+			deps.ReadParentTips = func(bool) (fabricengine.ParentTips, error) { return move.tips, nil }
 			res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
 			merger := &recordingParentMerger{ffResult: move.ff}
 			fz := &Finalize{deps: deps, resolver: res, guard: newParentGuard(deps), parentOpener: func() (parentMerger, error) { return merger, nil }}

@@ -44,8 +44,8 @@ type deployOutcome struct {
 	Log       string `json:"log"`
 }
 
-// deployStale runs the `landing.deploy` command when a deploy is due, and returns what it ran.
-// It is due when the state has a command and the prime's head is ahead of the running build.
+// deployStale runs the landing deploy when the state has a command and the prime's head is ahead of the running build.
+// It returns what it ran.
 // A state that does not read is a warning naming the hand deploy, and nothing runs.
 // A deploy that fails stops the step, naming its log and rerun, the command that adopts again.
 // The hold stands meanwhile, since a run let go under the old lym fails on code that lym does not know.

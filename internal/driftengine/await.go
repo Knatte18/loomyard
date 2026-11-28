@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
@@ -104,7 +104,7 @@ func (p *DriftAwait) await(ctx context.Context) (shedengine.Outcome, shedengine.
 	err = WriteRecords(d, func(scope *ScopeRecord, _ *JudgedRecord) error {
 		scope.AwaitedAt = stamp(now())
 		return nil
-	}, fabriclayout.Trailer{Key: BaselineTrailerKey, Value: digest})
+	}, fabricengine.Trailer{Key: BaselineTrailerKey, Value: digest})
 	if err != nil {
 		return "", shedengine.OutputPointer{}, err
 	}

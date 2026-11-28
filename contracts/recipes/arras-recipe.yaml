@@ -13,7 +13,7 @@
 # The split perch is the Raddle-Review segment over the raddle proposal:
 # Raddle-Bouncer, Raddle-Burler-Review and Raddle-Burler-Fix.
 # Its rows follow the shared-segment ring tapestry-recipe.yaml's header states, with role_prefix split,
-# and their budget is loom.split.max_bounces, or loom.review.max_bounces when it is absent.
+# and their budget is loom.yaml's split_max_bounces, or review_max_bounces when it is absent.
 # Raddle-Bouncer's artifact_paths name the proposal, which records the raddle run's perch mode:
 # the perch's approval files the proposal in place of the operator's.
 # The Bouncer sets no carry_over, so no round writes into the decision record,
@@ -62,15 +62,15 @@ producers:
     config:
       run_subdir: split
       role_prefix: split
-      reviewer_fan_setting: loom.split.reviewer_fan
-      auto_accept_setting: loom.split.auto_accept
+      reviewer_fan_setting: loom.split_reviewer_fan
+      auto_accept_setting: loom.split_auto_accept
       artifact_paths:
         - _lym/raddle/proposal.yaml
       rubric_stencil: loom-rubric-raddle-review
       # escalate_decisions makes this Bouncer send a round's decision-class findings to the run's parent;
       # Raddle-Burler-Fix sets decisions_escalated so its fixer is given none and posts no notice of its own.
       escalate_decisions: true
-      # No model/effort/version key: loom.review.judge, loom.review.seed and loom.split.judge are the only source of this row's passes' models.
+      # No model/effort/version key: loom.yaml's judge, seed and split_judge keys are the only source of this row's passes' models.
 
   - name: Raddle-Burler-Review
     engine: BurlerReview
@@ -82,8 +82,8 @@ producers:
       # The same run_subdir value as Raddle-Bouncer makes the three rows write into one shared run directory.
       run_subdir: split
       role_prefix: split
-      reviewer_fan_setting: loom.split.reviewer_fan
-      fixer_fan_setting: loom.split.fixer_fan
+      reviewer_fan_setting: loom.split_reviewer_fan
+      fixer_fan_setting: loom.split_fixer_fan
       profile:
         target:
           paths:
@@ -113,7 +113,7 @@ producers:
     config:
       run_subdir: split
       role_prefix: split
-      fixer_fan_setting: loom.split.fixer_fan
+      fixer_fan_setting: loom.split_fixer_fan
       # decisions_escalated says Raddle-Bouncer's escalate_decisions sends the round's decision-class findings to the parent.
       decisions_escalated: true
       # review_row names this segment's review row, which a refusal's way forward sends the operator back to.

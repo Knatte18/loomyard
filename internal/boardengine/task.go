@@ -26,7 +26,7 @@ type Task struct {
 	Kind      string   `json:"kind"`             // KindTask, KindNote or KindProject
 	Labels    []string `json:"labels"`           // type and plain labels, validated against the board's Vocabulary
 	Issues    []int    `json:"issues"`           // numbers of the GitHub issues this entry records; a number is not checked against GitHub
-	Recipe    string   `json:"recipe,omitempty"` // recipe name for the task's child worktree; empty takes board.default_recipe. Resolved (and validated against the recipe vocabulary) at the seeding site, not here.
+	Recipe    string   `json:"recipe,omitempty"` // recipe name for the task's child worktree; empty takes the board's default_recipe. Resolved (and validated against the recipe vocabulary) at the seeding site, not here.
 	Priority  string   `json:"priority,omitempty"`
 	DependsOn []string `json:"depends_on"`
 	Isolated  bool     `json:"isolated"`
@@ -44,6 +44,12 @@ type Task struct {
 	RunSettings map[string]any `json:"run_settings,omitempty"`
 	// Profile names the hub run profile whose settings lie under RunSettings at seeding; empty means none.
 	Profile string `json:"profile,omitempty"`
+	// PullRequest overrides the receiving branch's beam.yaml pull_request mode for this entry's landing:
+	// "on", "off" or PullRequestMergeIn; empty means no override.
+	PullRequest string `json:"pull_request,omitempty"`
+	// NotifyOnLand asks the dobby driving the entry's run for a creel line once the run lands or ends without landing;
+	// the dobby clears it once the line went out, and a note never carries it.
+	NotifyOnLand bool `json:"notify_on_land,omitempty"`
 	// OwnerMachine names the machine that owns the entry; empty means none is recorded, and a note never carries one.
 	OwnerMachine string `json:"owner_machine,omitempty"`
 	// Project names the project entry this entry belongs to; empty means it belongs to none.
@@ -73,8 +79,12 @@ type Task struct {
 	Unknown map[string]json.RawMessage `json:"-"`
 }
 
-// onLandKey is the board.json key of Task.OnLand.
-const onLandKey = "on_land"
+const (
+	// pullRequestKey is the board.json key of Task.PullRequest.
+	pullRequestKey = "pull_request"
+	// onLandKey is the board.json key of Task.OnLand.
+	onLandKey = "on_land"
+)
 
 // taskKeys is the set of lower-cased JSON keys Task declares; a decoded key outside it is kept in Unknown.
 var taskKeys = jsonKeySet(reflect.TypeFor[Task]())
@@ -286,10 +296,16 @@ const (
 	PriorityLow    = "low"
 )
 
+// PullRequestMergeIn is the pull_request value of an entry that merges its parent's parent branch into its parent.
+// Such an entry lands with no pull request, whatever the parent's mode.
+// It lands by a true merge that keeps the merged commit as a parent.
+const PullRequestMergeIn = "merge-in"
+
 // normalizeTask puts t into its stored form, or refuses it when its fields do not fit its kind.
 // A normal priority and empty run settings are stored as the empty value,
 // and the dates are stored in whole UTC seconds.
 // The owner and beam color are cleared unless t is a beam project.
+// A pull_request other than empty, on, off and PullRequestMergeIn is refused, and so is a note with notify_on_land.
 // Only a project carries order or beam, and a task's recipe is never the project recipe.
 // A project carries none of depends_on, profile, run_settings or priority.
 func normalizeTask(t *Task) error {
@@ -316,6 +332,12 @@ func normalizeTask(t *Task) error {
 		return fmt.Errorf("task %q has priority %q, and only a note carries a priority: set %q to clear it, or make a note a task with \"lym board promote\", which clears it",
 			t.Slug, t.Priority, PriorityNormal)
 	}
+	if t.PullRequest != "" && t.PullRequest != "on" && t.PullRequest != "off" && t.PullRequest != PullRequestMergeIn {
+		return fmt.Errorf("entry %q has pull_request %q, and pull_request is on, off, %s or empty: correct it, or set \"\" to clear it", t.Slug, t.PullRequest, PullRequestMergeIn)
+	}
+	if t.Kind == KindNote && t.NotifyOnLand {
+		return fmt.Errorf("note %q has notify_on_land, and only a task or a project runs and lands: set it to false, or make the note a task with \"lym board promote\"", t.Slug)
+	}
 	if t.Kind == KindProject {
 		return checkProjectFields(*t)
 	}
@@ -326,7 +348,7 @@ func normalizeTask(t *Task) error {
 		return fmt.Errorf("%s %q has beam, and only a project can be a beam: drop the beam field", t.Kind, t.Slug)
 	}
 	if t.Kind == KindTask && t.Recipe == ProjectRecipe {
-		return fmt.Errorf("task %q has recipe %q, and a task's recipe is tapestry, motif, darn, hardener or sampler: %q belongs to a beam project, so set the recipe to tapestry, motif, darn, hardener or sampler", t.Slug, t.Recipe, ProjectRecipe)
+		return fmt.Errorf("task %q has recipe %q, and a task's recipe is tapestry, motif, darn or sampler: %q belongs to a beam project, so set the recipe to tapestry, motif, darn or sampler", t.Slug, t.Recipe, ProjectRecipe)
 	}
 	return nil
 }
@@ -382,15 +404,6 @@ func validateSlugNotReserved(slug string) error {
 	return nil
 }
 
-// ValidateEntrySlug applies the length limit and the root reservation every board write applies to a new slug.
-// A caller that plans entries checks their slugs with it before a write refuses one.
-func ValidateEntrySlug(slug string) error {
-	if err := validateSlugLength(slug); err != nil {
-		return err
-	}
-	return validateSlugNotReserved(slug)
-}
-
 // NewTask builds a Task from a raw field map, assigning nextID.
 // The fields pass through a JSON round-trip, so their types are validated exactly as they are on disk.
 // Unknown fields are not rejected here; the caller validates them.
@@ -405,7 +418,10 @@ func NewTask(fields map[string]any, nextID int) (Task, error) {
 		return Task{}, fmt.Errorf("slug must be a non-empty string")
 	}
 
-	if err := ValidateEntrySlug(slugStr); err != nil {
+	if err := validateSlugLength(slugStr); err != nil {
+		return Task{}, err
+	}
+	if err := validateSlugNotReserved(slugStr); err != nil {
 		return Task{}, err
 	}
 

@@ -106,7 +106,7 @@ func isSkillLoadMessage(text string) bool {
 	return text == skillLoadNone || strings.HasPrefix(text, skillLoadOpening)
 }
 
-// skillRoots returns the codex.skill_roots entries, or none with a Warn when codex.yaml does not load.
+// skillRoots returns codex.yaml's skill roots, or none with a Warn when codex.yaml does not load.
 func (c *Codex) skillRoots() []string {
 	codex, err := LoadConfig(c.dirs)
 	if err != nil {
@@ -116,7 +116,7 @@ func (c *Codex) skillRoots() []string {
 	return c.expandSkillRoots(codex)
 }
 
-// expandSkillRoots returns the codex.skill_roots entries with a leading ~/ expanded;
+// expandSkillRoots returns codex's skill roots with a leading ~/ expanded;
 // it leaves out, with a Warn, each root that resolves to no absolute path.
 func (c *Codex) expandSkillRoots(codex Config) []string {
 	var roots []string

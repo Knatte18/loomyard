@@ -16,7 +16,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/creelcli"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
@@ -107,7 +106,7 @@ type orchCLI struct {
 	// with the beam's board handle once the board names one; a live strand of this build keeps its title until replaced.
 	runsWindowTitle func() string
 	// reconcile judges and moves the hub's branches against origin; a Prepare bring-up runs it before any strand decision.
-	reconcile func() (fabriclayout.OriginReport, error)
+	reconcile func() (fabricengine.OriginReport, error)
 	// readBeamFacts reads the owner, standing anchor change and landing hold a bring-up refuses on; nil refuses nothing.
 	readBeamFacts func() (beamFacts, error)
 	// claimPrime records this machine as prime owner if the board has none; a Prepare bring-up calls it after reconcile.
@@ -146,11 +145,6 @@ type orchCLI struct {
 	injectRemoteControl func(receiver, name string) error
 	// markRemoteControl sets the RC mark on the live pane of the strand guid in this worktree's session; nil marks none.
 	markRemoteControl func(guid string) error
-	// remoteControlCheckpoint returns how far the provider's record of the orch session sessionID reaches now.
-	remoteControlCheckpoint func(sessionID string) (int64, error)
-	// awaitRemoteControl reports whether the orch session sessionID records its remote control connecting past checkpoint.
-	// It waits a bounded time for the record.
-	awaitRemoteControl func(sessionID string, checkpoint int64) (bool, error)
 }
 
 // Command returns the cobra command tree for the orch module.
@@ -258,7 +252,7 @@ func wireCLI(c *orchCLI, location *lymcwd.Location) error {
 	c.runner = shuttleengine.NewRunner(reed, engines, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 	c.strands = newReedStrandOps(reed)
 	c.paths = orchPaths(location)
-	c.stencilsDir = fabriclayout.StencilsDir(location.HubPath)
+	c.stencilsDir = fabricengine.StencilsDir(location.HubPath)
 	pauseGeometry, err := hubgeom.PauseGeometry(location)
 	if err != nil {
 		return err
@@ -278,19 +272,13 @@ func wireCLI(c *orchCLI, location *lymcwd.Location) error {
 		return injectRemoteControlCommand(location, receiver, name)
 	}
 	c.markRemoteControl = reed.MarkRemoteControlOn
-	c.remoteControlCheckpoint = func(sessionID string) (int64, error) {
-		return c.runner.RemoteControlCheckpoint(orchEngine, sessionID)
-	}
-	c.awaitRemoteControl = func(sessionID string, checkpoint int64) (bool, error) {
-		return c.runner.AwaitRemoteControl(orchEngine, sessionID, checkpoint)
-	}
 	c.spawnWatcher = c.spawnWatcherProcess
 	c.startLockWait = stopStartLockWait
 	c.sleep = time.Sleep
 	c.reapInherited = reapInheritedChildren
 	c.executable = selfexec.LymBinary
 	c.currentBuild = statuspane.CurrentBuild
-	c.reconcile = func() (fabriclayout.OriginReport, error) { return reconcileHub(location) }
+	c.reconcile = func() (fabricengine.OriginReport, error) { return reconcileHub(location) }
 	c.readBeamFacts = func() (beamFacts, error) { return readBeamFacts(location, beam) }
 	c.claimPrime = func() (string, string, error) { return claimPrimeFor(location) }
 	c.endOwned = func(at *lymcwd.Location, slug string, endDobby bool) error {
@@ -301,7 +289,7 @@ func wireCLI(c *orchCLI, location *lymcwd.Location) error {
 		return pairteardown.EndSubjectProcesses(prime, slug, endDobby)
 	}
 	c.isBeam = func(slug string) (bool, error) {
-		owners, err := boardengine.ReadOwners(fabriclayout.BoardDir(location.HubPath))
+		owners, err := boardengine.ReadOwners(fabricengine.BoardDir(location.HubPath))
 		if err != nil {
 			return false, err
 		}
@@ -320,7 +308,7 @@ func wireCLI(c *orchCLI, location *lymcwd.Location) error {
 		}
 		return dobbyengine.Live(geometry)
 	}
-	runProcDir := fabriclayout.RunProcDir(location.HubPath)
+	runProcDir := fabricengine.RunProcDir(location.HubPath)
 	owner := runproc.HubOwner
 	if beam {
 		owner = location.WorktreeName

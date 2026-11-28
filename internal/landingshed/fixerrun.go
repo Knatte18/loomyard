@@ -50,19 +50,16 @@ const (
 	fixerEndEscalate fixerEnd = "escalate"
 	// fixerEndSpent is a landing gate that still fails after the last turn the entry had left.
 	fixerEndSpent fixerEnd = "spent"
-	// fixerEndTimeout is a turn that outran landing.fixer_timeout_min,
-	// or a session that outran the bound of every turn the entry had left.
+	// fixerEndTimeout is a turn that outran fixer_timeout_min, or a session that outran the bound of every turn the entry had left.
 	fixerEndTimeout fixerEnd = "timeout"
 	// fixerEndNoReport is a turn that left no report, or one that does not parse.
 	fixerEndNoReport fixerEnd = "no-report"
 	// fixerEndDirty is a turn that left the working tree dirty with no turn left to clean it.
 	fixerEndDirty fixerEnd = "dirty"
-	// fixerEndPushed is a session during which the task branch's remote ref was deleted or moved.
-	// A move counts only when the new tip holds commits that the task head the session started from lacks.
+	// fixerEndPushed is a session during which the task branch's remote ref moved.
 	fixerEndPushed fixerEnd = "pushed"
-	// fixerEndUnjudged is a landing gate after a turn whose result judged no code:
-	// a runner crash or a memory pressure stop.
-	fixerEndUnjudged fixerEnd = "unjudged"
+	// fixerEndCrash is a landing gate after a turn whose every failed run crashed its test runner, which judged no code.
+	fixerEndCrash fixerEnd = "crash"
 )
 
 // fixerOutcome is how a fixer run ended and what the halt that follows names.
@@ -70,22 +67,18 @@ type fixerOutcome struct {
 	end fixerEnd
 	// reportPath is the report the session writes.
 	reportPath string
-	// session names the session by its engine session id, and by its run directory while that survives.
-	session string
+	// sessionLog is the session's run directory, which holds its log.
+	sessionLog string
 	// failureLog is the log the landing failure record names; set for a spent end.
 	failureLog string
 	// conflict is the report's conflict text; set for an escalate end.
 	conflict string
-	// remoteRef is the task branch's remote-tracking ref that moved; set for a pushed end.
-	remoteRef string
-	// remoteTip is remoteRef's tip after the session, "" for a deleted ref; set for a pushed end.
-	remoteTip string
-	// startHead is the task head the session started from; set for a pushed end.
-	startHead string
+	// pushedRef is the remote ref that moved, with its new tip; set for a pushed end.
+	pushedRef string
 	// dirty lists the uncommitted or untracked paths the last turn left; set for a dirty end.
 	dirty []string
-	// unjudged is the landing gate's halt reason naming the runs that judged no code; set for an unjudged end.
-	unjudged string
+	// crash is the landing gate's halt reason naming the crashed runs; set for a crash end.
+	crash string
 }
 
 // fixerRun runs the merge fixer for one row.
@@ -108,9 +101,6 @@ func newFixerRun(deps Deps, row string, gate verifyGate) fixerRun {
 // A turn is charged into the record when it starts, so a turn that never returns to the gate is still spent.
 // The first turn's charge is taken back when the session fails to start with an error marked transient.
 // An escalate report takes its own turn back.
-// A deletion of the task branch's remote ref during the session ends the run pushed.
-// A move of that ref does too, except to a commit the task head held when the session started.
-// The session cannot have added such a commit.
 func (f fixerRun) run(ctx context.Context, mode FixerMode, rec FixerAttempts, cap int, tips [2]string) (fixerOutcome, FixerAttempts, error) {
 	reportPath := filepath.Join(f.deps.ScratchDir, f.row+"-fixer-report.md")
 	attemptsPath := FixerAttemptsPath(f.deps.RecordsDir, f.row)
@@ -143,10 +133,6 @@ func (f fixerRun) run(ctx context.Context, mode FixerMode, rec FixerAttempts, ca
 	if err != nil {
 		return fixerOutcome{}, rec, fmt.Errorf("landingshed: %s: read the task branch's remote tip: %w", f.row, err)
 	}
-	startHead, err := f.deps.TaskHead()
-	if err != nil {
-		return fixerOutcome{}, rec, fmt.Errorf("landingshed: %s: read the task head: %w", f.row, err)
-	}
 
 	original := rec
 	session := &fixerSession{run: f, ctx: ctx, rec: rec, cap: cap, attemptsPath: attemptsPath, turnLimit: turnLimit, outcome: fixerOutcome{reportPath: reportPath}}
@@ -171,7 +157,7 @@ func (f fixerRun) run(ctx context.Context, mode FixerMode, rec FixerAttempts, ca
 	}
 
 	outcome := session.outcome
-	outcome.session = sessionRef(result.Chair)
+	outcome.sessionLog = result.Chair.RunDir
 	switch {
 	case session.end != "":
 		outcome.end = session.end
@@ -188,19 +174,8 @@ func (f fixerRun) run(ctx context.Context, mode FixerMode, rec FixerAttempts, ca
 		return fixerOutcome{}, session.rec, fmt.Errorf("landingshed: %s: read the task branch's remote tip: %w", f.row, err)
 	}
 	if remoteAfter != remoteBefore {
-		remoteRef := "origin/" + f.deps.TaskBranch
-		predates := false
-		if remoteAfter != "" {
-			if predates, err = f.deps.IsAncestor(remoteAfter, startHead); err != nil {
-				return fixerOutcome{}, session.rec, fmt.Errorf("landingshed: %s: test whether %s at %s predates the fixer session: %w", f.row, remoteRef, remoteAfter, err)
-			}
-		}
-		if predates {
-			logger.Info("landingshed: the task branch's remote ref moved during the fixer session to a commit the session started from", "row", f.row, "ref", remoteRef, "tip", remoteAfter, "startHead", startHead)
-		} else {
-			outcome.end = fixerEndPushed
-			outcome.remoteRef, outcome.remoteTip, outcome.startHead = remoteRef, remoteAfter, startHead
-		}
+		outcome.end = fixerEndPushed
+		outcome.pushedRef = fmt.Sprintf("origin/%s at %s", f.deps.TaskBranch, remoteAfter)
 	}
 	logger.Info("landingshed: fixer run ended", "row", f.row, "mode", string(mode), "end", string(outcome.end), "spent", session.rec.Spent, "cap", cap)
 	return outcome, session.rec, nil
@@ -225,25 +200,6 @@ func archiveStaleReport(reportPath string, now time.Time, row, what string) erro
 		return fmt.Errorf("landingshed: %s: archive the stale %s report: %w", row, what, err)
 	}
 	return nil
-}
-
-// sessionRef names a finished session for a halt reason by its engine and session id.
-// Those outlive the run directory, which the session runner removes after a done outcome;
-// the run directory is named too while it still exists, as after a timeout.
-func sessionRef(chair shuttleengine.Result) string {
-	var parts []string
-	if chair.SessionID != "" {
-		parts = append(parts, strings.TrimSpace(chair.Engine+" session "+chair.SessionID))
-	}
-	if chair.RunDir != "" {
-		if _, err := os.Stat(chair.RunDir); err == nil {
-			parts = append(parts, "run dir "+chair.RunDir)
-		}
-	}
-	if len(parts) == 0 {
-		return "none recorded"
-	}
-	return strings.Join(parts, ", ")
 }
 
 // startFailure returns why a seat run's chair session did not start, or nil when it started.
@@ -298,7 +254,7 @@ func (s *fixerSession) halt(end fixerEnd, findings string) (shuttleengine.GateRe
 // A dirty tree with a turn left charges that turn and re-prompts naming the paths,
 // so the fixer commits or deletes what it left; with none left, the run ends dirty.
 // A failing gate with a turn left charges that turn and re-prompts; with none left, the run ends spent.
-// A gate whose result judged no code ends the run as unjudged, whatever turns are left;
+// A gate whose every failed run crashed its test runner ends the run as a crash, whatever turns are left;
 // no turn mends such a gate.
 func (s *fixerSession) check() (shuttleengine.GateResult, error) {
 	result, err := s.judge()
@@ -315,7 +271,7 @@ func (s *fixerSession) judge() (shuttleengine.GateResult, error) {
 	}
 	gate := s.run.gate
 	if gate.now().Sub(s.turnStart) > s.turnLimit {
-		return s.halt(fixerEndTimeout, "the fixer's turn ran past "+keyName(fixerTimeoutMinKey))
+		return s.halt(fixerEndTimeout, "the fixer's turn ran past fixer_timeout_min")
 	}
 	const point = "after the fixer's turn"
 	dirty, err := gate.dirtyPaths(s.run.row, point)
@@ -345,13 +301,13 @@ func (s *fixerSession) judge() (shuttleengine.GateResult, error) {
 		return s.halt(fixerEndEscalate, report.Conflict)
 	}
 
-	reason, unjudged, err := gate.check(s.ctx, s.run.row, s.run.deps.ParentBranch)
+	reason, crashed, err := gate.check(s.ctx, s.run.row, s.run.deps.ParentBranch)
 	if err != nil {
 		return shuttleengine.GateResult{}, err
 	}
-	if unjudged {
-		s.outcome.unjudged = reason
-		return s.halt(fixerEndUnjudged, reason)
+	if crashed {
+		s.outcome.crash = reason
+		return s.halt(fixerEndCrash, reason)
 	}
 	if reason == "" {
 		passed := shuttleengine.GateResult{Passed: true}
@@ -383,18 +339,17 @@ func (s *fixerSession) judge() (shuttleengine.GateResult, error) {
 // Every reason except a tapestry, darn or sampler escalate opens with LandingStopPrefix and ends with a way forward;
 // each is one line.
 // With escalateJudgedFirst true, an escalate end opens with EscalateStopPrefix instead;
-// it names `lym loom decision add` as its way forward,
-// and a board note with a fix on the task branch once the task's scope is closed.
+// it names `lym loom decision add` as its way forward.
 // With escalateJudgedFirst false, a pawl run's arbiter has no decision verb to settle it with;
 // so the way forward is to settle the conflict on the task branch.
-// An unjudged end's reason is the landing gate's own;
+// A crash end's reason is the landing gate's own;
 // it already opens with LandingStopPrefix and names its way forward.
 func (o fixerOutcome) haltReason(row string, escalateJudgedFirst bool) string {
 	prefix := LandingStopPrefix
 	var cause, wayForward string
 	switch o.end {
-	case fixerEndUnjudged:
-		return o.unjudged
+	case fixerEndCrash:
+		return o.crash
 	case fixerEndSpent:
 		cause = fmt.Sprintf("the fixer spent every attempt of %s and the landing gate still fails; log: %s", row, o.failureLog)
 		wayForward = "fix the failure on the task branch, then `lym loom resume`"
@@ -402,24 +357,19 @@ func (o fixerOutcome) haltReason(row string, escalateJudgedFirst bool) string {
 		cause = fmt.Sprintf("the fixer of %s found a parent change that conflicts with a decision of the record; report: %s; conflict: %s", row, o.reportPath, singleLine(o.conflict))
 		if escalateJudgedFirst {
 			prefix = EscalateStopPrefix
-			wayForward = "record the deciding decision with `lym loom decision add` in the task worktree, then `lym loom resume`; once the task's scope is closed, file the call as a board note for a new task with `lym board upsert` and kind note, settle the conflict on the task branch so the record's decisions hold, then `lym loom resume`"
+			wayForward = "record the deciding decision with `lym loom decision add` in the task worktree, then `lym loom resume`"
 		} else {
 			wayForward = "settle the conflict on the task branch, then `lym loom resume`"
 		}
 	case fixerEndTimeout, fixerEndNoReport:
-		cause = fmt.Sprintf("the fixer session of %s ended without a usable turn (%s); session: %s; report: %s", row, o.end, o.session, o.reportPath)
+		cause = fmt.Sprintf("the fixer session of %s ended without a usable turn (%s); session log: %s; report: %s", row, o.end, o.sessionLog, o.reportPath)
 		wayForward = "fix or clean the task branch, then `lym loom resume`"
 	case fixerEndDirty:
-		cause = fmt.Sprintf("the fixer session of %s left uncommitted or untracked paths in the task worktree after its last turn: %s; session: %s; report: %s", row, listShown(o.dirty), o.session, o.reportPath)
+		cause = fmt.Sprintf("the fixer session of %s left uncommitted or untracked paths in the task worktree after its last turn: %s; session log: %s; report: %s", row, listShown(o.dirty), o.sessionLog, o.reportPath)
 		wayForward = "commit or remove them on the task branch, then `lym loom resume`"
 	case fixerEndPushed:
-		if o.remoteTip == "" {
-			cause = fmt.Sprintf("the remote ref %s was deleted during the fixer session of %s; session: %s", o.remoteRef, row, o.session)
-			wayForward = "check why the task branch is gone from origin, then `lym loom resume`"
-			break
-		}
-		cause = fmt.Sprintf("the remote ref %s moved during the fixer session of %s to %s, which holds commits the task head %s the session started from lacks; session: %s", o.remoteRef, row, o.remoteTip, o.startHead, o.session)
-		wayForward = fmt.Sprintf("check the commits %s..%s are the task's, then `lym loom resume`", o.startHead, o.remoteTip)
+		cause = fmt.Sprintf("the fixer session of %s pushed %s; session log: %s", row, o.pushedRef, o.sessionLog)
+		wayForward = "check the pushed commits are the task's, then `lym loom resume`"
 	default:
 		return ""
 	}

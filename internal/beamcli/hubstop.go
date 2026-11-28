@@ -13,7 +13,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hibernatecli"
 	"github.com/Knatte18/loomyard/internal/hibernateengine"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -182,7 +181,7 @@ func hubStopWorktrees(prime *lymcwd.Location) (beams, tasks []*lymcwd.Location, 
 	}
 	var unreadable []error
 	for _, worktree := range worktrees {
-		if worktree.Main || worktree.Prunable || fabriclayout.InWorktreeStaging(worktree.Path) {
+		if worktree.Main || worktree.Prunable || fabricengine.InWorktreeStaging(worktree.Path) {
 			continue
 		}
 		pair, err := lymcwd.ResolveWorktree(worktree.Path)

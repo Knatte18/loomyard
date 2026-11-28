@@ -31,7 +31,7 @@ func recordingHookCommands(t *testing.T, eventsPath string) map[string]string {
 	t.Helper()
 	commands := map[string]string{}
 	for _, interactive := range []bool{false, true} {
-		data, err := buildSettings(eventsPath, interactive, shuttleengine.Config{}, Config{}, false, false, false, "", "", "", "", testLymPath, sessionScope{})
+		data, err := buildSettings(eventsPath, interactive, shuttleengine.Config{}, Config{}, false, false, "", "", "", "", testLymPath, sessionScope{})
 		if err != nil {
 			t.Fatalf("buildSettings() error: %v", err)
 		}
@@ -298,7 +298,7 @@ func (fx turnHookFixture) commands(t *testing.T, turnHook string, inHub bool) (p
 	if inHub {
 		flagDir = fx.flagDir
 	}
-	data, err := buildSettings(fx.eventsPath, false, shuttleengine.Config{}, Config{}, false, false, false, "", turnHook, flagDir, "", testLymPath, sessionScope{})
+	data, err := buildSettings(fx.eventsPath, false, shuttleengine.Config{}, Config{}, false, false, "", turnHook, flagDir, "", testLymPath, sessionScope{})
 	if err != nil {
 		t.Fatalf("buildSettings() error: %v", err)
 	}
@@ -589,6 +589,7 @@ func TestShellGuardDenies_PythonRowAsksTheHubOnAMatch(t *testing.T) {
 // The waiter hook runs `lym creel hook-wait claude` from the project directory whether or not a flag stands.
 func TestCreelMailHook_RunsLymOnlyWhenTheStrandsFlagStands(t *testing.T) {
 	tiergate.Require(t, 1)
+	t.Parallel()
 
 	const name = "ly:creel-hook:driver-2"
 	root := t.TempDir()
@@ -598,12 +599,9 @@ func TestCreelMailHook_RunsLymOnlyWhenTheStrandsFlagStands(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	// The stub is written before the test goes parallel:
-	// a parallel test's fork could otherwise inherit the open write and fail the stub's exec with ETXTBSY.
 	if err := os.WriteFile(filepath.Join(binDir, "lym"), []byte("#!/bin/sh\necho \"$(pwd -P) $*\"\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	t.Parallel()
 	if err := os.WriteFile(filepath.Join(flagDir, agentname.FileName(name)), nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -664,13 +662,6 @@ func TestCreelMailHook_RunsLymOnlyWhenTheStrandsFlagStands(t *testing.T) {
 // An unwritable events file fails the command as the plain recording command does.
 func TestCreelStopHook_RecordsATurnEndOnlyWithoutABlock(t *testing.T) {
 	tiergate.Require(t, 1)
-	// The stub `lym` every row runs is written before the test goes parallel:
-	// a parallel test's fork could otherwise inherit the open write and fail the stub's exec with ETXTBSY.
-	binDir := t.TempDir()
-	stub := "#!/bin/sh\ncat > \"$STUB_STDIN.$1\"\n[ -n \"$STUB_OUT\" ] && printf '%s\\n' \"$STUB_OUT\"\nexit \"$STUB_EXIT\"\n"
-	if err := os.WriteFile(filepath.Join(binDir, "lym"), []byte(stub), 0o755); err != nil {
-		t.Fatal(err)
-	}
 	t.Parallel()
 
 	const (
@@ -710,14 +701,18 @@ func TestCreelStopHook_RecordsATurnEndOnlyWithoutABlock(t *testing.T) {
 			t.Parallel()
 
 			root := t.TempDir()
-			flagDir, projectDir := filepath.Join(root, "flags"), filepath.Join(root, "project")
-			for _, dir := range []string{flagDir, projectDir} {
+			flagDir, binDir, projectDir := filepath.Join(root, "flags"), filepath.Join(root, "bin"), filepath.Join(root, "project")
+			for _, dir := range []string{flagDir, binDir, projectDir} {
 				if err := os.MkdirAll(dir, 0o755); err != nil {
 					t.Fatal(err)
 				}
 			}
 			stdinPrefix := filepath.Join(root, "stub-stdin")
 			stdinPath, turnHookStdinPath := stdinPrefix+".creel", stdinPrefix+".slack"
+			stub := "#!/bin/sh\ncat > \"$STUB_STDIN.$1\"\n[ -n \"$STUB_OUT\" ] && printf '%s\\n' \"$STUB_OUT\"\nexit \"$STUB_EXIT\"\n"
+			if err := os.WriteFile(filepath.Join(binDir, "lym"), []byte(stub), 0o755); err != nil {
+				t.Fatal(err)
+			}
 			if tt.flagStands {
 				if err := os.WriteFile(filepath.Join(flagDir, agentname.FileName(name)), nil, 0o644); err != nil {
 					t.Fatal(err)

@@ -8,12 +8,14 @@
 package shuttleengine
 
 import (
+	"bytes"
 	"fmt"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/yamlengine"
 	"gopkg.in/yaml.v3"
 )
 
@@ -81,8 +83,7 @@ type Config struct {
 }
 
 // StartAllowance returns the longest a start may take:
-// every launch's shuttle.startup_timeout_s, the first and each of shuttle.start_retries retries.
-// It also counts the wait between attempts.
+// every launch's startup_timeout_s, the first and each of start_retries retries, with the wait between attempts.
 func (c Config) StartAllowance() time.Duration {
 	launches := time.Duration(1+c.StartRetries) * time.Duration(c.StartupTimeoutS) * time.Second
 	return launches + time.Duration(c.StartRetries)*startRetryDelay
@@ -90,7 +91,7 @@ func (c Config) StartAllowance() time.Duration {
 
 // ConfigSpec returns shuttle's layered-load spec.
 // It carries the template and the per-key classification, which decides which keys a local override may hold.
-// It also carries the retired keys, which a local layer is refused by their category.
+// It also carries the retired keys that an unreconciled layer may still hold.
 func ConfigSpec() configengine.Spec {
 	return configengine.Spec{
 		Name:     "shuttle",
@@ -143,47 +144,47 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	}
 
 	if time.Duration(cfg.PollIntervalMS)*time.Millisecond < pollFloor {
-		logger.Warn("shuttle config: "+keyName("poll_interval_ms")+" is below the floor and is raised to it", "key", "poll_interval_ms", "value", cfg.PollIntervalMS, "floor_ms", pollFloor.Milliseconds())
+		logger.Warn("shuttle config: poll_interval_ms is below the floor and is raised to it", "key", "poll_interval_ms", "value", cfg.PollIntervalMS, "floor_ms", pollFloor.Milliseconds())
 	}
 
 	if cfg.Engine == "" {
-		return Config{}, fmt.Errorf("shuttle config: %s must name a registered engine, got an empty value", keyName(engineKey))
+		return Config{}, fmt.Errorf("shuttle config: engine must name a registered engine, got an empty value")
 	}
 
 	if cfg.StartRetries < 0 {
-		return Config{}, fmt.Errorf("shuttle config: %s must not be negative, got %d", keyName("start_retries"), cfg.StartRetries)
+		return Config{}, fmt.Errorf("shuttle config: start_retries must not be negative, got %d", cfg.StartRetries)
 	}
 
 	if cfg.KeepWarmMaxReruns < 0 {
-		return Config{}, fmt.Errorf("shuttle config: %s must not be negative, got %d; way forward: set it to 0 or more with lym config shuttle", keyName("keep_warm_max_reruns"), cfg.KeepWarmMaxReruns)
+		return Config{}, fmt.Errorf("shuttle config: keep_warm_max_reruns must not be negative, got %d; way forward: set it to 0 or more with lym config shuttle", cfg.KeepWarmMaxReruns)
 	}
 
 	if cfg.BackgroundShellWaitMin <= 0 {
-		return Config{}, fmt.Errorf("shuttle config: %s must be positive, got %d", keyName("background_shell_wait_min"), cfg.BackgroundShellWaitMin)
+		return Config{}, fmt.Errorf("shuttle config: background_shell_wait_min must be positive, got %d", cfg.BackgroundShellWaitMin)
 	}
 
 	if cfg.SubmitSettleMS < 0 {
-		return Config{}, fmt.Errorf("shuttle config: %s must not be negative, got %d", keyName("submit_settle_ms"), cfg.SubmitSettleMS)
+		return Config{}, fmt.Errorf("shuttle config: submit_settle_ms must not be negative, got %d", cfg.SubmitSettleMS)
 	}
 
 	if cfg.SubmitRedrawSettleMS < 0 {
-		return Config{}, fmt.Errorf("shuttle config: %s must not be negative, got %d", keyName("submit_redraw_settle_ms"), cfg.SubmitRedrawSettleMS)
+		return Config{}, fmt.Errorf("shuttle config: submit_redraw_settle_ms must not be negative, got %d", cfg.SubmitRedrawSettleMS)
 	}
 
 	if cfg.SendReadyTimeoutS <= 0 {
-		return Config{}, fmt.Errorf("shuttle config: %s must be positive, got %d", keyName("send_ready_timeout_s"), cfg.SendReadyTimeoutS)
+		return Config{}, fmt.Errorf("shuttle config: send_ready_timeout_s must be positive, got %d", cfg.SendReadyTimeoutS)
 	}
 
 	if cfg.SubmitConfirmTimeoutS <= 0 {
-		return Config{}, fmt.Errorf("shuttle config: %s must be positive, got %d", keyName("submit_confirm_timeout_s"), cfg.SubmitConfirmTimeoutS)
+		return Config{}, fmt.Errorf("shuttle config: submit_confirm_timeout_s must be positive, got %d", cfg.SubmitConfirmTimeoutS)
 	}
 
 	if cfg.EditLoopEdits < 0 {
-		return Config{}, fmt.Errorf("shuttle config: %s must not be negative, got %d; way forward: set it to 0 to turn the edit-loop watch off, or above 0, with lym config shuttle", keyName("edit_loop_edits"), cfg.EditLoopEdits)
+		return Config{}, fmt.Errorf("shuttle config: edit_loop_edits must not be negative, got %d; way forward: set it to 0 to turn the edit-loop watch off, or above 0, with lym config shuttle", cfg.EditLoopEdits)
 	}
 
 	if cfg.EditLoopEdits > 0 && cfg.EditLoopWindowS <= 0 {
-		return Config{}, fmt.Errorf("shuttle config: %s must be positive while %s is above 0, got %d; way forward: set it above 0 with lym config shuttle", keyName("edit_loop_window_s"), keyName("edit_loop_edits"), cfg.EditLoopWindowS)
+		return Config{}, fmt.Errorf("shuttle config: edit_loop_window_s must be positive while edit_loop_edits is above 0, got %d; way forward: set it above 0 with lym config shuttle", cfg.EditLoopWindowS)
 	}
 
 	agents, err := agentconfig.Load(dirs)
@@ -193,4 +194,84 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	cfg.Agents = agents
 
 	return cfg, nil
+}
+
+// MigrateConfig serves lym config reconcile.
+// It raises a below-floor or null poll_interval_ms in a shuttle.yaml document to the poll floor.
+// It also renames a legacy claude_deny_python to deny_python.
+// It returns the rewritten bytes and a line for each rewrite.
+// Everything else is carried through with its comments;
+// the loader never calls it.
+// A document that does not parse returns an error marked configengine.ErrInvalid.
+func MigrateConfig(existing []byte) ([]byte, []string, error) {
+	rewritten, line, err := yamlengine.RaiseIntFloor(existing, "poll_interval_ms", int(pollFloor.Milliseconds()))
+	if err != nil {
+		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate shuttle config: %w", err))
+	}
+	var lines []string
+	if line != "" {
+		lines = append(lines, line)
+	}
+	rewritten, renameLine, err := renameDenyPython(rewritten)
+	if err != nil {
+		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate shuttle config: %w", err))
+	}
+	if renameLine != "" {
+		lines = append(lines, renameLine)
+	}
+	return rewritten, lines, nil
+}
+
+// renameDenyPython renames a top-level claude_deny_python key to deny_python in place.
+// It keeps the value, position and line comment of the key.
+// It returns the rewritten document and one line describing the rewrite.
+// A document holding deny_python beside claude_deny_python keeps deny_python and drops the legacy key.
+// The returned line reports the dropped value.
+// A document holding neither key, or no content, comes back unchanged with an empty line.
+// A document that does not parse, or whose root is not a mapping, returns an error.
+func renameDenyPython(existing []byte) ([]byte, string, error) {
+	var document yaml.Node
+	if err := yaml.Unmarshal(existing, &document); err != nil {
+		return nil, "", fmt.Errorf("unmarshal yaml: %w", err)
+	}
+	if document.Kind != yaml.DocumentNode || len(document.Content) == 0 {
+		return existing, "", nil
+	}
+	root := document.Content[0]
+	if root.Kind != yaml.MappingNode {
+		return nil, "", fmt.Errorf("yaml root is not a mapping")
+	}
+
+	legacyIndex, currentIndex := -1, -1
+	for i := 0; i+1 < len(root.Content); i += 2 {
+		switch root.Content[i].Value {
+		case "claude_deny_python":
+			legacyIndex = i
+		case "deny_python":
+			currentIndex = i
+		}
+	}
+	if legacyIndex < 0 {
+		return existing, "", nil
+	}
+
+	var line string
+	if currentIndex >= 0 {
+		line = fmt.Sprintf("claude_deny_python: %s dropped, deny_python already set", root.Content[legacyIndex+1].Value)
+		root.Content = append(root.Content[:legacyIndex], root.Content[legacyIndex+2:]...)
+	} else {
+		root.Content[legacyIndex].Value = "deny_python"
+		line = "claude_deny_python: renamed to deny_python"
+	}
+
+	var out bytes.Buffer
+	encoder := yaml.NewEncoder(&out)
+	encoder.SetIndent(2)
+	if err := encoder.Encode(&document); err != nil {
+		return nil, "", fmt.Errorf("encode yaml: %w", err)
+	}
+	if err := encoder.Close(); err != nil {
+		return nil, "", fmt.Errorf("encode yaml: %w", err)
+	}
+	return out.Bytes(), line, nil
 }

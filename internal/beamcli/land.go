@@ -11,9 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/beamsetting"
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/pawlengine"
@@ -39,24 +38,19 @@ import (
 // Only the `merge-parent` verb calls these four.
 // DraftDescription writes a starting point for the beam's change description and returns its path.
 // It refuses when a description already stands.
-// RecordDescription validates the change description and stamps the landing record's DescribedAt with at.
-// With from empty it records the description the orch wrote in place.
-// Otherwise it first writes the draft at from over the description.
-// The description stands as it was when the draft is refused or the commit fails.
+// RecordDescription validates the change description the orch wrote and stamps the landing record's DescribedAt with at.
 // It commits the landing directory and returns the description's path.
-// Only the `describe` verb and the description rewrite after a member landing call these two.
+// Only the `describe` verb calls these two.
 // PullRequestSide reads the beam pair's origin facts: its branch and its parent branch.
 // It uses the pull request API when the origin allows one.
 // PushBeam pushes the beam branch and returns the head it pushed.
-// It refuses while the beam holds landings its parent push has not settled.
 // BeamHasCommits reports whether the beam holds a commit its parent branch lacks.
 // Landing reads the beam's landing record, found false when it has none.
 // WriteLanding updates it and commits the landing directory.
 // A commit over an unchanged directory is a no-op.
 // Description reads the title and body of the written change description.
 // BeamHead reads the beam pair's HEAD.
-// PullRequestMode reads beam.pull_request for the beam through the per-task lookup.
-// The lookup starts at the beam's own worktree.
+// PullRequestMode reads the pull_request mode of the parent's beam.yaml.
 // It also reports whether GitHub's rules for the parent branch require a pull request.
 // A hub with no GitHub origin or no usable token reports that no rule requires one.
 // Sleep waits d or until ctx ends.
@@ -74,7 +68,7 @@ type landDeps struct {
 	ReadOwners     func() (boardengine.Owners, error)
 	ParentOf       func(slug string) (string, error)
 	PairPresent    func(slug string) bool
-	OriginRecord   func(slug string) (fabriclayout.Origin, bool, error)
+	OriginRecord   func(slug string) (fabricengine.Origin, bool, error)
 	ChildStatus    func(slug string) (status shedengine.Status, found bool, err error)
 	RunID          func(slug string) (string, error)
 	Ready          func(slug string) (bool, error)
@@ -88,7 +82,7 @@ type landDeps struct {
 	HeldSlugs      func() ([]string, error)
 
 	DraftDescription  func(slug string) (path string, err error)
-	RecordDescription func(slug, from string, at time.Time) (path string, err error)
+	RecordDescription func(slug string, at time.Time) (path string, err error)
 
 	PullRequestSide func(slug string) (beamPullRequestSide, error)
 	PushBeam        func(slug string) (head string, err error)
@@ -203,7 +197,7 @@ const (
 // The checks run in this order:
 // a run not at Beam-Await; open members and child pairs; a parent holding commits the beam lacks;
 // a missing or invalid description; the pull request conditions.
-// With no pull request recorded, GitHub's rules refuse the landing, naming `lym beam pr open`;
+// With no pull request recorded, a required parent or GitHub's rules refuse the landing, naming `lym beam pr open`;
 // with one recorded, it must be able to merge now or already be merged.
 func judgeReadyLanding(ctx context.Context, deps landDeps, slug string) error {
 	const verb = "lym beam ready"
@@ -267,14 +261,14 @@ func judgeDescribed(deps landDeps, verb, slug string) (pawlengine.LandingRecord,
 }
 
 // judgeNoPullRequest refuses a beam with no pull request recorded when its landing needs one.
-// GitHub's rules for the parent branch demand a pull request;
+// A required parent or GitHub's rules demand a pull request;
 // an origin that lacks a fact the demand needs refuses the beam too.
-// A beam whose beam.pull_request is trail passes, since its landing opens its own pull request.
+// A merge parent passes, since its landing opens its own pull request.
 // A beam with no commits beyond its parent passes too.
 func judgeNoPullRequest(deps landDeps, verb, slug string) error {
 	mode, rulesRequired, err := deps.PullRequestMode(slug)
 	if err != nil {
-		return rerunRefusal(verb, slug, "read the beam's "+pullRequestName(), err)
+		return rerunRefusal(verb, slug, "read the parent's pull request mode", err)
 	}
 	hasCommits, err := deps.BeamHasCommits(slug)
 	if err != nil {
@@ -284,15 +278,15 @@ func judgeNoPullRequest(deps landDeps, verb, slug string) error {
 	if err != nil {
 		return rerunRefusal(verb, slug, "read the beam's origin", err)
 	}
-	decision := landingshed.ResolvePullRequest(mode, landingshed.BeamWithoutPullRequest, rulesRequired, side.Origin, hasCommits)
+	decision := landingshed.ResolvePullRequest(slug, mode, "", landingshed.BeamWithoutPullRequest, rulesRequired, side.Origin, hasCommits)
 	if decision.Halt != "" {
 		demand := "GitHub's rules for the parent branch require a pull request"
-		if mode == beamsetting.PullRequestTrail {
-			demand = "the beam's " + pullRequestName() + " is trail"
+		if mode == parentModeRequired || mode == parentModeMerge {
+			demand = fmt.Sprintf("the parent's beam.yaml pull_request is %s", mode)
 		}
 		return fmt.Errorf("%s: a pull request is required for the beam %s (%s) but %s; way forward: give the hub a GitHub origin, an upstream for the parent branch and no push skip, then run `%s %s` again", verb, slug, demand, landingshed.OriginMissing(side.Origin), verb, slug)
 	}
-	if decision.Open && mode != beamsetting.PullRequestTrail {
+	if decision.Open && mode != parentModeMerge {
 		return fmt.Errorf("%s: a pull request is required for the beam %s and none is recorded; way forward: run `lym beam pr open %s`, then `%s %s` again", verb, slug, slug, verb, slug)
 	}
 	return nil

@@ -34,7 +34,7 @@ func hookPythonAllowedCmd() *cobra.Command {
 		Long: `hook-python-allowed loads the shuttle config the session's launch read, from the
 working directory, anywhere under the worktree's anchored directory. In a hub with
 a Bolt checkout holding _lym that is the hub's layers; otherwise, as in a standalone
-run, it is the state directory derived for the target. It exits 0 when shuttle.deny_python is false and 1 when
+run, it is the state directory derived for the target. It exits 0 when deny_python is false and 1 when
 it is true. It also exits 1 when the config cannot be found, so a guard that
 cannot ask keeps denying. It prints nothing on standard output; a failure goes to
 standard error as a JSON error object.`,

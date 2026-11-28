@@ -1,6 +1,6 @@
 // describe.go implements the Describe row's two halves.
 // DescribeTable builds the seatengine.Table from the row's told values:
-// the stencil, the model resolved from landing.describe, and the one description file the session writes.
+// the stencil, the model resolved from landing.yaml's describe key, and the one description file the session writes.
 // NewDescriptionGate is the mechanical gate over that file; neither derives a path of its own.
 
 package landingshed
@@ -10,9 +10,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"regexp"
 	"strings"
-	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -23,15 +21,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 )
 
-// NewDescriptionGate returns the Describe row's gate closure, a shuttleengine.Gate over descriptionPath.
-// The gate runs summaryparser.ValidateDescription and refuses a line that one of forbidden matches.
+// NewDescriptionGate returns the Describe row's gate closure:
+// a shuttleengine.Gate that runs summaryparser.ValidateDescription over descriptionPath.
 // A returned error passes through with the zero GateResult;
 // no findings is a pass;
 // findings are a failed result: Findings joins each Finding's Error() with `"; "`, and a logger.Warn logs them first.
 // That Warn line is the only durable record of why a description was refused.
-func NewDescriptionGate(descriptionPath string, forbidden []*regexp.Regexp) shuttleengine.Gate {
+func NewDescriptionGate(descriptionPath string) shuttleengine.Gate {
 	return func() (shuttleengine.GateResult, error) {
-		findings, err := summaryparser.ValidateDescription(descriptionPath, forbidden)
+		findings, err := summaryparser.ValidateDescription(descriptionPath)
 		if err != nil {
 			return shuttleengine.GateResult{}, err
 		}
@@ -70,9 +68,6 @@ type DescribeInputs struct {
 	PriorRunRecordPaths []string
 	// DescriptionPath is the file the agent writes: the change description.
 	DescriptionPath string
-	// ReviewDir is the never-tracked directory of the review's files.
-	// It holds the reviewer's report and end marker, and the records of the review's release and delivery.
-	ReviewDir string
 	// TaskBranch is the branch whose diff the description covers.
 	TaskBranch string
 	// ParentBranch is the branch the task lands on.
@@ -110,28 +105,20 @@ func runRecordBullets(in DescribeInputs) (string, error) {
 	return strings.Join(lines, "\n"), nil
 }
 
-// DescribeTable builds the seatengine.Table of the Describe session:
-// the lead, which writes the change description, and the reviewer, an assistant that reviews it.
-// The reviewer writes its report and end marker in in.ReviewDir, and the report is one of the lead's inputs.
-// An empty landing.describe_review keeps the reviewer from starting.
-// While a reviewer runs, the lead's budget is the reviewer's,
-// so a lead that finishes within landing.describe_timeout_min leaves the review its time before the lead's deadline.
+// DescribeTable builds the seatengine.Table of the Describe session: one lead that writes the change description.
 // An empty input field other than RunRecordPath, PriorRunRecordPaths and DriftVerdict is an error naming the field.
 // A stencil missing from in.StencilsDir is an error too.
 // Both checks fail a mis-wired closure before the row runs, rather than rendering a blank path into the prompt.
 // A run record that does not exist is left out of the prompt, and a stat error on one is returned.
 // An empty DriftVerdict renders as a line saying no regression check ran.
 // The table's values are the stencil's markers; `seatengine` renders the parent and edit directives from its geometry.
-// The table's gate is one entry over the review.
-// It releases the reviewer, holds the lead's turn end until the review has ended and hands the lead the findings.
-// The caller that wires the producer puts the row's own gates ahead of it.
+// The table carries no gate; the caller that wires the producer sets it.
 // The `Segment` is the describe segment, because the session writes the pull request description.
 func DescribeTable(in DescribeInputs, cfg Config, reg modelspec.Registry) (seatengine.Table, error) {
 	if err := requireValues("DescribeTable", [][2]string{
 		{"StencilsDir", in.StencilsDir},
 		{"DecisionRecordPath", in.DecisionRecordPath},
 		{"DescriptionPath", in.DescriptionPath},
-		{"ReviewDir", in.ReviewDir},
 		{"TaskBranch", in.TaskBranch},
 		{"ParentBranch", in.ParentBranch},
 		{"MergeBase", in.MergeBase},
@@ -172,17 +159,5 @@ func DescribeTable(in DescribeInputs, cfg Config, reg modelspec.Registry) (seate
 	if err != nil {
 		return seatengine.Table{}, fmt.Errorf("landingshed: DescribeTable: %w", err)
 	}
-
-	files := describeReviewFilesIn(in.ReviewDir)
-	reviewer, err := describeReviewSeat(cfg, reg, table.Seats[0].ModelChoice, files)
-	if err != nil {
-		return seatengine.Table{}, fmt.Errorf("landingshed: DescribeTable: %w", err)
-	}
-	table.Seats[0].Inputs = append(table.Seats[0].Inputs, files.report)
-	if reviewer.SkipReason == "" {
-		table.Seats[0].Timeout = reviewer.Timeout
-	}
-	table.Seats = append(table.Seats, reviewer)
-	table.Gate = shuttleengine.GateSpec{describeReviewGateEntry(files, time.Duration(cfg.DescribeReviewTimeoutMin)*time.Minute, time.Now)}
 	return table, nil
 }

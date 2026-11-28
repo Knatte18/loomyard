@@ -44,7 +44,7 @@ const (
 	stepCompare = "compare"
 )
 
-// The values of the `drift.diff` key.
+// The values of the `diff` key.
 const (
 	// DiffLines compares the two capture directories line by line in Go, against the expectation the expect agent writes.
 	DiffLines = "lines"
@@ -80,7 +80,7 @@ type Config struct {
 	Diff string
 	// KeyPatterns are regular expressions, tried in order, that key a captured line; each has the groups `key` and `value`.
 	KeyPatterns []string
-	// Volatile is what the diff ignores under DiffLines, from the keys `drift.volatile_files` and `drift.volatile_keys`.
+	// Volatile is what the diff ignores under DiffLines, from the keys `volatile_files` and `volatile_keys`.
 	Volatile Volatile
 	// ExpectModel is the model-spec of the expect agent.
 	ExpectModel string
@@ -93,40 +93,10 @@ type Config struct {
 	// JudgeParentTimeoutMin is the minutes from the judge's ask to the parent to its deadline; it is a positive integer.
 	JudgeParentTimeoutMin int
 	// Scope is the task's regression scope, ScopeOff or ScopeFull, which Drift-Baseline records with no agent.
-	// An empty scope records full.
+	// An empty scope records full, and a stored partial reads as ScopeFull.
 	Scope string
-	// Autonomous is the run's autonomy, which no layer spells; ApplyAutonomy sets it.
-	Autonomous bool
-}
-
-// The drift keys the run's autonomy forces.
-const (
-	keyJudgeAskParent   = "judge_ask_parent"
-	keyJudgeInteractive = "judge_interactive"
-)
-
-// ApplyAutonomy returns cfg with Autonomous set to autonomous.
-// With autonomous true it also forces JudgeAskParent on and JudgeInteractive off,
-// so the judge asks the run's parent and never waits on an operator.
-// It rewrites no layer file, so autonomy off restores each key's layered value at the next load.
-func ApplyAutonomy(cfg Config, autonomous bool) Config {
-	cfg.Autonomous = autonomous
-	if autonomous {
-		cfg.JudgeAskParent, cfg.JudgeInteractive = true, false
-	}
-	return cfg
-}
-
-// AutonomyForcedSetting answers the value the run's autonomy forces on the drift key, and whether it forces one.
-// Every key but drift.judge_ask_parent and drift.judge_interactive is not forced.
-func AutonomyForcedSetting(key string) (value bool, forced bool) {
-	switch key {
-	case keyJudgeAskParent:
-		return true, true
-	case keyJudgeInteractive:
-		return false, true
-	}
-	return false, false
+	// ScopeWasPartial is true when the stored scope was partial, which reads as full.
+	ScopeWasPartial bool
 }
 
 // configFile is drift.yaml as it is spelled, before defaults and validation.
@@ -142,7 +112,7 @@ type configFile struct {
 	JudgeModel       string   `yaml:"judge_model"`
 	JudgeInteractive bool     `yaml:"judge_interactive"`
 	JudgeAskParent   bool     `yaml:"judge_ask_parent"`
-	// JudgeParentTimeoutMin is drift.judge_parent_timeout_min.
+	// JudgeParentTimeoutMin is judge_parent_timeout_min.
 	JudgeParentTimeoutMin int    `yaml:"judge_parent_timeout_min"`
 	Scope                 string `yaml:"scope"`
 }
@@ -162,9 +132,8 @@ func ConfigOpenMaps() []string {
 }
 
 // ConfigSpec returns drift's layered-load spec.
-// drift.capture and drift.compare run commands, so they are executable keys and closed to the local layer.
-// drift.diff, drift.key_patterns, drift.volatile_files and drift.volatile_keys decide what counts as drift,
-// so they are guard keys.
+// capture and compare run commands, so they are executable keys and closed to the local layer.
+// diff, key_patterns, volatile_files and volatile_keys decide what counts as drift, so they are guard keys.
 // A task's run settings that set one are refused, with the hub's drift.yaml as the way forward.
 // Both steps carry the shape their decode gives them.
 // `--set` writes a step whole, such as `capture={command: ..., timeout_min: 30}`.
@@ -213,12 +182,11 @@ func ConfigSpec() configengine.Spec {
 // LoadConfig loads and validates the drift module's configuration strictly through the hub-wide layer stack under dirs.
 // A declared step needs a command holding {baseline_dir} and a timeout_min of at least 1;
 // an all-empty step is undeclared and loads as the zero CommandStep.
-// A drift.scope must be empty, off or full; a stored partial is refused.
-// A drift.diff must be lines or command, and diff command needs a declared compare.
-// Every drift.key_patterns entry must compile with the named groups key and value.
-// Every drift.volatile_files entry must be a valid glob,
-// and no drift.volatile_files or drift.volatile_keys entry may be blank.
-// drift.judge_parent_timeout_min must be at least 1.
+// A scope must be empty, off, partial or full; a stored partial reads as full and sets ScopeWasPartial.
+// A diff must be lines or command, and diff command needs a declared compare.
+// Every key_patterns entry must compile with the named groups key and value.
+// Every volatile_files entry must be a valid glob and no volatile_files or volatile_keys entry may be blank.
+// judge_parent_timeout_min must be at least 1.
 // Every refusal names the key and lym config drift as the way forward.
 func LoadConfig(dirs configengine.Dirs) (Config, error) {
 	resolved, err := configengine.Load(dirs, ConfigSpec())
@@ -265,8 +233,13 @@ func LoadConfig(dirs configengine.Dirs) (Config, error) {
 	if file.JudgeParentTimeoutMin < 1 {
 		return Config{}, refuseKey("judge_parent_timeout_min", fmt.Sprintf("%d; want a positive integer", file.JudgeParentTimeoutMin))
 	}
+	scope := file.Scope
+	if scope == ScopePartial {
+		scope = ScopeFull
+	}
 	return Config{
-		Scope:                 file.Scope,
+		Scope:                 scope,
+		ScopeWasPartial:       file.Scope == ScopePartial,
 		Enabled:               file.Enabled,
 		Capture:               capture,
 		Compare:               compare,
@@ -283,7 +256,7 @@ func LoadConfig(dirs configengine.Dirs) (Config, error) {
 
 // refuseKey builds the refusal of a drift config key, naming the key and its way forward.
 func refuseKey(key, want string) error {
-	return fmt.Errorf("config key %q: %s; way forward: fix it with lym config drift", keyName(key), want)
+	return fmt.Errorf("drift config key %q: %s; way forward: fix it with lym config drift", key, want)
 }
 
 // checkVolatile refuses a blank entry of either list and a file pattern that is no valid glob.
@@ -298,20 +271,21 @@ func checkVolatile(files, keys []string) error {
 	}
 	for _, key := range keys {
 		if strings.TrimSpace(key) == "" {
-			return refuseKey("volatile_keys", "holds a blank entry; want a key "+keyName("key_patterns")+" reads")
+			return refuseKey("volatile_keys", "holds a blank entry; want a key the key_patterns read")
 		}
 	}
 	return nil
 }
 
-// checkScope refuses a scope other than empty, off or full, a stored partial included.
+// checkScope refuses a scope other than empty, off, partial or full.
+// A stored partial passes, since it reads as full.
 // The refusal names the key and its ways forward, the task's run_settings among them, since a task sets its scope there.
 func checkScope(scope string) error {
 	switch scope {
-	case "", ScopeOff, ScopeFull:
+	case "", ScopeOff, ScopePartial, ScopeFull:
 		return nil
 	}
-	return fmt.Errorf("config key %q: %q; want %s, %s, or empty for %s; way forward: fix it in the board entry's run_settings, or with lym config drift", keyName("scope"), scope, ScopeOff, ScopeFull, ScopeFull)
+	return fmt.Errorf("drift config key \"scope\": %q; want %s, %s, or empty for %s; way forward: fix it in the board entry's run_settings, or with lym config drift", scope, ScopeOff, ScopeFull, ScopeFull)
 }
 
 // decodeStep validates one declared command step and fills its defaults.

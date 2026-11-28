@@ -19,7 +19,7 @@
 // A server reed starts itself reads no `~/.tmux.conf` either and pins the same two shell options per session,
 // so the kit's server differs from reed's own only by the two extra lines, `exit-empty off` and the marker.
 // Main also unsets `LYM_REED_TMUX_CONF`,
-// so every reed.yaml a test renders from the template resolves `reed.tmux_conf` to empty,
+// so every reed.yaml a test renders from the template resolves `tmux_conf` to empty,
 // and no operator tmux config reaches a server a test starts.
 // Reed starts a server itself in two cases:
 // after a test's own `down` or `kill-server` on its key, or when a test registers its key after reed's boot.

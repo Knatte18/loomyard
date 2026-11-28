@@ -144,7 +144,7 @@ func TestAuditForkTranscript_UnterminatedFinalLineStillCounted(t *testing.T) {
 	tiergate.Require(t, 0)
 	path, _ := writeTranscript(t, assistantBashLine("git status")+"\n"+assistantBashLine("git push"))
 
-	report, err := auditForkTranscript(path, subagentMeta{}, false, nil)
+	report, err := auditForkTranscript(path)
 	if err != nil {
 		t.Fatalf("auditForkTranscript() error: %v", err)
 	}

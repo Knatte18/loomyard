@@ -4,41 +4,32 @@
 // this file supplies the commit and push step.
 // A top-level push lock serializes pushers across processes;
 // concurrent sync processes block, then exit quickly once there is nothing to do.
-// The write path starts the board's background pusher detached (see spawn.go) so it never waits.
+// The write path launches `lym board sync` detached (see spawn.go) so it never waits.
 package boardengine
 
 import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	flock "github.com/Knatte18/loomyard/internal/lock"
 )
 
-// writeLockFile aliases fabriclayout.BoardWriteLockFile, which declares the literal.
-// The name lives in fabric's layout because a stencil-seeding commit verb outside boardengine must take the same lock.
-const writeLockFile = fabriclayout.BoardWriteLockFile
+// writeLockFile aliases fabricengine.BoardWriteLockFile, which declares the literal.
+// The name lives in fabricengine because a stencil-seeding commit verb outside boardengine must take the same lock.
+const writeLockFile = fabricengine.BoardWriteLockFile
+
+// retiredIgnorePatterns are lock patterns that must not stay in the board's .gitignore.
+// ensureBoardIgnores removes them, so a stray lock file shows in `git status` instead of being hidden.
+var retiredIgnorePatterns = []string{"*.lock", "*.swaplock"}
 
 // Sync commits pending changes and pushes to the remote, looping until clean and unpushed changes are gone.
 // skipGit disables it entirely;
 // skipPush commits locally but skips the push.
 func Sync(boardPath string, skipGit, skipPush bool) error {
-	return syncBoard(boardPath, skipGit, skipPush, fabricengine.SyncOptions{})
-}
-
-// PusherSync commits the board's uncommitted files and pushes the board once.
-// It serves a caller that retries on its own schedule.
-// An owed failure is returned, leaving the commit for the next push, with no failed-push record and no notice.
-// With pushes off it commits and does not push, and with git off it does nothing.
-func (b *Board) PusherSync() error {
-	return syncBoard(b.boardPath, b.skipGit, b.skipPush, fabricengine.SyncOptions{OwedUnrecorded: true, SingleAttempt: true})
-}
-
-// syncBoard is Sync with the options of its push.
-func syncBoard(boardPath string, skipGit, skipPush bool, push fabricengine.SyncOptions) error {
 	if skipGit {
 		return nil
 	}
@@ -55,7 +46,7 @@ func syncBoard(boardPath string, skipGit, skipPush bool, push fabricengine.SyncO
 			return false, err
 		}
 		if !skipPush {
-			if err := bolt.Push(push); err != nil {
+			if err := bolt.Push(fabricengine.SyncOptions{}); err != nil {
 				return false, fmt.Errorf("sync push: %w", err)
 			}
 		}
@@ -85,8 +76,8 @@ func commitDirty(boardPath string, bolt *fabricengine.Bolt) (bool, error) {
 	return committed, nil
 }
 
-// ensureBoardIgnores keeps the render manifest ignored in the board's .gitignore.
-// It writes the file only when the manifest line is missing.
+// ensureBoardIgnores keeps the render manifest ignored in the board's .gitignore and removes the retired lock patterns.
+// It writes the file only when its content changes.
 func ensureBoardIgnores(boardPath string) error {
 	gitignorePath := filepath.Join(boardPath, ".gitignore")
 	existing, err := os.ReadFile(gitignorePath)
@@ -94,16 +85,28 @@ func ensureBoardIgnores(boardPath string) error {
 		return fmt.Errorf("read .gitignore: %w", err)
 	}
 
+	var kept []string
+	manifestIgnored := false
 	for _, line := range strings.Split(string(existing), "\n") {
-		if strings.TrimSpace(line) == renderManifestFile {
-			return nil
+		trimmed := strings.TrimSpace(line)
+		if slices.Contains(retiredIgnorePatterns, trimmed) {
+			continue
 		}
+		if trimmed == renderManifestFile {
+			manifestIgnored = true
+		}
+		kept = append(kept, line)
 	}
-	content := string(existing)
-	if content != "" && !strings.HasSuffix(content, "\n") {
-		content += "\n"
+	content := strings.Join(kept, "\n")
+	if !manifestIgnored {
+		if content != "" && !strings.HasSuffix(content, "\n") {
+			content += "\n"
+		}
+		content += renderManifestFile + "\n"
 	}
-	content += renderManifestFile + "\n"
+	if content == string(existing) {
+		return nil
+	}
 	if err := os.WriteFile(gitignorePath, []byte(content), 0o644); err != nil {
 		return fmt.Errorf("write .gitignore: %w", err)
 	}

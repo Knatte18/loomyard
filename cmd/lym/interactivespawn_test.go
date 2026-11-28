@@ -153,7 +153,6 @@ func headlessSpawnFailures(t *testing.T, opts scankit.Options, allow *scankit.Al
 // A file in allowedHeadlessSpawn is exempt.
 //
 //lym:guard
-//lym:only parent-align finalize
 func TestInteractiveSpawn_NoHeadlessClaude(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

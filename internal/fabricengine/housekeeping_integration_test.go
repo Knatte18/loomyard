@@ -140,7 +140,7 @@ func TestStoreHousekeeping(t *testing.T) {
 		unsetHousekeepingKeys(t, code)
 		unsetHousekeepingKeys(t, records)
 
-		if _, err := h.Topology.Remove(h.Location, slug, false, false, ""); err != nil {
+		if _, err := h.Topology.Remove(h.Location, slug, false, false); err != nil {
 			t.Fatalf("Remove: %v", err)
 		}
 
@@ -160,7 +160,7 @@ func TestStoreHousekeeping(t *testing.T) {
 		unsetHousekeepingKeys(t, records)
 		fillSampledLooseObjects(t, code)
 
-		if _, err := h.Topology.Remove(h.Location, slug, false, false, ""); err != nil {
+		if _, err := h.Topology.Remove(h.Location, slug, false, false); err != nil {
 			t.Fatalf("Remove: %v", err)
 		}
 
@@ -186,7 +186,7 @@ func TestStoreHousekeeping(t *testing.T) {
 			t.Fatalf("backdate %s: %v", oldObject, err)
 		}
 
-		if _, err := h.Topology.Remove(h.Location, slug, false, false, ""); err != nil {
+		if _, err := h.Topology.Remove(h.Location, slug, false, false); err != nil {
 			t.Fatalf("Remove: %v", err)
 		}
 
@@ -240,7 +240,7 @@ func TestStoreHousekeeping_Warnings(t *testing.T) {
 			unsetHousekeepingKeys(t, records)
 			fillSampledLooseObjects(t, code)
 
-			if _, err := h.Topology.Remove(h.Location, slug, false, false, ""); err != nil {
+			if _, err := h.Topology.Remove(h.Location, slug, false, false); err != nil {
 				t.Fatalf("Remove: %v", err)
 			}
 
@@ -262,7 +262,7 @@ func TestStoreHousekeeping_Warnings(t *testing.T) {
 		// An unparsable size makes `gc --auto` exit 128 on its config parse, whatever the threshold.
 		gitkit.Git(t, records, "config", "gc.bigPackThreshold", "bogus")
 
-		if _, err := h.Topology.Remove(h.Location, slug, false, false, ""); err != nil {
+		if _, err := h.Topology.Remove(h.Location, slug, false, false); err != nil {
 			t.Fatalf("Remove: %v; a failing gc must not fail it", err)
 		}
 

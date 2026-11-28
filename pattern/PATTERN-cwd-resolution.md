@@ -5,13 +5,15 @@
 - `root` is the worktree or repo root and `cwd` is the current working directory; the two are never conflated.
 - `Resolve` requires cwd to be a git worktree root and to equal `Join(worktreeRoot, AnchorRel)`.
 - `ResolveWithin` accepts cwd at or below `Join(worktreeRoot, AnchorRel)` or anywhere in the records sibling.
+  In a one-repository hub it accepts a cwd at or below the anchor only.
   Only a read-only verb a session runs from wherever its harness moved the cwd calls it.
 - It exposes only `RepoName`, `HubPath`, `WorktreeName`, `AnchorRel`, `WorktreePath()` and `AnchorPath()`.
 - Every cwd or worktree-root query goes through `lymcwd.Getwd()` or `Resolve()`;
   raw `os.Getwd` and `git rev-parse --show-toplevel` are banned elsewhere.
 - A module's own durable subdirectory is its own constant joined onto `AnchorPath()`, never a `lymcwd` call.
-- A worktree's anchor comes from its own `.lym-anchor` at the root of its weft branch.
-  With none recorded, the anchor is `"."`.
+- A worktree's anchor comes from its own `.lym-anchor` at its records root:
+  the weft root in a two-repository hub and the worktree root in a one-repository hub.
+  The fallback is the hub-wide Bolt marker, and `"."` after that.
 - Code outside `lymcwd` gets another worktree's `Location` through `lymcwd.NamedWorktree(hubPath, name)`.
   The `Location` is at that worktree's own anchor.
 - Only `fabricengine` writes the marker or reads it from git; `lymcwd` reads the working tree alone.
@@ -35,7 +37,7 @@ so it never imports `internal/lymcwd` directly.
 
 ### Bound packages
 
-`internal/pattern`, `buildinfo`, `standalonestate`, `shedengine`, `sheddriver`, `shedarbiter`, `loomshed`, `landingshed`, `mergeresolve`, `shedrecipe`, `shedbuild`, `loomrecipe`, `planparser`, `planglyph`, `configengine`, `shuttleengine`, `shuttleengines`, `reedengine`, `burlerengine`, `websterengine`, `weaverengine`, `verifytree`, `cliwire`, `battenshed`, `battenrecipe`, `orchengine`, `parentlock`, `hubreconcile`, `reportengine`, `creelengine`, `dobbyengine`, `slackengine`.
+`internal/pattern`, `buildinfo`, `standalonestate`, `shedengine`, `sheddriver`, `shedarbiter`, `treadleengine`, `loomshed`, `landingshed`, `mergeresolve`, `shedrecipe`, `shedbuild`, `loomrecipe`, `planparser`, `planglyph`, `configengine`, `shuttleengine`, `shuttleengines`, `reedengine`, `burlerengine`, `websterengine`, `weaverengine`, `verifytree`, `cliwire`, `battenshed`, `battenrecipe`, `orchengine`, `parentlock`, `hubreconcile`, `reportengine`, `creelengine`, `dobbyengine`, `slackengine`.
 
 ### Detached runners
 
@@ -48,7 +50,8 @@ Only a standalone CLI's own wiring calls it.
 No hub-level container is ever junctioned into a worktree.
 The Bolt checkout is reachable from the hub only.
 
-- `_portals` and `_launchers` are names no verb writes; they stay reserved, so no pair can claim one.
+- `_portals` is retired and stays reserved; `lym fabric reconcile` sweeps what a hub still holds.
+- `_launchers` is retired and stays reserved; `lym cleanup` sweeps what a hub still holds.
 - Workspace files are the hub's `<RepoName>.code-workspace` and each beam's `<RepoName>-<beam>.code-workspace`.
   They sit directly in the hub dir and reference hub-inward folders only.
   They are never written into a worktree.

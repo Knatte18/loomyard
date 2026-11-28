@@ -93,9 +93,9 @@ func TestBoot_ReadsNoOperatorConfigAndStartsNonLoginPanes(t *testing.T) {
 			t.Errorf("@operator_marker = %q, want it unset: the server read the operator's ~/.tmux.conf", got)
 		}
 
-		wantShell, err := ResolveShellPath(cfg.Shell)
+		wantShell, err := resolveShellPath(cfg.Shell)
 		if err != nil {
-			t.Fatalf("ResolveShellPath: %v", err)
+			t.Fatalf("resolveShellPath: %v", err)
 		}
 		target := exactSessionWindowTarget(e.SessionName())
 		for _, option := range []string{"default-shell", "default-command"} {

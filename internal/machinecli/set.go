@@ -12,7 +12,7 @@ import (
 	"slices"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -167,7 +167,7 @@ type hubCheck struct {
 // It returns the hub's outcome so far, whether its board is ahead of origin and the board's machine registry.
 // It also returns a refusal when the board does not read or records the new name under another machine.
 func checkHub(d deps, hub, name string, own []string, file string) (hubCheck, error) {
-	boardDir := fabriclayout.BoardDir(hub)
+	boardDir := fabricengine.BoardDir(hub)
 	check := hubCheck{outcome: hubOutcome{Hub: hub}}
 	ahead, err := d.unpushed(boardDir)
 	if err != nil {
@@ -253,7 +253,7 @@ func refusedNames(cur current, checks []hubCheck, id string) []string {
 // the caller refines that to `pushed`.
 func sweepHub(d deps, hub, name string, replace []string) hubOutcome {
 	outcome := hubOutcome{Hub: hub, Outcome: outcomeNothing}
-	written, err := d.setOwners(fabriclayout.BoardDir(hub), boardengine.OwnerRequest{Machine: name, Replace: replace})
+	written, err := d.setOwners(fabricengine.BoardDir(hub), boardengine.OwnerRequest{Machine: name, Replace: replace})
 	if err != nil {
 		outcome.Outcome = outcomeFailed
 		outcome.Error = err.Error()
@@ -277,7 +277,7 @@ func sweepHub(d deps, hub, name string, replace []string) hubOutcome {
 // The sweep's request carries the identity, so it writes the machine's current name.
 // A failed registration is the hub's failure with the re-run as its way forward, and the hub is not swept.
 func registerAndSweep(d deps, hub string, identity machinename.Identity, replace []string) hubOutcome {
-	registered, err := d.register(fabriclayout.BoardDir(hub), boardengine.Registration{Identity: identity})
+	registered, err := d.register(fabricengine.BoardDir(hub), boardengine.Registration{Identity: identity})
 	if err != nil {
 		return hubOutcome{Hub: hub, Outcome: outcomeFailed, Error: fmt.Sprintf("register this machine: %v", err), WayForward: rerun(identity.Name)}
 	}

@@ -82,10 +82,10 @@ func ConfigPerNameMaps() []string {
 // ConfigSpec returns lenses's layered-load spec.
 // Both maps are per-name maps and guard keys: a lens's prose and a fan's lens set are what every review fork is given,
 // so no local override may hold them.
-// lenses.lens_set is a guard key too, since the language layer it picks is the prose every review fork is given.
+// lens_set is a guard key too, since the language layer it picks is the prose every review fork is given.
 // remove is a guard key as well: it lets a hub take a review lens out of every fan.
 // The module is per-worktree, not hub-wide.
-// The language layers are the template overlay lenses.lens_set picks, read from the base layer only.
+// The language layers are the template overlay lens_set picks, read from the base layer only.
 func ConfigSpec() configengine.Spec {
 	return configengine.Spec{
 		Name:        "lenses",

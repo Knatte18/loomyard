@@ -16,7 +16,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 )
 
 var installReplayOnce sync.Once
@@ -38,7 +37,7 @@ func InstallReplay(tb testing.TB) {
 func HubWithBoardConfig(t *testing.T) string {
 	t.Helper()
 	hub := t.TempDir()
-	configFile := configengine.ConfigFile(fabriclayout.BoltDir(hub), "board")
+	configFile := configengine.ConfigFile(fabricengine.BoltDir(hub), "board")
 	if err := os.MkdirAll(filepath.Dir(configFile), 0o755); err != nil {
 		t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(configFile), err)
 	}

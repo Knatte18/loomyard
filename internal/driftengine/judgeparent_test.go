@@ -78,8 +78,6 @@ func TestParentAgreementGate(t *testing.T) {
 		// wantAsks is the number of recorded asks, one when unset.
 		wantAsks  int
 		wantPosts int
-		// wantRound is the latest ask's round, unchecked when unset.
-		wantRound int
 		// wantDeadline is the posted ask's deadline past judgeParentNow, judgeParentWait when unset.
 		wantDeadline time.Duration
 	}{
@@ -147,12 +145,7 @@ func TestParentAgreementGate(t *testing.T) {
 		},
 		{name: "no recorded orch strand records no-parent and passes", unrecorded: true, wantPassed: true, wantState: burlerengine.ParentAskNoParent},
 		{name: "a resolve error records no-parent, posts nothing and passes", resolveErr: errors.New("boom"), wantPassed: true, wantState: burlerengine.ParentAskNoParent, wantReason: "could not be resolved: boom"},
-		{name: "a failed post records undelivered and passes", postErr: errors.New("boom"), wantPassed: true, wantState: "undelivered", wantReason: "the request was not delivered: boom", wantPosts: 1},
-		{
-			name:         "a held ask ended timeout and cleared is no ask, so a new one of the next round goes out",
-			prior:        &burlerengine.ParentAsk{State: burlerengine.ParentAskTimeout, Cleared: true, Deadline: judgeParentNow.Add(-time.Minute)},
-			wantFindings: "lym loom parent-review await my-slug", wantState: burlerengine.ParentAskOpen, wantFirst: burlerengine.ParentAskTimeout, wantAsks: 2, wantPosts: 1, wantRound: 2,
-		},
+		{name: "a failed post records no-parent and passes", postErr: errors.New("boom"), wantPassed: true, wantState: burlerengine.ParentAskNoParent, wantPosts: 1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -213,9 +206,6 @@ func TestParentAgreementGate(t *testing.T) {
 			if tt.wantFirst != "" && record.Asks[0].State != tt.wantFirst {
 				t.Errorf("first ask state = %s; want %s", record.Asks[0].State, tt.wantFirst)
 			}
-			if tt.wantRound != 0 && ask.Round != tt.wantRound {
-				t.Errorf("latest ask round = %d; want %d", ask.Round, tt.wantRound)
-			}
 			if len(posts) != tt.wantPosts {
 				t.Fatalf("posts = %+v; want %d", posts, tt.wantPosts)
 			}
@@ -271,7 +261,7 @@ func recordJudgeAsk(t *testing.T, files burlerengine.ParentReviewFiles, prior bu
 }
 
 // TestDriftVerify_ParentAgreementCarriedWhileAsking pins when the judge's table carries the parent agreement entry.
-// It does under drift.judge_ask_parent, and with the key off once the spawn holds an ask;
+// It does under judge_ask_parent, and with the key off once the spawn holds an ask;
 // it does not with the key off and no ask, nor with no parent seat told.
 // The agreement entry follows the judgement entry in the table.
 func TestDriftVerify_ParentAgreementCarriedWhileAsking(t *testing.T) {
@@ -381,7 +371,7 @@ func (s tableCapturingSeats) Run(table seatengine.Table) (seatengine.Result, err
 // TestDriftVerify_RunAgentCapsTheParentAskByTheRunsStart runs the judge through runAgent, which both diff modes take.
 // The parent ask that the table's agreement entry sends is capped by the run's start.
 // Its deadline is that start plus the judge's timeout less the margin.
-// drift.judge_parent_timeout_min alone would run past it.
+// judge_parent_timeout_min alone would run past it.
 func TestDriftVerify_RunAgentCapsTheParentAskByTheRunsStart(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

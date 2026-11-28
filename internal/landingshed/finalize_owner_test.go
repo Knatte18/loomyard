@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
@@ -24,18 +23,18 @@ import (
 // and a Finalize halted then resumed meets both checks again.
 func TestFinalize_OwnerChecks(t *testing.T) {
 	tiergate.Require(t, 0)
-	ownedElsewhere := func(owner string) *fabriclayout.OriginReport {
-		return &fabriclayout.OriginReport{Entries: []fabriclayout.EntryOutcome{{Slug: "me", State: fabriclayout.EntryOwnedElsewhere, Owner: owner}}}
+	ownedElsewhere := func(owner string) *fabricengine.OriginReport {
+		return &fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: "me", State: fabricengine.EntryOwnedElsewhere, Owner: owner}}}
 	}
-	active := &fabriclayout.OriginReport{Entries: []fabriclayout.EntryOutcome{{Slug: "me", State: fabriclayout.EntryActive}}}
-	unreachable := &fabriclayout.OriginReport{Unreachable: true}
+	active := &fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: "me", State: fabricengine.EntryActive}}}
+	unreachable := &fabricengine.OriginReport{Unreachable: true}
 	here := &ParentOwnership{Here: true}
 	primeElsewhere := &ParentOwnership{Owner: "laptop"}
 	pairElsewhere := &ParentOwnership{Slug: "base", Owner: "laptop"}
 
 	tests := []struct {
 		name      string
-		report    *fabriclayout.OriginReport
+		report    *fabricengine.OriginReport
 		holds     bool
 		holdsErr  error
 		parent    *ParentOwnership
@@ -79,6 +78,10 @@ func TestFinalize_OwnerChecks(t *testing.T) {
 			name: "beam run and parent pair both elsewhere name the parent slug in the run's form", report: ownedElsewhere("desk"), parent: pairElsewhere, subject: "me", wantOutcome: shedengine.Stuck,
 			wantInReason: []string{`machine "desk"`, `machine "laptop"`, `"lym adopt base me"`},
 		},
+		{
+			name: "an unreachable origin halts naming the re-run", report: unreachable, parent: here, wantOutcome: shedengine.Stuck,
+			wantInReason: []string{"origin was unreachable", `"lym loom resume"`, "once origin answers"},
+		},
 		{name: "a parent holding the work lands under an owned-elsewhere report", report: ownedElsewhere("desk"), holds: true, parent: primeElsewhere, wantOutcome: shedengine.Done},
 		{name: "a parent holding the work lands under an unreachable report", report: unreachable, holds: true, parent: here, wantOutcome: shedengine.Done},
 		{
@@ -97,7 +100,7 @@ func TestFinalize_OwnerChecks(t *testing.T) {
 			if tt.subject != "" {
 				deps.AdoptSubject = func() (string, error) { return tt.subject, nil }
 			}
-			deps.Reconcile = func() (fabriclayout.OriginReport, error) { return *tt.report, nil }
+			deps.Reconcile = func() (fabricengine.OriginReport, error) { return *tt.report, nil }
 			deps.ParentHoldsTaskWork = func() (bool, error) { return tt.holds, tt.holdsErr }
 			deps.ParentOwner = func() (ParentOwnership, error) {
 				if tt.parent == nil {
@@ -105,7 +108,7 @@ func TestFinalize_OwnerChecks(t *testing.T) {
 				}
 				return *tt.parent, tt.parentErr
 			}
-			merger := &recordingParentMerger{results: []mergeCallResult{{result: fabriclayout.MergeResult{Committed: true}}}}
+			merger := &recordingParentMerger{results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}}}
 			fz := &Finalize{deps: deps, resolver: &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}, parentOpener: func() (parentMerger, error) { return merger, nil }}
 
 			ptr := shedfake.RequireOutcome(t, fz, tt.wantOutcome)
@@ -138,13 +141,13 @@ func TestFinalize_OwnerChecks(t *testing.T) {
 		merger    *recordingParentMerger
 		handOvers []string
 	}
-	newHandOverRun := func(t *testing.T, report *fabriclayout.OriginReport, configure func(*Deps)) *handOverRun {
+	newHandOverRun := func(t *testing.T, report *fabricengine.OriginReport, configure func(*Deps)) *handOverRun {
 		t.Helper()
-		run := &handOverRun{merger: &recordingParentMerger{results: []mergeCallResult{{result: fabriclayout.MergeResult{Committed: true}}}}}
+		run := &handOverRun{merger: &recordingParentMerger{results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}}}}
 		deps := newTestDeps(t)
 		deps.Slug = "me"
 		deps.AdoptSubject = func() (string, error) { return "beam", nil }
-		deps.Reconcile = func() (fabriclayout.OriginReport, error) { return *report, nil }
+		deps.Reconcile = func() (fabricengine.OriginReport, error) { return *report, nil }
 		deps.ParentOwner = func() (ParentOwnership, error) { return *here, nil }
 		deps.HandOver = func(owner, subject string) error {
 			run.handOvers = append(run.handOvers, owner+"/"+subject)
@@ -179,57 +182,20 @@ func TestFinalize_OwnerChecks(t *testing.T) {
 		}
 	})
 
-	transport := []struct {
-		name      string
-		lostRaces int
-		configure func(*Deps)
-	}{
-		{"an unreachable reconcile under the lock", 0, func(d *Deps) {
-			d.Reconcile = func() (fabriclayout.OriginReport, error) { return *unreachable, nil }
-		}},
-		{"an unreachable reconcile in the lock-free pass", 2, func(d *Deps) {
-			d.Reconcile = func() (fabriclayout.OriginReport, error) { return *unreachable, nil }
-		}},
-		{"a transport failure of the fetched tips read", 0, func(d *Deps) {
-			d.ReadParentTips = func(bool) (fabriclayout.ParentTips, error) { return fabriclayout.ParentTips{}, transportPushErr() }
-		}},
-	}
-	for _, tt := range transport {
-		t.Run(tt.name+" is a transient failure that merges and halts nothing", func(t *testing.T) {
-			deps := newTestDeps(t)
-			deps.Slug = "me"
-			deps.Config.FinalizeLostRaces = tt.lostRaces
-			tt.configure(&deps)
-			merger := &recordingParentMerger{}
-			fz := &Finalize{deps: deps, resolver: &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}, parentOpener: func() (parentMerger, error) { return merger, nil }}
-
-			outcome, _, err := fz.Call(context.Background())
-
-			if outcome != "" || shedengine.TransientOf(err) != shedengine.TransientGitTransport {
-				t.Errorf("Call() = %q, %v; want no verdict and a git-transport transient error", outcome, err)
-			}
-			if len(merger.calls) != 0 {
-				t.Errorf("parent-side merge calls = %d; want 0", len(merger.calls))
-			}
-		})
-	}
-
-	t.Run("an owner read after the merge is handed over before the landing is recorded", func(t *testing.T) {
-		recorded := 0
+	t.Run("an owner read after the merge is handed over before the parent push", func(t *testing.T) {
 		run := newHandOverRun(t, active, func(d *Deps) {
 			d.OwnedElsewhere = func() (string, string, bool, error) { return "desk", "beam", true, nil }
-			d.CommitStatus = func() error { recorded++; return nil }
 		})
 
 		ptr := shedfake.RequireOutcome(t, run.fz, shedengine.Stuck)
 
 		requireHandOver(t, run, ptr)
-		if len(run.merger.calls) != 1 || recorded != 1 {
-			t.Errorf("parent-side merge calls = %d and status commits = %d; want 1 and the one before the merge", len(run.merger.calls), recorded)
+		if len(run.merger.calls) != 1 || len(run.merger.pushCalls) != 0 {
+			t.Errorf("parent-side merge calls = %d and parent pushes = %d; want 1 and 0", len(run.merger.calls), len(run.merger.pushCalls))
 		}
 	})
 
-	t.Run("an unreadable owner returns its error as a transient failure", func(t *testing.T) {
+	t.Run("an unreadable owner returns its error as a transient failure with nothing pushed", func(t *testing.T) {
 		readErr := errors.New("origin unreachable")
 		run := newHandOverRun(t, active, func(d *Deps) {
 			d.OwnedElsewhere = func() (string, string, bool, error) { return "", "", false, readErr }
@@ -243,8 +209,8 @@ func TestFinalize_OwnerChecks(t *testing.T) {
 		if shedengine.TransientOf(err) == "" {
 			t.Errorf("Call() error = %v; want a transient mark, so the driver re-steps it", err)
 		}
-		if len(run.handOvers) != 0 {
-			t.Errorf("hand-overs = %v; want none", run.handOvers)
+		if len(run.handOvers) != 0 || len(run.merger.pushCalls) != 0 {
+			t.Errorf("hand-overs = %v and parent pushes = %d; want none", run.handOvers, len(run.merger.pushCalls))
 		}
 	})
 
@@ -252,10 +218,10 @@ func TestFinalize_OwnerChecks(t *testing.T) {
 		report, parent := *ownedElsewhere("desk"), *pairElsewhere
 		deps := newTestDeps(t)
 		deps.Slug = "me"
-		deps.Reconcile = func() (fabriclayout.OriginReport, error) { return report, nil }
+		deps.Reconcile = func() (fabricengine.OriginReport, error) { return report, nil }
 		deps.ParentHoldsTaskWork = func() (bool, error) { return false, nil }
 		deps.ParentOwner = func() (ParentOwnership, error) { return parent, nil }
-		merger := &recordingParentMerger{results: []mergeCallResult{{result: fabriclayout.MergeResult{Committed: true}}}}
+		merger := &recordingParentMerger{results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}}}
 		fz := &Finalize{deps: deps, resolver: &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}, parentOpener: func() (parentMerger, error) { return merger, nil }}
 
 		shedfake.RequireOutcome(t, fz, shedengine.Stuck)

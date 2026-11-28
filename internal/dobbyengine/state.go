@@ -38,15 +38,8 @@ type State struct {
 	LandingsMachineOnly bool `json:"landings_machine_only,omitempty"`
 	// Tidy is the board-tidy agent in flight, nil when none is.
 	Tidy *TidyState `json:"tidy,omitempty"`
-	// LandedSinceDescribe holds the slugs of the member landings the beam's description is not yet rewritten after.
-	LandedSinceDescribe []string `json:"landed_since_describe,omitempty"`
-	// Describe is the describer agent in flight, nil when none is.
-	Describe *DescribeState `json:"describe,omitempty"`
 	// LandNotices is the memory of the landing notices of the runs seen ahead of their Land row, keyed by slug.
 	LandNotices map[string]LandNoticeState `json:"land_notices,omitempty"`
-	// Watches is the run watch's memory, keyed by slug.
-	// A run keeps its entry after it leaves Runs.
-	Watches map[string]RunWatchState `json:"watches,omitempty"`
 	// Land is the landing step taken in the current episode: a land request asked for or a notice posted.
 	// It is nil when none was taken or the beam can no longer land.
 	// It stays open to a retry when it holds only a posted refusal of Land.
@@ -55,17 +48,6 @@ type State struct {
 	ReadyHold *ReadyHoldState `json:"ready_hold,omitempty"`
 	// CatchUp is the catch-up from origin the dobby waits on, nil while none is owed or the last one succeeded.
 	CatchUp *CatchUpWait `json:"catch_up,omitempty"`
-	// PushPeriod is the owed period of the push summary, nil while nothing is owed.
-	PushPeriod *PushPeriod `json:"push_period,omitempty"`
-}
-
-// PushPeriod is one stretch of time in which a push or a network wait stood owed.
-// A restarted dobby reads it, so a period gets one summary.
-type PushPeriod struct {
-	// Since is when the earliest thing owed in the period became owed.
-	Since time.Time `json:"since"`
-	// Posted reports whether the period's summary was posted, which owes an all-clear.
-	Posted bool `json:"posted,omitempty"`
 }
 
 // ReadyHoldState is the memory of one episode of a beam flagged ready.
@@ -122,19 +104,6 @@ type TidyState struct {
 	StrandGUID string    `json:"strand_guid"`
 	ReportPath string    `json:"report_path"`
 	Deadline   time.Time `json:"deadline"`
-}
-
-// DescribeState is the describer agent in flight.
-// Landings are the member landings its draft covers, which leave the landings to describe once the agent settles.
-// OwedLine is the line for the nearest live orch that the settled agent still owes, empty when none is owed.
-// It is set once the draft is recorded or the deadline has passed.
-// A post that fails is then retried without recording again.
-type DescribeState struct {
-	StrandGUID string    `json:"strand_guid"`
-	DraftPath  string    `json:"draft_path"`
-	Deadline   time.Time `json:"deadline"`
-	Landings   []string  `json:"landings,omitempty"`
-	OwedLine   string    `json:"owed_line,omitempty"`
 }
 
 // ReadState reads the record at path under its lock and reports whether it was found.

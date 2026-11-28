@@ -1,4 +1,4 @@
-// rownotice.go wraps the producers of the rows loom.notify_parent_on names.
+// rownotice.go wraps the producers of the rows loom.yaml's notify_parent_on names.
 // lym mails the run's parent each time the run reaches one of them, so the parent can brief the row's agent.
 
 package loomcli
@@ -10,14 +10,10 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
 )
-
-// notifyParentOnKey is the loom.yaml key naming the rows that mail the run's parent.
-const notifyParentOnKey = "notify_parent_on"
 
 // rowNoticePaths locates the files a row notice reads and writes.
 type rowNoticePaths struct {
@@ -38,8 +34,7 @@ func watchRows(shed *shedengine.Shed, rows []string, recipe string, paths rowNot
 	}
 	for _, row := range rows {
 		if !slices.Contains(names, row) {
-			key := loomengine.FullKeyName(notifyParentOnKey)
-			return fmt.Errorf("config key %q names %q, which is no row of the %s recipe; way forward: set %s in loom.yaml or the task's run_settings to rows of that recipe: %s", key, row, recipe, key, strings.Join(names, ", "))
+			return fmt.Errorf("loom config key %q names %q, which is no row of the %s recipe; way forward: set notify_parent_on in loom.yaml or the task's run_settings to rows of that recipe: %s", "notify_parent_on", row, recipe, strings.Join(names, ", "))
 		}
 	}
 	for i, def := range shed.Producers {
@@ -51,7 +46,7 @@ func watchRows(shed *shedengine.Shed, rows []string, recipe string, paths rowNot
 }
 
 // rowNoticeProducer tells the run's parent that the run reached row, once per visit, then calls the row's own producer.
-// A re-call after an escalation's answer or a resumed halt is a new visit.
+// A re-call after an escalation's answer or a resumed halt is a new visit, since it spawns a fresh agent.
 type rowNoticeProducer struct {
 	row    string
 	inner  shedengine.ShedProducer

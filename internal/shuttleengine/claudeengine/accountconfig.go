@@ -1,4 +1,4 @@
-// accountconfig.go declares claude.yaml's account keys, `claude.accounts` and `claude.account_pins`.
+// accountconfig.go declares claude.yaml's account keys, `accounts` and `account_pins`.
 // It also holds the checks that keep them machine-local and valid.
 
 package claudeengine
@@ -93,7 +93,7 @@ func refuseTrackedAccountKeys(dirs configengine.Dirs) error {
 			if held[key] {
 				return configengine.MarkInvalid(fmt.Errorf(
 					"claude config file %s sets %s, which is machine-local and never tracked; remove the key from that file with `lym config claude --layer %s`, and %s",
-					doc.Path, keyName(key), doc.Layer, accountMachineWayForward))
+					doc.Path, key, doc.Layer, accountMachineWayForward))
 			}
 		}
 	}
@@ -113,32 +113,32 @@ func validateAccounts(claude *Config, home string) error {
 	for i := range claude.Accounts {
 		account := &claude.Accounts[i]
 		if !accountNamePattern.MatchString(account.Name) {
-			return refuse("%s[%d] name %q must match [a-z0-9-]+", keyName(accountsKey), i, account.Name)
+			return refuse("claude.yaml %s[%d] name %q must match [a-z0-9-]+", accountsKey, i, account.Name)
 		}
 		if names[account.Name] {
-			return refuse("%s name %q is listed twice", keyName(accountsKey), account.Name)
+			return refuse("claude.yaml %s name %q is listed twice", accountsKey, account.Name)
 		}
 		names[account.Name] = true
 
 		dir := account.ConfigDir
 		if dir == "~" || strings.HasPrefix(dir, "~/") {
 			if home == "" {
-				return refuse("%s %q config_dir %q starts with ~/ and the home directory is unresolved", keyName(accountsKey), account.Name, account.ConfigDir)
+				return refuse("claude.yaml %s %q config_dir %q starts with ~/ and the home directory is unresolved", accountsKey, account.Name, account.ConfigDir)
 			}
 			dir = filepath.Join(home, strings.TrimPrefix(dir, "~"))
 		}
 		if !filepath.IsAbs(dir) {
-			return refuse("%s %q config_dir %q must be an absolute path or start with ~/", keyName(accountsKey), account.Name, account.ConfigDir)
+			return refuse("claude.yaml %s %q config_dir %q must be an absolute path or start with ~/", accountsKey, account.Name, account.ConfigDir)
 		}
 		account.ConfigDir = filepath.Clean(dir)
 		canonical := canonicalConfigDir(account.ConfigDir)
 		if other, taken := dirs[canonical]; taken {
-			return refuse("%s %q and %q name the same config_dir %q", keyName(accountsKey), other, account.Name, account.ConfigDir)
+			return refuse("claude.yaml %s %q and %q name the same config_dir %q", accountsKey, other, account.Name, account.ConfigDir)
 		}
 		dirs[canonical] = account.Name
 
 		if account.Weight < 0 {
-			return refuse("%s %q weight %d must not be negative", keyName(accountsKey), account.Name, account.Weight)
+			return refuse("claude.yaml %s %q weight %d must not be negative", accountsKey, account.Name, account.Weight)
 		}
 		windowNames := make([]string, 0, len(account.Windows))
 		for window := range account.Windows {
@@ -147,10 +147,10 @@ func validateAccounts(claude *Config, home string) error {
 		sort.Strings(windowNames)
 		for _, window := range windowNames {
 			if !slices.Contains(accountWindows, window) {
-				return refuse("%s %q windows names %q; want one of %s", keyName(accountsKey), account.Name, window, strings.Join(accountWindows, ", "))
+				return refuse("claude.yaml %s %q windows names %q; want one of %s", accountsKey, account.Name, window, strings.Join(accountWindows, ", "))
 			}
 			if threshold := account.Windows[window]; threshold < 1 || threshold > 100 {
-				return refuse("%s %q windows %s threshold %d must be from 1 to 100", keyName(accountsKey), account.Name, window, threshold)
+				return refuse("claude.yaml %s %q windows %s threshold %d must be from 1 to 100", accountsKey, account.Name, window, threshold)
 			}
 		}
 	}
@@ -163,10 +163,10 @@ func validateAccounts(claude *Config, home string) error {
 		}
 		index := slices.IndexFunc(claude.Accounts, func(a AccountConfig) bool { return a.Name == pin.name })
 		if index < 0 {
-			return refuse("%s names %q, which %s does not list", keyName(pin.key), pin.name, keyName(accountsKey))
+			return refuse("claude.yaml %s names %q, which %s does not list", pin.key, pin.name, accountsKey)
 		}
 		if claude.Accounts[index].retired() {
-			return refuse("%s names %q, which is retired with weight 0", keyName(pin.key), pin.name)
+			return refuse("claude.yaml %s names %q, which is retired with weight 0", pin.key, pin.name)
 		}
 	}
 	return nil

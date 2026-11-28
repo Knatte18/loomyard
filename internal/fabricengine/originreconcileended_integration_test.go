@@ -17,7 +17,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
@@ -27,15 +26,15 @@ import (
 // teardownRecorder is a teardown seam that records each request and answers with reply.
 // A nil reply removes the pair without a word.
 type teardownRecorder struct {
-	calls []fabriclayout.EndedTeardown
-	reply func(fabriclayout.EndedTeardown) (fabriclayout.TeardownReport, error)
+	calls []fabricengine.EndedTeardown
+	reply func(fabricengine.EndedTeardown) (fabricengine.TeardownReport, error)
 }
 
 func (r *teardownRecorder) seams() fabricengine.OriginSeams {
-	return fabricengine.OriginSeams{Teardown: func(request fabriclayout.EndedTeardown) (fabriclayout.TeardownReport, error) {
+	return fabricengine.OriginSeams{Teardown: func(request fabricengine.EndedTeardown) (fabricengine.TeardownReport, error) {
 		r.calls = append(r.calls, request)
 		if r.reply == nil {
-			return fabriclayout.TeardownReport{}, nil
+			return fabricengine.TeardownReport{}, nil
 		}
 		return r.reply(request)
 	}}
@@ -50,10 +49,10 @@ func (r *teardownRecorder) slugsCalled() []string {
 }
 
 // tagMutation returns a record holding one created set-aside tag.
-func tagMutation(hub *originHub, tag string) fabriclayout.MutationRecord {
+func tagMutation(hub *originHub, tag string) fabricengine.MutationRecord {
 	rec := fabricengine.NewMutations(hub.Location.HubPath)
-	rec.AppendRef(fabriclayout.KindTagCreated, tag, "")
-	return fabriclayout.MutationRecord{Mutations: rec.Snapshot()}
+	rec.AppendRef(fabricengine.KindTagCreated, tag, "")
+	return fabricengine.MutationRecord{Mutations: rec.Snapshot()}
 }
 
 // publishBoard commits a board holding entries at the board checkout, pushes it and returns the Bolt branch.
@@ -125,11 +124,11 @@ func TestReconcileOrigin_Ended(t *testing.T) {
 
 	t.Run("An entry done on origin with a local pair is handed to the teardown seam once and reported ended as landed", func(t *testing.T) {
 		hub := endedHub(t)
-		recorder := &teardownRecorder{reply: func(fabriclayout.EndedTeardown) (fabriclayout.TeardownReport, error) {
-			return fabriclayout.TeardownReport{MutationRecord: tagMutation(hub, "set-aside/task/abc"), Tags: []string{"set-aside/task/abc"}, Kept: []string{"branch task: unlanded"}}, nil
+		recorder := &teardownRecorder{reply: func(fabricengine.EndedTeardown) (fabricengine.TeardownReport, error) {
+			return fabricengine.TeardownReport{MutationRecord: tagMutation(hub, "set-aside/task/abc"), Tags: []string{"set-aside/task/abc"}, Kept: []string{"branch task: unlanded"}}, nil
 		}}
 
-		report := moveReconcile(t, hub, fabriclayout.ReconcileScope{}, recorder.seams())
+		report := moveReconcile(t, hub, fabricengine.ReconcileScope{}, recorder.seams())
 
 		if got := recorder.slugsCalled(); !slices.Equal(got, []string{"task"}) {
 			t.Fatalf("teardown calls = %v; want one call for task", got)
@@ -137,14 +136,14 @@ func TestReconcileOrigin_Ended(t *testing.T) {
 		if recorder.calls[0].EarlierSnapshot || recorder.calls[0].Force {
 			t.Errorf("teardown request = %+v; want no earlier snapshot and no force", recorder.calls[0])
 		}
-		entry := requireEntry(t, report, "task", fabriclayout.EntryEnded)
+		entry := requireEntry(t, report, "task", fabricengine.EntryEnded)
 		if entry.How != "done" || !entry.Local || !entry.Removed || entry.Busy || entry.Error != "" {
 			t.Errorf("entry = %+v; want ended as done, local and removed", entry)
 		}
 		if !slices.Equal(entry.Tags, []string{"set-aside/task/abc"}) || !slices.Equal(entry.Kept, []string{"branch task: unlanded"}) {
 			t.Errorf("entry Tags = %v, Kept = %v; want the seam report's", entry.Tags, entry.Kept)
 		}
-		if got := kindCount(report, fabriclayout.KindTagCreated); got != 1 {
+		if got := kindCount(report, fabricengine.KindTagCreated); got != 1 {
 			t.Errorf("tag_created entries = %d; want the seam's one in the report's record", got)
 		}
 		for _, branch := range report.Branches {
@@ -165,12 +164,12 @@ func TestReconcileOrigin_Ended(t *testing.T) {
 		recorder := &teardownRecorder{}
 		var calls callLog
 
-		report := moveReconcileWith(t, hub, fabriclayout.ReconcileScope{}, recorder.seams(), fabricengine.ReconcileOptions{CallHook: calls.record})
+		report := moveReconcileWith(t, hub, fabricengine.ReconcileScope{}, recorder.seams(), fabricengine.ReconcileOptions{CallHook: calls.record})
 
 		if len(recorder.calls) != 0 {
 			t.Errorf("teardown calls = %v; want none for a run with no local pair", recorder.slugsCalled())
 		}
-		entry := requireEntry(t, report, "ghost", fabriclayout.EntryEnded)
+		entry := requireEntry(t, report, "ghost", fabricengine.EntryEnded)
 		if entry.Local || entry.Removed || entry.Busy || entry.Error != "" {
 			t.Errorf("entry = %+v; want ended with nothing local, nothing removed and no error", entry)
 		}
@@ -189,7 +188,7 @@ func TestReconcileOrigin_Ended(t *testing.T) {
 		originCommitFile(t, hub.CodeBare, hub.primeBranch, "moved.txt", "moved")
 		recorder := &teardownRecorder{}
 
-		report := moveReconcile(t, hub, fabriclayout.ReconcileScope{}, recorder.seams())
+		report := moveReconcile(t, hub, fabricengine.ReconcileScope{}, recorder.seams())
 
 		if got := recorder.slugsCalled(); !slices.Equal(got, []string{"task"}) {
 			t.Errorf("teardown calls = %v; want one call for task", got)
@@ -204,12 +203,12 @@ func TestReconcileOrigin_Ended(t *testing.T) {
 		writePairStatus(t, hub, "task", "Land", "Finalize")
 		recorder := &teardownRecorder{}
 
-		report := moveReconcile(t, hub, fabriclayout.ReconcileScope{}, recorder.seams())
+		report := moveReconcile(t, hub, fabricengine.ReconcileScope{}, recorder.seams())
 
 		if len(recorder.calls) != 0 {
 			t.Errorf("teardown calls = %v; want none for a landing on this machine", recorder.slugsCalled())
 		}
-		requireEntry(t, report, "task", fabriclayout.EntryActive)
+		requireEntry(t, report, "task", fabricengine.EntryActive)
 	})
 
 	t.Run("A raddle run standing at Raddle-File is not ended by the entry its own row ended", func(t *testing.T) {
@@ -217,12 +216,12 @@ func TestReconcileOrigin_Ended(t *testing.T) {
 		writePairStatus(t, hub, "task", "Raddle-File", "Raddle-Write")
 		recorder := &teardownRecorder{}
 
-		report := moveReconcile(t, hub, fabriclayout.ReconcileScope{}, recorder.seams())
+		report := moveReconcile(t, hub, fabricengine.ReconcileScope{}, recorder.seams())
 
 		if len(recorder.calls) != 0 {
 			t.Errorf("teardown calls = %v; want none for a run batten still carries to its teardown", recorder.slugsCalled())
 		}
-		requireEntry(t, report, "task", fabriclayout.EntryActive)
+		requireEntry(t, report, "task", fabricengine.EntryActive)
 	})
 
 	t.Run("A raddle run a return sent back to Raddle-Write is ended", func(t *testing.T) {
@@ -230,7 +229,7 @@ func TestReconcileOrigin_Ended(t *testing.T) {
 		writePairStatus(t, hub, "task", "Raddle-Write", "Raddle-File")
 		recorder := &teardownRecorder{}
 
-		moveReconcile(t, hub, fabriclayout.ReconcileScope{}, recorder.seams())
+		moveReconcile(t, hub, fabricengine.ReconcileScope{}, recorder.seams())
 
 		if got := recorder.slugsCalled(); !slices.Equal(got, []string{"task"}) {
 			t.Errorf("teardown calls = %v; want one call for task", got)
@@ -246,12 +245,12 @@ func TestReconcileOrigin_Ended(t *testing.T) {
 		originBoard(t, hub, branch, boardEntry("keep"))
 		recorder := &teardownRecorder{}
 
-		report := moveReconcile(t, hub, fabriclayout.ReconcileScope{}, recorder.seams())
+		report := moveReconcile(t, hub, fabricengine.ReconcileScope{}, recorder.seams())
 
 		if len(recorder.calls) != 0 {
 			t.Errorf("teardown calls = %v; want none for a run batten still carries to its teardown", recorder.slugsCalled())
 		}
-		requireEntry(t, report, "task", fabriclayout.EntryActive)
+		requireEntry(t, report, "task", fabricengine.EntryActive)
 	})
 
 	t.Run("A raddle run standing at Raddle-File whose entry origin removed is ended as removed", func(t *testing.T) {
@@ -262,9 +261,9 @@ func TestReconcileOrigin_Ended(t *testing.T) {
 		originBoard(t, hub, branch, boardEntry("keep"))
 		recorder := &teardownRecorder{}
 
-		report := moveReconcile(t, hub, fabriclayout.ReconcileScope{}, recorder.seams())
+		report := moveReconcile(t, hub, fabricengine.ReconcileScope{}, recorder.seams())
 
-		entry := requireEntry(t, report, "task", fabriclayout.EntryEnded)
+		entry := requireEntry(t, report, "task", fabricengine.EntryEnded)
 		if entry.How != "removed" || !entry.Removed {
 			t.Errorf("entry = %+v; want ended as removed and torn down", entry)
 		}
@@ -280,9 +279,9 @@ func TestReconcileOrigin_Ended(t *testing.T) {
 		originBoard(t, hub, branch, boardEntry("keep"))
 		recorder := &teardownRecorder{}
 
-		report := moveReconcile(t, hub, fabriclayout.ReconcileScope{}, recorder.seams())
+		report := moveReconcile(t, hub, fabricengine.ReconcileScope{}, recorder.seams())
 
-		entry := requireEntry(t, report, "task", fabriclayout.EntryEnded)
+		entry := requireEntry(t, report, "task", fabricengine.EntryEnded)
 		if entry.How != "removed" || !entry.Removed {
 			t.Errorf("entry = %+v; want ended as removed and torn down", entry)
 		}
@@ -296,18 +295,18 @@ func TestReconcileOrigin_Ended(t *testing.T) {
 			name, busyOn string
 			want         []string
 		}{
-			{"driver", fabriclayout.BusyOnDriver, []string{"driver to end", "lym cleanup --apply"}},
-			{"lock", fabriclayout.BusyOnLock, []string{"lock", "lym cleanup --apply"}},
+			{"driver", fabricengine.BusyOnDriver, []string{"driver to end", "lym cleanup --apply"}},
+			{"lock", fabricengine.BusyOnLock, []string{"lock", "lym cleanup --apply"}},
 		} {
 			t.Run(row.name, func(t *testing.T) {
 				hub := endedHub(t)
-				recorder := &teardownRecorder{reply: func(fabriclayout.EndedTeardown) (fabriclayout.TeardownReport, error) {
-					return fabriclayout.TeardownReport{Busy: true, BusyOn: row.busyOn}, nil
+				recorder := &teardownRecorder{reply: func(fabricengine.EndedTeardown) (fabricengine.TeardownReport, error) {
+					return fabricengine.TeardownReport{Busy: true, BusyOn: row.busyOn}, nil
 				}}
 
-				report := moveReconcile(t, hub, fabriclayout.ReconcileScope{}, recorder.seams())
+				report := moveReconcile(t, hub, fabricengine.ReconcileScope{}, recorder.seams())
 
-				entry := requireEntry(t, report, "task", fabriclayout.EntryEnded)
+				entry := requireEntry(t, report, "task", fabricengine.EntryEnded)
 				if !entry.Busy || entry.Removed {
 					t.Errorf("entry = %+v; want ended, busy and not removed", entry)
 				}
@@ -324,23 +323,23 @@ func TestReconcileOrigin_Ended(t *testing.T) {
 		hub := newOriginHub(t)
 		branch := arrangeEnded(t, hub, "task", "two")
 		originBoard(t, hub, branch, boardEntry("task", withBoardStatus("done")), boardEntry("two", withBoardStatus("done")))
-		recorder := &teardownRecorder{reply: func(request fabriclayout.EndedTeardown) (fabriclayout.TeardownReport, error) {
+		recorder := &teardownRecorder{reply: func(request fabricengine.EndedTeardown) (fabricengine.TeardownReport, error) {
 			if request.Slug == "task" {
-				return fabriclayout.TeardownReport{}, errors.New("boom")
+				return fabricengine.TeardownReport{}, errors.New("boom")
 			}
-			return fabriclayout.TeardownReport{}, nil
+			return fabricengine.TeardownReport{}, nil
 		}}
 
-		report := moveReconcile(t, hub, fabriclayout.ReconcileScope{}, recorder.seams())
+		report := moveReconcile(t, hub, fabricengine.ReconcileScope{}, recorder.seams())
 
 		if got := recorder.slugsCalled(); !slices.Equal(got, []string{"task", "two"}) {
 			t.Fatalf("teardown calls = %v; want both entries handed to the seam", got)
 		}
-		failed := requireEntry(t, report, "task", fabriclayout.EntryEnded)
+		failed := requireEntry(t, report, "task", fabricengine.EntryEnded)
 		if failed.Error != "boom" || failed.Removed || failed.Busy {
 			t.Errorf("entry task = %+v; want ended with the error, not removed and not busy", failed)
 		}
-		if two := requireEntry(t, report, "two", fabriclayout.EntryEnded); !two.Removed {
+		if two := requireEntry(t, report, "two", fabricengine.EntryEnded); !two.Removed {
 			t.Errorf("entry two = %+v; want it removed", two)
 		}
 		if summary := report.Summary(); !strings.Contains(summary, "boom") || !strings.Contains(summary, "`lym cleanup --apply` retries the removal") {
@@ -359,12 +358,12 @@ func TestReconcileOrigin_Ended(t *testing.T) {
 		originBoard(t, hub, branch, boardEntry("keep", withBoardTitle("origin")))
 		recorder := &teardownRecorder{}
 
-		report := moveReconcile(t, hub, fabriclayout.ReconcileScope{}, recorder.seams())
+		report := moveReconcile(t, hub, fabricengine.ReconcileScope{}, recorder.seams())
 
 		if len(recorder.calls) != 0 {
 			t.Errorf("teardown calls = %v; want none", recorder.slugsCalled())
 		}
-		if entry := entryOf(t, report, "mine"); entry.State == fabriclayout.EntryEnded {
+		if entry := entryOf(t, report, "mine"); entry.State == fabricengine.EntryEnded {
 			t.Errorf("entry mine = %+v; want it not ended", entry)
 		}
 	})
@@ -376,7 +375,7 @@ func TestReconcileOrigin_Ended(t *testing.T) {
 		originBoard(t, hub, branch, boardEntry("keep", withBoardTitle("origin")))
 		recorder := &teardownRecorder{}
 
-		report := moveReconcile(t, hub, fabriclayout.ReconcileScope{}, recorder.seams())
+		report := moveReconcile(t, hub, fabricengine.ReconcileScope{}, recorder.seams())
 
 		if len(recorder.calls) != 0 {
 			t.Errorf("teardown calls = %v; want none", recorder.slugsCalled())
@@ -404,13 +403,13 @@ func TestReconcileOrigin_Ended(t *testing.T) {
 				}
 				recorder := &teardownRecorder{}
 
-				report := moveReconcile(t, hub, fabriclayout.ReconcileScope{Run: "task"}, recorder.seams())
+				report := moveReconcile(t, hub, fabricengine.ReconcileScope{Run: "task"}, recorder.seams())
 
 				if len(recorder.calls) != 0 {
 					t.Errorf("teardown calls = %v; want none, since the run's driver is the caller", recorder.slugsCalled())
 				}
 				state := entryOf(t, report, "task").State
-				if (state == fabriclayout.EntryEnded) != row.wantEnded {
+				if (state == fabricengine.EntryEnded) != row.wantEnded {
 					t.Errorf("entry task state = %q; want ended = %v", state, row.wantEnded)
 				}
 			})
@@ -421,12 +420,12 @@ func TestReconcileOrigin_Ended(t *testing.T) {
 		hub := endedHub(t)
 		recorder := &teardownRecorder{}
 
-		report := moveReconcile(t, hub, fabriclayout.ReconcileScope{JudgeOnly: true}, recorder.seams())
+		report := moveReconcile(t, hub, fabricengine.ReconcileScope{JudgeOnly: true}, recorder.seams())
 
 		if len(recorder.calls) != 0 {
 			t.Errorf("teardown calls = %v; want none", recorder.slugsCalled())
 		}
-		entry := requireEntry(t, report, "task", fabriclayout.EntryEnded)
+		entry := requireEntry(t, report, "task", fabricengine.EntryEnded)
 		if !entry.Local || entry.Removed {
 			t.Errorf("entry = %+v; want ended with a local pair and nothing removed", entry)
 		}
@@ -444,7 +443,7 @@ func TestReconcileOrigin_Ended(t *testing.T) {
 		gitkit.Git(t, weftRoot, "tag", "-a", "-m", "snapshot", "set-aside/task/abc123")
 		recorder := &teardownRecorder{}
 
-		moveReconcile(t, hub, fabriclayout.ReconcileScope{}, recorder.seams())
+		moveReconcile(t, hub, fabricengine.ReconcileScope{}, recorder.seams())
 
 		if len(recorder.calls) != 1 || !recorder.calls[0].EarlierSnapshot {
 			t.Errorf("teardown calls = %+v; want one request with EarlierSnapshot set", recorder.calls)
@@ -456,7 +455,7 @@ func TestReconcileOrigin_Ended(t *testing.T) {
 		hubPath := hub.Location.HubPath
 		seen := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 		for _, branch := range []string{"vanished", hub.primeBranch} {
-			failure := fabriclayout.FailedPush{Repo: "code", RepoPath: hub.PrimeWorktree(), Branch: branch, Class: fabriclayout.PushFailureTransport}
+			failure := fabricengine.FailedPush{Repo: "code", RepoPath: hub.PrimeWorktree(), Branch: branch, Class: fabricengine.PushFailureTransport}
 			if err := fabricengine.RecordPushFailure(hubPath, failure, seen); err != nil {
 				t.Fatalf("RecordPushFailure(%s): %v", branch, err)
 			}
@@ -476,12 +475,12 @@ func TestReconcileOrigin_Ended(t *testing.T) {
 		want := []string{hub.primeBranch, "vanished"}
 		slices.Sort(want)
 
-		moveReconcile(t, hub, fabriclayout.ReconcileScope{JudgeOnly: true}, fabricengine.OriginSeams{})
+		moveReconcile(t, hub, fabricengine.ReconcileScope{JudgeOnly: true}, fabricengine.OriginSeams{})
 		if got := branches(); !slices.Equal(got, want) {
 			t.Errorf("failed-push branches after a judge-only reconcile = %v; want %v, none cleared", got, want)
 		}
 
-		moveReconcile(t, hub, fabriclayout.ReconcileScope{}, fabricengine.OriginSeams{})
+		moveReconcile(t, hub, fabricengine.ReconcileScope{}, fabricengine.OriginSeams{})
 		if got := branches(); !slices.Equal(got, []string{hub.primeBranch}) {
 			t.Errorf("failed-push branches after a moving reconcile = %v; want only %s", got, hub.primeBranch)
 		}

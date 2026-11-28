@@ -13,7 +13,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -70,7 +69,7 @@ func HubSeamOptions(prime *lymcwd.Location) SeamOptions {
 			if err != nil {
 				return false, fmt.Errorf("read the prime's branch: %w", err)
 			}
-			store := &parentlock.Store{Dir: parentlock.Dir(fabriclayout.BoltDir(prime.HubPath))}
+			store := &parentlock.Store{Dir: parentlock.Dir(fabricengine.BoltDir(prime.HubPath))}
 			entries, err := store.List()
 			if err != nil {
 				return false, err
@@ -152,23 +151,23 @@ func (t *Teardown) OriginSeams(opts SeamOptions) fabricengine.OriginSeams {
 			return !state.quiet, nil
 		},
 		PrimeParentLockFree: opts.PrimeParentLockFree,
-		Teardown: func(request fabriclayout.EndedTeardown) (fabriclayout.TeardownReport, error) {
+		Teardown: func(request fabricengine.EndedTeardown) (fabricengine.TeardownReport, error) {
 			return t.teardownEnded(opts, request)
 		},
 	}
 }
 
 // teardownEnded runs the local removal of one ended entry's pair.
-func (t *Teardown) teardownEnded(opts SeamOptions, ended fabriclayout.EndedTeardown) (fabriclayout.TeardownReport, error) {
+func (t *Teardown) teardownEnded(opts SeamOptions, ended fabricengine.EndedTeardown) (fabricengine.TeardownReport, error) {
 	wakeHeld := false
 	if opts.WakeHeld != nil {
 		var err error
 		if wakeHeld, err = opts.WakeHeld(ended.Slug); err != nil {
-			return fabriclayout.TeardownReport{}, err
+			return fabricengine.TeardownReport{}, err
 		}
 	}
 
-	request := Request{Slug: ended.Slug, Local: true, RefuseWhenBusy: true, Verdict: fabriclayout.EntryEnded}
+	request := Request{Slug: ended.Slug, Local: true, RefuseWhenBusy: true, Verdict: fabricengine.EntryEnded}
 	if wakeHeld || ended.EarlierSnapshot {
 		request.RefuseWhenBusy = false
 		request.Force = true
@@ -182,7 +181,7 @@ func (t *Teardown) teardownEnded(opts SeamOptions, ended fabriclayout.EndedTeard
 	if len(result.Session.Survivors) > 0 {
 		logger.Warn("pairteardown: a forced teardown went on past surviving processes", "slug", ended.Slug, "survivors", survivorNames(result.Session.Survivors))
 	}
-	report := fabriclayout.TeardownReport{MutationRecord: result.Removal.MutationRecord}
+	report := fabricengine.TeardownReport{MutationRecord: result.Removal.MutationRecord}
 	if result.Removal.SnapshotTag != "" {
 		report.Tags = append(report.Tags, result.Removal.SnapshotTag)
 	}
@@ -195,10 +194,10 @@ func (t *Teardown) teardownEnded(opts SeamOptions, ended fabriclayout.EndedTeard
 
 	switch {
 	case errors.Is(err, ErrDriverBusy):
-		report.Busy, report.BusyOn = true, fabriclayout.BusyOnDriver
+		report.Busy, report.BusyOn = true, fabricengine.BusyOnDriver
 		return report, nil
 	case errors.Is(err, fabricengine.ErrPairBusy):
-		report.Busy, report.BusyOn = true, fabriclayout.BusyOnLock
+		report.Busy, report.BusyOn = true, fabricengine.BusyOnLock
 		return report, nil
 	}
 	return report, err

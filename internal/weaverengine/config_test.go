@@ -30,16 +30,15 @@ func seedConfig(t *testing.T, baseDir, module, content string) {
 }
 
 // TestLoadConfig pins how LoadConfig resolves weaver.yaml:
-// the template loads its defaults, and each invalid key refuses naming itself, marked configengine.ErrInvalid.
+// the template loads its three defaults, and each invalid key refuses naming itself, marked configengine.ErrInvalid.
 func TestLoadConfig(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
 	templateDefaults := weaverengine.Config{
-		Ladder:            []string{"sonnet[medium]", "opus[medium]", "opus[high]"},
-		AttemptTimeoutMin: 90,
-		FixerTimeoutMin:   60,
-		VerifyGate:        "webster",
+		Ladder:          []string{"sonnet[medium]", "opus[medium]", "opus[high]"},
+		FixerTimeoutMin: 60,
+		VerifyGate:      "webster",
 	}
 	tests := []struct {
 		name       string
@@ -51,10 +50,9 @@ func TestLoadConfig(t *testing.T) {
 		{
 			name: "an absent key loads the template default",
 			body: "fixer_timeout_min: 30\n",
-			want: weaverengine.Config{Ladder: templateDefaults.Ladder, AttemptTimeoutMin: 90, FixerTimeoutMin: 30, VerifyGate: "webster"},
+			want: weaverengine.Config{Ladder: templateDefaults.Ladder, FixerTimeoutMin: 30, VerifyGate: "webster"},
 		},
 		{name: "an unparseable ladder spec names the key", body: "ladder:\n  - \"opus \"\n", wantErrKey: "ladder"},
-		{name: "a zero attempt_timeout_min names the key", body: "attempt_timeout_min: 0\n", wantErrKey: "attempt_timeout_min"},
 		{name: "a zero fixer_timeout_min names the key", body: "fixer_timeout_min: 0\n", wantErrKey: "fixer_timeout_min"},
 		{name: "an empty verify_gate names the key", body: "verify_gate: \"\"\n", wantErrKey: "verify_gate"},
 	}

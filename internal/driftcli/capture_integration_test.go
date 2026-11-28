@@ -18,7 +18,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/driftengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/runproc"
@@ -229,7 +229,7 @@ func TestCapture_OutlivesCaller(t *testing.T) {
 			return err == nil
 		})
 
-		if _, err := runproc.End(fabriclayout.RunProcDir(h.Path), loc.WorktreeName, os.Getpid()); err != nil {
+		if _, err := runproc.End(fabricengine.RunProcDir(h.Path), loc.WorktreeName, os.Getpid()); err != nil {
 			t.Fatalf("runproc.End() = %v", err)
 		}
 		waitFor(t, "the capture lock to be free", func() bool {

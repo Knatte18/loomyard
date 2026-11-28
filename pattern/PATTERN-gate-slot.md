@@ -12,6 +12,10 @@ so the hub never runs more at once than its configured count.
 - A gate build or test runs only holding `internal/gateslot` slots, in one of the places below.
 - Inside a `lym gate test` tier run, holding the slots its tier asks for;
   the tier's config sets its parallelism and environment.
+- Inside the map run of `lym gate test --map`, holding the larger of tier0's and tier1's slot asks,
+  where a tier asking for every slot ranks above any count.
+- Inside the refresh of a task worktree's own anchor maps by the `reach` report step,
+  which runs the map run's measurement in the map run's slot ask.
 - In one of the non-tier holders `internal/gateslot`'s doc lists, holding one slot;
   the holder sets its own `-trimpath` Go flag, plus `-p` from `tier0`'s parallel when the hub declares `tier0`.
 - Every Go gate build keeps `-trimpath`,
@@ -58,7 +62,7 @@ A mechanical gate's **closure** and its CLI self-check verb call the same packag
   Webster-Burler-Fix's `verify` gate (`loomshed.NewVerifyGate`) goes through `verifytree.Verify`:
   it runs the comment lint and the derived round command.
 - A gate key's `comments` lint step in `lym gate test` and `lym loom lint-comments`: `commentlint.Lint`.
-  The Webster-Burler-Fix round gate (`loomshed.NewVerifyGate`) runs the same rules over the committed range through `commentlint.LintCommitRange`.
+  The Webster-Burler-Fix round gate (`loomshed.NewVerifyGate`) joins this pair when it runs the lint.
 - A gate key's `pattern` lint step in `lym gate test` and `lym loom lint-pattern`:
   `patternlint.Lint` over `pattern.Headroom`.
   The Webster-Burler-Fix round gate (`loomshed.NewVerifyGate`) is the pair's third caller when it is told a merge base.
@@ -83,16 +87,13 @@ the `round` gate's at the Webster-Burler-Fix round gate;
 the `landing` gate's at Parent-Align, Finalize, Code-Burler-Fix and Darn-Write.
 
 - `Verify` takes no gate slot and applies no timeout:
-  its command is `lym gate test --wait` calls, or the `lym gate red-first` call, which take their own slots and bound themselves.
+  its command is `lym gate test --wait` calls, which take their own slots and bound themselves.
 - No site verifies a dirty tree: `Verify` refuses one with its paths before running anything.
 - Records are per command, each entry with its tree and its commit;
   a skip requires an entry of the same command naming HEAD's tree.
 - The record is written only by `Verify`, and only after a pass; no prompt names its path.
 - The sites are the webster gate, the Webster-Burler-Fix gate and `lym webster verify`.
-  They also include the Code-Burler-Fix, Darn-Write, Harden-Burler-Fix and Drift-Verify gates, Parent-Align and Finalize.
-- The Darn-Write red-first gate is a site too:
-  it runs the `lym gate red-first` call that `gateslot.RedFirstCall` renders for the `darn-write` key through `verifytree.Verify` under the verify hold.
-  That call takes its slots through the in-process tier run, as a `lym gate test --wait` call does.
+  They also include the Code-Burler-Fix, Darn-Write and Drift-Verify gates, Parent-Align and Finalize.
 - Weaver's plan-level verify, `runVerify`, is a site too: it runs the hub's `webster` call through `verifytree.Verify` under the geometry's pause hold.
 - Weaver's batch strand gates are sites too:
   the `card` and `batch` entries of `batchGateSpec` each run their call through `verifytree.Verify` under the geometry's pause hold.
@@ -100,12 +101,12 @@ the `landing` gate's at Parent-Align, Finalize, Code-Burler-Fix and Darn-Write.
   the fixer fork and the cold fixer `lym webster fix-verify` spawns.
   They share one prompt body.
   Each runs the hub's `round` call, rendered into the prompt's `fix_gate` marker, before it reports.
-- Code-Burler-Fix, Darn-Write and Harden-Burler-Fix each run their own gate key's call through `Verify`:
-  the `code-burler-fix`, `darn-write` and `harden-burler-fix` keys.
+- Code-Burler-Fix and Darn-Write each run their own gate key's call through `Verify`:
+  the `code-burler-fix` and `darn-write` keys.
   They share no pass with Webster's end gate.
   Each lints from its own latest recorded pass or the merge base.
   Darn-Write, and Code-Burler-Fix in a darn run, lint from the merge base on every attempt.
-  For a diff wholly under `darn.tree_scope` they run their own key's call over the touched trees' targets;
+  For a diff wholly under `darn.yaml`'s `tree_scope` they run their own key's call over the touched trees' targets;
   otherwise they run their own key's call alone.
   Darn-Write's call carries `--stop-on-fail`, so it ends at its first failed tier.
   After a run whose failure report names failed tests alone, the next arrival first runs those tests alone through `Verify`.
@@ -135,7 +136,7 @@ the `landing` gate's at Parent-Align, Finalize, Code-Burler-Fix and Darn-Write.
   `cardverify` and battencli's `verifyrun` rows tell none, being no verify site.
 - `internal/cardverify/runner.go` reruns a card's own `**Verify:**` command through `verifyrun` directly.
   It is no plan-verify site.
-- `internal/battencli/land.go` runs the `landing.deploy` command through `verifyrun` directly.
+- `internal/battencli/land.go` runs the landing config's `deploy` command through `verifyrun` directly.
   It is no plan-verify site: it verifies no tree.
 
 #### Enforcement

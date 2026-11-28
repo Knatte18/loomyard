@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -88,7 +87,7 @@ func TestTakeOverRun(t *testing.T) {
 
 	t.Run("WritesTheEntryOnBothRecordsBranchesAndLands", func(t *testing.T) {
 		f := newTakeoverFixture(t)
-		writeHandOverMark(t, f.hub.Location.HubPath, takeoverRunSlug, fabriclayout.HandOverMark{Machine: "paris", At: "2026-11-16T10:00:00Z", Written: time.Now()})
+		writeHandOverMark(t, f.hub.Location.HubPath, takeoverRunSlug, fabricengine.HandOverMark{Machine: "paris", At: "2026-11-16T10:00:00Z", Written: time.Now()})
 
 		res, err := fabricengine.TakeOverRun(f.hub.Location, f.request())
 		if err != nil {
@@ -112,12 +111,12 @@ func TestTakeOverRun(t *testing.T) {
 	t.Run("APauseHoldsTheTakeoverWithoutAnyTeardownOrPushLockAndTheEntryStillLands", func(t *testing.T) {
 		f := newTakeoverFixture(t)
 		lockPaths := []string{
-			fabriclayout.TeardownLockPath(f.hub.Location.HubPath, takeoverRunSlug),
+			fabricengine.TeardownLockPath(f.hub.Location.HubPath, takeoverRunSlug),
 			// The takeover's parent is the prime, whose teardown lock is named root.
-			fabriclayout.TeardownLockPath(f.hub.Location.HubPath, "root"),
+			fabricengine.TeardownLockPath(f.hub.Location.HubPath, "root"),
 		}
 		for _, weft := range []string{f.weftPath, f.primeWeft} {
-			lockPaths = append(lockPaths, filepath.Join(fabriclayout.RecordsLockDirPath(weft), fabricengine.WeftPushLockFileForTest))
+			lockPaths = append(lockPaths, filepath.Join(fabricengine.RecordsLockDirPath(weft), fabricengine.WeftPushLockFileForTest))
 		}
 		waits := fabricengine.PassingPauseGateForTest(t, func() {
 			for _, path := range lockPaths {
@@ -201,8 +200,8 @@ func TestTakeOverRun(t *testing.T) {
 		}
 
 		for _, tip := range []struct{ tag, bare string }{
-			{fabriclayout.OwnerArchiveTagName(takeoverRunSlug, codeTip), f.hub.CodeBare},
-			{fabriclayout.OwnerArchiveTagName(takeoverRunSlug, recordsTip), f.hub.RecordsBare},
+			{fabricengine.OwnerArchiveTagName(takeoverRunSlug, codeTip), f.hub.CodeBare},
+			{fabricengine.OwnerArchiveTagName(takeoverRunSlug, recordsTip), f.hub.RecordsBare},
 		} {
 			if !strings.Contains(strings.Join(res.Tags, " "), tip.tag) || gitkit.Git(t, tip.bare, "tag", "--list", tip.tag) == "" {
 				t.Errorf("tag %s: Tags %v, on origin %q; want it returned and pushed", tip.tag, res.Tags, gitkit.Git(t, tip.bare, "tag", "--list", tip.tag))
@@ -263,7 +262,7 @@ func TestTakeOverRun(t *testing.T) {
 			t.Fatalf("TakeOverRun() error = %v; want nil", err)
 		}
 
-		tag := fabriclayout.OwnerArchiveTagName("root", otherRun)
+		tag := fabricengine.OwnerArchiveTagName("root", otherRun)
 		if !strings.Contains(strings.Join(res.Tags, " "), tag) || gitkit.Git(t, f.hub.RecordsBare, "tag", "--list", tag) == "" {
 			t.Errorf("tag %s: Tags %v; want the other run's commit archived and pushed", tag, res.Tags)
 		}
@@ -294,7 +293,7 @@ func TestTakeOverRun(t *testing.T) {
 	t.Run("APairOrParentTeardownLockHeldElsewhereRefusesBeforeAnyEntryIsWritten", func(t *testing.T) {
 		for _, held := range []string{takeoverRunSlug, "root"} {
 			f := newTakeoverFixture(t)
-			holdLock(t, fabriclayout.TeardownLockPath(f.hub.Location.HubPath, held))
+			holdLock(t, fabricengine.TeardownLockPath(f.hub.Location.HubPath, held))
 			pairTip := bareBranchTip(t, f.hub.RecordsBare, f.weftBranch)
 			primeTip := bareBranchTip(t, f.hub.RecordsBare, f.primeBranch)
 			localTips := []string{gitkit.RevParse(t, f.weftPath, "HEAD"), gitkit.RevParse(t, f.primeWeft, "HEAD")}
@@ -331,6 +330,32 @@ func TestTakeOverRun(t *testing.T) {
 			if tip[0] != tip[1] {
 				t.Errorf("%s HEAD = %s; want origin's tip %s", name, tip[0], tip[1])
 			}
+		}
+	})
+}
+
+// TestDropHandOverMark covers the hand-over mark's drop: an earlier mark goes, and none is no error.
+func TestDropHandOverMark(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	t.Run("AHandOverMarkOfTheSlugIsDropped", func(t *testing.T) {
+		t.Parallel()
+		hub := newOriginHub(t).Location.HubPath
+		writeHandOverMark(t, hub, takeoverRunSlug, fabricengine.HandOverMark{Machine: "paris", At: "2026-11-16T10:00:00Z", Written: time.Now()})
+
+		if err := fabricengine.DropHandOverMark(hub, takeoverRunSlug); err != nil {
+			t.Fatalf("DropHandOverMark() error = %v; want nil", err)
+		}
+		if _, found, err := fabricengine.ReadHandOverMark(hub, takeoverRunSlug); err != nil || found {
+			t.Errorf("ReadHandOverMark() = found %v, %v; want the mark gone", found, err)
+		}
+	})
+
+	t.Run("NoHandOverMarkIsNoError", func(t *testing.T) {
+		t.Parallel()
+		if err := fabricengine.DropHandOverMark(t.TempDir(), takeoverRunSlug); err != nil {
+			t.Errorf("DropHandOverMark() error = %v; want nil", err)
 		}
 	})
 }

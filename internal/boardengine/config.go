@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"gopkg.in/yaml.v3"
 )
 
@@ -86,23 +86,17 @@ type Outputs struct {
 	DesignPrefix string
 	// DefaultRecipe is the recipe a task with no recipe field runs.
 	DefaultRecipe string
-	// Types is the configured type-label order, which the renderer sorts note sections by.
+	// Types is the configured type-label order, which the renderer sorts Notes sections by.
 	Types []string
-	// Labels is the configured area-label order, which the view projection lists as the board's areas.
-	Labels []string
-	// BeamModes reads the beam modes a render writes to disk; nil writes no mode line.
-	BeamModes BeamModeReader
 }
 
-// Outputs returns the values a board's rendering reads from c, with the beam mode reader this process installed.
+// Outputs returns the values a board's rendering reads from c.
 func (c Config) Outputs() Outputs {
 	return Outputs{
 		Readme:        c.Readme,
 		DesignPrefix:  c.DesignPrefix,
 		DefaultRecipe: c.DefaultRecipe,
 		Types:         labelNames(c.Types),
-		Labels:        labelNames(c.Labels),
-		BeamModes:     installedReader(),
 	}
 }
 
@@ -208,13 +202,12 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	return cfg, nil
 }
 
-// checkDesignPrefix refuses a board.design_prefix that would render a design file onto a decision record's name.
+// checkDesignPrefix refuses a design_prefix that would render a design file onto a decision record's name.
 // A decision record is named decision-<slug>.md, so a prefix of "decision-" is refused, the empty one included.
 // A prefix that starts with "decision-" is refused too.
 func checkDesignPrefix(prefix string) error {
 	if strings.HasPrefix(decisionFilePrefix, prefix) || strings.HasPrefix(prefix, decisionFilePrefix) {
-		name := configengine.KeyName("board", "design_prefix")
-		return fmt.Errorf("%s %q would name a design file %s<slug>%s, the name of an entry's decision record: set %s in board.yaml to another value, such as \"design-\", with \"lym config board --set design_prefix=design-\"", name, prefix, decisionFilePrefix, decisionFileSuffix, name)
+		return fmt.Errorf("board.yaml: design_prefix %q would name a design file %s<slug>%s, the name of an entry's decision record: set design_prefix in board.yaml to another value, such as \"design-\", with \"lym config board --set design_prefix=design-\"", prefix, decisionFilePrefix, decisionFileSuffix)
 	}
 	return nil
 }
@@ -258,8 +251,8 @@ func decodeLabels(key string, node *yaml.Node) ([]Label, error) {
 // No worktree link is followed, and `ApplySkipEnv` is applied so render and sync behave as they do for `lym board`.
 // It is told only a hub path, so it loads with no anchor and therefore no local layer.
 func OpenHub(hubPath string) (*Board, error) {
-	boltDir := fabriclayout.BoltDir(hubPath)
-	boardDir := fabriclayout.BoardDir(hubPath)
+	boltDir := fabricengine.BoltDir(hubPath)
+	boardDir := fabricengine.BoardDir(hubPath)
 	cfg, err := LoadConfig(configengine.Dirs{Board: boltDir}, "board")
 	if err != nil {
 		return nil, err

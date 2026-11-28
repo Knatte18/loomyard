@@ -14,7 +14,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/selfexec"
@@ -43,7 +43,7 @@ func SpawnWatchdog(hubPath, tmuxPath, shellPath string, suppress bool) {
 
 	// lock.TryAcquireWriteLock does not create the lock file's parent directory, and a hub that has
 	// never booted a reed server may not have HubScratchDir yet.
-	scratchDir := fabriclayout.HubScratchDir(hubPath)
+	scratchDir := fabricengine.HubScratchDir(hubPath)
 	if err := os.MkdirAll(scratchDir, 0o755); err != nil {
 		logger.Warn("reed: could not create hub scratch dir, skipping watchdog spawn", "hub", hubPath, "path", scratchDir, "err", err)
 		return

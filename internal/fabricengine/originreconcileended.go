@@ -11,7 +11,6 @@ import (
 	"slices"
 	"sort"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -28,7 +27,7 @@ func resolvePrime(l *lymcwd.Location) (*lymcwd.Location, error) {
 
 // recordedRuns returns the slugs of the runs this machine holds a batten run record of at the prime, in order.
 // When scope names a run, only that run is read.
-func recordedRuns(l *lymcwd.Location, scope fabriclayout.ReconcileScope) ([]string, error) {
+func recordedRuns(l *lymcwd.Location, scope ReconcileScope) ([]string, error) {
 	prime, err := resolvePrime(l)
 	if err != nil {
 		return nil, err
@@ -86,12 +85,12 @@ func pairHasLocalPart(l *lymcwd.Location, slug string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return taskBranch || weftBranchExists(l, fabriclayout.RecordsBranchName(slug)), nil
+	return taskBranch || weftBranchExists(l, recordsBranchIn(l, slug)), nil
 }
 
 // busyWayForward names what lets a removal that found its pair busy go through at the next run.
 func busyWayForward(busyOn string) string {
-	if busyOn == fabriclayout.BusyOnDriver {
+	if busyOn == BusyOnDriver {
 		return "wait for the pair's driver to end, which the run's next Parent-Align or Finalize makes certain by stopping it with Halt, then re-run `lym cleanup --apply`"
 	}
 	return "wait for the holder of the pair's teardown or weft write lock to release it, then re-run `lym cleanup --apply`"
@@ -108,9 +107,9 @@ func busyWayForward(busyOn string) string {
 // A judge-only scope tears nothing down, and neither does the scope's own run, whose driver is the caller.
 // A nil Teardown seam tears nothing down either.
 // Each teardown's mutations are appended to res's record.
-func reconcileEnded(l *lymcwd.Location, scope fabriclayout.ReconcileScope, seams OriginSeams, ended EndedSet, res *fabriclayout.OriginReport) error {
+func reconcileEnded(l *lymcwd.Location, scope ReconcileScope, seams OriginSeams, ended EndedSet, res *OriginReport) error {
 	for _, slug := range sortedSlugs(ended) {
-		entry := fabriclayout.EntryOutcome{Slug: slug, State: fabriclayout.EntryEnded, How: ended[slug]}
+		entry := EntryOutcome{Slug: slug, State: EntryEnded, How: ended[slug]}
 		local, err := pairHasLocalPart(l, slug)
 		if err != nil {
 			return fmt.Errorf("fabricengine: read whether this machine holds the pair %s: %w", slug, err)
@@ -122,8 +121,8 @@ func reconcileEnded(l *lymcwd.Location, scope fabriclayout.ReconcileScope, seams
 			if err != nil {
 				return fmt.Errorf("fabricengine: read whether pair %s holds a snapshot tag: %w", slug, err)
 			}
-			report, err := seams.Teardown(fabriclayout.EndedTeardown{Slug: slug, EarlierSnapshot: earlier})
-			res.Mutations = fabriclayout.MutationsOf(append(res.Mutations.Entries(), report.Mutations.Entries()...))
+			report, err := seams.Teardown(EndedTeardown{Slug: slug, EarlierSnapshot: earlier})
+			res.Mutations.Extend(report.Mutations)
 			entry.Tags = report.Tags
 			entry.Kept = report.Kept
 			if err == nil {
@@ -145,7 +144,7 @@ func reconcileEnded(l *lymcwd.Location, scope fabriclayout.ReconcileScope, seams
 }
 
 // endedLocalSlugs returns the slugs of the entries a teardown was applied to, other than run's own.
-func endedLocalSlugs(entries []fabriclayout.EntryOutcome, run string) map[string]bool {
+func endedLocalSlugs(entries []EntryOutcome, run string) map[string]bool {
 	slugs := map[string]bool{}
 	for _, entry := range entries {
 		if entry.Local && entry.Slug != run {
@@ -156,7 +155,7 @@ func endedLocalSlugs(entries []fabriclayout.EntryOutcome, run string) map[string
 }
 
 // withoutRemovedPairs returns branches without those of a pair an ended entry shows removed.
-func withoutRemovedPairs(branches []fabriclayout.BranchOutcome, entries []fabriclayout.EntryOutcome) []fabriclayout.BranchOutcome {
+func withoutRemovedPairs(branches []BranchOutcome, entries []EntryOutcome) []BranchOutcome {
 	removed := map[string]bool{}
 	for _, entry := range entries {
 		if entry.Removed {
@@ -166,7 +165,7 @@ func withoutRemovedPairs(branches []fabriclayout.BranchOutcome, entries []fabric
 	if len(removed) == 0 {
 		return branches
 	}
-	kept := make([]fabriclayout.BranchOutcome, 0, len(branches))
+	kept := make([]BranchOutcome, 0, len(branches))
 	for _, branch := range branches {
 		if !removed[branch.Slug] {
 			kept = append(kept, branch)
@@ -178,10 +177,10 @@ func withoutRemovedPairs(branches []fabriclayout.BranchOutcome, entries []fabric
 // mergeEndedEntries returns classified with each slug an ended entry covers taken from ended;
 // it appends the ended entries of no classified slug after them.
 // The result is sorted by slug.
-func mergeEndedEntries(classified, ended []fabriclayout.EntryOutcome) []fabriclayout.EntryOutcome {
+func mergeEndedEntries(classified, ended []EntryOutcome) []EntryOutcome {
 	merged := slices.Clone(classified)
 	for _, entry := range ended {
-		if i := slices.IndexFunc(merged, func(candidate fabriclayout.EntryOutcome) bool { return candidate.Slug == entry.Slug }); i >= 0 {
+		if i := slices.IndexFunc(merged, func(candidate EntryOutcome) bool { return candidate.Slug == entry.Slug }); i >= 0 {
 			merged[i] = entry
 			continue
 		}

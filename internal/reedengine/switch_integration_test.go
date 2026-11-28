@@ -3,8 +3,7 @@
 // switch_integration_test.go drives SwitchClient against a real tmux server with a real attached client.
 // It steps the client across three sessions in id order and wraps at both ends.
 // It also expects an error for an unknown client and for a socket nothing listens on.
-// With two clients in two sessions, it steps one client from its own session.
-// The clients are attached through the pty harness that attachgeometry_integration_test.go defines.
+// The client is attached through the pty harness that attachgeometry_integration_test.go defines.
 
 package reedengine
 
@@ -61,33 +60,6 @@ func TestSwitchClient_StepsAnAttachedClientThroughSessionsInIDOrder(t *testing.T
 	if err := SwitchClient(e.cfg.Tmux, filepath.Join(t.TempDir(), "no-server.sock"), client, true); err == nil {
 		t.Error("SwitchClient on a socket nothing listens on = nil error, want one")
 	}
-}
-
-// TestSwitchClient_StepsFromTheClientsOwnSession pins that a switch steps from the session of the client it moves.
-// Another client, attached to another session after it, does not change where the step starts.
-func TestSwitchClient_StepsFromTheClientsOwnSession(t *testing.T) {
-	tiergate.Require(t, 2)
-	t.Parallel()
-	e := newIntegrationEngine(t, "off")
-	if _, err := e.Up(); err != nil {
-		t.Fatalf("Up: %v", err)
-	}
-	// The booted session holds the lowest id; these two follow it.
-	for _, name := range []string{"second", "third"} {
-		if err := e.tmux.run("new-session", "-d", "-s", name); err != nil {
-			t.Fatalf("new-session %s: %v", name, err)
-		}
-	}
-	socketPath := strings.TrimSpace(mustTmuxOutput(t, e, "display-message", "-p", "#{socket_path}"))
-	mover := attachOneClientPerSession(t, e, e.SessionName(), "third")[0].client
-
-	if err := SwitchClient(e.cfg.Tmux, socketPath, mover, true); err != nil {
-		t.Fatalf("SwitchClient(%q, next): %v", mover, err)
-	}
-	// list-clients -t names the clients of one session, so the check does not depend on which client was active last.
-	waitUntil(t, 5*time.Second, "the client in the booted session never reached session second", func() bool {
-		return strings.TrimSpace(mustTmuxOutput(t, e, "list-clients", "-t", exactSessionTarget("second"), "-F", "#{client_name}")) == mover
-	})
 }
 
 // mustTmuxOutput runs one tmux command on the engine's server and fails the test on error.

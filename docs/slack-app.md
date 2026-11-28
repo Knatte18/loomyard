@@ -55,17 +55,10 @@ Replacing a stored token ends the relay of each live hub of the machine; run `ly
 Two machines exchange mail only when each has approved the other's app.
 Both apps, `lym-<machine>` for each machine, live in one workspace.
 
-1. Type `lym status` in an orch channel of each machine; the answer names that machine's app id.
-2. On each machine, type `lym approve <machine>` in an orch channel of that machine, naming the other machine.
-   When the other machine's bot is not named `lym-<machine>`, or two bots carry that name, type `lym approve <machine> <app id>` with the app id read from the other machine's `lym status`.
-3. Type `lym revoke <machine>` in an orch channel to remove an approval.
+1. Type `status` in an orch channel of each machine; the answer names that machine's app id.
+2. On each machine, type `approve <machine>` in an orch channel of that machine, naming the other machine.
+   When the other machine's bot is not named `lym-<machine>`, or two bots carry that name, type `approve <machine> <app id>` with the app id read from the other machine's `status`.
+3. Type `revoke <machine>` in an orch channel to remove an approval.
 
-An orch channel refuses `lym approve` and `lym revoke` for the machine it belongs to; type the command in a channel of the other machine.
-
-## Relay commands
-
-Every relay command opens with `lym`: `lym away` and `lym back` set the presence, `lym status` shows it with the machine's app id,
-and `lym approve` and `lym revoke` pair machines.
-The relay answers each in the channel and forwards none to the orch.
-Every other message goes to the orch as written, a bare `status` or `approve it` included.
+An orch channel refuses `approve` and `revoke` for the machine it belongs to; type the command in a channel of the other machine.
 The manifest above stays as it is.

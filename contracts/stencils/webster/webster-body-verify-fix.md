@@ -17,7 +17,7 @@ A report that names an entry and its findings records the failure of a run-level
 You never edit `_lym/drift/expected.yaml`.
 A value the task's decision record or the plan shows the change meant to move is intended: leave it as it is and say so in your reply, so the entry stays failing, Webster stops, and the run's parent amends the expectation with `lym drift amend` at that Stuck.
 Fix any other value in code, as you fix a failing test.
-A report that lists fix commits names the commits made above the pre-fix head, by fixers or by hand: the failure stands with them in place, so check them before you build on them.
+A report that lists fix commits names the commits earlier fixers made above the pre-fix head: they did not clear the failure, so check them before you build on them.
 
 ## The rules
 
@@ -42,5 +42,3 @@ You never run a Bash call in the background, and you end your turn only after yo
 - Leave the worktree clean: no uncommitted change may remain when you end your turn.
 
 {{template "loom-fragment-loosened-check"}}
-
-{{template "loom-fragment-tooling-names"}}

@@ -1,5 +1,4 @@
-// commitrecords.go implements the `commit-records` loom verb.
-// The verb commits the run's records at driver stop and starts the pair's pusher.
+// commitrecords.go implements the `commit-records` loom verb, which commits and pushes the run's records at driver stop.
 // The driver writes its stop report after its last `lym shed step`, so no transition commit can capture it,
 // and the Fabric Git Invariant forbids the agent committing it itself:
 // the agent triggers this verb, and the verb commits through fabricengine.
@@ -10,11 +9,14 @@
 package loomcli
 
 import (
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/spf13/cobra"
@@ -23,13 +25,20 @@ import (
 // commitRecordsMessage is the commit subject the verb lands under.
 const commitRecordsMessage = "loom: commit run records"
 
-// commitRecordsVerb commits the run's records over d and starts the pair's pusher, which pushes them.
+// commitRecordsVerb commits the run's records and pushes them over d, with the task branch in a task pair.
 // It reports a JSON envelope and returns the exit code.
-// A mid-merge sibling is a success with committed false and a skipped reason, and starts no pusher.
-// A probe error and a commit error are each an error envelope with a way forward.
-// Otherwise the envelope is ok.
-// Its committed field says whether the commit made one, and pusher_started is the value StartPush returned.
-// A clean tree is not an error: committing an already-clean pathspec is a no-op, and the pusher still starts.
+// A mid-merge sibling is a success with committed false and a skipped reason.
+// A probe error, a commit error and a push error are each an error envelope.
+// A push skipped because a removal, an Add or a discard of the pair holds its teardown lock exclusive is no error:
+// the envelope is ok with committed true and push_skipped carrying the reason,
+// and the commit stays local for the pair's next push.
+// A push that handed the run over to the machine of another machine's takeover entry is an error envelope.
+// It names the new owner and the way forward of driving the run there.
+// A commit or push the run's pre-push check stopped is no error either:
+// the envelope is ok with push_stopped carrying the check's reason; the run is paused and the orch noticed.
+// committed is false when the check stopped the commit, which then pushes nothing.
+// committed is true when the check stopped the push after a commit.
+// A clean tree is not an error: committing an already-clean pathspec is a no-op.
 func commitRecordsVerb(out io.Writer, d commitStatusDeps) int {
 	active, err := d.MergeActive()
 	if err != nil {
@@ -41,11 +50,41 @@ func commitRecordsVerb(out io.Writer, d commitStatusDeps) int {
 			"skipped":   "the task's run records sibling is mid-merge; conclude the merge and run commit-records again",
 		})
 	}
-	committed, err := d.Commit(commitRecordsMessage)
-	if err != nil {
+	if _, err := d.Commit(commitRecordsMessage); err != nil {
+		if errors.Is(err, errPushStopped) {
+			return output.Ok(out, map[string]any{"committed": false, "push_stopped": err.Error()})
+		}
 		return output.Err(out, "loom: commit-records: commit failed: "+err.Error()+"; way forward: transient, re-run lym loom commit-records")
 	}
-	return output.Ok(out, map[string]any{"committed": committed, "pusher_started": d.StartPush()})
+	if err := d.Push(); err != nil {
+		if errors.Is(err, fabricengine.ErrPairPushRunning) {
+			logger.Warn("loom: commit-records: the push was skipped; the commit stays local for the pair's next push", "error", err)
+			return output.Ok(out, map[string]any{"committed": true, "push_skipped": err.Error()})
+		}
+		if errors.Is(err, errPushStopped) {
+			return output.Ok(out, map[string]any{"committed": true, "push_stopped": err.Error()})
+		}
+		if errors.Is(err, fabricengine.ErrHandedOver) {
+			return output.Err(out, "loom: commit-records: the run was handed over to another machine: "+err.Error()+"; way forward: drive the run on the machine that took it over")
+		}
+		message := "loom: commit-records: the commit landed locally but the push failed: " + err.Error()
+		// A classified push failure's text already ends in its class's way forward.
+		if fabricengine.HasUnclassifiedFailure(err) {
+			message += "; way forward: " + pushFailureWayForward(err)
+		}
+		return output.Err(out, message)
+	}
+	return output.Ok(out, map[string]any{"committed": true})
+}
+
+// pushFailureWayForward returns the way forward for a push failure no failed-push record explains:
+// a rejection, alone or beside another failure, needs a merge or a remote-rule fix;
+// any other failure, a lock expiry included, is transient.
+func pushFailureWayForward(err error) string {
+	if fabricengine.IsPushRejected(err) {
+		return "merge the remote branch into the local branch in the worktree the error names, or clear what a remote rule objects to, then run lym fabric push or re-run lym loom commit-records; a session lym refuses the verb from reports status: FAILED and the orch runs it"
+	}
+	return "transient, run lym fabric push or re-run lym loom commit-records; a session lym refuses the verb from reports status: FAILED and the orch runs it"
 }
 
 // writeParkMarker writes the driver park marker at markerPath, holding reportPath, creating its directory.
@@ -75,15 +114,14 @@ func (c *loomCLI) commitRecordsCmd() *cobra.Command {
 	var park string
 	cmd := &cobra.Command{
 		Use:         "commit-records",
-		Short:       "commit the run's records and start the pair's pusher: status, reviews, friction notes and drive reports",
+		Short:       "commit and push the run's records: status, reviews, friction notes and drive reports",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceRole},
-		Long: `commit-records commits the run's records and starts the pair's pusher, which pushes them to
-origin: the status file, the review round record, the friction notes under _lym/loom/friction/ and
-the drive reports under _lym/shed/<slug>/drive-reports/. The loom driver's end-of-session command
-runs it after the driver writes its stop report. It is safe to run by hand in a task worktree
-before resuming a batten run whose teardown refused uncommitted run records. A tree with nothing
-to commit succeeds without adding a commit. The envelope's pusher_started tells whether a pusher
-started.
+		Long: `commit-records commits and pushes the run's records: the status file, the review
+round record, the friction notes under _lym/loom/friction/ and the drive reports under
+_lym/shed/<slug>/drive-reports/. The loom driver's end-of-session command runs it after the
+driver writes its stop report. It is safe to run by hand in a task worktree before
+resuming a batten run whose teardown refused uncommitted run records. A tree with nothing
+to commit succeeds without adding a commit.
 
 With --park <report>, a parking driver's command: after the commit, whatever its
 outcome, it writes the driver park marker holding the stop report's path, which

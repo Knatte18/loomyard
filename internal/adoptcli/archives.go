@@ -12,7 +12,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/output"
 )
 
@@ -23,7 +23,7 @@ import (
 type archiveDeps struct {
 	ReadOwners   func() (boardengine.Owners, error)
 	ParentOf     func(slug string) (string, error)
-	ReadArchives func(keep func(slug string) bool) ([]fabriclayout.OwnerArchive, error)
+	ReadArchives func(keep func(slug string) bool) ([]fabricengine.OwnerArchive, error)
 }
 
 // archiveTag is one listed owner archive tag and the command that shows its commits.

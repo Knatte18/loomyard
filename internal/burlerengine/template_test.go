@@ -71,10 +71,7 @@ func fixStepMarkerValues() map[string]string {
 
 // fixStepIncludes returns the fragments the fix step includes by name, keyed by include name.
 func fixStepIncludes() map[string][]byte {
-	return map[string][]byte{
-		"loom-fragment-loosened-check": stencils.LoomFragmentLoosenedCheck,
-		"loom-fragment-tooling-names":  stencils.LoomFragmentToolingNames,
-	}
+	return map[string][]byte{"loom-fragment-loosened-check": stencils.LoomFragmentLoosenedCheck}
 }
 
 // instruction1MarkerValues returns a values map with a placeholder for each marker of the explore step.
@@ -320,7 +317,7 @@ func TestComposePrompt_RendersEngineBlocksForTheHalfsEngine(t *testing.T) {
 			if err != nil {
 				t.Fatalf("composeReviewPrompt(%s) = %v; want nil error", tt.engine, err)
 			}
-			fix, err := composeFixPrompt(stencilsDir, testSpecsDir, tt.engine, &p, "", fixWork(p.ReviewPath, "", false, FixRerun{}), testFixFiles)
+			fix, err := composeFixPrompt(stencilsDir, testSpecsDir, tt.engine, &p, "", fixWork(p.ReviewPath, "", false), testFixFiles)
 			if err != nil {
 				t.Fatalf("composeFixPrompt(%s) = %v; want nil error", tt.engine, err)
 			}

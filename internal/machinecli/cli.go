@@ -12,7 +12,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/desktoplauncher"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/hubregistry"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -40,7 +39,7 @@ type deps struct {
 	// cwdHub returns the hub the directory lies in, and false when it lies in none.
 	cwdHub func(dir string) (string, bool)
 	// pull brings the board at boardDir level with its upstream and reports a skip with its detail.
-	pull func(boardDir string) (fabriclayout.BoltSkip, string, error)
+	pull func(boardDir string) (fabricengine.BoltSkip, string, error)
 	// unpushed reports whether the board at boardDir holds commits origin lacks.
 	unpushed func(boardDir string) (bool, error)
 	// readOwners reads the owners the local board at boardDir records.
@@ -124,7 +123,7 @@ func productionDeps() deps {
 }
 
 // pullBoard brings the board at boardDir level with its upstream, with the skip options the owner write builds.
-func pullBoard(boardDir string) (fabriclayout.BoltSkip, string, error) {
+func pullBoard(boardDir string) (fabricengine.BoltSkip, string, error) {
 	cfg := boardengine.ApplySkipEnv(boardengine.Config{Path: boardDir})
 	opts := fabricengine.SyncOptions{SkipGit: cfg.SkipGit, SkipPush: cfg.SkipPush}
 	return fabricengine.NewBolt(boardDir).Pull(opts, fabricengine.NewMutations(filepath.Dir(boardDir)))

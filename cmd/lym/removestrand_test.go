@@ -52,7 +52,6 @@ func removeStrandSelectors(t *testing.T, base string, allow *scankit.Allowlist) 
 // The scan sees the selector, not whose strand it removes.
 //
 //lym:guard
-//lym:only parent-align finalize
 func TestShuttleStop_RemoveStrandOnlyInAllowedPackages(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

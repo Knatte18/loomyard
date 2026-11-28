@@ -29,12 +29,10 @@ var unboundedWaitFiles = []string{
 	"internal/reedcli/watchdog.go",
 	"internal/orchengine/watchloop.go",
 	"internal/dobbyengine/loop.go",
-	"internal/boardserve/run.go",
 	"internal/battenshed/land.go",
 	"internal/battenshed/primelockwait.go",
 	"internal/pawlengine/beamawait.go",
 	"internal/parentlock/acquire.go",
-	"internal/sheddriver/drive.go",
 	"internal/gatecli/watchdog.go",
 	"internal/gatecli/memoryguard.go",
 	"internal/gatecli/detachrun.go",
@@ -46,7 +44,7 @@ var unboundedWaitFiles = []string{
 	"internal/shuttleengine/loadturn.go",
 	"internal/verifytree/verify.go",
 	"internal/websterengine/poll.go",
-	"internal/runpusher/run.go",
+	"internal/statuscommit/statuscommit.go",
 	"internal/shedverbs/status.go",
 	"internal/shedverbs/loopwait.go",
 	"internal/shedverbs/loop.go",
@@ -166,7 +164,6 @@ func tickerCallPositions(fset *token.FileSet, file *ast.File) []string {
 // TestDaemonWakeups_UnboundedWaitsStayAboveTheFloor enforces `PATTERN-daemon-wakeups`.
 //
 //lym:guard
-//lym:only parent-align finalize
 func TestDaemonWakeups_UnboundedWaitsStayAboveTheFloor(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Run("detector", func(t *testing.T) {

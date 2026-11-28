@@ -5,6 +5,7 @@ package webstercli
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
@@ -12,11 +13,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 )
 
-// masterStrandLookup returns a lookup of the calling strand's name and guid:
-// the name is the strand name passed in, and the guid is resolved from it through resolve.
-// An empty name is an error naming the strand-name environment variable, and a resolve error is returned as is.
-func masterStrandLookup(name string, resolve func(name string) (string, error)) func() (string, string, error) {
+// envMasterStrand returns a lookup of the calling strand's name and guid:
+// the name is read from the strand-name environment variable, and the guid is resolved from it through resolve.
+// An unset or empty variable is an error naming it, and a resolve error is returned as is.
+func envMasterStrand(resolve func(name string) (string, error)) func() (name, guid string, err error) {
 	return func() (string, string, error) {
+		name := os.Getenv(agentname.StrandNameEnv)
 		if name == "" {
 			return "", "", fmt.Errorf("%s is not set", agentname.StrandNameEnv)
 		}

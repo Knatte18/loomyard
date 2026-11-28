@@ -1,18 +1,19 @@
 # profiles.yaml — the hub's named run profiles, and the profile each recipe takes by default.
-# Each top-level key but defaults is a profile name, and its value holds one block per recipe it configures;
-# a raddle block sets loom.raddle.auto_approve, which tells a raddle run to file its proposal without waiting for the operator's approval, and which a run whose recipe rows hold a split perch never reads;
-# a block has the shape of a board task's run_settings: module name to that module's config keys;
-# a tapestry block sets the plan perch's keys under the tapestry module and the other perches' keys under loom.
+# Each top-level key but defaults is a profile name, and its value holds one block per recipe, tapestry, motif, darn, pawl, sampler, raddle or arras;
+# a raddle block sets loom.raddle_auto_approve, which tells a raddle run to file its proposal without waiting for the operator's approval, and which a run whose recipe rows hold a split perch never reads;
+# an arras block sets the rounds of the Discussion perch and of the split perch, whose approval files the arras run's proposal;
+# a block has the shape of a board task's run_settings: module name to that module's config keys.
 # A task names a profile in its board entry's profile field, or takes its recipe's entry under defaults when it names none;
 # batten's Seed-Child writes the block of the recipe the task runs into the pair's local config, with the task's own run_settings layered on top.
 # Each perch's hard cap is its rounds plus one, so `lym loom circling continue` can grant one more round.
-# Every darn block sets loom.code.reviewer_model to an Opus model-spec:
+# Every darn block sets loom.code_reviewer_model to an Opus model-spec:
 # a darn run's Code-Review perch is its only review,
 # so it judges the entry's work items, decisions and acceptance steps as well as the diff.
 #
 # Seeded once when this file is absent; after that it is operator-owned.
 # The hub reconcile after a lym upgrade carries a template change into it only where it still holds lym's earlier value, kept in profiles.template-base beside it:
 # a value you set, added or removed stays yours, and one the new template holds otherwise is reported under differs.
+# Reconcile also renames a block held under a recipe's former name, and lists a former block left beside a differing current one under unsettled.
 # Add or replace a profile, or the defaults, with: lym config profiles --set <name>='<json object>'
 # Remove one by deleting its block in the editor: lym config profiles
 
@@ -22,67 +23,72 @@ defaults:
   darn: light
   pawl: light
   raddle: light
+  arras: solid
 speed:
   tapestry:
-    loom: {discussion: {max_bounces: 0, hard_max_bounces: 1}, code: {max_bounces: 1, hard_max_bounces: 2, reviewer_fan: ""}}
-    tapestry: {plan: {max_bounces: 0, hard_max_bounces: 1}}
+    loom: {discussion_max_bounces: 0, discussion_hard_max_bounces: 1, plan_max_bounces: 0, plan_hard_max_bounces: 1, code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_fan: ""}
   motif:
-    loom: {discussion: {max_bounces: 0, hard_max_bounces: 1}}
+    loom: {discussion_max_bounces: 0, discussion_hard_max_bounces: 1}
   darn:
-    loom: {code: {max_bounces: 0, hard_max_bounces: 1, reviewer_model: "opus[medium]"}}
+    loom: {code_max_bounces: 0, code_hard_max_bounces: 1, code_reviewer_model: "opus[medium]"}
   pawl:
-    loom: {code: {max_bounces: 0, hard_max_bounces: 1}}
+    loom: {code_max_bounces: 0, code_hard_max_bounces: 1}
   sampler:
-    loom: {code: {max_bounces: 0, hard_max_bounces: 1}}
+    loom: {code_max_bounces: 0, code_hard_max_bounces: 1}
   raddle:
-    loom: {raddle: {auto_approve: false}}
+    loom: {raddle_auto_approve: false}
+  arras:
+    loom: {discussion_max_bounces: 0, discussion_hard_max_bounces: 1, split_max_bounces: 0, split_hard_max_bounces: 1}
 light:
   tapestry:
-    loom: {discussion: {max_bounces: 1, hard_max_bounces: 2}, code: {max_bounces: 1, hard_max_bounces: 2}}
-    tapestry: {plan: {max_bounces: 1, hard_max_bounces: 2}}
+    loom: {discussion_max_bounces: 1, discussion_hard_max_bounces: 2, plan_max_bounces: 1, plan_hard_max_bounces: 2, code_max_bounces: 1, code_hard_max_bounces: 2}
   motif:
-    loom: {discussion: {max_bounces: 1, hard_max_bounces: 2}}
+    loom: {discussion_max_bounces: 1, discussion_hard_max_bounces: 2}
   darn:
-    loom: {code: {max_bounces: 1, hard_max_bounces: 2, reviewer_model: "opus[medium]"}}
+    loom: {code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_model: "opus[medium]"}
   pawl:
-    loom: {code: {max_bounces: 1, hard_max_bounces: 2}}
+    loom: {code_max_bounces: 1, code_hard_max_bounces: 2}
   sampler:
-    loom: {code: {max_bounces: 1, hard_max_bounces: 2}}
+    loom: {code_max_bounces: 1, code_hard_max_bounces: 2}
     sampler: {code_review: true}
   raddle:
-    loom: {raddle: {auto_approve: false}}
+    loom: {raddle_auto_approve: false}
+  arras:
+    loom: {discussion_max_bounces: 1, discussion_hard_max_bounces: 2, split_max_bounces: 1, split_hard_max_bounces: 2}
 solid:
   tapestry:
-    loom: {discussion: {max_bounces: 2, hard_max_bounces: 3}, code: {max_bounces: 1, hard_max_bounces: 2}}
-    tapestry: {plan: {max_bounces: 2, hard_max_bounces: 3}}
+    loom: {discussion_max_bounces: 2, discussion_hard_max_bounces: 3, plan_max_bounces: 2, plan_hard_max_bounces: 3, code_max_bounces: 1, code_hard_max_bounces: 2}
   motif:
-    loom: {discussion: {max_bounces: 2, hard_max_bounces: 3}}
+    loom: {discussion_max_bounces: 2, discussion_hard_max_bounces: 3}
   darn:
-    loom: {code: {max_bounces: 2, hard_max_bounces: 3, reviewer_model: "opus[medium]"}}
+    loom: {code_max_bounces: 2, code_hard_max_bounces: 3, code_reviewer_model: "opus[medium]"}
   pawl:
-    loom: {code: {max_bounces: 2, hard_max_bounces: 3}}
+    loom: {code_max_bounces: 2, code_hard_max_bounces: 3}
   sampler:
-    loom: {code: {max_bounces: 2, hard_max_bounces: 3}}
+    loom: {code_max_bounces: 2, code_hard_max_bounces: 3}
     sampler: {code_review: true}
   raddle:
-    loom: {raddle: {auto_approve: false}}
+    loom: {raddle_auto_approve: false}
+  arras:
+    loom: {discussion_max_bounces: 2, discussion_hard_max_bounces: 3, split_max_bounces: 2, split_hard_max_bounces: 3}
 wide:
   tapestry:
-    loom: {discussion: {max_bounces: 3, hard_max_bounces: 4}, code: {max_bounces: 1, hard_max_bounces: 2}}
-    tapestry: {plan: {max_bounces: 2, hard_max_bounces: 3}}
+    loom: {discussion_max_bounces: 3, discussion_hard_max_bounces: 4, plan_max_bounces: 2, plan_hard_max_bounces: 3, code_max_bounces: 1, code_hard_max_bounces: 2}
   motif:
-    loom: {discussion: {max_bounces: 3, hard_max_bounces: 4}}
+    loom: {discussion_max_bounces: 3, discussion_hard_max_bounces: 4}
   darn:
-    loom: {code: {max_bounces: 3, hard_max_bounces: 4, reviewer_model: "opus[medium]"}}
+    loom: {code_max_bounces: 3, code_hard_max_bounces: 4, code_reviewer_model: "opus[medium]"}
   pawl:
-    loom: {code: {max_bounces: 3, hard_max_bounces: 4}}
+    loom: {code_max_bounces: 3, code_hard_max_bounces: 4}
   sampler:
-    loom: {code: {max_bounces: 3, hard_max_bounces: 4}}
+    loom: {code_max_bounces: 3, code_hard_max_bounces: 4}
     sampler: {code_review: true}
   raddle:
-    loom: {raddle: {auto_approve: false}}
+    loom: {raddle_auto_approve: false}
+  arras:
+    loom: {discussion_max_bounces: 3, discussion_hard_max_bounces: 4, split_max_bounces: 3, split_hard_max_bounces: 4}
 docs:
   darn:
     darn: {writer: "sonnet[medium]", report_dir: "docs/research"}
     drift: {scope: "off"}
-    loom: {code: {max_bounces: 1, hard_max_bounces: 2, reviewer_fan: "", reviewer_model: "opus[medium]"}}
+    loom: {code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_fan: "", code_reviewer_model: "opus[medium]"}

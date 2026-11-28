@@ -13,7 +13,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -293,66 +292,6 @@ type importReport struct {
 	// unused are the allowed import paths no production file imports, sorted.
 	unused []string
 	parsed int
-}
-
-// bannedImports scans the production files of the package in dir for the banned import paths.
-// A banned entry is an exact import path, or a path ending in "/...".
-// The latter bans every import under that path but not the path itself.
-// It returns one `file: import` violation per banned import, in directory order, and the count of files it parsed.
-// A missing directory and an unparsable file return the error.
-func bannedImports(dir string, banned []string) (violations []string, parsed int, err error) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil, 0, err
-	}
-	for _, e := range entries {
-		name := e.Name()
-		if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
-			continue
-		}
-		f, err := parser.ParseFile(token.NewFileSet(), filepath.Join(dir, name), nil, parser.ImportsOnly)
-		if err != nil {
-			return nil, 0, err
-		}
-		parsed++
-		for _, imp := range f.Imports {
-			path := strings.Trim(imp.Path.Value, `"`)
-			if slices.ContainsFunc(banned, func(entry string) bool { return bans(entry, path) }) {
-				violations = append(violations, name+": "+path)
-			}
-		}
-	}
-	return violations, parsed, nil
-}
-
-// bans reports whether the banned entry covers the import path.
-func bans(entry, path string) bool {
-	if under, ok := strings.CutSuffix(entry, "..."); ok && strings.HasSuffix(under, "/") {
-		return strings.HasPrefix(path, under)
-	}
-	return entry == path
-}
-
-// AssertNoImports fails the test when a production file in pkgDir imports a banned path, the standard library included.
-// A banned entry is an exact import path, or a path ending in "/...".
-// The latter bans every import under that path but not the path itself.
-// It also fails when pkgDir holds no production file, so a ban cannot pass vacuously.
-// pkgDir is a slash path relative to the module root, or absolute.
-func AssertNoImports(t testing.TB, pkgDir string, banned ...string) {
-	t.Helper()
-	dir := pkgDir
-	if !filepath.IsAbs(dir) {
-		dir = filepath.Join(Root(t), filepath.FromSlash(pkgDir))
-	}
-	violations, parsed, err := bannedImports(dir, banned)
-	if err != nil {
-		t.Fatalf("scankit: %v", err)
-		return
-	}
-	RequireFloor(t, parsed, 1, "banned-import scan of "+pkgDir)
-	for _, v := range violations {
-		t.Errorf("%s imports a banned package: %s", pkgDir, v)
-	}
 }
 
 // importViolations scans the production files of the package in dir against allowed.

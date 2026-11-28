@@ -55,7 +55,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/cliwire"
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -132,14 +132,11 @@ func TestWire_SelectsModeAndWiresItsFields(t *testing.T) {
 		if c.stateDir != "" {
 			t.Errorf("c.stateDir = %q; want empty in hub mode", c.stateDir)
 		}
-		if want := fabriclayout.StencilsDir(loc.HubPath); c.stencilsDir != want {
+		if want := fabricengine.StencilsDir(loc.HubPath); c.stencilsDir != want {
 			t.Errorf("c.stencilsDir = %q; want %q", c.stencilsDir, want)
 		}
 		if c.engine == nil {
 			t.Fatal("c.engine = nil; want a constructed *burlerengine.Engine")
-		}
-		if !c.runner.HasReplyProbe() {
-			t.Error("c.runner.HasReplyProbe() = false; want the reply probe wired in hub mode")
 		}
 		if c.reedUp != nil {
 			t.Error("wireHub armed c.reedUp; want nil -- hub mode's reed session is not run's to boot")
@@ -148,7 +145,7 @@ func TestWire_SelectsModeAndWiresItsFields(t *testing.T) {
 
 	writeHubLanguageFile := func(t *testing.T, hub, contents string) {
 		t.Helper()
-		configDir := filepath.Join(fabriclayout.BoardDir(hub), "_lym", "config")
+		configDir := filepath.Join(fabricengine.BoardDir(hub), "_lym", "config")
 		if err := os.MkdirAll(configDir, 0o755); err != nil {
 			t.Fatalf("MkdirAll(%q) = %v; want nil", configDir, err)
 		}
@@ -348,7 +345,7 @@ func TestWireHub_AbsentStencilsDirIsRefused(t *testing.T) {
 // The test points its configured multiplexer binary at a path that is never created.
 // A first wire call resolves the standalone state directory onto the receiver and spawns nothing.
 // wireStandalone only assigns its boot closure and never executes it.
-// A reed config is then seeded under that state directory with the reed.tmux key set to the missing path.
+// A reed config is then seeded under that state directory with the tmux key set to the missing path.
 // The session probe of sessionSubstrateLocked then fails at process lookup, so nothing is spawned.
 // A fresh CLI receiver wires again to pick up the seeded config and drives the same entry point.
 // This keeps the tier0 test inside the Test Tier Purity Invariant.
@@ -855,7 +852,7 @@ fixer-report-path: reviews/fixer-report.md
 		if exitCode == 0 {
 			t.Fatalf("run = exit 0, output: %s; want the requirements refusal", out.String())
 		}
-		for _, want := range []string{`engine \"fake\"`, "set shuttle.engine in shuttle.yaml to an engine that meets them"} {
+		for _, want := range []string{`engine \"fake\"`, "set engine: in shuttle.yaml to an engine that meets them"} {
 			if !strings.Contains(out.String(), want) {
 				t.Errorf("run output = %s; want it to contain %q", out.String(), want)
 			}
@@ -867,7 +864,7 @@ fixer-report-path: reviews/fixer-report.md
 }
 
 // TestProductionFiles_NeverReferenceHubWatchdogMechanism proves standalone never touches the hub watchdog.
-// The scan forbids three things that belong to hub mode alone: the hub lock path (fabriclayout.HubScratchDir).
+// The scan forbids three things that belong to hub mode alone: the hub lock path (fabricengine.HubScratchDir).
 // It also forbids the daemon spawn verb ("reed watchdog").
 // It also forbids the seam that owns the detached spawn (reedengine.SpawnWatchdog).
 //
@@ -899,8 +896,8 @@ func TestProductionFiles_NeverReferenceHubWatchdogMechanism(t *testing.T) {
 			t.Fatalf("read %s: %v", path, err)
 		}
 		content := string(data)
-		if strings.Contains(content, "fabriclayout.HubScratchDir") {
-			t.Errorf("%s references fabriclayout.HubScratchDir; standalone must compute no hub lock path", path)
+		if strings.Contains(content, "fabricengine.HubScratchDir") {
+			t.Errorf("%s references fabricengine.HubScratchDir; standalone must compute no hub lock path", path)
 		}
 		if strings.Contains(content, "reed watchdog") {
 			t.Errorf("%s references \"reed watchdog\"; standalone must spawn no daemon", path)

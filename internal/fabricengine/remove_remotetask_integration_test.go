@@ -3,8 +3,7 @@
 // Once the local step has deleted the pushed local branch, the unlanded origin copy is the only copy of the work.
 // A tip that moved after it was observed fails the lease, and without remote the origin copy is untouched.
 //
-// Every hub is built through hubforge.NewHub with an empty fabric.branch_prefix,
-// so the pair's warp branch is the bare slug.
+// Every hub is built through hubforge.NewHub with an empty branch_prefix, so the pair's warp branch is the bare slug.
 // h.CodeBare is the origin.
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
@@ -15,7 +14,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -62,7 +60,7 @@ func TestRemove_RemoteDeletesSquashLandedTaskBranchOnOrigin(t *testing.T) {
 	h := pushedPair(t, slug)
 	squashLand(t, h, slug)
 
-	res, err := h.Topology.Remove(h.Location, slug, false, true, "")
+	res, err := h.Topology.Remove(h.Location, slug, false, true)
 	if err != nil {
 		t.Fatalf("Remove(%q) error = %v", slug, err)
 	}
@@ -74,10 +72,10 @@ func TestRemove_RemoteDeletesSquashLandedTaskBranchOnOrigin(t *testing.T) {
 	}
 	found := false
 	for _, step := range res.Steps {
-		found = found || step == fabriclayout.RemoveStepTaskBranchOnOrigin
+		found = found || step == fabricengine.RemoveStepTaskBranchOnOrigin
 	}
 	if !found {
-		t.Errorf("Steps = %v; want %q among them", res.Steps, fabriclayout.RemoveStepTaskBranchOnOrigin)
+		t.Errorf("Steps = %v; want %q among them", res.Steps, fabricengine.RemoveStepTaskBranchOnOrigin)
 	}
 }
 
@@ -88,7 +86,7 @@ func TestRemove_RemoteKeepsUnlandedTaskBranchOnOrigin(t *testing.T) {
 	const slug = "rt-unlanded"
 	h := pushedPair(t, slug)
 
-	res, err := h.Topology.Remove(h.Location, slug, false, true, "")
+	res, err := h.Topology.Remove(h.Location, slug, false, true)
 	if err != nil {
 		t.Fatalf("Remove(%q) error = %v; a kept branch is not a failure", slug, err)
 	}
@@ -117,7 +115,7 @@ func TestRemove_WithoutRemoteLeavesTaskBranchOnOrigin(t *testing.T) {
 	h := pushedPair(t, slug)
 	squashLand(t, h, slug)
 
-	res, err := h.Topology.Remove(h.Location, slug, false, false, "")
+	res, err := h.Topology.Remove(h.Location, slug, false, false)
 	if err != nil {
 		t.Fatalf("Remove(%q) error = %v", slug, err)
 	}

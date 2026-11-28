@@ -155,17 +155,13 @@ func pasteSubmitArgv(paneID, buffer string, submit bool) []string {
 	return argv
 }
 
-// InjectBufferPrefix starts the name of every tmux buffer a paste loads its text into.
-// Eight lowercase hex characters, fresh for each paste, follow it.
-const InjectBufferPrefix = "lym-inject-"
-
-// injectBufferName returns a fresh tmux buffer name, InjectBufferPrefix plus 8 lowercase hex characters.
+// injectBufferName returns a fresh tmux buffer name, "lym-inject-" plus 8 lowercase hex characters.
 func injectBufferName() (string, error) {
 	var raw [4]byte
 	if _, err := rand.Read(raw[:]); err != nil {
 		return "", fmt.Errorf("name paste buffer: %w", err)
 	}
-	return InjectBufferPrefix + hex.EncodeToString(raw[:]), nil
+	return "lym-inject-" + hex.EncodeToString(raw[:]), nil
 }
 
 // OperatorActive reports whether an attached client has been active on guid's live pane within the quiet window.
@@ -226,7 +222,7 @@ func activeClientOnPane(clients, paneID string, now time.Time, quiet time.Durati
 	return false
 }
 
-// defaultOperatorQuietS is the quiet window, in seconds, a Config without a positive reed.operator_quiet_s takes.
+// defaultOperatorQuietS is the quiet window, in seconds, a Config without a positive operator_quiet_s takes.
 const defaultOperatorQuietS = 5
 
 // operatorQuiet returns cfg's operator quiet window, floored to the default for a zero or negative value.

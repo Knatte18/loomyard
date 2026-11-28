@@ -129,7 +129,9 @@ func followClickCommand(followJump bool) string {
 }
 
 // bindingArgvs returns the argvs of the Alt keys and the status click, each in the root table.
-// Every argv is a `bind-key -n`.
+// The first argv is an `unbind-key -n M-z` that removes the Alt+z an older build bound.
+// A `bind-key` re-pin never removes a binding, so the unbind is needed.
+// The `bind-key -n` argvs follow it.
 // switchPrev and switchNext are the shell lines run-shell runs for M-Left and M-Right;
 // an empty one leaves its key unbound.
 // followJump reports that the follow button's jump line is pinned in followCommandOption.
@@ -150,6 +152,7 @@ func followClickCommand(followJump bool) string {
 // Each reports that its line is pinned; when false its branch is not bound.
 func bindingArgvs(switchPrev, switchNext string, followJump, buttonClick, slackClick, remoteControlClick bool) [][]string {
 	argvs := [][]string{
+		{"unbind-key", "-n", "M-z"},
 		{"bind-key", "-n", "M-Up", "set-option", followSessionOption, "off", `\;`, "previous-window", `\;`, "if-shell", "-F", "-t", ":", hiddenWindowCondition, selectStrandsWindowCommand},
 		{"bind-key", "-n", "M-Down", "set-option", followSessionOption, "off", `\;`, "next-window", `\;`, "if-shell", "-F", "-t", ":", hiddenWindowCondition, "select-window -t :^"},
 	}
@@ -207,7 +210,6 @@ func (e *Engine) pinGlobalLineLocked(option, line, what string) {
 // The Slack toggle click line in slackToggleCommandOption is set and unset the same way.
 // The Slack state line in slackStateCommandOption is set and unset the same way.
 // The RC click line in remoteControlClickCommandOption is too, and the RC button is not drawn while it is unset.
-// So is the sync field's line in syncStatusCommandOption.
 // This binary's build stamp is then set in bindingsBuildOption, ahead of the bindings themselves.
 // It is unset for a binary with no VCS stamp.
 // Assumes the op lock is already held.
@@ -218,7 +220,6 @@ func (e *Engine) pinBindingsLocked() {
 	e.pinGlobalLineLocked(slackToggleCommandOption, lines.slackToggle, "the Slack toggle click line")
 	e.pinGlobalLineLocked(slackStateCommandOption, lines.slackState, "the Slack state line")
 	e.pinGlobalLineLocked(remoteControlClickCommandOption, lines.remoteControlClick, "the RC click line")
-	e.pinGlobalLineLocked(syncStatusCommandOption, lines.syncStatus, "the sync status line")
 	if stamp := bindingsBuildStamp(e.build); stamp != "" {
 		if err := e.tmux.run("set-option", "-g", bindingsBuildOption, stamp); err != nil {
 			logger.Warn("reed: failed to stamp the bindings' build", "socket", e.Socket(), "session", e.SessionName(), "err", err)
@@ -269,8 +270,6 @@ type bindingLines struct {
 	slackToggle, slackState string
 	// remoteControlClick is the line of a click on the RC button.
 	remoteControlClick string
-	// syncStatus is the line of the sync field's job.
-	syncStatus string
 }
 
 // bindingLinesLocked returns the shell lines the bindings run and the Slack toggles' state job reads.
@@ -302,9 +301,6 @@ func (e *Engine) bindingLinesLocked() bindingLines {
 	}
 	if remoteControlClick, ok := composeRemoteControlClickCommand(sh, e.executablePath, socketPath, tmuxPath); ok {
 		lines.remoteControlClick = remoteControlClick
-	}
-	if syncStatus, ok := composeSyncStatusCommand(sh, e.executablePath, e.geom.HubPath); ok {
-		lines.syncStatus = syncStatus
 	}
 	prev, prevOK := composeSwitchCommand(sh, e.executablePath, false, socketPath, tmuxPath)
 	next, nextOK := composeSwitchCommand(sh, e.executablePath, true, socketPath, tmuxPath)

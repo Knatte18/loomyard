@@ -8,14 +8,13 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
@@ -29,7 +28,7 @@ import (
 // a run at Land, a run blocked at Run-Shed, a run with no status, a run the state does not name;
 // and a run with a full pass owed;
 // each of these refuses, naming `lym batten run <slug>`, with the continue-refused exit code.
-// A continue pass runs no catch-up and starts no pusher, whether it passes or refuses.
+// A continue pass runs no catch-up, whether it passes or refuses.
 func TestBattenPreRun_ContinuePass(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -72,8 +71,6 @@ func TestBattenPreRun_ContinuePass(t *testing.T) {
 				t.Fatal(err)
 			}
 			c.continuePass = true
-			pusherStarts := 0
-			c.startPusher = func() { pusherStarts++ }
 			if tt.goneReads {
 				c.readopt.Gone = func(string) (bool, error) { return true, nil }
 			}
@@ -114,9 +111,9 @@ func TestBattenPreRun_ContinuePass(t *testing.T) {
 				return dobbyengine.CatchUpReport{}, nil
 			}
 			reconciles := 0
-			c.reconcile = func(string) (fabriclayout.OriginReport, error) {
+			c.reconcile = func(string) (fabricengine.OriginReport, error) {
 				reconciles++
-				return fabriclayout.OriginReport{}, nil
+				return fabricengine.OriginReport{}, nil
 			}
 			var commands []string
 			c.env.Setting = func(module, key string) (any, error) { return true, nil }
@@ -139,8 +136,8 @@ func TestBattenPreRun_ContinuePass(t *testing.T) {
 				if err != nil {
 					t.Fatalf("battenPreRun() = %v; want nil", err)
 				}
-				if reconciles != 0 || len(commands) != 0 || catchUps != 0 || pusherStarts != 0 {
-					t.Errorf("battenPreRun() ran the reconcile %d times, the catch-up %d times, commands %q and the pusher start %d times; want none", reconciles, catchUps, commands, pusherStarts)
+				if reconciles != 0 || len(commands) != 0 || catchUps != 0 {
+					t.Errorf("battenPreRun() ran the reconcile %d times, the catch-up %d times and commands %q; want none", reconciles, catchUps, commands)
 				}
 				return
 			}
@@ -156,51 +153,8 @@ func TestBattenPreRun_ContinuePass(t *testing.T) {
 			if got := passExitCode(err); got != dobbyengine.PassExitContinueRefused {
 				t.Errorf("passExitCode(%v) = %d; want %d", err, got, dobbyengine.PassExitContinueRefused)
 			}
-			if reconciles != 0 || len(commands) != 0 || catchUps != 0 || pusherStarts != 0 {
-				t.Errorf("a refused continue pass ran the reconcile %d times, the catch-up %d times, commands %q and the pusher start %d times; want none", reconciles, catchUps, commands, pusherStarts)
-			}
-		})
-	}
-}
-
-// TestBattenPreRun_ResumeStartsThePusher runs the pre-run over a found status with no --continue-pass.
-// It asserts a resume starts the pusher once, before the terminal window reopens,
-// and that a --no-reopen resume starts it once too.
-func TestBattenPreRun_ResumeStartsThePusher(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	tests := []struct {
-		name       string
-		noReopen   bool
-		wantEvents []string
-	}{
-		{name: "a resume starts the pusher before the reopening", wantEvents: []string{"pusher", "client-attached"}},
-		{name: "a no-reopen resume starts the pusher and reopens nothing", noReopen: true, wantEvents: []string{"pusher"}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			c := newFakeReceiver(t, nil)
-			c.noReopen = tt.noReopen
-			writeStatus(t, c, shedengine.Status{
-				CurrentProducer: battenrecipe.NameRunShed,
-				State:           shedengine.StateRunning,
-				History:         []shedengine.HistoryEntry{{Producer: battenrecipe.NameOpenWindow, Outcome: shedengine.Done}},
-			})
-			var events []string
-			c.startPusher = func() { events = append(events, "pusher") }
-			c.clientAttached = func() (bool, error) {
-				events = append(events, "client-attached")
-				return true, nil
-			}
-
-			if err := c.battenPreRun(context.Background()); err != nil {
-				t.Fatalf("battenPreRun() = %v; want nil", err)
-			}
-			if !slices.Equal(events, tt.wantEvents) {
-				t.Errorf("battenPreRun() events = %v; want %v", events, tt.wantEvents)
+			if reconciles != 0 || len(commands) != 0 || catchUps != 0 {
+				t.Errorf("a refused continue pass ran the reconcile %d times, the catch-up %d times and commands %q; want none", reconciles, catchUps, commands)
 			}
 		})
 	}

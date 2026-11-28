@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -43,9 +42,6 @@ type ErrRemoteLeftover struct {
 	RemoteTip string
 
 	kind leftoverKind
-	// originRef is the full origin ref name of a leftover weft branch.
-	// A delete by the short name cannot reach it in a namespaced store.
-	originRef string
 }
 
 // Error implements the error interface, naming the branch, its remote tip and the remedies for the kind.
@@ -54,7 +50,7 @@ func (e *ErrRemoteLeftover) Error() string {
 	case leftoverDivergedAdoptedWeft:
 		return fmt.Sprintf(
 			"weft branch %q on origin (at %s) diverges from the local %q this add would adopt; delete it with \"git push origin --delete %s\" once its content is disposable, or use a different slug",
-			e.Branch, e.RemoteTip, e.Branch, e.originRef)
+			e.Branch, e.RemoteTip, e.Branch, e.Branch)
 	default:
 		return fmt.Sprintf(
 			"warp branch %q already exists on origin at %s and is not an ancestor of this worktree's HEAD; delete it with \"git push origin --delete %s\" once its work is landed, or use a different slug",
@@ -85,7 +81,7 @@ type weftLeftover struct {
 // under opts.SkipGit or opts.SkipPush nothing is probed and the branch reads not live.
 // A failed origin read is returned as the error.
 func (t *Topology) RecordsBranchLive(l *lymcwd.Location, slug string, opts AddOptions) (bool, error) {
-	weftBranch := fabriclayout.RecordsBranchName(t.cfg.BranchPrefix + slug)
+	weftBranch := recordsBranchIn(l, t.cfg.BranchPrefix+slug)
 	if weftBranchExists(l, weftBranch) {
 		return true, nil
 	}
@@ -142,14 +138,10 @@ func probeWeftLeftover(l *lymcwd.Location, slug, weftBranch string, localExists 
 		return weftLeftover{live: true}, nil
 	}
 
-	ns, err := originNamespaceAt(weftRoot)
-	if err != nil {
-		return weftLeftover{}, err
-	}
 	// FETCH_HEAD only: no local branch, remote-tracking ref or tag is created.
-	args := []string{"fetch", "--no-tags", "--refmap=", originRemoteName, ns.Branch(weftBranch)}
+	args := []string{"fetch", "--no-tags", "--refmap=", originRemoteName, "refs/heads/" + weftBranch}
 	for name := range tags {
-		args = append(args, ns.Tag(name))
+		args = append(args, "refs/tags/"+name)
 	}
 	if _, err := gitexec.Run(args, weftRoot); err != nil {
 		return weftLeftover{}, fmt.Errorf("fetch weft branch %q and its archive tags from %q: %w", weftBranch, originRemoteName, err)
@@ -177,11 +169,7 @@ func probeLiveLocalWeft(weftRoot, slug, weftBranch, originTip string) (weftLefto
 		return weftLeftover{live: true}, nil
 	}
 
-	ns, err := originNamespaceAt(weftRoot)
-	if err != nil {
-		return weftLeftover{}, err
-	}
-	if _, err := gitexec.Run([]string{"fetch", "--no-tags", "--refmap=", originRemoteName, ns.Branch(weftBranch)}, weftRoot); err != nil {
+	if _, err := gitexec.Run([]string{"fetch", "--no-tags", "--refmap=", originRemoteName, "refs/heads/" + weftBranch}, weftRoot); err != nil {
 		return weftLeftover{}, fmt.Errorf("fetch weft branch %q from %q: %w", weftBranch, originRemoteName, err)
 	}
 	localTip, err := gitrepo.New(weftRoot).RefSHA("refs/heads/" + weftBranch)
@@ -195,7 +183,7 @@ func probeLiveLocalWeft(weftRoot, slug, weftBranch, originTip string) (weftLefto
 	if ahead {
 		return weftLeftover{live: true, fastForwardTo: originTip}, nil
 	}
-	return weftLeftover{}, &ErrRemoteLeftover{Slug: slug, Branch: weftBranch, RemoteTip: originTip, kind: leftoverDivergedAdoptedWeft, originRef: ns.Branch(weftBranch)}
+	return weftLeftover{}, &ErrRemoteLeftover{Slug: slug, Branch: weftBranch, RemoteTip: originTip, kind: leftoverDivergedAdoptedWeft}
 }
 
 // judgeWarpLeftover judges tip, the origin tip of warpBranch as the caller read it; "" means origin lacks the branch.
@@ -245,18 +233,13 @@ func dropStaleOriginTracking(l *lymcwd.Location, weftBranch string, weftAbsent b
 
 // remoteHeadTip returns the SHA of branch on originRemoteName as seen from dir, or "" when it is absent.
 func remoteHeadTip(dir, branch string) (string, error) {
-	ns, err := originNamespaceAt(dir)
-	if err != nil {
-		return "", err
-	}
-	wanted := ns.Branch(branch)
-	out, err := gitexec.Run([]string{"ls-remote", originRemoteName, wanted}, dir)
+	out, err := gitexec.Run([]string{"ls-remote", "--heads", originRemoteName, "refs/heads/" + branch}, dir)
 	if err != nil {
 		return "", fmt.Errorf("look up branch %q on %q: %w", branch, originRemoteName, err)
 	}
 	for _, line := range strings.Split(out, "\n") {
 		sha, ref, ok := strings.Cut(strings.TrimSpace(line), "\t")
-		if ok && ref == wanted {
+		if ok && ref == "refs/heads/"+branch {
 			return sha, nil
 		}
 	}
@@ -265,25 +248,18 @@ func remoteHeadTip(dir, branch string) (string, error) {
 
 // remoteArchiveTags maps each archive/<slug>/* tag name on origin to its commit target, preferring a peeled ^{} line.
 func remoteArchiveTags(weftRoot, slug string) (map[string]string, error) {
-	tags, err := remoteTagsUnder(weftRoot, fabriclayout.ArchiveTagPrefix+slug+"/")
+	tags, err := remoteTagsUnder(weftRoot, ArchiveTagPrefix+slug+"/")
 	if err != nil {
 		return nil, fmt.Errorf("list archive tags of %q on %q: %w", slug, originRemoteName, err)
 	}
 	return tags, nil
 }
 
-// remoteTagsUnder maps each archive tag on dir's origin whose name starts with namePrefix to its commit.
-// It reads the store's own archive prefix on origin:
-// a one-repository hub gives each of its stores one below the records namespace root;
-// any other repository reads refs/tags/.
+// remoteTagsUnder maps each tag on dir's origin whose name starts with namePrefix to its commit.
 // It prefers a peeled ^{} line, so an annotated tag maps to the commit it names.
 func remoteTagsUnder(dir, namePrefix string) (map[string]string, error) {
-	ns, err := archiveTagNamespaceAt(dir)
-	if err != nil {
-		return nil, err
-	}
-	localPrefix := "refs/tags/" + namePrefix
-	out, err := gitexec.Run([]string{"ls-remote", originRemoteName, ns.Tag(namePrefix) + "*"}, dir)
+	prefix := "refs/tags/" + namePrefix
+	out, err := gitexec.Run([]string{"ls-remote", "--tags", originRemoteName, prefix + "*"}, dir)
 	if err != nil {
 		return nil, err
 	}
@@ -291,18 +267,13 @@ func remoteTagsUnder(dir, namePrefix string) (map[string]string, error) {
 	peeled := map[string]string{}
 	for _, line := range strings.Split(out, "\n") {
 		sha, ref, ok := strings.Cut(strings.TrimSpace(line), "\t")
-		if !ok {
+		if !ok || !strings.HasPrefix(ref, prefix) {
 			continue
 		}
-		name, isPeeled := strings.CutSuffix(ref, "^{}")
-		local, mapped := ns.LocalRef(name)
-		if !mapped || !strings.HasPrefix(local, localPrefix) {
-			continue
-		}
-		if isPeeled {
-			peeled[strings.TrimPrefix(local, "refs/tags/")] = sha
+		if name, isPeeled := strings.CutSuffix(ref, "^{}"); isPeeled {
+			peeled[strings.TrimPrefix(name, "refs/tags/")] = sha
 		} else {
-			plain[strings.TrimPrefix(local, "refs/tags/")] = sha
+			plain[strings.TrimPrefix(ref, "refs/tags/")] = sha
 		}
 	}
 	for name, sha := range peeled {

@@ -15,7 +15,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -245,14 +245,14 @@ func TestRefuseHeldMember(t *testing.T) {
 
 			hub := t.TempDir()
 			location := &lymcwd.Location{HubPath: hub, WorktreeName: "code", AnchorRel: "."}
-			if err := os.MkdirAll(fabriclayout.BoardDir(hub), 0o755); err != nil {
+			if err := os.MkdirAll(fabricengine.BoardDir(hub), 0o755); err != nil {
 				t.Fatal(err)
 			}
 			board := `{"version":1,"entries":[` +
 				`{"id":0,"slug":"b","title":"Beam","kind":"project","labels":["bug"],"beam":true},` +
 				`{"id":1,"slug":"m","title":"Member","kind":"task","labels":["bug"],"project":"b"},` +
 				`{"id":2,"slug":"loose","title":"Loose","kind":"task","labels":["bug"]}]}`
-			if err := os.WriteFile(filepath.Join(fabriclayout.BoardDir(hub), "board.json"), []byte(board), 0o644); err != nil {
+			if err := os.WriteFile(filepath.Join(fabricengine.BoardDir(hub), "board.json"), []byte(board), 0o644); err != nil {
 				t.Fatal(err)
 			}
 			c := &battenCLI{beamHold: tt.hold}

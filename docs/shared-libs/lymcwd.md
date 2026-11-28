@@ -52,9 +52,6 @@ On failure, one of two errors:
 - `ErrNotAGitRepo` when `cwd` is outside a git repo;
   it is also returned for a pruned worktree and for one whose gitfile names a missing git dir.
 - `ErrCwdOutsideAnchor` when `cwd` is not exactly the anchored directory.
-  It arrives wrapped in an `*AnchorGateError`, whose text adds the likely cause, a kept `cd`, and the way forward.
-  Its `Refusal` field is the error without those two, for a process whose cwd no shell chose,
-  and its `AnchorDir` field is the anchored directory.
 
 `Resolve` does NOT check for `_lym/`;
 that stays in `internal/configengine`.
@@ -65,7 +62,10 @@ A worktree's anchor is read in this order:
 
 1. the worktree's own `.lym-anchor`, at the root of its records sibling;
    an empty one counts as absent, and one that fails `ValidateAnchorRel` is an error naming the file;
-2. `"."`.
+2. the legacy hub-wide `.lym-anchor` at the board root;
+   a stale pre-rename `.fabric-anchor` with no renamed marker beside it is `ErrStaleAnchorMarker`;
+   the guard applies to this read only;
+3. `"."`.
 
 Only `fabricengine` writes the marker or reads it from git; `lymcwd` reads the working tree alone.
 
@@ -124,7 +124,7 @@ Every per-module durable-storage subdirectory (`_lym/plan`, `_lym/webster`, and 
 The owning module joins it onto `AnchorPath()` directly, never through a `lymcwd` function call.
 Records-sibling paths and junction construction belong to `internal/fabricengine`,
 as do the prime and sibling-worktree lookups they are built from (for example `RecordsWorktree` and `WorktreePath`).
-Fabric config (`fabric.pathspec`) supplies the records-backed junction name-set;
+Fabric config (`fabric.yaml`'s `pathspec`) supplies the records-backed junction name-set;
 that too is `fabricengine`'s concern, never `lymcwd`'s.
 See [PATTERN-cwd-resolution](../../pattern/PATTERN-cwd-resolution.md) for the per-token ownership map.
 

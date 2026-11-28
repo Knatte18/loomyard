@@ -1,6 +1,5 @@
 // hookpython_standalone_test.go pins the hidden hook-python-allowed verb in a standalone run.
-// No hub holds the target,
-// so its exit code follows the shuttle.deny_python of the config in the target's state directory.
+// No hub holds the target, so its exit code follows the deny_python of the config in the target's state directory.
 
 package shuttlecli
 
@@ -13,14 +12,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/cliwire"
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestHookPythonAllowedVerb_FollowsAStandaloneRunsStateDirConfig runs the verb from below a git repository.
 // No hub holds that repository.
-// The verb answers the shuttle.deny_python of the config in the state directory derived for the repository root.
+// The verb answers the deny_python of the config in the state directory derived for the repository root.
 // A standalone launch loads its shuttle config from that directory.
 // A sibling Bolt directory with no `_lym` is a damaged hub, which a launch also runs as standalone.
 // With no shuttle file in the state directory, the verb answers the template default, which denies.
@@ -51,7 +50,7 @@ func TestHookPythonAllowedVerb_FollowsAStandaloneRunsStateDirConfig(t *testing.T
 			gitDir := filepath.Join(target, ".git")
 			dirs := []string{filepath.Join(gitDir, "objects"), filepath.Join(gitDir, "refs"), filepath.Join(target, "below", "the", "root")}
 			if tt.damagedHub {
-				dirs = append(dirs, fabriclayout.BoltDir(root))
+				dirs = append(dirs, fabricengine.BoltDir(root))
 			}
 			for _, dir := range dirs {
 				if err := os.MkdirAll(dir, 0o755); err != nil {

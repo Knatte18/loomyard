@@ -1,95 +1,229 @@
 // Package shedengine is a generic outer phase-FSM that walks one flat, ordered list of producers.
-// It honors resume, crash-recovery, and pause uniformly at producer granularity.
-// Shed has no predefined slots: Preflight, Finalize, and review gates are producers like any other.
+// It has no predefined slots and honors resume, crash-recovery, and pause uniformly at producer granularity.
 // A product, such as loom, is defined purely by which producers are in its list.
-// The list's order is display and enumeration order only; it carries no routing meaning.
+// Shed itself has no opinion on that list's contents.
+// The list's order is display and enumeration order only;
+// the routing section below explains why order carries no routing meaning.
+//
+// # What Shed is
+//
+// Shed has no predefined slots: no Preflight slot, no Producer slot, no shared Finalize.
+// Preflight, Finalize, and review gates are producers like any other in the list.
+// A product built on Shed is Shed plus that product's own producer list: configuration rather than architecture.
 //
 // # Routing: OnDone and OnStuck, no positional fallback
 //
-// Every routing decision reads a field of the ProducerDef that just ran, never the entry's position in Producers.
-// A Done outcome routes via OnDone: "" finishes the whole run from any position,
-// and a non-empty value jumps to the Name it names.
-// An omitted OnDone is indistinguishable from an intended terminal one,
-// so a caller assembling a producer list asserts its own routing table exhaustively.
-// A Stuck outcome routes via OnStuck: "" escalates to a human (state "blocked"),
-// and a non-empty value bounces to the Name it names, forward or backward, budget permitting.
-// The bounce budget is per-producer and counted from the persisted history[],
-// so it spans invocations, crashes, and human resumes.
-// A resume of a budget halt grants exactly one more budget; a goto never gives budget back.
-// An Awaiting outcome is the planned human hand-off: the run halts in state "awaiting" and spends no budget.
-// A Yield outcome is a producer at a wait its own next call re-checks:
-// Shed persists nothing, and Run returns RunYielded.
-// The persisted states are running, paused, done, blocked, failed and awaiting.
-//
-// Halt reasons start with ReasonBounceBudgetExhausted, ReasonPreconditionUnmet or ReasonRerouteCapReached.
-// Each ends in a way forward.
-// Every refusal names its way forward, as contracts/specs/refusal-spec.md defines one.
-// The told Shed.LockedCheck runs under the run lock before the status file is read;
-// a refusal wraps ErrLockedCheckRefused and leaves the status file untouched.
+// Every routing decision reads a field of the ProducerDef that just ran.
+// It never reads the entry's position in Producers.
+// A Stuck outcome routes via OnStuck: "" escalates to a human (state: "blocked"),
+// and a non-empty value bounces back to the Name it names, forward or backward, budget permitting.
+// The OnStuck "" escalation persists the producer's own OutputPointer.Reason as the blocked halt's error, one line;
+// an empty Reason falls back to ReasonNoOnStuckTarget.
+// Budget exhaustion persists a reason that starts with ReasonBounceBudgetExhausted, whatever the producer's Reason;
+// its trailing way forward is the told Shed.BudgetWayForward.
+// A producer halts on an unmet precondition the run cannot settle with a reason starting with ReasonPreconditionUnmet.
+// That reason ends in the producer's own way forward; Shed itself never writes the prefix.
+// The told Shed.LockedCheck runs under the run lock in Run and Step, before the status file is read,
+// and a refusal returns an error wrapping ErrLockedCheckRefused with the status file untouched.
+// An Awaiting outcome is the planned human hand-off and routes nowhere.
+// The run halts in state "awaiting" with the producer's Reason as the error.
+// No bounce budget is consulted or spent, and a resume re-calls the same producer, as after a blocked halt.
+// An Awaiting outcome may also carry OutputPointer.ParentNotice, a one-line notice for the run's parent:
+// Shed persists it as the status file's optional parent_notice and returns it on StepResult.
+// It writes it on no other outcome and clears it on the next write.
+// A Yield outcome is a producer at a wait its own next call re-checks.
+// Shed persists nothing for it: no history entry, no status write, no activity, no CommitStatus call.
+// It reads no budget or route, and the run stays at the same row, running.
+// Step reports it with State running, and Run returns RunYielded instead of continuing.
+// Only a producer that waits that way returns it.
+// The persisted state vocabulary is running, paused, done, blocked, failed and awaiting.
+// A Done outcome routes via OnDone the same way: "" finishes the whole run from any list position (state: "done"),
+// and a non-empty value jumps to the Name it names with no positional fallback of any kind.
+// An omitted OnDone is indistinguishable from an intended terminal one and ends the run quietly,
+// so a caller assembling a producer list asserts its own routing table exhaustively rather than relying on Shed.
+// The bounce budget backing OnStuck is per-producer and episode-scoped.
+// It is counted from the persisted history[] rather than held in memory,
+// so the count spans invocations, crashes, and human resumes rather than resetting on every new Run call.
+// The count is the number of Stuck entries a producer has authored since the latest of these:
+// its own Done or skipped entry;
+// a Done by any producer sharing its non-empty Segment;
+// a reroute into its segment (all of them, if none exists).
+// A goto does not end an episode: it keeps the spent budget.
+// The halt that exhausts the budget marks its Stuck entry budget_capped.
+// The scan stops at a capped entry without counting it,
+// so a resume of the halt (which writes no entry) grants exactly one more budget.
+// A capped entry directly followed by a goto entry is counted and the scan goes on,
+// so a goto onto the halted run grants none, and nor does a resume after that goto.
+// A Stuck verdict whose OutputPointer.GenerationStart is set is recorded as counted with generation_start.
+// It never halts on the budget and ends the scan right after itself,
+// so the count reads 1 once the producer's generation has started, whatever the previous generation spent.
+// A history entry records its call's gate count in gate_attempts and its gate spans in gate_spans.
+// Both come from the OutputPointer and are omitted when the call recorded none.
+// A GateSpan is a plain struct, so this package imports nothing for it.
+// It holds the entry's name, a kind (gate, held or rework), and RFC 3339 start and end times with fractional seconds.
+// A told Shed.Machine is stamped as machine on each entry the shed appends.
+// A fold of consecutive identical exempt Stucks appends the folded call's spans to the surviving entry's own;
+// the spans take no part in deciding whether two entries fold.
 //
 // # goto: a history-only outcome that moves a halted run
 //
 // Goto moves a halted run onto a named row and appends an entry whose outcome is OutcomeGoto.
-// No producer returns that outcome.
-// The entry leaves the run paused, so the next Run reads as an ordinary resume,
-// and it sets no episode boundary.
-// Goto refuses a running run.
-// It does so because the run lock is free between a step-driven driver's steps;
-// and nothing else tells a live driver from a crashed one.
+// That outcome is history-only: no producer returns it, and it is never a Call verdict.
+// The entry leaves the run paused, never running, so the next Run reads as an ordinary resume.
+// It sets no episode boundary: the bounce count of every row reads as it did before the goto,
+// so a goto never gives a budget back, and a budget halt is lifted by a resume alone.
+//
+// Goto only moves a halted run back.
+// It refuses a running run, because the run lock is free between a step-driven driver's steps.
+// Nothing else tells a live driver from a crashed one.
+// The reference row is the row current_producer names.
+// When that names no row, it is the producer of the latest history entry that does.
+// The routed row of that entry (OnDone after done, OnStuck after stuck) is admitted too.
 // A target is admitted when it sits at or before the reference row in the producer list;
 // an awaiting run admits only rows strictly before it, since moving onto or past a hand-off would bypass it.
 // Every refusal leaves the status file unchanged.
 // Shed knows no review state, so the recipe owner tells a GotoGuard on GotoRequest.Guard and RelaunchRequest.Guard;
-// a nil guard admits every target.
-// GotoRequest.Admitted and RelaunchRequest.Admitted are the recipe's optional hook.
-// It is called with the target once a move is written, still under the run lock.
+// it runs after those checks and before the write,
+// and a refusal it returns, or an error that stops it deciding, refuses the goto.
+// A nil guard admits every target, and Shed never consults it for a target its own checks already refused.
 //
 // Relaunch is the status write a driver's re-launch performs.
-// Under the run lock it refuses a missing file, a done run and a running run.
-// It then checks a non-empty Target with CheckGotoTarget and the told guard, and calls the caller's Admit.
+// Under the run lock and one hold of the status lock it refuses a missing file, a done run and a running run.
+// It then checks a non-empty Target with CheckGotoTarget and then the told guard, then calls the caller's Admit.
 // It writes only if every one passed.
-// It keeps a human's pause requests across the re-launch.
+// Its goto keeps pause_requested, pause_before and pause_after, so a human's pause survives the re-launch.
+// Without a Target, or when Admit reports the target already in effect, it writes the status unchanged.
+// The checks run before Admit so a refused target never lets Admit write its side effect.
+//
+// A busy refusal and goto's refusal of a running run name the command that halts the live driver at its next boundary:
+// the told Shed.PauseWayForward, or `lym shed pause <run-id> --after <current_producer>` when none is told.
+//
+// The missing-producer refusal names goto as its way forward in a trailing `way forward:` clause.
+// That clause lists every valid producer name.
+// Every refusal names its way forward, as contracts/specs/refusal-spec.md defines one.
 //
 // # The reroute edge and the halting Stuck
 //
 // A row may name one OnReroute row, forward or backward and across segments.
-// A Stuck verdict whose OutputPointer.Reroute is set takes that edge instead of OnStuck and spends no bounce budget.
-// A row reroutes at most `rerouteCap` times between Dones.
-// The next reroute halts blocked with a reason starting `ReasonRerouteCapReached`,
-// and a resume grants a fresh allowance.
+// A Stuck verdict whose OutputPointer.Reroute is set takes that edge instead of OnStuck:
+// the run moves to the target, and a history entry records it with outcome OutcomeReroute and the target in routed_to.
+// A Stuck verdict that takes its row's OnStuck edge records the target in routed_to on its own Stuck entry,
+// so a reader can tell a bounce from a halt; the outcome stays stuck and the bounce count ignores the field.
+// A reroute spends no bounce budget, and it ends the episode of every row sharing its target's Segment.
+// A row reroutes at most `rerouteCap` times since its latest Done or its latest reroute-cap halt;
+// the next reroute halts blocked at the row with a budget-exempt Stuck entry marked reroute_capped.
+// Its reason starts with `ReasonRerouteCapReached`, and its trailing way forward is the told Shed.RerouteCapWayForward.
+// Resuming that halt grants a fresh allowance of reroutes, because the capped entry resets the count.
 // A Reroute verdict from a row with no OnReroute is a wiring fault: the run is written failed naming the row.
 //
 // A Stuck verdict whose OutputPointer.Halt is set blocks the run at its own row with the producer's Reason.
-// It ignores OnStuck, is budget-exempt, and can only stop a run, never advance or route it.
+// The row's OnStuck is ignored, and the verdict is budget-exempt.
+// It can only stop a run, never advance or route it, so a row with an OnStuck route can still halt for a human.
+// A Stuck that blocks at a row with no OnStuck is budget-exempt as well, since no budget applies there,
+// so a re-step that halts the same way again folds into the halt's entry instead of appending one.
+// OutcomeGoto stays the goto verb's alone.
 //
 // # Entry gates
 //
 // A ProducerDef may carry an EntryGate; nil is an ungated row.
-// Shed evaluates it when the run enters the row, after the step's pause checks.
-// A gate that does not hold appends a history entry with outcome OutcomeSkipped.
-// It routes by SkipTo when set, else OnDone, and spends no bounce budget.
-// Consecutive skips chain within one step.
-// A chain longer than the producer list is a wiring fault: the status is written failed naming the rows.
-// An evaluation error leaves the row not entered and writes the status failed, so a resume evaluates the gate again.
+// It returns whether the row runs, the check's text with the values it read, and an evaluation error.
+// Shed evaluates a gated row when the run enters it, after the step's pause checks and before the resume write.
+// A holding gate records the row in the status file's entered_row and the row is called.
+// A gate that does not hold appends a history entry with outcome OutcomeSkipped and the gate's text in reason.
+// It routes by the row's SkipTo when set and by its OnDone otherwise.
+// It spends no bounce budget and ends the row's episode as a Done does.
+// SkipTo lets a skip jump past the rows a Done would enter, such as the rows of a block.
+// It must name a producer in the list, and a goto's admission reads a skipped entry's routed row through it.
+// A row's Block is its block path: the enclosing block rows' names joined by "/", empty for a row outside every block.
+// It is copied onto every history entry the row writes, as block.
+// The step then enters the row the skip routes to, so consecutive skips chain within one step.
+// A pause_before naming a row the skip chain reaches pauses the run before that row is entered.
+// A gate is evaluated after the pause, so a setting changed during it decides the gate.
+// A pause_after naming a skipped row pauses the run at the row the skip routes to.
+// The reason is "paused after <row>, as requested", and both conditions clear as a fired condition clears them.
+// A skipped row with an empty OnDone finishes the run done.
+// A chain longer than the producer list is a wiring fault no shipped recipe reaches.
+// The status is written failed naming the rows of the chain, with a way forward:
+// fix the settings the gates read or move the run with `lym shed goto`, then resume.
+// An evaluation error leaves the row not entered and writes the status failed before the step returns,
+// so a resume evaluates the gate again.
 // A resume or a halt re-calls the entered row without evaluating its gate.
-// A gate skips only its own row, and goto is the one bypass: it names its target as entered.
+// A gate skips only its own row, and the shed goto verb is the one bypass:
+// Goto names its target as entered, so the target runs without evaluation.
+//
+// # Row renames
+//
+// Row names are durable resume identities,
+// so a product that renames a row carries in-flight runs across with RenameProducers.
+// It rewrites each retired name under the run lock, in these fields:
+// current_producer, entered_row, pause_before, pause_after and every history entry's producer.
+// A file that names no retired row is left untouched.
+// That rename has no side effect and serves a row that lives on under a new name.
+//
+// # Retired rows
+//
+// A row the recipe dropped is declared in the told Shed.Retired map, each name to the row a run on it moves to.
+// When a step finds current_producer naming no row but a key of the map, it calls the told Shed.RetiredMove.
+// The call receives the retired row, its target and whether the status was not running.
+// The step then persists the target as current_producer, state paused, with the reason:
+// `the row <from> is retired from the recipe, so the run moved to <target> and paused; way forward: <command>`.
+// The command is the told Shed.RetiredWayForward, or the run verb that resumes the run.
+// A RetiredMove error returns an error naming the cause and the same way forward, and persists nothing,
+// so the next step calls it again.
+// A current row that is a row of the list never consults the map,
+// and a name that is neither a row nor a key keeps the missing-producer refusal.
 //
 // # Field ownership and the stop conditions
 //
 // current_producer, state, pause_reason, error, activity and history are Shed-owned and rewritten on every persist.
 // An empty current_producer is a run at its start, the first row of the producer list.
+// A seed writes it so, naming no row, and a step's read resolves it to that row before anything else reads it.
+// Before calling that row the step writes it as current_producer and tells CommitStatus, the start write,
+// so the status names the row in flight from the run's first call on.
+// pause_reason is the why of a paused run: every write that records paused sets it, and every other write clears it.
+// A pause request reads "pause requested" and a cancelled context "cancelled".
+// A fired condition reads its condition reason, and Goto reads "goto to <row>".
+// A Relaunch onto a row reads "re-launched onto <row>"; one that moves nothing leaves the reason as it stands.
+// entered_row is Shed-owned and sits outside that list, as the entry gate defines it:
+// the entry evaluation sets it; every routed write and skip clears it; Goto sets it to its target;
+// a Relaunch onto a target clears it; the resume and halt writes keep it.
+// A status without the field, or naming another row, reads as not entered.
 // cancel, pause_intent and takeover are outside-owned: Shed never writes them, and a rewrite carries them through.
-// pause_requested is set by an outside actor and cleared by Shed, once, in the persist that records paused.
-// pause_before and pause_after are outside-set.
-// They are cleared together, only in the persist that records paused for a fired condition and in Goto's persist.
-// pause_before fires before the named producer is called.
+// takeover names the machine, the adopt subject and the time of another machine's takeover of the run.
+// pause_requested is shared write-to-clear:
+// an outside actor sets it and Shed clears it, exactly once, in the persist that records paused.
+// pause_before and pause_after are outside-set, both-cleared:
+// an outside actor records a producer name in either.
+// Shed clears both together only in the persist that records paused for a fired condition and in Goto's persist;
+// every other write carries them through.
+// pause_requested_by, pause_before_by and pause_after_by are outside-set beside the request they accompany.
+// Shed clears each in the write that clears its request.
+// A reason names the label when its request or condition carries one, as "pause requested by <label>";
+// Goto's reason names its GotoRequest.By.
+// pause_before fires when current_producer equals its name, before that producer is called.
 // pause_after fires when the named producer returns a routed running outcome, or its entry gate skips its row.
-// A halting outcome or a producer error wins over pause_after and leaves it recorded.
+// A routed running outcome is done to OnDone or a bounced stuck to OnStuck; the run pauses at the routed row.
+// A halting outcome wins and leaves pause_after recorded, and so does a producer error.
+// The fired step's Reason reads "paused before <target>, as requested" or "paused after <target>, as requested".
 //
 // # Caller labels
 //
-// A history entry's by and the status file's pending_by are caller labels, for reports only.
-// No Go decision reads by, pending_by or ResumedBy.
+// A history entry's by is the caller label of the goto or resume that wrote it.
+// The status file's pending_by is the label of a step that resumed a halted run.
+// It waits for the next appended entry to carry it.
+// Goto writes its GotoRequest.By on the goto entry and clears pending_by; Relaunch clears pending_by and writes no by.
+// A step resuming a blocked, failed or awaiting run sets pending_by to Shed.ResumedBy.
+// RecordResumer does the same for a loop's waiter before its children step.
+// A resume from paused records nothing.
+// The first label stands: nothing sets pending_by while one is pending,
+// so the waiter's label survives its loop children, each with its own.
+// The next write that appends a history entry hands pending_by to that entry and clears it;
+// a write that appends none carries it through.
+// A skip write appends an entry and carries the label through,
+// so the label of a resumed run lands on the next verdict and never on a skipped entry.
+// CallerShed is the label of lym's own automatic steps.
+// The labels are for reports only: no Go decision reads by, pending_by or ResumedBy,
+// and the refusals of goto and step do not change.
 // Shed takes the label as a plain string and imports nothing to classify it.
 //
 // # Told, never derived
@@ -98,26 +232,50 @@
 // It resolves no cwd and names no durable/ephemeral directory convention.
 // The caller supplies paths that already obey PATTERN-lym-files:
 // the status file durable, both locks never-tracked transients.
-// The package imports only the standard library, internal/state and internal/lock.
+// Shed cannot and does not choose either location.
+// The package imports only the standard library, internal/state and internal/lock,
+// so every path and every recipe behaviour reaches it told.
 //
 // # The transient mark
 //
-// The transient mark is declared only in transient.go, and its class set is closed there (PATTERN-shed-driver).
-// It is set only at a producer boundary, the Shed.Transient classifier, or at a PreStep hook.
-// A gate verdict (blocked, awaiting, paused) never carries it.
+// The transient mark is declared only in transient.go,
+// and its class set is closed at that declaration (PATTERN-shed-driver).
+// A lower-level package exposes its own classification, and internal/shedtransient alone translates it into the mark.
+// The mark is set only at a producer boundary or at a step bootstrap boundary.
+// The producer boundary is the Shed.Transient classifier that shedbuild.NewShed tells;
+// the bootstrap boundary is a PreStep hook.
+// A producer returns a failure shedtransient classifies as a hard error rather than a verdict,
+// so it reaches that classifier, and a gate verdict (blocked, awaiting, paused) never carries the mark.
 // A mark added at a new site changes what an automated driver re-steps without a human deciding.
 //
-// # The ShedProducer contract
+// # The ShedProducer contract's two caller-side obligations
 //
-// Two obligations Shed cannot enforce mechanically.
-// Call must return exactly Done, Stuck or Awaiting; a fourth value is an engine-level failure.
-// Call must surface context cancellation as a non-nil error, never as Stuck.
-// This is because Shed cannot tell it from a genuine verdict and would spend bounce budget or block on an operator stop.
+// A ShedProducer implementation binds itself to two obligations Shed cannot enforce mechanically.
+// First, Call must return exactly Done, Stuck or Awaiting and nothing else;
+// a fourth value is an engine-level failure, not a producer verdict.
+// Second, Call must surface context cancellation as a non-nil error, never as Stuck.
+// A Stuck return with a cancelled context is indistinguishable to Shed from a genuine producer verdict,
+// so a producer that reports cancellation as Stuck would consume bounce budget.
+// It could also escalate to blocked for what was an operator stop.
 //
 // # The external-writer lock contract
 //
 // Shed is not the status file's only writer.
-// Any other actor that writes it must go through internal/state with the same StatusLockPath Shed was told.
-// Such actors include a product's pause verb or spawn-time seeder.
-// The lock is advisory, so the read-modify-write merge is safe only against a writer that takes it.
+// Any other actor that writes it, such as a product's pause verb or spawn-time seeder, must go through internal/state.
+// It must use the same StatusLockPath Shed was told.
+// internal/state's lock is advisory and keyed on the caller-supplied lock path,
+// so the read-modify-write merge is safe only against a concurrent external writer that takes the same lock.
+// The merge-safety property holds under no other condition.
+//
+// WriteFailedStop is a Shed write under the run lock, not an external write.
+// It takes the run lock without waiting.
+// It writes failed, with the error and the transient class, only into a file that still reads running.
+// That is how a failure stop leaves a run non-running while State and Error stay written by Shed alone.
+//
+// # loom's status.json is one instance of this shape
+//
+// internal/loomengine's own status type carries only loom's own fields: slug, parent and start_sha.
+// They sit inside the opaque Product passthrough field.
+// Every other field is this package's own shape, documented above.
+// See contracts/specs/loom-status-spec.md for loom's own half of the schema.
 package shedengine

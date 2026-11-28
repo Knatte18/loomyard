@@ -15,9 +15,29 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
+
+// UnwireVerbResult summarizes what Unwire changed, or on a dry run what it would change.
+// It embeds MutationRecord, which carries the mutation record accumulated over the call;
+// a dry run records no mutation.
+type UnwireVerbResult struct {
+	MutationRecord
+	// Applied is true only when the junctions and exclude lines were actually removed;
+	// false on a dry run.
+	Applied bool
+	// JunctionsRemoved lists the Name of each warp junction that was actually present and removed.
+	// It is empty when no junction was wired.
+	// On a dry run it lists the junctions that would be removed, all left in place.
+	JunctionsRemoved []string
+	// WeftContent is "preserved" when the weft-side _lym exists, and "not_present" otherwise.
+	// Unwire never deletes weft-side content, so .lym is never touched either.
+	// On Windows an open handle inside it makes the weft worktree's removal fail; stop the daemons and re-run.
+	WeftContent string
+	// GitExclude is "reverted" or "unchanged".
+	// On a dry run "reverted" means an exclude line would be stripped, and it is left in place.
+	GitExclude string
+}
 
 // Unwire reverses every warp junction wired for the worktree at cwd, and their warp `.git/info/exclude` entries.
 // It is a full per-worktree deactivation of fabric wiring.
@@ -31,21 +51,30 @@ import (
 // It never deletes weft-side content: every weft-side directory, including `.lym`, is left intact.
 // It never touches the repo-wide `weft:main` records or any worktree's `.lym-anchor` marker at its weft root.
 // A later `lym fabric reconcile` can rewire this worktree.
-func Unwire(cwd string, apply bool) (res fabriclayout.UnwireVerbResult, err error) {
+func Unwire(cwd string, apply bool) (res UnwireVerbResult, err error) {
 	var rec *Mutations
 	defer func() { res.Mutations = rec.Snapshot() }()
 
 	l, err := lymcwd.Resolve(cwd)
 	if err != nil {
-		return fabriclayout.UnwireVerbResult{}, err
+		return UnwireVerbResult{}, err
 	}
 	rec = NewMutations(l.HubPath)
 
 	slug := filepath.Base(l.WorktreePath())
 
+	// A one-repository worktree links nothing: its `_lym` and `.lym` are real directories, so there is nothing to unwire.
+	if oneRepositoryAt(l.WorktreePath()) {
+		content := "not_present"
+		if _, statErr := os.Stat(WeftLymDirFor(l, slug)); statErr == nil {
+			content = "preserved"
+		}
+		return UnwireVerbResult{Applied: apply, WeftContent: content, GitExclude: "unchanged"}, nil
+	}
+
 	names, err := scanOnDiskJunctionNames(l, slug)
 	if err != nil {
-		return fabriclayout.UnwireVerbResult{}, err
+		return UnwireVerbResult{}, err
 	}
 	names = withoutScratchLink(names)
 
@@ -55,7 +84,7 @@ func Unwire(cwd string, apply bool) (res fabriclayout.UnwireVerbResult, err erro
 		junctionResult, err := UnwireJunctions(l, slug, names)
 		rec.Extend(junctionResult.Mutated())
 		if err != nil {
-			return fabriclayout.UnwireVerbResult{}, err
+			return UnwireVerbResult{}, err
 		}
 		junctionsRemoved = junctionResult.JunctionsRemoved
 		excludeChanged = junctionResult.ExcludeChanged
@@ -63,24 +92,24 @@ func Unwire(cwd string, apply bool) (res fabriclayout.UnwireVerbResult, err erro
 		junctionsRemoved = names
 		excludeChanged, err = unseedGitExclude(rec, l, slug, names, true)
 		if err != nil {
-			return fabriclayout.UnwireVerbResult{}, err
+			return UnwireVerbResult{}, err
 		}
 	}
 
-	result := fabriclayout.UnwireVerbResult{Applied: apply}
+	result := UnwireVerbResult{Applied: apply}
 
 	// The weft-side _lym is only observed, never mutated, and .lym is left alone too.
 	// It disappears with the weft worktree when the pair is torn down, and on Windows an open handle makes that fail.
 	// The remedy is to stop the daemons and re-run.
 	weftWorktree := RecordsWorktree(l)
 	if _, statErr := os.Stat(weftWorktree); statErr != nil && !os.IsNotExist(statErr) {
-		return fabriclayout.UnwireVerbResult{}, statErr
+		return UnwireVerbResult{}, statErr
 	} else if os.IsNotExist(statErr) {
 		result.WeftContent = "not_present"
 	} else {
 		weftLymDir := WeftLymDirFor(l, slug)
 		if _, statErr := os.Stat(weftLymDir); statErr != nil && !os.IsNotExist(statErr) {
-			return fabriclayout.UnwireVerbResult{}, statErr
+			return UnwireVerbResult{}, statErr
 		} else if os.IsNotExist(statErr) {
 			result.WeftContent = "not_present"
 		} else {

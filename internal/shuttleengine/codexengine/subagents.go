@@ -12,7 +12,7 @@ import (
 
 // subagentEffort returns the effort a subagent of role takes on a model agents does not list.
 // A Codex model is none of the Claude models agents.yaml keys efforts by, so the fallback effort applies to every one.
-// It returns "" when agents names no effort, and when codex.efforts does not list the effort,
+// It returns "" when agents names no effort, and when codex.yaml's efforts does not list the effort,
 // so the session's subagents take Codex's default rather than a value Codex rejects.
 // An unlisted effort logs a warning naming it.
 func (c *Codex) subagentEffort(agents agentconfig.Config, role agentconfig.Role, codex Config) string {
@@ -20,7 +20,7 @@ func (c *Codex) subagentEffort(agents agentconfig.Config, role agentconfig.Role,
 	if effort == "" || slices.Contains(codex.Efforts, effort) {
 		return effort
 	}
-	c.warn("codexengine: "+otherKeyName("agents", "efforts")+" gives subagents an effort that "+keyName(effortsKey)+" does not list, so they take Codex's default; way forward: add it to "+keyName(effortsKey)+" with lym config codex", "effort", effort, "efforts", codex.Efforts)
+	c.warn("codexengine: agents.yaml gives subagents an effort that codex.yaml's efforts does not list, so they take Codex's default; way forward: add it to efforts with lym config codex", "effort", effort, "efforts", codex.Efforts)
 	return ""
 }
 

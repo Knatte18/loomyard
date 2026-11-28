@@ -19,7 +19,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -46,7 +45,7 @@ const (
 // mustUseLLMDriverArm reports whether the run takes the llm arm, from the run's recorded driver.
 // It selects the llm arm's strand launch over the go arm's detached spawn.
 //
-// An unseeded run is seeded with the driver its shed.driver_kind resolves to, llm by default (resolveSeedDriver).
+// An unseeded run is seeded with the driver its driver_kind resolves to, llm by default (resolveSeedDriver).
 // A seed file with no driver value still reads as the go driver.
 // So this is a two-value switch: any value other than shedrun.DriverLLM, empty included, selects the go arm.
 func mustUseLLMDriverArm(driver string) bool {
@@ -177,8 +176,10 @@ func isLandingProducer(producer string) bool {
 
 // ownMergeInLeftover reports whether st is a parked merge-in of parentBranch that the producer aborts and redoes itself:
 // a parked `merge-in` sourced from the parent branch, at Parent-Align or Finalize.
-func ownMergeInLeftover(st fabriclayout.MidMergeState, producer, parentBranch string) bool {
-	return st.Kind == fabriclayout.MidMergeParked && st.Verb == fabriclayout.MergeVerbMergeIn && st.Source == parentBranch && isLandingProducer(producer)
+// A merge-in stopped before its records step counts as parked, since the abort handles it.
+func ownMergeInLeftover(st fabricengine.MidMergeState, producer, parentBranch string) bool {
+	parked := st.Kind == fabricengine.MidMergeParked || st.Kind == fabricengine.MidMergeRecordsUnsettled
+	return parked && st.Verb == fabricengine.MergeVerbMergeIn && st.Source == parentBranch && isLandingProducer(producer)
 }
 
 // readRecordedParentBranch returns the parent branch the pair's fabric origin record names.
@@ -232,10 +233,10 @@ func (c *loomCLI) refuseOverUnfinishedMerge(ctx context.Context, out io.Writer, 
 	}
 	var msg string
 	switch st.Kind {
-	case fabriclayout.MidMergeNone:
+	case fabricengine.MidMergeNone:
 		return true
-	case fabriclayout.MidMergeParked:
-		if st.Verb == fabriclayout.MergeVerbMergeIn && isLandingProducer(producer) {
+	case fabricengine.MidMergeParked, fabricengine.MidMergeRecordsUnsettled:
+		if st.Verb == fabricengine.MergeVerbMergeIn && isLandingProducer(producer) {
 			parentBranch, err := c.recordedParentBranch(c.location)
 			if err != nil {
 				_ = bootstrapLock.Release()
@@ -246,7 +247,11 @@ func (c *loomCLI) refuseOverUnfinishedMerge(ctx context.Context, out io.Writer, 
 				return true
 			}
 		}
-		msg = `loom: a fabric merge is in progress in this worktree; resolve each listed path, mark it resolved with "lym fabric merge-stage <path>...", then run "lym fabric merge --continue" (or "lym fabric merge --abort" to discard the merge), then re-run "` + retry + `"; a session lym refuses the verb from reports status: FAILED and the orch runs it`
+		if st.Kind == fabricengine.MidMergeRecordsUnsettled {
+			msg = `loom: a fabric merge is in progress in this worktree with its records unsettled; run "lym fabric merge --abort" to discard the merge, then re-run "` + retry + `"; a session lym refuses the verb from reports status: FAILED and the orch runs it`
+		} else {
+			msg = `loom: a fabric merge is in progress in this worktree; resolve each listed path, mark it resolved with "lym fabric merge-stage <path>...", then run "lym fabric merge --continue" (or "lym fabric merge --abort" to discard the merge), then re-run "` + retry + `"; a session lym refuses the verb from reports status: FAILED and the orch runs it`
+		}
 	default:
 		msg = `loom: a git merge, cherry-pick or squash that fabric did not start is in progress in this worktree; conclude or abort it with git, then re-run "` + retry + `"`
 	}
@@ -504,6 +509,7 @@ func (c *loomCLI) startSuccessFields(driver, slug string, putDriverToWork bool) 
 // startCmd builds the `start` subcommand: the session bootstrap.
 func (c *loomCLI) startCmd() *cobra.Command {
 	var parentFlag string
+	var noAttachFlag bool
 
 	cmd := &cobra.Command{
 		Use:         "start",
@@ -598,9 +604,7 @@ Example:
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}
-			if err := c.ensureStatusStrand(); errors.Is(err, errStatusStrandNotReplaced) {
-				logger.Warn("loom: the status pane will be missing this run", "cause", err)
-			} else if err != nil {
+			if err := c.ensureStatusStrand(); err != nil {
 				_ = bootstrapLock.Release()
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
@@ -649,6 +653,10 @@ Example:
 	}
 
 	cmd.Flags().StringVar(&parentFlag, "parent", "", "write the pair's provenance record once for a worktree created before that record existed; refused when it disagrees with an already-recorded value")
+	// noAttachFlag is read by nothing: the verb never attaches,
+	// and the flag stays accepted for existing callers.
+	cmd.Flags().BoolVar(&noAttachFlag, "no-attach", false, "accepted and ignored; kept for existing callers")
+	_ = cmd.Flags().MarkHidden("no-attach")
 
 	return cmd
 }

@@ -7,17 +7,12 @@ A folder inside a topic groups a series of near-identical studies.
 Each report records its own runs at a point in time and is not rewritten when the code changes.
 A study's script finds the repository root with `git rev-parse --show-toplevel`, so it runs from any folder depth.
 
-## autonomy — runs without an operator
-
-- [stop-classes-2026-11-27](autonomy/stop-classes-2026-11-27.md) — which stops runs hit over two weeks, who settled them, a proposed settlement table, and the notices that fired for correct waits.
-
 ## burler — review rounds, lenses and fixers
 
 - [burler-fan-tuning-bench-2026-10-16](burler/burler-fan-tuning-bench-2026-10-16/report.md) — whether a tuned lens fan broadens a Burler review.
 - [burler-fork-review-audit-2026-10-16](burler/burler-fork-review-audit-2026-10-16/report.md) — a reviewer master that forks its review, fixes, and reviews its own fix.
 - [concrete-review-findings-2026-11-03](burler/concrete-review-findings-2026-11-03/report.md) — whether Plan and Discussion reviewers already write concrete findings.
 - [fixers-on-sonnet-2026-11-03](burler/fixers-on-sonnet-2026-11-03/report.md) — Plan and Discussion fixers on Sonnet against Opus.
-- [hardener-works-study.md](hardener-works-study.md) — whether the hardener's two fabric campaigns found and fixed real faults, kept focus and converged, and what they cost.
 - [review-setup-audit-2026-10-28](burler/review-setup-audit-2026-10-28/report.md) — what each part of the review setup is worth, read from landed loom runs.
 - [session-fork-spike.md](burler/session-fork-spike.md) — whether a review forked over lenses from one session finds more than one reviewer.
 
@@ -135,8 +130,6 @@ A study's script finds the repository root with `git rev-parse --show-toplevel`,
 
 - [linux-portability-survey.md](platform/linux-portability-survey.md) — what broke when the Go test suite first ran on Linux.
 - [sandboxing-options-2026-10-30.md](platform/sandboxing-options-2026-10-30.md) — sandboxing options for a closed area for lym.
-- [landlock-area-2026-11-23.md](platform/landlock-area-2026-11-23.md) — whether a lym-started Landlock area closes the bus and other hubs' tmux without root, measured with [its probe](platform/landlock-probe/main.go).
-- [sandbox-without-new-kernel-2026-11-23.md](platform/sandbox-without-new-kernel-2026-11-23.md) — what closes the bus and other hubs' tmux on kernel 7.0 without root: a seccomp connect supervisor, measured with [its probe](platform/seccomp-connect-probe/main.go) and [a take-away probe](platform/same-uid-probe/main.go).
 
 ## quarry — code search
 
@@ -171,17 +164,10 @@ A study's script finds the repository root with `git rev-parse --show-toplevel`,
 - [redundant-candidates-check-2026-11-17](speed/redundant-candidates-check-2026-11-17/report.md) — `lym gate redundant internal/boardengine` after the kill-count fix: its lists against the trial's 14 candidates, and five candidates read by hand against their covering tests.
 - [testmap-use-cases-2026-11-18](speed/testmap-use-cases-2026-11-18/report.md) — what the per-test coverage maps can do for lym and its agents: every use found in research and practice, ranked, with the top three argued and the rest ruled out.
 - [mutation-trial-2026-11-19](speed/mutation-trial-2026-11-19/report.md) — `lym gate mutate` replayed on 20 landed diffs: mutants run, killed, survived and unjudged, the survivors judged by hand, and the decision to build the `mutation` report step.
-- [testmap-worth-evaluation](testmap-worth-evaluation.md) — every user of the coverage maps, what each has given against its cost, and which to remove.
-- [test-time-measure-2026-11-27](speed/test-time-measure-2026-11-27/report.md) — test and wall time of every package's tier0 and tier1 tests, the packages worth a cut and where build dominates.
-- [gate-fixed-cost-2026-11-27](speed/gate-fixed-cost-2026-11-27/report.md) — what each fixed step of a tier1 gate call costs, and one recommended change per step.
 
 ## survey — ideas from outside projects
 
 - [pocock-skills-2026-11-19](survey/pocock-skills-2026-11-19/report.md) — what LoomYard could take from Matt Pocock's skills repository: each candidate's landing place, gain, cost and verdict, with the three best written as board notes.
-
-## testing — test practice
-
-- [no-fake-other-modules](no-fake-other-modules.md) — the rule against faking another module in tests, and every stand-in found, with a verdict for each.
 
 ## tokens — token use, cost and models
 
@@ -227,14 +213,9 @@ A study's script finds the repository root with `git rev-parse --show-toplevel`,
 - [twill-plan-bench-sonnet](twill/plan-bench/twill-plan-bench-sonnet/report.md) — the Sonnet arm.
 - [twill-plan-bench-sonnet-medium-fable](twill/plan-bench/twill-plan-bench-sonnet-medium-fable/report.md) — twill on Sonnet at medium effort, and a single Fable writer.
 
-## weaver — the cold-start implementer
-
-- [bench-2026-11-27](weaver/bench-2026-11-27/report.md) — Weaver against Webster on three landed plans: time, cost and quality, and what Weaver needs before it replaces Webster.
-
 ## webster — implementation batches
 
 - [parallel-batches-2026-10-17](webster/parallel-batches-2026-10-17/report.md) — how often cards and batches could have run in parallel worktrees.
-- [gate-time-2026-11-28](webster/gate-time-2026-11-28.md) — where Webster and Weaver rows spend their gate time before and after the card gate took in dependent packages, and the cuts ranked.
 
 ### batch-budget — the batcher's budget profiles
 

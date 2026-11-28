@@ -20,7 +20,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
-	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
 // haltNote describes one `blocked` or `failed` halt.
@@ -32,10 +31,6 @@ type haltNote struct {
 	TraceFile string
 	// Interrupted is true for the halt of a step that ended without an envelope.
 	Interrupted bool
-	// BuildSkew is true for a failed halt on a board stencil that a lym build newer than the running one wrote.
-	BuildSkew bool
-	// Transient is true for a failed halt whose status records a transient class.
-	Transient bool
 }
 
 // writeHistoryRows appends the history section of a friction note:
@@ -71,7 +66,7 @@ func writeHaltNote(frictionDir string, n haltNote) error {
 		HistoryEntries: len(n.History),
 		TraceFile:      n.TraceFile,
 	}
-	if kind, ok := loomengine.ClassifyHalt(n.State, n.Reason, n.Interrupted, n.BuildSkew, n.Transient); ok {
+	if kind, ok := loomengine.ClassifyHalt(n.State, n.Reason, n.Interrupted); ok {
 		note.Anomaly = string(kind)
 	}
 	for _, h := range n.History {
@@ -103,9 +98,6 @@ func (c *loomCLI) reflectHalt(n haltNote) string {
 // Otherwise it is one only when the status file reads `failed` with a persisted error equal to err.Error().
 // That is how shedengine persists the producer-error and unrecognised-outcome arms.
 // A stale `failed` status left by an earlier invocation therefore never writes a second note.
-// The halt is a build skew when err's chain holds a board stencil that a newer lym build wrote.
-// It is transient when the status records a transient class.
-// A network-class stop is no halt while a Go driver holds the run's driver lock, since that driver waits it out.
 func (c *loomCLI) failedHalt(err error) (haltNote, bool) {
 	if err == nil || errors.Is(err, shedengine.ErrShedBusy) {
 		return haltNote{}, false
@@ -117,24 +109,12 @@ func (c *loomCLI) failedHalt(err error) (haltNote, bool) {
 	if st.State != shedengine.StateFailed || st.Error != err.Error() {
 		return haltNote{}, false
 	}
-	class := shedengine.TransientClass(st.Transient)
-	if class == shedengine.TransientGitTransport || class == shedengine.TransientGitHubAPI {
-		held, lockErr := c.driverLockHeld()
-		if lockErr != nil {
-			logger.Warn("loom: could not probe the driver lock; writing the halt note", "error", lockErr)
-		} else if held {
-			return haltNote{}, false
-		}
-	}
-	var skew *stencilstore.NewerBoardCopyError
 	return haltNote{
 		Producer:  st.CurrentProducer,
 		State:     shedengine.StateFailed,
 		Reason:    st.Error,
 		History:   st.History,
 		TraceFile: logger.TraceFile(),
-		BuildSkew: errors.As(err, &skew),
-		Transient: st.Transient != "",
 	}, true
 }
 

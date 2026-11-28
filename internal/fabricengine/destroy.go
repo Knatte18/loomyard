@@ -21,7 +21,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
@@ -202,9 +201,6 @@ type remoteBranchRequest struct {
 	// when non-empty the deletion succeeds only while the remote branch still sits there.
 	// Empty keeps the unleased, idempotent path.
 	leaseSHA string
-	// localBranchesDoNotHold makes the unlanded-tip check pass over local branches.
-	// Only remote-tracking refs and tags then count as holding the tip's commits.
-	localBranchesDoNotHold bool
 	// force is reserved: every construction in this package hardcodes it false.
 	// No call site's gate consults it today.
 	// It is kept for a future gate that consults it.
@@ -241,6 +237,7 @@ const (
 	pathOwnershipRegisteredLinkedWorktree
 	pathOwnershipWarpCheckout
 	pathOwnershipFabricHub
+	pathOwnershipUnderGeometryRoot
 	pathOwnershipFreshlyCreatedPath
 	pathOwnershipFreshlyCreatedWorktree
 	pathOwnershipWiredJunction
@@ -250,7 +247,6 @@ const (
 	pathOwnershipMovePathspecs
 	pathOwnershipUntrackedTrackedAt
 	pathOwnershipHubScratch
-	pathOwnershipIgnoredLeftover
 )
 
 // pathOwnership declares which of the closed set of ownership kinds a pathRequest's target must satisfy.
@@ -270,8 +266,6 @@ type pathOwnership struct {
 	pathspecs []string
 	// sha is used only by the untracked predicate: the commit that must track the target.
 	sha string
-	// ignored is used only by the leftover predicate: the paths git reported ignored.
-	ignored []string
 }
 
 // ownedRegisteredLinkedWorktree declares target as owned when repoDir's worktree list registers it as a linked worktree.
@@ -318,12 +312,6 @@ func ownedUntrackedTrackedAt(worktree, sha string) pathOwnership {
 	return pathOwnership{kind: pathOwnershipUntrackedTrackedAt, root: worktree, sha: sha}
 }
 
-// ownedIgnoredLeftover declares target as owned when it is one of ignored and the worktree at worktree does not track it.
-// ignored holds the paths git reported ignored under the rules of the commit a merge started from.
-func ownedIgnoredLeftover(worktree string, ignored []string) pathOwnership {
-	return pathOwnership{kind: pathOwnershipIgnoredLeftover, root: worktree, ignored: ignored}
-}
-
 // ownedHubScratch declares target as owned when it lies at or below root, the hub's machine-local scratch directory.
 // The directory is `.lym` in the Bolt checkout, and it holds markers and records fabric wrote for this machine alone.
 func ownedHubScratch(root string) pathOwnership {
@@ -334,6 +322,14 @@ func ownedHubScratch(root string) pathOwnership {
 // the Bolt checkout entry, or at least one weft sibling, per looksLikeHub.
 func ownedFabricHub() pathOwnership {
 	return pathOwnership{kind: pathOwnershipFabricHub}
+}
+
+// ownedUnderGeometryRoot declares target as owned when root is a member of the closed set of fabric geometry roots.
+// It admits a target that resolves at or below root, including deep descendants and non-directory targets.
+// It supplies what containment cannot: containment proves target is below the container,
+// but proves nothing if the caller chose the container.
+func ownedUnderGeometryRoot(root string) pathOwnership {
+	return pathOwnership{kind: pathOwnershipUnderGeometryRoot, root: root}
 }
 
 // ownedFreshlyCreatedPath declares target as owned when tok, minted by createExclusiveDir, covers exactly this path.
@@ -391,7 +387,7 @@ type branchOwnership struct {
 
 // ownedCreatedBranch declares branch as owned when it is exactly the branch tok proves this call created.
 // It consults no naming scheme,
-// so a bare-slug warp branch under the default empty fabric.branch_prefix is as deletable as a prefixed one.
+// so a bare-slug warp branch under the default empty branch_prefix is as deletable as a prefixed one.
 // l serves the checked-out dirtiness probe.
 // An empty proof matches nothing.
 func ownedCreatedBranch(l *lymcwd.Location, tok createdBranchToken) branchOwnership {
@@ -570,7 +566,7 @@ func resolvePathOwnership(own pathOwnership, target string) (ok bool, reason str
 
 	case pathOwnershipBoardWorktree:
 		if !isHubBoardWorktree(target) {
-			return false, fmt.Sprintf("%s is not the %s worktree of a weft repo in its hub", target, fabriclayout.BoltDirName)
+			return false, fmt.Sprintf("%s is not the %s worktree of a weft repo in its hub", target, BoltDirName)
 		}
 		return true, ""
 
@@ -606,23 +602,6 @@ func resolvePathOwnership(own pathOwnership, target string) (ok bool, reason str
 		}
 		return true, ""
 
-	case pathOwnershipIgnoredLeftover:
-		if !containsCleanPath(own.ignored, target) {
-			return false, fmt.Sprintf("%s is not a path git reported ignored", target)
-		}
-		rel, err := filepath.Rel(filepath.Clean(own.root), filepath.Clean(target))
-		if err != nil {
-			return false, fmt.Sprintf("relate %s to the worktree %s: %v", target, own.root, err)
-		}
-		tracked, err := PathTracked(own.root, filepath.ToSlash(rel))
-		if err != nil {
-			return false, err.Error()
-		}
-		if tracked {
-			return false, fmt.Sprintf("%s is tracked in %s", target, own.root)
-		}
-		return true, ""
-
 	case pathOwnershipHubScratch:
 		// The base-name test runs against the resolved root, so a link standing where the scratch directory belongs is refused.
 		resolvedRoot := resolveAncestorSymlinks(own.root)
@@ -636,7 +615,23 @@ func resolvePathOwnership(own pathOwnership, target string) (ok bool, reason str
 
 	case pathOwnershipFabricHub:
 		if !looksLikeHub(target) {
-			return false, fmt.Sprintf("%s does not look like a fabric hub (no %s entry and no weft sibling)", target, fabriclayout.BoltDirName)
+			return false, fmt.Sprintf("%s does not look like a fabric hub (no %s entry and no weft sibling)", target, BoltDirName)
+		}
+		return true, ""
+
+	case pathOwnershipUnderGeometryRoot:
+		// A fabric geometry root is a directory whose base name is launchersDirName or portalsDirName.
+		// A root outside that set is refused, so a call site cannot satisfy this check by naming a convenient parent.
+		//
+		// The base-name test runs against the resolved root, not the nominal one, as pathAtOrBelow does.
+		// A link standing where the geometry root belongs is not the geometry root.
+		// Testing the nominal spelling would let it masquerade as one.
+		resolvedRoot := resolveAncestorSymlinks(own.root)
+		if base := filepath.Base(resolvedRoot); base != launchersDirName && base != portalsDirName {
+			return false, fmt.Sprintf("%s is not a fabric geometry root", own.root)
+		}
+		if !pathAtOrBelow(own.root, target) {
+			return false, fmt.Sprintf("%s does not resolve at or below geometry root %s", target, own.root)
 		}
 		return true, ""
 
@@ -710,8 +705,8 @@ func resolvePairWarpCheckout(own pathOwnership, target string) (bool, string) {
 	if err != nil {
 		return false, fmt.Sprintf("cannot read the branch checked out at the pair's weft %s: %v", own.weftDir, err)
 	}
-	if weftBranch != fabriclayout.RecordsBranchName(branch) {
-		return false, fmt.Sprintf("the pair's weft %s has %q checked out, not %q, so %s is not the pair's own warp branch", own.weftDir, weftBranch, fabriclayout.RecordsBranchName(branch), branch)
+	if wantBranch := recordsBranchAt(target, branch); weftBranch != wantBranch {
+		return false, fmt.Sprintf("the pair's weft %s has %q checked out, not %q, so %s is not the pair's own warp branch", own.weftDir, weftBranch, wantBranch, branch)
 	}
 	return true, ""
 }
@@ -719,7 +714,7 @@ func resolvePairWarpCheckout(own pathOwnership, target string) (bool, string) {
 // isHubBoardWorktree reports whether target is the worktree named BoltDirName of a weft repo in its hub.
 // An unreadable hub directory answers false, the conservative direction.
 func isHubBoardWorktree(target string) bool {
-	if filepath.Base(target) != fabriclayout.BoltDirName {
+	if filepath.Base(target) != BoltDirName {
 		return false
 	}
 	hub := filepath.Dir(target)
@@ -731,7 +726,7 @@ func isHubBoardWorktree(target string) bool {
 		if !entry.IsDir() {
 			continue
 		}
-		if _, ok := fabriclayout.WeftWarpSlug(entry.Name()); !ok {
+		if _, ok := WeftWarpSlug(entry.Name()); !ok {
 			continue
 		}
 		if isRegisteredLinkedWorktreeIn(filepath.Join(hub, entry.Name()), target) {
@@ -823,10 +818,11 @@ func resolvePairWarpBranch(warpBranch, parentBranch, branch string) (bool, strin
 // The two pure name checks run first, so a mismatched name refuses without spawning git;
 // then branch must not be the primary weft branch of l, and an unreadable primary refuses.
 func resolvePairWeftBranch(l *lymcwd.Location, warpBranch, branch string) (bool, string) {
-	if warpBranch == "" || branch != fabriclayout.RecordsBranchName(warpBranch) {
+	if warpBranch == "" || branch != recordsBranchIn(l, warpBranch) {
 		return false, fmt.Sprintf("%s is not the pair's own weft branch for %q", branch, warpBranch)
 	}
-	if _, ok := fabriclayout.WeftWarpSlug(branch); !ok {
+	// A one-repository hub names its records branch by the code branch, which carries no "-weft" suffix.
+	if _, ok := WeftWarpSlug(branch); !ok && !oneRepositoryAt(l.WorktreePath()) {
 		return false, fmt.Sprintf("%s is not a name fabric's own scheme constructs", branch)
 	}
 	primary, err := primaryWeftBranch(l)
@@ -844,7 +840,7 @@ func resolvePairWeftBranch(l *lymcwd.Location, warpBranch, branch string) (bool,
 // and no worktree may have it checked out.
 // An unreadable primary refuses rather than proceeds, since every branch deletion is irreversible.
 func resolveManagedBranch(l *lymcwd.Location, branch string) (bool, string) {
-	if _, weftManaged := fabriclayout.WeftWarpSlug(branch); !weftManaged {
+	if _, weftManaged := WeftWarpSlug(branch); !weftManaged {
 		return false, fmt.Sprintf("%s is not a name fabric's own scheme constructs", branch)
 	}
 
@@ -1063,7 +1059,6 @@ func checkArchivedTip(req branchRequest) error {
 // The tip passes when every commit on it is reachable from another ref;
 // otherwise, with a parent, it passes when merging it into the parent changes nothing.
 // For a remote tip, "another ref" excludes every copy of the same branch, local and remote-tracking.
-// With req.localBranchesDoNotHold it also excludes every local branch.
 // A tracking ref always holds the tip, so without that exclusion every pushed branch would look held.
 // git clears accumulated --exclude patterns after each ref-selecting option,
 // so the exclusion is repeated ahead of each.
@@ -1074,12 +1069,12 @@ func checkUnlandedRemoteTip(req remoteBranchRequest) error {
 	}
 
 	tip := req.leaseSHA
-	args := []string{"rev-list", "--count", tip, "--not"}
-	if !req.localBranchesDoNotHold {
-		args = append(args, "--exclude=refs/heads/"+req.branch, "--glob=refs/heads/*")
-	}
-	args = append(args, "--exclude=*/"+req.branch, "--remotes", "--tags")
-	out, err := gitexec.Run(args, req.repoDir)
+	out, err := gitexec.Run([]string{
+		"rev-list", "--count", tip, "--not",
+		"--exclude=refs/heads/" + req.branch, "--glob=refs/heads/*",
+		"--exclude=*/" + req.branch, "--remotes",
+		"--tags",
+	}, req.repoDir)
 	if err != nil {
 		return refuse(fmt.Sprintf("cannot count commits reachable from no other ref: %v", err))
 	}
@@ -1099,11 +1094,7 @@ func checkUnlandedRemoteTip(req remoteBranchRequest) error {
 		}
 	}
 
-	ns, err := originNamespaceAt(req.repoDir)
-	if err != nil {
-		return refuse(fmt.Sprintf("cannot read the origin layout to name the branch's delete: %v", err))
-	}
-	return refuse(fmt.Sprintf("%s commit(s) on the remote branch are reachable from no other ref and not landed on the parent; if the work is disposable, delete it by hand with: git push %s --delete %s", count, req.remote, ns.Branch(req.branch)))
+	return refuse(fmt.Sprintf("%s commit(s) on the remote branch are reachable from no other ref and not landed on the parent; if the work is disposable, delete it by hand with: git push %s --delete %s", count, req.remote, req.branch))
 }
 
 // checkUnlandedWork refuses a local branch with commits that neither another ref nor its parent already holds.
@@ -1290,7 +1281,7 @@ func removePath(rec *Mutations, req pathRequest) error {
 	if wasDir {
 		detail = "recursive"
 	}
-	rec.Append(fabriclayout.KindPathRemoved, req.target, detail)
+	rec.Append(KindPathRemoved, req.target, detail)
 	return nil
 }
 
@@ -1340,7 +1331,7 @@ func removeWorktreeLeftover(rec *Mutations, container, target string, seam lefto
 				if wasDir {
 					detail = "recursive"
 				}
-				rec.Append(fabriclayout.KindPathRemoved, target, detail)
+				rec.Append(KindPathRemoved, target, detail)
 			}
 			return nil
 		}
@@ -1555,7 +1546,7 @@ func removeGitWorktree(rec *Mutations, req pathRequest, repoDir string) error {
 
 	_, err := gitexec.Run(args, repoDir)
 	if err == nil {
-		rec.Append(fabriclayout.KindWorktreeRemoved, req.target, "")
+		rec.Append(KindWorktreeRemoved, req.target, "")
 	}
 	return err
 }
@@ -1577,7 +1568,7 @@ func removeLink(rec *Mutations, req pathRequest) error {
 		return fmt.Errorf("remove link %s: %w", req.target, err)
 	}
 	if removed {
-		rec.Append(fabriclayout.KindLinkRemoved, req.target, "")
+		rec.Append(KindLinkRemoved, req.target, "")
 	}
 	return nil
 }
@@ -1612,14 +1603,13 @@ func deleteBranch(rec *Mutations, req branchRequest) error {
 
 	_, err := gitexec.Run([]string{"branch", "-D", req.branch}, req.repoDir)
 	if err == nil {
-		rec.AppendRef(fabriclayout.KindBranchDeleted, req.branch, "")
+		rec.AppendRef(KindBranchDeleted, req.branch, "")
 	}
 	return err
 }
 
 // deleteRemoteBranch is the executor for the git push <remote> --delete primitive.
-// It runs the pipeline and reads the ref namespace of the repository at req.repoDir.
-// It then deletes the branch there by its full origin ref name.
+// It runs the pipeline, then calls gitrepo.New(req.repoDir).DeleteRemoteBranch(req.remote, req.branch).
 // It returns the (deleted, err) pair unchanged and wraps nothing, so every call site builds its own message from it.
 // A non-empty req.leaseSHA routes through DeleteRemoteBranchLeased instead, recording only on success.
 // It appends KindRemoteBranchDeleted to rec via AppendRef, not Append, only when err is nil and deleted is true.
@@ -1630,23 +1620,34 @@ func deleteRemoteBranch(rec *Mutations, req remoteBranchRequest) (deleted bool, 
 		return false, checkErr
 	}
 
-	ns, err := originNamespaceAt(req.repoDir)
-	if err != nil {
-		return false, err
-	}
 	if req.leaseSHA != "" {
-		if err = gitrepo.New(req.repoDir).DeleteRemoteBranchLeased(req.remote, req.branch, req.leaseSHA, ns); err != nil {
+		if err = gitrepo.New(req.repoDir).DeleteRemoteBranchLeased(req.remote, req.branch, req.leaseSHA); err != nil {
 			return false, err
 		}
-		rec.AppendRef(fabriclayout.KindRemoteBranchDeleted, req.branch, req.remote)
+		rec.AppendRef(KindRemoteBranchDeleted, req.branch, req.remote)
 		return true, nil
 	}
 
-	deleted, err = gitrepo.New(req.repoDir).DeleteRemoteBranch(req.remote, req.branch, ns)
+	deleted, err = gitrepo.New(req.repoDir).DeleteRemoteBranch(req.remote, req.branch)
 	if err == nil && deleted {
-		rec.AppendRef(fabriclayout.KindRemoteBranchDeleted, req.branch, req.remote)
+		rec.AppendRef(KindRemoteBranchDeleted, req.branch, req.remote)
 	}
 	return deleted, err
+}
+
+// deleteViewRefOnOrigin deletes the branch ViewRefPrefix + slug from origin, run in the repository at repoDir.
+// A ref already gone from origin is a success.
+// It appends KindRemoteBranchDeleted to rec only when the delete removed the ref.
+func deleteViewRefOnOrigin(rec *Mutations, repoDir, slug string) error {
+	branch := ViewRefPrefix + slug
+	deleted, err := gitrepo.New(repoDir).DeleteRemoteBranch(originRemoteName, branch)
+	if err != nil {
+		return err
+	}
+	if deleted {
+		rec.AppendRef(KindRemoteBranchDeleted, branch, originRemoteName)
+	}
+	return nil
 }
 
 // updateRemoteBranch is the executor for the leased force push that moves a task pair's own branch on a remote.
@@ -1671,14 +1672,14 @@ func updateRemoteBranch(rec *Mutations, req remoteBranchUpdateRequest) error {
 		return &destructiveRefusal{Check: CheckOwnership, What: req.pathReq.what, Target: req.branch, Reason: fmt.Sprintf("%s has %q checked out, not the pair's own branch %q", req.pathReq.target, current, req.branch)}
 	}
 
-	err = req.repo.UpdateRemoteBranchLeased(req.remote, req.branch, req.sha, req.leaseSHA, gitrepo.RefNamespace{})
+	err = req.repo.UpdateRemoteBranchLeased(req.remote, req.branch, req.sha, req.leaseSHA)
 	switch {
 	case errors.Is(err, gitrepo.ErrLeaseRejected):
 		return &leaseLostError{message: fmt.Sprintf("the remote task branch %s moved while this reset ran, so it may now hold commits this checkout lacks; %s", req.branch, remoteDivergenceWayForward(req.remote, req.branch))}
 	case err != nil:
 		return fmt.Errorf("moving the remote task branch %s to %s failed: %w; way forward: re-run this reset once the remote is reachable", req.branch, req.sha, err)
 	}
-	rec.AppendRef(fabriclayout.KindRemoteBranchUpdated, req.remote+"/"+req.branch, req.sha)
+	rec.AppendRef(KindRemoteBranchUpdated, req.remote+"/"+req.branch, req.sha)
 	return nil
 }
 
@@ -1701,279 +1702,6 @@ func remoteDivergenceWayForward(remote, branch string) string {
 	return fmt.Sprintf("way forward: if those commits are this run's own abandoned work, run `git merge --strategy ours %s/%s` in the task worktree, "+
 		"which takes no content and cannot conflict, then re-run this reset, which rewinds both the checkout and the remote task branch and discards what the merge brought in; "+
 		"if they may be someone else's work, do not re-run this reset, which would discard them, and leave the rewind to the operator", remote, branch)
-}
-
-// seedPushHook is called with the origin ref about to be pushed, before each push of pushCloneSeed.
-// It is nil in production; a test sets it to move origin between the two pushes.
-var seedPushHook func(ref string)
-
-// checkSeedPush runs the destructive gate's four checks for one origin ref of a seed push or its restore.
-// Containment and ownership prove the hub is the directory this clone created,
-// and the ref must be the prime's records branch or the board branch, leased at a tip this seed knows.
-// Dirtiness is not applicable, since an origin ref carries no checkout file, and force is never set.
-// lease is the tip the push, restore or delete is leased on.
-// pushedTip is the tip the seed pushed to branch, empty before it did.
-func checkSeedPush(seed *cloneSeed, branch, lease, pushedTip string) error {
-	req := pathRequest{
-		what:      "push the --single-repo seed",
-		container: seed.container,
-		target:    seed.hubPath,
-		slug:      nil,
-		ownership: ownedFreshlyCreatedPath(seed.hubTok),
-		dirtiness: dirtinessNA("an origin ref carries no checkout file"),
-		force:     false,
-	}
-	if err := checkPathRequest(req); err != nil {
-		return err
-	}
-	leaseKnown := false
-	switch branch {
-	case seed.recordsBranch:
-		leaseKnown = lease == seed.observedTip || (pushedTip != "" && lease == pushedTip)
-	case fabriclayout.OneRepositoryBoardBranch:
-		leaseKnown = lease == "" || (pushedTip != "" && lease == pushedTip)
-	}
-	if !leaseKnown {
-		return &destructiveRefusal{Check: CheckOwnership, What: req.what, Target: branch, Reason: fmt.Sprintf("%s is not a ref of this seed, or its lease %q is not a tip the seed knows", branch, lease)}
-	}
-	return nil
-}
-
-// pushCloneSeed pushes a --single-repo clone's records branch and then its board to origin's records namespace.
-// The records branch is leased on the tip the precondition check observed, or on its absence.
-// The board's branch goes last, leased on absence: it is the key by which a layout is detected, so it lands only whole.
-// Once the board lands, both branches take their upstreams, so their later pushes are default pushes.
-// A failed push removes the hub, and a records push that had landed is first returned to what the check observed.
-// A push that ended without origin's answer may still land, so origin's ref is read before anything is rolled back.
-// A ref at the seed's tip is withdrawn first, a landed board before the records branch is restored,
-// and the failure names what origin took and what was withdrawn.
-// A ref origin does not hold at that tip yet keeps the hub, with an error naming the refs origin may hold.
-// A board origin holds at another tip is another hub's, so it is left alone and the failure names a join.
-func pushCloneSeed(rec *Mutations, seed *cloneSeed) error {
-	ns := oneRepositoryNamespace()
-	records := gitrepo.New(seed.recordsPath)
-
-	fail := func(cause error, recordsTip string) error {
-		if recordsTip != "" {
-			if restoreErr := restoreSeededRecordsBranch(seed, recordsTip); restoreErr != nil {
-				cause = fmt.Errorf("%w; restoring the records branch %s on origin also failed: %v", cause, seed.recordsBranch, restoreErr)
-			} else {
-				cause = fmt.Errorf("the records branch was returned to what origin held before; %w", cause)
-			}
-		}
-		return teardownHub(rec, seed.container, seed.hubPath, seed.hubTok, cause)
-	}
-
-	recordsTip, err := records.RefSHA("refs/heads/" + seed.recordsBranch)
-	if err != nil {
-		return fail(fmt.Errorf("read the records branch %s to seed it: %w", seed.recordsBranch, err), "")
-	}
-	boardTip, err := gitrepo.New(seed.boardDir).CurrentSHA()
-	if err != nil {
-		return fail(fmt.Errorf("read the board to seed it: %w", err), "")
-	}
-
-	if err := checkSeedPush(seed, seed.recordsBranch, seed.observedTip, ""); err != nil {
-		return err
-	}
-	if seed.observedTip != "" {
-		// The seed's records push replaces the branch origin holds, and a failed seed moves it back to that tip.
-		// The tip's objects reach this store only by fetching them before the push, since nothing on origin names them after it.
-		if err := records.Fetch(); err != nil {
-			return fail(fmt.Errorf("fetch the records branch %s that the seed replaces: %w", seed.recordsBranch, err), "")
-		}
-	}
-	if seedPushHook != nil {
-		seedPushHook(ns.Branch(seed.recordsBranch))
-	}
-	if err := records.UpdateRemoteBranchLeased(originRemoteName, seed.recordsBranch, recordsTip, seed.observedTip, ns); err != nil {
-		if seedPushOutcomeUnknown(err) {
-			restoreRecords := func() error { return restoreSeededRecordsBranch(seed, recordsTip) }
-			withdrawn, keepErr := withdrawUnansweredSeedPush(seed, seed.recordsBranch, recordsTip, restoreRecords, err)
-			if keepErr != nil {
-				return keepErr
-			}
-			if withdrawn {
-				err = fmt.Errorf("origin took the records branch after its push ended without an answer, and the seed withdrew it: %w", err)
-			}
-		}
-		return fail(seedPushCause("records branch", false, err), "")
-	}
-	rec.AppendRef(fabriclayout.KindRemoteBranchUpdated, originRemoteName+"/"+seed.recordsBranch, recordsTip)
-
-	if err := checkSeedPush(seed, fabriclayout.OneRepositoryBoardBranch, "", ""); err != nil {
-		return fail(err, recordsTip)
-	}
-	if seedPushHook != nil {
-		seedPushHook(ns.Branch(fabriclayout.OneRepositoryBoardBranch))
-	}
-	if err := records.UpdateRemoteBranchLeased(originRemoteName, fabriclayout.OneRepositoryBoardBranch, boardTip, "", ns); err != nil {
-		if seedPushOutcomeUnknown(err) {
-			deleteBoard := func() error { return deleteSeededBoard(seed, boardTip) }
-			withdrawn, keepErr := withdrawUnansweredSeedPush(seed, fabriclayout.OneRepositoryBoardBranch, boardTip, deleteBoard, err)
-			if keepErr != nil {
-				return keepErr
-			}
-			if withdrawn {
-				err = fmt.Errorf("origin took the records branch and, after its push ended without an answer, the board; the seed deleted the board: %w", err)
-			} else {
-				// With the board leased on absence, an answerless push that left no pushed tip means another clone's board stands.
-				err = fmt.Errorf("%w: origin's board stands at another tip after the board's push ended without an answer (%v)", gitrepo.ErrLeaseRejected, err)
-			}
-		}
-		return fail(seedPushCause("board", true, err), recordsTip)
-	}
-	rec.AppendRef(fabriclayout.KindRemoteBranchUpdated, originRemoteName+"/"+fabriclayout.OneRepositoryBoardBranch, boardTip)
-
-	for _, branch := range []string{fabriclayout.OneRepositoryBoardBranch, seed.recordsBranch} {
-		upstream := [][2]string{
-			{"branch." + branch + ".remote", originRemoteName},
-			{"branch." + branch + ".merge", ns.Branch(branch)},
-		}
-		for _, setting := range upstream {
-			if _, err := gitexec.Run([]string{"config", setting[0], setting[1]}, seed.recordsPath); err != nil {
-				return fmt.Errorf("set the upstream of the branch %s after seeding origin: %w; "+
-					"way forward: origin now holds the seeded hub, so run `lym fabric clone <url>` to join it, "+
-					"or set branch.%s.remote and branch.%s.merge in the records store by hand", branch, err, branch, branch)
-			}
-		}
-	}
-	return nil
-}
-
-// seedPushOutcomeUnknown reports whether a failed seed push may have landed on origin all the same.
-// A git killed before it exited, or one that exited printing no rejection line, leaves that open:
-// origin's receive-pack can apply the update after its client is gone.
-// A lost lease, a rejection, a stall origin never answered and a git that never ran each leave origin as it was.
-// So does a refused credential, since origin refuses it before it takes any update.
-func seedPushOutcomeUnknown(cause error) bool {
-	if errors.Is(cause, gitrepo.ErrLeaseRejected) || errors.Is(cause, gitrepo.ErrPushAuthRefused) {
-		return false
-	}
-	var gitErr *gitexec.GitError
-	if !errors.As(cause, &gitErr) || gitErr.Stalled {
-		return false
-	}
-	if gitErr.ExitCode == -1 {
-		return true
-	}
-	return !strings.Contains(gitErr.Stderr, "[remote rejected]") && !strings.Contains(gitErr.Stderr, "! [rejected]")
-}
-
-// withdrawUnansweredSeedPush takes one seed push off origin again after it ended without origin's answer.
-// branch is the pushed branch, the board's or the prime's records branch.
-// pushedTip is the tip the seed pushed to it, and withdraw is the act that removes that tip from origin.
-// It returns a nil error once origin holds no pushedTip on branch, and the caller may then roll back and remove the hub;
-// withdrawn reports whether origin had taken pushedTip and withdraw removed it.
-// A branch at a tip that is neither pushedTip nor the push's lease is another clone's, and is left alone.
-// It returns the error to stop on, with the hub kept, when origin's branch cannot be read or withdrawn.
-// It returns that error too while origin's branch still stands as the push was leased on it.
-// A push origin is still applying can land after the read.
-// Rolling back before it lands would leave origin a ref of this seed with no hub.
-// cause is the failed push's error.
-func withdrawUnansweredSeedPush(seed *cloneSeed, branch, pushedTip string, withdraw func() error, cause error) (withdrawn bool, err error) {
-	ns := oneRepositoryNamespace()
-	ref := ns.Branch(branch)
-	what, leasedTip, mayHold := "records branch", seed.observedTip, []string{ref}
-	if branch == fabriclayout.OneRepositoryBoardBranch {
-		// The board is pushed on a lease of absence once the records branch landed, so origin may hold both refs.
-		what, leasedTip, mayHold = "board", "", []string{ref, ns.Branch(seed.recordsBranch)}
-	}
-	keep := func(reason string) error {
-		return fmt.Errorf("the seed push of the %s ended without origin's answer: %w; %s, so the hub at %s is kept and origin may hold %s; "+
-			"way forward: list what origin holds with `git -C %s ls-remote origin %s`, delete each ref listed with `git -C %s push origin --delete <ref>`, "+
-			"then remove the hub at %s and run the same clone again",
-			what, cause, reason, seed.hubPath, strings.Join(mayHold, " and "), seed.recordsPath, strings.Join(mayHold, " "), seed.recordsPath, seed.hubPath)
-	}
-
-	listing, err := gitexec.Run([]string{"ls-remote", originRemoteName, ref}, seed.recordsPath)
-	if err != nil {
-		return false, keep(fmt.Sprintf("origin's %s could not be read afterwards (%v)", what, err))
-	}
-	listedTip := ""
-	for _, line := range strings.Split(listing, "\n") {
-		if sha, name, found := strings.Cut(strings.TrimSpace(line), "\t"); found && name == ref {
-			listedTip = sha
-		}
-	}
-	switch listedTip {
-	case pushedTip:
-		if err := withdraw(); err != nil {
-			return false, keep(fmt.Sprintf("origin took the %s, and withdrawing it failed (%v)", what, err))
-		}
-		return true, nil
-	case leasedTip:
-		return false, keep(fmt.Sprintf("origin does not hold the pushed %s yet, and may still take it", what))
-	default:
-		return false, nil
-	}
-}
-
-// deleteSeededBoard deletes the board the seed pushed from origin.
-// It is leased on pushedTip, so a board another push moved since stays as that push left it.
-func deleteSeededBoard(seed *cloneSeed, pushedTip string) error {
-	if err := checkSeedPush(seed, fabriclayout.OneRepositoryBoardBranch, pushedTip, pushedTip); err != nil {
-		return err
-	}
-	return gitrepo.New(seed.recordsPath).DeleteRemoteBranchLeased(originRemoteName, fabriclayout.OneRepositoryBoardBranch, pushedTip, oneRepositoryNamespace())
-}
-
-// restoreSeededRecordsBranch returns the prime's records branch on origin to what the precondition check observed.
-// It is leased on pushedTip, so a branch another push moved since stays as that push left it.
-// It deletes the branch when origin held none, and moves it back to the observed tip otherwise.
-func restoreSeededRecordsBranch(seed *cloneSeed, pushedTip string) error {
-	if err := checkSeedPush(seed, seed.recordsBranch, pushedTip, pushedTip); err != nil {
-		return err
-	}
-	ns := oneRepositoryNamespace()
-	records := gitrepo.New(seed.recordsPath)
-	if seed.observedTip == "" {
-		return records.DeleteRemoteBranchLeased(originRemoteName, seed.recordsBranch, pushedTip, ns)
-	}
-	return records.UpdateRemoteBranchLeased(originRemoteName, seed.recordsBranch, seed.observedTip, pushedTip, ns)
-}
-
-// seedPushCause wraps the failure of one seed push with the way forward its kind calls for.
-// what names the pushed ref in the message, and board is true for the board push.
-// The board push runs only once the records push landed.
-// An origin that refuses the ref outright is told apart from a lost board lease.
-// A refused records push says the host takes no ref outside refs/heads/ and refs/tags/.
-// A refused board push says origin's own hooks or rules declined that one ref.
-// It cannot be the host's refusal, since origin took the records branch beside it.
-// Every other cause, a lost records lease and a transient refusal included, is one a rerun of the same clone settles.
-func seedPushCause(what string, board bool, cause error) error {
-	switch {
-	case board && seedRefusedByOrigin(cause):
-		boardRef := oneRepositoryNamespace().Branch(fabriclayout.OneRepositoryBoardBranch)
-		return fmt.Errorf("origin took the records branch, but its hooks or rules declined the board ref %s: %w; "+
-			"way forward: fix or lift the rule that declines %s, then run the same clone again", boardRef, cause, boardRef)
-	case seedRefusedByOrigin(cause):
-		return fmt.Errorf("origin refused the seed push of the %s: %w; way forward: use a host that accepts refs outside refs/heads/ and refs/tags/, "+
-			"or make a two-repository hub with `lym fabric clone <records-url> <code-url>`", what, cause)
-	case errors.Is(cause, gitrepo.ErrPushAuthRefused):
-		return fmt.Errorf("origin refused the seed push of the %s for want of authentication or permission: %w; "+
-			"way forward: give this machine's git credentials push access to origin, then run the same clone again", what, cause)
-	case board && errors.Is(cause, gitrepo.ErrLeaseRejected):
-		return fmt.Errorf("origin now holds another hub's board, so the seed push of the %s lost its lease: %w; "+
-			"way forward: run `lym fabric clone <url>` to join that hub, or use another origin to seed a separate one", what, cause)
-	default:
-		return fmt.Errorf("the seed push of the %s failed: %w; way forward: run the same clone again", what, cause)
-	}
-}
-
-// seedRefusedByOrigin reports whether cause is a push origin rejected with a reason that no rerun clears.
-// A transient reason, a failed update, a ref lock held by another process or a ref that already exists, is not one.
-func seedRefusedByOrigin(cause error) bool {
-	var gitErr *gitexec.GitError
-	if !errors.As(cause, &gitErr) || !strings.Contains(gitErr.Stderr, "[remote rejected]") {
-		return false
-	}
-	for _, transient := range []string{"(failed)", "cannot lock ref", "reference already exists"} {
-		if strings.Contains(gitErr.Stderr, transient) {
-			return false
-		}
-	}
-	return true
 }
 
 // createExclusiveDir creates path as a new directory and returns the createdToken proving this call created it.
@@ -2005,7 +1733,7 @@ func createExclusiveDir(rec *Mutations, path string) (createdToken, error) {
 	if err := root.Mkdir(filepath.Base(cleaned), 0o755); err != nil {
 		return createdToken{}, err
 	}
-	rec.Append(fabriclayout.KindDirCreated, path, "")
+	rec.Append(KindDirCreated, path, "")
 	return createdToken{path: cleaned, worktree: false}, nil
 }
 
@@ -2025,7 +1753,7 @@ func createGitWorktree(rec *Mutations, repoDir, container, target, createdBranch
 	if err := containedWorktreeAdd(repoDir, container, target, buildArgs); err != nil {
 		return createdToken{}, createdBranchToken{}, err
 	}
-	rec.Append(fabriclayout.KindWorktreeCreated, target, "")
+	rec.Append(KindWorktreeCreated, target, "")
 	return createdToken{path: filepath.Clean(target), worktree: true}, createdBranchToken{branch: createdBranch}, nil
 }
 
@@ -2165,6 +1893,21 @@ func stagedWorktreeContained(root *os.Root, rel string) bool {
 	return info.Mode()&os.ModeSymlink == 0 && info.IsDir()
 }
 
+// worktreeStagingPrefix prefixes the name of a worktree staging directory.
+// A new worktree is created in such a directory before it moves to its final path.
+const worktreeStagingPrefix = ".fabric-wt-staging-"
+
+// InWorktreeStaging reports whether path lies under a worktree staging directory.
+// A worktree being created sits in such a directory until it moves to its final path.
+func InWorktreeStaging(path string) bool {
+	for _, part := range strings.Split(filepath.ToSlash(path), "/") {
+		if strings.HasPrefix(part, worktreeStagingPrefix) {
+			return true
+		}
+	}
+	return false
+}
+
 // mkWorktreeStagingDir creates a fresh, collision-free staging parent directory directly under root.
 // It returns the directory's base name.
 // The name is unpredictable (crypto/rand),
@@ -2177,7 +1920,7 @@ func mkWorktreeStagingDir(root *os.Root) (string, error) {
 		if _, err := rand.Read(buf[:]); err != nil {
 			return "", fmt.Errorf("generate worktree staging name: %w", err)
 		}
-		name := fabriclayout.WorktreeStagingPrefix + hex.EncodeToString(buf[:])
+		name := worktreeStagingPrefix + hex.EncodeToString(buf[:])
 		err := root.Mkdir(name, 0o700)
 		if err == nil {
 			return name, nil
@@ -2199,7 +1942,7 @@ func resetHardTo(rec *Mutations, req pathRequest, repo *gitrepo.Repo, sha string
 	if err := repo.ResetHard(sha); err != nil {
 		return err
 	}
-	rec.Append(fabriclayout.KindWorktreeReset, req.target, sha)
+	rec.Append(KindWorktreeReset, req.target, sha)
 	return nil
 }
 
@@ -2225,42 +1968,13 @@ func resetKeepUnderArchive(rec *Mutations, req pathRequest, repo *gitrepo.Repo, 
 	if err := repo.ResetKeep(sha); err != nil {
 		return err
 	}
-	rec.Append(fabriclayout.KindWorktreeReset, req.target, sha)
+	rec.Append(KindWorktreeReset, req.target, sha)
 	return nil
-}
-
-// ResetParentToOrigin moves the code branch checked out at l back to its tracking ref with `git reset --keep`.
-// The move drops the commits origin lacks and carries uncommitted changes across.
-// A tracked change on a path the move rewrites refuses it with nothing moved.
-// A branch with no tracking ref is refused too.
-func ResetParentToOrigin(l *lymcwd.Location) error {
-	worktree := l.WorktreePath()
-	repo := gitrepo.New(worktree)
-	upstream, err := repo.UpstreamSHA()
-	if err != nil {
-		return fmt.Errorf("read origin's tip of the branch at %s: %w", worktree, err)
-	}
-	touched, err := pathsChangedBetween(worktree, "HEAD", upstream)
-	if err != nil {
-		return err
-	}
-	req := pathRequest{
-		what:      "drop a landing commit by moving the parent branch to origin's tip",
-		container: filepath.Dir(worktree),
-		target:    worktree,
-		ownership: ownedWarpCheckout(worktree),
-		dirtiness: dirtyTrackedOn(touched),
-		force:     false,
-	}
-	if err := checkPathRequest(req); err != nil {
-		return err
-	}
-	return repo.ResetKeep(upstream)
 }
 
 // DropLocalResult reports a local drop: its mutation record and the archive tags it kept.
 type DropLocalResult struct {
-	fabriclayout.MutationRecord
+	MutationRecord
 	// Tags lists the local archive tags that hold the tips the drop moved branches off, one per moved branch.
 	Tags []string `json:"tags,omitempty"`
 }
@@ -2287,8 +2001,7 @@ type dropLocalPlan struct {
 // It also refuses a records branch whose anchor marker is empty.
 // It refuses one whose anchor differs from the anchor of the origin tip it would move to, ancestry ignored.
 // The refusal wraps ErrAnchorChange and names the commands that settle it.
-// Each move is a `reset --keep` in the branch's own worktree, and nothing is fetched or pushed.
-// The tags may leave the machine: a later remote teardown of the slug pushes each one origin lacks.
+// Each move is a `reset --keep` in the branch's own worktree; nothing is fetched or pushed, and the tags stay local.
 // Before a records branch moves, each untracked, unignored file of its worktree that the origin tip tracks is removed.
 // Such a file is one lym wrote in the weft, and `reset --keep` would refuse to overwrite it.
 // A code branch's untracked files are never removed.
@@ -2304,7 +2017,7 @@ func DropLocal(rec *Mutations, l *lymcwd.Location, slug string) (res DropLocalRe
 		rec.Extend(res.Mutations)
 	}()
 
-	targets, _, _, _, _, err := originTargets(l, fabriclayout.ReconcileScope{Run: slug})
+	targets, _, _, _, _, err := originTargets(l, ReconcileScope{Run: slug})
 	if err != nil {
 		return res, err
 	}
@@ -2325,7 +2038,7 @@ func DropLocal(rec *Mutations, l *lymcwd.Location, slug string) (res DropLocalRe
 		if len(localOnly) == 0 {
 			continue
 		}
-		if target.side == fabriclayout.RepoRecords {
+		if target.side == failedPushSideRecords {
 			if err := refuseDropLocalAnchorChange(l, slug, target.worktree, target.tracking); err != nil {
 				return res, err
 			}
@@ -2346,7 +2059,7 @@ func DropLocal(rec *Mutations, l *lymcwd.Location, slug string) (res DropLocalRe
 			return res, err
 		}
 		plan := dropLocalPlan{req: req, repo: repo, tip: tip, onto: target.tracking, localOnly: localOnly}
-		if target.side == fabriclayout.RepoRecords {
+		if target.side == failedPushSideRecords {
 			if plan.untracked, err = untrackedOnPaths(target.worktree, touched); err != nil {
 				return res, err
 			}
@@ -2376,7 +2089,7 @@ func DropLocal(rec *Mutations, l *lymcwd.Location, slug string) (res DropLocalRe
 		if err := plan.repo.ResetKeep(plan.onto); err != nil {
 			return res, fmt.Errorf("move %s to origin's tip %s: %w; the local tip is kept under the tag %s", plan.req.target, plan.onto, err, tag)
 		}
-		own.Append(fabriclayout.KindCommitsDropped, plan.req.target, strings.Join(plan.localOnly, " "))
+		own.Append(KindCommitsDropped, plan.req.target, strings.Join(plan.localOnly, " "))
 	}
 	return res, nil
 }
@@ -2403,7 +2116,7 @@ func untrackedOnPaths(worktree string, paths []string) ([]string, error) {
 // It appends KindTagCreated once the tag exists.
 // Its target is the repository root and its detail is the tag name.
 func keepArchiveTag(rec *Mutations, repo *gitrepo.Repo, slug, sha string) (string, error) {
-	tag := fabriclayout.ArchiveTagName(slug, sha)
+	tag := ArchiveTagName(slug, sha)
 	commonDir, err := repo.CommonDir()
 	if err != nil {
 		return "", fmt.Errorf("tag local tip %s: %w", sha, err)
@@ -2420,7 +2133,7 @@ func keepArchiveTag(rec *Mutations, repo *gitrepo.Repo, slug, sha string) (strin
 	case existing != sha:
 		return "", fmt.Errorf("archive tag %q already exists at %s, not %s", tag, existing, sha)
 	}
-	rec.Append(fabriclayout.KindTagCreated, filepath.Dir(commonDir), tag)
+	rec.Append(KindTagCreated, filepath.Dir(commonDir), tag)
 	return tag, nil
 }
 
@@ -2460,6 +2173,15 @@ func resetKeepOrTag(rec *Mutations, repo *gitrepo.Repo, tip string) error {
 // It appends KindRepoAdvanced once HEAD observably moved, with the new tip as the detail.
 // On a refusal or a failure it appends nothing.
 func cherryPickOnto(rec *Mutations, req pathRequest, repo *gitrepo.Repo, onto string, commits []string) (dropped []string, err error) {
+	return cherryPickReworded(rec, req, repo, onto, commits, nil)
+}
+
+// cherryPickReworded replays local commits onto a records branch's moved upstream.
+// Each pick is committed under reword(message), where message is the picked commit's own message.
+// A nil reword keeps every message as it is.
+// It runs the same pipeline, reset, picks, drops and tip restore as cherryPickOnto,
+// and a failed reword restores the starting tip the same way a conflicting pick does.
+func cherryPickReworded(rec *Mutations, req pathRequest, repo *gitrepo.Repo, onto string, commits []string, reword func(message string) string) (dropped []string, err error) {
 	if err := checkPathRequest(req); err != nil {
 		var refusal *destructiveRefusal
 		if errors.As(err, &refusal) && refusal.Check == CheckDirtiness {
@@ -2521,6 +2243,15 @@ func cherryPickOnto(rec *Mutations, req pathRequest, repo *gitrepo.Repo, onto st
 		}
 		if after == before {
 			dropped = append(dropped, commit)
+			continue
+		}
+		if reword == nil {
+			continue
+		}
+		if reworded := reword(detail.Message); reworded != detail.Message {
+			if _, err := gitexec.RunStdin([]string{"commit", "--amend", "--no-verify", "--allow-empty", "--file=-"}, req.target, reworded); err != nil {
+				return nil, errors.Join(fmt.Errorf("reword the replayed commit %s: %w", commit, err), resetBack(false))
+			}
 		}
 	}
 	endTip, err := repo.CurrentSHA()
@@ -2528,7 +2259,7 @@ func cherryPickOnto(rec *Mutations, req pathRequest, repo *gitrepo.Repo, onto st
 		return nil, errors.Join(err, resetBack(false))
 	}
 	if endTip != startTip {
-		rec.Append(fabriclayout.KindRepoAdvanced, req.target, endTip)
+		rec.Append(KindRepoAdvanced, req.target, endTip)
 	}
 	return dropped, nil
 }
@@ -2583,7 +2314,7 @@ func resetWeftToIntegrated(rec *Mutations, weftPath, onto string) error {
 		return fmt.Errorf("reset %s to %s: %w", weftPath, onto, err)
 	}
 	if endTip, err := repo.CurrentSHA(); err == nil && endTip != startTip {
-		rec.Append(fabriclayout.KindRepoAdvanced, weftPath, endTip)
+		rec.Append(KindRepoAdvanced, weftPath, endTip)
 	}
 	return nil
 }
@@ -2652,7 +2383,7 @@ func restoreMovePathsToHead(rec *Mutations, weftPath string, pathspecs []string)
 	if _, err := git(append([]string{"clean", "-f", "-d", "-q", "--"}, pathspecs...)...); err != nil {
 		return fmt.Errorf("remove the untracked files under the move's paths in %s: %w", weftPath, err)
 	}
-	rec.Append(fabriclayout.KindWorktreeReset, weftPath, "HEAD")
+	rec.Append(KindWorktreeReset, weftPath, "HEAD")
 	return nil
 }
 
@@ -2802,4 +2533,31 @@ func (f *Fabric) resetMergeSides(rec *Mutations, warpSHA string) error {
 		force:     true,
 	}
 	return resetHardTo(rec, warpReq, f.code, warpSHA)
+}
+
+// restoreRecordsToHead is the executor that sets the records paths of a merge in progress back to HEAD's.
+// They lie in the checkout at worktree, whose merge staged the source's records there.
+// It runs the pipeline against the checkout and forces it, since the paths hold the merge's own writes.
+// Its caller has proved them untouched since the merge was staged.
+// It restores index and worktree from HEAD, so a path HEAD does not hold is removed too.
+// It appends KindWorktreeReset, with HEAD as the detail, once git restored the paths.
+// It appends nothing on a refusal or a failure.
+func restoreRecordsToHead(rec *Mutations, worktree string, paths []string) error {
+	req := pathRequest{
+		what:      "restore the records paths of a merge to HEAD",
+		container: filepath.Dir(worktree),
+		target:    worktree,
+		ownership: ownedWarpCheckout(worktree),
+		dirtiness: dirtyScopeTracked(),
+		force:     true,
+	}
+	if err := checkPathRequest(req); err != nil {
+		return err
+	}
+	args := append([]string{"restore", "--source=HEAD", "--staged", "--worktree", "--"}, paths...)
+	if _, err := gitexec.RunWithEnv(args, worktree, []string{"GIT_LITERAL_PATHSPECS=1"}); err != nil {
+		return fmt.Errorf("restore the records paths of the merge in %s to HEAD: %w", worktree, err)
+	}
+	rec.Append(KindWorktreeReset, worktree, "HEAD")
+	return nil
 }

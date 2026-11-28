@@ -174,7 +174,7 @@ func dispositionForHandshake(result awaitRunLockResult) handshakeDisposition {
 }
 
 // findStatusStrand returns the first strand in strands that the given name addresses:
-// the strand's full name or its role segment.
+// the strand's full name, its role segment, or a legacy exact name.
 func findStatusStrand(strands []reedengine.StrandStatus, name string) (reedengine.StrandStatus, bool) {
 	for _, s := range strands {
 		if agentname.Matches(s.Name, name) {
@@ -184,7 +184,7 @@ func findStatusStrand(strands []reedengine.StrandStatus, name string) (reedengin
 	return reedengine.StrandStatus{}, false
 }
 
-// findDriverStrand returns the first loom driver strand.
+// findDriverStrand returns the first loom driver strand, including one recorded under the legacy literal name.
 func findDriverStrand(strands []reedengine.StrandStatus) (reedengine.StrandStatus, bool) {
 	for _, s := range strands {
 		if loomengine.IsDriverStrand(s.Name) {

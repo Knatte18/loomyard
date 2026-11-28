@@ -309,7 +309,7 @@ func TestCaptureCurrent(t *testing.T) {
 		{
 			name:       "a command holding the retired skip file placeholder is a refusal naming the edit",
 			command:    "cat {skip_file}",
-			wantReason: []string{"the drift current capture command holds {skip_file}, which drift no longer renders", "the operator or the hub orch removes every use of it", "from drift.capture with lym config drift --set from the hub's prime worktree"},
+			wantReason: []string{"the drift current capture command holds {skip_file}, which drift no longer renders", "the operator or the hub orch runs lym config reconcile --layer default --apply from the hub's prime worktree", "any other use of it from capture"},
 		},
 	}
 	for _, tt := range failures {
@@ -470,7 +470,7 @@ func TestRunCapture(t *testing.T) {
 				rec, err := RunCapture(context.Background(), f.req)
 				if tt.ranIn == "" {
 					resolved := filepath.Join(root, filepath.FromSlash(tt.dir))
-					for _, want := range []string{resolved, `config key "drift.capture.dir"`, "lym config drift --set capture.dir=<dir> from the prime", "then lym drift capture and lym loom resume"} {
+					for _, want := range []string{resolved, `drift.yaml key "capture.dir"`, "lym config drift --set capture.dir=<dir> from the prime", "then lym drift capture and lym loom resume"} {
 						if err == nil || !strings.Contains(err.Error(), want) || !strings.Contains(rec.Reason, want) {
 							t.Errorf("RunCapture() = %+v, %v; want an error and a reason naming %q", rec, err, want)
 						}
@@ -718,7 +718,7 @@ func TestRunCapture(t *testing.T) {
 		}
 
 		rec, err := RunCapture(context.Background(), f.req)
-		for _, want := range []string{"the drift capture command holds {skip_file}, which drift no longer renders", "the operator or the hub orch removes every use of it", "from drift.capture with lym config drift --set from the hub's prime worktree"} {
+		for _, want := range []string{"the drift capture command holds {skip_file}, which drift no longer renders", "the operator or the hub orch runs lym config reconcile --layer default --apply from the hub's prime worktree", "any other use of it from capture"} {
 			if err == nil || !strings.Contains(err.Error(), want) {
 				t.Errorf("RunCapture() = %v; want an error naming %q", err, want)
 			}

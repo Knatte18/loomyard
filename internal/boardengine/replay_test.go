@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -83,6 +83,8 @@ func withOrder(slugs ...string) func(*Task) {
 
 func asBeam(task *Task) { task.Beam = true }
 
+func asNotifyOnLand(task *Task) { task.NotifyOnLand = true }
+
 func asDiscussed(task *Task) { task.Discussed = true }
 
 func withRecordStamp(stamp string) func(*Task) {
@@ -104,11 +106,6 @@ func wantOriginFile(name, want string) func(t *testing.T, dir string, got map[st
 	}
 }
 
-// withUnknownKey gives the entry one board.json key this binary does not declare, with raw as its JSON value.
-func withUnknownKey(key, raw string) func(*Task) {
-	return func(task *Task) { task.Unknown = map[string]json.RawMessage{key: json.RawMessage(raw)} }
-}
-
 func withBeamColor(color string) func(*Task) {
 	return func(task *Task) { task.BeamColor = color }
 }
@@ -122,13 +119,11 @@ func boardJSON(t *testing.T, tasks []Task) []byte {
 // boardJSONWithPrime encodes tasks as a board.json that records prime as the hub's prime owner, none when empty.
 func boardJSONWithPrime(t *testing.T, tasks []Task, prime string) []byte {
 	t.Helper()
-	return boardJSONWithHolds(t, tasks, prime, nil, nil)
+	return boardJSONWithDraft(t, tasks, prime, false)
 }
 
-// boardJSONWithHolds encodes tasks as a board.json that records prime as the hub's prime owner.
-// It adds the top-level holds and machines keys.
-// Each key is absent when empty.
-func boardJSONWithHolds(t *testing.T, tasks []Task, prime string, holds []Hold, machines Registry) []byte {
+// boardJSONWithDraft encodes tasks as a board.json, with the top-level draft_status key set when draft is true.
+func boardJSONWithDraft(t *testing.T, tasks []Task, prime string, draft bool) []byte {
 	t.Helper()
 	numbered := make([]Task, len(tasks))
 	for i, task := range tasks {
@@ -136,12 +131,34 @@ func boardJSONWithHolds(t *testing.T, tasks []Task, prime string, holds []Hold, 
 		numbered[i] = task
 	}
 	data, err := json.Marshal(struct {
-		Version    int      `json:"version"`
-		Entries    []Task   `json:"entries"`
-		PrimeOwner string   `json:"prime_owner,omitempty"`
-		Machines   Registry `json:"machines,omitempty"`
-		Holds      []Hold   `json:"holds,omitempty"`
-	}{1, numbered, prime, machines, holds})
+		Version     int    `json:"version"`
+		Entries     []Task `json:"entries"`
+		PrimeOwner  string `json:"prime_owner,omitempty"`
+		DraftStatus bool   `json:"draft_status,omitempty"`
+	}{1, numbered, prime, draft})
+	if err != nil {
+		t.Fatalf("marshal board.json: %v", err)
+	}
+	return data
+}
+
+// boardJSONWithHolds encodes tasks as boardJSONWithDraft does, plus the top-level holds and machines keys.
+// Each key is absent when empty.
+func boardJSONWithHolds(t *testing.T, tasks []Task, prime string, draft bool, holds []Hold, machines Registry) []byte {
+	t.Helper()
+	numbered := make([]Task, len(tasks))
+	for i, task := range tasks {
+		task.ID = i
+		numbered[i] = task
+	}
+	data, err := json.Marshal(struct {
+		Version     int      `json:"version"`
+		Entries     []Task   `json:"entries"`
+		PrimeOwner  string   `json:"prime_owner,omitempty"`
+		DraftStatus bool     `json:"draft_status,omitempty"`
+		Machines    Registry `json:"machines,omitempty"`
+		Holds       []Hold   `json:"holds,omitempty"`
+	}{1, numbered, prime, draft, machines, holds})
 	if err != nil {
 		t.Fatalf("marshal board.json: %v", err)
 	}
@@ -165,7 +182,7 @@ func recordJSON(t *testing.T, record any, empty bool) string {
 func hubWithBoardConfig(t *testing.T) string {
 	t.Helper()
 	hub := t.TempDir()
-	configFile := configengine.ConfigFile(fabriclayout.BoardDir(hub), "board")
+	configFile := configengine.ConfigFile(fabricengine.BoardDir(hub), "board")
 	if err := os.MkdirAll(filepath.Dir(configFile), 0o755); err != nil {
 		t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(configFile), err)
 	}
@@ -185,16 +202,18 @@ type replayRow struct {
 	parent      []Task
 	commit      []Task
 	originFiles map[string]string
-	designs     []fabriclayout.ReplayFile
+	designs     []fabricengine.ReplayFile
 	// originPrime, basePrime, parentPrime and commitPrime are each side's prime_owner; wantPrime is held afterwards.
 	originPrime, basePrime, parentPrime, commitPrime, wantPrime string
-	wantEmpty                                                   bool
+	// commitDraft reports whether the commit's board.json records draft_status; wantDraft whether the board keeps it.
+	commitDraft, wantDraft bool
+	wantEmpty              bool
 	// originHolds, baseHolds, parentHolds and commitHolds are each side's holds, nil leaving the key absent.
 	// wantHolds is held afterwards.
 	originHolds, baseHolds, parentHolds, commitHolds, wantHolds []Hold
 	// originMachines, baseMachines, parentMachines and commitMachines are each side's registry, nil leaving the key absent.
 	originMachines, baseMachines, parentMachines, commitMachines, wantMachines Registry
-	wantLost                                                                   []fabriclayout.ReplayFinding
+	wantLost                                                                   []fabricengine.ReplayFinding
 	// wantRefused maps an entry to a substring of its refusal reason.
 	wantRefused map[string]string
 	// wantEntries maps a slug to the title the board holds afterwards, "" meaning the entry is absent.
@@ -215,7 +234,7 @@ func TestFabricReplay(t *testing.T) {
 		storeJSONPath     = "raddle/plan/store.json"
 		storeProposalPath = "raddle/plan/proposal.yaml"
 	)
-	storeFiles := []fabriclayout.ReplayFile{
+	storeFiles := []fabricengine.ReplayFile{
 		{Path: storeJSONPath, After: []byte(storeJSON)},
 		{Path: storeProposalPath, After: []byte("proposal")},
 	}
@@ -229,31 +248,7 @@ func TestFabricReplay(t *testing.T) {
 	}
 	oneEntry := []Task{replayEntry("a")}
 	beamEntry := []Task{replayEntry("a", asProject, asBeam)}
-	legacyPullRequest := []Task{replayEntry("a", withUnknownKey("pull_request", `"merge"`))}
 	rows := []replayRow{
-		{
-			name:        "ACommitThatSetsOnlyALegacyNotifyOnLandLandsAsBeamLandNotice",
-			base:        oneEntry,
-			origin:      oneEntry,
-			parent:      oneEntry,
-			commit:      []Task{replayEntry("a", withUnknownKey("notify_on_land", "true"))},
-			wantEntries: map[string]string{"a": "a"},
-			check: func(t *testing.T, _ string, got map[string]Task) {
-				t.Helper()
-				want := map[string]any{"beam": map[string]any{"land_notice": "on"}}
-				if !reflect.DeepEqual(got["a"].RunSettings, want) {
-					t.Errorf("entry a run_settings = %v; want %v", got["a"].RunSettings, want)
-				}
-			},
-		},
-		{
-			name:        "RemovingAnUnchangedEntryThatCarriesALegacyPullRequestMakesNoConflict",
-			base:        legacyPullRequest,
-			origin:      legacyPullRequest,
-			parent:      legacyPullRequest,
-			commit:      nil,
-			wantEntries: map[string]string{"a": ""},
-		},
 		{
 			name:        "AHoldTheCommitAddedLandsOnOrigin",
 			base:        oneEntry,
@@ -297,7 +292,7 @@ func TestFabricReplay(t *testing.T) {
 			baseHolds:   []Hold{adoptHold("neve", "beam")},
 			parentHolds: []Hold{adoptHold("neve", "beam")},
 			wantEmpty:   true,
-			wantLost:    []fabriclayout.ReplayFinding{{Entry: "holds", Field: "hold", Reason: "origin no longer holds the hold this commit changes"}},
+			wantLost:    []fabricengine.ReplayFinding{{Entry: "holds", Field: "hold", Reason: "origin no longer holds the hold this commit changes"}},
 			wantEntries: map[string]string{"a": "a"},
 		},
 		{
@@ -371,7 +366,7 @@ func TestFabricReplay(t *testing.T) {
 			commitMachines: Registry{"m1": {Name: "neve", Former: []string{"y"}}},
 			wantMachines:   Registry{"m1": {Name: "neve", Former: []string{"x"}}},
 			wantEmpty:      true,
-			wantLost:       []fabriclayout.ReplayFinding{{Entry: "machines", Field: "m1", Reason: "origin changed the machine's entry since the merge base"}},
+			wantLost:       []fabricengine.ReplayFinding{{Entry: "machines", Field: "m1", Reason: "origin changed the machine's entry since the merge base"}},
 			wantEntries:    map[string]string{"a": "a"},
 		},
 		{
@@ -398,7 +393,7 @@ func TestFabricReplay(t *testing.T) {
 			parent:      []Task{replayEntry("a", withTitle("A"))},
 			commit:      []Task{replayEntry("a", withTitle("local"))},
 			wantEmpty:   true,
-			wantLost:    []fabriclayout.ReplayFinding{{Entry: "a", Field: "title", Reason: "origin changed the field too", Local: `"local"`}},
+			wantLost:    []fabricengine.ReplayFinding{{Entry: "a", Field: "title", Reason: "origin changed the field too", Local: `"local"`}},
 			wantEntries: map[string]string{"a": "origin"},
 			check: func(t *testing.T, dir string, _ map[string]Task) {
 				if _, err := os.Stat(filepath.Join(dir, "README.md")); !os.IsNotExist(err) {
@@ -479,12 +474,13 @@ func TestFabricReplay(t *testing.T) {
 			wantEntries: map[string]string{"b": "B2", "x": ""},
 		},
 		{
-			name:        "NoteWithDependsOnLands",
+			name:        "NoteWithDependsOnIsRefused",
 			base:        []Task{replayEntry("a"), replayEntry("b", withTitle("B"))},
 			origin:      []Task{replayEntry("a"), replayEntry("b", withTitle("B"))},
 			parent:      []Task{replayEntry("a"), replayEntry("b", withTitle("B"))},
 			commit:      []Task{replayEntry("a"), replayEntry("b", withTitle("B2")), replayEntry("x", asNote, withDependsOn("a"))},
-			wantEntries: map[string]string{"b": "B2", "x": "x"},
+			wantRefused: map[string]string{"x": "only a task can depend"},
+			wantEntries: map[string]string{"b": "B2", "x": ""},
 		},
 		{
 			name:        "InvalidIssueNumberIsRefused",
@@ -536,7 +532,7 @@ func TestFabricReplay(t *testing.T) {
 			parent:      []Task{replayEntry("a"), replayEntry("b", withTitle("B"))},
 			commit:      []Task{replayEntry("a"), replayEntry("b", withTitle("B2"))},
 			wantEmpty:   true,
-			wantLost:    []fabriclayout.ReplayFinding{{Entry: "b", Reason: "origin removed the entry"}},
+			wantLost:    []fabricengine.ReplayFinding{{Entry: "b", Reason: "origin removed the entry"}},
 			wantEntries: map[string]string{"a": "a", "b": ""},
 		},
 		{
@@ -554,7 +550,7 @@ func TestFabricReplay(t *testing.T) {
 			parent:      []Task{replayEntry("a"), replayEntry("b", withTitle("B"))},
 			commit:      []Task{replayEntry("a")},
 			wantEmpty:   true,
-			wantLost:    []fabriclayout.ReplayFinding{{Entry: "b", Reason: "origin changed the entry this commit removes"}},
+			wantLost:    []fabricengine.ReplayFinding{{Entry: "b", Reason: "origin changed the entry this commit removes"}},
 			wantEntries: map[string]string{"a": "a", "b": "origin"},
 		},
 		{
@@ -564,7 +560,7 @@ func TestFabricReplay(t *testing.T) {
 			parent:      []Task{replayEntry("a", asProject, asBeam)},
 			commit:      []Task{replayEntry("a", asProject, asBeam, withOwner("neve"))},
 			wantEmpty:   true,
-			wantLost:    []fabriclayout.ReplayFinding{{Entry: "a", Field: "owner_machine", Reason: "origin changed the field too", Local: `"neve"`}},
+			wantLost:    []fabricengine.ReplayFinding{{Entry: "a", Field: "owner_machine", Reason: "origin changed the field too", Local: `"neve"`}},
 			wantEntries: map[string]string{"a": "a"},
 			check: func(t *testing.T, _ string, got map[string]Task) {
 				if got["a"].OwnerMachine != "box" {
@@ -634,6 +630,19 @@ func TestFabricReplay(t *testing.T) {
 			wantEntries: map[string]string{"b": "B2", "task-order": "", "note-order": "", "task-beam": "", "note-beam": ""},
 		},
 		{
+			name:        "NotifyOnLandSetByTheCommitLandsOnTheEntry",
+			base:        []Task{replayEntry("a")},
+			origin:      []Task{replayEntry("a")},
+			parent:      []Task{replayEntry("a")},
+			commit:      []Task{replayEntry("a", asNotifyOnLand)},
+			wantEntries: map[string]string{"a": "a"},
+			check: func(t *testing.T, _ string, got map[string]Task) {
+				if !got["a"].NotifyOnLand {
+					t.Errorf("a.notify_on_land = false; want true")
+				}
+			},
+		},
+		{
 			name:        "PrimeOwnerChangedOnBothSidesKeepsOriginsAndReportsItLost",
 			base:        []Task{replayEntry("a")},
 			origin:      []Task{replayEntry("a")},
@@ -645,7 +654,7 @@ func TestFabricReplay(t *testing.T) {
 			commitPrime: "neve",
 			wantPrime:   "box",
 			wantEmpty:   true,
-			wantLost:    []fabriclayout.ReplayFinding{{Entry: "prime", Field: "prime_owner", Reason: "origin changed the field too", Local: `"neve"`}},
+			wantLost:    []fabricengine.ReplayFinding{{Entry: "prime", Field: "prime_owner", Reason: "origin changed the field too", Local: `"neve"`}},
 			wantEntries: map[string]string{"a": "a"},
 		},
 		{
@@ -662,15 +671,25 @@ func TestFabricReplay(t *testing.T) {
 			wantEntries: map[string]string{"a": "a"},
 		},
 		{
+			name:        "DraftStatusMarkSetByTheCommitLandsOnOrigin",
+			base:        []Task{replayEntry("a")},
+			origin:      []Task{replayEntry("a")},
+			parent:      []Task{replayEntry("a")},
+			commit:      []Task{replayEntry("a")},
+			commitDraft: true,
+			wantDraft:   true,
+			wantEntries: map[string]string{"a": "a"},
+		},
+		{
 			name:        "DesignFileChangedOnBothSidesKeepsOriginsFile",
 			base:        []Task{replayEntry("a")},
 			origin:      []Task{replayEntry("a")},
 			parent:      []Task{replayEntry("a")},
 			commit:      []Task{replayEntry("a")},
 			originFiles: map[string]string{"design-a.md": "origin"},
-			designs:     []fabriclayout.ReplayFile{{Path: "design-a.md", Base: []byte("base"), Before: []byte("base"), After: []byte("local")}},
+			designs:     []fabricengine.ReplayFile{{Path: "design-a.md", Base: []byte("base"), Before: []byte("base"), After: []byte("local")}},
 			wantEmpty:   true,
-			wantLost:    []fabriclayout.ReplayFinding{{Entry: "design-a.md", Field: "design file", Reason: "origin changed the file too"}},
+			wantLost:    []fabricengine.ReplayFinding{{Entry: "design-a.md", Field: "design file", Reason: "origin changed the file too"}},
 			check: func(t *testing.T, dir string, _ map[string]Task) {
 				if got, _ := os.ReadFile(filepath.Join(dir, "design-a.md")); string(got) != "origin" {
 					t.Errorf("design-a.md = %q; want origin's file", got)
@@ -684,7 +703,7 @@ func TestFabricReplay(t *testing.T) {
 			parent:      []Task{replayEntry("a")},
 			commit:      []Task{replayEntry("a")},
 			originFiles: map[string]string{"design-a.md": "base"},
-			designs:     []fabriclayout.ReplayFile{{Path: "design-a.md", Base: []byte("base"), Before: []byte("base"), After: []byte("local")}},
+			designs:     []fabricengine.ReplayFile{{Path: "design-a.md", Base: []byte("base"), Before: []byte("base"), After: []byte("local")}},
 			check: func(t *testing.T, dir string, _ map[string]Task) {
 				if got, _ := os.ReadFile(filepath.Join(dir, "design-a.md")); string(got) != "local" {
 					t.Errorf("design-a.md = %q; want the commit's file", got)
@@ -697,7 +716,7 @@ func TestFabricReplay(t *testing.T) {
 			origin:  []Task{replayEntry("a")},
 			parent:  []Task{replayEntry("a")},
 			commit:  []Task{replayEntry("a")},
-			designs: []fabriclayout.ReplayFile{{Path: "decision-a.md", After: []byte("record")}},
+			designs: []fabricengine.ReplayFile{{Path: "decision-a.md", After: []byte("record")}},
 			check:   wantOriginFile("decision-a.md", "record"),
 		},
 		{
@@ -707,7 +726,7 @@ func TestFabricReplay(t *testing.T) {
 			parent:      []Task{replayEntry("a")},
 			commit:      []Task{replayEntry("a")},
 			originFiles: map[string]string{"decision-a.md": "base"},
-			designs:     []fabriclayout.ReplayFile{{Path: "decision-a.md", Base: []byte("base"), Before: []byte("base"), After: []byte("local")}},
+			designs:     []fabricengine.ReplayFile{{Path: "decision-a.md", Base: []byte("base"), Before: []byte("base"), After: []byte("local")}},
 			check:       wantOriginFile("decision-a.md", "local"),
 		},
 		{
@@ -717,7 +736,7 @@ func TestFabricReplay(t *testing.T) {
 			parent:      []Task{replayEntry("a")},
 			commit:      []Task{replayEntry("a")},
 			originFiles: map[string]string{"decision-a.md": "base"},
-			designs:     []fabriclayout.ReplayFile{{Path: "decision-a.md", Base: []byte("base"), Before: []byte("base")}},
+			designs:     []fabricengine.ReplayFile{{Path: "decision-a.md", Base: []byte("base"), Before: []byte("base")}},
 			check:       wantOriginFile("decision-a.md", ""),
 		},
 		{
@@ -727,9 +746,9 @@ func TestFabricReplay(t *testing.T) {
 			parent:      []Task{replayEntry("a")},
 			commit:      []Task{replayEntry("a")},
 			originFiles: map[string]string{"decision-a.md": "origin"},
-			designs:     []fabriclayout.ReplayFile{{Path: "decision-a.md", Base: []byte("base"), Before: []byte("base"), After: []byte("local")}},
+			designs:     []fabricengine.ReplayFile{{Path: "decision-a.md", Base: []byte("base"), Before: []byte("base"), After: []byte("local")}},
 			wantEmpty:   true,
-			wantLost:    []fabriclayout.ReplayFinding{{Entry: "decision-a.md", Field: "decision record", Reason: "origin changed the file too"}},
+			wantLost:    []fabricengine.ReplayFinding{{Entry: "decision-a.md", Field: "decision record", Reason: "origin changed the file too"}},
 			check:       wantOriginFile("decision-a.md", "origin"),
 		},
 		{
@@ -738,9 +757,9 @@ func TestFabricReplay(t *testing.T) {
 			origin:      []Task{replayEntry("b")},
 			parent:      []Task{replayEntry("a", withTitle("A")), replayEntry("b")},
 			commit:      []Task{replayEntry("a", withTitle("A2")), replayEntry("b")},
-			designs:     []fabriclayout.ReplayFile{{Path: "decision-a.md", After: []byte("record")}},
+			designs:     []fabricengine.ReplayFile{{Path: "decision-a.md", After: []byte("record")}},
 			wantEmpty:   true,
-			wantLost:    []fabriclayout.ReplayFinding{{Entry: "a", Reason: "origin removed the entry"}, {Entry: "decision-a.md", Field: "decision record", Reason: "origin does not hold the entry"}},
+			wantLost:    []fabricengine.ReplayFinding{{Entry: "a", Reason: "origin removed the entry"}, {Entry: "decision-a.md", Field: "decision record", Reason: "origin does not hold the entry"}},
 			wantEntries: map[string]string{"a": "", "b": "b"},
 			check:       wantOriginFile("decision-a.md", ""),
 		},
@@ -751,7 +770,7 @@ func TestFabricReplay(t *testing.T) {
 			parent:      []Task{replayEntry("a"), replayEntry("b")},
 			commit:      []Task{replayEntry("b")},
 			originFiles: map[string]string{"decision-a.md": "record"},
-			designs:     []fabriclayout.ReplayFile{{Path: "decision-a.md", Base: []byte("record"), Before: []byte("record")}},
+			designs:     []fabricengine.ReplayFile{{Path: "decision-a.md", Base: []byte("record"), Before: []byte("record")}},
 			wantEntries: map[string]string{"a": "", "b": "b"},
 			check:       wantOriginFile("decision-a.md", ""),
 		},
@@ -762,7 +781,7 @@ func TestFabricReplay(t *testing.T) {
 			parent:      []Task{replayEntry("a", asDiscussed)},
 			commit:      []Task{replayEntry("c", asDiscussed)},
 			originFiles: map[string]string{"decision-a.md": "record"},
-			designs: []fabriclayout.ReplayFile{
+			designs: []fabricengine.ReplayFile{
 				{Path: "decision-a.md", Base: []byte("record"), Before: []byte("record")},
 				{Path: "decision-c.md", After: []byte("record")},
 			},
@@ -831,7 +850,7 @@ func TestFabricReplay(t *testing.T) {
 			parent:  []Task{replayEntry("a")},
 			commit:  []Task{replayEntry("a"), replayEntry("p1"), replayEntry("p2")},
 			designs: storeFiles,
-			wantLost: []fabriclayout.ReplayFinding{
+			wantLost: []fabricengine.ReplayFinding{
 				{Entry: "p1", Field: "title", Reason: "origin added an entry with this slug too", Local: `"p1"`},
 			},
 			wantRefused: map[string]string{storeJSONPath: `Sketch "plan"`, storeProposalPath: "`_lym/raddle/`"},
@@ -861,7 +880,7 @@ func TestFabricReplay(t *testing.T) {
 			origin:    []Task{replayEntry("a")},
 			parent:    []Task{replayEntry("a")},
 			commit:    []Task{replayEntry("a")},
-			designs:   []fabriclayout.ReplayFile{{Path: "raddle/plan/deeper/store.json", After: []byte(storeJSON)}},
+			designs:   []fabricengine.ReplayFile{{Path: "raddle/plan/deeper/store.json", After: []byte(storeJSON)}},
 			wantEmpty: true,
 			check:     wantOriginFile("raddle/plan/deeper/store.json", ""),
 		},
@@ -871,7 +890,7 @@ func TestFabricReplay(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			hub := hubWithBoardConfig(t)
-			dir := fabriclayout.BoardDir(hub)
+			dir := fabricengine.BoardDir(hub)
 			if tt.extraLabel {
 				configFile := configengine.ConfigFile(dir, "board")
 				template, err := os.ReadFile(configFile)
@@ -883,7 +902,7 @@ func TestFabricReplay(t *testing.T) {
 					t.Fatalf("WriteFile(%q) = %v; want nil", configFile, err)
 				}
 			}
-			if err := os.WriteFile(filepath.Join(dir, "board.json"), boardJSONWithHolds(t, tt.origin, tt.originPrime, tt.originHolds, tt.originMachines), 0o644); err != nil {
+			if err := os.WriteFile(filepath.Join(dir, "board.json"), boardJSONWithHolds(t, tt.origin, tt.originPrime, false, tt.originHolds, tt.originMachines), 0o644); err != nil {
 				t.Fatalf("WriteFile(board.json) = %v; want nil", err)
 			}
 			for name, content := range tt.originFiles {
@@ -892,15 +911,15 @@ func TestFabricReplay(t *testing.T) {
 				}
 			}
 
-			boardFileSides := fabriclayout.ReplayFile{
+			boardFileSides := fabricengine.ReplayFile{
 				Path:   boardFile,
-				Base:   boardJSONWithHolds(t, tt.base, tt.basePrime, tt.baseHolds, tt.baseMachines),
-				Before: boardJSONWithHolds(t, tt.parent, tt.parentPrime, tt.parentHolds, tt.parentMachines),
-				After:  boardJSONWithHolds(t, tt.commit, tt.commitPrime, tt.commitHolds, tt.commitMachines),
+				Base:   boardJSONWithHolds(t, tt.base, tt.basePrime, false, tt.baseHolds, tt.baseMachines),
+				Before: boardJSONWithHolds(t, tt.parent, tt.parentPrime, false, tt.parentHolds, tt.parentMachines),
+				After:  boardJSONWithHolds(t, tt.commit, tt.commitPrime, tt.commitDraft, tt.commitHolds, tt.commitMachines),
 			}
-			result, err := FabricReplay{}.Apply(fabriclayout.ReplayRequest{
+			result, err := FabricReplay{}.Apply(fabricengine.ReplayRequest{
 				Dir:   dir,
-				Files: append([]fabriclayout.ReplayFile{boardFileSides}, tt.designs...),
+				Files: append([]fabricengine.ReplayFile{boardFileSides}, tt.designs...),
 			})
 			if err != nil {
 				t.Fatalf("Apply() error = %v; want nil", err)
@@ -953,6 +972,9 @@ func TestFabricReplay(t *testing.T) {
 			if stored.primeOwner != tt.wantPrime {
 				t.Errorf("prime_owner = %q; want %q", stored.primeOwner, tt.wantPrime)
 			}
+			if stored.draftStatus != tt.wantDraft {
+				t.Errorf("draft_status = %v; want %v", stored.draftStatus, tt.wantDraft)
+			}
 			if got, want := recordJSON(t, stored.holds, len(stored.holds) == 0), recordJSON(t, tt.wantHolds, len(tt.wantHolds) == 0); got != want {
 				t.Errorf("holds = %s; want %s", got, want)
 			}
@@ -989,7 +1011,7 @@ func TestFabricReplay(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Runs() error = %v; want nil", err)
 		}
-		want := []fabriclayout.LedgerRun{{Slug: "a", Ended: true, Created: created}, {Slug: "b"}}
+		want := []fabricengine.LedgerRun{{Slug: "a", Ended: true, Created: created}, {Slug: "b"}}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("Runs() = %+v; want %+v", got, want)
 		}
@@ -1021,9 +1043,6 @@ func TestFabricReplay_Ledger(t *testing.T) {
 			{"EntryStore", "board.json", true},
 			{"DesignFile", "design-a.md", true},
 			{"RecordFile", "decision-x.md", true},
-			{"ViewProjection", "board-data.js", true},
-			{"ViewerPage", "board.html", true},
-			{"ViewerPageInSubdirectory", "sub/board.html", false},
 			{"RecordFileInSubdirectory", "sub/decision-x.md", false},
 			{"RecordFileEmptySlug", "decision-.md", false},
 			{"RaddleStoreFile", "raddle/x/store.json", true},

@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -19,7 +19,7 @@ func TestCheckView(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	dir := filepath.Join("hub", fabriclayout.BoltDirName, ".lym", "adopt", "alpha")
+	dir := filepath.Join("hub", fabricengine.BoltDirName, ".lym", "adopt", "alpha")
 	logPath, outPath := filepath.Join(dir, suiteLogName), filepath.Join(dir, checkOutName)
 	one, two := 1, 2
 	ended := time.Date(2026, 10, 27, 12, 30, 0, 0, time.UTC)
@@ -95,7 +95,7 @@ func TestReadCheckViews(t *testing.T) {
 		if err != nil || len(views) != 0 {
 			t.Errorf("ReadCheckViews() = %+v, %v; want none", views, err)
 		}
-		if _, err := os.Stat(fabriclayout.AdoptScratchDir(hub)); !os.IsNotExist(err) {
+		if _, err := os.Stat(fabricengine.AdoptScratchDir(hub)); !os.IsNotExist(err) {
 			t.Errorf("Stat(adopt scratch directory) error = %v; want it still absent", err)
 		}
 	})
@@ -103,7 +103,7 @@ func TestReadCheckViews(t *testing.T) {
 	t.Run("OneViewPerSubjectSortedAndATopLevelRecordIsNotRead", func(t *testing.T) {
 		t.Parallel()
 		hub := t.TempDir()
-		adoptDir := fabriclayout.AdoptScratchDir(hub)
+		adoptDir := fabricengine.AdoptScratchDir(hub)
 		for subject, record := range map[string]CheckRecord{
 			"root":  {Subject: "root", State: checkGreen},
 			"alpha": {Subject: "alpha", State: checkFailed},

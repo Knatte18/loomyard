@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -36,18 +36,16 @@ type Deps struct {
 	// Nil lists no file, since a standalone run records no parent branch and has no review range.
 	ReviewBase func() (string, error)
 	// ChangedFiles lists the files that exist at base and that the commits from base to HEAD change, each with its diff.
-	ChangedFiles func(base string) ([]fabriclayout.FileDiff, error)
-	// RangeDiff reads the full diff of the commits from base to HEAD, added files included.
-	RangeDiff func(base string) (string, error)
+	ChangedFiles func(base string) ([]fabricengine.FileDiff, error)
 	// CommitMessages lists the whole message of every commit from base to HEAD.
 	CommitMessages func(base string) ([]string, error)
 	// Commit commits the told anchor-relative paths under the durable drift directory with the run's records.
 	Commit func(relPaths []string) error
 	// CommitWithTrailers commits the told anchor-relative paths as one records commit.
 	// The told trailers follow the commit's own code-head trailer.
-	CommitWithTrailers func(relPaths []string, trailers []fabriclayout.Trailer) error
+	CommitWithTrailers func(relPaths []string, trailers []fabricengine.Trailer) error
 	// TrailerCommit finds the newest records commit carrying the trailer key when newest is true, and the oldest otherwise; found is false when none carries it.
-	TrailerCommit func(key string, newest bool) (fabriclayout.TrailerCommit, bool, error)
+	TrailerCommit func(key string, newest bool) (fabricengine.TrailerCommit, bool, error)
 	// FileAt reads an anchor-relative file as stored in the records commit rev; found is false when the commit lacks it.
 	FileAt func(rev, relPath string) ([]byte, bool, error)
 	// Seats and Now are the seat runner and the clock the registry entry fills from the recipe's environment.
@@ -59,12 +57,11 @@ type Deps struct {
 	ExpectTable func(listing string) (seatengine.Table, error)
 	// JudgeTable builds the judge's table over the request file Drift-Verify wrote before the spawn.
 	JudgeTable func(request string) (seatengine.Table, error)
-	// JudgeParent is the judge's seat for asking the run's parent orch to agree with its rulings.
-	// It asks under drift.judge_ask_parent.
+	// JudgeParent is the judge's seat for asking the run's parent orch to agree with its rulings under judge_ask_parent.
 	// Nil asks the parent nothing.
 	JudgeParent *JudgeParentSeat
 	// Checkouts reads the state of the code checkout and of the records checkout.
-	Checkouts func() (code, records fabriclayout.CheckoutState, err error)
+	Checkouts func() (code, records fabricengine.CheckoutState, err error)
 	// RecordsChangedSince lists the records paths committed since the revision rev.
 	RecordsChangedSince func(rev string) ([]string, error)
 	// EndRoles ends every live strand of this worktree whose role is exactly one of the told roles, and none of any other role.
@@ -98,7 +95,7 @@ type Deps struct {
 	CaptureCurrent func(ctx context.Context) (CurrentCapture, error)
 	// Sleep waits d or until ctx ends; it is the clock of the capture wait.
 	Sleep func(ctx context.Context, d time.Duration) error
-	// Compare runs the mechanical compare against the baseline and returns how it ended.
+	// Compare runs the mechanical compare against the baseline over the scope's skip list and returns how it ended.
 	Compare func(ctx context.Context) (CompareResult, error)
 	// GateFindingsFile is the file an exhausted gate entry's findings are kept in; empty keeps none.
 	GateFindingsFile string

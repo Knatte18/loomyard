@@ -11,7 +11,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -193,7 +192,7 @@ func PrimeGeometry(location *lymcwd.Location) (reportengine.Geometry, error) {
 	if err != nil {
 		return reportengine.Geometry{}, err
 	}
-	boltRepo := fabriclayout.BoltDir(location.HubPath)
+	boltRepo := fabricengine.BoltDir(location.HubPath)
 	boardBranch, err := gitrepo.New(boltRepo).CurrentBranch()
 	if err != nil {
 		return reportengine.Geometry{}, fmt.Errorf("report: read the board's branch: %w", err)
@@ -203,7 +202,7 @@ func PrimeGeometry(location *lymcwd.Location) (reportengine.Geometry, error) {
 		RecordsRepo:   recordsRepo,
 		BoardRepo:     boltRepo,
 		ParentBranch:  parentBranch,
-		RecordsBranch: fabriclayout.RecordsBranchName(parentBranch),
+		RecordsBranch: fabricengine.RecordsBranchName(parentBranch),
 		BoardBranch:   boardBranch,
 	}, nil
 }

@@ -82,8 +82,8 @@ lym shuttle open takes:
   <engine>:<model-id>[<effort>]   an engine and a provider model id, e.g. claude:claude-opus-5-5[max]
 The alias's engine runs the session, as the registry names it
 (lym shuttle open --list-models prints it), and the bracket overrides the
-alias's default effort. Without --model the run gets the engine of
-` + engineName() + ` and the provider's default model and effort.
+alias's default effort. Without --model the run gets shuttle.yaml's engine
+and the provider's default model and effort.
 A model the provider reports it does not know ends the run at once with
 outcome api-error and the error in apiError, on an engine that reads that
 report.
@@ -201,7 +201,7 @@ advisor tool; codex refuses it.`,
 	cmd.Flags().StringVar(&prompt, "prompt", "", "task prompt text (mutually exclusive with --prompt-file)")
 	cmd.Flags().StringVar(&promptFile, "prompt-file", "", "path to a file whose contents become the task prompt")
 	cmd.Flags().StringArrayVar(&outputFiles, "output-file", nil, "output file the agent must write (repeatable; required at least once; must not already exist; relative paths resolve against the worktree root)")
-	cmd.Flags().StringVar(&model, "model", "", "model spec, <alias>[<effort>] or <engine>:<model-id>[<effort>]; empty defers to "+engineName()+" and the provider default")
+	cmd.Flags().StringVar(&model, "model", "", "model spec, <alias>[<effort>] or <engine>:<model-id>[<effort>]; empty defers to shuttle.yaml's engine and the provider default")
 	cmd.Flags().StringVar(&advisor, "advisor", "", "model this run alone consults through Claude Code's advisor tool, an alias such as opus or a full model id, at least as capable as the session's model (Claude Code 2.1.322 called it in a lym tmux run); empty sets no advisor")
 	cmd.Flags().BoolVar(&interactive, "interactive", false, "run interactively (the agent may ask questions); default is autonomous")
 	cmd.Flags().StringVar(&role, "role", "", "role token used to fill the strand-name template")

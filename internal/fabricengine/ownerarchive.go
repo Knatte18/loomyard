@@ -13,13 +13,23 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymtemp"
 )
+
+// OwnerArchiveTagPrefix is the short-name prefix every owner archive tag carries.
+// No reader of ArchiveTagPrefix tags matches it,
+// so the owner archive of a live run or the prime never reads as an archived run.
+const OwnerArchiveTagPrefix = "archive-owner/"
+
+// OwnerArchiveTagName returns the owner archive tag name of a tip: archive-owner/<slug>/<first 12 hex of tip>.
+// The tip must hold at least ArchiveTagSHALen characters.
+func OwnerArchiveTagName(slug, tip string) string {
+	return OwnerArchiveTagPrefix + slug + "/" + tip[:ArchiveTagSHALen]
+}
 
 // OwnerArchivePair is one pair whose local tips an owner archive covers.
 type OwnerArchivePair struct {
@@ -62,7 +72,7 @@ func archiveOwnerPair(rec *Mutations, hubPath string, pair OwnerArchivePair) ([]
 	if err := ensureTeardownLockDir(hubPath, pair.Slug); err != nil {
 		return nil, err
 	}
-	held, acquired, err := lock.AcquireWriteLockWithin(fabriclayout.TeardownLockPath(hubPath, pair.Slug), fabriclayout.StatusPushLockWait)
+	held, acquired, err := lock.AcquireWriteLockWithin(TeardownLockPath(hubPath, pair.Slug), StatusPushLockWait)
 	if err != nil {
 		return nil, fmt.Errorf("take the teardown lock: %w", err)
 	}
@@ -142,7 +152,7 @@ func archiveOwnerTip(rec *Mutations, dir, slug, side string, commitUncommitted b
 			return "", nil
 		}
 	}
-	tag := fabriclayout.OwnerArchiveTagName(slug, tip)
+	tag := OwnerArchiveTagName(slug, tip)
 	if err := createTagAt(dir, tag, tip, side); err != nil {
 		return "", err
 	}
@@ -186,8 +196,29 @@ func commitUncommittedOffTip(rec *Mutations, dir, tip string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("commit the uncommitted paths of %s: %w", dir, err)
 	}
-	rec.Append(fabriclayout.KindCommitCreated, dir, sha)
+	rec.Append(KindCommitCreated, dir, sha)
 	return sha, nil
+}
+
+// The repository sides an owner archive tag sits in.
+const (
+	OwnerArchiveSideCode    = "code"
+	OwnerArchiveSideRecords = "records"
+)
+
+// OwnerArchive is one owner archive tag on origin whose commit the slug's branch on that origin does not contain.
+type OwnerArchive struct {
+	// Slug is the pair the tag archives.
+	Slug string `json:"slug"`
+	// Side is the repository the tag sits in, OwnerArchiveSideCode or OwnerArchiveSideRecords.
+	Side string `json:"side"`
+	Tag  string `json:"tag"`
+	// Commit is the full hex name of the commit the tag names.
+	Commit string `json:"commit"`
+	// Branch is the slug's branch on that side's origin the commit was judged against.
+	Branch string `json:"branch"`
+	// Dir is the local repository the tag was fetched into, where `git log <tag>` shows it.
+	Dir string `json:"dir"`
 }
 
 // ReadOwnerArchives reads the owner archive tags on the code and records origins of the hub of prime.
@@ -200,7 +231,7 @@ func commitUncommittedOffTip(rec *Mutations, dir, tip string) (string, error) {
 // Each tag it returns is fetched into its side's repository as a local tag, so `git log <tag>` shows it there;
 // it writes nothing else but the fetched objects.
 // A repository with no origin remote holds no tag to read, and an origin that does not answer is an error.
-func (t *Topology) ReadOwnerArchives(prime *lymcwd.Location, primeSlug string, keep func(slug string) bool) ([]fabriclayout.OwnerArchive, error) {
+func (t *Topology) ReadOwnerArchives(prime *lymcwd.Location, primeSlug string, keep func(slug string) bool) ([]OwnerArchive, error) {
 	recordsDir, err := RecordsRepoRoot(prime)
 	if err != nil {
 		return nil, fmt.Errorf("resolve the records repository: %w", err)
@@ -224,13 +255,13 @@ func (t *Topology) ReadOwnerArchives(prime *lymcwd.Location, primeSlug string, k
 		return branch, nil
 	}
 
-	var archives []fabriclayout.OwnerArchive
+	var archives []OwnerArchive
 	for _, side := range []struct {
 		name, dir string
 		branchOf  func(codeBranch string) string
 	}{
-		{fabriclayout.OwnerArchiveSideCode, prime.WorktreePath(), func(codeBranch string) string { return codeBranch }},
-		{fabriclayout.OwnerArchiveSideRecords, recordsDir, fabriclayout.RecordsBranchName},
+		{OwnerArchiveSideCode, prime.WorktreePath(), func(codeBranch string) string { return codeBranch }},
+		{OwnerArchiveSideRecords, recordsDir, RecordsBranchName},
 	} {
 		branchOf := func(slug string) (string, error) {
 			codeBranch, err := codeBranchOf(slug)
@@ -245,7 +276,7 @@ func (t *Topology) ReadOwnerArchives(prime *lymcwd.Location, primeSlug string, k
 		}
 		archives = append(archives, found...)
 	}
-	slices.SortFunc(archives, func(a, b fabriclayout.OwnerArchive) int {
+	slices.SortFunc(archives, func(a, b OwnerArchive) int {
 		return cmp.Or(strings.Compare(a.Slug, b.Slug), strings.Compare(a.Side, b.Side), strings.Compare(a.Tag, b.Tag))
 	})
 	return archives, nil
@@ -254,7 +285,7 @@ func (t *Topology) ReadOwnerArchives(prime *lymcwd.Location, primeSlug string, k
 // readSideOwnerArchives returns the owner archive tags on the origin of the repository at dir, on side.
 // It returns those of the slugs keep admits whose commit the branch branchOf names for the slug does not contain.
 // It fetches each tag it returns as a local tag of dir.
-func readSideOwnerArchives(side, dir string, keep func(slug string) bool, branchOf func(slug string) (string, error)) ([]fabriclayout.OwnerArchive, error) {
+func readSideOwnerArchives(side, dir string, keep func(slug string) bool, branchOf func(slug string) (string, error)) ([]OwnerArchive, error) {
 	if !pathPresent(dir) {
 		return nil, nil
 	}
@@ -265,11 +296,11 @@ func readSideOwnerArchives(side, dir string, keep func(slug string) bool, branch
 		}
 		return nil, fmt.Errorf("read the %q remote of %s: %w", originRemoteName, dir, err)
 	}
-	tags, err := remoteTagsUnder(dir, fabriclayout.OwnerArchiveTagPrefix)
+	tags, err := remoteTagsUnder(dir, OwnerArchiveTagPrefix)
 	if err != nil {
 		return nil, fmt.Errorf("list the owner archive tags on %q: %w", originRemoteName, err)
 	}
-	var archives []fabriclayout.OwnerArchive
+	var archives []OwnerArchive
 	for tag, commit := range tags {
 		slug, named := ownerArchiveSlug(tag)
 		if !named || !keep(slug) {
@@ -283,11 +314,7 @@ func readSideOwnerArchives(side, dir string, keep func(slug string) bool, branch
 		if err != nil {
 			return nil, err
 		}
-		ns, err := archiveTagNamespaceAt(dir)
-		if err != nil {
-			return nil, err
-		}
-		fetch := []string{originRemoteName, ns.Tag(tag)}
+		fetch := []string{originRemoteName, "refs/tags/" + tag}
 		if branchTip != "" {
 			fetch = append(fetch, branchTip)
 		}
@@ -306,14 +333,14 @@ func readSideOwnerArchives(side, dir string, keep func(slug string) bool, branch
 		if err := createTagAt(dir, tag, commit, side); err != nil {
 			return nil, err
 		}
-		archives = append(archives, fabriclayout.OwnerArchive{Slug: slug, Side: side, Tag: tag, Commit: commit, Branch: branch, Dir: dir})
+		archives = append(archives, OwnerArchive{Slug: slug, Side: side, Tag: tag, Commit: commit, Branch: branch, Dir: dir})
 	}
 	return archives, nil
 }
 
 // ownerArchiveSlug returns the slug an owner archive tag name carries, reporting false for a name of another shape.
 func ownerArchiveSlug(tag string) (string, bool) {
-	rest, prefixed := strings.CutPrefix(tag, fabriclayout.OwnerArchiveTagPrefix)
+	rest, prefixed := strings.CutPrefix(tag, OwnerArchiveTagPrefix)
 	if !prefixed {
 		return "", false
 	}

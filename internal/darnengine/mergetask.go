@@ -23,5 +23,5 @@ func IsMergeTaskSlug(slug string) bool {
 // IsMergeTaskWriter reports whether strand names the darn writer of a merge task.
 // Such a session's work is a merge of the parent branch.
 func IsMergeTaskWriter(strand agentname.Name) bool {
-	return IsWriter(strand) && IsMergeTaskSlug(strand.Slug)
+	return agentname.MatchesRole(strand.Role, darnRole) && IsMergeTaskSlug(strand.Slug)
 }

@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
@@ -33,14 +32,14 @@ func TestPreMerge_ClearsOwnParkedMergeIn(t *testing.T) {
 	statusErr := errors.New("strand table unreadable")
 	stopErr := errors.New("stop boom")
 	abortErr := errors.New("abort boom")
-	ownLeftover := fabriclayout.MidMergeState{
-		Kind: fabriclayout.MidMergeParked, Verb: "merge-in", Source: "main",
+	ownLeftover := fabricengine.MidMergeState{
+		Kind: fabricengine.MidMergeParked, Verb: "merge-in", Source: "main",
 		SourceSHA: "sourcesha", StartSHA: "startsha",
 	}
 
 	tests := []struct {
 		name         string
-		state        fabriclayout.MidMergeState
+		state        fabricengine.MidMergeState
 		probeErr     error
 		stopGUID     string
 		stopErr      error
@@ -54,7 +53,7 @@ func TestPreMerge_ClearsOwnParkedMergeIn(t *testing.T) {
 	}{
 		{
 			name:         "a clean pair proceeds without a stop or an abort",
-			state:        fabriclayout.MidMergeState{Kind: fabriclayout.MidMergeNone},
+			state:        fabricengine.MidMergeState{Kind: fabricengine.MidMergeNone},
 			wantResolver: true,
 		},
 		{
@@ -88,17 +87,29 @@ func TestPreMerge_ClearsOwnParkedMergeIn(t *testing.T) {
 		},
 		{
 			name:       "a parked merge verb is never stopped over",
-			state:      fabriclayout.MidMergeState{Kind: fabriclayout.MidMergeParked, Verb: "merge", Source: "main"},
+			state:      fabricengine.MidMergeState{Kind: fabricengine.MidMergeParked, Verb: "merge", Source: "main"},
 			wantReason: "a fabric merge (merge of main) is in progress in the task worktree; way forward: " + mergeWayForwardClause,
 		},
 		{
 			name:       "a parked merge-in of another source is never stopped over",
-			state:      fabriclayout.MidMergeState{Kind: fabriclayout.MidMergeParked, Verb: "merge-in", Source: "other"},
+			state:      fabricengine.MidMergeState{Kind: fabricengine.MidMergeParked, Verb: "merge-in", Source: "other"},
 			wantReason: "a fabric merge (merge-in of other) is in progress in the task worktree; way forward: " + mergeWayForwardClause,
 		},
 		{
+			name:         "the row's own unsettled merge-in is aborted and merged afresh",
+			state:        fabricengine.MidMergeState{Kind: fabricengine.MidMergeRecordsUnsettled, Verb: "merge-in", Source: "main", SourceSHA: "sourcesha", StartSHA: "startsha"},
+			wantCalls:    "stop,abort",
+			wantResolver: true,
+			wantLog:      []string{"source=main", "source_sha=sourcesha", "start_sha=startsha"},
+		},
+		{
+			name:       "an unsettled merge-in of another source names only the abort",
+			state:      fabricengine.MidMergeState{Kind: fabricengine.MidMergeRecordsUnsettled, Verb: "merge-in", Source: "other"},
+			wantReason: `a fabric merge (merge-in of other) is in progress in the task worktree with its records unsettled; way forward: discard it with "lym fabric merge --abort", then resume; a session lym refuses the verb from reports status: FAILED and the orch runs it`,
+		},
+		{
 			name:       "foreign git merge state is never touched",
-			state:      fabriclayout.MidMergeState{Kind: fabriclayout.MidMergeForeign, Conflicts: []string{"a.txt"}},
+			state:      fabricengine.MidMergeState{Kind: fabricengine.MidMergeForeign, Conflicts: []string{"a.txt"}},
 			wantReason: "a git merge, cherry-pick or squash that fabric did not start is in progress in the task worktree; way forward: conclude or abort it with git, then resume",
 		},
 		{
@@ -122,7 +133,7 @@ func TestPreMerge_ClearsOwnParkedMergeIn(t *testing.T) {
 				pm := preMerge{}
 				if !tt.nilSeams {
 					pm = preMerge{
-						mergeState: func() (fabriclayout.MidMergeState, error) { return tt.state, tt.probeErr },
+						mergeState: func() (fabricengine.MidMergeState, error) { return tt.state, tt.probeErr },
 						abortMerge: func() error { calls = append(calls, "abort"); return tt.abortErr },
 						stopConflictSession: func() (string, error) {
 							calls = append(calls, "stop")
@@ -165,14 +176,14 @@ func TestPreMerge_ClearsOwnParkedMergeIn(t *testing.T) {
 		deps := newTestDeps(t)
 		deps.MarkTaskDone = func() error { return nil }
 		probes := 0
-		pm := preMerge{mergeState: func() (fabriclayout.MidMergeState, error) {
+		pm := preMerge{mergeState: func() (fabricengine.MidMergeState, error) {
 			probes++
-			return fabriclayout.MidMergeState{Kind: fabriclayout.MidMergeNone}, nil
+			return fabricengine.MidMergeState{Kind: fabricengine.MidMergeNone}, nil
 		}}
 		res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
 		merger := &recordingParentMerger{results: []mergeCallResult{
 			{err: &fabricengine.ErrMergeInRequired{Source: deps.TaskBranch}},
-			{result: fabriclayout.MergeResult{Committed: true}},
+			{result: fabricengine.MergeResult{Committed: true}},
 		}}
 		fz := &Finalize{deps: deps, resolver: res, premerge: pm, parentOpener: func() (parentMerger, error) { return merger, nil }}
 
@@ -196,8 +207,8 @@ func callProducer(t *testing.T, producer string, pm preMerge, res *recordingReso
 		deps.TaskHead = func() (string, error) { return "head", nil }
 		deps.MergeBase = func(string) (string, error) { return "base", nil }
 		deps.RowEntry = func(string) (int, error) { return 1, nil }
-		deps.ReadParentTips = func(bool) (fabriclayout.ParentTips, error) {
-			return fabriclayout.ParentTips{Local: "tip", Relation: fabriclayout.ParentNoUpstream}, nil
+		deps.ReadParentTips = func(bool) (fabricengine.ParentTips, error) {
+			return fabricengine.ParentTips{Local: "tip", Relation: fabricengine.ParentNoUpstream}, nil
 		}
 		return (&ParentAlign{deps: deps, resolver: res, premerge: pm}).Call(context.Background())
 	case finalizeName:

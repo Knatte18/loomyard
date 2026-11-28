@@ -1079,33 +1079,6 @@ func (s *Store) Inbox(sender Sender) (InboxResult, error) {
 	return result, err
 }
 
-// AwaitsReply reports whether strand awaits the reply to a question it asked.
-// It does while the strand has sent a message expecting a reply that is neither answered nor settled unanswered.
-// It also does while the strand holds an unread reply to one of its messages.
-// Each such question settles: its holder answers it, the chases settle it unanswered,
-// or the removal of its holder or the strand ends it.
-// A question a program holds is never chased, so it is not counted.
-// It refuses an empty strand.
-func (s *Store) AwaitsReply(strand string) (bool, error) {
-	if strand == "" {
-		return false, errors.New("creel: awaits-reply names no strand; way forward: name the strand whose questions to read")
-	}
-	awaits := false
-	err := s.do(func() error {
-		for _, msg := range s.state.messages {
-			asked := msg.From == strand && isOpenQuestion(msg)
-			original := s.state.messages[msg.ReplyTo]
-			answered := msg.Holder == strand && msg.Status == StatusUnread && original != nil && original.From == strand
-			if asked || answered {
-				awaits = true
-				return nil
-			}
-		}
-		return nil
-	})
-	return awaits, err
-}
-
 // Forward moves an unread message the caller holds to receiver.
 // The holder changes, From stays, and the caller joins the message's path.
 // A message from another hub or machine is forwarded only to a strand of this hub.

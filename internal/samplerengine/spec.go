@@ -39,9 +39,6 @@ type SessionInputs struct {
 	WorktreeRoot string
 	// DecisionRecordPath is the decision record the agent reads as the task's brief.
 	DecisionRecordPath string
-	// LanguageSkills are the hub's language skills the agent loads after the sampler role's agents.yaml skills.
-	// The agent edits code, so it loads them before it writes any; empty for none.
-	LanguageSkills []string
 	// Engines names the engine the agent's model choice resolves to, which the prompt is rendered for.
 	Engines shuttleengine.EngineNamer
 }
@@ -90,11 +87,9 @@ func SessionSpec(in SessionInputs, cfg Config, reg modelspec.Registry) (shuttlee
 		Interactive:  true,
 		Unawaited:    true,
 		DenyPublish:  true,
-		AllowRawTmux: true,
 		Role:         Role,
 		Segment:      segmentcolor.Darn,
 		ConfigRole:   agentconfig.RoleSampler,
-		Skills:       in.LanguageSkills,
 	}, nil
 }
 

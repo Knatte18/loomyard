@@ -126,10 +126,9 @@ func (p TmuxCmd) panePlacements() (map[string]panePlacement, error) {
 
 // strandsElsewhereLocked maps the pane id of each own-window strand that the session does not list.
 // It maps each pane to its session:window and keeps only panes that sit in another session of reed's server.
-// It runs one server-wide lookup, and only when such a pane exists; with none it returns nils and runs no tmux command.
-// A failed lookup is logged as an episode.
-// It maps no placement then, and unread holds every pane the lookup was for.
-func (e *Engine) strandsElsewhereLocked(strands []Strand, windows []windowPane) (elsewhere map[string]string, unread map[string]bool) {
+// It runs one server-wide lookup, and only when such a pane exists; with none it returns nil and runs no tmux command.
+// A failed lookup is logged as an episode and answers nil, so every such pane reads as found nowhere.
+func (e *Engine) strandsElsewhereLocked(strands []Strand, windows []windowPane) map[string]string {
 	listed := make(map[string]bool, len(windows))
 	for _, w := range windows {
 		listed[w.PaneID] = true
@@ -141,19 +140,16 @@ func (e *Engine) strandsElsewhereLocked(strands []Strand, windows []windowPane) 
 		}
 	}
 	if len(absent) == 0 {
-		return nil, nil
+		return nil
 	}
 	placements, err := e.tmux.panePlacements()
 	if err != nil {
-		e.calleeFailures.Fail("pane placements", "reed: could not look up the panes of the whole server, so where a pane the session lacks sits is unknown",
+		e.calleeFailures.Fail("pane placements", "reed: could not look up the panes of the whole server, reading every pane the session lacks as found nowhere",
 			"socket", e.Socket(), "session", e.SessionName(), "err", err)
-		unread = make(map[string]bool, len(absent))
-		for _, id := range absent {
-			unread[id] = true
-		}
-		return nil, unread
+		return nil
 	}
 	e.calleeFailures.Recover("pane placements", "reed: the server-wide pane lookup works again", "socket", e.Socket(), "session", e.SessionName())
+	var elsewhere map[string]string
 	for _, id := range absent {
 		placement, found := placements[id]
 		if !found || placement.Session == e.SessionName() {
@@ -164,7 +160,7 @@ func (e *Engine) strandsElsewhereLocked(strands []Strand, windows []windowPane) 
 		}
 		elsewhere[id] = placement.String()
 	}
-	return elsewhere, nil
+	return elsewhere
 }
 
 // unseenWindowOption is the display-only window option marking an own window the operator has not selected since it opened.
@@ -292,7 +288,7 @@ func ownWindowsLosingPanes(windows []windowPane, kill []string) (ending, left []
 	return ending, left
 }
 
-// relayoutSharedWindowsLocked lays out each window in windows evenly in the reed.window_split direction.
+// relayoutSharedWindowsLocked lays out each window in windows evenly in the window_split direction.
 // It also pins each window's resize hook to that layout.
 // An invalid window config skips every layout and returns the config error's text,
 // so a removal still completes.

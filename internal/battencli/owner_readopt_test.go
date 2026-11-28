@@ -14,7 +14,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -27,12 +26,12 @@ import (
 type fakeReadopt struct {
 	gone         bool
 	goneErr      error
-	report       fabriclayout.OriginReport
+	report       fabricengine.OriginReport
 	reconcileErr error
 	pruneErr     error
 	addErr       error
 
-	tags            []fabriclayout.RecordsTag
+	tags            []fabricengine.RecordsTag
 	tagsErr         error
 	branchFile      []byte
 	branchFileFound bool
@@ -57,7 +56,7 @@ func (f *fakeReadopt) seams() readoptSeams {
 			f.calls = append(f.calls, "gone")
 			return f.gone, f.goneErr
 		},
-		Reconcile: func(string) (fabriclayout.OriginReport, error) {
+		Reconcile: func(string) (fabricengine.OriginReport, error) {
 			f.calls = append(f.calls, "reconcile")
 			return f.report, f.reconcileErr
 		},
@@ -82,7 +81,7 @@ func (f *fakeReadopt) seams() readoptSeams {
 			return nil
 		},
 		RecordsRoot: func() (string, error) { return fakeRecordsRoot, nil },
-		Tags:        func(string) ([]fabriclayout.RecordsTag, error) { return f.tags, f.tagsErr },
+		Tags:        func(string) ([]fabricengine.RecordsTag, error) { return f.tags, f.tagsErr },
 		BranchFile:  func(string, string) ([]byte, bool, error) { return f.branchFile, f.branchFileFound, nil },
 		Upstream:    func(string) (bool, error) { return f.upstream, nil },
 		TaskBranch:  func(slug string) (string, error) { return slug, nil },
@@ -107,13 +106,13 @@ func TestOwnerPreflight_GoneTaskWorktree(t *testing.T) {
 
 	const slug = "some-slug"
 	rerun := "lym batten run " + slug
-	recordsBranch := fabriclayout.RecordsBranchName(slug)
-	active := fabriclayout.OriginReport{Entries: []fabriclayout.EntryOutcome{{Slug: slug, State: fabriclayout.EntryActive}}}
+	recordsBranch := fabricengine.RecordsBranchName(slug)
+	active := fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryActive}}}
 	cancel := "lym batten cancel " + slug + " --remove"
 
-	statusRel, err := childStatusRel(slug)
+	statusRels, err := childStatusRels(slug)
 	if err != nil {
-		t.Fatalf("childStatusRel: %v", err)
+		t.Fatalf("childStatusRels: %v", err)
 	}
 	statusOf := func(state shedengine.State) []byte {
 		raw, err := json.Marshal(shedengine.Status{State: state})
@@ -123,13 +122,14 @@ func TestOwnerPreflight_GoneTaskWorktree(t *testing.T) {
 		return raw
 	}
 	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	archiveTag := func(short string) string { return fabriclayout.ArchiveTagPrefix + slug + "/" + short }
-	originDone := fabriclayout.RecordsTag{Name: archiveTag("aaaaaaaaaaaa"), Commit: strings.Repeat("a", 40), OnOrigin: true, OriginOnly: true, CommitterTime: base.Add(3 * time.Hour), Files: map[string][]byte{statusRel: statusOf(shedengine.StateDone)}}
-	olderDone := fabriclayout.RecordsTag{Name: archiveTag("bbbbbbbbbbbb"), Commit: strings.Repeat("b", 40), OnOrigin: true, CommitterTime: base.Add(time.Hour), Files: map[string][]byte{statusRel: statusOf(shedengine.StateDone)}}
-	newerRunning := fabriclayout.RecordsTag{Name: archiveTag("cccccccccccc"), Commit: strings.Repeat("c", 40), CommitterTime: base.Add(4 * time.Hour), Files: map[string][]byte{statusRel: statusOf(shedengine.StateRunning)}}
-	newestNoStatus := fabriclayout.RecordsTag{Name: archiveTag("dddddddddddd"), Commit: strings.Repeat("d", 40), CommitterTime: base.Add(5 * time.Hour)}
+	archiveTag := func(short string) string { return fabricengine.ArchiveTagPrefix + slug + "/" + short }
+	originDone := fabricengine.RecordsTag{Name: archiveTag("aaaaaaaaaaaa"), Commit: strings.Repeat("a", 40), OnOrigin: true, OriginOnly: true, CommitterTime: base.Add(3 * time.Hour), Files: map[string][]byte{statusRels[0]: statusOf(shedengine.StateDone)}}
+	olderDone := fabricengine.RecordsTag{Name: archiveTag("bbbbbbbbbbbb"), Commit: strings.Repeat("b", 40), OnOrigin: true, CommitterTime: base.Add(time.Hour), Files: map[string][]byte{statusRels[0]: statusOf(shedengine.StateDone)}}
+	newerRunning := fabricengine.RecordsTag{Name: archiveTag("cccccccccccc"), Commit: strings.Repeat("c", 40), CommitterTime: base.Add(4 * time.Hour), Files: map[string][]byte{statusRels[0]: statusOf(shedengine.StateRunning)}}
+	newestNoStatus := fabricengine.RecordsTag{Name: archiveTag("dddddddddddd"), Commit: strings.Repeat("d", 40), CommitterTime: base.Add(5 * time.Hour)}
+	legacyDone := fabricengine.RecordsTag{Name: archiveTag("eeeeeeeeeeee"), Commit: strings.Repeat("e", 40), CommitterTime: base.Add(2 * time.Hour), Files: map[string][]byte{statusRels[1]: statusOf(shedengine.StateDone)}}
 	leftoverTip := strings.Repeat("0123456789", 4)
-	leftoverTag := archiveTag(leftoverTip[:fabriclayout.ArchiveTagSHALen])
+	leftoverTag := archiveTag(leftoverTip[:fabricengine.ArchiveTagSHALen])
 	notLiveRecords := &fabricengine.ErrNotLive{Branch: recordsBranch, Records: true}
 	notLiveTask := &fabricengine.ErrNotLive{Branch: slug}
 	leftover := &fabricengine.ErrRemoteLeftover{Slug: slug, Branch: recordsBranch, RemoteTip: leftoverTip}
@@ -160,7 +160,7 @@ func TestOwnerPreflight_GoneTaskWorktree(t *testing.T) {
 		{
 			name:       "OwnedElsewhereRefusesBeforeAdd",
 			producer:   battenrecipe.NameRunShed,
-			fake:       fakeReadopt{gone: true, report: fabriclayout.OriginReport{Entries: []fabriclayout.EntryOutcome{{Slug: slug, State: fabriclayout.EntryOwnedElsewhere, Owner: "there", AdoptSubject: "some-beam"}}}},
+			fake:       fakeReadopt{gone: true, report: fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryOwnedElsewhere, Owner: "there", AdoptSubject: "some-beam"}}}},
 			wantCalls:  []string{"gone", "reconcile"},
 			wantErrors: []string{`"there"`, "`lym adopt some-beam`"},
 			wantOwned:  true,
@@ -168,21 +168,21 @@ func TestOwnerPreflight_GoneTaskWorktree(t *testing.T) {
 		{
 			name:       "EndedRefusesBeforeAdd",
 			producer:   battenrecipe.NameRunShed,
-			fake:       fakeReadopt{gone: true, report: fabriclayout.OriginReport{Entries: []fabriclayout.EntryOutcome{{Slug: slug, State: fabriclayout.EntryEnded, How: "done"}}}},
+			fake:       fakeReadopt{gone: true, report: fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryEnded, How: "done"}}}},
 			wantCalls:  []string{"gone", "reconcile"},
 			wantErrors: []string{"origin ended", "lym cleanup --apply"},
 		},
 		{
 			name:       "StoppedRefusesBeforeAdd",
 			producer:   battenrecipe.NameRunShed,
-			fake:       fakeReadopt{gone: true, report: fabriclayout.OriginReport{Entries: []fabriclayout.EntryOutcome{{Slug: slug, State: fabriclayout.EntryStopped, WayForward: "fix the stop"}}}},
+			fake:       fakeReadopt{gone: true, report: fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryStopped, WayForward: "fix the stop"}}}},
 			wantCalls:  []string{"gone", "reconcile"},
 			wantErrors: []string{"origin reconcile stopped it", "fix the stop", rerun},
 		},
 		{
 			name:       "UnreachableOriginRefusesBeforeAdd",
 			producer:   battenrecipe.NameRunShed,
-			fake:       fakeReadopt{gone: true, report: fabriclayout.OriginReport{Unreachable: true}},
+			fake:       fakeReadopt{gone: true, report: fabricengine.OriginReport{Unreachable: true}},
 			wantCalls:  []string{"gone", "reconcile"},
 			wantErrors: []string{"cannot be judged", rerun, "once origin answers"},
 		},
@@ -269,7 +269,7 @@ func TestOwnerPreflight_GoneTaskWorktree(t *testing.T) {
 			name:     "LandRecordsNotLiveRestoresFromTheNewestFinishedTag",
 			producer: battenrecipe.NameLand,
 			fake: fakeReadopt{gone: true, report: active, addErr: notLiveRecords,
-				tags: []fabriclayout.RecordsTag{olderDone, originDone, newerRunning, newestNoStatus}},
+				tags: []fabricengine.RecordsTag{olderDone, originDone, newerRunning, newestNoStatus}},
 			wantCalls:        []string{"gone", "reconcile", "prune", "add"},
 			wantErrors:       []string{recordsAt + "fetch origin tag " + originDone.Name, recordsAt + "branch " + recordsBranch + " " + originDone.Name, rerun},
 			notErrors:        []string{"lym batten cancel"},
@@ -278,9 +278,21 @@ func TestOwnerPreflight_GoneTaskWorktree(t *testing.T) {
 			wantCommitFailed: 1,
 		},
 		{
+			name:     "LandRecordsNotLiveReadsAFinishedStatusUnderTheLegacySegment",
+			producer: battenrecipe.NameLand,
+			fake: fakeReadopt{gone: true, report: active, addErr: notLiveRecords,
+				tags: []fabricengine.RecordsTag{legacyDone, newerRunning}},
+			wantCalls:        []string{"gone", "reconcile", "prune", "add"},
+			wantErrors:       []string{recordsAt + "branch " + recordsBranch + " " + legacyDone.Name, rerun},
+			notErrors:        []string{"fetch origin tag"},
+			wantState:        shedengine.StateFailed,
+			wantNotices:      1,
+			wantCommitFailed: 1,
+		},
+		{
 			name:             "LandRecordsNotLiveWithNoFinishedTagNamesFinishingByHand",
 			producer:         battenrecipe.NameLand,
-			fake:             fakeReadopt{gone: true, report: active, addErr: notLiveRecords, tags: []fabriclayout.RecordsTag{newerRunning, newestNoStatus}},
+			fake:             fakeReadopt{gone: true, report: active, addErr: notLiveRecords, tags: []fabricengine.RecordsTag{newerRunning, newestNoStatus}},
 			wantCalls:        []string{"gone", "reconcile", "prune", "add"},
 			wantErrors:       []string{"no copy of the run's records", "by hand", "landed-run-left-paused"},
 			notErrors:        []string{"task branch", recordsAt + "branch ", cancel},
@@ -315,8 +327,8 @@ func TestOwnerPreflight_GoneTaskWorktree(t *testing.T) {
 			wantErrors: []string{
 				recordsAt + "fetch origin " + leftoverTip,
 				recordsAt + "tag " + leftoverTag + " " + leftoverTip,
-				recordsAt + "push origin refs/tags/" + leftoverTag + ":refs/tags/" + leftoverTag,
-				recordsAt + "push --force-with-lease=refs/heads/" + recordsBranch + ":" + leftoverTip + " origin --delete refs/heads/" + recordsBranch,
+				recordsAt + "push origin " + leftoverTag,
+				recordsAt + "push --force-with-lease=refs/heads/" + recordsBranch + ":" + leftoverTip + " origin --delete " + recordsBranch,
 				recordsAt + "branch --unset-upstream " + recordsBranch,
 				rerun,
 			},
@@ -330,8 +342,8 @@ func TestOwnerPreflight_GoneTaskWorktree(t *testing.T) {
 			name:     "LandRemoteLeftoverWithNoUpstreamAndTheTagStandingSkipsBoth",
 			producer: battenrecipe.NameLand,
 			fake: fakeReadopt{gone: true, report: active, addErr: leftover,
-				tags: []fabriclayout.RecordsTag{{Name: leftoverTag, Commit: leftoverTip}}},
-			wantErrors:       []string{recordsAt + "push origin refs/tags/" + leftoverTag + ":refs/tags/" + leftoverTag, rerun},
+				tags: []fabricengine.RecordsTag{{Name: leftoverTag, Commit: leftoverTip}}},
+			wantErrors:       []string{recordsAt + "push origin " + leftoverTag, rerun},
 			notErrors:        []string{"--unset-upstream", recordsAt + "tag "},
 			wantCalls:        []string{"gone", "reconcile", "prune", "add"},
 			wantState:        shedengine.StateFailed,
@@ -386,7 +398,7 @@ func TestOwnerPreflight_GoneTaskWorktree(t *testing.T) {
 			name:       "AFailedRunKeepsItsStateAndTellsNobody",
 			producer:   battenrecipe.NameLand,
 			state:      shedengine.StateFailed,
-			fake:       fakeReadopt{gone: true, report: active, addErr: notLiveRecords, tags: []fabriclayout.RecordsTag{originDone}},
+			fake:       fakeReadopt{gone: true, report: active, addErr: notLiveRecords, tags: []fabricengine.RecordsTag{originDone}},
 			wantCalls:  []string{"gone", "reconcile", "prune", "add"},
 			wantErrors: []string{"way forward", recordsAt + "branch " + recordsBranch + " " + originDone.Name},
 			wantState:  shedengine.StateFailed,
@@ -407,7 +419,7 @@ func TestOwnerPreflight_GoneTaskWorktree(t *testing.T) {
 			fake := tt.fake
 			c := newFakeReceiver(t, nil)
 			c.readopt = fake.seams()
-			c.reconcile = func(string) (fabriclayout.OriginReport, error) {
+			c.reconcile = func(string) (fabricengine.OriginReport, error) {
 				fake.calls = append(fake.calls, "resume-reconcile")
 				return active, nil
 			}

@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
@@ -24,15 +23,14 @@ const (
 // reconcileRun runs the run-scope origin reconcile of slug from the prime, with the hub seams the pair teardown builds.
 // The run scope tears no pair down.
 // With judgeOnly the reconcile only judges: it moves no ref and tears nothing down.
-// opts bounds the reconcile's remote calls and its retries of an unreachable origin.
 // Each entry of the report's mutation record is logged at Info, since a resume has no envelope to carry it.
 // The report is returned with the error, so a partial record is still logged.
-func reconcileRun(location *lymcwd.Location, slug string, judgeOnly bool, opts fabricengine.ReconcileOptions) (fabriclayout.OriginReport, error) {
+func reconcileRun(location *lymcwd.Location, slug string, judgeOnly bool) (fabricengine.OriginReport, error) {
 	teardown, err := pairteardown.New(location)
 	if err != nil {
-		return fabriclayout.OriginReport{}, err
+		return fabricengine.OriginReport{}, err
 	}
-	report, err := fabricengine.ReconcileOrigin(location, fabriclayout.ReconcileScope{Run: slug, JudgeOnly: judgeOnly}, teardown.OriginSeams(pairteardown.HubSeamOptions(location)), opts)
+	report, err := fabricengine.ReconcileOrigin(location, fabricengine.ReconcileScope{Run: slug, JudgeOnly: judgeOnly}, teardown.OriginSeams(pairteardown.HubSeamOptions(location)), fabricengine.ReconcileOptions{})
 	for _, mutation := range report.Mutations.Entries() {
 		logger.Info("battencli: origin reconcile mutation", "slug", slug, "kind", string(mutation.Kind), "target", mutation.Target, "detail", mutation.Detail)
 	}
@@ -76,20 +74,20 @@ func (c *battenCLI) reconcileResume() error {
 // the subject is the beam or `root`.
 // A stopped entry refuses, naming the branch that stopped it and its state;
 // the way forward for that state comes next, then the re-run of the resume.
-func resumeRefusal(slug string, report fabriclayout.OriginReport) error {
+func resumeRefusal(slug string, report fabricengine.OriginReport) error {
 	for _, entry := range report.Entries {
 		if entry.Slug != slug {
 			continue
 		}
 		switch entry.State {
-		case fabriclayout.EntryEnded:
+		case fabricengine.EntryEnded:
 			return fmt.Errorf(
 				"battencli: origin ended %q (%s); run \"lym cleanup --apply\" from the prime, whose hub reconcile tears its pair down, instead of resuming it",
 				slug, endedReason(entry.How),
 			)
-		case fabriclayout.EntryOwnedElsewhere:
+		case fabricengine.EntryOwnedElsewhere:
 			return ownedElsewhereFor(slug, entry.Owner, entry.AdoptSubject)
-		case fabriclayout.EntryStopped:
+		case fabricengine.EntryStopped:
 			return stoppedRefusal(slug, "resume", resumeReentry(slug), entry, report.Branches)
 		}
 	}
@@ -110,11 +108,11 @@ func endedReason(how string) string {
 // A branch the entry's own run holds busy stops nothing, as the reconcile itself judges it.
 // An entry stopped by a branch every pair shares is named by that branch;
 // one with no branch to name falls back to the entry's own way forward.
-func stoppedRefusal(slug, act, reentry string, entry fabriclayout.EntryOutcome, branches []fabriclayout.BranchOutcome) error {
+func stoppedRefusal(slug, act, reentry string, entry fabricengine.EntryOutcome, branches []fabricengine.BranchOutcome) error {
 	for _, branch := range branches {
-		own := branch.Slug == slug && !(branch.Repo == sideRecords && branch.State == fabriclayout.BranchBusy)
+		own := branch.Slug == slug && !(branch.Repo == sideRecords && branch.State == fabricengine.BranchBusy)
 		shared := branch.Repo == sideBolt || (branch.Repo == sideRecords && branch.Prime)
-		if !own && !(shared && branch.State != fabriclayout.BranchBusy) {
+		if !own && !(shared && branch.State != fabricengine.BranchBusy) {
 			continue
 		}
 		// Only a stopped branch carries a way forward, so a branch without one is skipped.

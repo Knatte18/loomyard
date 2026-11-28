@@ -9,6 +9,7 @@ package loomengine
 
 import (
 	"errors"
+	"fmt"
 	"maps"
 	"os"
 	"path/filepath"
@@ -53,139 +54,95 @@ func seedLensesConfig(t *testing.T, baseDir, contents string) {
 	}
 }
 
-// writeLoomConfigWithKey seeds a loom.yaml from the shipped template with one dotted path's value replaced.
+// writeLoomConfigWithKey seeds a loom.yaml from the shipped template with one key's value replaced.
 // It lets a test vary a single knob without restating the whole file.
-// The path must be one the template holds, since configengine.Load is strict about it.
-func writeLoomConfigWithKey(t *testing.T, baseDir, path, value string) {
+// The key set must match the template, since configengine.Load is strict about it.
+func writeLoomConfigWithKey(t *testing.T, baseDir, key, value string) {
 	t.Helper()
-	seedLoomConfig(t, baseDir, loomTemplateWith(t, map[string]string{path: value}))
+	writeLoomConfigWithKeys(t, baseDir, map[string]string{key: value})
 }
 
-// loomTemplateWith returns the shipped template with each given dotted path's value replaced by its YAML text.
-func loomTemplateWith(t *testing.T, values map[string]string) string {
+// writeLoomConfigWithKeys seeds baseDir's loom.yaml with the template's text and each key in values replaced by its value.
+func writeLoomConfigWithKeys(t *testing.T, baseDir string, values map[string]string) {
 	t.Helper()
-	return templateWith(t, ConfigTemplate(), values)
-}
-
-// templateWith returns template with the value at each dotted path replaced by the YAML text given for it.
-// A path the template lacks fails the test, since the fixture would silently test nothing.
-func templateWith(t *testing.T, template string, values map[string]string) string {
-	t.Helper()
-	var document yaml.Node
-	if err := yaml.Unmarshal([]byte(template), &document); err != nil {
-		t.Fatalf("parse the template: %v", err)
-	}
-	for path, value := range values {
-		node := document.Content[0]
-		for _, step := range strings.Split(path, ".") {
-			var next *yaml.Node
-			for i := 0; i+1 < len(node.Content); i += 2 {
-				if node.Content[i].Value == step {
-					next = node.Content[i+1]
-				}
-			}
-			if next == nil {
-				t.Fatalf("path %q is not in the template", path)
-			}
-			node = next
-		}
-		var replacement yaml.Node
-		if err := yaml.Unmarshal([]byte("key: "+value), &replacement); err != nil {
-			t.Fatalf("parse the value %q of %q: %v", value, path, err)
-		}
-		*node = *replacement.Content[0].Content[1]
-	}
-	contents, err := yaml.Marshal(&document)
-	if err != nil {
-		t.Fatalf("marshal the template: %v", err)
-	}
-	return string(contents)
-}
-
-// requireMovesIntoTemplate fails unless template holds every new path of moves and no old name.
-// An old name that is also the area its new path lies under is held as that area's mapping.
-func requireMovesIntoTemplate(t *testing.T, moves map[string]string, template string) {
-	t.Helper()
-	var document map[string]any
-	if err := yaml.Unmarshal([]byte(template), &document); err != nil {
-		t.Fatalf("parse the template: %v", err)
-	}
-	if len(moves) == 0 {
-		t.Fatal("the move table is empty")
-	}
-	for oldKey, newPath := range moves {
-		area, leaf, nested := strings.Cut(newPath, ".")
-		value, held := document[area]
-		if nested {
-			mapping, isMapping := value.(map[string]any)
-			if isMapping {
-				_, held = mapping[leaf]
-			}
-			held = held && isMapping
-		}
-		if !held {
-			t.Errorf("the template lacks %q, the new path of %q", newPath, oldKey)
-		}
-		if old, stillHeld := document[oldKey]; stillHeld {
-			if _, isArea := old.(map[string]any); !isArea || !strings.HasPrefix(newPath, oldKey+".") {
-				t.Errorf("the template still holds the old key %q", oldKey)
+	var b strings.Builder
+	replaced := map[string]bool{}
+	for _, line := range strings.Split(ConfigTemplate(), "\n") {
+		matched := false
+		for key, value := range values {
+			if strings.HasPrefix(line, key+":") {
+				b.WriteString(key + ": " + value + "\n")
+				replaced[key] = true
+				matched = true
+				break
 			}
 		}
+		if !matched {
+			b.WriteString(line + "\n")
+		}
 	}
+	for key := range values {
+		if !replaced[key] {
+			t.Fatalf("key %q not present in ConfigTemplate(); the fixture would silently test nothing", key)
+		}
+	}
+	seedLoomConfig(t, baseDir, b.String())
 }
 
 func intPtr(v int) *int { return &v }
 
-// templateDefaults maps a Config field path to the value the shipped template's own line for that key loads to.
+// templateDefaults maps a Config field name to the value the shipped template's own line for that key loads to.
 // It pins how the template's values parse; a key added to the template needs no entry here.
 var templateDefaults = map[string]any{
-	"Discussion.Model":                  "opus[medium]",
-	"Discussion.TimeoutMin":             480,
-	"Discussion.Interactive":            false,
-	"Raddle.Model":                      "opus[high]",
-	"Raddle.AutoApprove":                false,
-	"Review.ReviewerModel":              burlerengine.ModelSpecList{"opus[medium]"},
-	"Review.FixerModel":                 burlerengine.ModelSpecList{"opus[medium]"},
-	"Discussion.Lenses":                 "twill-discussion",
-	"Discussion.GateFixer":              "sonnet[medium]",
-	"SubagentModel":                     "sonnet",
-	"Discussion.ReviewerModel":          burlerengine.ModelSpecList{"opus[medium]", "opus[medium]", "sonnet[high]"},
-	"Discussion.FixerModel":             burlerengine.ModelSpecList{""},
-	"Code.ReviewerModel":                burlerengine.ModelSpecList{"sonnet[medium]"},
-	"Code.FixerModel":                   burlerengine.ModelSpecList{"sonnet[medium]"},
-	"Split.ReviewerModel":               burlerengine.ModelSpecList{""},
-	"Split.FixerModel":                  burlerengine.ModelSpecList{""},
-	"Split.ReviewerFan":                 lenses.FanList{""},
-	"Split.FixerFan":                    lenses.FanList{""},
-	"Discussion.ReviewerFan":            lenses.FanList{"review-discussion", ""},
-	"Code.ReviewerFan":                  lenses.FanList{"review-code", ""},
-	"Discussion.FixerFan":               lenses.FanList{"fix-discussion"},
-	"Code.FixerFan":                     lenses.FanList{"fix-code"},
-	"Discussion.AssistReviewerModel":    burlerengine.ModelSpecList{""},
-	"Code.AssistReviewerModel":          burlerengine.ModelSpecList{""},
-	"Discussion.AssistReviewerFan":      lenses.FanList{""},
-	"Code.AssistReviewerFan":            lenses.FanList{""},
-	"Review.AssistReviewerTimeoutMin":   60,
-	"Review.Judge":                      "sonnet[medium]",
-	"Review.TimeoutMin":                 240,
-	"Friction.Model":                    "sonnet[medium]",
-	"Friction.TimeoutMin":               30,
-	"Driver":                            "haiku[medium]",
-	"StepIdleTimeoutMin":                60,
-	"Review.CirclingCheckpoint":         3,
-	"Review.StalemateRounds":            2,
-	"Review.MaxBounces":                 3,
-	"Review.HardMaxBounces":             4,
-	"Review.AmendMaxBounces":            1,
-	"Discussion.MaxBounces":             intPtr(2),
-	"Code.MaxBounces":                   intPtr(1),
-	"Split.MaxBounces":                  intPtr(2),
-	"Discussion.AutoAccept":             false,
-	"Code.AutoAccept":                   true,
-	"Discussion.ReviewAskParent":        false,
-	"Discussion.ReviewParentTimeoutMin": 30,
-	"Code.ReviewAskParent":              false,
-	"Code.ReviewParentTimeoutMin":       30,
+	"Discussion":                    "opus[medium]",
+	"DiscussionTimeoutMin":          480,
+	"DiscussionInteractive":         false,
+	"Raddle":                        "opus[high]",
+	"RaddleAutoApprove":             false,
+	"ReviewerModel":                 burlerengine.ModelSpecList{"opus[medium]"},
+	"FixerModel":                    burlerengine.ModelSpecList{"opus[medium]"},
+	"DiscussionLenses":              "twill-discussion",
+	"DiscussionGateFixer":           "sonnet[medium]",
+	"SubagentModel":                 "sonnet",
+	"DiscussionReviewerModel":       burlerengine.ModelSpecList{"opus[medium]", "opus[medium]", "sonnet[high]"},
+	"DiscussionFixerModel":          burlerengine.ModelSpecList{""},
+	"CodeReviewerModel":             burlerengine.ModelSpecList{"sonnet[medium]"},
+	"CodeFixerModel":                burlerengine.ModelSpecList{"sonnet[medium]"},
+	"SplitReviewerModel":            burlerengine.ModelSpecList{""},
+	"SplitFixerModel":               burlerengine.ModelSpecList{""},
+	"SplitReviewerFan":              lenses.FanList{""},
+	"SplitFixerFan":                 lenses.FanList{""},
+	"DiscussionReviewerFan":         lenses.FanList{"review-discussion", ""},
+	"CodeReviewerFan":               lenses.FanList{"review-code", ""},
+	"DiscussionFixerFan":            lenses.FanList{"fix-discussion"},
+	"CodeFixerFan":                  lenses.FanList{"fix-code"},
+	"DiscussionAssistReviewerModel": burlerengine.ModelSpecList{""},
+	"CodeAssistReviewerModel":       burlerengine.ModelSpecList{""},
+	"DiscussionAssistReviewerFan":   lenses.FanList{""},
+	"CodeAssistReviewerFan":         lenses.FanList{""},
+	"AssistReviewerTimeoutMin":      60,
+	"Judge":                         "sonnet[medium]",
+	"ReviewTimeoutMin":              240,
+	"Friction":                      "sonnet[medium]",
+	"FrictionTimeoutMin":            30,
+	"Driver":                        "haiku[medium]",
+	"StepIdleTimeoutMin":            60,
+	"ReviewCirclingCheckpoint":      3,
+	"ReviewStalemateRounds":         2,
+	"ReviewMaxBounces":              3,
+	"ReviewHardMaxBounces":          4,
+	"ReviewAmendMaxBounces":         1,
+	"DiscussionMaxBounces":          intPtr(2),
+	"CodeMaxBounces":                intPtr(1),
+	"SplitMaxBounces":               intPtr(2),
+	"DiscussionAutoAccept":          false,
+	"CodeAutoAccept":                true,
+
+	"PRReviewSmallMax":                 3,
+	"DiscussionReviewAskParent":        false,
+	"DiscussionReviewParentTimeoutMin": 30,
+	"CodeReviewAskParent":              false,
+	"CodeReviewParentTimeoutMin":       30,
 }
 
 // loadTemplateConfig returns the Config the shipped template loads to, read from an anchor that holds only the template.
@@ -203,150 +160,53 @@ func loadTemplateConfig(t *testing.T) Config {
 // TestLoadConfig_Loads verifies each loom.yaml shape that must load.
 // Each case names only the fields its file changes, and every other field must equal the template's own load,
 // so a key added to the template leaves the table alone.
-// Zero timeouts must load as zero, since shuttleengine.Spec reads zero as "defer to shuttle.run_timeout_min",
+// Zero timeouts must load as zero, since shuttleengine.Spec reads zero as "defer to shuttle's run_timeout_min",
 // so the negative guard must not sweep them up.
 func TestLoadConfig_Loads(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	templateLoad := loadTemplateConfig(t)
 
-	t.Run("every moved key's new path is in the template and its old name is gone", func(t *testing.T) {
-		t.Parallel()
-		requireMovesIntoTemplate(t, loomMovedKeys(), ConfigTemplate())
-	})
-
-	t.Run("the move table holds every renamed key", func(t *testing.T) {
-		t.Parallel()
-		want := map[string]string{
-			"discussion":                           "discussion.model",
-			"discussion_timeout_min":               "discussion.timeout_min",
-			"discussion_interactive":               "discussion.interactive",
-			"discussion_advisors":                  "discussion.advisors",
-			"discussion_lenses":                    "discussion.lenses",
-			"discussion_gate_fixer":                "discussion.gate_fixer",
-			"discussion_reviewer_model":            "discussion.reviewer_model",
-			"discussion_fixer_model":               "discussion.fixer_model",
-			"discussion_reviewer_fan":              "discussion.reviewer_fan",
-			"discussion_fixer_fan":                 "discussion.fixer_fan",
-			"discussion_assist_reviewer_model":     "discussion.assist_reviewer_model",
-			"discussion_assist_reviewer_fan":       "discussion.assist_reviewer_fan",
-			"discussion_judge":                     "discussion.judge",
-			"discussion_seed":                      "discussion.seed",
-			"discussion_max_bounces":               "discussion.max_bounces",
-			"discussion_hard_max_bounces":          "discussion.hard_max_bounces",
-			"discussion_auto_accept":               "discussion.auto_accept",
-			"discussion_review_ask_parent":         "discussion.review_ask_parent",
-			"discussion_review_parent_timeout_min": "discussion.review_parent_timeout_min",
-			"code_reviewer_model":                  "code.reviewer_model",
-			"code_fixer_model":                     "code.fixer_model",
-			"code_reviewer_fan":                    "code.reviewer_fan",
-			"code_fixer_fan":                       "code.fixer_fan",
-			"code_assist_reviewer_model":           "code.assist_reviewer_model",
-			"code_assist_reviewer_fan":             "code.assist_reviewer_fan",
-			"code_judge":                           "code.judge",
-			"code_seed":                            "code.seed",
-			"code_max_bounces":                     "code.max_bounces",
-			"code_hard_max_bounces":                "code.hard_max_bounces",
-			"code_auto_accept":                     "code.auto_accept",
-			"code_review_ask_parent":               "code.review_ask_parent",
-			"code_review_parent_timeout_min":       "code.review_parent_timeout_min",
-			"split_reviewer_model":                 "split.reviewer_model",
-			"split_fixer_model":                    "split.fixer_model",
-			"split_reviewer_fan":                   "split.reviewer_fan",
-			"split_fixer_fan":                      "split.fixer_fan",
-			"split_judge":                          "split.judge",
-			"split_max_bounces":                    "split.max_bounces",
-			"split_hard_max_bounces":               "split.hard_max_bounces",
-			"split_auto_accept":                    "split.auto_accept",
-			"raddle":                               "raddle.model",
-			"raddle_auto_approve":                  "raddle.auto_approve",
-			"friction":                             "friction.model",
-			"friction_timeout_min":                 "friction.timeout_min",
-			"review_timeout_min":                   "review.timeout_min",
-			"review_circling_checkpoint":           "review.circling_checkpoint",
-			"review_stalemate_rounds":              "review.stalemate_rounds",
-			"review_max_bounces":                   "review.max_bounces",
-			"review_hard_max_bounces":              "review.hard_max_bounces",
-			"review_amend_max_bounces":             "review.amend_max_bounces",
-			"reviewer_model":                       "review.reviewer_model",
-			"fixer_model":                          "review.fixer_model",
-			"judge":                                "review.judge",
-			"seed":                                 "review.seed",
-			"assist_reviewer_timeout_min":          "review.assist_reviewer_timeout_min",
-		}
-		if got := loomMovedKeys(); !maps.Equal(got, want) {
-			t.Errorf("loomMovedKeys() = %v; want %v", got, want)
-		}
-	})
-
 	t.Run("template defaults", func(t *testing.T) {
 		t.Parallel()
-		for _, path := range slices.Sorted(maps.Keys(templateDefaults)) {
-			field := reflect.ValueOf(templateLoad)
-			for _, name := range strings.Split(path, ".") {
-				if field = field.FieldByName(name); !field.IsValid() {
-					break
-				}
-			}
+		loaded := reflect.ValueOf(templateLoad)
+		for _, name := range slices.Sorted(maps.Keys(templateDefaults)) {
+			field := loaded.FieldByName(name)
 			if !field.IsValid() {
-				t.Errorf("Config has no field %q; rename or drop its templateDefaults entry", path)
+				t.Errorf("Config has no field %q; rename or drop its templateDefaults entry", name)
 				continue
 			}
-			if got, want := field.Interface(), templateDefaults[path]; !reflect.DeepEqual(got, want) {
-				t.Errorf("LoadConfig(template).%s = %#v; want %#v", path, got, want)
+			if got, want := field.Interface(), templateDefaults[name]; !reflect.DeepEqual(got, want) {
+				t.Errorf("LoadConfig(template).%s = %#v; want %#v", name, got, want)
 			}
 		}
 	})
 
 	// legacyContents is a file seeded before the friction, driver, judge, parent-review and review-budget keys existed.
-	const legacyContents = `discussion:
-  model: opus[effort=high]
-  timeout_min: 480
-  interactive: false
-review:
-  reviewer_model: opus[effort=high]
-  timeout_min: 240
+	const legacyContents = `discussion: opus[effort=high]
+discussion_timeout_min: 480
+discussion_interactive: false
+reviewer_model: opus[effort=high]
+review_timeout_min: 240
 `
 	tests := []struct {
-		name     string
-		contents string
-		values   map[string]string
-		// hubBase is written as the hub base loom.yaml under a board dir beside the worktree anchor.
-		hubBase    string
+		name       string
+		contents   string
+		values     map[string]string
 		lensesYAML string
 		mutate     func(*Config)
 		wantSoft   map[Perch]int
 	}{
 		{
-			name:    "a nested key of a hub base file",
-			hubBase: "discussion: {review_ask_parent: true}\n",
-			mutate:  func(c *Config) { c.Discussion.ReviewAskParent = true },
-		},
-		{
-			name:     "a perch's own budget wins",
-			hubBase:  "code: {max_bounces: 2}\n",
-			mutate:   func(c *Config) { c.Code.MaxBounces = intPtr(2) },
-			wantSoft: map[Perch]int{PerchDiscussion: 2, PerchCode: 2, PerchSplit: 2},
-		},
-		{
-			name:    "a perch with a null budget takes the run-wide one",
-			hubBase: "review: {max_bounces: 4}\ndiscussion: {max_bounces: ~}\ncode: {max_bounces: ~}\nsplit: {max_bounces: ~}\n",
-			mutate: func(c *Config) {
-				c.Review.MaxBounces = 4
-				c.Discussion.MaxBounces, c.Code.MaxBounces, c.Split.MaxBounces = nil, nil, nil
-			},
-			wantSoft: map[Perch]int{PerchDiscussion: 4, PerchCode: 4, PerchSplit: 4},
-		},
-		{
 			name:       "empty fan keys never read a malformed lenses.yaml",
 			lensesYAML: malformedLensesYAML,
 			values: map[string]string{
-				"discussion.reviewer_fan": `""`, "code.reviewer_fan": `""`,
-				"discussion.fixer_fan": `""`, "code.fixer_fan": `""`,
+				"discussion_reviewer_fan": `""`, "code_reviewer_fan": `""`,
+				"discussion_fixer_fan": `""`, "code_fixer_fan": `""`,
 			},
 			mutate: func(c *Config) {
-				c.Discussion.ReviewerFan, c.Code.ReviewerFan = lenses.FanList{""}, lenses.FanList{""}
-				c.Discussion.FixerFan, c.Code.FixerFan = lenses.FanList{""}, lenses.FanList{""}
+				c.DiscussionReviewerFan, c.CodeReviewerFan = lenses.FanList{""}, lenses.FanList{""}
+				c.DiscussionFixerFan, c.CodeFixerFan = lenses.FanList{""}, lenses.FanList{""}
 			},
 		},
 		{
@@ -355,29 +215,29 @@ review:
 			mutate:   func(*Config) {},
 		},
 		{
-			name:     "retired pr area ignored",
-			contents: ConfigTemplate() + "pr:\n  review_small_max: 5\n",
-			mutate:   func(*Config) {},
-		},
-		{
-			name:     "retired flat pr_review_small_max key ignored",
-			contents: ConfigTemplate() + "pr_review_small_max: 5\n",
-			mutate:   func(*Config) {},
-		},
-		{
 			name:   "raddle keys overridden",
-			values: map[string]string{"raddle.model": "sonnet[high]", "raddle.auto_approve": "true"},
-			mutate: func(c *Config) { c.Raddle.Model, c.Raddle.AutoApprove = "sonnet[high]", true },
+			values: map[string]string{"raddle": "sonnet[high]", "raddle_auto_approve": "true"},
+			mutate: func(c *Config) { c.Raddle, c.RaddleAutoApprove = "sonnet[high]", true },
+		},
+		{
+			name:   "pr_review_ask_parent overridden",
+			values: map[string]string{"pr_review_ask_parent": "true"},
+			mutate: func(c *Config) { c.PRReviewAskParent = true },
+		},
+		{
+			name:   "pr_review_small_max overridden",
+			values: map[string]string{"pr_review_small_max": "5"},
+			mutate: func(c *Config) { c.PRReviewSmallMax = 5 },
 		},
 		{
 			name:   "Discussion-Review parent-review keys overridden",
-			values: map[string]string{"discussion.review_ask_parent": "true", "discussion.review_parent_timeout_min": "1"},
-			mutate: func(c *Config) { c.Discussion.ReviewAskParent, c.Discussion.ReviewParentTimeoutMin = true, 1 },
+			values: map[string]string{"discussion_review_ask_parent": "true", "discussion_review_parent_timeout_min": "1"},
+			mutate: func(c *Config) { c.DiscussionReviewAskParent, c.DiscussionReviewParentTimeoutMin = true, 1 },
 		},
 		{
 			name:   "Code-Review parent-review keys overridden",
-			values: map[string]string{"code.review_ask_parent": "true", "code.review_parent_timeout_min": "1"},
-			mutate: func(c *Config) { c.Code.ReviewAskParent, c.Code.ReviewParentTimeoutMin = true, 1 },
+			values: map[string]string{"code_review_ask_parent": "true", "code_review_parent_timeout_min": "1"},
+			mutate: func(c *Config) { c.CodeReviewAskParent, c.CodeReviewParentTimeoutMin = true, 1 },
 		},
 		{
 			name:   "notify_parent_on overridden",
@@ -385,81 +245,81 @@ review:
 			mutate: func(c *Config) { c.NotifyParentOn = []string{"Drift-Verify"} },
 		},
 		{
-			name:   "review.reviewer_model as a per-round list",
-			values: map[string]string{"review.reviewer_model": `["sonnet[low]", "opus[high]"]`},
-			mutate: func(c *Config) { c.Review.ReviewerModel = burlerengine.ModelSpecList{"sonnet[low]", "opus[high]"} },
+			name:   "reviewer_model as a per-round list",
+			values: map[string]string{"reviewer_model": "\n  - sonnet[low]\n  - opus[high]"},
+			mutate: func(c *Config) { c.ReviewerModel = burlerengine.ModelSpecList{"sonnet[low]", "opus[high]"} },
 		},
 		{
-			name:   "review.fixer_model as a per-round list",
-			values: map[string]string{"review.fixer_model": `["opus[low]", "opus[high]"]`},
-			mutate: func(c *Config) { c.Review.FixerModel = burlerengine.ModelSpecList{"opus[low]", "opus[high]"} },
+			name:   "fixer_model as a per-round list",
+			values: map[string]string{"fixer_model": "\n  - opus[low]\n  - opus[high]"},
+			mutate: func(c *Config) { c.FixerModel = burlerengine.ModelSpecList{"opus[low]", "opus[high]"} },
 		},
 		{
-			name:   "code.fixer_model as one model-spec",
-			values: map[string]string{"code.fixer_model": "opus[low]"},
-			mutate: func(c *Config) { c.Code.FixerModel = burlerengine.ModelSpecList{"opus[low]"} },
+			name:   "code_fixer_model as one model-spec",
+			values: map[string]string{"code_fixer_model": "opus[low]"},
+			mutate: func(c *Config) { c.CodeFixerModel = burlerengine.ModelSpecList{"opus[low]"} },
 		},
 		{
 			name:   "empty segment list takes the shared list",
-			values: map[string]string{"discussion.fixer_model": "[]"},
-			mutate: func(c *Config) { c.Discussion.FixerModel = burlerengine.ModelSpecList{} },
+			values: map[string]string{"discussion_fixer_model": "[]"},
+			mutate: func(c *Config) { c.DiscussionFixerModel = burlerengine.ModelSpecList{} },
 		},
 		{
 			name:   "each fan key as one fan name",
-			values: map[string]string{"discussion.reviewer_fan": "standard", "code.reviewer_fan": "review-code", "discussion.fixer_fan": "fix-discussion", "code.fixer_fan": "fix-code"},
+			values: map[string]string{"discussion_reviewer_fan": "standard", "code_reviewer_fan": "review-code", "discussion_fixer_fan": "fix-discussion", "code_fixer_fan": "fix-code"},
 			mutate: func(c *Config) {
-				c.Discussion.ReviewerFan = lenses.FanList{"standard"}
-				c.Code.ReviewerFan = lenses.FanList{"review-code"}
-				c.Discussion.FixerFan = lenses.FanList{"fix-discussion"}
-				c.Code.FixerFan = lenses.FanList{"fix-code"}
+				c.DiscussionReviewerFan = lenses.FanList{"standard"}
+				c.CodeReviewerFan = lenses.FanList{"review-code"}
+				c.DiscussionFixerFan = lenses.FanList{"fix-discussion"}
+				c.CodeFixerFan = lenses.FanList{"fix-code"}
 			},
 		},
 		{
 			name: "each fan key as a per-round list, an empty entry running its round solo",
 			values: map[string]string{
-				"discussion.reviewer_fan": `["", review-discussion]`,
-				"code.reviewer_fan":       `[review-code, ""]`,
-				"discussion.fixer_fan":    `["", fix-discussion]`,
-				"code.fixer_fan":          `[fix-code, ""]`,
+				"discussion_reviewer_fan": "\n  - \"\"\n  - review-discussion",
+				"code_reviewer_fan":       "\n  - review-code\n  - \"\"",
+				"discussion_fixer_fan":    "\n  - \"\"\n  - fix-discussion",
+				"code_fixer_fan":          "\n  - fix-code\n  - \"\"",
 			},
 			mutate: func(c *Config) {
-				c.Discussion.ReviewerFan = lenses.FanList{"", "review-discussion"}
-				c.Code.ReviewerFan = lenses.FanList{"review-code", ""}
-				c.Discussion.FixerFan = lenses.FanList{"", "fix-discussion"}
-				c.Code.FixerFan = lenses.FanList{"fix-code", ""}
+				c.DiscussionReviewerFan = lenses.FanList{"", "review-discussion"}
+				c.CodeReviewerFan = lenses.FanList{"review-code", ""}
+				c.DiscussionFixerFan = lenses.FanList{"", "fix-discussion"}
+				c.CodeFixerFan = lenses.FanList{"fix-code", ""}
 			},
 		},
 		{
 			name: "assistant model keys as a per-round list, an empty entry running no assistant that round",
 			values: map[string]string{
-				"discussion.assist_reviewer_model": `["luna[low]", ""]`,
-				"code.assist_reviewer_model":       `["", "luna[high]"]`,
+				"discussion_assist_reviewer_model": `["luna[low]", ""]`,
+				"code_assist_reviewer_model":       "\n  - \"\"\n  - luna[high]",
 			},
 			mutate: func(c *Config) {
-				c.Discussion.AssistReviewerModel = burlerengine.ModelSpecList{"luna[low]", ""}
-				c.Code.AssistReviewerModel = burlerengine.ModelSpecList{"", "luna[high]"}
+				c.DiscussionAssistReviewerModel = burlerengine.ModelSpecList{"luna[low]", ""}
+				c.CodeAssistReviewerModel = burlerengine.ModelSpecList{"", "luna[high]"}
 			},
 		},
 		{
 			name: "assistant fan keys as one fan name and as a per-round list",
 			values: map[string]string{
-				"discussion.assist_reviewer_fan": "standard",
-				"code.assist_reviewer_fan":       `["review-code", ""]`,
+				"discussion_assist_reviewer_fan": "standard",
+				"code_assist_reviewer_fan":       `["review-code", ""]`,
 			},
 			mutate: func(c *Config) {
-				c.Discussion.AssistReviewerFan = lenses.FanList{"standard"}
-				c.Code.AssistReviewerFan = lenses.FanList{"review-code", ""}
+				c.DiscussionAssistReviewerFan = lenses.FanList{"standard"}
+				c.CodeAssistReviewerFan = lenses.FanList{"review-code", ""}
 			},
 		},
 		{
-			name:   "explicit review.assist_reviewer_timeout_min",
-			values: map[string]string{"review.assist_reviewer_timeout_min": "15"},
-			mutate: func(c *Config) { c.Review.AssistReviewerTimeoutMin = 15 },
+			name:   "explicit assist_reviewer_timeout_min",
+			values: map[string]string{"assist_reviewer_timeout_min": "15"},
+			mutate: func(c *Config) { c.AssistReviewerTimeoutMin = 15 },
 		},
 		{
-			name:   "a zero review.timeout_min loads beside the assistant's timeout",
-			values: map[string]string{"review.timeout_min": "0", "review.assist_reviewer_timeout_min": "60"},
-			mutate: func(c *Config) { c.Review.TimeoutMin, c.Review.AssistReviewerTimeoutMin = 0, 60 },
+			name:   "a zero review_timeout_min loads beside the assistant's timeout",
+			values: map[string]string{"review_timeout_min": "0", "assist_reviewer_timeout_min": "60"},
+			mutate: func(c *Config) { c.ReviewTimeoutMin, c.AssistReviewerTimeoutMin = 0, 60 },
 		},
 		{
 			name:     "retired fix_start key ignored",
@@ -467,57 +327,57 @@ review:
 			mutate:   func(*Config) {},
 		},
 		{
-			name:   "discussion.interactive true",
-			values: map[string]string{"discussion.interactive": "true"},
-			mutate: func(c *Config) { c.Discussion.Interactive = true },
+			name:   "discussion_interactive true",
+			values: map[string]string{"discussion_interactive": "true"},
+			mutate: func(c *Config) { c.DiscussionInteractive = true },
 		},
 		{
-			name:   "empty discussion.lenses turns the writer forks off",
-			values: map[string]string{"discussion.lenses": `""`},
-			mutate: func(c *Config) { c.Discussion.Lenses = "" },
+			name:   "empty discussion_lenses turns the writer forks off",
+			values: map[string]string{"discussion_lenses": `""`},
+			mutate: func(c *Config) { c.DiscussionLenses = "" },
 		},
 		{
-			name:   "bare discussion.advisors key is null and means no advisors",
-			values: map[string]string{"discussion.advisors": ""},
-			mutate: func(c *Config) { c.Discussion.Advisors = nil },
+			name:   "bare discussion_advisors key is null and means no advisors",
+			values: map[string]string{"discussion_advisors": ""},
+			mutate: func(c *Config) { c.DiscussionAdvisors = nil },
 		},
 		{
-			name:   "discussion.advisors as an empty list means no advisors",
-			values: map[string]string{"discussion.advisors": "[]"},
-			mutate: func(c *Config) { c.Discussion.Advisors = nil },
+			name:   "discussion_advisors as an empty list means no advisors",
+			values: map[string]string{"discussion_advisors": "[]"},
+			mutate: func(c *Config) { c.DiscussionAdvisors = nil },
 		},
 		{
-			name:   "discussion.advisors as one named entry",
-			values: map[string]string{"discussion.advisors": "[{name: critic, model: \"opus[low]\"}]"},
-			mutate: func(c *Config) { c.Discussion.Advisors = DiscussionAdvisorList{{Name: "critic", Model: "opus[low]"}} },
+			name:   "discussion_advisors as one named entry",
+			values: map[string]string{"discussion_advisors": "[{name: critic, model: \"opus[low]\"}]"},
+			mutate: func(c *Config) { c.DiscussionAdvisors = DiscussionAdvisorList{{Name: "critic", Model: "opus[low]"}} },
 		},
 		{
-			name:   "discussion.advisors as a two-entry list",
-			values: map[string]string{"discussion.advisors": `[{name: critic, model: "sonnet[low]"}, {name: skeptic, model: "opus[high]"}]`},
+			name:   "discussion_advisors as a two-entry block list",
+			values: map[string]string{"discussion_advisors": "\n  - name: critic\n    model: sonnet[low]\n  - name: skeptic\n    model: opus[high]"},
 			mutate: func(c *Config) {
-				c.Discussion.Advisors = DiscussionAdvisorList{{Name: "critic", Model: "sonnet[low]"}, {Name: "skeptic", Model: "opus[high]"}}
+				c.DiscussionAdvisors = DiscussionAdvisorList{{Name: "critic", Model: "sonnet[low]"}, {Name: "skeptic", Model: "opus[high]"}}
 			},
 		},
 		{
-			name:   "empty discussion.gate_fixer turns the fixer off",
-			values: map[string]string{"discussion.gate_fixer": `""`},
-			mutate: func(c *Config) { c.Discussion.GateFixer = "" },
+			name:   "empty discussion_gate_fixer turns the fixer off",
+			values: map[string]string{"discussion_gate_fixer": `""`},
+			mutate: func(c *Config) { c.DiscussionGateFixer = "" },
 		},
 		{
-			name:   "empty friction.model turns Tier 2 off",
-			values: map[string]string{"friction.model": `""`},
-			mutate: func(c *Config) { c.Friction.Model = "" },
+			name:   "empty friction turns Tier 2 off",
+			values: map[string]string{"friction": `""`},
+			mutate: func(c *Config) { c.Friction = "" },
 		},
 		{
 			name: "judge and seed override keys set",
 			values: map[string]string{
-				"review.seed": "haiku[low]", "discussion.judge": "opus[low]", "code.judge": "sonnet[low]",
-				"discussion.seed": "haiku[medium]", "code.seed": "sonnet[high]",
+				"seed": "haiku[low]", "discussion_judge": "opus[low]", "code_judge": "sonnet[low]",
+				"discussion_seed": "haiku[medium]", "code_seed": "sonnet[high]",
 			},
 			mutate: func(c *Config) {
-				c.Review.Seed = "haiku[low]"
-				c.Discussion.Judge, c.Code.Judge = "opus[low]", "sonnet[low]"
-				c.Discussion.Seed, c.Code.Seed = "haiku[medium]", "sonnet[high]"
+				c.Seed = "haiku[low]"
+				c.DiscussionJudge, c.CodeJudge = "opus[low]", "sonnet[low]"
+				c.DiscussionSeed, c.CodeSeed = "haiku[medium]", "sonnet[high]"
 			},
 		},
 		{
@@ -547,73 +407,73 @@ review:
 		},
 		{
 			name:   "explicit review checkpoint and budget",
-			values: map[string]string{"review.circling_checkpoint": "2", "review.max_bounces": "7", "review.hard_max_bounces": "7"},
-			mutate: func(c *Config) { c.Review.CirclingCheckpoint, c.Review.MaxBounces, c.Review.HardMaxBounces = 2, 7, 7 },
+			values: map[string]string{"review_circling_checkpoint": "2", "review_max_bounces": "7", "review_hard_max_bounces": "7"},
+			mutate: func(c *Config) { c.ReviewCirclingCheckpoint, c.ReviewMaxBounces, c.ReviewHardMaxBounces = 2, 7, 7 },
 		},
 		{
 			name:   "explicit hard caps",
-			values: map[string]string{"review.hard_max_bounces": "5", "discussion.hard_max_bounces": "6"},
-			mutate: func(c *Config) { c.Review.HardMaxBounces, c.Discussion.HardMaxBounces = 5, 6 },
+			values: map[string]string{"review_hard_max_bounces": "5", "discussion_hard_max_bounces": "6"},
+			mutate: func(c *Config) { c.ReviewHardMaxBounces, c.DiscussionHardMaxBounces = 5, 6 },
 		},
 		{
 			name:   "a hard cap equal to the soft cap loads",
-			values: map[string]string{"review.max_bounces": "3", "review.hard_max_bounces": "3"},
-			mutate: func(c *Config) { c.Review.MaxBounces, c.Review.HardMaxBounces = 3, 3 },
+			values: map[string]string{"review_max_bounces": "3", "review_hard_max_bounces": "3"},
+			mutate: func(c *Config) { c.ReviewMaxBounces, c.ReviewHardMaxBounces = 3, 3 },
 		},
 		{
 			name: "explicit per-perch budgets and auto-accept flags",
 			values: map[string]string{
-				"discussion.max_bounces": "1", "code.max_bounces": "4",
-				"discussion.auto_accept": "true", "code.auto_accept": "true",
+				"discussion_max_bounces": "1", "code_max_bounces": "4",
+				"discussion_auto_accept": "true", "code_auto_accept": "true",
 			},
 			mutate: func(c *Config) {
-				c.Discussion.MaxBounces, c.Code.MaxBounces = intPtr(1), intPtr(4)
-				c.Discussion.AutoAccept, c.Code.AutoAccept = true, true
+				c.DiscussionMaxBounces, c.CodeMaxBounces = intPtr(1), intPtr(4)
+				c.DiscussionAutoAccept, c.CodeAutoAccept = true, true
 			},
 		},
 		{
 			name:     "a zero per-perch budget loads as zero rounds, not as null",
-			values:   map[string]string{"discussion.max_bounces": "0"},
-			mutate:   func(c *Config) { c.Discussion.MaxBounces = intPtr(0) },
+			values:   map[string]string{"discussion_max_bounces": "0"},
+			mutate:   func(c *Config) { c.DiscussionMaxBounces = intPtr(0) },
 			wantSoft: map[Perch]int{PerchDiscussion: 0, PerchCode: 1},
 		},
 		{
 			name:     "a zero run-wide budget gives every null perch zero rounds",
-			values:   map[string]string{"review.max_bounces": "0"},
-			mutate:   func(c *Config) { c.Review.MaxBounces = 0 },
+			values:   map[string]string{"review_max_bounces": "0"},
+			mutate:   func(c *Config) { c.ReviewMaxBounces = 0 },
 			wantSoft: map[Perch]int{PerchDiscussion: 2, PerchPlan: 0, PerchCode: 1},
 		},
 		{
 			name:   "checkpoint above budget",
-			values: map[string]string{"review.circling_checkpoint": "9", "review.max_bounces": "2"},
-			mutate: func(c *Config) { c.Review.CirclingCheckpoint, c.Review.MaxBounces = 9, 2 },
+			values: map[string]string{"review_circling_checkpoint": "9", "review_max_bounces": "2"},
+			mutate: func(c *Config) { c.ReviewCirclingCheckpoint, c.ReviewMaxBounces = 9, 2 },
 		},
 		{
-			name:   "zero review.stalemate_rounds turns the check off",
-			values: map[string]string{"review.stalemate_rounds": "0"},
-			mutate: func(c *Config) { c.Review.StalemateRounds = 0 },
+			name:   "zero review_stalemate_rounds turns the check off",
+			values: map[string]string{"review_stalemate_rounds": "0"},
+			mutate: func(c *Config) { c.ReviewStalemateRounds = 0 },
 		},
 		{
 			name:     "keys absent from a seeded file take template defaults",
 			contents: legacyContents,
 			mutate: func(c *Config) {
-				c.Discussion.Model, c.Review.ReviewerModel = "opus[effort=high]", burlerengine.ModelSpecList{"opus[effort=high]"}
+				c.Discussion, c.ReviewerModel = "opus[effort=high]", burlerengine.ModelSpecList{"opus[effort=high]"}
 			},
 		},
 		{
 			name:   "zero discussion timeout",
-			values: map[string]string{"discussion.timeout_min": "0"},
-			mutate: func(c *Config) { c.Discussion.TimeoutMin = 0 },
+			values: map[string]string{"discussion_timeout_min": "0"},
+			mutate: func(c *Config) { c.DiscussionTimeoutMin = 0 },
 		},
 		{
 			name:   "zero review timeout",
-			values: map[string]string{"review.timeout_min": "0"},
-			mutate: func(c *Config) { c.Review.TimeoutMin = 0 },
+			values: map[string]string{"review_timeout_min": "0"},
+			mutate: func(c *Config) { c.ReviewTimeoutMin = 0 },
 		},
 		{
 			name:   "zero friction timeout",
-			values: map[string]string{"friction.timeout_min": "0"},
-			mutate: func(c *Config) { c.Friction.TimeoutMin = 0 },
+			values: map[string]string{"friction_timeout_min": "0"},
+			mutate: func(c *Config) { c.FrictionTimeoutMin = 0 },
 		},
 	}
 
@@ -621,15 +481,13 @@ review:
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			baseDir := t.TempDir()
-			dirs := configengine.Dirs{Anchor: baseDir}
 			switch {
-			case tt.hubBase != "":
-				dirs.Board = t.TempDir()
-				seedLoomConfig(t, dirs.Board, tt.hubBase)
 			case tt.contents != "":
 				seedLoomConfig(t, baseDir, tt.contents)
+			case tt.values != nil:
+				writeLoomConfigWithKeys(t, baseDir, tt.values)
 			default:
-				seedLoomConfig(t, baseDir, loomTemplateWith(t, tt.values))
+				seedLoomConfig(t, baseDir, ConfigTemplate())
 			}
 			if tt.lensesYAML != "" {
 				seedLensesConfig(t, baseDir, tt.lensesYAML)
@@ -638,7 +496,7 @@ review:
 			want := templateLoad
 			tt.mutate(&want)
 
-			got, err := LoadConfig(dirs, "loom")
+			got, err := LoadConfig(configengine.Dirs{Anchor: baseDir}, "loom")
 			if err != nil {
 				t.Fatalf("LoadConfig(%q, \"loom\") = _, %v; want nil error", baseDir, err)
 			}
@@ -657,33 +515,23 @@ review:
 		t.Parallel()
 		tests := []struct {
 			name       string
-			board      map[string]string
+			board      string
 			boardExtra string
 			worktree   string
 			local      string
 			mutate     func(*Config)
 		}{
 			{
-				name:   "a retired pr area in the local layer is ignored",
-				local:  "pr: {review_ask_parent: true}\n",
-				mutate: func(*Config) {},
-			},
-			{
-				name:   "a retired flat pr_review_small_max in the local layer is ignored",
-				local:  "pr_review_small_max: 5\n",
-				mutate: func(*Config) {},
-			},
-			{
 				name:   "a local value wins over the repo default",
-				board:  map[string]string{"review.max_bounces": "3"},
-				local:  "review: {max_bounces: 2}\n",
-				mutate: func(c *Config) { c.Review.MaxBounces = 2 },
+				board:  "review_max_bounces: 3\n",
+				local:  "review_max_bounces: 2\n",
+				mutate: func(c *Config) { c.ReviewMaxBounces = 2 },
 			},
 			{
 				name:     "a worktree list replaces the default's whole",
-				board:    map[string]string{"review.reviewer_model": `["opus[medium]"]`},
-				worktree: "review: {reviewer_model: [\"sonnet[low]\", \"sonnet[high]\"]}\n",
-				mutate:   func(c *Config) { c.Review.ReviewerModel = burlerengine.ModelSpecList{"sonnet[low]", "sonnet[high]"} },
+				board:    "reviewer_model: [\"opus[medium]\"]\n",
+				worktree: "reviewer_model: [\"sonnet[low]\", \"sonnet[high]\"]\n",
+				mutate:   func(c *Config) { c.ReviewerModel = burlerengine.ModelSpecList{"sonnet[low]", "sonnet[high]"} },
 			},
 			{
 				name:       "a retired fan_review in the repo default is ignored",
@@ -696,14 +544,14 @@ review:
 				mutate:     func(*Config) {},
 			},
 			{
-				name:   "a local code.reviewer_fan of \"\" is open to the local layer",
-				local:  "code: {reviewer_fan: \"\"}\n",
-				mutate: func(c *Config) { c.Code.ReviewerFan = lenses.FanList{""} },
+				name:   "a local code_reviewer_fan of \"\" is open to the local layer",
+				local:  "code_reviewer_fan: \"\"\n",
+				mutate: func(c *Config) { c.CodeReviewerFan = lenses.FanList{""} },
 			},
 			{
-				name:   "a local code.assist_reviewer_model is open to the local layer",
-				local:  "code: {assist_reviewer_model: \"luna[low]\"}\n",
-				mutate: func(c *Config) { c.Code.AssistReviewerModel = burlerengine.ModelSpecList{"luna[low]"} },
+				name:   "a local code_assist_reviewer_model is open to the local layer",
+				local:  "code_assist_reviewer_model: \"luna[low]\"\n",
+				mutate: func(c *Config) { c.CodeAssistReviewerModel = burlerengine.ModelSpecList{"luna[low]"} },
 			},
 		}
 		for _, tt := range tests {
@@ -765,7 +613,34 @@ func writeLocalLoomConfig(t *testing.T, anchor, contents string) string {
 	return localPath
 }
 
-// TestSetDiscussionAdvisors_LoadsBack verifies the loom.discussion.advisors round trip.
+// loomTemplateWith returns the shipped template text with overrides applied.
+// Each top-level line of overrides replaces the template's line for the same key.
+func loomTemplateWith(t *testing.T, overrides string) string {
+	t.Helper()
+	replacements := map[string]string{}
+	for _, line := range strings.Split(strings.TrimSpace(overrides), "\n") {
+		if line == "" {
+			continue
+		}
+		key, _, _ := strings.Cut(line, ":")
+		replacements[key] = line
+	}
+	var b strings.Builder
+	for _, line := range strings.Split(ConfigTemplate(), "\n") {
+		key, _, _ := strings.Cut(line, ":")
+		if replacement, ok := replacements[key]; ok {
+			line = replacement
+			delete(replacements, key)
+		}
+		b.WriteString(line + "\n")
+	}
+	if len(replacements) != 0 {
+		t.Fatalf("overrides %v are not keys of ConfigTemplate(); the fixture would silently test nothing", replacements)
+	}
+	return b.String()
+}
+
+// TestSetDiscussionAdvisors_LoadsBack verifies the discussion_advisors round trip.
 // A list of name and model mappings written through configengine.Set must load back as the same advisors.
 func TestSetDiscussionAdvisors_LoadsBack(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -774,7 +649,7 @@ func TestSetDiscussionAdvisors_LoadsBack(t *testing.T) {
 	seedLoomConfig(t, baseDir, ConfigTemplate())
 	dirs := configengine.Dirs{Anchor: baseDir}
 	spec := ConfigSpec()
-	pairs := []yamlengine.KV{{Key: "discussion.advisors", Value: `[{name: critic, model: "sonnet[high]"}]`}}
+	pairs := []yamlengine.KV{{Key: "discussion_advisors", Value: `[{name: critic, model: "sonnet[high]"}]`}}
 	if _, err := configengine.Set(dirs, spec, configengine.BaseLayer(dirs, spec), pairs); err != nil {
 		t.Fatalf("Set() = _, %v; want nil error", err)
 	}
@@ -784,8 +659,8 @@ func TestSetDiscussionAdvisors_LoadsBack(t *testing.T) {
 		t.Fatalf("LoadConfig() = _, %v; want nil error", err)
 	}
 	want := DiscussionAdvisorList{{Name: "critic", Model: "sonnet[high]"}}
-	if !reflect.DeepEqual(got.Discussion.Advisors, want) {
-		t.Errorf("Discussion.Advisors = %+v; want %+v", got.Discussion.Advisors, want)
+	if !reflect.DeepEqual(got.DiscussionAdvisors, want) {
+		t.Errorf("DiscussionAdvisors = %+v; want %+v", got.DiscussionAdvisors, want)
 	}
 }
 
@@ -805,73 +680,73 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		wantIn     []string
 		lensesYAML string
 	}{
-		{"malformed discussion spec", "discussion.model", `"opus[effort"`, nil, ""},
-		{"malformed raddle spec", "raddle.model", `"opus[effort"`, []string{`config key "loom.raddle.model"`}, ""},
+		{"malformed discussion spec", "discussion", `"opus[effort"`, nil, ""},
+		{"malformed raddle spec", "raddle", `"opus[effort"`, []string{`loom config key "raddle"`}, ""},
 		{"empty subagent_model", "subagent_model", `""`, []string{"must not be empty", "lym config loom --set subagent_model=sonnet"}, ""},
-		{"malformed review.reviewer_model spec", "review.reviewer_model", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
-		{"malformed review.fixer_model spec", "review.fixer_model", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
-		{"malformed later review.reviewer_model entry", "review.reviewer_model", `["sonnet[low]", "opus[effort"]`, []string{"entry 2", "a non-empty list of model-specs"}, ""},
-		{"empty review.reviewer_model list", "review.reviewer_model", "[]", []string{"empty", "a non-empty list of model-specs"}, ""},
-		{"empty review.fixer_model list", "review.fixer_model", "[]", []string{"empty", "a non-empty list of model-specs"}, ""},
-		{"malformed discussion.reviewer_model spec", "discussion.reviewer_model", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
-		{"malformed discussion.fixer_model spec", "discussion.fixer_model", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
-		{"malformed code.reviewer_model spec", "code.reviewer_model", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
-		{"malformed later code.fixer_model entry", "code.fixer_model", `["sonnet[low]", "opus[effort"]`, []string{"entry 2", "a non-empty list of model-specs"}, ""},
-		{"malformed discussion.assist_reviewer_model entry", "discussion.assist_reviewer_model", `"opus[effort"`, []string{`config key "loom.discussion.assist_reviewer_model" entry 1`, "no assistant that round"}, ""},
-		{"malformed later code.assist_reviewer_model entry", "code.assist_reviewer_model", `["luna[low]", "opus[effort"]`, []string{`config key "loom.code.assist_reviewer_model" entry 2`, "no assistant that round"}, ""},
-		{"malformed entry after an empty one", "discussion.assist_reviewer_model", `["", "opus[effort"]`, []string{"entry 2"}, ""},
-		{"unknown discussion.assist_reviewer_fan", "discussion.assist_reviewer_fan", "nosuchfan", []string{`"nosuchfan"`, "known fans: ", "entry 1"}, ""},
-		{"negative review.assist_reviewer_timeout_min", "review.assist_reviewer_timeout_min", "-1", []string{"must not be negative"}, ""},
-		{"unknown discussion.reviewer_fan", "discussion.reviewer_fan", "nosuchfan", []string{`"nosuchfan"`, "known fans: ", "standard", "entry 1", `set the entry to ""`}, ""},
-		{"unknown second discussion.fixer_fan entry", "discussion.fixer_fan", `["", nosuchfan]`, []string{"entry 2", `"nosuchfan"`, "known fans: ", "define the fan in lenses.yaml", `set the entry to ""`}, ""},
-		{"empty discussion.reviewer_fan list", "discussion.reviewer_fan", "[]", []string{"the list is empty", `write ""`}, ""},
-		{"empty discussion.fixer_fan list", "discussion.fixer_fan", "[]", []string{"the list is empty", `write ""`}, ""},
-		{"unknown code.reviewer_fan", "code.reviewer_fan", "nosuchfan", []string{`config key "loom.code.reviewer_fan" entry 1`, `"nosuchfan"`, "known fans: ", `set the entry to ""`}, ""},
-		{"mapping code.fixer_fan value", "code.fixer_fan", "{model: opus}", []string{`config key "loom.code.fixer_fan"`, "neither a fan name nor a list of fan names"}, ""},
-		{"mapping discussion.fixer_fan value", "discussion.fixer_fan", "{model: opus}", []string{"line ", "neither a fan name nor a list of fan names", "a list of fan names"}, ""},
-		{"set discussion.reviewer_fan with a malformed lenses.yaml", "discussion.reviewer_fan", "standard", []string{"lenses: config file ", "parse doc YAML", "fix lenses.yaml, or set the key to empty"}, malformedLensesYAML},
-		{"string discussion.advisors entry", "discussion.advisors", `["sonnet[high]"]`, []string{"entry 1", advisorEntryWayForward}, ""},
-		{"string discussion.advisors entry after a mapping", "discussion.advisors", `[{name: critic, model: "sonnet[high]"}, "sonnet[low]"]`, []string{"entry 2", advisorEntryWayForward}, ""},
-		{"blank discussion.advisors name", "discussion.advisors", `[{name: "", model: "sonnet[high]"}]`, []string{"entry 1", "missing or blank", advisorWayForward}, ""},
-		{"discussion.advisors entry without a name", "discussion.advisors", `[{model: "sonnet[high]"}]`, []string{"entry 1", "missing or blank", advisorWayForward}, ""},
-		{"duplicate discussion.advisors name", "discussion.advisors", `[{name: critic, model: "sonnet[high]"}, {name: critic, model: "sonnet[low]"}]`, []string{"entry 2", `"critic"`, "repeats entry 1", advisorWayForward}, ""},
-		{"numeric discussion.advisors name", "discussion.advisors", `[{name: "2", model: "sonnet[high]"}]`, []string{"entry 1", `"2"`, "no seat name", advisorWayForward}, ""},
-		{"malformed discussion.advisors model", "discussion.advisors", `[{name: critic, model: "opus[effort"}]`, []string{"entry 1", advisorWayForward}, ""},
-		{"discussion.advisors entry without a model", "discussion.advisors", `[{name: critic}]`, []string{"entry 1", advisorWayForward}, ""},
-		{"unknown discussion.advisors alias", "discussion.advisors", `[{name: critic, model: "sonnet[high]"}, {name: skeptic, model: ghost}]`, []string{"entry 2", "ghost", advisorWayForward}, ""},
-		{"mapping discussion.advisors value", "discussion.advisors", "{model: opus}", []string{"line ", advisorWayForward}, ""},
-		{"scalar discussion.advisors value", "discussion.advisors", `"sonnet[high]"`, []string{"line ", advisorWayForward}, ""},
-		{"mapping review.reviewer_model value", "review.reviewer_model", "{model: opus}", []string{"a non-empty list of model-specs"}, ""},
-		{"mapping inside a review.fixer_model list", "review.fixer_model", "[{model: opus}]", []string{"a non-empty list of model-specs"}, ""},
-		{"malformed judge spec", "review.judge", `"sonnet[medium"`, nil, ""},
-		{"malformed seed spec", "review.seed", `"opus[effort"`, nil, ""},
-		{"malformed discussion.judge spec", "discussion.judge", `"opus[effort"`, nil, ""},
-		{"malformed code.judge spec", "code.judge", `"opus[effort"`, nil, ""},
-		{"malformed discussion.seed spec", "discussion.seed", `"opus[effort"`, nil, ""},
-		{"malformed code.seed spec", "code.seed", `"opus[effort"`, nil, ""},
-		{"malformed discussion.gate_fixer spec", "discussion.gate_fixer", `"opus[effort"`, []string{"lym config loom"}, ""},
-		{"malformed friction spec", "friction.model", `"opus[effort"`, nil, ""},
+		{"malformed reviewer_model spec", "reviewer_model", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
+		{"malformed fixer_model spec", "fixer_model", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
+		{"malformed later reviewer_model entry", "reviewer_model", "\n  - sonnet[low]\n  - \"opus[effort\"", []string{"entry 2", "a non-empty list of model-specs"}, ""},
+		{"empty reviewer_model list", "reviewer_model", "[]", []string{"empty", "a non-empty list of model-specs"}, ""},
+		{"empty fixer_model list", "fixer_model", "[]", []string{"empty", "a non-empty list of model-specs"}, ""},
+		{"malformed discussion_reviewer_model spec", "discussion_reviewer_model", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
+		{"malformed discussion_fixer_model spec", "discussion_fixer_model", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
+		{"malformed code_reviewer_model spec", "code_reviewer_model", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
+		{"malformed later code_fixer_model entry", "code_fixer_model", "\n  - sonnet[low]\n  - \"opus[effort\"", []string{"entry 2", "a non-empty list of model-specs"}, ""},
+		{"malformed discussion_assist_reviewer_model entry", "discussion_assist_reviewer_model", `"opus[effort"`, []string{`loom config key "discussion_assist_reviewer_model" entry 1`, "no assistant that round"}, ""},
+		{"malformed later code_assist_reviewer_model entry", "code_assist_reviewer_model", `["luna[low]", "opus[effort"]`, []string{`loom config key "code_assist_reviewer_model" entry 2`, "no assistant that round"}, ""},
+		{"malformed entry after an empty one", "discussion_assist_reviewer_model", `["", "opus[effort"]`, []string{"entry 2"}, ""},
+		{"unknown discussion_assist_reviewer_fan", "discussion_assist_reviewer_fan", "nosuchfan", []string{`"nosuchfan"`, "known fans: ", "entry 1"}, ""},
+		{"negative assist_reviewer_timeout_min", "assist_reviewer_timeout_min", "-1", []string{"must not be negative"}, ""},
+		{"unknown discussion_reviewer_fan", "discussion_reviewer_fan", "nosuchfan", []string{`"nosuchfan"`, "known fans: ", "standard", "entry 1", `set the entry to ""`}, ""},
+		{"unknown second discussion_fixer_fan entry", "discussion_fixer_fan", "\n  - \"\"\n  - nosuchfan", []string{"entry 2", `"nosuchfan"`, "known fans: ", "define the fan in lenses.yaml", `set the entry to ""`}, ""},
+		{"empty discussion_reviewer_fan list", "discussion_reviewer_fan", "[]", []string{"the list is empty", `write ""`}, ""},
+		{"empty discussion_fixer_fan list", "discussion_fixer_fan", "[]", []string{"the list is empty", `write ""`}, ""},
+		{"unknown code_reviewer_fan", "code_reviewer_fan", "nosuchfan", []string{`loom config key "code_reviewer_fan" entry 1`, `"nosuchfan"`, "known fans: ", `set the entry to ""`}, ""},
+		{"mapping code_fixer_fan value", "code_fixer_fan", "\n  model: opus", []string{`loom config key "code_fixer_fan"`, "neither a fan name nor a list of fan names"}, ""},
+		{"mapping discussion_fixer_fan value", "discussion_fixer_fan", "\n  model: opus", []string{"line ", "neither a fan name nor a list of fan names", "a list of fan names"}, ""},
+		{"set discussion_reviewer_fan with a malformed lenses.yaml", "discussion_reviewer_fan", "standard", []string{"lenses: config file ", "parse doc YAML", "fix lenses.yaml, or set the key to empty"}, malformedLensesYAML},
+		{"string discussion_advisors entry", "discussion_advisors", `["sonnet[high]"]`, []string{"entry 1", advisorEntryWayForward}, ""},
+		{"string discussion_advisors entry after a mapping", "discussion_advisors", `[{name: critic, model: "sonnet[high]"}, "sonnet[low]"]`, []string{"entry 2", advisorEntryWayForward}, ""},
+		{"blank discussion_advisors name", "discussion_advisors", `[{name: "", model: "sonnet[high]"}]`, []string{"entry 1", "missing or blank", advisorWayForward}, ""},
+		{"discussion_advisors entry without a name", "discussion_advisors", `[{model: "sonnet[high]"}]`, []string{"entry 1", "missing or blank", advisorWayForward}, ""},
+		{"duplicate discussion_advisors name", "discussion_advisors", `[{name: critic, model: "sonnet[high]"}, {name: critic, model: "sonnet[low]"}]`, []string{"entry 2", `"critic"`, "repeats entry 1", advisorWayForward}, ""},
+		{"numeric discussion_advisors name", "discussion_advisors", `[{name: "2", model: "sonnet[high]"}]`, []string{"entry 1", `"2"`, "no seat name", advisorWayForward}, ""},
+		{"malformed discussion_advisors model", "discussion_advisors", `[{name: critic, model: "opus[effort"}]`, []string{"entry 1", advisorWayForward}, ""},
+		{"discussion_advisors entry without a model", "discussion_advisors", `[{name: critic}]`, []string{"entry 1", advisorWayForward}, ""},
+		{"unknown discussion_advisors alias", "discussion_advisors", `[{name: critic, model: "sonnet[high]"}, {name: skeptic, model: ghost}]`, []string{"entry 2", "ghost", advisorWayForward}, ""},
+		{"mapping discussion_advisors value", "discussion_advisors", "\n  model: opus", []string{"line ", advisorWayForward}, ""},
+		{"scalar discussion_advisors value", "discussion_advisors", `"sonnet[high]"`, []string{"line ", advisorWayForward}, ""},
+		{"mapping reviewer_model value", "reviewer_model", "\n  model: opus", []string{"a non-empty list of model-specs"}, ""},
+		{"mapping inside a fixer_model list", "fixer_model", "\n  - model: opus", []string{"a non-empty list of model-specs"}, ""},
+		{"malformed judge spec", "judge", `"sonnet[medium"`, nil, ""},
+		{"malformed seed spec", "seed", `"opus[effort"`, nil, ""},
+		{"malformed discussion_judge spec", "discussion_judge", `"opus[effort"`, nil, ""},
+		{"malformed code_judge spec", "code_judge", `"opus[effort"`, nil, ""},
+		{"malformed discussion_seed spec", "discussion_seed", `"opus[effort"`, nil, ""},
+		{"malformed code_seed spec", "code_seed", `"opus[effort"`, nil, ""},
+		{"malformed discussion_gate_fixer spec", "discussion_gate_fixer", `"opus[effort"`, []string{"lym config loom"}, ""},
+		{"malformed friction spec", "friction", `"opus[effort"`, nil, ""},
 		{"malformed driver spec", "driver", `"opus[effort"`, nil, ""},
-		{"zero review.circling_checkpoint", "review.circling_checkpoint", "0", []string{positiveIntegerForward}, ""},
-		{"negative review.circling_checkpoint", "review.circling_checkpoint", "-1", []string{positiveIntegerForward}, ""},
-		{"negative review.stalemate_rounds", "review.stalemate_rounds", "-1", []string{"must not be negative", "set it to 0 to turn the check off", "lym config loom --set review.stalemate_rounds=<n>", "in the task worktree"}, ""},
-		{"zero discussion.review_parent_timeout_min", "discussion.review_parent_timeout_min", "0", []string{"must be at least 1", positiveIntegerForward}, ""},
-		{"negative discussion.review_parent_timeout_min", "discussion.review_parent_timeout_min", "-1", []string{"must be at least 1", positiveIntegerForward}, ""},
-		{"zero code.review_parent_timeout_min", "code.review_parent_timeout_min", "0", []string{"must be at least 1", positiveIntegerForward}, ""},
-		{"negative review.max_bounces", "review.max_bounces", "-1", []string{"must not be negative", "set it to 0 for no review round, or to a positive integer"}, ""},
-		{"negative discussion.max_bounces", "discussion.max_bounces", "-1", []string{"must not be negative", "set it to 0 for no review round, to a positive integer, or to null to take loom.review.max_bounces"}, ""},
-		{"negative code.max_bounces", "code.max_bounces", "-1", []string{"must not be negative", "or to null to take loom.review.max_bounces"}, ""},
-		{"negative review.amend_max_bounces", "review.amend_max_bounces", "-1", []string{"must not be negative", "set it to 0 to settle every amendment with no review round", "lym config loom --set review.amend_max_bounces=<n>", `lym loom resume`}, ""},
-		{"zero review.hard_max_bounces", "review.hard_max_bounces", "0", []string{"must be at least 1", "lym config loom --set review.hard_max_bounces=<n>", `lym loom resume`}, ""},
-		{"negative discussion.hard_max_bounces", "discussion.hard_max_bounces", "-1", []string{"set it to 0 to take loom.review.hard_max_bounces", "lym config loom --set discussion.hard_max_bounces=<n>", `lym loom resume`}, ""},
-		{"negative code.hard_max_bounces", "code.hard_max_bounces", "-1", []string{"set it to 0 to take loom.review.hard_max_bounces", "lym config loom --set code.hard_max_bounces=<n>", `lym loom resume`}, ""},
-		{"negative split.max_bounces", "split.max_bounces", "-1", []string{"must not be negative", "or to null to take loom.review.max_bounces"}, ""},
-		{"negative split.hard_max_bounces", "split.hard_max_bounces", "-1", []string{"set it to 0 to take loom.review.hard_max_bounces", "lym config loom --set split.hard_max_bounces=<n>", `lym loom resume`}, ""},
-		{"review.max_bounces above the default hard cap", "review.max_bounces", "5", []string{"review.hard_max_bounces", "lym config loom --set review.hard_max_bounces=<n>", "in the task worktree", `lym loom resume`}, ""},
-		{"code.max_bounces above the default hard cap", "code.max_bounces", "5", []string{"review.hard_max_bounces", "code.max_bounces"}, ""},
-		{"negative discussion timeout", "discussion.timeout_min", "-1", []string{"must not be negative"}, ""},
-		{"negative review timeout", "review.timeout_min", "-1", []string{"must not be negative"}, ""},
-		{"negative friction timeout", "friction.timeout_min", "-1", []string{"must not be negative"}, ""},
+		{"zero review_circling_checkpoint", "review_circling_checkpoint", "0", []string{positiveIntegerForward}, ""},
+		{"negative review_circling_checkpoint", "review_circling_checkpoint", "-1", []string{positiveIntegerForward}, ""},
+		{"negative review_stalemate_rounds", "review_stalemate_rounds", "-1", []string{"must not be negative", "set it to 0 to turn the check off", "lym config loom --set review_stalemate_rounds=<n>", "in the task worktree"}, ""},
+		{"zero discussion_review_parent_timeout_min", "discussion_review_parent_timeout_min", "0", []string{"must be at least 1", positiveIntegerForward}, ""},
+		{"negative discussion_review_parent_timeout_min", "discussion_review_parent_timeout_min", "-1", []string{"must be at least 1", positiveIntegerForward}, ""},
+		{"zero code_review_parent_timeout_min", "code_review_parent_timeout_min", "0", []string{"must be at least 1", positiveIntegerForward}, ""},
+		{"negative review_max_bounces", "review_max_bounces", "-1", []string{"must not be negative", "set it to 0 for no review round, or to a positive integer"}, ""},
+		{"negative discussion_max_bounces", "discussion_max_bounces", "-1", []string{"must not be negative", "set it to 0 for no review round, to a positive integer, or to null to take review_max_bounces"}, ""},
+		{"negative code_max_bounces", "code_max_bounces", "-1", []string{"must not be negative", "or to null to take review_max_bounces"}, ""},
+		{"negative review_amend_max_bounces", "review_amend_max_bounces", "-1", []string{"must not be negative", "set it to 0 to settle every amendment with no review round", "lym config loom --set review_amend_max_bounces=<n>", `lym loom resume`}, ""},
+		{"zero review_hard_max_bounces", "review_hard_max_bounces", "0", []string{"must be at least 1", "lym config loom --set review_hard_max_bounces=<n>", `lym loom resume`}, ""},
+		{"negative discussion_hard_max_bounces", "discussion_hard_max_bounces", "-1", []string{"set it to 0 to take review_hard_max_bounces", "lym config loom --set discussion_hard_max_bounces=<n>", `lym loom resume`}, ""},
+		{"negative code_hard_max_bounces", "code_hard_max_bounces", "-1", []string{"set it to 0 to take review_hard_max_bounces", "lym config loom --set code_hard_max_bounces=<n>", `lym loom resume`}, ""},
+		{"negative split_max_bounces", "split_max_bounces", "-1", []string{"must not be negative", "or to null to take review_max_bounces"}, ""},
+		{"negative split_hard_max_bounces", "split_hard_max_bounces", "-1", []string{"set it to 0 to take review_hard_max_bounces", "lym config loom --set split_hard_max_bounces=<n>", `lym loom resume`}, ""},
+		{"review_max_bounces above the default hard cap", "review_max_bounces", "5", []string{"review_hard_max_bounces", "lym config loom --set review_hard_max_bounces=<n>", "in the task worktree", `lym loom resume`}, ""},
+		{"code_max_bounces above the default hard cap", "code_max_bounces", "5", []string{"review_hard_max_bounces", "code_max_bounces"}, ""},
+		{"negative discussion timeout", "discussion_timeout_min", "-1", []string{"must not be negative"}, ""},
+		{"negative review timeout", "review_timeout_min", "-1", []string{"must not be negative"}, ""},
+		{"negative friction timeout", "friction_timeout_min", "-1", []string{"must not be negative"}, ""},
 	}
 
 	for _, tt := range tests {
@@ -895,80 +770,14 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		})
 	}
 
-	t.Run("an old key name in each file layer is judged by the move table", func(t *testing.T) {
+	t.Run("a local fan key is refused naming the local file and the key", func(t *testing.T) {
 		t.Parallel()
-		movedNames := []string{"loom.code_max_bounces", "loom.code.max_bounces"}
-		layers := []struct {
-			name     string
-			layer    configengine.Layer
-			document string
-			// wantIn is empty for a document that loads.
-			wantIn []string
-		}{
-			{"an old key in the hub base file", configengine.LayerDefault, "code_max_bounces: 2\n", append([]string{`lym config reconcile --layer default --apply`}, movedNames...)},
-			{"an old key in the worktree file", configengine.LayerWorktree, "code_max_bounces: 2\n", append([]string{`run "lym config reconcile --apply" in this worktree`}, movedNames...)},
-			{"an old key in the local file", configengine.LayerLocal, "code_max_bounces: 2\n", append([]string{`run "lym config reconcile --apply" in this worktree`}, movedNames...)},
-			{"a guard key under an old key's area is refused by its new path", configengine.LayerLocal, "discussion: {reviewer_fan: \"\"}\n", []string{"discussion.reviewer_fan", "guard"}},
-			{"an open key under an old key's area loads", configengine.LayerLocal, "discussion: {timeout_min: 60}\n", nil},
-			{"a plan key stays retired and names its tapestry path", configengine.LayerLocal, "plan_max_bounces: 1\n", []string{"tapestry.plan.max_bounces"}},
-		}
-		for _, tt := range layers {
-			t.Run(tt.name, func(t *testing.T) {
-				t.Parallel()
-				board, anchor := t.TempDir(), t.TempDir()
-				seedLoomConfig(t, board, ConfigTemplate())
-				switch tt.layer {
-				case configengine.LayerDefault:
-					seedLoomConfig(t, board, tt.document)
-				case configengine.LayerWorktree:
-					seedLoomConfig(t, anchor, tt.document)
-				case configengine.LayerLocal:
-					writeLocalLoomConfig(t, anchor, tt.document)
-				}
-
-				_, err := LoadConfig(configengine.Dirs{Anchor: anchor, Board: board}, "loom")
-				if len(tt.wantIn) == 0 {
-					if err != nil {
-						t.Fatalf("LoadConfig() error = %v; want nil", err)
-					}
-					return
-				}
-				if err == nil {
-					t.Fatalf("LoadConfig() error = nil; want a refusal holding %q", tt.wantIn)
-				}
-				for _, want := range tt.wantIn {
-					if !strings.Contains(err.Error(), want) {
-						t.Errorf("LoadConfig() error = %q; want it to contain %q", err.Error(), want)
-					}
-				}
-			})
-		}
-	})
-
-	t.Run("a hub base mapping where a model-spec belongs is refused naming the deepest key", func(t *testing.T) {
-		t.Parallel()
-		board, anchor := t.TempDir(), t.TempDir()
-		seedLoomConfig(t, board, "code: {reviewer_model: {x: 1}}\n")
-
-		_, err := LoadConfig(configengine.Dirs{Anchor: anchor, Board: board}, "loom")
-		if err == nil || !strings.Contains(err.Error(), `config key "loom.code.reviewer_model"`) {
-			t.Errorf("LoadConfig() error = %v; want a refusal naming code.reviewer_model", err)
-		}
-	})
-
-	t.Run("a local guarded key is refused naming the local file and the key", func(t *testing.T) {
-		t.Parallel()
-		for key, contents := range map[string]string{
-			"discussion.reviewer_fan": "discussion: {reviewer_fan: standard}\n",
-			"discussion.fixer_fan":    "discussion: {fixer_fan: standard}\n",
-			"code.fixer_fan":          "code: {fixer_fan: standard}\n",
-			"discussion.advisors":     "discussion: {advisors: []}\n",
-		} {
+		for _, key := range []string{"discussion_reviewer_fan", "discussion_fixer_fan", "code_fixer_fan"} {
 			t.Run(key, func(t *testing.T) {
 				t.Parallel()
 				board, anchor := t.TempDir(), t.TempDir()
 				seedLoomConfig(t, board, ConfigTemplate())
-				localPath := writeLocalLoomConfig(t, anchor, contents)
+				localPath := writeLocalLoomConfig(t, anchor, key+": standard\n")
 
 				_, err := LoadConfig(configengine.Dirs{Anchor: anchor, Board: board}, "loom")
 				if !errors.Is(err, configengine.ErrInvalid) {
@@ -1008,10 +817,10 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		}
 	})
 
-	t.Run("a mapping discussion.advisors value names no entry index", func(t *testing.T) {
+	t.Run("a mapping discussion_advisors value names no entry index", func(t *testing.T) {
 		t.Parallel()
 		dir := t.TempDir()
-		writeLoomConfigWithKey(t, dir, "discussion.advisors", "{model: opus}")
+		writeLoomConfigWithKey(t, dir, "discussion_advisors", "\n  model: opus")
 
 		_, err := LoadConfig(configengine.Dirs{Anchor: dir}, "loom")
 		if err == nil || strings.Contains(err.Error(), "entry") {
@@ -1022,7 +831,7 @@ func TestLoadConfig_Refuses(t *testing.T) {
 	t.Run("a malformed models.yaml refuses advisors and is never read for none", func(t *testing.T) {
 		t.Parallel()
 		dir := t.TempDir()
-		writeLoomConfigWithKey(t, dir, "discussion.advisors", `[{name: critic, model: "sonnet[high]"}]`)
+		writeLoomConfigWithKey(t, dir, "discussion_advisors", `[{name: critic, model: "sonnet[high]"}]`)
 		modelsPath := filepath.Join(dir, "_lym", "config", "models.yaml")
 		if err := os.WriteFile(modelsPath, []byte("sonnet: [unclosed\n"), 0o644); err != nil {
 			t.Fatalf("WriteFile(%q) = %v; want nil", modelsPath, err)
@@ -1030,15 +839,15 @@ func TestLoadConfig_Refuses(t *testing.T) {
 
 		_, err := LoadConfig(configengine.Dirs{Anchor: dir}, "loom")
 		if err == nil {
-			t.Fatal("LoadConfig() error = nil; want the models.yaml refusal for discussion.advisors")
+			t.Fatal("LoadConfig() error = nil; want the models.yaml refusal for discussion_advisors")
 		}
-		for _, want := range []string{"discussion.advisors", "fix models.yaml, or set the key to an empty list for no advisors"} {
+		for _, want := range []string{"discussion_advisors", "fix models.yaml, or set the key to an empty list for no advisors"} {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("LoadConfig() error = %q; want it to contain %q", err.Error(), want)
 			}
 		}
 
-		writeLoomConfigWithKey(t, dir, "discussion.advisors", "[]")
+		writeLoomConfigWithKey(t, dir, "discussion_advisors", "[]")
 		if _, err := LoadConfig(configengine.Dirs{Anchor: dir}, "loom"); err != nil {
 			t.Errorf("LoadConfig() with no advisors and a malformed models.yaml = %v; want nil", err)
 		}
@@ -1054,25 +863,25 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		}{
 			{
 				name:   "a local soft cap over the board default's hard cap",
-				local:  "review: {max_bounces: 5}\n",
-				wantIn: []string{"lym config loom --layer local --set review.max_bounces=<n>", "lym board upsert", "lym config loom --layer default --set review.hard_max_bounces=<n>", "prime"},
+				local:  "review_max_bounces: 5\n",
+				wantIn: []string{"lym config loom --layer local --set review_max_bounces=<n>", "lym board upsert", "lym config loom --layer default --set review_hard_max_bounces=<n>", "prime"},
 			},
 			{
 				name:     "a worktree hard cap under the board default's soft cap",
-				worktree: "review: {hard_max_bounces: 2}\n",
-				wantIn:   []string{"lym config loom --set review.hard_max_bounces=<n>", "in the task worktree"},
+				worktree: "review_hard_max_bounces: 2\n",
+				wantIn:   []string{"lym config loom --set review_hard_max_bounces=<n>", "in the task worktree"},
 			},
 			{
 				name:   "a local hard cap of zero",
-				local:  "review: {hard_max_bounces: 0}\n",
-				wantIn: []string{"must be at least 1", "lym config loom --layer local --set review.hard_max_bounces=<n>", "lym board upsert", `lym loom resume`},
+				local:  "review_hard_max_bounces: 0\n",
+				wantIn: []string{"must be at least 1", "lym config loom --layer local --set review_hard_max_bounces=<n>", "lym board upsert", `lym loom resume`},
 			},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
 				board, anchor := t.TempDir(), t.TempDir()
-				seedLoomConfig(t, board, loomTemplateWith(t, map[string]string{"review.max_bounces": "3"}))
+				seedLoomConfig(t, board, loomTemplateWith(t, "review_max_bounces: 3"))
 				if tt.worktree != "" {
 					seedLoomConfig(t, anchor, tt.worktree)
 				}
@@ -1109,6 +918,218 @@ func TestLoadConfig_NotInitialized(t *testing.T) {
 	if err.Error() != want {
 		t.Errorf("LoadConfig() error = %q; want %q", err.Error(), want)
 	}
+}
+
+// oldFormatLoomYAML returns the shipped template with its lens keys dropped and producerLines appended.
+// advisorsLine, when non-empty, replaces the discussion_advisors line.
+func oldFormatLoomYAML(advisorsLine, producerLines string) string {
+	var b strings.Builder
+	for _, line := range strings.Split(strings.TrimSuffix(ConfigTemplate(), "\n"), "\n") {
+		key, _, _ := strings.Cut(line, ":")
+		switch {
+		case key == "discussion_lenses" || key == "plan_lenses":
+			continue
+		case key == "discussion_advisors" && advisorsLine != "":
+			line = advisorsLine
+		}
+		b.WriteString(line + "\n")
+	}
+	return b.String() + producerLines
+}
+
+// TestMigrateConfig pins the loom.yaml migration.
+// Each old producer value becomes its lens key, and discussion_advisors is rewritten or emptied to match.
+// Comments and other keys are carried, and the step_idle_timeout_min floor still applies.
+// A migrated or producer-free document is returned unchanged.
+// A migrated stack of layers loads with the advisors each layer's migration left.
+func TestMigrateConfig(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	const (
+		replacedDiscussion = `discussion_producer: %s replaced by discussion_lenses: %q`
+		replacedPlan       = `plan_producer: %s replaced by plan_lenses: %q`
+		renamed            = "discussion_advisors: %d string entries rewritten as {name: advisor-<n>, model: <entry>}; rename each advisor to its seat name"
+		lowerLayer         = "discussion_producer was seats and discussion_advisors is not set here, so its advisors come from a lower layer whose migration may have emptied them; set discussion_advisors to a list of {name, model} entries"
+	)
+	tests := []struct {
+		name         string
+		input        string
+		want         string
+		wantRewrites []string
+	}{
+		{
+			name:  "twill sets the lens fan and, with no list, turns the advisors off",
+			input: "discussion_producer: twill\n",
+			want:  "discussion_lenses: twill-discussion\ndiscussion_advisors: []\n",
+			wantRewrites: []string{
+				`discussion_producer: twill replaced by discussion_lenses: "twill-discussion"`,
+				"discussion_advisors: set to [] because discussion_producer was twill",
+			},
+		},
+		{
+			name:  "single empties its advisors",
+			input: "discussion_producer: single\ndiscussion_advisors: [\"sonnet[high]\"]\n",
+			want:  "discussion_lenses: \"\"\ndiscussion_advisors: []\n",
+			wantRewrites: []string{
+				`discussion_producer: single replaced by discussion_lenses: ""`,
+				"discussion_advisors: emptied because discussion_producer was single",
+			},
+		},
+		{
+			name:  "single with an already empty list reports only the key",
+			input: "discussion_producer: single\ndiscussion_advisors: []\n",
+			want:  "discussion_lenses: \"\"\ndiscussion_advisors: []\n",
+			wantRewrites: []string{
+				`discussion_producer: single replaced by discussion_lenses: ""`,
+			},
+		},
+		{
+			name:  "an unknown producer value reads as single",
+			input: "discussion_producer: sideways\n",
+			want:  "discussion_lenses: \"\"\ndiscussion_advisors: []\n",
+			wantRewrites: []string{
+				`discussion_producer: sideways replaced by discussion_lenses: ""`,
+				"discussion_advisors: set to [] because discussion_producer was sideways",
+			},
+		},
+		{
+			name:  "seats names each string entry advisor-n",
+			input: "discussion_producer: seats\ndiscussion_advisors:\n  - sonnet[high]\n  - opus[low]\n",
+			want:  "discussion_lenses: \"\"\ndiscussion_advisors:\n  - name: advisor-1\n    model: sonnet[high]\n  - name: advisor-2\n    model: opus[low]\n",
+			wantRewrites: []string{
+				`discussion_producer: seats replaced by discussion_lenses: ""`,
+				fmt.Sprintf(renamed, 2),
+			},
+		},
+		{
+			name:  "seats keeps the quoting of a flow entry",
+			input: "discussion_producer: seats\ndiscussion_advisors: [\"sonnet[high]\"]\n",
+			want:  "discussion_lenses: \"\"\ndiscussion_advisors:\n  - name: advisor-1\n    model: \"sonnet[high]\"\n",
+			wantRewrites: []string{
+				`discussion_producer: seats replaced by discussion_lenses: ""`,
+				fmt.Sprintf(renamed, 1),
+			},
+		},
+		{
+			name:  "seats with an empty list leaves it empty",
+			input: "discussion_producer: seats\ndiscussion_advisors: []\n",
+			want:  "discussion_lenses: \"\"\ndiscussion_advisors: []\n",
+			wantRewrites: []string{
+				`discussion_producer: seats replaced by discussion_lenses: ""`,
+			},
+		},
+		{
+			name:  "seats with no list of its own says where its advisors come from",
+			input: "discussion_producer: seats\n",
+			want:  "discussion_lenses: \"\"\n",
+			wantRewrites: []string{
+				`discussion_producer: seats replaced by discussion_lenses: ""`,
+				lowerLayer,
+			},
+		},
+		{
+			name:         "plan twill sets the plan lens fan",
+			input:        "plan_producer: twill\n",
+			want:         "plan_lenses: twill-plan\n",
+			wantRewrites: []string{fmt.Sprintf(replacedPlan, "twill", "twill-plan")},
+		},
+		{
+			name:         "plan single and empty turn the forks off",
+			input:        "plan_producer: single\n",
+			want:         "plan_lenses: \"\"\n",
+			wantRewrites: []string{fmt.Sprintf(replacedPlan, "single", "")},
+		},
+		{
+			name:         "an empty plan producer turns the forks off",
+			input:        "plan_producer: \"\"\n",
+			want:         "plan_lenses: \"\"\n",
+			wantRewrites: []string{fmt.Sprintf(replacedPlan, "", "")},
+		},
+		{
+			name:  "comments and other keys are carried and the floor still applies",
+			input: "# head\nstep_idle_timeout_min: 0\ndiscussion_producer: twill # the writer\nplan: opus[medium]\n",
+			want:  "# head\nstep_idle_timeout_min: 1\ndiscussion_lenses: twill-discussion # the writer\nplan: opus[medium]\ndiscussion_advisors: []\n",
+			wantRewrites: []string{
+				"step_idle_timeout_min: raised from 0 to 1",
+				fmt.Sprintf(replacedDiscussion, "twill", "twill-discussion"),
+				"discussion_advisors: set to [] because discussion_producer was twill",
+			},
+		},
+		{
+			name:  "a migrated document is unchanged on a second pass",
+			input: "discussion_lenses: twill-discussion\ndiscussion_advisors:\n  - name: advisor-1\n    model: sonnet[high]\nplan_lenses: \"\"\n",
+			want:  "discussion_lenses: twill-discussion\ndiscussion_advisors:\n  - name: advisor-1\n    model: sonnet[high]\nplan_lenses: \"\"\n",
+		},
+		{
+			name:  "a sparse document with string entries and no producer is left for the load to refuse",
+			input: "discussion_advisors: [\"sonnet[high]\"]\n",
+			want:  "discussion_advisors: [\"sonnet[high]\"]\n",
+		},
+		{name: "an empty document is unchanged", input: "", want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, rewrites, err := MigrateConfig([]byte(tt.input))
+			if err != nil {
+				t.Fatalf("MigrateConfig() = _, _, %v; want nil error", err)
+			}
+			if string(got) != tt.want {
+				t.Errorf("MigrateConfig() output:\n%s\nwant:\n%s", got, tt.want)
+			}
+			if !slices.Equal(rewrites, tt.wantRewrites) {
+				t.Errorf("MigrateConfig() rewrites = %q; want %q", rewrites, tt.wantRewrites)
+			}
+			again, againRewrites, err := MigrateConfig(got)
+			if err != nil {
+				t.Fatalf("MigrateConfig(second pass) = _, _, %v; want nil error", err)
+			}
+			if string(again) != string(got) || againRewrites != nil {
+				t.Errorf("MigrateConfig(second pass) = %q, %q; want the bytes unchanged and no rewrites", again, againRewrites)
+			}
+		})
+	}
+
+	t.Run("a document that does not parse is marked invalid", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := MigrateConfig([]byte("discussion_producer: [unclosed\n"))
+		if !errors.Is(err, configengine.ErrInvalid) {
+			t.Errorf("MigrateConfig() error = %v; want it marked configengine.ErrInvalid", err)
+		}
+	})
+
+	t.Run("migrated layers load with the advisors each layer's migration left", func(t *testing.T) {
+		t.Parallel()
+		hub, _, err := MigrateConfig([]byte(oldFormatLoomYAML(`discussion_advisors: ["sonnet[high]"]`, "discussion_producer: seats\nplan_producer: twill\n")))
+		if err != nil {
+			t.Fatalf("MigrateConfig(hub) = _, _, %v; want nil error", err)
+		}
+		worktree, _, err := MigrateConfig([]byte("discussion_producer: twill\n"))
+		if err != nil {
+			t.Fatalf("MigrateConfig(worktree) = _, _, %v; want nil error", err)
+		}
+
+		alone := t.TempDir()
+		seedLoomConfig(t, alone, string(hub))
+		got, err := LoadConfig(configengine.Dirs{Anchor: alone}, "loom")
+		if err != nil {
+			t.Fatalf("LoadConfig(migrated hub file) = _, %v; want nil error", err)
+		}
+		if want := (DiscussionAdvisorList{{Name: "advisor-1", Model: "sonnet[high]"}}); !reflect.DeepEqual(got.DiscussionAdvisors, want) || got.DiscussionLenses != "" {
+			t.Errorf("LoadConfig(migrated hub file) advisors/lenses = %v/%q; want %v and no discussion lenses", got.DiscussionAdvisors, got.DiscussionLenses, want)
+		}
+
+		board, anchor := t.TempDir(), t.TempDir()
+		seedLoomConfig(t, board, string(hub))
+		seedLoomConfig(t, anchor, string(worktree))
+		got, err = LoadConfig(configengine.Dirs{Anchor: anchor, Board: board}, "loom")
+		if err != nil {
+			t.Fatalf("LoadConfig(migrated stack) = _, %v; want nil error", err)
+		}
+		if got.DiscussionAdvisors != nil || got.DiscussionLenses != "twill-discussion" {
+			t.Errorf("LoadConfig(migrated stack) advisors/lenses = %v/%q; want no advisors and twill-discussion", got.DiscussionAdvisors, got.DiscussionLenses)
+		}
+	})
 }
 
 // TestLoomDriverLogAndBootstrapLock covers LoomDriverLog and LoomBootstrapLock.
@@ -1213,84 +1234,17 @@ func TestLandingAndApprovalAccessors(t *testing.T) {
 	}
 }
 
-// TestApplyAutonomy pins what the run's autonomy forces on the resolved config.
-// It also pins what the setting lookup answers for it.
-// Autonomy on forces two keys from their layered values and keeps the review ask keys as layered.
-// Autonomy off keeps every layered value.
-func TestApplyAutonomy(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-	layered := Config{Discussion: DiscussionConfig{Interactive: true}, Code: CodeConfig{ReviewAskParent: true}}
-
-	want := layered
-	want.Discussion.Interactive, want.Raddle.AutoApprove = false, true
-	if got := ApplyAutonomy(layered, true); !reflect.DeepEqual(got, want) {
-		t.Errorf("ApplyAutonomy(layered, true) = %+v; want %+v", got, want)
-	}
-	if got := ApplyAutonomy(layered, false); !reflect.DeepEqual(got, layered) {
-		t.Errorf("ApplyAutonomy(layered, false) = %+v; want %+v", got, layered)
-	}
-
-	settings := []struct {
-		key        string
-		wantValue  bool
-		wantForced bool
-	}{
-		{"discussion.interactive", false, true},
-		{"raddle.auto_approve", true, true},
-		{"code.review_ask_parent", false, false},
-		{"discussion.review_ask_parent", false, false},
-		{"raddle.model", false, false},
-	}
-	for _, setting := range settings {
-		if value, forced := AutonomyForcedSetting(setting.key); value != setting.wantValue || forced != setting.wantForced {
-			t.Errorf("AutonomyForcedSetting(%q) = %v, %v; want %v, %v", setting.key, value, forced, setting.wantValue, setting.wantForced)
-		}
-	}
-}
-
-// TestConfigTemplate_ContainsEveryConfigYAMLTag reflects over Config and TapestryConfig, their areas included.
-// It asserts every yaml tag appears in its module's template, so a field without a template line fails here.
+// TestConfigTemplate_ContainsEveryConfigYAMLTag walks the fields of Config and TapestryConfig via reflection.
+// It asserts every yaml tag appears in its module's template text, so a field without a template line fails here.
 // A struct field with no matching template key is a silent hole, not a load error.
 // This check guards against that.
 //
 //testtiming:keep pins that every Config and TapestryConfig yaml tag has a template line, a reflection check no LoadConfig case makes
 //lym:seam internal/loomengine#Config
 //lym:seam internal/loomengine#TapestryConfig
-//lym:seam internal/loomengine#DiscussionConfig
-//lym:seam internal/loomengine#CodeConfig
-//lym:seam internal/loomengine#SplitConfig
-//lym:seam internal/loomengine#RaddleConfig
-//lym:seam internal/loomengine#FrictionConfig
-//lym:seam internal/loomengine#ReviewConfig
-//lym:seam internal/loomengine#PlanConfig
-//lym:seam internal/loomengine#PartsConfig
 func TestConfigTemplate_ContainsEveryConfigYAMLTag(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
-	var check func(name string, typ reflect.Type, mapping map[string]any)
-	check = func(name string, typ reflect.Type, mapping map[string]any) {
-		for i := 0; i < typ.NumField(); i++ {
-			field := typ.Field(i)
-			tag := field.Tag.Get("yaml")
-			if tag == "" {
-				t.Fatalf("%s field %q has no yaml tag", name, field.Name)
-			}
-			// A "-" tag marks a Config field that tapestry.yaml supplies, checked through TapestryConfig.
-			if tag == "-" {
-				continue
-			}
-			value, held := mapping[tag]
-			if !held {
-				t.Errorf("the %s template does not contain key %q for field %q", name, tag, field.Name)
-				continue
-			}
-			if field.Type.Kind() == reflect.Struct {
-				area, _ := value.(map[string]any)
-				check(name+"."+field.Name, field.Type, area)
-			}
-		}
-	}
 	for _, tt := range []struct {
 		name     string
 		template string
@@ -1299,15 +1253,23 @@ func TestConfigTemplate_ContainsEveryConfigYAMLTag(t *testing.T) {
 		{"Config", ConfigTemplate(), reflect.TypeOf(Config{})},
 		{"TapestryConfig", TapestryConfigTemplate(), reflect.TypeOf(TapestryConfig{})},
 	} {
-		var template map[string]any
-		if err := yaml.Unmarshal([]byte(tt.template), &template); err != nil {
-			t.Fatalf("parse the %s template: %v", tt.name, err)
+		for i := 0; i < tt.typ.NumField(); i++ {
+			tag := tt.typ.Field(i).Tag.Get("yaml")
+			if tag == "" {
+				t.Fatalf("%s field %q has no yaml tag", tt.name, tt.typ.Field(i).Name)
+			}
+			// A "-" tag marks a Config field that tapestry.yaml supplies, checked through TapestryConfig.
+			if tag == "-" {
+				continue
+			}
+			if !containsConfigKey(tt.template, tag) {
+				t.Errorf("the %s template does not contain key %q for field %q", tt.name, tag, tt.typ.Field(i).Name)
+			}
 		}
-		check(tt.name, tt.typ, template)
 	}
 }
 
-// TestConfigTemplate_ImplementerDefaultsToWebsterAndAcceptsALocalValue pins the tapestry.implementer key.
+// TestConfigTemplate_ImplementerDefaultsToWebsterAndAcceptsALocalValue pins the implementer key.
 // No config struct carries it, since the recipe reads it where it builds the Implementer row.
 // tapestry.yaml's template defaults it to webster.
 // TapestryConfigSpec leaves it unguarded, so the local layer may set it.
@@ -1357,4 +1319,261 @@ func TestPathsOutsideRunRecords(t *testing.T) {
 	if want := append([]string{codePath, prefixOnly}, raddlePaths...); !reflect.DeepEqual(got, want) {
 		t.Errorf("PathsOutsideRunRecords() = %q; want %q", got, want)
 	}
+}
+
+// containsConfigKey reports whether a line of text starts with "<key>:", the form each config template key takes.
+func containsConfigKey(text, key string) bool {
+	needle := key + ":"
+	for _, line := range strings.Split(text, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), needle) {
+			return true
+		}
+	}
+	return false
+}
+
+// TestMigrateConfig_RetiredKeys pins how MigrateConfig handles the retired config keys.
+// An old-schema document, recognised by its skip_merge_review key, has each zero per-perch budget turned to null.
+// Its skip_merge_review true is turned to merge_max_bounces: 0, and then the key goes.
+// A document without the key keeps its zeros as the zero-rounds meaning.
+// A retired model or fan key takes its new name and the template's line comment unless the new name is already set.
+// Each webster_* review-perch key then takes its code_* name.
+// Webster's retired models are copied onto unset Merge keys, and every Merge-Review key is then dropped.
+// The fan_review key is removed.
+// A second run changes nothing.
+// A below-floor step_idle_timeout_min is still raised, and an unparseable document is refused.
+func TestMigrateConfig_RetiredKeys(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	tests := []struct {
+		name      string
+		document  string
+		wantLines []string
+		wantKeys  map[string]any
+		wantGone  []string
+	}{
+		{
+			name:      "an old-schema zero becomes null and the skip key goes",
+			document:  "skip_merge_review: false\nplan_max_bounces: 0\nwebster_max_bounces: 2\n",
+			wantLines: []string{"plan_max_bounces: 0 rewritten to null, which takes review_max_bounces", "skip_merge_review: removed", "webster_max_bounces: renamed to code_max_bounces"},
+			wantKeys:  map[string]any{"plan_max_bounces": nil, "code_max_bounces": 2},
+			wantGone:  []string{"skip_merge_review", "webster_max_bounces"},
+		},
+		{
+			name:      "skip_merge_review true runs through to no merge key at all",
+			document:  "skip_merge_review: true\nmerge_max_bounces: 1\n",
+			wantLines: []string{"skip_merge_review: true rewritten to merge_max_bounces: 0", "skip_merge_review: removed", "merge_max_bounces: retired, removed"},
+			wantGone:  []string{"skip_merge_review", "merge_max_bounces"},
+		},
+		{
+			name: "each retired merge key is dropped",
+			document: "merge_reviewer_model: sonnet[low]\nmerge_fixer_model: sonnet[low]\nmerge_reviewer_fan: review-code\nmerge_fixer_fan: fix-code\n" +
+				"merge_max_bounces: 1\nmerge_hard_max_bounces: 0\nmerge_auto_accept: true\nplan_max_bounces: 2\n",
+			wantLines: []string{
+				"merge_reviewer_model: retired, removed",
+				"merge_fixer_model: retired, removed",
+				"merge_reviewer_fan: retired, removed",
+				"merge_fixer_fan: retired, removed",
+				"merge_max_bounces: retired, removed",
+				"merge_hard_max_bounces: retired, removed",
+				"merge_auto_accept: retired, removed",
+			},
+			wantKeys: map[string]any{"plan_max_bounces": 2},
+			wantGone: []string{
+				"merge_reviewer_model", "merge_fixer_model", "merge_reviewer_fan", "merge_fixer_fan",
+				"merge_max_bounces", "merge_hard_max_bounces", "merge_auto_accept",
+			},
+		},
+		{
+			name:      "the retired rework key is dropped",
+			document:  "rework: opus[low]\nplan_max_bounces: 2\n",
+			wantLines: []string{"rework: retired, removed"},
+			wantKeys:  map[string]any{"plan_max_bounces": 2},
+			wantGone:  []string{"rework"},
+		},
+		{
+			name:      "the retired alignment_pr_approve key is dropped",
+			document:  "alignment_pr_approve: false\nplan_max_bounces: 2\n",
+			wantLines: []string{"alignment_pr_approve: retired, removed"},
+			wantKeys:  map[string]any{"plan_max_bounces": 2},
+			wantGone:  []string{"alignment_pr_approve"},
+		},
+		{
+			name:     "each retired alignment and parent-review key is dropped",
+			document: "alignment: opus[high]\nalignment_timeout_min: 20\nskip_alignment: true\nparent_review_wait_min: 60\nplan_max_bounces: 2\n",
+			wantLines: []string{
+				"alignment: retired, removed",
+				"alignment_timeout_min: retired, removed",
+				"skip_alignment: retired, removed",
+				"parent_review_wait_min: retired, removed",
+			},
+			wantKeys: map[string]any{"plan_max_bounces": 2},
+			wantGone: []string{"alignment", "alignment_timeout_min", "skip_alignment", "parent_review_wait_min"},
+		},
+		{
+			name:     "a document without skip_merge_review keeps its zero",
+			document: "plan_max_bounces: 0\n",
+			wantKeys: map[string]any{"plan_max_bounces": 0},
+		},
+		{
+			name:      "fan_review goes with its reconcile line",
+			document:  "fan_review: sonnet[high]\nplan_max_bounces: 2\n",
+			wantLines: []string{"fan_review: removed; a fanned round's reviewer now runs on its segment's own reviewer list"},
+			wantKeys:  map[string]any{"plan_max_bounces": 2},
+			wantGone:  []string{"fan_review"},
+		},
+		{
+			name:      "a below-floor step_idle_timeout_min is still raised",
+			document:  "step_idle_timeout_min: 0\n",
+			wantLines: []string{"step_idle_timeout_min: raised from 0 to 1"},
+			wantKeys:  map[string]any{"step_idle_timeout_min": 1},
+		},
+		{
+			name:     "the retired reviewer, fixer and fan keys are renamed with their values",
+			document: "review: opus[high]\nfix: sonnet[low]\ndiscussion_review: \"\"\nplan_fix: opus[low]\ndiscussion_fan: standard\nmerge_fix_fan: fix-code\n",
+			wantLines: []string{
+				"review: renamed to reviewer_model",
+				"fix: renamed to fixer_model",
+				"discussion_review: renamed to discussion_reviewer_model",
+				"plan_fix: renamed to plan_fixer_model",
+				"discussion_fan: renamed to discussion_reviewer_fan",
+				"merge_fix_fan: renamed to merge_fixer_fan",
+				"merge_fixer_fan: retired, removed",
+			},
+			wantKeys: map[string]any{
+				"reviewer_model": "opus[high]", "fixer_model": "sonnet[low]", "discussion_reviewer_model": "", "plan_fixer_model": "opus[low]",
+				"discussion_reviewer_fan": "standard",
+			},
+			wantGone: []string{"review", "fix", "discussion_review", "plan_fix", "discussion_fan", "merge_fix_fan", "merge_fixer_fan"},
+		},
+		{
+			name:     "webster's models are copied onto the unset merge keys and the drop then removes them",
+			document: "webster_review: sonnet[medium]\nwebster_fix: sonnet[low]\n",
+			wantLines: []string{
+				"merge_reviewer_model: set to webster_review's value, the models Merge-Review ran on",
+				"merge_fixer_model: set to webster_fix's value, the models Merge-Review ran on",
+				"webster_review: renamed to webster_reviewer_model",
+				"webster_fix: renamed to webster_fixer_model",
+				"webster_reviewer_model: renamed to code_reviewer_model",
+				"webster_fixer_model: renamed to code_fixer_model",
+				"merge_reviewer_model: retired, removed",
+				"merge_fixer_model: retired, removed",
+			},
+			wantKeys: map[string]any{"code_reviewer_model": "sonnet[medium]", "code_fixer_model": "sonnet[low]"},
+			wantGone: []string{"webster_review", "webster_fix", "webster_reviewer_model", "webster_fixer_model", "merge_reviewer_model", "merge_fixer_model"},
+		},
+		{
+			name:     "a set new webster key is the value copied onto merge before the drop",
+			document: "webster_review: opus[high]\nwebster_reviewer_model: sonnet[low]\n",
+			wantLines: []string{
+				"merge_reviewer_model: set to webster_reviewer_model's value, the models Merge-Review ran on",
+				"webster_review: removed, webster_reviewer_model already set",
+				"webster_reviewer_model: renamed to code_reviewer_model",
+				"merge_reviewer_model: retired, removed",
+			},
+			wantKeys: map[string]any{"code_reviewer_model": "sonnet[low]"},
+			wantGone: []string{"webster_review", "webster_reviewer_model", "merge_reviewer_model"},
+		},
+		{
+			name:      "a set merge key is dropped with the rest",
+			document:  "webster_review: sonnet[medium]\nmerge_reviewer_model: opus[high]\n",
+			wantLines: []string{"webster_review: renamed to webster_reviewer_model", "webster_reviewer_model: renamed to code_reviewer_model", "merge_reviewer_model: retired, removed"},
+			wantKeys:  map[string]any{"code_reviewer_model": "sonnet[medium]"},
+			wantGone:  []string{"webster_review", "webster_reviewer_model", "merge_reviewer_model", "merge_fixer_model"},
+		},
+		{
+			name:     "each webster review-perch key is renamed to its code successor with its value",
+			document: "webster_reviewer_model: sonnet[low]\nwebster_fixer_model: sonnet[high]\nwebster_reviewer_fan: review-code\nwebster_fixer_fan: fix-code\nwebster_judge: opus[low]\nwebster_seed: haiku[low]\nwebster_max_bounces: 2\nwebster_hard_max_bounces: 5\nwebster_auto_accept: false\n",
+			wantLines: []string{
+				"webster_reviewer_model: renamed to code_reviewer_model",
+				"webster_fixer_model: renamed to code_fixer_model",
+				"webster_reviewer_fan: renamed to code_reviewer_fan",
+				"webster_fixer_fan: renamed to code_fixer_fan",
+				"webster_judge: renamed to code_judge",
+				"webster_seed: renamed to code_seed",
+				"webster_max_bounces: renamed to code_max_bounces",
+				"webster_hard_max_bounces: renamed to code_hard_max_bounces",
+				"webster_auto_accept: renamed to code_auto_accept",
+			},
+			wantKeys: map[string]any{
+				"code_reviewer_model": "sonnet[low]", "code_fixer_model": "sonnet[high]", "code_reviewer_fan": "review-code", "code_fixer_fan": "fix-code",
+				"code_judge": "opus[low]", "code_seed": "haiku[low]", "code_max_bounces": 2, "code_hard_max_bounces": 5, "code_auto_accept": false,
+			},
+			wantGone: []string{
+				"webster_reviewer_model", "webster_fixer_model", "webster_reviewer_fan", "webster_fixer_fan", "webster_judge",
+				"webster_seed", "webster_max_bounces", "webster_hard_max_bounces", "webster_auto_accept",
+			},
+		},
+		{
+			name:      "a set code key wins over its webster one",
+			document:  "webster_max_bounces: 2\ncode_max_bounces: 4\n",
+			wantLines: []string{"webster_max_bounces: removed, code_max_bounces already set"},
+			wantKeys:  map[string]any{"code_max_bounces": 4},
+			wantGone:  []string{"webster_max_bounces"},
+		},
+		{
+			name:      "a set new key wins over its retired one",
+			document:  "review: opus[high]\nreviewer_model: sonnet[low]\n",
+			wantLines: []string{"review: removed, reviewer_model already set"},
+			wantKeys:  map[string]any{"reviewer_model": "sonnet[low]"},
+			wantGone:  []string{"review"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, lines, err := MigrateConfig([]byte(tt.document))
+			if err != nil {
+				t.Fatalf("MigrateConfig() error = %v; want nil", err)
+			}
+			if !reflect.DeepEqual(lines, tt.wantLines) {
+				t.Errorf("MigrateConfig() lines = %q; want %q", lines, tt.wantLines)
+			}
+			var decoded map[string]any
+			if err := yaml.Unmarshal(got, &decoded); err != nil {
+				t.Fatalf("decode migrated %q: %v", got, err)
+			}
+			for key, want := range tt.wantKeys {
+				if value, present := decoded[key]; !present || value != want {
+					t.Errorf("migrated %s = %v, present %v; want %v", key, value, present, want)
+				}
+			}
+			for _, key := range tt.wantGone {
+				if _, present := decoded[key]; present {
+					t.Errorf("migrated document still holds %s", key)
+				}
+			}
+
+			again, againLines, err := MigrateConfig(got)
+			if err != nil || len(againLines) != 0 || string(again) != string(got) {
+				t.Errorf("second MigrateConfig() = %q, %q, %v; want the same bytes and no lines", again, againLines, err)
+			}
+		})
+	}
+
+	t.Run("a renamed key carries the template's line comment", func(t *testing.T) {
+		t.Parallel()
+		got, _, err := MigrateConfig([]byte("webster_fan: review-code # the retired comment\n"))
+		if err != nil {
+			t.Fatalf("MigrateConfig() error = %v; want nil", err)
+		}
+		var document, template yaml.Node
+		if err := yaml.Unmarshal(got, &document); err != nil {
+			t.Fatalf("decode migrated %q: %v", got, err)
+		}
+		if err := yaml.Unmarshal([]byte(ConfigTemplate()), &template); err != nil {
+			t.Fatalf("decode template: %v", err)
+		}
+		const key = "code_reviewer_fan"
+		if got, want := mappingValueNode(document.Content[0], key).LineComment, mappingValueNode(template.Content[0], key).LineComment; got != want {
+			t.Errorf("migrated %s line comment = %q; want the template's %q", key, got, want)
+		}
+	})
+
+	t.Run("an unparseable document is refused", func(t *testing.T) {
+		t.Parallel()
+		if _, _, err := MigrateConfig([]byte("plan_max_bounces: [\n")); !errors.Is(err, configengine.ErrInvalid) {
+			t.Errorf("MigrateConfig() error = %v; want configengine.ErrInvalid", err)
+		}
+	})
 }

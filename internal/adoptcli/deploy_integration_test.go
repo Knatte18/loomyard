@@ -12,7 +12,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/buildvcs"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -22,7 +21,7 @@ import (
 // The deploy keys are barred from the worktree layer, which is why the config lives in the Bolt checkout.
 func seedLandingConfig(t *testing.T, h *hubforge.Hub, yaml string) {
 	t.Helper()
-	boltDir := fabriclayout.BoltDir(h.Path)
+	boltDir := fabricengine.BoltDir(h.Path)
 	if err := os.MkdirAll(configengine.ConfigDir(boltDir), 0o755); err != nil {
 		t.Fatalf("create the Bolt config directory: %v", err)
 	}

@@ -1,4 +1,4 @@
-// prebuild_test.go covers the prebuilt lym store over plain files, and which targets make a run build the binary.
+// prebuild_test.go covers the prebuilt lym store over plain files.
 // It tests the content-derived name, reuse of a stored binary, refreshing a missing entry and pruning by last use.
 // It also tests a destination another run published first and a store that cannot be created.
 
@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -168,65 +167,6 @@ func TestStorePrebuilt(t *testing.T) {
 		}
 		if entries, err := os.ReadDir(dir); err != nil || len(entries) != 0 {
 			t.Errorf("directory after the failed copy = (%v, %v); want it empty", entries, err)
-		}
-	})
-}
-
-func TestInvocationsUseLymBinary(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	root := t.TempDir()
-	// user's tests import the kit, plain's do not, and mod/user is a nested module's package whose tests import it.
-	for rel, content := range map[string]string{
-		"user/user_test.go":     "package user_test\n\nimport \"github.com/Knatte18/loomyard/internal/testkit/lymbin\"\n",
-		"plain/plain_test.go":   "package plain\n\nimport \"testing\"\n",
-		"mod/user/user_test.go": "package user\n\nimport \"example.com/mod/internal/testkit/lymbin\"\n",
-	} {
-		path := filepath.Join(root, filepath.FromSlash(rel))
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	tests := []struct {
-		name        string
-		invocations []invocation
-		want        bool
-	}{
-		{"NoTargetRunsWhole", []invocation{{dir: "."}}, true},
-		{"WholePattern", []invocation{{dir: ".", targets: []string{"./..."}}}, true},
-		{"SubtreePattern", []invocation{{dir: ".", targets: []string{"./plain/..."}}}, true},
-		{"ImportPathTarget", []invocation{{dir: ".", targets: []string{"example.com/plain"}}}, true},
-		{"PackageWhoseTestsImportTheKit", []invocation{{dir: ".", targets: []string{"./plain", "./user"}}}, true},
-		{"AbsolutePackageWhoseTestsImportTheKit", []invocation{{dir: ".", targets: []string{filepath.Join(root, "user")}}}, true},
-		{"NestedModulePackageResolvedFromItsRunDir", []invocation{{dir: ".", targets: []string{"./plain"}}, {dir: "mod", targets: []string{"./user"}}}, true},
-		{"PackagesWhoseTestsDoNotImportTheKit", []invocation{{dir: ".", targets: []string{"./plain"}}}, false},
-		{"CurrentDirectoryTarget", []invocation{{dir: "plain", targets: []string{"."}}}, false},
-		{"ParentDirectoryTarget", []invocation{{dir: "plain/sub", targets: []string{".."}}}, false},
-		{"TargetOpeningWithTheParentDirectory", []invocation{{dir: "mod", targets: []string{"../plain"}}}, false},
-		{"NoInvocation", nil, false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			if got := invocationsUseLymBinary(root, tt.invocations); got != tt.want {
-				t.Errorf("invocationsUseLymBinary(%+v) = %v; want %v", tt.invocations, got, tt.want)
-			}
-		})
-	}
-
-	t.Run("CommandWithoutTargetsRunsWhole", func(t *testing.T) {
-		t.Parallel()
-		run := tierRun{
-			tier:        gateslot.Tier{Command: "go test ./...", PrebuiltLym: true},
-			invocations: []invocation{{dir: ".", targets: []string{"./plain"}}},
-		}
-		if !needsPrebuiltLym(run, root) {
-			t.Errorf("needsPrebuiltLym(%q over ./plain) = false; want true", run.tier.Command)
 		}
 	})
 }

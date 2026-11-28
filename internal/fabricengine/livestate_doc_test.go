@@ -19,9 +19,8 @@
 //
 // The filesystem capture taken before and after a verb runs is called a manifest.
 // The names are Manifest, CaptureManifest and DiffManifest; never call the capture a snapshot.
-// In fabric's own vocabulary, Snapshot has two meanings.
-// One is the `Snapshot: <tag>` trailer, which records a warp SHA on the weft branch, and this package drives that code.
-// The other is the core's input snapshot, the facts a rule decides on, which the harness does not drive.
+// In fabric's own vocabulary, Snapshot names the `Snapshot: <tag>` trailer.
+// That trailer records a warp SHA on the weft branch, and this package drives that code.
 //
 // # The Windows gap
 //
@@ -180,7 +179,7 @@
 // A rollback that creates and then destroys the same path in one call nets to zero in the before/after manifest,
 // yet the record carries both entries; folding first keeps that legitimate case from reading as a lie.
 //
-// Not every fabriclayout.Kind is judged the same way in the commission direction.
+// Not every fabricengine.Kind is judged the same way in the commission direction.
 // manifestObservableKind splits the kinds into two groups.
 // The manifest-observable kinds are real filesystem changes that CaptureManifest would see.
 // The git-state kinds are git-internal state that CaptureManifest's filesystem walk never fully captures;

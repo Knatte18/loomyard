@@ -14,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -41,9 +40,6 @@ type HandOverRequest struct {
 	Entry shedengine.Takeover
 	// DroppedIntents names the pause or cancel intents that never reached origin, for the notice.
 	DroppedIntents []string
-	// PrimeRecords is the prime whose records hold the run's unpushed transitions, nil when there is none to archive.
-	// A set one has its local records tip pushed under an owner archive tag named for the run.
-	PrimeRecords *lymcwd.Location
 }
 
 // HandOverResult reports what a hand-over did.
@@ -63,7 +59,6 @@ type HandOverResult struct {
 // Each goes under an owner archive tag pushed to origin.
 // A parent branch that only the run's own merge puts ahead of its upstream is tagged the same way.
 // That branch is then reset to the upstream.
-// With req.PrimeRecords set, the prime's local records tip is archived the same way, under a tag named for the run.
 // One notice goes through the installed push notifier, and the hand-over mark is written last, after every tag landed.
 // A failure at any step returns it before the mark is written, so the next rejected push hands the run over again;
 // a failed archive wraps ErrArchiveFailed.
@@ -73,7 +68,7 @@ func HandOverTips(prime *lymcwd.Location, req HandOverRequest) (HandOverResult, 
 	if err := ensureTeardownLockDir(hubPath, req.Slug); err != nil {
 		return HandOverResult{}, err
 	}
-	held, acquired, err := lock.AcquireWriteLockWithin(fabriclayout.TeardownLockPath(hubPath, req.Slug), fabriclayout.StatusPushLockWait)
+	held, acquired, err := lock.AcquireWriteLockWithin(TeardownLockPath(hubPath, req.Slug), StatusPushLockWait)
 	if err != nil {
 		return HandOverResult{}, fmt.Errorf("take the teardown lock of the run %q: %w", req.Slug, err)
 	}
@@ -112,22 +107,12 @@ func HandOverTips(prime *lymcwd.Location, req HandOverRequest) (HandOverResult, 
 		}
 	}
 
-	if req.PrimeRecords != nil {
-		tag, err := archiveOwnerTip(rec, RecordsWorktree(req.PrimeRecords), req.Slug, "records", false)
-		if err != nil {
-			return result, fmt.Errorf("%w: prime records of %s: %w", ErrArchiveFailed, req.Slug, err)
-		}
-		if tag != "" {
-			result.Tags = append(result.Tags, tag)
-		}
-	}
-
 	if notify := installedNotifier(); notify != nil {
 		if _, err := notify(hubPath, handOverNotice(req, result.Tags)); err != nil {
 			logger.Warn("fabricengine: the hand-over notice was not posted", "slug", req.Slug, "error", err)
 		}
 	}
-	mark := fabriclayout.HandOverMark{Machine: req.Entry.Machine, At: req.Entry.At, Written: time.Now()}
+	mark := HandOverMark{Machine: req.Entry.Machine, At: req.Entry.At, Written: time.Now()}
 	if err := WriteHandOverMark(hubPath, req.Slug, mark); err != nil {
 		return result, err
 	}
@@ -135,7 +120,7 @@ func HandOverTips(prime *lymcwd.Location, req HandOverRequest) (HandOverResult, 
 }
 
 // handOverNotice words the one notice a hand-over posts.
-func handOverNotice(req HandOverRequest, tags []string) fabriclayout.PushNotice {
+func handOverNotice(req HandOverRequest, tags []string) PushNotice {
 	line := fmt.Sprintf("the run %s was handed over to machine %s: its processes ended here and its local tips are archived", req.Slug, req.Entry.Machine)
 	if len(tags) > 0 {
 		line += " under " + strings.Join(tags, ", ")
@@ -143,12 +128,12 @@ func handOverNotice(req HandOverRequest, tags []string) fabriclayout.PushNotice 
 	if len(req.DroppedIntents) > 0 {
 		line += fmt.Sprintf("; its %s never reached origin, so repeat each on machine %s", strings.Join(req.DroppedIntents, " and "), req.Entry.Machine)
 	}
-	return fabriclayout.PushNotice{Line: line, Topic: "hand-over/" + req.Slug}
+	return PushNotice{Line: line, Topic: "hand-over/" + req.Slug}
 }
 
 // WriteHandOverMark writes this machine's hand-over mark of slug, replacing an earlier one.
-func WriteHandOverMark(hubPath, slug string, mark fabriclayout.HandOverMark) error {
-	path := fabriclayout.HandOverMarkPath(hubPath, slug)
+func WriteHandOverMark(hubPath, slug string, mark HandOverMark) error {
+	path := HandOverMarkPath(hubPath, slug)
 	if err := state.WriteJSON(path, path+".lock", mark); err != nil {
 		return fmt.Errorf("fabricengine: write the hand-over mark of %q: %w", slug, err)
 	}
@@ -159,7 +144,7 @@ func WriteHandOverMark(hubPath, slug string, mark fabriclayout.HandOverMark) err
 // A mark of an earlier hand-over then never stops the pushes of a run this machine takes back.
 // An absent mark is no error.
 func DropHandOverMark(hubPath, slug string) error {
-	markPath := fabriclayout.HandOverMarkPath(hubPath, slug)
+	markPath := HandOverMarkPath(hubPath, slug)
 	if !pathPresent(markPath) {
 		return nil
 	}
@@ -167,7 +152,7 @@ func DropHandOverMark(hubPath, slug string) error {
 		what:      "drop this machine's hand-over mark of a run it takes back",
 		container: filepath.Dir(markPath),
 		target:    markPath,
-		ownership: ownedHubScratch(fabriclayout.HubScratchDir(hubPath)),
+		ownership: ownedHubScratch(HubScratchDir(hubPath)),
 		dirtiness: dirtinessNA("the mark is a marker fabric wrote for this machine, never operator content"),
 		force:     false,
 	}
@@ -225,7 +210,11 @@ func OriginBattenStatus(prime *lymcwd.Location, slug string) (status shedengine.
 // a branch the push created is deleted, after the tip is saved under its owner archive tag.
 // A given-up tip thus does not stay on origin.
 // It reports whether the tip was pushed and stands.
+// A one-repository pair has no code tip apart from its records, so it pushes nothing and reports false.
 func pushOwedCodeTip(rec *Mutations, pair *lymcwd.Location) (pushed bool, err error) {
+	if oneRepositoryAt(pair.WorktreePath()) {
+		return false, nil
+	}
 	slug := pair.WorktreeName
 	weftPath := RecordsWorktree(pair)
 	upstream, hasUpstream, err := upstreamSHAAt(weftPath)
@@ -287,10 +276,10 @@ func pushOwedCodeTip(rec *Mutations, pair *lymcwd.Location) (pushed bool, err er
 		})
 	}
 	if originAbsent {
-		if err := repo.PushCommit(originRemoteName, tip, branch, gitrepo.RefNamespace{}); err != nil {
+		if err := repo.PushCommit(originRemoteName, tip, branch); err != nil {
 			return false, fmt.Errorf("create origin's code branch %s at the owed tip %s: %w; way forward: the next rejected push of the run hands it over again", branch, tip, err)
 		}
-		rec.AppendRef(fabriclayout.KindRemoteBranchUpdated, originRemoteName+"/"+branch, tip)
+		rec.AppendRef(KindRemoteBranchUpdated, originRemoteName+"/"+branch, tip)
 	} else if err := move(tip, originTip); err != nil {
 		if errors.Is(err, gitrepo.ErrLeaseRejected) {
 			return false, fmt.Errorf("origin's code branch %s moved during the hand-over, so the owed tip %s was not pushed; way forward: the next rejected push of the run hands it over again", branch, tip)
@@ -330,7 +319,7 @@ func pushOwedCodeTip(rec *Mutations, pair *lymcwd.Location) (pushed bool, err er
 // deleteGivenUpCodeBranch deletes branch on origin, which an owed tip's push created, under a lease on tip.
 // The tip is first saved under its owner archive tag pushed to origin, so the delete loses no work.
 func deleteGivenUpCodeBranch(rec *Mutations, codeDir, slug, branch, tip string) error {
-	tag := fabriclayout.OwnerArchiveTagName(slug, tip)
+	tag := OwnerArchiveTagName(slug, tip)
 	if err := createTagAt(codeDir, tag, tip, "code"); err != nil {
 		return err
 	}
@@ -358,7 +347,7 @@ func lastTransitionCodeTip(weftPath, ref, slug string) (tip string, err error) {
 	if err != nil || !found {
 		return "", err
 	}
-	return trailerValue(commit.Message, fabriclayout.WarpSHATrailerKey), nil
+	return trailerValue(commit.Message, WarpSHATrailerKey), nil
 }
 
 // lastTransitionCommit returns the newest commit on ref's first-parent line whose Run-Transition trailer is slug.
@@ -369,7 +358,7 @@ func lastTransitionCommit(weftPath, ref, slug string) (commit gitrepo.LogCommit,
 		return gitrepo.LogCommit{}, false, fmt.Errorf("read the records history of %q at %s: %w", slug, ref, err)
 	}
 	for _, candidate := range commits {
-		if trailerValue(candidate.Message, fabriclayout.TransitionTrailerKey) == slug {
+		if trailerValue(candidate.Message, TransitionTrailerKey) == slug {
 			return candidate, true, nil
 		}
 	}
@@ -466,7 +455,7 @@ func archiveParentMerge(rec *Mutations, parentDir, slug string) (tag string, err
 	if err != nil || !hasUpstream {
 		return "", err
 	}
-	tag = fabriclayout.OwnerArchiveTagName(slug, tip)
+	tag = OwnerArchiveTagName(slug, tip)
 	if err := createTagAt(parentDir, tag, tip, "parent"); err != nil {
 		return "", err
 	}
@@ -484,4 +473,47 @@ func archiveParentMerge(rec *Mutations, parentDir, slug string) (tag string, err
 		return "", fmt.Errorf("reset the parent branch %s to its upstream: %w", branch, err)
 	}
 	return tag, nil
+}
+
+// ArchiveParentMerge archives the local tip of the parent pair's branch and resets the branch to origin's tip.
+// It is for a parent push origin rejected because origin's parent branch already holds the run's work.
+// It fetches first, under the slug's teardown lock taken exclusive.
+// A branch with no upstream, or one whose tip origin already holds, archives nothing and returns an empty tag.
+// Otherwise the tip goes under an owner archive tag pushed to origin, and the branch is reset to origin's tip.
+func ArchiveParentMerge(parent *lymcwd.Location, slug string) (tag string, err error) {
+	hubPath := parent.HubPath
+	if err := ensureTeardownLockDir(hubPath, slug); err != nil {
+		return "", err
+	}
+	held, acquired, err := lock.AcquireWriteLockWithin(TeardownLockPath(hubPath, slug), StatusPushLockWait)
+	if err != nil {
+		return "", fmt.Errorf("take the teardown lock of the run %q: %w", slug, err)
+	}
+	if !acquired {
+		return "", fmt.Errorf("a push or removal of the pair %q still holds its teardown lock: %w", slug, ErrPairPushRunning)
+	}
+	defer func() { _ = held.Release() }()
+
+	parentDir := parent.WorktreePath()
+	repo := gitrepo.New(parentDir)
+	if err := repo.Fetch(); err != nil {
+		return "", fmt.Errorf("fetch the parent branch at %s: %w", parentDir, err)
+	}
+	branch, err := repo.CurrentBranch()
+	if err != nil {
+		return "", fmt.Errorf("read the branch checked out at %s: %w", parentDir, err)
+	}
+	tip, err := localBranchTip(parentDir, branch)
+	if err != nil || tip == "" {
+		return "", err
+	}
+	upstream, hasUpstream, err := repo.Upstream(branch)
+	if err != nil || !hasUpstream {
+		return "", err
+	}
+	originHolds, err := isAncestorOrEqual(parentDir, tip, upstream)
+	if err != nil || originHolds {
+		return "", err
+	}
+	return archiveParentMerge(NewMutations(hubPath), parentDir, slug)
 }

@@ -52,7 +52,8 @@ func driveConflictedSquashMerge(t *testing.T, dir string) {
 // The probe reads only the weft's own .git state.
 // A live, non-conflicting merge staged in the weft (MERGE_HEAD only) reports true;
 // it is then aborted, so the weft is clean again.
-// A cherry-pick stopped in the weft reports false, since only a merge counts; it is then aborted.
+// A cherry-pick stopped in the weft reports false and names no operation, since only a merge counts there;
+// it is then aborted.
 // A conflicted `git merge --squash` in the weft writes no MERGE_HEAD and reports true;
 // the MERGE_HEAD probe alone cannot reach it, so neither probe kind is redundant.
 // The steps run serially on one pair.
@@ -99,13 +100,13 @@ func TestMergeStateActive(t *testing.T) {
 		gitkit.MustRun(t, weft, "git", "checkout", "-q", "-b", "picked-branch")
 		gitkit.MustRun(t, weft, "git", "commit", "-q", "--allow-empty", "-m", "picked commit")
 		gitkit.MustRun(t, weft, "git", "checkout", "-q", current)
-		pick := exec.Command("git", "cherry-pick", "picked-branch")
-		pick.Dir = weft
-		// An empty pick stops with CHERRY_PICK_HEAD set and exits non-zero, intentionally ignored.
-		_, _ = pick.CombinedOutput()
+		runGitAllowingFailure(t, weft, "cherry-pick", "picked-branch")
 		gitkit.MustRun(t, weft, "git", "rev-parse", "--verify", "-q", "CHERRY_PICK_HEAD")
 
 		requireMergeStateActive(t, false, "a weft cherry-pick in progress")
+		if operation, err := fabricengine.MergeStateOperation(h.Location); err != nil || operation != "" {
+			t.Errorf("MergeStateOperation() with a weft cherry-pick in progress = (%q, %v); want (\"\", nil)", operation, err)
+		}
 
 		gitkit.MustRun(t, weft, "git", "cherry-pick", "--abort")
 	})
@@ -114,5 +115,46 @@ func TestMergeStateActive(t *testing.T) {
 		driveConflictedSquashMerge(t, h.PrimeRecords())
 
 		requireMergeStateActive(t, true, "a conflicted weft squash merge (no MERGE_HEAD)")
+	})
+
+	t.Run("one-repository pair", func(t *testing.T) {
+		p := newRecordsMergePair(t)
+		requireOperation := func(t *testing.T, wantActive bool, wantOperation, shape string) {
+			t.Helper()
+			active, err := fabricengine.MergeStateActive(p.loc)
+			operation, operationErr := fabricengine.MergeStateOperation(p.loc)
+			if err != nil || operationErr != nil || active != wantActive || operation != wantOperation {
+				t.Errorf("MergeStateActive, MergeStateOperation with %s = (%v, %q, %v, %v); want (%v, %q)",
+					shape, active, operation, err, operationErr, wantActive, wantOperation)
+			}
+		}
+
+		t.Run("MergeWithRecordsAsHEADReportsFalse", func(t *testing.T) {
+			driveMergeHeadOnlyNoConflicts(t, p.task.Path)
+
+			requireOperation(t, false, "", "a merge whose index holds the records as HEAD does")
+
+			gitkit.MustRun(t, p.task.Path, "git", "merge", "--abort")
+		})
+
+		t.Run("ForeignMergeWithARecordsPathUnlikeHEADReportsTrue", func(t *testing.T) {
+			gitkit.MustRun(t, p.task.Path, "git", "checkout", "-q", "-b", "records-branch")
+			gitkit.CommitFile(t, p.task.Path, "_lym/shared.txt", "branch\n", "records edit on the branch")
+			gitkit.MustRun(t, p.task.Path, "git", "checkout", "-q", p.task.Branch)
+			gitkit.MustRun(t, p.task.Path, "git", "merge", "--no-commit", "--no-ff", "records-branch")
+
+			requireOperation(t, true, "merge", "a merge staging a records path unlike HEAD's")
+
+			gitkit.MustRun(t, p.task.Path, "git", "merge", "--abort")
+		})
+
+		t.Run("CherryPickInProgressReportsTrue", func(t *testing.T) {
+			gitkit.MustRun(t, p.task.Path, "git", "checkout", "-q", "-b", "other", p.task.Branch+"~1")
+			gitkit.CommitFile(t, p.task.Path, "code.txt", "other\n", "other edit of the code file")
+			gitkit.MustRun(t, p.task.Path, "git", "checkout", "-q", p.task.Branch)
+			runGitAllowingFailure(t, p.task.Path, "cherry-pick", "other")
+
+			requireOperation(t, true, "cherry-pick", "a conflicted cherry-pick")
+		})
 	})
 }

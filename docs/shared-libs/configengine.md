@@ -83,21 +83,6 @@ only its *absence* degrades.
   A default- or worktree-layer file holding them is logged at Warn, once per file and key list in a process, naming the reconcile that removes them: `lym config reconcile --layer default --apply` from the hub's prime for a file under the board dir, `lym config reconcile --apply` for a worktree file.
 - **A key present with an empty value counts as present** and is not flagged missing.
 
-## Moved keys
-
-A module that moves a key lists it in its `Spec.MovedKeys` table, the old name mapped to the new dotted path.
-A layer holding an old name is refused on load as `key <module>.<old> was moved to <module>.<new>`,
-with the way forward naming that layer's reconcile command,
-and `Set` refuses to write one.
-Every reconcile moves such a key in the file, or drops it when it is null or its new path is set,
-and `lym config <module> --unset <key>` removes it.
-[PATTERN-config-layers](../../pattern/PATTERN-config-layers.md) holds the rule for the move.
-
-## Key names
-
-A message, comment or doc names a key in full, `<module>.<dotted path>`, such as `loom.code.max_bounces`.
-Go renders that name through `KeyName`, from named constants.
-
 ## Environment variable grammar
 
 Config values use POSIX-style brace-delimited env markers:
@@ -145,8 +130,7 @@ The code worktree's `_lym` is a directory junction into its records sibling's `_
 so a single `lym config reconcile` there reaches the worktree's own and local config files;
 no separate command in the records sibling is needed.
 The files under the hub's board dir, the hub-wide modules' files and the per-worktree repo defaults,
-are reconciled by `lym config reconcile --layer default`, applied from the hub's prime,
-and by the hub reconcile run by the first start verb, or verb outside `lym config` that loads the loom or tapestry config, after a binary change.
+are reconciled by `lym config reconcile --layer default`, applied from the hub's prime, and by the hub reconcile the first start verb after a binary change runs.
 
 ## The `_lym` token
 
@@ -155,10 +139,6 @@ and by the hub reconcile run by the first start verb, or verb outside `lym confi
 Every module joins its own private relative-path constant onto a `baseDir` directly (e.g. `filepath.Join(baseDir, lymdirs.LymDirName, "plan")`), never onto a fused `"_lym/..."` literal — see the per-segment join rule in [PATTERN-cwd-resolution](../../pattern/PATTERN-cwd-resolution.md).
 
 ## Exported functions
-
-### `KeyName(module, path string) string`
-
-Returns the full name of a config key, the module and the key's dotted path joined by a dot.
 
 ### `ConfigDir(baseDir string) string`
 
@@ -267,19 +247,6 @@ It is the non-interactive path of the `lym config <module> --set key=value` CLI 
 and a nil error.
 This list is nil/empty when no such orphaned key was present.
 On any error return, the returned `[]string` is always nil.
-
-### `Unset(dirs Dirs, spec Spec, layer Layer, keys []string) error`
-
-Removes dotted keys from one layer's file of a module, through `yamlengine.RemoveKeys`.
-It is the non-interactive path of `lym config <module> --unset key`, so a removed key's value resolves from the layers below and the template.
-A key the template lacks, a retired key included, is removed like any other.
-A mapping the removal leaves empty is removed with its key.
-
-**Error cases:**
-
-- **Not initialized:** Propagates `FindBaseDir`'s error.
-- **Layer does not apply:** Returns an error saying the layer of the module's config does not apply here.
-- **Absent file or key:** Returns an error naming the file and `lym config <module> --resolved`, and writes nothing.
 
 ### `Edit(dirs Dirs, spec Spec, layer Layer, edit EditorFunc) error`
 

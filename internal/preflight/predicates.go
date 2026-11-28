@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
@@ -49,7 +49,7 @@ func HubPresent(cwd string) (*lymcwd.Location, bool) {
 // BoardLymPresent reports whether l's hub carries a board-level lym directory (the Bolt checkout's _lym).
 // It is the single implementation of that check, so callers never drift into separate copies of it.
 func BoardLymPresent(l *lymcwd.Location) bool {
-	_, err := os.Stat(filepath.Join(fabriclayout.BoltDir(l.HubPath), lymdirs.LymDirName))
+	_, err := os.Stat(filepath.Join(fabricengine.BoltDir(l.HubPath), lymdirs.LymDirName))
 	return err == nil
 }
 

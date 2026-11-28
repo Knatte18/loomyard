@@ -26,7 +26,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/creelcli"
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/hubregistry"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -54,7 +53,6 @@ func productionCLI() *slackCLI {
 		resolveLocation: lymcwd.Resolve,
 		wire:            wireProduction,
 		readHiddenLine:  readHiddenTerminalLine,
-		showToggle:      reedengine.ShowToggleOutcome,
 	}
 }
 
@@ -128,7 +126,6 @@ func wireProduction(c *slackCLI, location *lymcwd.Location) error {
 		return slackengine.NewDialer(baseURL, appToken, &http.Client{}, slackengine.HelloTimeout)
 	}
 	c.liveHubs = liveHubGeometries
-	c.orchAutonomous = func() bool { return hubgeom.Autonomy(location, location.WorktreeName) }
 	c.strandName = func() string { return os.Getenv(agentname.StrandNameEnv) }
 	c.newStrandClient = func(strand string) (strandClient, error) {
 		client, err := creelcli.NewStrandClient(location, strand)
@@ -137,6 +134,7 @@ func wireProduction(c *slackCLI, location *lymcwd.Location) error {
 		}
 		return client, nil
 	}
+	c.showToggle = reedengine.ShowToggleOutcome
 	c.ensure = func(geom slackengine.Geometry) (slackengine.StartOutcome, error) {
 		return slackengine.EnsureRelay(geom, primeName)
 	}
@@ -206,7 +204,7 @@ func orchProject(hubPath, slug string) (string, string, error) {
 	if slug == "" {
 		return rootProjectHandle, boardengine.RootSubject, nil
 	}
-	tasks, err := boardengine.ReadTasks(fabriclayout.BoardDir(hubPath))
+	tasks, err := boardengine.ReadTasks(fabricengine.BoardDir(hubPath))
 	if err != nil {
 		return "", "", fmt.Errorf("slack: read the board for the project of the beam %s: %w", slug, err)
 	}

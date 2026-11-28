@@ -3,7 +3,6 @@
 package impactset
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"go/ast"
@@ -118,22 +117,11 @@ const moduleDirsFormat = `{{.Dir}}{{"\t"}}{{with .Error}}{{.Err}}{{end}}{{"\x00"
 // So are an entry with no directory, such as an unreadable package directory, and a listed directory outside moduleDir.
 // A marker the scan rejects is a *GuardScanError.
 func ModuleGuardTests(moduleDir string) (map[string][]GuardTest, error) {
-	absolute, dirs, err := modulePackageDirs(context.Background(), moduleDir)
-	if err != nil {
-		return nil, err
-	}
-	return FindGuardTests(absolute, dirs)
-}
-
-// modulePackageDirs returns the absolute module directory and its packages' module-relative, slash-separated directories.
-// It lists the packages under the tier tags `tier0` through `tier3` with `go list -e`.
-// A failed run, an entry with no directory and a listed directory outside moduleDir are plain errors naming moduleDir.
-func modulePackageDirs(ctx context.Context, moduleDir string) (string, []string, error) {
 	absolute, err := filepath.Abs(moduleDir)
 	if err != nil {
-		return "", nil, fmt.Errorf("impactset: resolve %s: %w", moduleDir, err)
+		return nil, fmt.Errorf("impactset: resolve %s: %w", moduleDir, err)
 	}
-	cmd := exec.CommandContext(ctx, "go", "list", "-e", "-tags", "tier0,tier1,tier2,tier3", "-f", moduleDirsFormat, "./...")
+	cmd := exec.Command("go", "list", "-e", "-tags", "tier0,tier1,tier2,tier3", "-f", moduleDirsFormat, "./...")
 	cmd.Dir = moduleDir
 	logger.Info("impactset: spawning go list", "dir", moduleDir)
 	output, err := cmd.Output()
@@ -141,9 +129,9 @@ func modulePackageDirs(ctx context.Context, moduleDir string) (string, []string,
 	if err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
-			return "", nil, fmt.Errorf("impactset: list the packages of %s: %w: %s", moduleDir, err, strings.TrimSpace(string(exitErr.Stderr)))
+			return nil, fmt.Errorf("impactset: list the packages of %s: %w: %s", moduleDir, err, strings.TrimSpace(string(exitErr.Stderr)))
 		}
-		return "", nil, fmt.Errorf("impactset: list the packages of %s: %w", moduleDir, err)
+		return nil, fmt.Errorf("impactset: list the packages of %s: %w", moduleDir, err)
 	}
 
 	var dirs []string
@@ -154,15 +142,15 @@ func modulePackageDirs(ctx context.Context, moduleDir string) (string, []string,
 		}
 		dir, listError, _ := strings.Cut(record, "\t")
 		if dir == "" {
-			return "", nil, fmt.Errorf("impactset: list the packages of %s: %s", moduleDir, strings.TrimSpace(listError))
+			return nil, fmt.Errorf("impactset: list the packages of %s: %s", moduleDir, strings.TrimSpace(listError))
 		}
 		relative, err := filepath.Rel(absolute, dir)
 		if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-			return "", nil, fmt.Errorf("impactset: list the packages of %s: package directory %s lies outside the module directory", absolute, dir)
+			return nil, fmt.Errorf("impactset: list the packages of %s: package directory %s lies outside the module directory", absolute, dir)
 		}
 		dirs = append(dirs, filepath.ToSlash(relative))
 	}
-	return absolute, dirs, nil
+	return FindGuardTests(absolute, dirs)
 }
 
 // guardNamesInFile returns the tests marked in one file, each with the file's tier; rel names the file in an error.

@@ -86,7 +86,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -190,7 +189,7 @@ type Expectation struct {
 // Only hostile-input cases and the CloneHub{Reset} column set it.
 // Their state's Apply is never invoked.
 // It is the no-op "clean" state, or for CloneHub{Reset} a pseudo-state name that Arrange resolves.
-// Run returns the call's own fabriclayout.Mutations record alongside its error.
+// Run returns the call's own fabricengine.Mutations record alongside its error.
 // The verbs under test return heterogeneous result types, so cells read the record through one uniform accessor.
 // That accessor is MutationRecord.Mutated().
 // Discarding the typed result would leave nothing for a cell to cross-check against the manifest diff.
@@ -198,7 +197,7 @@ type VerbCase struct {
 	Name    string
 	Build   func(tb testing.TB, h *hubforge.Hub)
 	Arrange func(tb testing.TB, h *hubforge.Hub) VerbFixture
-	Run     func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabriclayout.Mutations, error)
+	Run     func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabricengine.Mutations, error)
 	States  []string
 	Expect  func(state string) Expectation
 }
@@ -386,7 +385,7 @@ func addCase() VerbCase {
 				},
 			}
 		},
-		Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabriclayout.Mutations, error) {
+		Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabricengine.Mutations, error) {
 			tb.Helper()
 			res, err := h.Topology.Add(h.Location, f.Slug, fabricengine.AddOptions{})
 			return res.Mutated(), err
@@ -469,9 +468,9 @@ func removeCase() VerbCase {
 				},
 			}
 		},
-		Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabriclayout.Mutations, error) {
+		Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabricengine.Mutations, error) {
 			tb.Helper()
-			res, err := h.Topology.Remove(h.Location, f.Slug, false, false, "")
+			res, err := h.Topology.Remove(h.Location, f.Slug, false, false)
 			return res.Mutated(), err
 		},
 		Expect: func(state string) Expectation {
@@ -531,7 +530,7 @@ func pruneCase() VerbCase {
 				},
 			}
 		},
-		Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabriclayout.Mutations, error) {
+		Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabricengine.Mutations, error) {
 			tb.Helper()
 			res, err := h.Topology.Prune(h.Location, true, false)
 			return res.Mutated(), err
@@ -600,7 +599,7 @@ func cleanupCase() VerbCase {
 			// So the primary weft branch is neither the checked-out weft worktree's own branch nor named by any live pair:
 			// the condition under which Cleanup's primaryWeft carve-out is load-bearing.
 			mustGit(h.PrimeWorktree(), "checkout", "-b", "verb-cleanup-alt")
-			mustGit(h.PrimeRecords(), "checkout", "-b", fabriclayout.RecordsBranchName("verb-cleanup-alt"))
+			mustGit(h.PrimeRecords(), "checkout", "-b", fabricengine.RecordsBranchName("verb-cleanup-alt"))
 		},
 		Arrange: func(tb testing.TB, h *hubforge.Hub) VerbFixture {
 			tb.Helper()
@@ -613,7 +612,7 @@ func cleanupCase() VerbCase {
 				},
 			}
 		},
-		Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabriclayout.Mutations, error) {
+		Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabricengine.Mutations, error) {
 			tb.Helper()
 			res, err := h.Topology.Cleanup(h.Location, true, true, false)
 			return res.Mutated(), err
@@ -623,14 +622,14 @@ func cleanupCase() VerbCase {
 				Kind: KindProceeds,
 				Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 					tb.Helper()
-					orphan := fabriclayout.RecordsBranchName(f.Slug)
+					orphan := fabricengine.RecordsBranchName(f.Slug)
 					if gitkit.BranchExists(tb, h.PrimeRecords(), orphan) {
 						tb.Errorf("Cleanup left orphan branch %q behind", orphan)
 					}
 					// The clean-state effect: orphan managed branches are gone, and the primary weft branch stays intact.
 					// Build moves the prime pair off f.OriginalBranch,
 					// so no live pair or checked-out weft worktree holds the primary weft branch.
-					primary := fabriclayout.RecordsBranchName(f.OriginalBranch)
+					primary := fabricengine.RecordsBranchName(f.OriginalBranch)
 					if !gitkit.BranchExists(tb, h.PrimeRecords(), primary) {
 						tb.Errorf("Cleanup deleted the primary weft branch %q", primary)
 					}
@@ -675,7 +674,7 @@ func checkoutCase() VerbCase {
 				},
 			}
 		},
-		Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabriclayout.Mutations, error) {
+		Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabricengine.Mutations, error) {
 			tb.Helper()
 			res, err := h.Topology.Checkout(h.Location, f.CheckoutBranch)
 			return res.Mutated(), err
@@ -693,8 +692,8 @@ func checkoutCase() VerbCase {
 						if got := gitkit.CurrentBranch(tb, h.PrimeWorktree()); got != f.OriginalBranch {
 							tb.Errorf("prime warp branch after refused Checkout = %q; want unchanged %q", got, f.OriginalBranch)
 						}
-						if got := gitkit.CurrentBranch(tb, h.PrimeRecords()); got != fabriclayout.RecordsBranchName(f.OriginalBranch) {
-							tb.Errorf("prime weft branch after refused Checkout = %q; want unchanged %q", got, fabriclayout.RecordsBranchName(f.OriginalBranch))
+						if got := gitkit.CurrentBranch(tb, h.PrimeRecords()); got != fabricengine.RecordsBranchName(f.OriginalBranch) {
+							tb.Errorf("prime weft branch after refused Checkout = %q; want unchanged %q", got, fabricengine.RecordsBranchName(f.OriginalBranch))
 						}
 					},
 				}
@@ -713,7 +712,7 @@ func checkoutCase() VerbCase {
 						warpBranch := gitkit.CurrentBranch(tb, h.PrimeWorktree())
 						weftBranch := gitkit.CurrentBranch(tb, h.PrimeRecords())
 						switched := warpBranch == f.CheckoutBranch
-						weftSwitched := weftBranch == fabriclayout.RecordsBranchName(f.CheckoutBranch)
+						weftSwitched := weftBranch == fabricengine.RecordsBranchName(f.CheckoutBranch)
 						if switched != weftSwitched {
 							tb.Errorf("Checkout left the pair half-switched: warp branch = %q, weft branch = %q", warpBranch, weftBranch)
 						}
@@ -736,7 +735,7 @@ func checkoutCase() VerbCase {
 						if got := gitkit.CurrentBranch(tb, h.PrimeWorktree()); got != f.CheckoutBranch {
 							tb.Errorf("prime warp branch after Checkout = %q; want %q", got, f.CheckoutBranch)
 						}
-						wantWeft := fabriclayout.RecordsBranchName(f.CheckoutBranch)
+						wantWeft := fabricengine.RecordsBranchName(f.CheckoutBranch)
 						if got := gitkit.CurrentBranch(tb, h.PrimeRecords()); got != wantWeft {
 							tb.Errorf("prime weft branch after Checkout = %q; want %q", got, wantWeft)
 						}
@@ -764,7 +763,7 @@ func reconcileCase() VerbCase {
 				},
 			}
 		},
-		Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabriclayout.Mutations, error) {
+		Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabricengine.Mutations, error) {
 			tb.Helper()
 			res, err := h.Topology.Reconcile(h.Location)
 			return res.Mutated(), err
@@ -810,7 +809,7 @@ func unwireJunctionsCase() VerbCase {
 				},
 			}
 		},
-		Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabriclayout.Mutations, error) {
+		Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabricengine.Mutations, error) {
 			tb.Helper()
 			names, err := fabricengine.WiredNames(configengine.Dirs{Board: h.BoardDir()})
 			if err != nil {
@@ -892,7 +891,7 @@ func pullCase() VerbCase {
 				},
 			}
 		},
-		Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabriclayout.Mutations, error) {
+		Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabricengine.Mutations, error) {
 			tb.Helper()
 			fab, err := fabricengine.Open(h.Location)
 			if err != nil {
@@ -952,7 +951,7 @@ func cloneHubResetNonHubCase() VerbCase {
 			cwd := tb.TempDir()
 			const warpURL = "https://example.invalid/verb-reset-non-hub.git"
 			name := fabricengine.DeriveWarpName(warpURL)
-			hubPath := fabriclayout.HubPath(cwd, name)
+			hubPath := fabricengine.HubPath(cwd, name)
 			if err := os.MkdirAll(hubPath, 0o755); err != nil {
 				tb.Fatalf("mkdir %s: %v", hubPath, err)
 			}
@@ -968,9 +967,9 @@ func cloneHubResetNonHubCase() VerbCase {
 				ResetHubPath: hubPath,
 			}
 		},
-		Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabriclayout.Mutations, error) {
+		Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabricengine.Mutations, error) {
 			tb.Helper()
-			res, err := fabricengine.CloneHub(f.ResetCwd, fabriclayout.CloneOptions{
+			res, err := fabricengine.CloneHub(f.ResetCwd, fabricengine.CloneOptions{
 				WeftURL: f.ResetWeftURL,
 				WarpURL: f.ResetWarpURL,
 				Reset:   true,
@@ -1006,11 +1005,11 @@ func cloneHubResetRealHubCase() VerbCase {
 				ResetHubPath: h.Path,
 			}
 		},
-		Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabriclayout.Mutations, error) {
+		Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabricengine.Mutations, error) {
 			tb.Helper()
 			// The hub's anchor marker is committed on the prime's weft branch and not pushed,
 			// so the re-clone names the anchor again.
-			res, err := fabriccli.CloneAndWire(f.ResetCwd, fabriclayout.CloneOptions{
+			res, err := fabriccli.CloneAndWire(f.ResetCwd, fabricengine.CloneOptions{
 				WeftURL: f.ResetWeftURL,
 				WarpURL: f.ResetWarpURL,
 				Subpath: h.Anchor,
@@ -1023,8 +1022,8 @@ func cloneHubResetRealHubCase() VerbCase {
 				Kind: KindProceeds,
 				Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 					tb.Helper()
-					if _, err := os.Lstat(fabriclayout.BoardDir(f.ResetHubPath)); err != nil {
-						tb.Errorf("rebuilt hub missing %s: %v", fabriclayout.BoardDir(f.ResetHubPath), err)
+					if _, err := os.Lstat(fabricengine.BoardDir(f.ResetHubPath)); err != nil {
+						tb.Errorf("rebuilt hub missing %s: %v", fabricengine.BoardDir(f.ResetHubPath), err)
 					}
 				},
 			}
@@ -1050,7 +1049,7 @@ func slugHostileInputs() []struct {
 		{"DotDot", "..", "a slug must name a directory"},
 		{"Escaping", "../x", "a slug must be a single path component"},
 		{"WeftSuffixed", "hostile" + weftname.Suffix, "that suffix is reserved for weft worktrees"},
-		{"ReservedHubName", fabriclayout.BoardDirName, "that name is reserved for lym hub geometry"},
+		{"ReservedHubName", fabricengine.BoardDirName, "that name is reserved for lym hub geometry"},
 		{"LeadingDash", "-flag", ""},
 	}
 }
@@ -1066,7 +1065,7 @@ func addHostileCases() []VerbCase {
 			Arrange: func(tb testing.TB, h *hubforge.Hub) VerbFixture {
 				return VerbFixture{Slug: in.input}
 			},
-			Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabriclayout.Mutations, error) {
+			Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabricengine.Mutations, error) {
 				tb.Helper()
 				res, err := h.Topology.Add(h.Location, f.Slug, fabricengine.AddOptions{})
 				return res.Mutated(), err
@@ -1113,9 +1112,9 @@ func removeHostileCases() []VerbCase {
 			Arrange: func(tb testing.TB, h *hubforge.Hub) VerbFixture {
 				return VerbFixture{Slug: in.input}
 			},
-			Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabriclayout.Mutations, error) {
+			Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabricengine.Mutations, error) {
 				tb.Helper()
-				res, err := h.Topology.Remove(h.Location, f.Slug, false, false, "")
+				res, err := h.Topology.Remove(h.Location, f.Slug, false, false)
 				return res.Mutated(), err
 			},
 			Expect: func(state string) Expectation {
@@ -1165,7 +1164,7 @@ func checkoutHostileCases() []VerbCase {
 					CheckoutBranch: in.input,
 				}
 			},
-			Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabriclayout.Mutations, error) {
+			Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabricengine.Mutations, error) {
 				tb.Helper()
 				res, err := h.Topology.Checkout(h.Location, f.CheckoutBranch)
 				return res.Mutated(), err
@@ -1212,7 +1211,7 @@ func unwireJunctionsHostileCase() VerbCase {
 			}
 			return VerbFixture{Slug: slug}
 		},
-		Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabriclayout.Mutations, error) {
+		Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabricengine.Mutations, error) {
 			tb.Helper()
 			res, err := fabricengine.UnwireJunctions(h.Location, f.Slug, []string{escapeRelName(h.Anchor, escapeName)})
 			return res.Mutated(), err

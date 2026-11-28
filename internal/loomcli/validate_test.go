@@ -8,17 +8,14 @@ package loomcli
 
 import (
 	"bytes"
-	"errors"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
@@ -608,7 +605,7 @@ func TestValidatePlanCmd(t *testing.T) {
 	t.Run("UnparsableGateConfigIsRefusedNamingTheWayForward", func(t *testing.T) {
 		anchorPath := t.TempDir()
 		c := planFixture(t, anchorPath, t.TempDir(), true)
-		gatePath := configengine.ConfigFile(fabriclayout.BoardDir(c.location.HubPath), "gate")
+		gatePath := configengine.ConfigFile(fabricengine.BoardDir(c.location.HubPath), "gate")
 		if err := os.MkdirAll(filepath.Dir(gatePath), 0o755); err != nil {
 			t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(gatePath), err)
 		}
@@ -742,32 +739,6 @@ func TestValidateDescriptionCmd(t *testing.T) {
 			t.Errorf("envelope description = %q; want %q", got, c.env.DescriptionPath)
 		}
 	})
-
-	for _, tt := range []struct {
-		name     string
-		termsErr error
-		want     []string
-	}{
-		{"Findings_ForbiddenTerm", nil, []string{"forbidden-term: line 3"}},
-		{"UnreadableForbiddenTerms", errors.New("bad yaml"), []string{"loom: read the landing config: bad yaml", "way forward: fix landing.yaml with lym config landing from the prime, then run lym loom validate-description again"}},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			c := descriptionFixture(t, t.TempDir(), "# Title\n\nRun lym.\n\n## Merge danger\n\n**Door:** two-way\n**Blast radius:** loom\n")
-			c.env.DescriptionTerms = func() ([]*regexp.Regexp, error) {
-				return []*regexp.Regexp{regexp.MustCompile(`\blym\b`)}, tt.termsErr
-			}
-
-			var out bytes.Buffer
-			if exitCode := clihelp.Execute(c.validateDescriptionCmd(), &out, nil); exitCode != 1 {
-				t.Errorf("exit code = %d; want 1 (output: %q)", exitCode, out.String())
-			}
-			for _, want := range tt.want {
-				if !strings.Contains(out.String(), want) {
-					t.Errorf("output = %q; want it to carry %q", out.String(), want)
-				}
-			}
-		})
-	}
 
 	t.Run("Findings_CoAuthoredBy", func(t *testing.T) {
 		c := descriptionFixture(t, t.TempDir(), "# Title\n\nbody\n\nCo-Authored-By: X <x@y>\n")

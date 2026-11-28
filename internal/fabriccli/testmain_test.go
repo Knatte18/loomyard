@@ -12,7 +12,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
@@ -30,7 +29,7 @@ var traceSinkMu sync.RWMutex
 func TestMain(m *testing.M) {
 	gitkit.HermeticGitEnv()
 	fabriccli.SetPairPushForTest(func(l *lymcwd.Location) error {
-		_, err := fabricengine.PushPairAnchored(l, fabricengine.EnvSyncOptions(), fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded})
+		_, err := fabricengine.PushPairAnchored(l, fabricengine.EnvSyncOptions(), fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded})
 		return err
 	})
 	os.Exit(tmuxkit.Main(m))

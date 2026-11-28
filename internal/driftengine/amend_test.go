@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -25,7 +25,7 @@ func requireOneRecordsCommit(t *testing.T, f *verifyFixture, before int) {
 	}
 	trailers := f.store.commits[before].trailers
 	hasKey := func(key string) bool {
-		return slices.ContainsFunc(trailers, func(trailer fabriclayout.Trailer) bool { return trailer.Key == key })
+		return slices.ContainsFunc(trailers, func(trailer fabricengine.Trailer) bool { return trailer.Key == key })
 	}
 	if !hasKey(RecordsTrailerKey) || hasKey(SealTrailerKey) {
 		t.Errorf("amendment commit trailers = %v; want %s and no %s", trailers, RecordsTrailerKey, SealTrailerKey)

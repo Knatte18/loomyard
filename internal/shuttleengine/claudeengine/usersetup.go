@@ -44,7 +44,7 @@ const skillListingRule = "A skill is used by reading its SKILL.md in full before
 // UserSetupSource implements shuttleengine.UserSetupSource over the user's Claude Code setup.
 // It reads claude.yaml through the dirs fixed at construction, and is safe to share across concurrent sessions.
 type UserSetupSource struct {
-	// dirs locate the layered claude.yaml, whose claude.session_scope decides which plugins and skills a session lists.
+	// dirs locate the layered claude.yaml, whose session_scope decides which plugins and skills a session lists.
 	dirs configengine.Dirs
 	// claudeDir is Claude Code's config directory; empty resolves it from the environment for each session.
 	claudeDir string

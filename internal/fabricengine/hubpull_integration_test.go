@@ -13,7 +13,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -71,7 +70,7 @@ func moveBeamOnOrigin(t *testing.T, codeBare, slug string) {
 }
 
 // sideOutcomes returns each side as "kind worktree outcome", in pull order.
-func sideOutcomes(sides []fabriclayout.HubPullSide) []string {
+func sideOutcomes(sides []fabricengine.HubPullSide) []string {
 	var out []string
 	for _, side := range sides {
 		out = append(out, string(side.Kind)+" "+side.Worktree+" "+string(side.Outcome))
@@ -271,7 +270,7 @@ func TestPullHub_StopsABoardSideAndAPairSideWithTheirDetail(t *testing.T) {
 		t.Fatalf("PullHub() sides = %v; want %v", got, want)
 	}
 	for _, side := range res.Sides {
-		if side.Outcome == fabriclayout.HubPullStopped && side.Detail == "" {
+		if side.Outcome == fabricengine.HubPullStopped && side.Detail == "" {
 			t.Errorf("%s side detail is empty; want the way forward", side.Kind)
 		}
 	}

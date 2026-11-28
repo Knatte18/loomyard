@@ -15,7 +15,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
@@ -119,7 +119,7 @@ func TestLoomSeedFor_WriteSeedIsIdempotent(t *testing.T) {
 	}
 }
 
-// TestResolveSeedDriver covers resolveSeedDriver: an unseeded worktree takes the resolved shed.driver_kind,
+// TestResolveSeedDriver covers resolveSeedDriver: an unseeded worktree takes the resolved driver_kind,
 // and a recorded seed's driver wins over it.
 func TestResolveSeedDriver(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -192,7 +192,7 @@ func TestBootstrapCommitPaths(t *testing.T) {
 	base := []string{
 		shedrun.StatusRel(shapeLoc, shedrun.SelfRunID),
 		shedrun.SeedRel(shapeLoc, shedrun.SelfRunID),
-		fabriclayout.OriginRecordRel(),
+		fabricengine.OriginRecordRel(),
 	}
 	friction := loomengine.LoomFrictionDirRel()
 	pins := shedrun.StencilPinsRel(shapeLoc, shedrun.SelfRunID)

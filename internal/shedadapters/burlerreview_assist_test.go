@@ -220,7 +220,7 @@ func TestBurlerReviewProducer_Call_RecordsAssistOutcome(t *testing.T) {
 // TestBurlerReviewProducer_Call_ProbeFromAttemptRecord proves the probe takes its options from the usage record;
 // never from the deps' current assistant settings.
 // A recorded retry token and assistant are probed as recorded.
-// A record without the attempt key is probed as the bare round with no assistant.
+// A record without the attempt key, as an older binary wrote it, is probed as the bare round with no assistant.
 func TestBurlerReviewProducer_Call_ProbeFromAttemptRecord(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

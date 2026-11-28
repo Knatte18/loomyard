@@ -159,11 +159,6 @@ func projectDirUnder(projects, workdir string) string {
 	return filepath.Join(projects, string(encoded))
 }
 
-// transcriptPathIn returns the path of the transcript of the session sessionID inside projectDir.
-func transcriptPathIn(projectDir, sessionID string) string {
-	return filepath.Join(projectDir, sessionID+".jsonl")
-}
-
 // LocateSessions returns the sessions Claude Code recorded under the worktree path in every known config directory.
 // They are sorted by session ID.
 // A session id found in several directories is returned once, as its most recently written copy, which holds every turn.

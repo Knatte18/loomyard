@@ -11,58 +11,107 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
+// ParentRelation names how a branch's local tip stands to its upstream tip.
+type ParentRelation string
+
+const (
+	// ParentEqual means the local and upstream tips are the same commit.
+	ParentEqual ParentRelation = "equal"
+	// ParentBehind means local is an ancestor of upstream, so a fast-forward reaches upstream.
+	ParentBehind ParentRelation = "behind"
+	// ParentAhead means upstream is an ancestor of local.
+	ParentAhead ParentRelation = "ahead"
+	// ParentDiverged means each tip holds a commit the other lacks.
+	ParentDiverged ParentRelation = "diverged"
+	// ParentNoUpstream means the branch tracks no remote branch, or the tracked one was never fetched.
+	ParentNoUpstream ParentRelation = "no-upstream"
+)
+
+// ParentTips is a branch's local and upstream tips and how they relate.
+type ParentTips struct {
+	// Local is the SHA of refs/heads/<branch>.
+	Local string
+	// Upstream is the SHA of the remote-tracking ref the branch tracks, empty when Relation is ParentNoUpstream.
+	Upstream string
+	// Relation is how Local stands to Upstream.
+	Relation ParentRelation
+}
+
 // ReadParentTips returns the tips of branch in the pair's code repository.
 // When fetch is true it fetches the repository's remotes first.
 // A missing local branch is an error naming it; a failed fetch is an error naming the command that reproduces it.
 // A branch with no configured or no fetched upstream returns ParentNoUpstream with an empty Upstream.
-func (f *Fabric) ReadParentTips(branch string, fetch bool) (fabriclayout.ParentTips, error) {
+func (f *Fabric) ReadParentTips(branch string, fetch bool) (ParentTips, error) {
 	if fetch {
 		if err := f.code.Fetch(); err != nil {
-			return fabriclayout.ParentTips{}, fmt.Errorf("fabricengine: read tips of %q: %w", branch, err)
+			return ParentTips{}, fmt.Errorf("fabricengine: read tips of %q: %w", branch, err)
 		}
 	}
 
 	local, err := f.code.RefSHA("refs/heads/" + branch)
 	if err != nil {
-		return fabriclayout.ParentTips{}, fmt.Errorf("fabricengine: read tips of %q: local branch: %w", branch, err)
+		return ParentTips{}, fmt.Errorf("fabricengine: read tips of %q: local branch: %w", branch, err)
 	}
 	upstream, hasUpstream, err := f.code.Upstream(branch)
 	if err != nil {
-		return fabriclayout.ParentTips{}, fmt.Errorf("fabricengine: read tips of %q: upstream: %w", branch, err)
+		return ParentTips{}, fmt.Errorf("fabricengine: read tips of %q: upstream: %w", branch, err)
 	}
 	if !hasUpstream {
-		return fabriclayout.ParentTips{Local: local, Relation: fabriclayout.ParentNoUpstream}, nil
+		return ParentTips{Local: local, Relation: ParentNoUpstream}, nil
 	}
 
-	tips := fabriclayout.ParentTips{Local: local, Upstream: upstream}
+	tips := ParentTips{Local: local, Upstream: upstream}
 	if local == upstream {
-		tips.Relation = fabriclayout.ParentEqual
+		tips.Relation = ParentEqual
 		return tips, nil
 	}
 	behind, err := f.code.IsAncestor(local, upstream)
 	if err != nil {
-		return fabriclayout.ParentTips{}, fmt.Errorf("fabricengine: read tips of %q: classify: %w", branch, err)
+		return ParentTips{}, fmt.Errorf("fabricengine: read tips of %q: classify: %w", branch, err)
 	}
 	if behind {
-		tips.Relation = fabriclayout.ParentBehind
+		tips.Relation = ParentBehind
 		return tips, nil
 	}
 	ahead, err := f.code.IsAncestor(upstream, local)
 	if err != nil {
-		return fabriclayout.ParentTips{}, fmt.Errorf("fabricengine: read tips of %q: classify: %w", branch, err)
+		return ParentTips{}, fmt.Errorf("fabricengine: read tips of %q: classify: %w", branch, err)
 	}
 	if ahead {
-		tips.Relation = fabriclayout.ParentAhead
+		tips.Relation = ParentAhead
 		return tips, nil
 	}
-	tips.Relation = fabriclayout.ParentDiverged
+	tips.Relation = ParentDiverged
 	return tips, nil
+}
+
+// LocalOnlyCommits lists the SHAs of the local branch's commits that its tracking ref lacks, newest first.
+// The tracking ref is as the last fetch left it.
+// A branch level with, or behind, its tracking ref lists none.
+// A branch with no tracking ref lists none either, since there is nothing to compare against.
+// A missing local branch is an error naming it.
+func (f *Fabric) LocalOnlyCommits(branch string) ([]string, error) {
+	local, err := f.code.RefSHA("refs/heads/" + branch)
+	if err != nil {
+		return nil, fmt.Errorf("fabricengine: local-only commits of %q: local branch: %w", branch, err)
+	}
+	upstream, hasUpstream, err := f.code.Upstream(branch)
+	if err != nil {
+		return nil, fmt.Errorf("fabricengine: local-only commits of %q: upstream: %w", branch, err)
+	}
+	if !hasUpstream {
+		return nil, nil
+	}
+	commits, err := f.code.CommitsNotIn(local, upstream)
+	if err != nil {
+		return nil, fmt.Errorf("fabricengine: local-only commits of %q: %w", branch, err)
+	}
+	return commits, nil
 }
 
 // ChangedPaths returns the paths that differ between from and to in the pair's code repository.
@@ -73,6 +122,21 @@ func (f *Fabric) ChangedPaths(from, to string) ([]string, error) {
 		return nil, fmt.Errorf("fabricengine: changed paths from %s to %s: %w", from, to, err)
 	}
 	return paths, nil
+}
+
+// ChangedCodePaths returns the paths that differ between from and to in the pair's code repository, leaving out records.
+// A path is left out when it is a records path of to or lies under one, as a one-repository hub keeps its records there.
+// The paths are repository-relative and sorted.
+func (f *Fabric) ChangedCodePaths(from, to string) ([]string, error) {
+	paths, err := f.ChangedPaths(from, to)
+	if err != nil {
+		return nil, err
+	}
+	recordsPaths, err := RecordsPathsAt(f.warpPath, to)
+	if err != nil {
+		return nil, fmt.Errorf("fabricengine: changed code paths from %s to %s: %w", from, to, err)
+	}
+	return slices.DeleteFunc(paths, func(path string) bool { return underRecordsPath(path, recordsPaths) }), nil
 }
 
 // ChangedPathsBothSides returns the paths that differ between from and to in the pair's code repository.
@@ -264,63 +328,139 @@ func (f *Fabric) ConflictsWith(ref string) (bool, error) {
 	return !clean, nil
 }
 
+// FastForwardRefusal names why a fast-forward left the pair unmoved without returning an error.
+type FastForwardRefusal string
+
+const (
+	// FastForwardDirty means the code worktree carries uncommitted tracked changes.
+	FastForwardDirty FastForwardRefusal = "dirty"
+	// FastForwardMergeInProgress means a fabric merge record exists on the pair.
+	FastForwardMergeInProgress FastForwardRefusal = "merge-in-progress"
+	// FastForwardNotFastForward means the local head is not an ancestor of the freshly fetched upstream.
+	FastForwardNotFastForward FastForwardRefusal = "not-fast-forward"
+)
+
+// FastForwardResult reports what a fast-forward did to the pair.
+// It embeds MutationRecord, which is empty on a refusal.
+type FastForwardResult struct {
+	MutationRecord
+	// Refusal is set when the pair was left unmoved, and is empty otherwise.
+	Refusal FastForwardRefusal
+	// NewHead is the upstream SHA the code side moved to, empty when it did not move.
+	NewHead string
+}
+
 // FastForwardPair moves the pair to its upstream only as a fast-forward and never rewrites it.
 // A merge record, a dirty code worktree, or a local head that is not an ancestor of the fetched upstream is a refusal.
 // A refusal returns a nil error and moves nothing.
 // Once none applies, it pulls the weft first; a failure there is logged and does not stop the code side.
 // It then resets the code side to the upstream the fetch returned.
 // opts.SkipGit skips the weft side.
-func (f *Fabric) FastForwardPair(opts SyncOptions) (res fabriclayout.FastForwardResult, err error) {
+// In a one-repository worktree the records are committed first under the records locks.
+// Only code paths count as dirt.
+// A local head that is not an ancestor of the upstream is then leveled with the upstream.
+// The leveling replays its records-only commits onto the upstream.
+// Only a local commit that changes a code path, or a replay that stops, is the not-fast-forward refusal.
+func (f *Fabric) FastForwardPair(opts SyncOptions) (res FastForwardResult, err error) {
 	rec := NewMutations(filepath.Dir(f.warpPath))
 	defer func() { res.Mutations = rec.Snapshot() }()
 
 	recordExists, err := f.mergeRecordExists()
 	if err != nil {
-		return fabriclayout.FastForwardResult{}, err
+		return FastForwardResult{}, err
 	}
 	if recordExists {
-		return fabriclayout.FastForwardResult{Refusal: fabriclayout.FastForwardMergeInProgress}, nil
+		return FastForwardResult{Refusal: FastForwardMergeInProgress}, nil
 	}
 
 	if err := f.code.Fetch(); err != nil {
-		return fabriclayout.FastForwardResult{}, err
+		return FastForwardResult{}, err
 	}
-	dirty, err := f.warpWorktreeDirty()
-	if err != nil {
-		return fabriclayout.FastForwardResult{}, err
+	oneRepo := oneRepositoryAt(f.warpPath)
+	var dirty bool
+	if oneRepo {
+		release, err := f.lockWeftForReplay()
+		if err != nil {
+			return FastForwardResult{}, err
+		}
+		defer release()
+		if err := f.commitReceivingRecords(rec); err != nil {
+			return FastForwardResult{}, err
+		}
+		dirtyReasons, _, err := pairDirtyReason(f)
+		if err != nil {
+			return FastForwardResult{}, err
+		}
+		dirty = len(dirtyReasons) > 0
+	} else {
+		dirty, err = f.warpWorktreeDirty()
+		if err != nil {
+			return FastForwardResult{}, err
+		}
 	}
 	if dirty {
-		return fabriclayout.FastForwardResult{Refusal: fabriclayout.FastForwardDirty}, nil
+		return FastForwardResult{Refusal: FastForwardDirty}, nil
 	}
 
 	upstreamSHA, err := f.warpUpstreamSHA()
 	if err != nil {
-		return fabriclayout.FastForwardResult{}, err
+		return FastForwardResult{}, err
 	}
 	localHEAD, err := f.code.CurrentSHA()
 	if err != nil {
-		return fabriclayout.FastForwardResult{}, err
+		return FastForwardResult{}, err
 	}
 	isFastForward, err := f.code.IsAncestor(localHEAD, upstreamSHA)
 	if err != nil {
-		return fabriclayout.FastForwardResult{}, err
+		return FastForwardResult{}, err
 	}
 	if !isFastForward {
-		return fabriclayout.FastForwardResult{Refusal: fabriclayout.FastForwardNotFastForward}, nil
+		if !oneRepo {
+			return FastForwardResult{Refusal: FastForwardNotFastForward}, nil
+		}
+		return f.levelOneRepositoryWithUpstream(rec, localHEAD, upstreamSHA)
 	}
 
-	if !opts.SkipGit {
+	if !opts.SkipGit && !oneRepo {
 		f.fastForwardWeft(rec, opts)
 	}
 
 	if err := f.ResetHard(rec, upstreamSHA); err != nil {
-		return fabriclayout.FastForwardResult{}, err
+		return FastForwardResult{}, err
 	}
 	f.recordWarpAdvance(rec, localHEAD)
 	// The pair took in origin's commits; the worktree seam hears of them.
 	// The call logs a failure and never fails the move.
 	f.fireTookIn(localHEAD, upstreamSHA)
-	return fabriclayout.FastForwardResult{NewHead: upstreamSHA}, nil
+	return FastForwardResult{NewHead: upstreamSHA}, nil
+}
+
+// levelOneRepositoryWithUpstream brings a one-repository worktree whose head is no ancestor of upstreamSHA level with it.
+// It replays the local records-only commits onto the upstream, under the records locks its caller holds.
+// A head that is ahead of the upstream, a local commit that changes a code path and a stopped replay are refusals.
+// A refusal returns a nil error and moves nothing.
+func (f *Fabric) levelOneRepositoryWithUpstream(rec *Mutations, localHEAD, upstreamSHA string) (FastForwardResult, error) {
+	ahead, err := f.code.IsAncestor(upstreamSHA, localHEAD)
+	if err != nil {
+		return FastForwardResult{}, err
+	}
+	if ahead {
+		return FastForwardResult{Refusal: FastForwardNotFastForward}, nil
+	}
+	err = f.replayOneRepositoryRecords(rec, upstreamSHA)
+	var codeStop *localCodeCommitsStop
+	if errors.Is(err, ErrReplayConflict) || errors.Is(err, ErrReplayDirty) || errors.As(err, &codeStop) {
+		return FastForwardResult{Refusal: FastForwardNotFastForward}, nil
+	}
+	if err != nil {
+		return FastForwardResult{}, err
+	}
+	newHead, err := f.code.CurrentSHA()
+	if err != nil {
+		return FastForwardResult{}, err
+	}
+	f.fireTookIn(localHEAD, newHead)
+	return FastForwardResult{NewHead: newHead}, nil
 }
 
 // fastForwardWeft pulls the weft during a fast-forward.
@@ -330,14 +470,7 @@ func (f *Fabric) FastForwardPair(opts SyncOptions) (res fabriclayout.FastForward
 // A weft that carries a move record or an empty own anchor marker is not pulled.
 // Neither is a weft whose upstream carries another anchor marker.
 // For such a weft, the warning names the way forward.
-// A records store whose origin layout cannot be read is not pulled either,
-// and the warning names the refspecs to restore:
-// with no fetch refspec mapping origin's namespace, its upstream would read as missing and the skip would go unsaid.
 func (f *Fabric) fastForwardWeft(rec *Mutations, opts SyncOptions) {
-	if _, err := originNamespaceAt(f.weftPath); err != nil {
-		logger.Warn("fabricengine: fast-forward: the records store's layout cannot be read, continuing to the code side", "weft", f.weftPath, "err", err)
-		return
-	}
 	hasUpstream, err := f.weftHasUpstream()
 	if err != nil {
 		logger.Warn("fabricengine: fast-forward: resolve weft upstream failed, continuing to the code side", "weft", f.weftPath, "err", err)
@@ -364,6 +497,6 @@ func (f *Fabric) fastForwardWeft(rec *Mutations, opts SyncOptions) {
 		return
 	}
 	if after, afterErr := weftSHAOrEmpty(f); afterErr == nil && after != before {
-		rec.Append(fabriclayout.KindRepoAdvanced, f.weftPath, after)
+		rec.Append(KindRepoAdvanced, f.weftPath, after)
 	}
 }

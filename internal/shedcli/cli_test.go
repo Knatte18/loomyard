@@ -354,7 +354,7 @@ func TestArmFromSeed_RefusalPrecedence(t *testing.T) {
 			},
 			verb:  "status",
 			args:  []string{"some-run"},
-			wants: shedrun.OfferedRecipeNames(),
+			wants: names(),
 		},
 		{
 			// Both shipped recipes support every generic verb, so the row shrinks loom's Verbs to have an excluded verb to drive against.

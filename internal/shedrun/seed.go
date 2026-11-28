@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"sort"
 	"time"
 
@@ -86,34 +85,24 @@ const (
 	// RecipeArras names the arras recipe, the run that discusses a task and splits its decision record into board entries.
 	// Its split perch approves the split in place of the operator, and it lands no code.
 	RecipeArras = "arras"
-	// RecipeHardener names the hardener recipe.
-	// It is the run that drives a lym module against throwaway sandbox hubs round after round.
-	// It lands the fixes its rounds make.
-	RecipeHardener = "hardener"
 )
 
 // RecipeNames returns the closed recipe-name vocabulary as a freshly allocated, sorted slice.
 // Callers must not rely on a fixed order beyond "sorted" and must not mutate the vocabulary through
 // the returned slice affecting any other caller, since each call allocates its own.
 func RecipeNames() []string {
-	return []string{RecipeArras, RecipeBatten, RecipeDarn, RecipeHardener, RecipeMotif, RecipePawl, RecipeRaddle, RecipeSampler, RecipeTapestry}
-}
-
-// OfferedRecipeNames returns the recipe names a message may list to a user, sorted and freshly allocated.
-// It leaves out the arras recipe, which is still legal in a seed but no longer offered.
-func OfferedRecipeNames() []string {
-	return slices.DeleteFunc(RecipeNames(), func(name string) bool { return name == RecipeArras })
+	return []string{RecipeArras, RecipeBatten, RecipeDarn, RecipeMotif, RecipePawl, RecipeRaddle, RecipeSampler, RecipeTapestry}
 }
 
 // ValidateRecipe reports whether name is a legal Seed.Recipe value.
-// On refusal, the error names the offered recipes.
+// On refusal, the error names the available recipes from RecipeNames().
 func ValidateRecipe(name string) error {
 	for _, candidate := range RecipeNames() {
 		if name == candidate {
 			return nil
 		}
 	}
-	return fmt.Errorf("shedrun: unknown recipe %q; available recipes: %v", name, OfferedRecipeNames())
+	return fmt.Errorf("shedrun: unknown recipe %q; available recipes: %v", name, RecipeNames())
 }
 
 // ReadSeed reads the seed for runID under l, returning (Seed{}, false, nil) when no seed has been written yet.

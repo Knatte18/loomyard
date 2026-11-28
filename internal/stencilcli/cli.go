@@ -20,7 +20,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/buildvcs"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
@@ -81,10 +80,10 @@ Examples:
 
 			out := cmd.OutOrStdout()
 
-			list := listRegistryEntries(fabriclayout.StencilsDir(l.HubPath), stencils.Registry(), kindStencil)
+			list := listRegistryEntries(fabricengine.StencilsDir(l.HubPath), stencils.Registry(), kindStencil)
 			// list is the only verb that surfaces a deployed spec's edit state;
 			// the reconcile policy depends on an operator seeing it.
-			list = append(list, listRegistryEntries(fabriclayout.SpecsDir(l.HubPath), specs.Registry(), kindSpec)...)
+			list = append(list, listRegistryEntries(fabricengine.SpecsDir(l.HubPath), specs.Registry(), kindSpec)...)
 
 			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{"stencils": list}))
 			return nil
@@ -101,7 +100,7 @@ Examples:
 			}
 
 			out := cmd.OutOrStdout()
-			stencilsDir := fabriclayout.StencilsDir(l.HubPath)
+			stencilsDir := fabricengine.StencilsDir(l.HubPath)
 
 			findings, err := stencilstore.Validate(stencilsDir, stencils.Registry())
 			if err != nil {
@@ -144,10 +143,10 @@ Examples:
 			}
 
 			out := cmd.OutOrStdout()
-			stencilsDir := fabriclayout.StencilsDir(l.HubPath)
+			stencilsDir := fabricengine.StencilsDir(l.HubPath)
 			sourceDir := resolveSourceDir(l)
 
-			// The written slice from ForceRefresh is a plain list of stencil names, not a fabriclayout.Mutations record.
+			// The written slice from ForceRefresh is a plain list of stencil names, not a fabricengine.Mutations record.
 			// No record exists yet at this point, and stencilstore is not a fabricengine verb,
 			// so there is no Kind to classify these writes under.
 			// The failure is a pre-flight failure: it returns a bare output.Err, not errWithRecord's mutations and partial pair.
@@ -163,7 +162,7 @@ Examples:
 			}
 
 			rec := fabricengine.NewMutations(filepath.Dir(l.HubPath))
-			res, commitErr := fabricengine.CommitSeededStencils(l.HubPath, fabriclayout.StencilsSubtreeRel(), stencilsDir, written, fabriclayout.SyncCommitMessage("stencils", binaryLabel), rec)
+			res, commitErr := fabricengine.CommitSeededStencils(l.HubPath, fabricengine.StencilsSubtreeRel(), stencilsDir, written, fabricengine.SyncCommitMessage("stencils", binaryLabel), rec)
 			if commitErr != nil {
 				clihelp.SetExit(cmd.Context(), errWithRecord(out, rec.Snapshot(), commitErr))
 				return nil
@@ -179,13 +178,13 @@ Examples:
 			// and a commit failure is errWithRecord carrying the snapshot so far.
 			// That snapshot already includes the stencils half's mutations.
 			// Both return early, leaving the stencils commit landed and reported as partial.
-			specsDir := fabriclayout.SpecsDir(l.HubPath)
+			specsDir := fabricengine.SpecsDir(l.HubPath)
 			specsWritten, specsErr := stencilstore.ForceRefresh(specsDir, specs.Registry(), mode, fabricengine.StencilSource(l.WorktreePath(), "", running))
 			if specsErr != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, specsErr.Error()))
 				return nil
 			}
-			specsRes, specsCommitErr := fabricengine.CommitSeededStencils(l.HubPath, fabriclayout.SpecsSubtreeRel(), specsDir, specsWritten, fabriclayout.SyncCommitMessage("specs", binaryLabel), rec)
+			specsRes, specsCommitErr := fabricengine.CommitSeededStencils(l.HubPath, fabricengine.SpecsSubtreeRel(), specsDir, specsWritten, fabricengine.SyncCommitMessage("specs", binaryLabel), rec)
 			if specsCommitErr != nil {
 				clihelp.SetExit(cmd.Context(), errWithRecord(out, rec.Snapshot(), specsCommitErr))
 				return nil
@@ -208,8 +207,8 @@ Examples:
 }
 
 // Kind labels distinguish list's two row classes.
-// kindStencil marks a row read from fabriclayout.StencilsDir and stencils.Registry.
-// kindSpec marks a row read from fabriclayout.SpecsDir and specs.Registry.
+// kindStencil marks a row read from fabricengine.StencilsDir and stencils.Registry.
+// kindSpec marks a row read from fabricengine.SpecsDir and specs.Registry.
 //
 // validate, diff, and promote do not run a specs pass.
 // validate compares top-level marker sets through stencil.TopLevelMarkers; a spec is not a template,
@@ -284,14 +283,14 @@ func resolveSourceDir(l *lymcwd.Location) string {
 
 // okWithRecord and errWithRecord write the mutations and partial keys of the envelope.
 // The Mutation Record Invariant requires that every mutating verb outcome carry them.
-func okWithRecord(w io.Writer, rec fabriclayout.Mutations, fields map[string]any) int {
+func okWithRecord(w io.Writer, rec fabricengine.Mutations, fields map[string]any) int {
 	fields["mutations"] = rec.Entries()
 	fields["partial"] = false
 	return output.Ok(w, fields)
 }
 
 // errWithRecord reports err with the record's mutations, and sets partial when the record holds any entry.
-func errWithRecord(w io.Writer, rec fabriclayout.Mutations, err error) int {
+func errWithRecord(w io.Writer, rec fabricengine.Mutations, err error) int {
 	fields := map[string]any{
 		"mutations": rec.Entries(),
 		"partial":   rec.Len() > 0,

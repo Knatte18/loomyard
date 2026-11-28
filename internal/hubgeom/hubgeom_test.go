@@ -14,7 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/creelengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
@@ -92,10 +92,10 @@ func TestReedGeometry(t *testing.T) {
 			if got.WorktreeRoot != worktreeRoot {
 				t.Errorf("ReedGeometry(l).WorktreeRoot = %q; want %q", got.WorktreeRoot, worktreeRoot)
 			}
-			if want := fabriclayout.HubLogsDir(hub); got.LogsDir != want {
+			if want := fabricengine.HubLogsDir(hub); got.LogsDir != want {
 				t.Errorf("ReedGeometry(l).LogsDir = %q; want %q", got.LogsDir, want)
 			}
-			if want := filepath.Join(fabriclayout.HubScratchDir(hub), reedengine.DiscoverSignalFileName); got.DiscoverSignalPath != want {
+			if want := filepath.Join(fabricengine.HubScratchDir(hub), reedengine.DiscoverSignalFileName); got.DiscoverSignalPath != want {
 				t.Errorf("ReedGeometry(l).DiscoverSignalPath = %q; want %q", got.DiscoverSignalPath, want)
 			}
 			if got.WorktreeName != l.WorktreeName {
@@ -109,7 +109,7 @@ func TestReedGeometry(t *testing.T) {
 			if got.PauseRecordPath != pause.RecordPath {
 				t.Errorf("ReedGeometry(l).PauseRecordPath = %q; want %q (the pause geometry's record path)", got.PauseRecordPath, pause.RecordPath)
 			}
-			if want := filepath.Join(fabriclayout.HubScratchDir(hub), lymdirs.PauseDirName, pauserecord.RecordFileName); pause.RecordPath != want {
+			if want := filepath.Join(fabricengine.HubScratchDir(hub), lymdirs.PauseDirName, pauserecord.RecordFileName); pause.RecordPath != want {
 				t.Errorf("pauseGeometry(l).RecordPath = %q; want %q", pause.RecordPath, want)
 			}
 			if pause.Slug != tt.wantSlug {
@@ -182,7 +182,7 @@ func TestReedGeometry_ButtonContext(t *testing.T) {
 			t.Parallel()
 			l := hubWithOrigin(t, tt.record)
 			if tt.board != "" {
-				writeFile(t, filepath.Join(fabriclayout.BoardDir(l.HubPath), "board.json"), tt.board)
+				writeFile(t, filepath.Join(fabricengine.BoardDir(l.HubPath), "board.json"), tt.board)
 			}
 
 			buttons, err := reedGeometry(l, false).Buttons()
@@ -206,7 +206,7 @@ func TestReedGeometry_ButtonContext(t *testing.T) {
 	writeMachineButtons := func(t *testing.T, contents string) *lymcwd.Location {
 		t.Helper()
 		l := hubWithOrigin(t, `{"parent_branch":"main"}`)
-		bolt := fabriclayout.BoltDir(l.HubPath)
+		bolt := fabricengine.BoltDir(l.HubPath)
 		for _, dir := range []string{configengine.ScratchDir(bolt), filepath.Join(l.AnchorPath(), lymdirs.LymDirName)} {
 			if err := os.MkdirAll(dir, 0o755); err != nil {
 				t.Fatalf("MkdirAll(%q) = %v; want nil", dir, err)
@@ -283,11 +283,11 @@ func TestBurlerGeometry(t *testing.T) {
 		AnchorRel:    anchorRel,
 	}
 
-	boardDir := fabriclayout.BoardDir(hub)
+	boardDir := fabricengine.BoardDir(hub)
 	if err := os.MkdirAll(boardDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll board: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(boardDir, fabriclayout.ShortnameFileName), []byte("tst\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(boardDir, fabricengine.ShortnameFileName), []byte("tst\n"), 0o644); err != nil {
 		t.Fatalf("write shortname: %v", err)
 	}
 
@@ -309,7 +309,7 @@ func TestBurlerGeometry(t *testing.T) {
 	if got.RepoRoot != worktreeRoot {
 		t.Errorf("BurlerGeometry(l).RepoRoot = %q; want %q (l.WorktreePath(), not the anchor path)", got.RepoRoot, worktreeRoot)
 	}
-	if want := fabriclayout.SpecsDir(hub); got.SpecsDir != want {
+	if want := fabricengine.SpecsDir(hub); got.SpecsDir != want {
 		t.Errorf("BurlerGeometry(l).SpecsDir = %q; want %q", got.SpecsDir, want)
 	}
 	if got.WorktreeRoot == worktreeRoot {
@@ -405,16 +405,16 @@ func TestReconcileGeometry(t *testing.T) {
 			l := &lymcwd.Location{HubPath: hub, WorktreeName: "some-worktree", AnchorRel: "."}
 			mkdir(t, l.WorktreePath())
 			if tt.boardLymDir {
-				mkdir(t, filepath.Join(fabriclayout.BoardDir(hub), lymdirs.LymDirName))
+				mkdir(t, filepath.Join(fabricengine.BoardDir(hub), lymdirs.LymDirName))
 			} else {
-				mkdir(t, fabriclayout.BoardDir(hub))
+				mkdir(t, fabricengine.BoardDir(hub))
 			}
 
 			got, ok := ReconcileGeometry(l)
 
 			want := hubreconcile.Geometry{}
 			if tt.wantGeometry {
-				want = hubreconcile.Geometry{BoardDir: fabriclayout.BoardDir(hub), WorktreePath: l.WorktreePath()}
+				want = hubreconcile.Geometry{BoardDir: fabricengine.BoardDir(hub), WorktreePath: l.WorktreePath()}
 			}
 			if ok != tt.wantGeometry || got != want {
 				t.Errorf("ReconcileGeometry() = (%+v, %v); want (%+v, %v)", got, ok, want, tt.wantGeometry)
@@ -433,9 +433,9 @@ func TestCreelGeometry(t *testing.T) {
 	newHub := func(t *testing.T, name, shortname string) string {
 		t.Helper()
 		hub := filepath.Join(t.TempDir(), name)
-		mkdir(t, fabriclayout.BoardDir(hub))
+		mkdir(t, fabricengine.BoardDir(hub))
 		if shortname != "" {
-			writeFile(t, filepath.Join(fabriclayout.BoardDir(hub), fabriclayout.ShortnameFileName), shortname+"\n")
+			writeFile(t, filepath.Join(fabricengine.BoardDir(hub), fabricengine.ShortnameFileName), shortname+"\n")
 		}
 		return hub
 	}
@@ -446,7 +446,7 @@ func TestCreelGeometry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreelGeometry(%q) = %v", hub, err)
 	}
-	stateDir := filepath.Join(fabriclayout.HubScratchDir(hub), lymdirs.CreelDirName)
+	stateDir := filepath.Join(fabricengine.HubScratchDir(hub), lymdirs.CreelDirName)
 	want := creelengine.Geometry{
 		HubPath:       hub,
 		Shortname:     "abc",
@@ -461,7 +461,7 @@ func TestCreelGeometry(t *testing.T) {
 		t.Errorf("CreelGeometry(%q) = %+v; want %+v", hub, got, want)
 	}
 	// A Claude strand's mail hook tests flags in the directory its engine derives from the board directory alone.
-	if hookDir := shuttleengine.CreelFlagDir(fabriclayout.BoardDir(hub)); got.FlagDir != hookDir {
+	if hookDir := shuttleengine.CreelFlagDir(fabricengine.BoardDir(hub)); got.FlagDir != hookDir {
 		t.Errorf("CreelGeometry(%q).FlagDir = %q; want the Claude hook's %q", hub, got.FlagDir, hookDir)
 	}
 
@@ -481,8 +481,8 @@ func TestCreelGeometry(t *testing.T) {
 
 	bare := newHub(t, "c-LYMHUB", "")
 	_, err = CreelGeometry(bare, tempRoot)
-	if err == nil || !strings.Contains(err.Error(), fabriclayout.ShortnameFileName) || !strings.Contains(err.Error(), bare) {
-		t.Errorf("CreelGeometry(no shortname) error = %v; want one naming %s and the hub", err, fabriclayout.ShortnameFileName)
+	if err == nil || !strings.Contains(err.Error(), fabricengine.ShortnameFileName) || !strings.Contains(err.Error(), bare) {
+		t.Errorf("CreelGeometry(no shortname) error = %v; want one naming %s and the hub", err, fabricengine.ShortnameFileName)
 	}
 }
 
@@ -501,9 +501,9 @@ func TestSlackGeometry(t *testing.T) {
 	}
 	newHub := func(name, shortname string) string {
 		hub := filepath.Join(t.TempDir(), name)
-		mkdir(t, fabriclayout.BoardDir(hub))
+		mkdir(t, fabricengine.BoardDir(hub))
 		if shortname != "" {
-			writeFile(t, filepath.Join(fabriclayout.BoardDir(hub), fabriclayout.ShortnameFileName), shortname+"\n")
+			writeFile(t, filepath.Join(fabricengine.BoardDir(hub), fabricengine.ShortnameFileName), shortname+"\n")
 		}
 		return hub
 	}
@@ -521,7 +521,7 @@ func TestSlackGeometry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("machinename.Name() = %v", err)
 	}
-	dir := filepath.Join(fabriclayout.HubScratchDir(hub), lymdirs.SlackDirName)
+	dir := filepath.Join(fabricengine.HubScratchDir(hub), lymdirs.SlackDirName)
 	want := slackengine.Geometry{
 		HubPath:        hub,
 		Shortname:      "abc",
@@ -539,7 +539,7 @@ func TestSlackGeometry(t *testing.T) {
 		RelayStatePath: filepath.Join(dir, slackengine.RelayStateFileName),
 		LockPath:       filepath.Join(dir, slackengine.RelayLockFileName),
 		LogPath:        filepath.Join(dir, slackengine.RelayLogFileName),
-		RunProcDir:     fabriclayout.RunProcDir(hub),
+		RunProcDir:     fabricengine.RunProcDir(hub),
 		LymExecutable:  executable,
 
 		BridgeMapPath:     filepath.Join(dir, slackengine.BridgeMapFileName),

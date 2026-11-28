@@ -15,7 +15,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/runplan"
@@ -218,28 +217,6 @@ func assertNoWarnings(t *testing.T, env envelope.Envelope) {
 
 	if _, present := env.Raw["warnings"]; present {
 		t.Errorf("envelope carries a warnings key = %v; want none", env.Raw["warnings"])
-	}
-}
-
-// merge-in reconciles a hub whose build stamp is stale before it merges.
-// The merge conflicts, and a reconcile skips a worktree that is mid-merge,
-// so the prime's old key moves only when the reconcile ran first.
-func TestCommand_MergeInReconcilesBeforeItMerges(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	gitkit.CommitFile(t, h.PrimeRecords(), configengine.ConfigFileRel("loom"), "code_max_bounces: 2\n", "fixture: old loom key")
-	divergeConflicting(t, h, "stale-feature", "stale-conflict.txt")
-
-	mergeInExpectingConflict(t, h, "stale-feature")
-
-	got, err := os.ReadFile(configengine.ConfigFile(h.PrimeWorktree(), "loom"))
-	if err != nil {
-		t.Fatalf("read the prime's loom.yaml: %v", err)
-	}
-	if !strings.Contains(string(got), "max_bounces: 2") || strings.Contains(string(got), "code_max_bounces") {
-		t.Errorf("prime loom.yaml = %q; want the old key nested", got)
 	}
 }
 

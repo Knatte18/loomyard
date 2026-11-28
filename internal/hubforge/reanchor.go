@@ -14,7 +14,7 @@ import (
 )
 
 // ReanchorPair moves the worktree called slug, the prime included, from its current anchor to anchor.
-// It fails the test through tb on error.
+// It fails the test through tb on error, and on a hub with no records sibling, which is a one-repository hub.
 // In the records worktree it moves each wired name's tracked content with `git mv`.
 // It writes anchor into the root marker and commits the moves and the marker in one commit.
 // In the code worktree it commits a tracked placeholder `<anchor>/.keep` when git does not already track anchor there.
@@ -23,6 +23,10 @@ import (
 // For the prime it also updates h.Location, h.Anchor and h.WeftBase to the new anchor.
 func ReanchorPair(tb testing.TB, h *Hub, slug, anchor string) {
 	tb.Helper()
+
+	if h.RecordsBare == "" {
+		tb.Fatalf("ReanchorPair(%s): the hub has no records sibling to move; build the hub with NewHub, since NewOneRepoHub's hubs keep their records in the code worktree", slug)
+	}
 
 	defer markFixtureBuild()()
 

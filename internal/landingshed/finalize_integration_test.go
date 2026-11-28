@@ -13,8 +13,6 @@
 package landingshed_test
 
 import (
-	"context"
-	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -25,13 +23,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedengine"
-	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
@@ -88,13 +84,13 @@ func openFabricAtLanding(t *testing.T, path string) *fabricengine.Fabric {
 // configNoticeSeams returns the two config-notice seams for a landing test on the real pair at taskCode.
 // The first reads the loom config changes that the task branch commits against the branch named `parent`.
 // The second appends every notice to `notices`.
-func configNoticeSeams(t *testing.T, taskBranch, taskCode string, notices *[]string) (func() (fabriclayout.ConfigChanges, error), func(string) error) {
+func configNoticeSeams(t *testing.T, taskBranch, taskCode string, notices *[]string) (func() (fabricengine.ConfigChanges, error), func(string) error) {
 	t.Helper()
 	l, err := lymcwd.ResolveWorktree(taskCode)
 	if err != nil {
 		t.Fatalf("lymcwd.ResolveWorktree(%s): %v", taskCode, err)
 	}
-	changes := func() (fabriclayout.ConfigChanges, error) {
+	changes := func() (fabricengine.ConfigChanges, error) {
 		return fabricengine.ReadConfigChanges(l, taskBranch, "parent", []string{configengine.ConfigFileRel("loom")})
 	}
 	notify := func(line string) error {
@@ -107,7 +103,7 @@ func configNoticeSeams(t *testing.T, taskBranch, taskCode string, notices *[]str
 // newFinalizeAt builds a `Finalize` that lands the task pair at taskCode into the parent pair at parentCode.
 // Its conflict-resolution sessions run through `shuttle`, a fake.
 // `configChanges` and `notify` fill the config-notice seams and may be nil.
-func newFinalizeAt(t *testing.T, taskBranch, taskCode, parentCode string, shuttle *shedfake.MergeShuttle, squash bool, configChanges func() (fabriclayout.ConfigChanges, error), notify func(string) error) *landingshed.Finalize {
+func newFinalizeAt(t *testing.T, taskBranch, taskCode, parentCode string, shuttle *shedfake.MergeShuttle, squash bool, configChanges func() (fabricengine.ConfigChanges, error), notify func(string) error) *landingshed.Finalize {
 	t.Helper()
 	deps := landingshed.NewTestDeps(t)
 	deps.WorktreeRoot = taskCode
@@ -229,13 +225,14 @@ func TestFinalize_OverRealHub(t *testing.T) {
 		// The landing commit's subject is the description title, and its body is the description body.
 		// Its credit block is plain lines with no trailer:
 		// the heading, the LoomYard line, and the line of the one engine that ran.
+		// Every fabric merge commit then ends with its own `Fabric-Merge` trailer naming the merged-in pair.
 		msgCmd := exec.Command("git", "log", "-1", "--format=%B")
 		msgCmd.Dir = parentCode
 		msgOut, err := msgCmd.Output()
 		if err != nil {
 			t.Fatalf("git log -1 --format=%%B in %s: %v", parentCode, err)
 		}
-		wantMsg := "A landing title\n\nA landing body.\n\nCreated using\n - LoomYard https://x/loomyard\n - Test Author <test@example.com>\n\nLym-Landing: task"
+		wantMsg := "A landing title\n\nA landing body.\n\nCreated using\n - LoomYard https://x/loomyard\n - Test Author <test@example.com>\n\nFabric-Merge: task"
 		if got := strings.TrimSpace(string(msgOut)); got != wantMsg {
 			t.Errorf("landing commit message = %q; want %q", got, wantMsg)
 		}
@@ -322,184 +319,6 @@ func TestFinalize_OverRealHub(t *testing.T) {
 
 		gitkit.Git(t, parentCode, "checkout", "--", "dirty.txt")
 		shedfake.RequireOutcome(t, newFinalizeAt(t, "fourth-task", fourthCode, parentCode, resolutionShuttle(fourthCode, ""), true, nil, nil), shedengine.Done)
-	})
-}
-
-// TestFinalize_RemovesIgnoredLeftoversOfADeletedDirectory lands a task whose parent deleted the directory proj.
-// The task worktree holds files that only proj's own ignore rules ignored.
-func TestFinalize_RemovesIgnoredLeftoversOfADeletedDirectory(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	write := func(t *testing.T, path, content string) {
-		t.Helper()
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Fatalf("MkdirAll(%s): %v", filepath.Dir(path), err)
-		}
-		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-			t.Fatalf("WriteFile(%s): %v", path, err)
-		}
-	}
-	// A file is a path and its content; the files are committed in order.
-	type file struct{ path, content string }
-	plain := []file{{"proj/.gitignore", "bin/\nobj/\n"}, {"proj/src.txt", "source\n"}, {"top.txt", "top\n"}}
-
-	type scene struct {
-		task  string
-		deps  landingshed.Deps
-		first bool
-	}
-	// setup gives the task and the parent pair the tracked files.
-	// It deletes proj on the parent and leaves leftovers in the task worktree.
-	// A fastForward task has no commit of its own, so its merge-in is a fast-forward.
-	// A first task has no merge record of an earlier merge-in.
-	setup := func(t *testing.T, tracked []file, leftovers []string, fastForward, first bool) scene {
-		t.Helper()
-		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-		for _, f := range tracked {
-			write(t, filepath.Join(h.PrimeWorktree(), f.path), f.content)
-			gitkit.Git(t, h.PrimeWorktree(), "add", "-f", f.path)
-			gitkit.Git(t, h.PrimeWorktree(), "commit", "-q", "-m", "add "+f.path)
-		}
-		hubforge.AddPair(t, h, "task")
-		hubforge.AddPair(t, h, "parent")
-		task, parent := h.PairCodeWorktree("task"), h.PairCodeWorktree("parent")
-		if !fastForward {
-			gitkit.CommitFile(t, task, "task.txt", "task\n", "the work of the task")
-		}
-		gitkit.Git(t, parent, "rm", "-r", "-q", "proj")
-		gitkit.Git(t, parent, "commit", "-q", "-m", "delete proj")
-		for _, leftover := range leftovers {
-			write(t, filepath.Join(task, leftover), "leftover\n")
-		}
-
-		l, err := lymcwd.ResolveWorktree(task)
-		if err != nil {
-			t.Fatalf("ResolveWorktree(%s): %v", task, err)
-		}
-		deps := landingshed.NewTestDeps(t)
-		deps.WorktreeRoot = task
-		deps.TaskBranch, deps.Slug, deps.ParentBranch = "task", "task", "parent"
-		deps.StencilsDir = seedConflictStencil(t)
-		deps.OpenFabric = func() (*fabricengine.Fabric, error) { return openFabricAtLanding(t, task), nil }
-		deps.OpenParentFabric = func() (*fabricengine.Fabric, error) { return openFabricAtLanding(t, parent), nil }
-		deps.Shuttle = resolutionShuttle(task, "")
-		deps.Config = landingshed.Config{Squash: true, Conflict: "claude:test-model", ConflictTimeoutMin: 1}
-		deps.TaskHead = func() (string, error) { return openFabricAtLanding(t, task).HeadSHA() }
-		deps.MergeInBasePath = shedrun.MergeInBaseFile(l, shedrun.SelfRunID)
-		deps.RemoveLeftovers = func(base string) ([]string, error) { return fabricengine.RemoveIgnoredLeftovers(l, base) }
-		if first {
-			deps.MergeRecordPath = landingshed.MergeRecordPath(t.TempDir())
-		}
-		return scene{task: task, deps: deps, first: first}
-	}
-	finalize := func(t *testing.T, deps landingshed.Deps) *landingshed.Finalize {
-		t.Helper()
-		fz, err := landingshed.NewFinalize(deps)
-		if err != nil {
-			t.Fatalf("NewFinalize() error = %v", err)
-		}
-		return fz
-	}
-	require := func(t *testing.T, task string, present bool, paths ...string) {
-		t.Helper()
-		for _, path := range paths {
-			_, err := os.Lstat(filepath.Join(task, path))
-			if got := err == nil; got != present {
-				t.Errorf("%s present = %v (%v); want %v", path, got, err, present)
-			}
-		}
-	}
-
-	leftovers := []string{"proj/bin/x", "proj/obj/y"}
-	lands := []struct {
-		name        string
-		tracked     []file
-		leftovers   []string
-		fastForward bool
-		first       bool
-		// killed stops the first call right after the merge-in, before the merge record is written.
-		killed bool
-	}{
-		{name: "ATrueMergeInRemovesThemAndLands", tracked: plain, leftovers: leftovers},
-		{name: "AFastForwardMergeInRemovesThemAndLands", tracked: plain, leftovers: leftovers, fastForward: true},
-		{name: "ATasksFirstMergeInRemovesThem", tracked: plain, leftovers: leftovers, first: true},
-		{name: "AResumeAfterAStopBehindAFirstMergeInRemovesThem", tracked: plain, leftovers: leftovers, first: true, killed: true},
-		{name: "AResumeAfterAStopBehindALaterMergeInRemovesThem", tracked: plain, leftovers: leftovers, killed: true},
-		{
-			// Git re-includes no file under an excluded directory, so the nested negation keeps nothing.
-			name:      "ANegationUnderAnIgnoredDirectoryKeepsNothing",
-			tracked:   []file{{"proj/sub/.gitignore", "!keep.txt\n"}, {"proj/.gitignore", "sub/\n"}},
-			leftovers: []string{"proj/sub/keep.txt"},
-		},
-	}
-	for _, tt := range lands {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			s := setup(t, tt.tracked, tt.leftovers, tt.fastForward, tt.first)
-			if tt.killed {
-				before := gitkit.RevParse(t, s.task, "HEAD")
-				stopped := s.deps
-				stopped.RemoveLeftovers = func(string) ([]string, error) { return nil, errors.New("stopped") }
-				if _, _, err := finalize(t, stopped).Call(context.Background()); err == nil {
-					t.Fatal("Call() = nil error; want the stop")
-				}
-				base, err := os.ReadFile(s.deps.MergeInBasePath)
-				if err != nil || strings.TrimSpace(string(base)) != before {
-					t.Fatalf("merge-in base = %q, %v; want the pre-merge head %s", base, err, before)
-				}
-			}
-
-			shedfake.RequireOutcome(t, finalize(t, s.deps), shedengine.Done)
-
-			require(t, s.task, false, tt.leftovers...)
-			if _, err := os.Stat(s.deps.MergeInBasePath); !os.IsNotExist(err) {
-				t.Errorf("merge-in base file stat = %v; want it removed", err)
-			}
-		})
-	}
-
-	t.Run("AFileNoRuleIgnoredASymlinkAndANestedRepositoryStay", func(t *testing.T) {
-		t.Parallel()
-		s := setup(t, plain, []string{"proj/bin/x", "proj/obj/repo/inner.txt"}, false, false)
-		gitkit.Git(t, filepath.Join(s.task, "proj", "obj", "repo"), "init", "-q")
-		if err := os.Symlink("x", filepath.Join(s.task, "proj", "bin", "link")); err != nil {
-			t.Skipf("no symlink on this host: %v", err)
-		}
-		stopped := s.deps
-		stopped.RemoveLeftovers = func(string) ([]string, error) { return nil, errors.New("stopped") }
-		if _, _, err := finalize(t, stopped).Call(context.Background()); err == nil {
-			t.Fatal("Call() = nil error; want the stop")
-		}
-		// A file no rule ignored would halt the first call before its merge-in, so it appears behind the stop.
-		write(t, filepath.Join(s.task, "proj", "notes.txt"), "notes\n")
-
-		pointer := shedfake.RequireOutcome(t, finalize(t, s.deps), shedengine.Stuck)
-
-		// Git names a directory that holds no tracked file by itself, not the files in it.
-		const want = "the task worktree has uncommitted changes before the merge-in: proj/; " +
-			"commit or remove them on the task branch, then resume"
-		if pointer.Reason != want {
-			t.Errorf("reason = %q; want %q", pointer.Reason, want)
-		}
-		require(t, s.task, false, "proj/bin/x")
-		require(t, s.task, true, "proj/notes.txt", "proj/bin/link", "proj/obj/repo/inner.txt")
-	})
-
-	t.Run("ATrackedChangeStillHalts", func(t *testing.T) {
-		t.Parallel()
-		s := setup(t, plain, leftovers, false, false)
-		write(t, filepath.Join(s.task, "top.txt"), "changed\n")
-
-		pointer := shedfake.RequireOutcome(t, finalize(t, s.deps), shedengine.Stuck)
-
-		if !strings.Contains(pointer.Reason, "before the merge-in") {
-			t.Errorf("reason = %q; want the dirty tree before the merge-in", pointer.Reason)
-		}
-		require(t, s.task, true, leftovers...)
-		if content, err := os.ReadFile(filepath.Join(s.task, "top.txt")); err != nil || string(content) != "changed\n" {
-			t.Errorf("top.txt = %q, %v; want the change untouched", content, err)
-		}
 	})
 }
 

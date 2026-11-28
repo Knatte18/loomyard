@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/runproc"
@@ -170,8 +169,8 @@ func (f *anchorFake) deps() anchorDeps {
 		UpstreamAnchor: func(*lymcwd.Location) (string, bool, error) {
 			return f.upstream, f.hasUpstream, nil
 		},
-		MoveRecord: func(*lymcwd.Location) (fabriclayout.MoveRecord, bool, error) {
-			return fabriclayout.MoveRecord{A: ".", B: "sub", Kind: fabriclayout.MoveKindMove}, f.recordFound, nil
+		MoveRecord: func(*lymcwd.Location) (fabricengine.MoveRecord, bool, error) {
+			return fabricengine.MoveRecord{A: ".", B: "sub", Kind: fabricengine.MoveKindMove}, f.recordFound, nil
 		},
 		ReedHeld:              func(l *lymcwd.Location) (bool, error) { return f.reed[l.WorktreeName], nil },
 		DriverLockHeld:        func(*lymcwd.Location) (bool, error) { return f.driverLocked, nil },
@@ -250,7 +249,7 @@ func (f *anchorFake) deps() anchorDeps {
 
 func (f *anchorFake) lockDir(slug string) string {
 	l := f.location(slug)
-	return fabriclayout.RecordsLockDirPath(fabricengine.RecordsWorktreePath(l, slug))
+	return fabricengine.RecordsLockDirPath(fabricengine.RecordsWorktreePath(l, slug))
 }
 
 func (f *anchorFake) logsDir(slug, anchor string) string {

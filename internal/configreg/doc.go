@@ -11,18 +11,27 @@
 // The override holds only the module's machine keys and never sits in a worktree.
 // `<BoardDir>/_lym/config/` also holds each per-worktree module's repo default, the base layer of that module's stack.
 // A per-worktree module with machine keys reads the same machine override, above its worktree file.
+// Module.HubWide tells the two kinds of file apart.
 // A hub-wide module also reads the reading worktree's local override, restricted to the module's LocalKeys.
+//
+// # Key moves and copies
+//
+// KeyMoves declares keys that moved from one module's file to another's.
+// A reconcile relocates the value and drops the source key.
+// KeyCopies declares keys copied from one module's hub file into another's, under the same or another name.
+// The source keeps its key.
+// A copy places the value only when the source file sets the key and the target file does not.
+// So a second reconcile changes nothing.
+// A copy reads no worktree layer, local override or run setting.
 //
 // # Run settings
 //
-// PrepareRunSettings validates a task's run settings against the module's local layer.
-// A key the module's Spec lists in `RetiredWayForward` or `HubOnlyWayForward` is refused,
-// and the refusal carries that text as its way forward.
-// The hub-only keys are set only in the hub's file, such as `drift.diff` and `drift.key_patterns`.
+// PrepareRunSettings migrates and validates a task's run settings against the module's local layer.
+// A key a module's Migrate renames is rewritten there with a Warn.
+// A key the module's Spec lists in `RetiredWayForward` or `HubOnlyWayForward` is refused.
+// The refusal carries that text as its way forward.
+// The hub-only keys are set only in the hub's file, such as drift's `diff` and `key_patterns`.
 // They still load from the hub layers.
-// PrepareRunSettings refuses a moved key by both its old and its new full name.
-// MoveSettings moves the old keys of such an object, and MoveRunSettings those of one decoded from JSON.
-// The RunSettingsBlocks flag marks the run-profile module, whose file holds one object per profile and recipe.
 //
 // # Reinterpretations
 //

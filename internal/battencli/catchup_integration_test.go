@@ -9,15 +9,12 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -41,7 +38,7 @@ func TestHubCatchUp(t *testing.T) {
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		alpha := hubforge.AddPair(t, h, "alpha")
 		beta := hubforge.AddPair(t, h, "beta")
-		alphaBranch, betaBranch := fabriclayout.RecordsBranchName(alpha.Branch), fabriclayout.RecordsBranchName(beta.Branch)
+		alphaBranch, betaBranch := fabricengine.RecordsBranchName(alpha.Branch), fabricengine.RecordsBranchName(beta.Branch)
 		gitkit.CommitFile(t, h.PairRecordsSibling("alpha"), "alpha.txt", "alpha\n", "alpha transition")
 		gitkit.CommitFile(t, h.PairRecordsSibling("beta"), "beta.txt", "beta\n", "beta transition")
 		alphaHead := gitkit.RevParse(t, h.PairRecordsSibling("alpha"), "HEAD")
@@ -92,7 +89,7 @@ func TestHubCatchUp(t *testing.T) {
 	t.Run("An_unreachable_origin_returns_ErrOriginUnreachable_and_pushes_nothing", func(t *testing.T) {
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		alpha := hubforge.AddPair(t, h, "alpha")
-		branch := fabriclayout.RecordsBranchName(alpha.Branch)
+		branch := fabricengine.RecordsBranchName(alpha.Branch)
 		gitkit.CommitFile(t, h.PairRecordsSibling("alpha"), "alpha.txt", "alpha\n", "alpha transition")
 		tipBefore := recordsTip(t, h, branch)
 		gitkit.Git(t, h.PairRecordsSibling("alpha"), "remote", "set-url", "origin", "http://127.0.0.1:1/x")
@@ -107,47 +104,6 @@ func TestHubCatchUp(t *testing.T) {
 		}
 		if got := recordsTip(t, h, branch); got != tipBefore {
 			t.Errorf("origin's records tip = %s; want %s unchanged", got, tipBefore)
-		}
-	})
-
-	t.Run("A_records_store_that_lost_its_fetch_refspecs_returns_its_layout_error_not_ErrOriginUnreachable", func(t *testing.T) {
-		// The records store's config is shared by the Bolt checkout, whose pull would fail first on the lost refspecs.
-		t.Setenv("BOARD_SKIP_GIT", "1")
-		h := hubforge.NewOneRepoHub(t, hubforge.OneRepoOptions{})
-		// With no push the pair's records worktree is never read for its layout, so the answer is read after the refspecs went.
-		hubforge.AddPairWith(t, h, "alpha", fabricengine.AddOptions{SkipPush: true})
-		gitkit.Git(t, h.PairRecordsSibling("alpha"), "config", "--unset-all", "remote.origin.fetch")
-
-		_, err := catchUpOver(h, "alpha")
-
-		const wantErrorHas = "config --replace-all remote.origin.fetch"
-		if err == nil || !strings.Contains(err.Error(), wantErrorHas) {
-			t.Fatalf("CatchUp() error = %v; want one naming %q", err, wantErrorHas)
-		}
-		if errors.Is(err, dobbyengine.ErrOriginUnreachable) {
-			t.Errorf("CatchUp() error = %v; want no ErrOriginUnreachable for a layout the fetch cannot read", err)
-		}
-	})
-
-	t.Run("A_run_with_no_pair_here_over_a_records_store_that_lost_its_fetch_refspecs_returns_its_layout_error", func(t *testing.T) {
-		h := hubforge.NewOneRepoHub(t, hubforge.OneRepoOptions{})
-		gitkit.Git(t, h.PrimeRecords(), "config", "--unset-all", "remote.origin.fetch")
-		// Building the hub read the prime's layout, which the process caches by path,
-		// so the hub is read from a path the process has not read.
-		moved := h.Path + "-unread"
-		if err := os.Rename(h.Path, moved); err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { _ = os.Rename(moved, h.Path) })
-		prime, err := lymcwd.ResolveWorktree(filepath.Join(moved, filepath.Base(h.PrimeWorktree())))
-		if err != nil {
-			t.Fatalf("ResolveWorktree() = %v; want nil", err)
-		}
-
-		err = fetchRunForCatchUp(prime, "ghost")
-
-		if !errors.Is(err, fabricengine.ErrRecordsLayout) {
-			t.Errorf("fetchRunForCatchUp() error = %v; want it to wrap ErrRecordsLayout", err)
 		}
 	})
 
@@ -174,7 +130,7 @@ func TestHubCatchUp(t *testing.T) {
 
 		got := HubCatchUp(h.Location, func() ([]string, error) { return nil, nil }).Launcher
 
-		want := dobbyengine.Launcher{BoardDir: fabriclayout.BoardDir(h.Location.HubPath), Shortname: hubforge.TestShortname}
+		want := dobbyengine.Launcher{BoardDir: fabricengine.BoardDir(h.Location.HubPath), Shortname: hubforge.TestShortname}
 		if got != want {
 			t.Errorf("HubCatchUp().Launcher = %+v; want %+v", got, want)
 		}

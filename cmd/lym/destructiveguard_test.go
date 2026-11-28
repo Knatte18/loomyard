@@ -40,7 +40,7 @@
 // so it cannot tell a correctly recording executor from one whose parameter is a dead letter,
 // and it cannot tell a real recording call from one sitting inside a comment.
 // Whether each body's recording call is present and correct is a review obligation, not something this guard proves.
-// A new Kind added to the layout's mutation.go with no recording site anywhere is caught by nothing here either.
+// A new Kind added to mutation.go with no recording site anywhere is caught by nothing here either.
 
 package main
 
@@ -98,6 +98,10 @@ var destructiveGuardAllowlist = []scankit.Entry{
 		"same function created moments earlier"},
 	{Key: "internal/fabricengine/worktreetree.go", Why: "WorktreeTreeID's os.RemoveAll(dir) removes the throwaway index directory the " +
 		"same function created moments earlier, never operator content"},
+	{Key: "internal/fabricengine/recordsduringmerge.go", Why: "commitRecordsAroundMergeWith's os.RemoveAll(scratch) removes the throwaway index directory the " +
+		"same function created moments earlier, never operator content"},
+	{Key: "internal/fabricengine/recordspaths.go", Why: "IsFabricMergeCommit's os.RemoveAll(scratch) removes the throwaway index directory the " +
+		"same function created moments earlier, never operator content"},
 	{Key: "internal/fabricengine/index.go", Why: "refreshCorrIndexAfterSwitch's os.Remove(path) deliberately deletes the correspondence-index " +
 		"cache before rebuilding it, so a failed refresh misses honestly rather than answering cross-branch"},
 	{Key: "internal/fabricengine/mergestate.go", Why: "deleteMergeState's os.Remove(path) deletes fabric's own merge-state record inside the " +
@@ -108,8 +112,6 @@ var destructiveGuardAllowlist = []scankit.Entry{
 		"source subdirectory the recursive merge has just drained — whole-file allowlist for exactly these two, not a blanket exemption"},
 	{Key: "internal/fabricengine/failedpush.go", Why: "ClearPushFailure's os.Remove(path) deletes fabric's own failed-push record under the hub's machine-local " +
 		"scratch directory, a fabric-internal marker of a push origin refused, never operator content"},
-	{Key: "internal/fabricengine/pendingteardown.go", Why: "clearPendingTeardown's os.Remove deletes fabric's own pending-teardown record beside the teardown lock " +
-		"under the hub's machine-local scratch directory, fabric-internal metadata, never operator content"},
 	{Key: "internal/fabricengine/moverecord.go", Why: "RemoveMoveRecord's os.Remove deletes fabric's own move record in the records worktree's lock directory, " +
 		"fabric-internal metadata, never operator content"},
 	{Key: "internal/fabricengine/hook.go", Why: "chainUserHook's os.Remove(userHookPath) removes the user-hook backup that same function wrote " +
@@ -161,21 +163,21 @@ var destructiveGuardMutatingResultTypes = []struct {
 	name string
 	file string
 }{
-	{"AddResult", "internal/fabriclayout/verbresults.go"},
-	{"RemoveResult", "internal/fabriclayout/verbresults.go"},
-	{"CheckoutResult", "internal/fabriclayout/verbresults.go"},
+	{"AddResult", "internal/fabricengine/add.go"},
+	{"RemoveResult", "internal/fabricengine/remove.go"},
+	{"CheckoutResult", "internal/fabricengine/checkout.go"},
 	{"PruneResult", "internal/fabricengine/prune.go"},
 	{"CleanupResult", "internal/fabricengine/cleanup.go"},
-	{"UnwireVerbResult", "internal/fabriclayout/verbresults.go"},
+	{"UnwireVerbResult", "internal/fabricengine/unwire.go"},
 	{"UnwireResult", "internal/fabricengine/junction.go"},
-	{"ReconcileResult", "internal/fabriclayout/verbresults.go"},
-	{"CommitResult", "internal/fabriclayout/verbresults.go"},
-	{"PullResult", "internal/fabriclayout/verbresults.go"},
+	{"ReconcileResult", "internal/fabricengine/reconcile.go"},
+	{"CommitResult", "internal/fabricengine/commit.go"},
+	{"PullResult", "internal/fabricengine/pull.go"},
 	{"CloneResult", "internal/fabricengine/clone.go"},
-	{"PushResult", "internal/fabriclayout/pushtypes.go"},
-	{"MergeResult", "internal/fabriclayout/verbresults.go"},
-	{"StageResult", "internal/fabriclayout/verbresults.go"},
-	{"BoltWriteResult", "internal/fabriclayout/verbresults.go"},
+	{"PushResult", "internal/fabricengine/recordsgit.go"},
+	{"MergeResult", "internal/fabricengine/merge.go"},
+	{"StageResult", "internal/fabricengine/mergestage.go"},
+	{"BoltWriteResult", "internal/fabricengine/bolt.go"},
 	{"DropLocalResult", "internal/fabricengine/destroy.go"},
 }
 
@@ -189,7 +191,7 @@ var destructiveGuardReadOnlyResultTypes = []struct {
 	file string
 }{
 	{"StatusResult", "internal/fabricengine/status.go"},
-	{"DiffResult", "internal/fabriclayout/readtypes.go"},
+	{"DiffResult", "internal/fabricengine/diff.go"},
 }
 
 // TestNoDestructiveBypass_FabricengineProductionSource walks internal/fabricengine's non-test .go files.
@@ -249,7 +251,7 @@ func TestNoDestructiveBypass_FabricengineProductionSource(t *testing.T) {
 //
 //testtiming:keep internal/fabricengine/doc.go names this test as the Mutation Record Invariant's guard
 //lym:guard
-//lym:watch internal/fabricengine/*.go internal/fabriclayout/*.go internal/testkit/scankit/*.go
+//lym:watch internal/fabricengine/*.go internal/testkit/scankit/*.go
 func TestMutationRecord_FabricengineProductionSource(t *testing.T) {
 	tiergate.Require(t, 0)
 	moduleRoot := scankit.Root(t)
@@ -287,7 +289,7 @@ func TestMutationRecord_FabricengineProductionSource(t *testing.T) {
 			t.Errorf("%s: does not declare `type %s struct {` — the table entry may be stale", rt.file, rt.name)
 			continue
 		}
-		if !isMutationRecordEmbed(firstField) {
+		if firstField != "MutationRecord" {
 			t.Errorf("%s: mutating result type %s must embed MutationRecord as its first field (see the mutation record section of fabricengine's package doc); found %q", rt.file, rt.name, firstField)
 			continue
 		}
@@ -311,7 +313,7 @@ func TestMutationRecord_FabricengineProductionSource(t *testing.T) {
 			t.Errorf("%s: does not declare `type %s struct {` — the table entry may be stale", rt.file, rt.name)
 			continue
 		}
-		if isMutationRecordEmbed(firstField) {
+		if firstField == "MutationRecord" {
 			t.Errorf("%s: read-only result type %s must NOT embed MutationRecord — the which-verbs-record scope decision is machine-held (see the mutation record section of fabricengine's package doc)", rt.file, rt.name)
 			continue
 		}
@@ -319,32 +321,6 @@ func TestMutationRecord_FabricengineProductionSource(t *testing.T) {
 	}
 	if scannedReadOnlyTypes != len(destructiveGuardReadOnlyResultTypes) {
 		t.Fatalf("mutation record guard: only verified %d of %d declared read-only result types; the table may have drifted", scannedReadOnlyTypes, len(destructiveGuardReadOnlyResultTypes))
-	}
-}
-
-// isMutationRecordEmbed reports whether a struct's first-field spelling embeds the mutation record carrier.
-func isMutationRecordEmbed(firstField string) bool {
-	return firstField == "MutationRecord" || firstField == "fabriclayout.MutationRecord"
-}
-
-func TestIsMutationRecordEmbed(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	tests := []struct {
-		firstField string
-		want       bool
-	}{
-		{"MutationRecord", true},
-		{"fabriclayout.MutationRecord", true},
-		{"fabricengine.MutationRecord", false},
-		{"Mutations", false},
-		{"", false},
-	}
-	for _, tt := range tests {
-		if got := isMutationRecordEmbed(tt.firstField); got != tt.want {
-			t.Errorf("isMutationRecordEmbed(%q) = %t; want %t", tt.firstField, got, tt.want)
-		}
 	}
 }
 

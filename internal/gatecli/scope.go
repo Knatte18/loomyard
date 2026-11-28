@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"go/build"
-	"io"
 	"io/fs"
 	"maps"
 	"os"
@@ -78,12 +77,9 @@ type scope struct {
 	// guardDir is the run directory of that guard step, relative to the worktree root.
 	// Empty means the directory of each guard group's own tier.
 	guardDir string
-	// guards maps a tier number to each directory that holds guard tests of it for the guard step, and to their names.
+	// guards maps a tier number to each directory outside the scope that holds its guard tests, and to their names.
 	// The directories are relative to guardDir; nil when no scan has run.
 	guards map[int]map[string][]string
-	// listedTiers are the tiers a --card scope's listed runs run: each listed tier and every tier it covers.
-	// A guard test of any other tier is left to the guard step, even in a package of the scope.
-	listedTiers []int
 	// tagTiers are the declared tiers, ascending, whose build tag adds a file to a --card scope's package.
 	// A build without tags leaves that file out, so the vet step is planned over these tiers.
 	tagTiers []int
@@ -116,35 +112,10 @@ func withGateScope(cfg gateslot.Config, request testRequest) testRequest {
 	case "all":
 		request.all = true
 		request.cards = nil
-	case "diff", gateslot.ScopeMarked:
+	case "diff":
 		request.cards = nil
 	}
 	return request
-}
-
-// isMarkedCall reports whether request runs a --gate key of scope marked, with no explicit targets to replace it.
-func isMarkedCall(cfg gateslot.Config, request testRequest) bool {
-	return request.gate != "" && len(request.targets) == 0 && cfg.Gates[request.gate].Scope == gateslot.ScopeMarked
-}
-
-// skippedInside returns the guard tests of inside whose tier is none of numbers, nor a tier one of them covers.
-// The runs of numbers leave such a test out although its package is in their set, so the guard step takes it.
-func skippedInside(cfg gateslot.Config, numbers []int, inside map[string][]impactset.GuardTest) map[string][]impactset.GuardTest {
-	run := slices.Clone(numbers)
-	for _, number := range numbers {
-		if tier, err := cfg.Tier(number); err == nil {
-			run = append(run, tier.Covers...)
-		}
-	}
-	left := map[string][]impactset.GuardTest{}
-	for dir, tests := range inside {
-		for _, test := range tests {
-			if !slices.Contains(run, test.Tier) {
-				left[dir] = append(left[dir], test)
-			}
-		}
-	}
-	return left
 }
 
 // computeScope returns the scope of request over the worktree at root, for the config cfg.
@@ -157,32 +128,26 @@ func skippedInside(cfg gateslot.Config, numbers []int, inside map[string][]impac
 // green is nil for a dirty worktree, which takes the merge base.
 // A --card is read from the plan first, under either scoper.
 // An unknown id, or a worktree with no plan, is refused before any slot.
-// Under the none scoper each of the three forms is whole, except for a hub with gate.inert_paths.
+// Under the none scoper each of the three forms is whole, except for a hub with inert_paths.
 // There, the tiers of a computed or --base group whose diff is inert-only get the empty share.
 // That share plans no guard step.
 // Under the dotnet scoper dotnetScope derives them.
 // Under the go scoper a computed or --base scope is the impacted set of the diff from its base.
 // The set is derived once per base and shared by the tiers that land on it.
 // Each derivation is named on request.stderr.
-// A base group whose diff is inert-only under gate.inert_paths gets the empty share and is not derived.
+// A base group whose diff is inert-only under inert_paths gets the empty share and is not derived.
 // It leaves the guard tests to the module scan, as a whole tier does.
 // A set that cannot be narrowed falls back to whole, naming the reason on request.stderr.
 // A --card scope is the cards' packages per module.
-// It holds every package of that module whose build or tests reach one of them too.
 // With request.mainPackages it also holds every package main of tier0's module, listed once.
 // It adds the declared tiers whose build tag brings a file into one of those packages.
 // A narrowed share, and a --card scope, skip the `//lym:watch` tests of their packages that no changed file concerns.
 // A --card scope reads its changed files as the diff from the merge base with the parent branch.
 // With no parent branch or an unreadable diff it skips none.
-// A narrowed share's guard step also takes each guard test inside its set whose tier no tier of its base is or covers.
-// A --gate key of scope marked takes markedScope instead, whatever the scoper.
 // A guard or watch scan error refuses with its file, line and way forward.
 // ctx bounds the derivation, so a stalled `go list` is killed when it ends.
 func computeScope(ctx context.Context, cfg gateslot.Config, location *lymcwd.Location, root string, request testRequest, green *greenRun) (scope, error) {
 	request = withGateScope(cfg, request)
-	if isMarkedCall(cfg, request) {
-		return markedScope(cfg, request)
-	}
 	switch {
 	case len(request.targets) > 0:
 		return scope{form: scopeTargets}, nil
@@ -227,19 +192,18 @@ func computeScope(ctx context.Context, cfg gateslot.Config, location *lymcwd.Loc
 		return scope{}, fmt.Errorf("gate test: %w", err)
 	}
 	if form == scopeCard {
-		// The main packages are listed first, so a refused call names no narrowed scope.
-		mainsDir := moduleKey(root, tier0.Dir)
-		var mains []string
-		if request.mainPackages {
-			if mains, err = impactset.ModuleMainPackages(ctx, resolveRunDir(root, tier0.Dir)); err != nil {
-				return scope{}, fmt.Errorf("gate test: --%s cannot list the main packages of the module at %s: %w; way forward: fix the module until \"go list ./...\" succeeds there, then re-run the same command", gateslot.MainPackagesFlag, mainsDir, err)
-			}
-		}
 		modules := make([]moduleTargets, len(cardModules))
 		for i, module := range cardModules {
-			modules[i] = moduleTargets{dir: module.Dir, targets: cardDependents(ctx, root, module, request.stderr)}
+			modules[i] = moduleTargets{dir: module.Dir, targets: module.Packages}
 		}
-		modules = withMainPackages(modules, mainsDir, mains)
+		if request.mainPackages {
+			moduleDir := moduleKey(root, tier0.Dir)
+			mains, err := impactset.ModuleMainPackages(ctx, resolveRunDir(root, tier0.Dir))
+			if err != nil {
+				return scope{}, fmt.Errorf("gate test: --%s cannot list the main packages of the module at %s: %w; way forward: fix the module until \"go list ./...\" succeeds there, then re-run the same command", gateslot.MainPackagesFlag, moduleDir, err)
+			}
+			modules = withMainPackages(modules, moduleDir, mains)
+		}
 		var dirs []string
 		for _, module := range modules {
 			for _, target := range module.targets {
@@ -250,7 +214,7 @@ func computeScope(ctx context.Context, cfg gateslot.Config, location *lymcwd.Loc
 				}
 			}
 		}
-		sc := scope{form: form, modules: modules, guardStep: true, guardDir: tier0.Dir, tagTiers: tagTiers(cfg, root, modules), listedTiers: coveredTiers(cfg, request)}
+		sc := scope{form: form, modules: modules, guardStep: true, guardDir: tier0.Dir, tagTiers: tagTiers(cfg, root, modules)}
 		sc.changed, sc.changesRead = cardChanges(ctx, location, root)
 		if sc.changesRead {
 			watched, err := impactset.FindWatchedTests(root, dirs)
@@ -295,7 +259,7 @@ func computeScope(ctx context.Context, cfg gateslot.Config, location *lymcwd.Loc
 			for i, module := range targets.Modules {
 				share.modules[i] = moduleTargets{dir: module.Dir, targets: module.Packages}
 			}
-			guards = mergeGuards(mergeGuards(guards, targets.Guards), skippedInside(cfg, group.tiers, targets.InsideGuards))
+			guards = mergeGuards(guards, targets.Guards)
 		}
 		for _, number := range group.tiers {
 			shares[number] = share
@@ -312,20 +276,6 @@ func computeScope(ctx context.Context, cfg gateslot.Config, location *lymcwd.Loc
 		return scope{form: form, tiers: shares, guardStep: true, guardDir: tier0.Dir}, nil
 	}
 	return scope{form: form, tiers: shares, guardStep: true, guardDir: ".", guards: guardsByTier(guards)}, nil
-}
-
-// cardDependents returns module's packages and every package of that module whose build or tests reach one of them.
-// A test outside the cards' packages that asserts on what a card changes then runs at the card's own gate.
-// When the module's packages cannot be listed it returns the cards' packages alone.
-// It then names the narrowing and its cause in the log and on stderr.
-func cardDependents(ctx context.Context, root string, module planparser.ModulePackages, stderr io.Writer) []string {
-	dependents, err := impactset.DependentPackages(ctx, resolveRunDir(root, module.Dir), module.Packages)
-	if err != nil {
-		logger.Warn("gate test: could not list the packages that depend on the cards' packages; the card scope holds the cards' packages alone", "module", module.Dir, "cause", err)
-		printLine(stderr, fmt.Sprintf("gate test: the card scope holds the cards' packages alone: cannot list the packages that depend on them in %s: %v", module.Dir, err))
-		return module.Packages
-	}
-	return dependents
 }
 
 // withMainPackages returns modules with mains, the main packages of the module at dir, added to that module's targets.
@@ -346,7 +296,7 @@ func withMainPackages(modules []moduleTargets, dir string, mains []string) []mod
 	return modules
 }
 
-// noneScope returns the computed or --base scope under the none scoper for a hub with gate.inert_paths:
+// noneScope returns the computed or --base scope under the none scoper for a hub with inert_paths:
 // the tiers of a base group whose diff is inert-only get the empty share, and every other tier runs whole.
 // A call with no inert-only group is the whole scope, and no scope of this scoper plans a guard step.
 // A diff that cannot be read leaves its group whole, since allInertSince then reports false.
@@ -396,9 +346,8 @@ func allScope(ctx context.Context, cfg gateslot.Config, location *lymcwd.Locatio
 	return scope{form: scopeAll}
 }
 
-// allInertSince reports whether every changed file matches the hub's gate.inert_paths.
-// The changed files are those that differ between base and the working tree, untracked files included.
-// A hub with no gate.inert_paths, an empty diff and a diff that cannot be read report false.
+// allInertSince reports whether every file that differs between base and the working tree, untracked files included, matches the hub's inert_paths.
+// A hub with no inert_paths, an empty diff and a diff that cannot be read report false.
 // A diff that cannot be read is logged at Warn, and the scope stays as it is.
 func allInertSince(ctx context.Context, cfg gateslot.Config, root, base string) bool {
 	if len(cfg.InertPaths) == 0 {
@@ -406,7 +355,7 @@ func allInertSince(ctx context.Context, cfg gateslot.Config, root, base string) 
 	}
 	paths, err := impactset.ChangedPaths(ctx, root, base)
 	if err != nil {
-		logger.Warn("gate test: could not read the changed files to check them against "+keyName(inertPathsKey)+"; the scope stays as it is", "base", base, "cause", err)
+		logger.Warn("gate test: could not read the changed files to check them against inert_paths; the scope stays as it is", "base", base, "cause", err)
 		return false
 	}
 	return cfg.AllInert(paths)
@@ -423,8 +372,7 @@ type baseGroup struct {
 // The second result holds the tiers with no base, which run whole.
 // A --base call gives every tier its one base.
 // Under the computed form, a tier's base is the newest ancestor of HEAD that the green record holds whole-green for it.
-// Only an entry that held back no test the request runs counts for this.
-// With no such ancestor, the base is the merge base with the parent branch.
+// Otherwise it is the merge base with the parent branch.
 // A dirty worktree holds no green record, so every tier takes the merge base.
 func diffBaseGroups(cfg gateslot.Config, location *lymcwd.Location, root string, request testRequest, form string, green *greenRun) (groups []baseGroup, wholeTiers []int) {
 	numbers := keptTiers(cfg, request)
@@ -465,7 +413,7 @@ func diffBaseGroups(cfg gateslot.Config, location *lymcwd.Location, root string,
 		var base string
 		ok := false
 		if tier, err := cfg.Tier(number); err == nil && green != nil {
-			base, ok = green.record.newestWholeAncestor(green.fingerprint(tier), moduleKey(root, tier.Dir), request.held, isAncestor)
+			base, ok = green.record.newestWholeAncestor(green.fingerprint(tier), moduleKey(root, tier.Dir), isAncestor)
 		}
 		if !ok {
 			base, ok = parentMerge()
@@ -496,18 +444,6 @@ func keptTiers(cfg gateslot.Config, request testRequest) []int {
 		}
 	}
 	return dropCovered(listed, declared, silent)
-}
-
-// coveredTiers returns the tiers the request's listed runs run: each kept listed tier and every tier it covers.
-func coveredTiers(cfg gateslot.Config, request testRequest) []int {
-	var numbers []int
-	for _, number := range keptTiers(cfg, request) {
-		numbers = append(numbers, number)
-		if tier, err := cfg.Tier(number); err == nil {
-			numbers = append(numbers, tier.Covers...)
-		}
-	}
-	return numbers
 }
 
 // tierNames returns the names of the tiers numbers, joined by commas.
@@ -612,10 +548,9 @@ func guardScanDir(cfg gateslot.Config, request testRequest, sc scope) (string, e
 	return tier0.Dir, nil
 }
 
-// scanGuards fills sc.guards with the guard tests the scope's listed runs leave out, grouped by their file's tier.
-// Those are the guard tests outside the scope's packages, and those inside one whose tier no listed run runs.
+// scanGuards fills sc.guards with the guard tests outside the scope's packages, grouped by their file's tier.
 // It scans the module at sc.guardDir.
-// A whole scope and an explicit-targets scope hold no package of that module, so every guard test counts as left out.
+// A whole scope and an explicit-targets scope hold no package of that module, so every guard test counts as outside.
 // It scans the guard packages for `//lym:watch` markers too.
 // When the scope read its changes, it drops each watched guard test those changes leave alone.
 // A scan error is returned as the refusal.
@@ -634,24 +569,22 @@ func scanGuards(sc scope, root string) (scope, error) {
 			inside[strings.TrimPrefix(path.Clean(target), "./")] = true
 		}
 	}
-	leftOut := map[string][]impactset.GuardTest{}
+	outside := map[string][]impactset.GuardTest{}
 	for dir, tests := range all {
-		for _, test := range tests {
-			if !inside[path.Clean(dir)] || !slices.Contains(sc.listedTiers, test.Tier) {
-				leftOut[dir] = append(leftOut[dir], test)
-			}
+		if len(tests) > 0 && !inside[path.Clean(dir)] {
+			outside[dir] = tests
 		}
 	}
-	watched, err := impactset.FindWatchedTests(moduleDir, slices.Sorted(maps.Keys(leftOut)))
+	watched, err := impactset.FindWatchedTests(moduleDir, slices.Sorted(maps.Keys(outside)))
 	if err != nil {
 		return scope{}, errors.New(guardScanRefusal(moduleDir, err))
 	}
 	if sc.changesRead {
 		for dir, names := range impactset.UnwatchedTests(watched, moduleRelative(root, sc.guardDir, sc.changed)) {
-			leftOut[dir] = slices.DeleteFunc(leftOut[dir], func(test impactset.GuardTest) bool { return slices.Contains(names, test.Name) })
+			outside[dir] = slices.DeleteFunc(outside[dir], func(test impactset.GuardTest) bool { return slices.Contains(names, test.Name) })
 		}
 	}
-	sc.guards = guardsByTier(leftOut)
+	sc.guards = guardsByTier(outside)
 	return sc, nil
 }
 

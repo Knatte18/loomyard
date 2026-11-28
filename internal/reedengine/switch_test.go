@@ -62,47 +62,35 @@ func TestSwitchClientVia_IssuesOnlyTheThreeCommands(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		wantList = []string{"list-sessions", "-F", "#{session_id} #{session_name}"}
 	}
-	wantRead := []string{"list-clients", "-F", "#{client_name}\t#{session_id}"}
 	tests := []struct {
-		name       string
-		listing    string
-		listErr    error
-		clientRows string
-		clientsErr error
-		next       bool
-		wantArgv   [][]string
-		wantErr    string
+		name     string
+		listing  string
+		listErr  error
+		current  string
+		curErr   error
+		next     bool
+		wantArgv [][]string
+		wantErr  string
 	}{
 		{
-			name:       "NextAcrossSessions",
-			listing:    "$0 alpha\n$2 beta\n$10 gamma\n",
-			clientRows: "/dev/pts/3\t$2\n",
-			next:       true,
+			name:    "NextAcrossSessions",
+			listing: "$0 alpha\n$2 beta\n$10 gamma\n",
+			current: "$2\n",
+			next:    true,
 			wantArgv: [][]string{
 				wantList,
-				wantRead,
+				{"display-message", "-p", "-c", "/dev/pts/3", "#{session_id}"},
 				{"switch-client", "-c", "/dev/pts/3", "-t", "$10"},
 			},
 		},
 		{
-			name:       "PreviousWraps",
-			listing:    "$0 alpha\n$2 beta\n",
-			clientRows: "/dev/pts/3\t$0\n",
-			next:       false,
+			name:    "PreviousWraps",
+			listing: "$0 alpha\n$2 beta\n",
+			current: "$0\n",
+			next:    false,
 			wantArgv: [][]string{
 				wantList,
-				wantRead,
-				{"switch-client", "-c", "/dev/pts/3", "-t", "$2"},
-			},
-		},
-		{
-			name:       "StepsFromTheClientsOwnSessionAmongOtherClients",
-			listing:    "$0 alpha\n$2 beta\n$10 gamma\n",
-			clientRows: "/dev/pts/1\t$10\n/dev/pts/3\t$0\r\n/dev/pts/30\t$2\n",
-			next:       true,
-			wantArgv: [][]string{
-				wantList,
-				wantRead,
+				{"display-message", "-p", "-c", "/dev/pts/3", "#{session_id}"},
 				{"switch-client", "-c", "/dev/pts/3", "-t", "$2"},
 			},
 		},
@@ -122,28 +110,26 @@ func TestSwitchClientVia_IssuesOnlyTheThreeCommands(t *testing.T) {
 			wantErr:  "list sessions",
 		},
 		{
-			name:       "UnknownClient",
-			listing:    "$0 alpha\n$1 beta\n",
-			clientRows: "/dev/pts/1\t$0\n",
-			next:       true,
-			wantArgv:   [][]string{wantList, wantRead},
-			wantErr:    `no client "/dev/pts/3" is attached`,
+			name:    "UnknownClient",
+			listing: "$0 alpha\n$1 beta\n",
+			curErr:  errors.New("can't find client"),
+			next:    true,
+			wantArgv: [][]string{
+				wantList,
+				{"display-message", "-p", "-c", "/dev/pts/3", "#{session_id}"},
+			},
+			wantErr: `client "/dev/pts/3"`,
 		},
 		{
-			name:       "ClientListingFails",
-			listing:    "$0 alpha\n$1 beta\n",
-			clientsErr: errors.New("server exited"),
-			next:       true,
-			wantArgv:   [][]string{wantList, wantRead},
-			wantErr:    `read the session of client "/dev/pts/3"`,
-		},
-		{
-			name:       "CurrentSessionMissingFromListing",
-			listing:    "$0 alpha\n$1 beta\n",
-			clientRows: "/dev/pts/3\t$9\n",
-			next:       true,
-			wantArgv:   [][]string{wantList, wantRead},
-			wantErr:    "$9",
+			name:    "CurrentSessionMissingFromListing",
+			listing: "$0 alpha\n$1 beta\n",
+			current: "$9\n",
+			next:    true,
+			wantArgv: [][]string{
+				wantList,
+				{"display-message", "-p", "-c", "/dev/pts/3", "#{session_id}"},
+			},
+			wantErr: "$9",
 		},
 	}
 	for _, tt := range tests {
@@ -156,8 +142,8 @@ func TestSwitchClientVia_IssuesOnlyTheThreeCommands(t *testing.T) {
 				switch args[0] {
 				case "list-sessions":
 					return tt.listing, tt.listErr
-				case "list-clients":
-					return tt.clientRows, tt.clientsErr
+				case "display-message":
+					return tt.current, tt.curErr
 				}
 				return "", nil
 			}

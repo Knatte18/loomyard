@@ -27,11 +27,6 @@ const HibernateDirName = "hibernate"
 // CreelDirName is the directory under the hub's board-level `.lym` that holds creel's journal and the daemon lock.
 const CreelDirName = "creel"
 
-// BoardServeDirName is the directory under the hub's board-level `.lym`.
-// It holds the board server's state, lock, launcher page and log.
-// It holds the server's bearer token, so it is never tracked.
-const BoardServeDirName = "board-serve"
-
 // SlackDirName is the directory under the hub's board-level `.lym` that holds the Slack setup file and channel map.
 // It also holds the inbox, outbound record, relay state, relay lock and relay log.
 const SlackDirName = "slack"
@@ -72,21 +67,14 @@ const DriftJudgeDirName = "drift-judge"
 // A pair removal does not take it, since it sits under the hub's `.lym` and never in a pair.
 const HandOverDirName = "hand-over"
 
-// PusherDirName is the directory under the hub's board-level `.lym` that holds the pusher locks.
-// It holds one lock per push target, which the target's one background pusher holds while it runs.
-const PusherDirName = "pusher"
-
-// PushLedgerDirName is the directory under the hub's board-level `.lym` that holds the ledger of owed pushes.
-// It holds one entry per push target, the ledger lock and the time the hub last had nothing owed.
-const PushLedgerDirName = "push-ledger"
-
-// IgnoreCheckDirName is the directory under the hub's board-level `.lym` that holds scratch repositories.
-// Ignore rules are checked in them, each in its own, removed after use.
-const IgnoreCheckDirName = "ignore-check"
-
 // OrphanDirName is the directory under the hub's board-level `.lym` that holds the dobby's record of orphan pairs.
 // The record keeps when each orphan was first noticed, so a dobby restart neither resets nor skips its grace.
 const OrphanDirName = "orphan"
+
+// TestCoverDirName is the directory under a `.lym` that holds per-package coverage maps.
+// Under the hub's board-level `.lym` it holds the maps every worktree of the hub on the machine shares;
+// under a worktree's `.lym` it holds the maps that worktree builds for itself.
+const TestCoverDirName = "testcover"
 
 // BeamDirName is the directory under a worktree's `.lym` that holds dobby's lock, state record and markers.
 const BeamDirName = "beam"
@@ -125,11 +113,3 @@ const WeaverDirName = "weaver"
 
 // LocksDirName is the directory under a checkout's `.lym` that holds the lock files for the checkout's tracked files.
 const LocksDirName = "locks"
-
-// HardenSandboxDirName is the directory under a worktree's `.lym` that holds a run's throwaway sandbox hubs.
-// It is a never-tracked cache that goes with the worktree, and an absent one reads as empty.
-const HardenSandboxDirName = "harden-sandbox"
-
-// HardenDirName is the directory under a worktree's `_lym` that holds a Hardener campaign's archived rounds.
-// It also holds the campaign's final bouncer ledger.
-const HardenDirName = "harden"

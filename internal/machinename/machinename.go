@@ -160,12 +160,6 @@ func FromThisHost() (string, error) {
 	return nameFromHostname(os.Hostname)
 }
 
-// Hostname returns this host's hostname as the operating system reports it, unreduced by the hostname rule;
-// it is for text that spells the raw hostname, such as a terminal's title.
-func Hostname() (string, error) {
-	return os.Hostname()
-}
-
 // fileLocator returns the machine file's path, whether one resolves, and the error of a relative variable.
 type fileLocator func() (path string, ok bool, err error)
 

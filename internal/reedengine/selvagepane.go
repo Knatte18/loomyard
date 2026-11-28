@@ -182,7 +182,7 @@ func bottommostPaneID(live []LivePane) string {
 // splitSelvagePaneAtBottomLocked splits a new pane in below the physically bottom-most pane of live and returns its id.
 //
 // Selvage must land physically bottom-most, so the split targets the bottom-most pane.
-// A lost or stale ReedState.SelvagePaneID can leave that pane an untracked one-row pane.
+// A lost or stale ReedState.SelvagePaneID can leave that pane an untracked one-row pane an older binary left behind.
 // The split is full-width and takes its rows from the whole window, so such a short pane cannot refuse it.
 // A split that still fails returns its error, which the next up or resume retries.
 func (e *Engine) splitSelvagePaneAtBottomLocked(live []LivePane, launchCmd string) (string, error) {

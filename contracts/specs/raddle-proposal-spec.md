@@ -62,13 +62,13 @@ A part holds:
 - `cells` — the `lym report cost` cells both figures rest on, each `{recipe, profile, stored_record}`.
 
 Shape `tapestry` has exactly one part, which builds every decision.
-Every filed slug, each part's and the project's, is new, and one the board's slug rules admit: free on the board and in the raddle store, and not the Sketch's.
+Every filed slug, each part's and the project's, is new: free on the board and in the raddle store, and not the Sketch's.
 The one exception is a perch-mode run's project, whose slug is the run's own entry.
 
 ## Perch mode
 
 A run whose recipe rows hold a split perch, a Bouncer row over the proposal, records perch mode in its raddle state at Raddle-Write's first call.
-The perch's approval files the proposal in place of the operator's, so `loom.raddle.auto_approve` is never read.
+The perch's approval files the proposal in place of the operator's, so `raddle_auto_approve` is never read.
 In perch mode the checks allow two outcomes:
 
 - One task: shape `tapestry`, or shape `tasks` with one part.
@@ -96,6 +96,7 @@ The gate, `raddle-propose` and `raddle-approve` run the checks of the proposal a
 - `board-unchecked` — an open task or project, other than the run's own entry, that carries a module label the Sketch carries and is absent from `board_checked`.
 - `depends-cycle` — a cycle in `depends_on`.
 - `depends-unknown` — a `depends_on` that names no part, no board entry and no `board_checked` entry; a `board_checked` entry that is gone from the board passes as landed.
+- `depends-note` — a `depends_on` that names a note on the board, which the board refuses at filing; its way forward is to drop the dependency or to have the operator promote the note.
 - `packages-shared` — two parts with no `depends_on` path between them that list a common package.
 - `recipe-invalid` — a recipe that is neither `tapestry` nor `darn`.
 - `profile-unknown` — a profile that `profiles.yaml` does not hold, or holds without a block for the part's recipe.
@@ -106,7 +107,6 @@ The gate, `raddle-propose` and `raddle-approve` run the checks of the proposal a
 - `slug-taken` — a new slug already on the board or in the raddle store; the run's own entry is exempt, which `slug-sketch` judges.
 - `slug-sketch` — a filed slug equal to the Sketch's; a perch-mode project whose slug is the run's own entry is exempt.
 - `slug-duplicate` — a slug that two filed entries share.
-- `slug-invalid` — a filed slug the board's slug rules refuse: one over the board's slug length limit, the reserved `root`, or one the pair slug rule refuses, which `lym board` writes and pair creation apply; its way forward is a slug the board admits.
 - `shape-invalid` — a `tapestry` shape with other than one part or with a part that does not build every decision, a `project` or `beam` shape with no project, or another shape with one.
 - `perch-outcome` — in perch mode, a proposal that is neither one task nor one project under the run's own entry.
 - `cost-missing` — a missing proposal cost line or next-best cost line.

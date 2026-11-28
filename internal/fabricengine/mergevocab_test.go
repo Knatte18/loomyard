@@ -19,7 +19,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -40,6 +39,7 @@ var pinnedMergeReasons = map[string]string{
 	"mergeReasonAttemptIncomplete":   "merge attempt did not reach both sides",
 	"mergeReasonConcludeLanded":      "merge conclude already landed",
 	"mergeReasonRecordedMergeGone":   "checkout no longer carries the recorded merge",
+	"mergeReasonRecordsUnsettled":    "merge records step unfinished",
 }
 
 // mergeReasonHomeFile names the one file that declares the closed guard-reason set.
@@ -219,18 +219,20 @@ func assertStructFieldsSideFree(t *testing.T, v any) {
 // So this is the one check that catches a leak onto the public merge surface.
 //
 //testtiming:keep every exported field name and JSON tag of MergeResult and MergeOptions being free of warp/weft and host phrases; coverage of its blocks by other tests does not show an assertion of this
-//lym:seam internal/fabriclayout#MergeResult
-//lym:seam internal/fabriclayout#MergeOptions
+//lym:seam internal/fabricengine#MergeResult
+//lym:seam internal/fabricengine#MergeOptions
 func TestMergeVocabulary_ResultAndOptionsFieldsAreSideFree(t *testing.T) {
 	tiergate.Require(t, 0)
-	assertStructFieldsSideFree(t, fabriclayout.MergeResult{})
-	assertStructFieldsSideFree(t, fabriclayout.MergeOptions{})
+	assertStructFieldsSideFree(t, MergeResult{})
+	assertStructFieldsSideFree(t, MergeOptions{})
 }
 
-// TestMergeVocabulary_ErrorsAreSideFree checks a guard error carrying every reason and the dirty paths.
-// Its Error() output is side-free by the same token check and names none of the dirt details.
+// TestMergeVocabulary_ErrorsAreSideFree instantiates every named merge error.
+// It checks that each Error() output is side-free by the same token check.
+// It also checks that the message of ErrMergeInRequired does not contain its Source field's value.
+// Source is the one detail that error carries outside its fixed message, and it must never leak into the message.
 //
-//testtiming:keep a merge guard error carrying dirt rendering side-free and without the dirt details; coverage of its blocks by other tests does not show an assertion of this
+//testtiming:keep every named merge error rendering side-free and ErrMergeInRequired never echoing its Source; coverage of its blocks by other tests does not show an assertion of this
 func TestMergeVocabulary_ErrorsAreSideFree(t *testing.T) {
 	tiergate.Require(t, 0)
 	reasons := make([]string, 0, len(pinnedMergeReasons))
@@ -244,6 +246,19 @@ func TestMergeVocabulary_ErrorsAreSideFree(t *testing.T) {
 			t.Errorf("(*MergeGuardError).Error() = %q; must not contain the dirt detail %q", guardErr.Error(), detail)
 		}
 	}
+
+	const mergeInRequiredSource = "some-warp-branch"
+	mergeInRequiredErr := &ErrMergeInRequired{Source: mergeInRequiredSource}
+	assertSideFree(t, "(*ErrMergeInRequired).Error()", mergeInRequiredErr.Error())
+	if strings.Contains(mergeInRequiredErr.Error(), mergeInRequiredSource) {
+		t.Errorf("(*ErrMergeInRequired).Error() = %q; must not contain its own Source value %q", mergeInRequiredErr.Error(), mergeInRequiredSource)
+	}
+
+	assertSideFree(t, "(*ErrForeignMergeState).Error()", (&ErrForeignMergeState{}).Error())
+	assertSideFree(t, "(*ErrNoMergeInProgress).Error()", (&ErrNoMergeInProgress{}).Error())
+	assertSideFree(t, "(*ErrMergeIncomplete).Error()", (&ErrMergeIncomplete{}).Error())
+	assertSideFree(t, "(*ErrUnmergeableState).Error()", (&ErrUnmergeableState{}).Error())
+	assertSideFree(t, "(*ErrMergeInProgress).Error()", (&ErrMergeInProgress{}).Error())
 }
 
 // TestMergeVocabulary_GuardReasonSetIsClosedAndSideFree asserts every member of pinnedMergeReasons.

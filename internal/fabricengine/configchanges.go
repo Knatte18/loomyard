@@ -10,11 +10,31 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
+
+// ConfigChanges is the set of per-worktree config files a task changed on its weft branch.
+// A change counts only when the task's copy differs from both its fork point and its parent's current copy.
+type ConfigChanges struct {
+	// Files are the changed files, repository-relative and slash-separated, sorted.
+	Files []string
+	// Base is the merge-base SHA of the task's and the parent's weft branches, the task's fork point.
+	Base string
+	// Tip is the SHA of the task's weft branch tip.
+	Tip string
+	// ParentTip is the SHA of the parent's weft branch tip.
+	ParentTip string
+	// Contents holds, per file in Files, the file's bytes at each of the three revisions.
+	Contents map[string]ConfigFileContents
+}
+
+// ConfigFileContents is one config file's bytes at the task's fork point, the task's tip and the parent's tip;
+// a file absent at a revision is nil there.
+type ConfigFileContents struct {
+	Base, Tip, Parent []byte
+}
 
 // ReadConfigChanges reports which of configRels taskBranch's weft branch changed since its fork point with parentBranch;
 // a file counts only when it also differs from the parent's current tip.
@@ -24,20 +44,20 @@ import (
 // so the caller can compare the files key by key.
 // An error names both branches compared.
 // It writes nothing.
-func ReadConfigChanges(l *lymcwd.Location, taskBranch, parentBranch string, configRels []string) (fabriclayout.ConfigChanges, error) {
+func ReadConfigChanges(l *lymcwd.Location, taskBranch, parentBranch string, configRels []string) (ConfigChanges, error) {
 	if len(configRels) == 0 {
-		return fabriclayout.ConfigChanges{}, nil
+		return ConfigChanges{}, nil
 	}
 
 	weftRepoRoot, err := RecordsRepoRoot(l)
 	if err != nil {
-		return fabriclayout.ConfigChanges{}, fmt.Errorf("read config changes of %q against %q: %w", taskBranch, parentBranch, err)
+		return ConfigChanges{}, fmt.Errorf("read config changes of %q against %q: %w", taskBranch, parentBranch, err)
 	}
 
-	taskWeft := fabriclayout.RecordsBranchName(taskBranch)
-	parentWeft := fabriclayout.RecordsBranchName(parentBranch)
-	fail := func(step string, err error) (fabriclayout.ConfigChanges, error) {
-		return fabriclayout.ConfigChanges{}, fmt.Errorf("read config changes of weft branch %q against %q: %s: %w", taskWeft, parentWeft, step, err)
+	taskWeft := recordsBranchIn(l, taskBranch)
+	parentWeft := recordsBranchIn(l, parentBranch)
+	fail := func(step string, err error) (ConfigChanges, error) {
+		return ConfigChanges{}, fmt.Errorf("read config changes of weft branch %q against %q: %s: %w", taskWeft, parentWeft, step, err)
 	}
 
 	tip, err := revParseBranch(weftRepoRoot, taskWeft)
@@ -55,7 +75,7 @@ func ReadConfigChanges(l *lymcwd.Location, taskBranch, parentBranch string, conf
 	base = strings.TrimSpace(base)
 
 	pathspec := []string{"--"}
-	for _, spec := range fabriclayout.ScopedPathspec(l.AnchorRel, configRels) {
+	for _, spec := range ScopedPathspec(l.AnchorRel, configRels) {
 		pathspec = append(pathspec, filepath.ToSlash(spec))
 	}
 	sinceFork, err := diffNames(weftRepoRoot, base, tip, pathspec)
@@ -74,9 +94,9 @@ func ReadConfigChanges(l *lymcwd.Location, taskBranch, parentBranch string, conf
 		}
 	}
 
-	contents := make(map[string]fabriclayout.ConfigFileContents, len(files))
+	contents := make(map[string]ConfigFileContents, len(files))
 	for _, name := range files {
-		var file fabriclayout.ConfigFileContents
+		var file ConfigFileContents
 		for _, read := range []struct {
 			rev string
 			dst *[]byte
@@ -87,7 +107,7 @@ func ReadConfigChanges(l *lymcwd.Location, taskBranch, parentBranch string, conf
 		}
 		contents[name] = file
 	}
-	return fabriclayout.ConfigChanges{Files: files, Base: base, Tip: tip, ParentTip: parentTip, Contents: contents}, nil
+	return ConfigChanges{Files: files, Base: base, Tip: tip, ParentTip: parentTip, Contents: contents}, nil
 }
 
 // showFile returns the bytes of path at rev in the repo at dir, or nil when rev holds no such file.

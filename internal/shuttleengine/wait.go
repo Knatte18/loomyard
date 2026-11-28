@@ -25,7 +25,7 @@
 // A permission or input dialog that an autonomous run's pane shows past a bound is reported to the parent:
 // once per dialog, through the same notifier. The rules live in dialog.go.
 // A hold never extends run.deadline.
-// A held run is bounded by its caller's own Spec.Timeout (shuttle.run_timeout_min only where that is zero).
+// A held run is bounded by its caller's own Spec.Timeout (run_timeout_min only where that is zero).
 // The liveness check still classifies a dead pane while the run is held.
 // While an output file is missing, a turn end that leaves a fork or an awaited shell outstanding is a wait.
 // It is never a held stop, and it expires into no hold or notice.
@@ -44,11 +44,6 @@
 // At the deadline, classifyDeadlineExpiry ends the run OutcomeDone when the output files exist.
 // finalize then evaluates the gate once more over the tree as it stands.
 // Every shell outstanding when the run ends, by whatever exit, is recorded in Result.EndedShells.
-//
-// A turn end that would end the run, or start its gate's evaluation, is held in one case.
-// The case is the runner's reply probe reporting the run's strand awaiting the reply to a question it asked.
-// replyhold.go holds the rules.
-// Any event or turn start read afterwards ends that hold, so the turn the reply starts decides afresh at its end.
 //
 // The events-tick Done branch splits in two, on whether run.gate is empty:
 // An ungated run's Done finalizes without consulting the gate.
@@ -329,9 +324,6 @@ func (run *Run) Wait() (Result, error) {
 			run.endHeldWait()
 			run.pendingHold = nil
 		}
-		if err == nil && (run.eventsRead || run.turnStartSeen) {
-			run.replyHold = nil
-		}
 		if err != nil {
 			eventsFailures++
 			if eventsFailures >= maxEventsReadRetries {
@@ -359,10 +351,7 @@ func (run *Run) Wait() (Result, error) {
 				}
 			} else if outcome != "" && (outcome != OutcomeDone || len(run.gate) == 0) {
 				// Any other outcome, or a Done with no gate, finalizes at once.
-				// The exception is a Done held while the agent awaits a reply.
-				if outcome != OutcomeDone || !run.holdForReply() {
-					return run.finalizeAndRemoveDiedWindow(outcome)
-				}
+				return run.finalizeAndRemoveDiedWindow(outcome)
 			} else if outcome == OutcomeDone {
 				// A gated Done marks the writer's turn boundary: per-turn gate state resets here.
 				run.endReworkSpans(run.clock.Now())
@@ -374,24 +363,18 @@ func (run *Run) Wait() (Result, error) {
 				if run.covered {
 					// A pause covers the session: nothing is evaluated or sent until the first uncovered tick.
 					run.boundaryHeld = true
-				} else if !run.holdForReply() && run.boundaryIdle() {
-					// A boundary held for a reply is evaluated once the hold ends.
+				} else if run.boundaryIdle() {
 					if result, finished, ferr := run.handleGatedBoundary(); finished {
 						return result, ferr
 					}
 				}
 			} else if run.boundaryHeld && !run.covered && run.gateAtBoundary {
-				// The pause lifted: evaluate the held arrival as if it had come now, unless it is held for a reply.
+				// The pause lifted: evaluate the held arrival as if it had come now.
 				run.boundaryHeld = false
-				if !run.holdForReply() && run.boundaryIdle() {
+				if run.boundaryIdle() {
 					if result, finished, ferr := run.handleGatedBoundary(); finished {
 						return result, ferr
 					}
-				}
-			} else if run.replyHold != nil {
-				// A turn end held for a reply: it ends once no reply is awaited, and nothing else is evaluated meanwhile.
-				if result, finished, ferr := run.releaseReplyHold(); finished {
-					return result, ferr
 				}
 			} else if !run.covered && (run.gatePending || run.unsentReprompt) && run.gateAtBoundary {
 				// No new arrival, an entry is pending or a re-prompt is unsent, and the writer is idle:
@@ -575,7 +558,6 @@ func gateEntryError(name, problem string) error {
 // A resume refused or failed before its strand registers ends the loop, naming both failures.
 // Any other re-prompt send failure ends the loop.
 // A pending result sends its Send text when non-empty and keeps polling.
-// It sets the result's Delivered once the text is delivered.
 // A failed pending send warns once per entry and episode, naming the entry, the error and the closure's way-forward.
 // It logs Debug while it keeps failing and Info when it is delivered.
 // It leaves the entry pending and the writer at the boundary, and never ends the loop.
@@ -597,9 +579,6 @@ func (run *Run) handleGatedBoundary() (Result, bool, error) {
 			return Result{}, false, nil
 		}
 		run.failures.Recover(pendingKey, "shuttle: gate: pending send delivered again", "strandGUID", run.state.StrandGUID, "gate", run.gate[run.gatePendingAt].Name)
-		if run.gatePendingDelivered != nil {
-			*run.gatePendingDelivered = true
-		}
 		run.gateAtBoundary = false
 		run.boundaryHeld = false
 		return Result{}, false, nil
@@ -667,9 +646,6 @@ func (run *Run) handleGatedBoundary() (Result, bool, error) {
 	run.boundaryHeld = false
 	run.gateFails[failed]++
 	run.gateSent[failed]++
-	if run.gateReprompted != nil {
-		run.gateReprompted.RecordReprompt()
-	}
 	run.gateReworkSince[failed] = run.clock.Now()
 	for i, entry := range verdict.Entries {
 		if entry.State == GateEntryPassed {
@@ -727,12 +703,11 @@ func startupTickCap(startupTimeout, interval time.Duration) int {
 // That holds only while the file contract is unsatisfied,
 // and the error then wraps ErrNotStarted beside the mechanism failure's own sentinel.
 //
-// The window is the shorter of shuttle.startup_timeout_s and the time left until run.deadline, floored at 0.
-// A run.Timeout shorter than shuttle.startup_timeout_s still expires on schedule.
-// It expires as OutcomeTimeout rather than OutcomeDied.
+// The window is the shorter of startup_timeout_s and the time left until run.deadline, floored at 0.
+// A run.Timeout shorter than startup_timeout_s still expires on schedule, as OutcomeTimeout rather than OutcomeDied.
 // A caller can then tell a working run from one that never started.
 // That holds when the run's own deadline, not the startup window, is what ran out.
-// A shuttle.startup_timeout_s of 0 has no floor: the probe answers on its first tick unless the TUI is already ready.
+// A startup_timeout_s of 0 has no floor: the probe answers on its first tick unless the TUI is already ready.
 //
 // Every negative answer honors the Completion Signal Invariant.
 // The not-ready answer comes only from checkLivenessTick and classifyStartupWindow.
@@ -912,14 +887,10 @@ const (
 // removeStartupStrand removes the run's strand.
 // While the removal fails it tries again after a doubling wait on the run clock, up to startupRemoveAttempts tries.
 // It returns nil once a removal succeeds, and the last removal's error otherwise.
-// A strand reed no longer knows counts as removed, since a pane line that ends its own strand may get there first.
 func (run *Run) removeStartupStrand() error {
 	delay := startupRemoveFirstDelay
 	for attempt := 1; ; attempt++ {
 		_, err := run.runner.reed.RemoveStrand(run.state.StrandGUID, false)
-		if errors.Is(err, reedengine.ErrUnknownStrand) {
-			return nil
-		}
 		if err == nil || attempt == startupRemoveAttempts {
 			return err
 		}
@@ -974,7 +945,6 @@ func startupCaptureExcerpt(capture string) string {
 func (run *Run) pollEventsTick() (Outcome, *heldTurnEnd, error) {
 	run.eventsRead = false
 	run.turnStartRead = false
-	run.turnStartSeen = false
 	startOffset := run.offset
 	data, newOffset, err := readEventsFrom(run.state.EventsPath, startOffset)
 	if err != nil {
@@ -991,7 +961,6 @@ func (run *Run) pollEventsTick() (Outcome, *heldTurnEnd, error) {
 	run.offset = newOffset
 	guardArmed := run.holdGuard
 	turnStarts := turnStartOffsets(run.engine, data, startOffset)
-	run.turnStartSeen = len(turnStarts) > 0
 	if len(turnStarts) > 0 {
 		run.holdGuard = false
 		run.promptTurnStarted = true
@@ -1871,8 +1840,6 @@ func (run *Run) evaluateGate(final bool) (*GateOutcome, error) {
 	failedAt := -1
 	pendingAt := -1
 	pendingSend, pendingWayForward := "", ""
-	var pendingDelivered *bool
-	var reprompted RepromptRecorder
 	findingsPath, findings := "", ""
 	terminal, reason := false, ""
 	for i, entry := range run.gate {
@@ -1921,7 +1888,6 @@ func (run *Run) evaluateGate(final bool) (*GateOutcome, error) {
 				pendingAt = i
 				pendingSend = result.Send
 				pendingWayForward = result.SendFailedWayForward
-				pendingDelivered = result.Delivered
 				break
 			}
 			if result.Passed {
@@ -1939,7 +1905,6 @@ func (run *Run) evaluateGate(final bool) (*GateOutcome, error) {
 				return nil, writeErr
 			}
 			findings = result.Findings
-			reprompted = result.Reprompted
 			line.State = GateEntryFailed
 			failedAt = i
 			if !entry.PassOnCap {
@@ -1975,8 +1940,6 @@ func (run *Run) evaluateGate(final bool) (*GateOutcome, error) {
 	run.gatePendingAt = pendingAt
 	run.gatePendingSend = pendingSend
 	run.gatePendingWayForward = pendingWayForward
-	run.gatePendingDelivered = pendingDelivered
-	run.gateReprompted = reprompted
 	return outcome, nil
 }
 

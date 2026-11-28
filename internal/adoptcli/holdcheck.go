@@ -16,7 +16,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -282,7 +281,7 @@ func (r *holdCheckRun) endFailed(failing string, tries int, record CheckRecord) 
 // A non-nil terminal also receives the gate's output, and noOrch brings each worktree up without its orch.
 // Its BeamUp refuses under a test binary, which must start no session or process.
 func hubHoldCheckDeps(prime *lymcwd.Location, terminal io.Writer, noOrch bool) (holdCheckDeps, error) {
-	boardDir := fabriclayout.BoardDir(prime.HubPath)
+	boardDir := fabricengine.BoardDir(prime.HubPath)
 	geometry, err := hubgeom.PauseGeometry(prime)
 	if err != nil {
 		return holdCheckDeps{}, err

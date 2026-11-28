@@ -11,7 +11,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/machinename"
@@ -37,7 +36,7 @@ func DobbyGeometry(prime *lymcwd.Location, worktree string) (dobbyengine.Geometr
 		return dobbyengine.Geometry{}, fmt.Errorf("hubgeom: locate the lym executable: %w", err)
 	}
 	slug := worktree
-	moveRecords := []string{fabriclayout.MoveRecordPath(fabricengine.RecordsWorktreePath(prime, prime.WorktreeName))}
+	moveRecords := []string{fabricengine.MoveRecordPath(fabricengine.RecordsWorktreePath(prime, prime.WorktreeName))}
 	own := prime
 	if worktree == prime.WorktreeName {
 		slug = ""
@@ -47,12 +46,12 @@ func DobbyGeometry(prime *lymcwd.Location, worktree string) (dobbyengine.Geometr
 		if err != nil {
 			return dobbyengine.Geometry{}, fmt.Errorf("hubgeom: read the anchor of the worktree %q: %w", worktree, err)
 		}
-		moveRecords = append([]string{fabriclayout.MoveRecordPath(fabricengine.RecordsWorktreePath(own, worktree))}, moveRecords...)
+		moveRecords = append([]string{fabricengine.MoveRecordPath(fabricengine.RecordsWorktreePath(own, worktree))}, moveRecords...)
 	}
 	beamDir := DobbyBeamDir(own)
 	return dobbyengine.Geometry{
 		HubRoot:       prime.HubPath,
-		BoardDir:      fabriclayout.BoardDir(prime.HubPath),
+		BoardDir:      fabricengine.BoardDir(prime.HubPath),
 		PrimeAnchor:   prime.AnchorPath(),
 		WorktreeRoot:  root,
 		WorktreeName:  worktree,
@@ -63,7 +62,6 @@ func DobbyGeometry(prime *lymcwd.Location, worktree string) (dobbyengine.Geometr
 		OutPath:       filepath.Join(beamDir, dobbyengine.OutFileName),
 		PrimeLogPath:  filepath.Join(DobbyBeamDir(prime), dobbyengine.LogFileName),
 		TidyDir:       filepath.Join(beamDir, dobbyengine.TidyDirName),
-		DescribeDir:   filepath.Join(beamDir, dobbyengine.DescribeDirName),
 		PrimeRunsDir:  shedrun.RunsRoot(prime),
 		LymExecutable: executable,
 		MoveRecords:   moveRecords,
@@ -77,17 +75,17 @@ func DobbyBeamDir(worktree *lymcwd.Location) string {
 }
 
 // PawlPaths returns the paths the pawl producers use for the beam whose pair is at beam.
-// They are the land request, dobby-stop, await, hand-off and drain markers.
+// They are the land request, dobby-stop, await and hand-off markers, and the reopen request an older binary wrote.
 // They all lie directly in the `.lym/beam/` directory of the beam worktree, at its own anchor.
 // That is the directory the dobby's files use, so the dobby, `lym beam land` and Beam-Await read one directory.
 func PawlPaths(beam *lymcwd.Location) pawlengine.Paths {
 	beamDir := filepath.Join(beam.AnchorPath(), lymdirs.DotLymDirName, lymdirs.BeamDirName)
 	return pawlengine.Paths{
 		LandRequest:     filepath.Join(beamDir, pawlengine.LandRequestFileName),
+		ReopenRequest:   filepath.Join(beamDir, pawlengine.ReopenRequestFileName),
 		DobbyStopMarker: filepath.Join(beamDir, pawlengine.DobbyStopMarkerName),
 		AwaitMarker:     filepath.Join(beamDir, pawlengine.AwaitMarkerName),
 		HandOffMarker:   filepath.Join(beamDir, pawlengine.HandOffMarkerName),
-		DrainMarker:     filepath.Join(beamDir, pawlengine.DrainMarkerName),
 	}
 }
 
@@ -102,7 +100,7 @@ func PawlPaths(beam *lymcwd.Location) pawlengine.Paths {
 // The move check reads an anchor change standing on a worktree's own records worktree or on the prime's.
 // A landing hold is read from the local board's entry of the worktree.
 func DobbyStart(prime *lymcwd.Location) dobbyengine.StartDeps {
-	boardDir := fabriclayout.BoardDir(prime.HubPath)
+	boardDir := fabricengine.BoardDir(prime.HubPath)
 	return dobbyengine.StartDeps{
 		Machine: func() (string, error) {
 			identity, err := boardengine.EnsureIdentity()
@@ -154,7 +152,7 @@ func LandingHeld(prime *lymcwd.Location, worktree string) (bool, error) {
 	if worktree == prime.WorktreeName {
 		return false, nil
 	}
-	tasks, err := boardengine.ReadTasks(fabriclayout.BoardDir(prime.HubPath))
+	tasks, err := boardengine.ReadTasks(fabricengine.BoardDir(prime.HubPath))
 	if err != nil {
 		return false, fmt.Errorf("hubgeom: read the board: %w", err)
 	}

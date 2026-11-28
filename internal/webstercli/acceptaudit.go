@@ -28,22 +28,19 @@ func (c *websterCLI) acceptAuditCmd() *cobra.Command {
 It checks every suspect path against the last batch head and refuses, changing
 nothing, while any differs or cannot be checked.
 It also refuses while HEAD carries a commit past the last batch head other
-than a clean parent merge or a verify-gate fixer's commit the gate passed at;
-run lym webster reset --to last-batch-head first, which moves HEAD back to
-that head.
+than a clean parent merge; run lym webster reset --to last-batch-head first,
+which moves HEAD back to that head.
 Restore the named paths with git first, then run it.
-A path on the run's records side, outside webster's own run state, clears
-when it is unchanged, absence included, since Master spawned.
 A contract file (outcome.yaml or summary.md) clears when it is absent or when
 Master wrote it after every fork, recovery and verify-fixer session did; a file
 a fork, recovery or verify-fixer session wrote last refuses, naming
-rm as the way forward. Accepting on an absent contract file adds next, the
-step that has Master write both files again.
+rm as the way forward. When it accepts on an absent contract file the envelope
+also carries next, the step that has Master write both files again.
 It only edits state.json and never changes the task worktree.
-With nothing pending it succeeds with an empty accepted list, so a repeated
-call is harmless.
-On success the envelope carries accepted: each finding's class, detail and
-paths.
+With nothing pending it succeeds and reports an empty accepted list, so a
+repeated call is harmless.
+On success the envelope carries accepted, one entry per accepted finding with
+its class, detail and paths.
 
 With --batch NN it instead accepts failed batch NN's uncheckable findings,
 which otherwise make recover-batch refuse toward "lym webster reset --to start" and then "lym webster run".
@@ -105,7 +102,7 @@ Example:
 			_ = mutateLock.Release()
 			mutateHeld = false
 
-			if _, syncErr := fabricSync(c.openFabric, c.anchorRel, c.syncOptions, "accept-audit"); syncErr != nil {
+			if _, syncErr := fabricSync(c.openFabric, c.anchorRel, "accept-audit"); syncErr != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: audit findings accepted but the fabric sync failed: %v; %s", syncErr, fabricSyncWayForward)))
 				return nil
 			}
@@ -145,7 +142,7 @@ func (c *websterCLI) acceptBatch(cmd *cobra.Command, st *websterengine.State, n 
 	_ = release()
 	*held = false
 
-	if _, syncErr := fabricSync(c.openFabric, c.anchorRel, c.syncOptions, "accept-audit"); syncErr != nil {
+	if _, syncErr := fabricSync(c.openFabric, c.anchorRel, "accept-audit"); syncErr != nil {
 		clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: batch findings accepted but the fabric sync failed: %v; %s", syncErr, fabricSyncWayForward)))
 		return
 	}

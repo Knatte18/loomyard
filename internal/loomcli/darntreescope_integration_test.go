@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -57,8 +57,7 @@ func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
 	}
 	locate := func(t *testing.T, slug string) func(gateKey string) (string, bool, error) {
 		t.Helper()
-		location := resolve(t, slug)
-		return darnTreeScope(location, recipeTrees(location, shedrun.RecipeDarn))
+		return darnTreeScope(resolve(t, slug))
 	}
 	// landing builds the pair's landing seams over the darn verify source.
 	// The values the seams under test do not read are left minimal.
@@ -79,7 +78,7 @@ func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
 			nil,
 			func(string, time.Time) error { return nil },
 			func() (string, error) { return "", nil },
-			darnVerifySource(location, recipeTrees(location, shedrun.RecipeDarn)),
+			darnVerifySource(location),
 			parentLockDeps(location, shedrun.SelfRunID, "", ""),
 		)
 	}
@@ -234,7 +233,7 @@ func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
 
 	if !t.Run("a darn.yaml that does not unmarshal is refused with the hub config way forward", func(t *testing.T) {
 		seed(t, trees)
-		path := filepath.Join(fabriclayout.BoardDir(hub.Path), "_lym", "config", "darn.yaml")
+		path := filepath.Join(fabricengine.BoardDir(hub.Path), "_lym", "config", "darn.yaml")
 		if err := os.WriteFile(path, []byte("writer: [\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}

@@ -15,9 +15,19 @@
 // A fabricengine.PrimeName failure is reported as a CheckGeometry failure rather than escalated:
 // there is no coherent worktree to check, and that is a determined verdict.
 //
+// Check's branch for an error other than lymcwd.ErrNotAGitRepo is not reached through a git-subprocess spawn failure.
+// ErrNotAGitRepo already covers that failure.
+// The branch is reached only through lymcwd's anchor-resolution path.
+// One example is ErrCwdOutsideAnchor from the cwd gate.
+// Another is ErrStaleAnchorMarker from a hub whose checkout carries only the stale anchor marker.
+// A third is an ErrInvalidAnchor-wrapping failure when a recorded anchor exists but fails validation.
+//
 // The worktree-clean check skips lym's own state under `_lym` on the state side:
-// the run-records root, the usage directory, the loom friction directory,
-// and the friction directory's reflection archives.
+// the run-records root, the loom friction directory and the friction directory's reflection archives.
+// lym writes its run records while it handles a stop, writes a halt note into the friction directory,
+// and a reflection moves covered notes into an archive.
+// The status commits stage the settle records.
+// The other files, and a note's deletion or move, stay uncommitted until a later records commit or the run's removal.
 // Counting them would make a run refuse its own bookkeeping on every re-step.
 // Everything else under `_lym` still counts.
 //
@@ -40,15 +50,20 @@
 //
 // ResolveMode exists because HubPresent alone collapses two different negatives into the same false return:
 // "there is no hub here" and "Resolve could not answer".
-// lymcwd.Resolve returns ErrCwdOutsideAnchor from any ordinary subdirectory of a healthy wired worktree,
-// so a HubPresent-only trigger would start a standalone session there.
-// It would also relocate a live hub's state into the per-OS state directory.
+// lymcwd.Resolve returns ErrCwdOutsideAnchor from any ordinary subdirectory of a healthy wired worktree.
+// So a HubPresent-only trigger would start a standalone session there.
+// That session would relocate a live hub's state into the per-OS state directory.
 //
-// Neither mode selection nor the stencil seed gate can key on fabricengine.Ready.
+// Mode selection cannot key on fabricengine.Ready.
 // It probes the paired sibling of the current worktree rather than the hub,
 // so it is false at the Bolt checkout, in an unpaired sibling, and in a worktree whose pair was removed.
 // These are three healthy hub situations that run producer verbs.
-// Keying on HubPresent's board-level stat instead gives a damaged hub hub mode.
-// That mode then fails loudly at the point of use.
+// Keying mode selection on it would route all three to standalone mode.
+// That would relocate a live hub's state to the per-OS standalone state directory.
+// Keying on HubPresent's board-level stat, as HubPresent and ResolveMode do, gives a damaged hub hub mode.
+// It then fails loudly at the point of use.
 // A plain downloaded git repository lands in standalone, because it has no board-level lym directory beside it.
+//
+// The stencil seed gate cannot key on fabricengine.Ready for the same reason:
+// narrowing it to that probe would stop the seed in all three healthy hub situations above.
 package preflight

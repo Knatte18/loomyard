@@ -10,7 +10,6 @@ import (
 	"slices"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubregistry"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/preflight"
@@ -66,7 +65,7 @@ func hubOfDir(dir string) (string, bool) {
 	if location, err := lymcwd.ResolveWorktree(dir); err == nil && preflight.BoardLymPresent(location) {
 		return location.HubPath, true
 	}
-	if _, found := fabricengine.ReadShortname(fabriclayout.BoltDir(dir)); found {
+	if _, found := fabricengine.ReadShortname(fabricengine.BoltDir(dir)); found {
 		return dir, true
 	}
 	return "", false

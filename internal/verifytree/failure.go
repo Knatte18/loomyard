@@ -10,8 +10,20 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// FailureKind names which gate failed: the gate key a record's tier belongs to.
+// FailureKind names which gate failed: the gate a record's tier belongs to, or a retired spelling of one.
 type FailureKind string
+
+const (
+	// FailureKindLanding is the retired `landing` kind an older build wrote.
+	// A record carrying it reads as the gate key of whichever row reads it, since the record names no row.
+	FailureKindLanding FailureKind = "landing"
+	// FailureKindPublish means a tier of the `publish` gate failed.
+	FailureKindPublish FailureKind = "publish"
+	// FailureKindPlanVerify is the retired spelling of a `landing` failure: the plan's `## verify:` command failed.
+	FailureKindPlanVerify FailureKind = "plan_verify"
+	// FailureKindPublishVerify is the retired spelling of a `publish` failure: landing config's `publish_verify` command failed.
+	FailureKindPublishVerify FailureKind = "publish_verify"
+)
 
 // FailedTest is one test a failing verify reported.
 type FailedTest struct {
@@ -59,7 +71,7 @@ type FailureTrace struct {
 type LandingFailure struct {
 	// Kind names the failing verify.
 	Kind FailureKind `yaml:"kind"`
-	// Tier is the failing tier of Kind's gate, always written as tier 0 is real.
+	// Tier is the failing tier of Kind's gate, always written as tier 0 is real; a retired Kind's record carries none.
 	Tier int `yaml:"tier"`
 	// Build is set when the build step failed before any test ran; Tier is the first tier it blocked, and Tests is empty.
 	Build bool `yaml:"build,omitempty"`

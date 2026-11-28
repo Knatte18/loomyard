@@ -13,7 +13,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -123,7 +122,7 @@ type outcome struct {
 // CatchUp runs the hub-wide catch-up from origin.
 // MoveInProgress reports whether an anchor change stands in the given worktree, "" naming the prime.
 // It returns the way forward the change names; nil reads as no record standing.
-// DeployState reads the `landing.deploy` command for the prime's branch.
+// DeployState reads the landing deploy command for the prime's branch.
 // It also reads the running lym's build and whether the prime's head is ahead of it;
 // nil reads as nothing to deploy.
 // RunDeploy runs the deploy command in the prime and returns its log's path.
@@ -149,10 +148,10 @@ type adoptDeps struct {
 	RunRecord      func(slug string) (shedengine.Status, bool, error)
 	OriginRun      func(slug, parent string) (shedengine.Status, bool, error)
 	LocalPair      func(slug string) bool
-	AddPair        func(slug string) (fabriclayout.AddResult, error)
+	AddPair        func(slug string) (fabricengine.AddResult, error)
 	PickAccount    func(slug string)
 	WriteAdopt     func(req boardengine.AdoptRequest) (boardengine.AdoptWrite, error)
-	TakeOver       func(slug, subject string) (fabriclayout.TakeOverResult, error)
+	TakeOver       func(slug, subject string) (fabricengine.TakeOverResult, error)
 	CatchUp        func() error
 	MoveInProgress func(worktree string) (wayForward string, standing bool, err error)
 	DeployState    func() (deployState, error)

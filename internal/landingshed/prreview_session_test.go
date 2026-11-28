@@ -1,182 +1,120 @@
-// prreview_session_test.go covers the PR-Review row's interactive session over a real session runner and reed.
-// It pins what the session starts under, and when the row reuses, resumes and stops it.
-// It also holds the session world the other PR-Review tests share.
+// prreview_session_test.go covers the PR-Review row's interactive session over a fake session runner.
+// It pins what the session starts under, and when it reuses, resumes, stops and restarts it.
+// It also holds the fake and helpers the other PR-Review tests share.
 
 package landingshed
 
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
 
 	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/pullrequest"
-	"github.com/Knatte18/loomyard/internal/reedengine"
-	"github.com/Knatte18/loomyard/internal/runproc"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
-	"github.com/Knatte18/loomyard/internal/testkit/permkit"
+	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
-	"github.com/Knatte18/loomyard/internal/testkit/tmuxrec"
 )
 
-// Recordings of the tmux the session worlds replay.
-const (
-	// recordingStartStop starts a session, stops it, starts it again and stops it again.
-	recordingStartStop = "session-start-stop"
-	// recordingEnds starts a session whose pane's process then ends.
-	recordingEnds = "session-ends"
-	// recordingNotStarted starts a session whose provider never comes up.
-	recordingNotStarted = "session-not-started"
-)
-
-// firstGUID is the guid of the first strand a session world's reed starts, and secondGUID of the second.
-const (
-	firstGUID  = tmuxrec.GUIDPrefix + "1"
-	secondGUID = tmuxrec.GUIDPrefix + "2"
-)
-
-// startedPanePID is the pid a replay answers for the pane of the first strand a session world's reed starts:
-// the {pid:4} pane of the session-start-stop recording, above the replay's pid base of 1<<30.
-const startedPanePID = 1<<30 + 4
-
-// prSessionWorld is what a PR-Review test's sessions run over:
-// the real session runner and reed over a recorded tmux, with the provider engine the one stand-in above reed.
-// The row's starts and stops pass through a counting wrapper to the runner.
-// Each pane registration passes through a recording wrapper to runproc.
-type prSessionWorld struct {
-	t       testing.TB
-	session *tmuxrec.Session
-	counted *countedSessions
-	// registerDir is the directory the registrations write into, and registered holds each pane pid registered.
-	registerDir string
-	registered  []int
+// fakePRSessions is a fake session runner that records every start and stop and tracks which strands are live.
+// A start marks the strand its result names live, and a stop clears it.
+type fakePRSessions struct {
+	mu sync.Mutex
+	// result is what every start answers.
+	result      shuttleengine.OpenResult
+	startErr    error
+	liveErr     error
+	registerErr error
+	// stopErr is what every stop fails with; a failed stop leaves the strand live.
+	stopErr    error
+	live       map[string]bool
+	starts     []shuttleengine.Spec
+	stops      []string
+	registered []string
 }
 
-// countedSessions passes each start and stop to the real runner and counts them.
-// beforeStop runs once at the first stop before the strand is stopped, and afterStop once after it.
-type countedSessions struct {
-	*shuttleengine.Runner
-	starts     int
-	stopped    []string
-	beforeStop func()
-	afterStop  func()
-}
+var _ prSessions = (*fakePRSessions)(nil)
 
-func (c *countedSessions) StartSession(spec shuttleengine.Spec) (shuttleengine.OpenResult, error) {
-	c.starts++
-	return c.Runner.StartSession(spec)
-}
-
-func (c *countedSessions) StopStrand(guid string) error {
-	if fn := c.beforeStop; fn != nil {
-		c.beforeStop = nil
-		fn()
+// newFakePRSessions returns a fake whose starts answer guid-1, named pr-strand, on session sess-1 of the claude engine.
+func newFakePRSessions() *fakePRSessions {
+	return &fakePRSessions{
+		result: shuttleengine.OpenResult{StrandGUID: "guid-1", StrandName: "pr-strand", SessionID: "sess-1", Engine: "claude"},
+		live:   map[string]bool{},
 	}
-	c.stopped = append(c.stopped, guid)
-	err := c.Runner.StopStrand(guid)
-	if fn := c.afterStop; fn != nil {
-		c.afterStop = nil
-		fn()
-	}
-	return err
 }
 
-// newPRSessionWorld builds a session world whose reed replays the recording named recording.
-func newPRSessionWorld(t testing.TB, recording string) *prSessionWorld {
+func (f *fakePRSessions) EngineName(choice shuttleengine.ModelChoice) string {
+	if choice.Engine == "" {
+		return "claude"
+	}
+	return choice.Engine
+}
+
+func (f *fakePRSessions) StartSession(spec shuttleengine.Spec) (shuttleengine.OpenResult, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.starts = append(f.starts, spec)
+	if f.startErr != nil {
+		return shuttleengine.OpenResult{}, f.startErr
+	}
+	f.live[f.result.StrandGUID] = true
+	return f.result, nil
+}
+
+func (f *fakePRSessions) StopStrand(guid string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.stops = append(f.stops, guid)
+	if f.stopErr != nil {
+		return f.stopErr
+	}
+	f.live[guid] = false
+	return nil
+}
+
+func (f *fakePRSessions) isLive(guid string) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.live[guid], f.liveErr
+}
+
+func (f *fakePRSessions) register(guid string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.registered = append(f.registered, guid)
+	return f.registerErr
+}
+
+// sessionsOf returns the fake session runner prReviewTestDeps put in deps.
+func sessionsOf(deps Deps) *fakePRSessions {
+	return deps.PullRequest.Sessions.(*fakePRSessions)
+}
+
+// withSessionOf returns got with the session fields of want.
+// It lets a test pin the rest of a record without pinning the session's identity.
+func withSessionOf(got, want pullrequest.Record) pullrequest.Record {
+	got.StrandGUID, got.StrandName, got.SessionID, got.Engine = want.StrandGUID, want.StrandName, want.SessionID, want.Engine
+	return got
+}
+
+// assertSessionCounts fails the test unless the fake session runner of deps saw the given number of starts and stops.
+func assertSessionCounts(t *testing.T, deps Deps, starts, stops int) {
 	t.Helper()
-	session, replay := tmuxrec.PlaySession(t, recording)
-	t.Cleanup(func() {
-		if unanswered := replay.Unanswered(); len(unanswered) > 0 {
-			t.Errorf("recording %s holds no answer to %q", recording, unanswered)
-		}
-	})
-	return &prSessionWorld{
-		t:           t,
-		session:     session,
-		counted:     &countedSessions{Runner: session.Runner},
-		registerDir: filepath.Join(t.TempDir(), "runproc"),
+	sessions := sessionsOf(deps)
+	if len(sessions.starts) != starts || len(sessions.stops) != stops {
+		t.Errorf("session starts = %d, stops = %d; want %d and %d", len(sessions.starts), len(sessions.stops), starts, stops)
 	}
-}
-
-// fill points the session seams of deps at the world.
-func (w *prSessionWorld) fill(deps *Deps) {
-	status := w.session.Reed.Status
-	deps.PullRequest.Sessions = w.counted
-	deps.PullRequest.SessionLive = reedengine.SessionLiveness(status)
-	deps.PullRequest.RegisterSession = reedengine.SessionRegistrar(status, func(pid int) error {
-		w.registered = append(w.registered, pid)
-		return runproc.Register(w.registerDir, "the-slug", runproc.ChildRecord(pid, runproc.RoleSession, nil))
-	})
-}
-
-func (w *prSessionWorld) isLive(guid string) (bool, error) {
-	return reedengine.SessionLiveness(w.session.Reed.Status)(guid)
-}
-
-// seedLive starts a session as an earlier call of the row deps builds would have, and returns its strand's guid.
-func (w *prSessionWorld) seedLive(deps Deps) string {
-	w.t.Helper()
-	// The prompt needs a pull request URL, whichever one the row under test records.
-	spec, err := NewPRReview("PR-Review", deps).sessionSpec(pullrequest.Record{URL: "https://github.com/acme/widgets/pull/7"})
-	if err != nil {
-		w.t.Fatalf("sessionSpec() error = %v", err)
-	}
-	started, err := w.session.Runner.StartSession(spec)
-	if err != nil {
-		w.t.Fatalf("seed the session: StartSession() error = %v", err)
-	}
-	return started.StrandGUID
-}
-
-// onFirstStop runs fn at the first stop, before the strand is stopped.
-func (w *prSessionWorld) onFirstStop(fn func()) { w.counted.beforeStop = fn }
-
-// afterFirstStop runs fn once the first stop has stopped the strand.
-func (w *prSessionWorld) afterFirstStop(fn func()) { w.counted.afterStop = fn }
-
-// blockStarts makes every later start fail, by leaving the runner unable to make a run's directory.
-func (w *prSessionWorld) blockStarts() {
-	w.t.Helper()
-	if err := os.MkdirAll(w.session.RunDir, 0o755); err != nil {
-		w.t.Fatalf("create the run directory: %v", err)
-	}
-	permkit.Chmod(w.t, w.session.RunDir, 0o500)
-}
-
-// blockRegistration makes every later registration fail, by putting a file where its directory goes.
-func (w *prSessionWorld) blockRegistration() {
-	w.t.Helper()
-	if err := os.WriteFile(w.registerDir, nil, 0o644); err != nil {
-		w.t.Fatalf("block the registration directory: %v", err)
-	}
-}
-
-// blockStatus makes every later read of reed's strand table fail, by making reed's state directory unreadable.
-func (w *prSessionWorld) blockStatus() {
-	w.t.Helper()
-	permkit.Chmod(w.t, w.session.StateDir, 0)
-}
-
-func (w *prSessionWorld) starts() int { return w.counted.starts }
-
-func (w *prSessionWorld) stops() int { return len(w.counted.stopped) }
-
-// recordComparison returns the options a record comparison against want runs under.
-// A wanted record that names no session leaves the identity of the session the row started out of the comparison.
-func recordComparison(want pullrequest.Record) []cmp.Option {
-	if want.StrandGUID != "" {
-		return nil
-	}
-	return []cmp.Option{cmpopts.IgnoreFields(pullrequest.Record{}, "StrandGUID", "StrandName", "SessionID", "Engine")}
 }
 
 func TestPRReview_Session(t *testing.T) {
@@ -197,22 +135,29 @@ func TestPRReview_Session(t *testing.T) {
 		return rec
 	}
 	withStrand := func(guid, sessionID string) func(*pullrequest.Record) {
-		return func(r *pullrequest.Record) { r.StrandGUID, r.StrandName, r.SessionID = guid, "pr-strand", sessionID }
+		return func(r *pullrequest.Record) { r.StrandGUID, r.SessionID = guid, sessionID }
 	}
-	const cancelAtFirstSleep = 1
-	approved := scriptedCall{status: pullrequest.Status{State: pullrequest.StateOpen, HeadSHA: "head-new", Approved: true}}
-	withContinue := func(r *pullrequest.Record) { r.Continue = true }
-	withReviewEnded := func(r *pullrequest.Record) { r.ReviewEnded = true }
-	seedLiveStrand := func(_ *testing.T, fx *prReviewFixture, s *prSessionWorld) { s.seedLive(fx.deps) }
-	const startFailure = "permission denied"
+	cancelAtFirstSleep := 1
+	parentReviewOn := func(_ *testing.T, fx *prReviewFixture, _ *fakePRSessions) {
+		fx.deps.PullRequest.ParentReviewWanted = func() (bool, error) { return true, nil }
+	}
+	// assertAsks fails the test unless the row handed the parent-ask seam wantAsks lines and the record says wantAsked.
+	assertAsks := func(t *testing.T, fx *prReviewFixture, wantAsks int, wantAsked bool) {
+		t.Helper()
+		if len(fx.asks) != wantAsks {
+			t.Errorf("parent asks = %q; want %d", fx.asks, wantAsks)
+		}
+		got, found, err := pullrequest.ReadRecord(fx.deps.PullRequest.RecordPath, fx.deps.PullRequest.RecordLockPath)
+		if err != nil || !found || got.ParentReviewAsked != wantAsked {
+			t.Errorf("ReadRecord() = %+v, %v, %v; want the record with ParentReviewAsked %v", got, found, err, wantAsked)
+		}
+	}
 
 	tests := []struct {
-		name string
-		// recording is the recorded tmux the row's reed replays; empty replays recordingStartStop.
-		recording string
-		record    *pullrequest.Record
-		scripts   map[string][]scriptedCall
-		setup     func(t *testing.T, fx *prReviewFixture, s *prSessionWorld)
+		name    string
+		record  *pullrequest.Record
+		scripts map[string][]scriptedCall
+		setup   func(t *testing.T, fx *prReviewFixture, s *fakePRSessions)
 		// cancelAtSleep cancels the context at that 1-based sleep, ending a wait that would otherwise go on.
 		cancelAtSleep int
 		// coveredAt answers whether a pause covers the run at the n-th read of the pause record.
@@ -225,229 +170,281 @@ func TestPRReview_Session(t *testing.T) {
 		wantCanceled bool
 		wantStarts   int
 		wantStops    int
-		check        func(t *testing.T, fx *prReviewFixture, s *prSessionWorld)
+		check        func(t *testing.T, fx *prReviewFixture, s *fakePRSessions)
 	}{
 		{
-			name: "AnOpenedPullRequestStartsOneInteractiveSessionAndAMergedVerdictStopsIt", scripts: map[string][]scriptedCall{"Create": {created}, "Status": {mergedAtHead}},
-			setup: func(_ *testing.T, fx *prReviewFixture, _ *prSessionWorld) {
-				fx.deps.LanguageSkills = []string{"scribe:prose", "scribe:golang-testing"}
-			},
+			name: "FirstEntryStartsOneSessionWithPathsOnlyRegistersItAndRecordsIt", scripts: map[string][]scriptedCall{"Create": {created}, "Status": {mergedAtHead}},
 			wantOutcome: shedengine.Done, wantStarts: 1, wantStops: 1,
-			check: func(t *testing.T, fx *prReviewFixture, s *prSessionWorld) {
-				spec := s.session.Engine.LastSpec
+			check: func(t *testing.T, fx *prReviewFixture, s *fakePRSessions) {
+				spec := s.starts[0]
 				if !spec.Interactive || !spec.Unawaited || !spec.DenyPublish {
 					t.Errorf("spec Interactive = %v, Unawaited = %v, DenyPublish = %v; want all true", spec.Interactive, spec.Unawaited, spec.DenyPublish)
 				}
-				if spec.Role != "pr-reviewer" || spec.ConfigRole != agentconfig.RolePRReviewer {
-					t.Errorf("spec Role = %q, ConfigRole = %q; want %q and %q", spec.Role, spec.ConfigRole, "pr-reviewer", agentconfig.RolePRReviewer)
+				if spec.Role != prReviewerRole || spec.Segment != segmentcolor.Landing || spec.Engine != "claude" || spec.Model != "fixture-model" || spec.ResumeSessionID != "" {
+					t.Errorf("spec role %q, segment %q, engine %q, model %q, resume %q; want the pr-reviewer role, the landing segment, the pr_reviewer model and no resume", spec.Role, spec.Segment, spec.Engine, spec.Model, spec.ResumeSessionID)
 				}
-				// The runner adds the role's own skills beside the language skills the row passes.
-				for _, skill := range fx.deps.LanguageSkills {
-					if !slices.Contains(spec.Skills, skill) {
-						t.Errorf("spec skills %v lack the language skill %q", spec.Skills, skill)
+				if spec.PromptEngine != "claude" {
+					t.Errorf("spec PromptEngine = %q; want %q, the engine the pr_reviewer choice resolves to", spec.PromptEngine, "claude")
+				}
+				stencilkit.RequireEditDirectiveOf(t, fx.deps.StencilsDir, spec.Prompt, "claude", "codex")
+				if spec.ConfigRole != agentconfig.RolePRReviewer {
+					t.Errorf("spec ConfigRole = %q; want %q", spec.ConfigRole, agentconfig.RolePRReviewer)
+				}
+				if len(spec.Skills) != 0 {
+					t.Errorf("spec skills = %q; want none beyond the role's", spec.Skills)
+				}
+				for _, want := range []string{"the-slug", recordedURL, "/wt/task", "`task`", "`main`", fx.deps.DescriptionPath, "parent-session", noDriftVerdict} {
+					if !strings.Contains(spec.Prompt, want) {
+						t.Errorf("prompt lacks %q:\n%s", want, spec.Prompt)
 					}
 				}
-				wantChoice := shuttleengine.ModelChoice{Engine: "claude", Model: "fixture-model"}
-				if diff := cmp.Diff(wantChoice, spec.ModelChoice); diff != "" {
-					t.Errorf("spec model choice mismatch (-want +got):\n%s", diff)
+				if strings.Contains(spec.Prompt, "Change body") {
+					t.Errorf("prompt holds the change description's content; want its path only:\n%s", spec.Prompt)
 				}
-				if !strings.Contains(spec.Prompt, recordedURL) {
-					t.Errorf("prompt lacks the pull request URL %q:\n%s", recordedURL, spec.Prompt)
+				if diff := cmp.Diff([]string{"guid-1"}, s.registered); diff != "" {
+					t.Errorf("registered strands mismatch (-want +got):\n%s", diff)
 				}
-				if diff := cmp.Diff([]int{startedPanePID}, s.registered); diff != "" {
-					t.Errorf("registered pane pids mismatch (-want +got):\n%s", diff)
-				}
-				if live, err := s.isLive(firstGUID); live || err != nil {
-					t.Errorf("the session is live = %v (%v) after the call ended with a verdict; want it stopped", live, err)
-				}
-			},
-		},
-		{
-			name: "TheStartedSessionsIdentityIsRecorded", scripts: map[string][]scriptedCall{"Create": {created}, "Status": {open}},
-			cancelAtSleep: cancelAtFirstSleep, wantCanceled: true, wantStarts: 1,
-			check: func(t *testing.T, fx *prReviewFixture, _ *prSessionWorld) {
 				got, found, err := pullrequest.ReadRecord(fx.deps.PullRequest.RecordPath, fx.deps.PullRequest.RecordLockPath)
 				if err != nil || !found {
 					t.Fatalf("ReadRecord() = %+v, %v, %v; want the record", got, found, err)
 				}
-				want := pullrequest.Record{
-					Number: 7, URL: recordedURL, Base: "main", Head: "task", GatedHead: "head-new",
-					StrandGUID: firstGUID, StrandName: tmuxrec.Shortname + ":pr-reviewer", SessionID: tmuxrec.SessionID, Engine: "claude",
-				}
-				if diff := cmp.Diff(want, got); diff != "" {
-					t.Errorf("record mismatch (-want +got):\n%s", diff)
+				if got.StrandGUID != "guid-1" || got.StrandName != "pr-strand" || got.SessionID != "sess-1" || got.Engine != "claude" {
+					t.Errorf("record session = %q, %q, %q, %q; want the started session's identity", got.StrandGUID, got.StrandName, got.SessionID, got.Engine)
 				}
 			},
 		},
 		{
-			name: "ARecordedLiveStrandIsReusedWithNoStart", record: recordedAtHead(withStrand(firstGUID, "sess-old")), scripts: map[string][]scriptedCall{"Status": {open}},
-			setup:         seedLiveStrand,
+			name: "ReviewerOnCodexRendersItsPromptWithTheCodexEditDirective", scripts: map[string][]scriptedCall{"Create": {created}, "Status": {mergedAtHead}},
+			setup: func(_ *testing.T, fx *prReviewFixture, _ *fakePRSessions) {
+				fx.deps.Config.PRReviewer = "codex:fixture-model"
+			},
+			wantOutcome: shedengine.Done, wantStarts: 1, wantStops: 1,
+			check: func(t *testing.T, fx *prReviewFixture, s *fakePRSessions) {
+				spec := s.starts[0]
+				if spec.PromptEngine != "codex" {
+					t.Errorf("spec PromptEngine = %q; want %q, the engine the pr_reviewer choice resolves to", spec.PromptEngine, "codex")
+				}
+				stencilkit.RequireEditDirectiveOf(t, fx.deps.StencilsDir, spec.Prompt, "codex", "claude")
+			},
+		},
+		{
+			name: "ParentReviewOnAsksTheParentOnceNamingTheSlugPullRequestBranchesAndSession", scripts: map[string][]scriptedCall{"Create": {created}, "Status": {mergedAtHead}},
+			setup:       parentReviewOn,
+			wantOutcome: shedengine.Done, wantStarts: 1, wantStops: 1,
+			check: func(t *testing.T, fx *prReviewFixture, _ *fakePRSessions) {
+				assertAsks(t, fx, 1, true)
+				if len(fx.asks) != 1 {
+					return
+				}
+				for _, want := range []string{parentReviewRequestPrefix + " the-slug:", recordedURL, "branch task into main", "lym creel post pr-strand"} {
+					if !strings.Contains(fx.asks[0], want) {
+						t.Errorf("parent ask %q lacks %q", fx.asks[0], want)
+					}
+				}
+			},
+		},
+		{
+			name: "ParentReviewOnWithTheRecordAlreadyAskedAsksNone", record: recordedAtHead(func(r *pullrequest.Record) { r.ParentReviewAsked = true }), scripts: map[string][]scriptedCall{"Status": {open}},
+			setup:         parentReviewOn,
+			cancelAtSleep: cancelAtFirstSleep, wantCanceled: true, wantStarts: 1,
+			check: func(t *testing.T, fx *prReviewFixture, _ *fakePRSessions) { assertAsks(t, fx, 0, true) },
+		},
+		{
+			name: "AfterTheSendBackMarkIsClearedTheRowStartsANewSessionAndAsksTheParentAgain",
+			record: recordedAtHead(func(r *pullrequest.Record) {
+				r.SendBack, r.ParentReviewAsked = "/run/pr-findings-1.md", true
+				r.StrandGUID, r.StrandName, r.SessionID, r.Engine = "g-old", "old-strand", "sess-old", "claude"
+			}),
+			scripts: map[string][]scriptedCall{"Status": {open}},
+			setup: func(t *testing.T, fx *prReviewFixture, s *fakePRSessions) {
+				parentReviewOn(t, fx, s)
+				fx.status.History = []shedengine.HistoryEntry{{Producer: "PR-Review", Outcome: shedengine.OutcomeReroute, Output: "/run/pr-findings-1.md"}}
+			},
+			cancelAtSleep: cancelAtFirstSleep, wantCanceled: true, wantStarts: 1,
+			check: func(t *testing.T, fx *prReviewFixture, s *fakePRSessions) {
+				if s.starts[0].ResumeSessionID != "" {
+					t.Errorf("start ResumeSessionID = %q; want a new session, not the cleared one", s.starts[0].ResumeSessionID)
+				}
+				assertAsks(t, fx, 1, true)
+				if got, _, err := pullrequest.ReadRecord(fx.deps.PullRequest.RecordPath, fx.deps.PullRequest.RecordLockPath); err != nil || got.SendBack != "" {
+					t.Errorf("ReadRecord() = %+v, %v; want the mark cleared", got, err)
+				}
+			},
+		},
+		{
+			name: "ParentReviewOffAsksNone", scripts: map[string][]scriptedCall{"Create": {created}, "Status": {mergedAtHead}},
+			wantOutcome: shedengine.Done, wantStarts: 1, wantStops: 1,
+			check: func(t *testing.T, fx *prReviewFixture, _ *fakePRSessions) { assertAsks(t, fx, 0, false) },
+		},
+		{
+			name: "AnUnreadableParentReviewSettingAsksNone", scripts: map[string][]scriptedCall{"Create": {created}, "Status": {mergedAtHead}},
+			setup: func(_ *testing.T, fx *prReviewFixture, _ *fakePRSessions) {
+				fx.deps.PullRequest.ParentReviewWanted = func() (bool, error) { return false, errors.New("loom.yaml refused") }
+			},
+			wantOutcome: shedengine.Done, wantStarts: 1, wantStops: 1,
+			check: func(t *testing.T, fx *prReviewFixture, _ *fakePRSessions) { assertAsks(t, fx, 0, false) },
+		},
+		{
+			name: "AFailedParentAskLeavesTheRecordUnaskedForTheNextEntry", scripts: map[string][]scriptedCall{"Create": {created}, "Status": {mergedAtHead}},
+			setup: func(t *testing.T, fx *prReviewFixture, s *fakePRSessions) {
+				parentReviewOn(t, fx, s)
+				fx.askErr = errors.New("creel down")
+			},
+			wantOutcome: shedengine.Done, wantStarts: 1, wantStops: 1,
+			check: func(t *testing.T, fx *prReviewFixture, _ *fakePRSessions) { assertAsks(t, fx, 1, false) },
+		},
+		{
+			name: "AParentAskNoOrchTakesLeavesTheRecordUnasked", scripts: map[string][]scriptedCall{"Create": {created}, "Status": {mergedAtHead}},
+			setup: func(t *testing.T, fx *prReviewFixture, s *fakePRSessions) {
+				parentReviewOn(t, fx, s)
+				fx.askUnrecorded = true
+			},
+			wantOutcome: shedengine.Done, wantStarts: 1, wantStops: 1,
+			check: func(t *testing.T, fx *prReviewFixture, _ *fakePRSessions) { assertAsks(t, fx, 1, false) },
+		},
+		{
+			name: "PromptCarriesTheRegressionCheck", scripts: map[string][]scriptedCall{"Create": {created}, "Status": {mergedAtHead}},
+			setup: func(_ *testing.T, fx *prReviewFixture, _ *fakePRSessions) {
+				fx.deps.DriftVerdict = func() (string, error) { return testVerdict, nil }
+			},
+			wantOutcome: shedengine.Done, wantStarts: 1, wantStops: 1,
+			check: func(t *testing.T, _ *prReviewFixture, s *fakePRSessions) {
+				prompt := s.starts[0].Prompt
+				if !strings.Contains(prompt, testVerdict) || strings.Contains(prompt, noDriftVerdict) {
+					t.Errorf("prompt lacks the regression check %q, or says none ran:\n%s", testVerdict, prompt)
+				}
+			},
+		},
+		{
+			name: "AFailingRegressionCheckReadWhileBuildingTheSpecIsAnErrorWithNoSessionStart", record: recordedAtHead(), scripts: map[string][]scriptedCall{"Status": {open}},
+			setup: func(_ *testing.T, fx *prReviewFixture, _ *fakePRSessions) {
+				// The first read is the pull request body's, which passes, and the second is the session spec's.
+				reads := 0
+				fx.deps.DriftVerdict = func() (string, error) {
+					reads++
+					if reads > 1 {
+						return "", errors.New("scope record unreadable")
+					}
+					return "", nil
+				}
+			},
+			wantErr: true,
+		},
+		{
+			name: "RunMaterialListsTheDecisionRecordThatExistsAndLeavesOutAMissingPlanDirectory", scripts: map[string][]scriptedCall{"Create": {created}, "Status": {mergedAtHead}},
+			setup: func(t *testing.T, fx *prReviewFixture, _ *fakePRSessions) {
+				dir := t.TempDir()
+				decision := filepath.Join(dir, "decision-record.md")
+				if err := os.WriteFile(decision, []byte("x"), 0o644); err != nil {
+					t.Fatalf("write %s: %v", decision, err)
+				}
+				fx.deps.DecisionRecordPath = decision
+				fx.deps.PlanDir = filepath.Join(dir, "plan")
+				fx.deps.LanguageSkills = []string{"scribe:prose", "scribe:golang-testing"}
+			},
+			wantOutcome: shedengine.Done, wantStarts: 1, wantStops: 1,
+			check: func(t *testing.T, fx *prReviewFixture, s *fakePRSessions) {
+				prompt := s.starts[0].Prompt
+				for _, want := range []string{"- " + fx.deps.DecisionRecordPath} {
+					if !strings.Contains(prompt, want) {
+						t.Errorf("prompt lacks the run material line %q:\n%s", want, prompt)
+					}
+				}
+				if strings.Contains(prompt, fx.deps.PlanDir) {
+					t.Errorf("prompt lists the missing plan directory %q:\n%s", fx.deps.PlanDir, prompt)
+				}
+				if want := []string{"scribe:prose", "scribe:golang-testing"}; !slices.Equal(s.starts[0].Skills, want) {
+					t.Errorf("spec skills = %q; want the language skills alone, %q", s.starts[0].Skills, want)
+				}
+			},
+		},
+		{
+			name: "ReentryWithALiveRecordedStrandStartsNone", record: recordedAtHead(withStrand("g-live", "sess-old")), scripts: map[string][]scriptedCall{"Status": {open}},
+			setup:         func(_ *testing.T, _ *prReviewFixture, s *fakePRSessions) { s.live["g-live"] = true },
 			cancelAtSleep: cancelAtFirstSleep, wantCanceled: true,
 		},
 		{
-			name: "ARecordedDeadStrandIsResumedBySessionID", record: recordedAtHead(withStrand("g-dead", "sess-old")), scripts: map[string][]scriptedCall{"Status": {open}},
-			// An earlier session came and went, so reed has a session whose strand table lacks the recorded strand.
-			setup: func(t *testing.T, fx *prReviewFixture, s *prSessionWorld) {
-				if err := s.session.Runner.StopStrand(s.seedLive(fx.deps)); err != nil {
-					t.Fatalf("stop the seeded session: %v", err)
-				}
-			},
-			cancelAtSleep: cancelAtFirstSleep, wantCanceled: true, wantStarts: 1,
-			check: func(t *testing.T, _ *prReviewFixture, s *prSessionWorld) {
-				if got := s.session.Engine.LastSpec.ResumeSessionID; got != "sess-old" {
-					t.Errorf("start ResumeSessionID = %q; want the recorded session id", got)
-				}
-			},
-		},
-		{
-			name: "AStuckVerdictStopsTheSession", record: recordedAtHead(withStrand(firstGUID, "sess-old")),
-			scripts: map[string][]scriptedCall{"Status": {{status: pullrequest.Status{State: pullrequest.StateOpen, HeadSHA: "x9"}}}},
-			setup: func(t *testing.T, fx *prReviewFixture, s *prSessionWorld) {
-				seedLiveStrand(t, fx, s)
-				fx.deps.PullRequest.CommitsMissing = func(string, string) ([]string, error) { return []string{"abc1234 hand fix"}, nil }
-			},
-			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"abc1234 hand fix"}, wantStops: 1,
-		},
-		{
-			name: "AClosedPullRequestWithNoContinueFlagHaltsWithoutStartingASession", record: recordedAtHead(), scripts: map[string][]scriptedCall{"Status": {closed}},
-			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"closed on GitHub without being merged"},
-		},
-		{
-			name: "AMergedReEntryStartsNoSession", record: recordedAtHead(), scripts: map[string][]scriptedCall{"Status": {mergedAtHead}},
+			name: "ReentryWithAKeptReviewEndedRecordStartsNone", record: recordedAtHead(withStrand("g-old", "sess-old"), func(r *pullrequest.Record) { r.ReviewEnded = true }),
+			scripts:     map[string][]scriptedCall{"Status": {closed}},
 			wantOutcome: shedengine.Done,
 		},
 		{
-			name: "AnEndedReEntryStartsNoSession", record: recordedAtHead(withReviewEnded), scripts: map[string][]scriptedCall{"Status": {closed}},
-			wantOutcome: shedengine.Done,
-		},
-		{
-			name: "ATransientEntryReadFailureLeavesTheSessionRunning", record: recordedAtHead(withStrand(firstGUID, "sess-old")),
-			scripts: map[string][]scriptedCall{"Status": {{err: context.DeadlineExceeded}}},
-			setup:   seedLiveStrand, wantErr: true,
-		},
-		{
-			name: "AFailedWriteOfTheStartedSessionsRecordStopsIt", scripts: map[string][]scriptedCall{"Create": {created}},
-			setup: func(_ *testing.T, fx *prReviewFixture, _ *prSessionWorld) {
-				// The first commit is the pull request's, and the second the session's.
-				// A transient failure leaves the end of the row stopping nothing, so the stop seen is the failed write's.
-				commits := 0
-				fx.deps.PullRequest.CommitRecord = func() error {
-					commits++
-					if commits == 2 {
-						return context.DeadlineExceeded
-					}
-					return nil
-				}
-			},
-			wantErr: true, wantStarts: 1, wantStops: 1,
-		},
-		{
-			name: "AFailedRegistrationKeepsWaiting", record: recordedAtHead(), scripts: map[string][]scriptedCall{"Status": {open}},
-			setup:         func(_ *testing.T, _ *prReviewFixture, s *prSessionWorld) { s.blockRegistration() },
+			name: "ReentryWithARecordedDeadStrandResumesItBySessionID", record: recordedAtHead(withStrand("g-dead", "sess-old")), scripts: map[string][]scriptedCall{"Status": {open}},
 			cancelAtSleep: cancelAtFirstSleep, wantCanceled: true, wantStarts: 1,
-			check: func(t *testing.T, _ *prReviewFixture, s *prSessionWorld) {
-				if len(s.registered) != 1 {
-					t.Errorf("registration attempts = %v; want the started session's one", s.registered)
+			check: func(t *testing.T, _ *prReviewFixture, s *fakePRSessions) {
+				if s.starts[0].ResumeSessionID != "sess-old" {
+					t.Errorf("start ResumeSessionID = %q; want the recorded session id", s.starts[0].ResumeSessionID)
 				}
 			},
 		},
 		{
-			name: "AContinuedReviewStopsTheSessionBeforeItRecordsTheEnding", record: recordedAtHead(withStrand(firstGUID, "sess-old"), withContinue),
-			scripts: map[string][]scriptedCall{"Status": {open}},
-			setup: func(t *testing.T, fx *prReviewFixture, s *prSessionWorld) {
-				seedLiveStrand(t, fx, s)
-				pr := fx.deps.PullRequest
-				s.onFirstStop(func() {
-					rec, _, err := pullrequest.ReadRecord(pr.RecordPath, pr.RecordLockPath)
-					if err != nil || rec.ReviewEnded {
-						t.Errorf("record at the stop = %+v, %v; want the ending not yet recorded", rec, err)
-					}
-				})
-			},
-			wantOutcome: shedengine.Done, wantStops: 1,
-		},
-		{
-			name: "AnApprovalOnADirtyTreeLeavesTheSessionAtWork", record: recordedAtHead(withStrand(firstGUID, "sess-old")),
-			scripts: map[string][]scriptedCall{"Status": {approved}},
-			setup: func(t *testing.T, fx *prReviewFixture, s *prSessionWorld) {
-				seedLiveStrand(t, fx, s)
-				fx.dirty = []string{"wip.go"}
-			},
-			cancelAtSleep: 2, wantCanceled: true,
-		},
-		{
-			name: "ATreeDirtiedAtTheStopIsJudgedOnTheSecondReadAndTheSessionResumed", record: recordedAtHead(withStrand(firstGUID, "sess-old")),
-			scripts: map[string][]scriptedCall{"Status": {approved}},
-			setup: func(t *testing.T, fx *prReviewFixture, s *prSessionWorld) {
-				seedLiveStrand(t, fx, s)
-				s.onFirstStop(func() { fx.dirty = []string{"wip.go"} })
-			},
-			cancelAtSleep: cancelAtFirstSleep, wantCanceled: true, wantStarts: 1, wantStops: 1,
-			check: func(t *testing.T, _ *prReviewFixture, s *prSessionWorld) {
-				if live, err := s.isLive(secondGUID); !live || err != nil {
-					t.Errorf("the resumed session is live = %v (%v); want it running", live, err)
-				}
-			},
-		},
-		{
-			name: "ACancelledContextLeavesTheSessionRunning", record: recordedAtHead(), scripts: map[string][]scriptedCall{"Status": {open}},
-			cancelAtSleep: cancelAtFirstSleep, wantCanceled: true, wantStarts: 1,
-			check: func(t *testing.T, _ *prReviewFixture, s *prSessionWorld) {
-				if live, err := s.isLive(firstGUID); !live || err != nil {
-					t.Errorf("the session is live = %v (%v) after the context was cancelled; want it left running", live, err)
-				}
-			},
-		},
-		{
-			// The entry reads the strand live, and a later read finds its pane's process ended.
-			name: "ASessionNoLongerLiveWhileTheReviewIsOpenHaltsNamingLoomResume", recording: recordingEnds,
-			record: recordedAtHead(withStrand(firstGUID, "sess-old")), scripts: map[string][]scriptedCall{"Status": {open}},
-			setup:       seedLiveStrand,
-			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"ended while the review was open", "lym loom resume"},
-		},
-		{
-			name: "ANonTransientStartFailureHaltsNamingItAndLoomResume", scripts: map[string][]scriptedCall{"Create": {created}},
-			setup:       func(_ *testing.T, _ *prReviewFixture, s *prSessionWorld) { s.blockStarts() },
-			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"the PR-Review session could not be started", startFailure, "lym loom resume"}, wantStarts: 1,
-		},
-		{
-			name: "ATransientStartFailureIsAnError", recording: recordingNotStarted, scripts: map[string][]scriptedCall{"Create": {created}},
-			setup: func(_ *testing.T, _ *prReviewFixture, s *prSessionWorld) {
-				s.session.Engine.StartupFn = func(string) shuttleengine.StartupState { return shuttleengine.StartupPending }
+			name: "AStartFailingWithNotStartedIsAnError", scripts: map[string][]scriptedCall{"Create": {created}},
+			setup: func(_ *testing.T, _ *prReviewFixture, s *fakePRSessions) {
+				s.startErr = fmt.Errorf("start: %w", shuttleengine.ErrNotStarted)
 			},
 			wantErr: true, wantStarts: 1,
 		},
 		{
-			name: "APauseStopsTheLiveSessionAndTheEndOfThePauseResumesIt", record: recordedAtHead(), scripts: map[string][]scriptedCall{"Status": {open}},
-			// Read 1 is the entry's and read 2 the first wake's.
-			coveredAt:     func(n int) bool { return n == 2 },
-			cancelAtSleep: 2, wantCanceled: true, wantStarts: 2, wantStops: 1,
-			check: func(t *testing.T, _ *prReviewFixture, s *prSessionWorld) {
-				if got := s.session.Engine.LastSpec.ResumeSessionID; got != tmuxrec.SessionID {
-					t.Errorf("resume ResumeSessionID = %q; want the session the first start recorded", got)
+			name: "AnyOtherStartFailureHaltsNamingTheErrorAndLoomResume", scripts: map[string][]scriptedCall{"Create": {created}},
+			setup:       func(_ *testing.T, _ *prReviewFixture, s *fakePRSessions) { s.startErr = errors.New("pane died") },
+			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"pane died", "lym loom resume"}, wantStarts: 1,
+		},
+		{
+			name: "ASessionLiveErrorIsAnError", record: recordedAtHead(withStrand("g", "sess-old")), scripts: map[string][]scriptedCall{"Status": {open}},
+			setup:   func(_ *testing.T, _ *prReviewFixture, s *fakePRSessions) { s.liveErr = errors.New("reed down") },
+			wantErr: true,
+		},
+		{
+			name: "AFailingRegistrationIsLoggedAndTheRecordStillWritten", scripts: map[string][]scriptedCall{"Create": {created}, "Status": {mergedAtHead}},
+			setup:       func(_ *testing.T, _ *prReviewFixture, s *fakePRSessions) { s.registerErr = errors.New("no registry") },
+			wantOutcome: shedengine.Done, wantStarts: 1, wantStops: 1,
+			check: func(t *testing.T, fx *prReviewFixture, _ *fakePRSessions) {
+				got, _, err := pullrequest.ReadRecord(fx.deps.PullRequest.RecordPath, fx.deps.PullRequest.RecordLockPath)
+				if err != nil || got.StrandGUID != "guid-1" {
+					t.Errorf("ReadRecord() = %+v, %v; want the record naming the started strand", got, err)
 				}
 			},
 		},
 		{
-			name: "AFailedResumeAfterAPauseHaltsNamingItAndLoomResume", record: recordedAtHead(), scripts: map[string][]scriptedCall{"Status": {open}},
-			coveredAt: func(n int) bool { return n == 2 },
-			setup: func(_ *testing.T, _ *prReviewFixture, s *prSessionWorld) {
-				s.afterFirstStop(s.blockStarts)
+			name: "AFailedRecordWriteAfterAStartStopsTheNewSession", record: recordedAtHead(), scripts: map[string][]scriptedCall{"Status": {open}},
+			setup: func(_ *testing.T, fx *prReviewFixture, _ *fakePRSessions) {
+				pr := &fx.deps.PullRequest
+				pr.RegisterSession = func(string) error { return pullrequest.RemoveRecord(pr.RecordPath, pr.RecordLockPath) }
 			},
-			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"the PR-Review session could not be started", startFailure, "lym loom resume"},
-			wantStarts: 2, wantStops: 1,
+			wantErr: true, wantStarts: 1, wantStops: 1,
+		},
+		{
+			name: "ACancelledContextLeavesTheSessionRunning", record: recordedAtHead(), scripts: map[string][]scriptedCall{"Status": {open}},
+			cancelAtSleep: cancelAtFirstSleep, wantCanceled: true, wantStarts: 1,
+		},
+		{
+			name: "AStuckHaltStopsTheSession", record: recordedAtHead(), scripts: map[string][]scriptedCall{"Status": {closed}},
+			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"closed on GitHub without being merged"}, wantStarts: 1, wantStops: 1,
+		},
+		{
+			name: "AnErrorStopsTheSession", record: recordedAtHead(), scripts: map[string][]scriptedCall{"Status": {open}},
+			setup: func(_ *testing.T, fx *prReviewFixture, _ *fakePRSessions) {
+				fx.deps.PullRequest.DirtyPaths = func() ([]string, error) { return nil, errors.New("git status failed") }
+			},
+			wantErr: true, wantStarts: 1, wantStops: 1,
+		},
+		{
+			name: "ACoveredWakeStopsTheSessionAndTheNextUncoveredWakeResumesIt", record: recordedAtHead(), scripts: map[string][]scriptedCall{"Status": {open}},
+			// Read 1 is the entry's and read 2 the first wake's.
+			coveredAt:     func(n int) bool { return n == 2 },
+			cancelAtSleep: 2, wantCanceled: true, wantStarts: 2, wantStops: 1,
+			check: func(t *testing.T, _ *prReviewFixture, s *fakePRSessions) {
+				if s.starts[1].ResumeSessionID != "sess-1" {
+					t.Errorf("resume ResumeSessionID = %q; want the session the first start recorded", s.starts[1].ResumeSessionID)
+				}
+			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			fx := newPRReviewFixture(t, "review", nil, githubOrigin, tt.record, tt.scripts, nil)
-			recording := tt.recording
-			if recording == "" {
-				recording = recordingStartStop
-			}
-			sessions := newPRSessionWorld(t, recording)
-			sessions.fill(&fx.deps)
+			fx := newPRReviewFixture(t, "on", nil, "", githubOrigin, tt.record, tt.scripts, nil)
+			sessions := sessionsOf(fx.deps)
 			if tt.setup != nil {
 				tt.setup(t, fx, sessions)
 			}
@@ -494,45 +491,30 @@ func TestPRReview_Session(t *testing.T) {
 					}
 				}
 			}
-			if sessions.starts() != tt.wantStarts || sessions.stops() != tt.wantStops {
-				t.Errorf("session starts = %d, stops = %d; want %d and %d", sessions.starts(), sessions.stops(), tt.wantStarts, tt.wantStops)
-			}
+			assertSessionCounts(t, fx.deps, tt.wantStarts, tt.wantStops)
 			if tt.check != nil {
 				tt.check(t, fx, sessions)
 			}
 		})
 	}
+}
 
-	t.Run("NoPullRequestStopsTheRecordedSessionBeforeDroppingTheRecord", func(t *testing.T) {
-		t.Parallel()
-		record := &pullrequest.Record{Number: 7, StrandGUID: firstGUID, SessionID: "sess-old"}
-		merged := scriptedCall{status: pullrequest.Status{State: pullrequest.StateMerged}}
-		fx := newPRReviewFixture(t, "off", nil, githubOrigin, record, map[string][]scriptedCall{"Status": {merged}}, nil)
-		sessions := newPRSessionWorld(t, recordingStartStop)
-		sessions.fill(&fx.deps)
-		sessions.seedLive(fx.deps)
-		recordPresentAtStop := false
-		sessions.onFirstStop(func() {
-			_, found, err := pullrequest.ReadRecord(fx.deps.PullRequest.RecordPath, fx.deps.PullRequest.RecordLockPath)
-			recordPresentAtStop = found && err == nil
-		})
+func TestPRReview_NoStopsTheRecordedSessionBeforeDroppingTheRecord(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
 
-		outcome, pointer, err := NewPRReview("PR-Review", fx.deps).Call(context.Background())
+	record := &pullrequest.Record{Number: 7, StrandGUID: "g-live", SessionID: "sess-old"}
+	merged := scriptedCall{status: pullrequest.Status{State: pullrequest.StateMerged}}
+	fx := newPRReviewFixture(t, "off", nil, "", Origin{URL: "https://github.com/acme/widgets.git", Upstream: true}, record, map[string][]scriptedCall{"Status": {merged}}, nil)
+	sessionsOf(fx.deps).live["g-live"] = true
 
-		if err != nil || outcome != shedengine.Done || pointer.Halt {
-			t.Fatalf("Call() = %q, halt %v, error %v; want Done without halt", outcome, pointer.Halt, err)
-		}
-		if diff := cmp.Diff([]string{firstGUID}, sessions.counted.stopped); diff != "" {
-			t.Errorf("stopped strands mismatch (-want +got):\n%s", diff)
-		}
-		if !recordPresentAtStop {
-			t.Errorf("the record was already gone when the session was stopped; want the stop first")
-		}
-		if _, found, rerr := pullrequest.ReadRecord(fx.deps.PullRequest.RecordPath, fx.deps.PullRequest.RecordLockPath); rerr != nil || found {
-			t.Errorf("ReadRecord() found = %v, error = %v; want the record dropped", found, rerr)
-		}
-		if sessions.starts() != 0 {
-			t.Errorf("session starts = %d; want none", sessions.starts())
-		}
-	})
+	outcome, pointer, err := NewPRReview("PR-Review", fx.deps).Call(context.Background())
+
+	if err != nil || outcome != shedengine.Done || pointer.Halt {
+		t.Fatalf("Call() = %q, halt %v, error %v; want Done without halt", outcome, pointer.Halt, err)
+	}
+	assertSessionCounts(t, fx.deps, 0, 1)
+	if diff := cmp.Diff([]string{"g-live"}, sessionsOf(fx.deps).stops); diff != "" {
+		t.Errorf("stopped strands mismatch (-want +got):\n%s", diff)
+	}
 }

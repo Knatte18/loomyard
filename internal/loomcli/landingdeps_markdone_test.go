@@ -6,9 +6,13 @@
 package loomcli
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -21,14 +25,15 @@ import (
 
 // markDoneFixtureDir builds a hub directory whose board directory carries the board config.
 // It returns landingDeps' MarkTaskDone closure for the pair named slug.
-// It also returns the hub-board handle and the slug.
-func markDoneFixtureDir(t *testing.T) (markDone func() error, board *boardengine.Board, slug string) {
+// It also returns the hub-board handle, the slug, and the hub board directory.
+func markDoneFixtureDir(t *testing.T) (markDone func() error, board *boardengine.Board, slug, boardDir string) {
 	t.Helper()
 	t.Setenv("BOARD_SKIP_GIT", "1")
 	t.Setenv("BOARD_SKIP_PUSH", "1")
 
 	slug = "markdone"
 	location := &lymcwd.Location{HubPath: boardkit.HubWithBoardConfig(t), WorktreeName: slug, AnchorRel: "."}
+	boardDir = fabricengine.BoardDir(location.HubPath)
 
 	deps := landingDeps(location, shedrun.RecipeTapestry, websterengine.Geometry{}, "task", "main",
 		true, modelspec.Registry{}, &shuttleengine.Runner{}, landingshed.Config{}, "", nil, nil, nil, planVerifySource(location), parentLockDeps(location, shedrun.SelfRunID, "", ""))
@@ -37,14 +42,14 @@ func markDoneFixtureDir(t *testing.T) (markDone func() error, board *boardengine
 	if err != nil {
 		t.Fatalf("OpenHub error = %v; want nil", err)
 	}
-	return deps.MarkTaskDone, board, slug
+	return deps.MarkTaskDone, board, slug, boardDir
 }
 
 // TestLandingDeps_MarkTaskDone_SetsStatusDone asserts MarkTaskDone leaves the task done through the pushed write.
 // Under the skip variables the write commits and pushes nothing, so the board file alone holds the status.
 func TestLandingDeps_MarkTaskDone_SetsStatusDone(t *testing.T) {
 	tiergate.Require(t, 0)
-	markDone, board, slug := markDoneFixtureDir(t)
+	markDone, board, slug, _ := markDoneFixtureDir(t)
 
 	if _, err := board.UpsertTask(map[string]any{"slug": slug, "title": "Mark done", "kind": "task", "labels": []string{"bug"}}); err != nil {
 		t.Fatalf("UpsertTask error = %v; want nil", err)
@@ -64,9 +69,41 @@ func TestLandingDeps_MarkTaskDone_SetsStatusDone(t *testing.T) {
 
 func TestLandingDeps_MarkTaskDone_UnknownSlugIsError(t *testing.T) {
 	tiergate.Require(t, 0)
-	markDone, _, _ := markDoneFixtureDir(t)
+	markDone, _, _, _ := markDoneFixtureDir(t)
 
 	if err := markDone(); err == nil {
 		t.Error("MarkTaskDone() error = nil for a slug with no board task; want an error")
+	}
+}
+
+// TestLandingDeps_MarkTaskDone_MigratesLegacyTasksJSON seeds the hub board with a legacy tasks.json.
+// The legacy entry holds the pair's slug, and the test checks MarkTaskDone leaves it done in board.json.
+func TestLandingDeps_MarkTaskDone_MigratesLegacyTasksJSON(t *testing.T) {
+	tiergate.Require(t, 0)
+	markDone, _, slug, boardDir := markDoneFixtureDir(t)
+
+	legacy := `[{"id":0,"slug":"` + slug + `","title":"Mark done","depends_on":[],"isolated":false,"deferred":false,"brief":"","body":""}]`
+	if err := os.WriteFile(filepath.Join(boardDir, "tasks.json"), []byte(legacy), 0o644); err != nil {
+		t.Fatalf("write tasks.json: %v", err)
+	}
+	if err := markDone(); err != nil {
+		t.Fatalf("MarkTaskDone() error = %v; want nil", err)
+	}
+
+	raw, err := os.ReadFile(filepath.Join(boardDir, "board.json"))
+	if err != nil {
+		t.Fatalf("read board.json: %v", err)
+	}
+	var file struct {
+		Entries []struct {
+			Slug   string  `json:"slug"`
+			Status *string `json:"status"`
+		} `json:"entries"`
+	}
+	if err := json.Unmarshal(raw, &file); err != nil {
+		t.Fatalf("unmarshal board.json: %v", err)
+	}
+	if len(file.Entries) != 1 || file.Entries[0].Slug != slug || file.Entries[0].Status == nil || *file.Entries[0].Status != "done" {
+		t.Errorf("board.json entries = %+v; want %q done", file.Entries, slug)
 	}
 }

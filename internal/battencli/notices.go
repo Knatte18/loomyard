@@ -14,8 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/orchcli"
 )
 
-// notifyRunParent sends line, stamped with the run's autonomy, as creel mail.
-// It goes to the orch above the run slug, signed as batten.
+// notifyRunParent sends line as creel mail to the nearest live orch above the run slug, signed as batten.
 // The mail is tagged with slug as its run, so the run's teardown drops it while it is unread.
 // It reports whether the mail was posted.
 // The walk starts at the run's pair when it is present here.
@@ -27,9 +26,9 @@ func notifyRunParent(prime *lymcwd.Location, slug, line string) (bool, error) {
 		return false, err
 	}
 	if isPair {
-		return orchcli.NotifyParentHalt(site, battenProgram, line)
+		return orchcli.NotifyParent(site, battenProgram, line)
 	}
-	return orchcli.NotifyRunFromHalt(site, slug, battenProgram, runNotifyTags(slug), line)
+	return orchcli.NotifyRunFrom(site, "", battenProgram, runNotifyTags(slug), line)
 }
 
 // runNotifyTags returns the creel tags of batten's notice about the run slug.
@@ -38,7 +37,7 @@ func runNotifyTags(slug string) creelengine.PostTags {
 	return creelengine.PostTags{Run: slug}
 }
 
-// runParentRecorded reports whether the orch a notice about the run slug goes to records an orch strand.
+// runParentRecorded reports whether the live orch above the run slug records an orch strand.
 // The answer decides whether the run is watched or silent.
 func runParentRecorded(prime *lymcwd.Location, slug string) (bool, error) {
 	site, isPair, err := runNoticeSite(prime, slug)
@@ -48,7 +47,7 @@ func runParentRecorded(prime *lymcwd.Location, slug string) (bool, error) {
 	if isPair {
 		return orchcli.ParentOrchRecorded(site)
 	}
-	destination, err := orchcli.NoticeDestination(site)
+	destination, err := hubgeom.NearestLiveOrch(site, orchcli.OrchLive)
 	if err != nil {
 		return false, err
 	}

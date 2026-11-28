@@ -6,8 +6,7 @@
 // In the one-argument clone form there is therefore no hub path, and no board worktree, until the warp URL is known.
 // Git offers no porcelain that reads a single file from a remote without first materializing a local repo directory.
 // This file does that: it makes a temporary clone, reads it, and removes it before CloneHub commits to a hub layout.
-// It also holds the weft-branch fetch helper that the --reset subpath check shares with the probe,
-// and the probe of a code origin's default branch root that a one-repository clone makes.
+// It also holds the weft-branch fetch helper that the --reset subpath check shares with the probe.
 
 package fabricengine
 
@@ -18,11 +17,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
-	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
 // warpProbeDirPrefix prefixes the throwaway clone directories of the pre-hub probe and of the --reset subpath check.
@@ -89,14 +86,14 @@ func probeWeftBinding(cwd, weftURL string) (warpProbeResult, error) {
 		return warpProbeResult{}, wrapProbeError(weftURL, "rev-parse HEAD", err)
 	}
 
-	shortnamePresent, err := probeTreeHasPath(weftURL, probeDir, fabriclayout.ShortnameFileName)
+	shortnamePresent, err := probeTreeHasPath(weftURL, probeDir, ShortnameFileName)
 	if err != nil {
 		return warpProbeResult{}, err
 	}
 	var recordedShortname string
 	var shortnameFound bool
 	if shortnamePresent {
-		stdout, err := gitexec.Run([]string{"show", "HEAD:" + fabriclayout.ShortnameFileName}, probeDir)
+		stdout, err := gitexec.Run([]string{"show", "HEAD:" + ShortnameFileName}, probeDir)
 		if err != nil {
 			return warpProbeResult{}, wrapProbeError(weftURL, "show", err)
 		}
@@ -114,13 +111,13 @@ func probeWeftBinding(cwd, weftURL string) (warpProbeResult, error) {
 		}
 	}
 
-	bindingPresent, err := probeTreeHasPath(weftURL, probeDir, fabriclayout.WarpBindingFileName)
+	bindingPresent, err := probeTreeHasPath(weftURL, probeDir, WarpBindingFileName)
 	if err != nil {
 		return warpProbeResult{}, err
 	}
 
 	if bindingPresent {
-		stdout, err := gitexec.Run([]string{"show", "HEAD:" + fabriclayout.WarpBindingFileName}, probeDir)
+		stdout, err := gitexec.Run([]string{"show", "HEAD:" + WarpBindingFileName}, probeDir)
 		if err != nil {
 			return warpProbeResult{}, wrapProbeError(weftURL, "show", err)
 		}
@@ -140,13 +137,13 @@ func probeWeftBinding(cwd, weftURL string) (warpProbeResult, error) {
 
 	// A weft carrying only the superseded anchor marker is unambiguously a weft.
 	// Recognising it here keeps the stale-marker error in clone.go reachable.
-	// That error names the marker rename as the remedy.
+	// That error names re-cloning as the migration remedy.
 	// Without this probe, a generic refusal would fire first and replace that specific, actionable message.
 	stalePresent, err := probeTreeHasPath(weftURL, probeDir, staleFabricAnchorName)
 	if err != nil {
 		return warpProbeResult{}, err
 	}
-	// The superseded marker also counts as a bound weft, so its refusal is reached, not a fresh-bind refusal.
+	// The superseded marker also counts as a bound weft, so its migration error is reached, not a fresh-bind refusal.
 	return warpProbeResult{WeftLooksLikeWeft: stalePresent, RecordedShortname: recordedShortname, ShortnameFound: shortnameFound, AnchorFound: stalePresent}, nil
 }
 
@@ -166,7 +163,7 @@ func probeTreeHasPath(weftURL, probeDir, path string) (bool, error) {
 // It fetches the branch into the probe clone.
 // A candidate without the branch answers false, and any other git failure is an error.
 func probeMainWeftHasPath(weftURL, probeDir, path string) (bool, error) {
-	present, err := fetchWeftBranchTip(weftURL, probeDir, fabriclayout.RecordsBranchName("main"), gitrepo.RefNamespace{})
+	present, err := fetchWeftBranchTip(weftURL, probeDir, RecordsBranchName("main"))
 	if err != nil || !present {
 		return false, err
 	}
@@ -177,65 +174,16 @@ func probeMainWeftHasPath(weftURL, probeDir, path string) (bool, error) {
 	return strings.TrimSpace(stdout) != "", nil
 }
 
-// probeCodeOriginRoot reports what the root of the default branch of the repository at url holds.
-// bindingFound is true when the root holds the warp binding record, which marks a records repository.
-// recordsFound is true when it holds the anchor marker or the tracked lym directory, which mark an earlier layout.
-// It shallow-clones url into a throwaway directory under cwd and removes it before returning.
-// An origin with no commits holds neither.
-func probeCodeOriginRoot(cwd, url string) (bindingFound, recordsFound bool, err error) {
-	probeDir, err := os.MkdirTemp(cwd, warpProbeDirPrefix)
-	if err != nil {
-		return false, false, fmt.Errorf("create probe directory in %s: %w", cwd, err)
-	}
-	defer func() { _ = os.RemoveAll(probeDir) }()
-
-	_, err = gitexec.Run([]string{
-		"clone", "--depth", "1", "--filter=tree:0", "--no-checkout", "--single-branch",
-		filepath.ToSlash(url), filepath.ToSlash(filepath.Base(probeDir)),
-	}, cwd)
-	if err != nil {
-		return false, false, wrapProbeError(url, "clone", err)
-	}
-
-	_, err = gitrepo.New(probeDir).CurrentSHA()
-	if errors.Is(err, gitrepo.ErrNoCommits) {
-		return false, false, nil
-	}
-	if err != nil {
-		return false, false, wrapProbeError(url, "rev-parse HEAD", err)
-	}
-
-	bindingFound, err = probeTreeHasPath(url, probeDir, fabriclayout.WarpBindingFileName)
-	if err != nil {
-		return false, false, err
-	}
-	for _, path := range []string{lymcwd.AnchorFileName, lymdirs.LymDirName} {
-		present, err := probeTreeHasPath(url, probeDir, path)
-		if err != nil {
-			return false, false, err
-		}
-		recordsFound = recordsFound || present
-	}
-	return bindingFound, recordsFound, nil
-}
-
-// fetchWeftBranchTip reports whether origin carries branch under ns, the origin ref namespace of the branch.
+// fetchWeftBranchTip reports whether origin carries branch.
 // When it does, it fetches the tip of branch into FETCH_HEAD of the clone at dir, one commit deep.
 // A remote without the branch answers false with nothing fetched, and any git failure is an error.
-func fetchWeftBranchTip(weftURL, dir, branch string, ns gitrepo.RefNamespace) (bool, error) {
-	branchRef := ns.Branch(branch)
-	listed, err := gitexec.Run([]string{"ls-remote", "origin", branchRef}, dir)
+func fetchWeftBranchTip(weftURL, dir, branch string) (bool, error) {
+	branchRef := "refs/heads/" + branch
+	listed, err := gitexec.Run([]string{"ls-remote", "--heads", "origin", branchRef}, dir)
 	if err != nil {
 		return false, wrapProbeError(weftURL, "ls-remote", err)
 	}
-	// ls-remote matches a pattern by its tail, so only the line naming exactly this branch is its tip.
-	onRemote := false
-	for _, line := range strings.Split(listed, "\n") {
-		if _, ref, found := strings.Cut(strings.TrimSpace(line), "\t"); found && ref == branchRef {
-			onRemote = true
-		}
-	}
-	if !onRemote {
+	if strings.TrimSpace(listed) == "" {
 		return false, nil
 	}
 	if _, err := gitexec.Run([]string{"fetch", "--depth", "1", "origin", branchRef}, dir); err != nil {

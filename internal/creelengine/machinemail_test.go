@@ -144,13 +144,11 @@ func TestStore_MachineOutbound(t *testing.T) {
 			}
 		}},
 		{"WithTheSchedulerStartedAndNoTakeAMessageIsReturnedAtItsHourWithItsLastReportedReasonOrBridgeUnsettled", func(t *testing.T, e *env) {
-			// Both posts come before the start, so the loop's first pass sees both and arms the one hour wait the test advances past.
-			// A post after the start wakes another pass, which can straddle the advance and arm its floor wait past the hour.
+			e.start(t)
 			held, waiter, err := e.store.PostWait(strand(orch), remoteOrch, "first")
 			must(t, err)
 			must(t, e.store.ReportMachineHold(relay, held, "peer-unapproved"))
 			bare := e.post(t, strand(orch), remoteOrch, "second")
-			e.start(t)
 			e.clock.AwaitWaitsWhere(1, isHourWait)
 			e.clock.Advance(time.Hour)
 			if outcome := awaitOutcome(t, waiter); outcome.Kind != creelengine.OutcomeReturned {
@@ -164,9 +162,9 @@ func TestStore_MachineOutbound(t *testing.T) {
 				t.Errorf("the unreported message returned with %q; want %q", reason, creelengine.MachineUnsettled)
 			}
 			notices := e.noticeSubjects(orch)
-			if len(notices) != 2 || !strings.Contains(notices[0], "peer-unapproved") || !strings.Contains(notices[0], "`lym approve osl`") ||
+			if len(notices) != 2 || !strings.Contains(notices[0], "peer-unapproved") || !strings.Contains(notices[0], "`approve osl`") ||
 				!strings.Contains(notices[1], creelengine.MachineUnsettled) || !strings.Contains(notices[1], "slack relay runs") {
-				t.Errorf("notices to the sender = %q; want one per message, the first naming `lym approve osl` and the second the slack button", notices)
+				t.Errorf("notices to the sender = %q; want one per message, the first naming `approve osl` and the second the slack button", notices)
 			}
 		}},
 		{"APostToAnotherMachineStartsNoHubWorkerAtTheSchedulersStartOrOnThePost", func(t *testing.T, e *env) {

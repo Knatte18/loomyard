@@ -1,5 +1,5 @@
 // override.go holds the lym overrides: a hub's tuning texts for shipped entries.
-// They are stored in the Bolt checkout beside heddle.json and read only while the hub's heddle.lym_override is on.
+// They are stored in the Bolt checkout beside heddle.json and read only while the hub's lym_override setting is on.
 
 package heddleengine
 

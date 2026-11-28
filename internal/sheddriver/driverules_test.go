@@ -5,7 +5,6 @@ package sheddriver
 import (
 	"reflect"
 	"testing"
-	"time"
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -47,8 +46,6 @@ func TestDecideDrive(t *testing.T) {
 		records          []SettleRecord
 		want             driveAction
 		wantFrictionNote bool
-		// wantWait is the wait before a re-step.
-		wantWait time.Duration
 	}{
 		{name: "done", stop: Stop{OK: true, State: "done", LoopState: "done"}, want: driveActionDone},
 		{name: "busy kind", stop: errorStop(shedverbs.KindBusy, ""), want: driveActionBusyExit},
@@ -83,12 +80,7 @@ func TestDecideDrive(t *testing.T) {
 		{name: "landing halt at a row the arbiter judges first still hands back", stop: landingHaltStop, facts: driveFacts{ArbiterFirst: true}, want: driveActionHandBack},
 		{name: "budget halt at a row the arbiter judges first still hands back", stop: budgetHaltStop, facts: driveFacts{ArbiterFirst: true}, want: driveActionHandBack},
 		{name: "precondition halt at a row the arbiter judges first still hands back", stop: preconditionHaltStop, facts: driveFacts{ArbiterFirst: true}, want: driveActionHandBack},
-		{name: "transient error of a class other than a network failure goes to the tackler", stop: errorStop(shedverbs.KindProducer, string(shedengine.TransientAgentStart)), want: driveActionTackler},
-		{name: "first GitHub API failure waits 15 s and re-steps", stop: errorStop(shedverbs.KindProducer, string(shedengine.TransientGitHubAPI)), facts: driveFacts{NetworkCeiling: 300 * time.Second}, want: driveActionRestep, wantWait: 15 * time.Second},
-		{name: "fifth git transport failure doubles the wait to four minutes", stop: errorStop(shedverbs.KindBootstrap, string(shedengine.TransientGitTransport)), facts: driveFacts{RepairCount: 4, NetworkCeiling: 300 * time.Second}, want: driveActionRestep, wantWait: 240 * time.Second},
-		{name: "a later git transport failure re-steps at the ceiling", stop: errorStop(shedverbs.KindBootstrap, string(shedengine.TransientGitTransport)), facts: driveFacts{RepairCount: 6, NetworkCeiling: 300 * time.Second}, want: driveActionRestep, wantWait: 300 * time.Second},
-		{name: "a network failure with no ceiling waits 15 s", stop: errorStop(shedverbs.KindBootstrap, string(shedengine.TransientGitTransport)), facts: driveFacts{RepairCount: 3}, want: driveActionRestep, wantWait: 15 * time.Second},
-		{name: "git transport failure on a changed build hands over", stop: errorStop(shedverbs.KindBootstrap, string(shedengine.TransientGitTransport)), facts: driveFacts{BuildChanged: true}, want: driveActionHandOver},
+		{name: "transient error goes to the tackler", stop: errorStop(shedverbs.KindProducer, "network"), want: driveActionTackler},
 		{name: "interrupted under reinvoke re-steps", stop: interruptedStop(shedverbs.InterruptPolicyReinvoke), want: driveActionRestep},
 		{name: "second reinvoke failure re-steps", stop: interruptedStop(shedverbs.InterruptPolicyReinvoke), facts: driveFacts{RepairCount: 1}, want: driveActionRestep},
 		{name: "third reinvoke failure goes to the tackler", stop: interruptedStop(shedverbs.InterruptPolicyReinvoke), facts: driveFacts{RepairCount: driveRepairCap}, want: driveActionTackler},
@@ -121,9 +113,6 @@ func TestDecideDrive(t *testing.T) {
 
 			if got.Action != tt.want || got.FrictionNote != tt.wantFrictionNote {
 				t.Errorf("decideDrive() = action %q, friction note %v; want %q, %v", got.Action, got.FrictionNote, tt.want, tt.wantFrictionNote)
-			}
-			if got.Wait != tt.wantWait {
-				t.Errorf("decideDrive() = wait %s; want %s", got.Wait, tt.wantWait)
 			}
 			if got.Rule == "" {
 				t.Error("decideDrive() carries no rule text for the stop report")

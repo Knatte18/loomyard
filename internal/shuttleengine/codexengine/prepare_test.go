@@ -162,7 +162,7 @@ func TestPrepare_Launch(t *testing.T) {
 	}
 }
 
-// TestPrepare_SandboxMode pins the sandbox a launch runs in for each codex.sandbox_mode and probe result.
+// TestPrepare_SandboxMode pins the sandbox a launch runs in for each sandbox_mode and probe result.
 // auto and workspace-write probe the sandbox once, with the Codex executable, under the lym home, in the anchor;
 // a sandbox that starts runs workspace-write.
 // One that cannot start runs danger-full-access under auto, with a warning naming the cause.
@@ -269,7 +269,7 @@ func TestPrepare_SandboxMode(t *testing.T) {
 	}
 }
 
-// TestPrepare_ExpandsHomeInWritableRoots pins that a leading ~/ in codex.writable_roots expands to the user's home.
+// TestPrepare_ExpandsHomeInWritableRoots pins that a leading ~/ in writable_roots expands to the user's home.
 // It sets the home environment variables, so it does not run in parallel.
 //
 //testtiming:keep pins the leading tilde expansion in the launch line, the only test that sets a tilde writable root
@@ -313,9 +313,8 @@ func TestPrepare_ExpandsHomeInWritableRoots(t *testing.T) {
 // TestPrepare_InstallsGuardsFromItsInputs pins which inputs reach the installed guard rows.
 // The python switch decides only whether the deny notice names the python row, which every launch installs;
 // the publish guard installs its own row alone;
-// a seeded gate.refuse_raw list of the hub's gate config reaches the hook and the developer instructions' deny notice.
-// It does so also when a gate key the launch does not read fails to load;
-// and a gate config that does not parse refuses the launch before the prompt file is written.
+// a seeded refuse_raw list of the hub's gate config reaches the hook and the developer instructions' deny notice;
+// and a gate config that is present but does not load refuses the launch before the prompt file is written.
 func TestPrepare_InstallsGuardsFromItsInputs(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -326,19 +325,15 @@ func TestPrepare_InstallsGuardsFromItsInputs(t *testing.T) {
 		gate        string
 		denyPython  bool
 		denyPublish bool
-		// allowRawTmux is the spec's exemption from the tmux and script row.
-		allowRawTmux bool
-		wantRefuse   []string
-		wantInputs   guardInputs
-		wantErr      bool
+		wantRefuse  []string
+		wantInputs  guardInputs
+		wantErr     bool
 	}{
 		{name: "PythonSwitchAlone", denyPython: true, wantInputs: guardInputs{denyPython: true}},
 		{name: "PublishGuardAlone", denyPublish: true, wantInputs: guardInputs{denyPublish: true}},
-		{name: "RawTmuxExemption", allowRawTmux: true, wantInputs: guardInputs{allowRawTmux: true}},
-		{name: "SeededRefuseRaw", gate: "slots: 2\nrefuse_raw: [\"go test\", \"dotnet test\"]\n", wantRefuse: []string{"go test", "dotnet test"}, wantInputs: guardInputs{}},
-		{name: "ScopelessGateKeyStillLaunches", gate: "slots: 2\nrefuse_raw: [\"go test\"]\ngates:\n  harden-live-copies:\n    tiers: [1]\n", wantRefuse: []string{"go test"}, wantInputs: guardInputs{}},
-		{name: "GateConfigThatDoesNotParse", gate: "slots: [\n", wantErr: true},
-		{name: "InvalidRefuseRawBesideAScopelessGateKeyStillRefuses", gate: "slots: 2\nrefuse_raw: [\"go  test\"]\ngates:\n  harden-live-copies:\n    tiers: [1]\n", wantErr: true}}
+		{name: "SeededRefuseRaw", gate: "slots: 2\nrefuse_raw: [\"go test\", \"dotnet test\"]\n", wantRefuse: []string{"go test", "dotnet test"}},
+		{name: "GateConfigThatDoesNotLoad", gate: "slots: [\n", wantErr: true},
+	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
@@ -352,7 +347,7 @@ func TestPrepare_InstallsGuardsFromItsInputs(t *testing.T) {
 			engine, _ := newEngine(anchor)
 			runDir := t.TempDir()
 
-			launch, err := engine.Prepare(runDir, shuttleengine.Spec{Prompt: "p", PromptEngine: engineName, DenyPublish: tt.denyPublish, AllowRawTmux: tt.allowRawTmux}, shuttleengine.Config{DenyPython: tt.denyPython})
+			launch, err := engine.Prepare(runDir, shuttleengine.Spec{Prompt: "p", PromptEngine: engineName, DenyPublish: tt.denyPublish}, shuttleengine.Config{DenyPython: tt.denyPython})
 			promptPath := filepath.Join(runDir, "prompt.md")
 			if tt.wantErr {
 				if err == nil || !strings.HasPrefix(err.Error(), "codexengine:") {
@@ -514,7 +509,7 @@ func TestPrepare_CreelHooksInAHub(t *testing.T) {
 
 // TestPrepare_SwitchedToolHooks pins the three tool hooks a launch's spec, codex.yaml and shuttle.yaml switch.
 // An autonomous spec carries the question-tool deny and its notice, and an interactive one carries neither.
-// With the batching nudge on, Prepare seeds the state file with the codex.batching_nudge block.
+// With the batching nudge on, Prepare seeds the state file with codex.yaml's block.
 // The line then runs the batching hook over it.
 // With the nudge off, Prepare writes no state file and the line carries no batching hook.
 // An autonomous spec carries the edit hook over the run's edit records file while the edit-loop watch is on.
@@ -556,8 +551,7 @@ func TestPrepare_SwitchedToolHooks(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Prepare() error: %v", err)
 			}
-			guardIn := guardInputs{}
-			guards := installedGuards(nil, guardIn)
+			guards := installedGuards(nil, guardInputs{})
 			tools := toolHooks{guards: guards, lymPath: testLymPath, questionDeny: tt.wantDeny}
 			statePath := filepath.Join(runDir, batchingNudgeStateFileName)
 			if tt.wantBatching {
@@ -571,7 +565,7 @@ func TestPrepare_SwitchedToolHooks(t *testing.T) {
 					t.Errorf("Prepare() launch line = %q; want it to hold the setting %s", launch.Cmd, quoted)
 				}
 			}
-			notice := shell.ForGOOS().Quote(developerInstructionsKey + "=" + tomlString(denyNotice(tt.wantDeny, guards, guardIn)+" "+shuttleengine.CreelTrustSentence))
+			notice := shell.ForGOOS().Quote(developerInstructionsKey + "=" + tomlString(denyNotice(tt.wantDeny, guards, guardInputs{})+" "+shuttleengine.CreelTrustSentence))
 			if !strings.Contains(launch.Cmd, notice) {
 				t.Errorf("Prepare() launch line = %q; want developer instructions opening %s", launch.Cmd, notice)
 			}
@@ -735,20 +729,20 @@ func TestPrepare_RefusesBeforeWriting(t *testing.T) {
 		{name: "PromptPermissionMode", spec: shuttleengine.Spec{PermissionMode: "prompt"}, wantErr: []string{`permission mode "prompt"`, "way forward"}},
 		{name: "ResumedSession", spec: shuttleengine.Spec{ResumeSessionID: "abc"}, wantErr: []string{"cannot be resumed", "way forward"}},
 		{name: "Advisor", spec: shuttleengine.Spec{Advisor: "opus"}, wantErr: []string{`advisor "opus"`, "way forward"}},
-		{name: "EffortOutsideEfforts", spec: shuttleengine.Spec{ModelChoice: shuttleengine.ModelChoice{Effort: "xhigh"}}, wantErr: []string{`effort "xhigh"`, "codex.efforts", "way forward"}},
+		{name: "EffortOutsideEfforts", spec: shuttleengine.Spec{ModelChoice: shuttleengine.ModelChoice{Effort: "xhigh"}}, wantErr: []string{`effort "xhigh"`, "codex.yaml's efforts", "way forward"}},
 		{
 			name: "RelativeWritableRoot",
 			setup: func(t *testing.T, anchor string) {
 				writeWritableRoots(t, anchor, "cache")
 			},
-			wantErr: []string{`codex.writable_roots "cache"`, "way forward"},
+			wantErr: []string{`codex.yaml's writable_roots "cache"`, "way forward"},
 		},
 		{
 			name: "UnknownSandboxMode",
 			setup: func(t *testing.T, anchor string) {
 				writeFile(t, configengine.ConfigFile(anchor, "codex"), "writable_roots: []\nsandbox_mode: read-only\n")
 			},
-			wantErr: []string{`codex.sandbox_mode "read-only"`, "way forward", "--layer <default|worktree|machine|local>"},
+			wantErr: []string{`codex.yaml's sandbox_mode "read-only"`, "way forward", "--layer <default|worktree|machine|local>"},
 		},
 		{
 			name: "RulesInWorktree",
@@ -977,7 +971,7 @@ func TestLoadConfig_Template(t *testing.T) {
 	}
 }
 
-// TestLoadConfig_SandboxModeLayers pins which layers set codex.sandbox_mode in a hub.
+// TestLoadConfig_SandboxModeLayers pins which layers set sandbox_mode in a hub.
 // The machine override wins over the worktree file.
 // So one machine runs unsandboxed while the tracked files keep the sandbox.
 // A local override that sets it refuses the load.
@@ -996,7 +990,7 @@ func TestLoadConfig_SandboxModeLayers(t *testing.T) {
 	}{
 		{name: "MachineOverWorktree", worktree: sandboxWorkspaceWrite, machine: sandboxFullAccess, want: sandboxFullAccess},
 		{name: "WorktreeWithNoMachineFile", worktree: sandboxFullAccess, want: sandboxFullAccess},
-		{name: "LocalRefused", local: sandboxFullAccess, wantErr: `"codex.sandbox_mode"`},
+		{name: "LocalRefused", local: sandboxFullAccess, wantErr: `"sandbox_mode"`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1071,8 +1065,8 @@ func TestLoadConfig_RefusesInvalidValues(t *testing.T) {
 	}
 }
 
-// TestLoadConfig_AcceptsBatchingNudgeEdges pins the codex.batching_nudge values the validation lets through:
-// an off block is not validated, and a codex.batching_nudge.context_tokens of 0 is allowed while the block is on.
+// TestLoadConfig_AcceptsBatchingNudgeEdges pins the batching_nudge values the validation lets through:
+// an off block is not validated, and a context_tokens of 0 is allowed while the block is on.
 func TestLoadConfig_AcceptsBatchingNudgeEdges(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1112,8 +1106,8 @@ func TestLoadConfig_AcceptsBatchingNudgeEdges(t *testing.T) {
 // TestPrepare_SubagentTerms pins what a launch gives the session's subagents.
 // The effort agents.yaml gives the role rides an agents setting.
 // The passage of the developer instructions names it and the skills;
-// an effort codex.efforts does not list, or no effort at all, gives neither.
-// The thread cap rides every launch and follows codex.max_subagent_threads.
+// an effort codex.yaml's efforts does not list, or no effort at all, gives neither.
+// The thread cap rides every launch and follows max_subagent_threads.
 func TestPrepare_SubagentTerms(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1232,7 +1226,7 @@ func TestExpandHomePath(t *testing.T) {
 			t.Parallel()
 			got, err := expandHomePath("home", tt.value)
 			if tt.wantErr {
-				if err == nil || !strings.Contains(err.Error(), "codex.home") {
+				if err == nil || !strings.Contains(err.Error(), "codex.yaml's home") {
 					t.Errorf("expandHomePath(%q) error = %v; want a refusal naming the key", tt.value, err)
 				}
 				return

@@ -11,7 +11,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/envconfig"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/preflight"
@@ -24,16 +23,7 @@ func ReconcileGeometry(l *lymcwd.Location) (hubreconcile.Geometry, bool) {
 	if !preflight.BoardLymPresent(l) {
 		return hubreconcile.Geometry{}, false
 	}
-	return hubreconcile.Geometry{BoardDir: fabriclayout.BoltDir(l.HubPath), WorktreePath: l.WorktreePath()}, true
-}
-
-// ReconcileBeforeLoad reconciles the config of l's hub when its build stamp is stale, and does nothing outside a hub.
-// A verb calls it before its first load of a config whose keys a reconcile moves.
-// A failed reconcile is warned about and the caller goes on.
-func ReconcileBeforeLoad(l *lymcwd.Location) {
-	if geometry, inHub := ReconcileGeometry(l); inHub {
-		hubreconcile.EnsureOrWarn(geometry, hubreconcile.Options{})
-	}
+	return hubreconcile.Geometry{BoardDir: fabricengine.BoltDir(l.HubPath), WorktreePath: l.WorktreePath()}, true
 }
 
 // ReedGeometry builds a reedengine.Geometry for l, passing the resolved Location's paths through untouched.
@@ -98,7 +88,7 @@ func isPrimeWorktree(worktreeRoot string) (bool, error) {
 // reedGeometry builds the geometry of l once the caller has told whether l is the prime.
 // It is split out so the unit test can pass either answer without a .git entry.
 func reedGeometry(l *lymcwd.Location, prime bool) reedengine.Geometry {
-	shortname, _ := fabricengine.ReadShortname(fabriclayout.BoltDir(l.HubPath))
+	shortname, _ := fabricengine.ReadShortname(fabricengine.BoltDir(l.HubPath))
 	var slug, parent string
 	if !prime {
 		slug = l.WorktreeName
@@ -113,14 +103,14 @@ func reedGeometry(l *lymcwd.Location, prime bool) reedengine.Geometry {
 		AnchorPath:         l.AnchorPath(),
 		PaneCwd:            l.AnchorPath(),
 		WorktreeRoot:       l.WorktreePath(),
-		LogsDir:            fabriclayout.HubLogsDir(l.HubPath),
+		LogsDir:            fabricengine.HubLogsDir(l.HubPath),
 		WorktreeName:       l.WorktreeName,
 		HubPath:            l.HubPath,
 		NameShortname:      shortname,
 		NameSlug:           slug,
 		ParentName:         parent,
 		PauseRecordPath:    pauseGeometry(l, prime).RecordPath,
-		DiscoverSignalPath: filepath.Join(fabriclayout.HubScratchDir(l.HubPath), reedengine.DiscoverSignalFileName),
+		DiscoverSignalPath: filepath.Join(fabricengine.HubScratchDir(l.HubPath), reedengine.DiscoverSignalFileName),
 	}
 }
 
@@ -160,7 +150,7 @@ func BurlerGeometry(l *lymcwd.Location) (burlerengine.Geometry, error) {
 // burlerGeometry builds the geometry of l once the caller has told whether l is the prime.
 // It is split out so the unit test can pass either answer without a .git entry.
 func burlerGeometry(l *lymcwd.Location, prime bool) burlerengine.Geometry {
-	shortname, _ := fabricengine.ReadShortname(fabriclayout.BoltDir(l.HubPath))
+	shortname, _ := fabricengine.ReadShortname(fabricengine.BoltDir(l.HubPath))
 	var slug string
 	if !prime {
 		slug = l.WorktreeName
@@ -172,6 +162,6 @@ func burlerGeometry(l *lymcwd.Location, prime bool) burlerengine.Geometry {
 		ParentName:   parentNameOrEmpty(l, "burler prompts"),
 		Shortname:    shortname,
 		Slug:         slug,
-		SpecsDir:     fabriclayout.SpecsDir(l.HubPath),
+		SpecsDir:     fabricengine.SpecsDir(l.HubPath),
 	}
 }

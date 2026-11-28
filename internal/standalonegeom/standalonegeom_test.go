@@ -144,7 +144,7 @@ func TestReedGeometry(t *testing.T) {
 		t.Errorf("ReedGeometry().WorktreeRoot = %q; want %q (target)", got.WorktreeRoot, target)
 	}
 	if want := filepath.Join(stateDir, "logs"); got.LogsDir != want {
-		// fabriclayout.HubLogsDir is one call away and returns a board-shaped path,
+		// fabricengine.HubLogsDir is one call away and returns a board-shaped path,
 		// so this row spells the expected value out.
 		t.Errorf("ReedGeometry().LogsDir = %q; want %q (stateDir joined with \"logs\")", got.LogsDir, want)
 	}

@@ -1,5 +1,5 @@
 // pairparts_integration_test.go covers Topology.PairParts, TaskBranchOnOrigin and TaskBranchSlugs over hubforge hubs.
-// Every hub has an empty fabric.branch_prefix unless a test seeds one,
+// Every hub has an empty branch_prefix unless a test seeds one,
 // so a pair's task branch is the bare slug.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
@@ -13,7 +13,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -25,7 +24,7 @@ func TestPairParts(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	all := fabriclayout.PairParts{TaskWorktree: true, RecordsWorktree: true, RecordsBranch: true, TaskBranch: true}
+	all := fabricengine.PairParts{TaskWorktree: true, RecordsWorktree: true, RecordsBranch: true, TaskBranch: true}
 
 	t.Run("AfterAddEveryPartIsPresent", func(t *testing.T) {
 		t.Parallel()
@@ -47,7 +46,7 @@ func TestPairParts(t *testing.T) {
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 		warpBranchCommit(t, h.Location, slug, "work.txt")
-		if _, err := h.Topology.Remove(h.Location, slug, false, false, ""); err != nil {
+		if _, err := h.Topology.Remove(h.Location, slug, false, false); err != nil {
 			t.Fatalf("Remove(%q): %v", slug, err)
 		}
 		gitkit.MustRun(t, h.PrimeWorktree(), "git", "push", "origin", slug)
@@ -56,7 +55,7 @@ func TestPairParts(t *testing.T) {
 		if err != nil {
 			t.Fatalf("PairParts: %v", err)
 		}
-		if want := (fabriclayout.PairParts{TaskBranch: true}); got != want {
+		if want := (fabricengine.PairParts{TaskBranch: true}); got != want {
 			t.Errorf("PairParts() = %+v; want %+v", got, want)
 		}
 		onOrigin, err := h.Topology.TaskBranchOnOrigin(h.Location, slug)
@@ -77,7 +76,7 @@ func TestPairParts(t *testing.T) {
 		if err != nil {
 			t.Fatalf("PairParts: %v", err)
 		}
-		if want := (fabriclayout.PairParts{StrayPath: true}); got != want || !got.Any() {
+		if want := (fabricengine.PairParts{StrayPath: true}); got != want || !got.Any() {
 			t.Errorf("PairParts() = %+v, Any() = %v; want %+v, true", got, got.Any(), want)
 		}
 	})
@@ -124,14 +123,14 @@ func TestPairParts(t *testing.T) {
 }
 
 // TestTaskBranchSlugs pins which slugs of a prefix TaskBranchSlugs reads:
-// from the local and the origin remote-tracking branches, under the empty fabric.branch_prefix and under a set one.
+// from the local branches and the origin remote-tracking branches, under the empty branch_prefix and under a set one.
 func TestTaskBranchSlugs(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
 	tests := []struct {
 		name string
-		// branchPrefix is the hub's fabric.branch_prefix; an empty value seeds none.
+		// branchPrefix is the hub's branch_prefix; an empty value seeds none.
 		branchPrefix string
 		prefix       string
 		want         []string

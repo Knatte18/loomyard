@@ -12,7 +12,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -27,7 +26,7 @@ func TestAdd_AdoptLocal(t *testing.T) {
 	l := h.Location
 	prime := h.PrimeWorktree()
 	defaultBranch := gitOut(t, prime, "rev-parse", "--abbrev-ref", "HEAD")
-	addAdopting := func(acting *lymcwd.Location, slug string) (fabriclayout.AddResult, error) {
+	addAdopting := func(acting *lymcwd.Location, slug string) (fabricengine.AddResult, error) {
 		return h.Topology.Add(acting, slug, fabricengine.AddOptions{SkipPush: true, AdoptLocal: true})
 	}
 	// branchPrefix is what a pair's slug is prefixed with to name its warp branch.
@@ -64,7 +63,7 @@ func TestAdd_AdoptLocal(t *testing.T) {
 		if err != nil || !found {
 			t.Fatalf("ReadOriginFor(%q) = (%+v, %v, %v); want a record", slug, origin, found, err)
 		}
-		want := fabriclayout.Origin{ParentBranch: defaultBranch, ParentWorktree: l.WorktreeName}
+		want := fabricengine.Origin{ParentBranch: defaultBranch, ParentWorktree: l.WorktreeName}
 		if origin != want {
 			t.Errorf("adopted pair origin record = %+v; want %+v", origin, want)
 		}
@@ -94,7 +93,7 @@ func TestAdd_AdoptLocal(t *testing.T) {
 		if err != nil {
 			t.Fatalf("RecordsRepoRoot: %v", err)
 		}
-		recordsBranch := fabriclayout.RecordsBranchName(branchPrefix + slug)
+		recordsBranch := fabricengine.RecordsBranchName(branchPrefix + slug)
 		elsewhere := filepath.Join(t.TempDir(), "records-elsewhere")
 		gitOut(t, recordsRoot, "worktree", "add", "-b", recordsBranch, elsewhere)
 

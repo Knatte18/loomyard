@@ -12,7 +12,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -66,7 +65,7 @@ func TestEngineWorktree(t *testing.T) {
 	if err := os.RemoveAll(fabricengine.WorktreePath(prime, goneSlug)); err != nil {
 		t.Fatalf("remove the directory of %q: %v", goneSlug, err)
 	}
-	wantAccountDir := filepath.Join(fabriclayout.HubScratchDir(prime.HubPath), lymdirs.ClaudeAccountsDirName)
+	wantAccountDir := filepath.Join(fabricengine.HubScratchDir(prime.HubPath), lymdirs.ClaudeAccountsDirName)
 
 	tests := []struct {
 		name     string

@@ -10,7 +10,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -47,7 +46,7 @@ func hubCallerDeps(prime *lymcwd.Location) (callerDeps, error) {
 		Steps:       steps,
 		Stderr:      os.Stderr,
 		PullBolt: func() (string, error) {
-			_, detail, err := fabricengine.NewBolt(fabriclayout.BoardDir(hubPath)).Pull(fabricengine.EnvSyncOptions(), fabricengine.NewMutations(hubPath))
+			_, detail, err := fabricengine.NewBolt(fabricengine.BoardDir(hubPath)).Pull(fabricengine.EnvSyncOptions(), fabricengine.NewMutations(hubPath))
 			return detail, err
 		},
 	}, nil

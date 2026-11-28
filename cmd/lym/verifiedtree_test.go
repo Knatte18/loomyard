@@ -21,7 +21,6 @@ var planVerifySites = []string{
 	"internal/loomshed/verifygate.go",
 	"internal/webstercli/verify.go",
 	"internal/landingshed/verifygate.go",
-	"internal/loomshed/redfirstgate.go",
 	"internal/weaverengine/strand.go",
 	"internal/weaverengine/verify.go",
 }
@@ -63,7 +62,7 @@ func callsAny(data []byte, token string) bool {
 //
 //lym:guard
 //lym:watch internal/websterengine/verifygate.go internal/loomshed/verifygate.go internal/webstercli/verify.go
-//lym:watch internal/landingshed/verifygate.go internal/loomshed/redfirstgate.go internal/testkit/scankit/*.go
+//lym:watch internal/landingshed/verifygate.go internal/testkit/scankit/*.go
 func TestVerifiedTree_PlanVerifySitesCallVerify(t *testing.T) {
 	tiergate.Require(t, 0)
 	seen := map[string]bool{}
@@ -91,7 +90,6 @@ func TestVerifiedTree_PlanVerifySitesCallVerify(t *testing.T) {
 // TestVerifiedTree_NoOtherVerifyRunCaller fails when a production file outside internal/verifytree calls verifyrun.Run.
 //
 //lym:guard
-//lym:only parent-align finalize
 func TestVerifiedTree_NoOtherVerifyRunCaller(t *testing.T) {
 	tiergate.Require(t, 0)
 	allowedSeen := map[string]bool{}
@@ -116,7 +114,6 @@ func TestVerifiedTree_NoOtherVerifyRunCaller(t *testing.T) {
 // TestVerifiedTree_NoRetiredMarker fails when a production file names the retired verify-pending marker.
 //
 //lym:guard
-//lym:only parent-align finalize
 func TestVerifiedTree_NoRetiredMarker(t *testing.T) {
 	tiergate.Require(t, 0)
 	scanned := scankit.Walk(t, scankit.Options{Roots: []string{"internal", "cmd"}}, func(f *scankit.File) {

@@ -73,21 +73,7 @@ func raddleProject(slug string) *RaddleEntry {
 // a task with a run status, a body and a stored decision record.
 func startArrasRun(t *testing.T, b *Board, slug string) Task {
 	t.Helper()
-	upsertForRaddle(t, b, map[string]any{"slug": slug, "title": "Arras", "kind": "task", "labels": []string{"bug", "board"}, "body": "former body"})
-	// No write gives an entry the arras recipe, so the recipe of a run started under it is set in the store.
-	// It is set before the run status that locks the entry.
-	_, err := b.boardCriticalSection(func(store *Store) (any, error) {
-		i, _ := store.index(slug)
-		store.tasks[i].Recipe = shedrun.RecipeArras
-		return nil, nil
-	}, nil)
-	if err != nil {
-		t.Fatalf("set the arras recipe: %v", err)
-	}
-	status := RunStatus("running", RaddleFileProducer)
-	if err := b.SetStatus(slug, &status); err != nil {
-		t.Fatalf("SetStatus(%q) = %v; want nil", slug, err)
-	}
+	upsertForRaddle(t, b, map[string]any{"slug": slug, "title": "Arras", "kind": "task", "labels": []string{"bug", "board"}, "body": "former body", "recipe": shedrun.RecipeArras, "status": RunStatus("running", RaddleFileProducer)})
 	if err := b.StoreDecisionRecord(slug, []byte("arras record\n")); err != nil {
 		t.Fatalf("StoreDecisionRecord() error = %v; want nil", err)
 	}
@@ -598,7 +584,9 @@ func TestCheckRunLocks_FamilyProject(t *testing.T) {
 		{name: "AnOrderOtherThanThePartsIsRefused", producer: RaddleFileProducer, parts: inOrder, editNow: func(now *Task) { now.Order = []string{"p2", "p1"} }, refused: true},
 		{name: "AChangedBodyIsRefused", producer: RaddleFileProducer, parts: inOrder, editNow: func(now *Task) { now.Body = "another body" }, refused: true},
 		{name: "AKeptProfileIsRefused", producer: RaddleFileProducer, parts: inOrder, editNow: func(now *Task) { now.Profile = "fast" }, refused: true},
-		{name: "KeptRunSettingsAreRefused", producer: RaddleFileProducer, parts: inOrder, editNow: func(now *Task) { now.RunSettings = map[string]any{"key": "value"} }, refused: true}}
+		{name: "KeptRunSettingsAreRefused", producer: RaddleFileProducer, parts: inOrder, editNow: func(now *Task) { now.RunSettings = map[string]any{"key": "value"} }, refused: true},
+		{name: "AKeptNotifyOnLandIsRefused", producer: RaddleFileProducer, parts: inOrder, editNow: func(now *Task) { now.NotifyOnLand = true }, refused: true},
+	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
@@ -666,10 +654,10 @@ func TestEndRaddleEntry(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	t.Run("OpenEntryEnds", func(t *testing.T) {
+	t.Run("OpenEntryEndsAndClearsNotifyOnLand", func(t *testing.T) {
 		t.Parallel()
 		b, boardPath := newRaddleTestBoard(t)
-		upsertForRaddle(t, b, map[string]any{"slug": "run", "title": "Run", "kind": "task", "labels": []string{"bug"}})
+		upsertForRaddle(t, b, map[string]any{"slug": "run", "title": "Run", "kind": "task", "labels": []string{"bug"}, "notify_on_land": true})
 		old := backdateBoardFile(t, boardPath)
 
 		if err := b.EndRaddleEntry("run"); err != nil {
@@ -677,8 +665,8 @@ func TestEndRaddleEntry(t *testing.T) {
 		}
 
 		entry := entryForRaddle(t, b, "run")
-		if entry.Status == nil || *entry.Status != StatusDone {
-			t.Errorf("entry status = %v; want done", entry.Status)
+		if entry.Status == nil || *entry.Status != StatusDone || entry.NotifyOnLand {
+			t.Errorf("entry status, notify_on_land = %v, %t; want done, false", entry.Status, entry.NotifyOnLand)
 		}
 		if !boardFileWritten(t, boardPath, old) {
 			t.Errorf("EndRaddleEntry did not write board.json; want one write")
@@ -688,7 +676,7 @@ func TestEndRaddleEntry(t *testing.T) {
 	t.Run("AbsentAndDoneEntriesWriteNothing", func(t *testing.T) {
 		t.Parallel()
 		b, boardPath := newRaddleTestBoard(t)
-		upsertForRaddle(t, b, map[string]any{"slug": "landed", "title": "Landed", "kind": "task", "labels": []string{"bug"}})
+		upsertForRaddle(t, b, map[string]any{"slug": "landed", "title": "Landed", "kind": "task", "labels": []string{"bug"}, "notify_on_land": true})
 		done := StatusDone
 		if err := b.SetStatus("landed", &done); err != nil {
 			t.Fatalf("SetStatus() error = %v; want nil", err)
@@ -703,6 +691,9 @@ func TestEndRaddleEntry(t *testing.T) {
 
 		if boardFileWritten(t, boardPath, old) {
 			t.Errorf("EndRaddleEntry of an absent or a done entry wrote board.json; want no write")
+		}
+		if entry := entryForRaddle(t, b, "landed"); !entry.NotifyOnLand {
+			t.Errorf("done entry notify_on_land = false; want it left as it was")
 		}
 	})
 }

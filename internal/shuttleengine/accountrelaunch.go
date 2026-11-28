@@ -242,7 +242,6 @@ func (run *Run) relaunchUnderAccount(launch relaunchLaunch, startPath bool) (Res
 	if err != nil {
 		return run.endFailedRelaunch(fmt.Errorf("prepare the relaunched session: %w", err), startPath)
 	}
-	launched = withSessionEnd(spec, run.runDir, launched)
 
 	eventsOffset := eventsSize(run.state.EventsPath)
 	stopped, err = run.updateRelaunchRecord(func(rs *RunState) {

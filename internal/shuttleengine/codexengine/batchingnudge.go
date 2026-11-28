@@ -1,5 +1,5 @@
 // batchingnudge.go implements the Codex batching nudge:
-// the codex.batching_nudge block, the PostToolUse hook command, and the per-run state file Prepare seeds.
+// codex.yaml's batching_nudge block, the PostToolUse hook command, and the per-run state file Prepare seeds.
 // It also holds the judgment that reads the calling thread's rollout for a breach of lym's batching rules,
 // and it answers with one line of additional context.
 
@@ -27,7 +27,7 @@ import (
 
 var _ shuttleengine.BatchingNudger = (*Codex)(nil)
 
-// BatchingNudgeConfig is the codex.batching_nudge block.
+// BatchingNudgeConfig is codex.yaml's batching_nudge block.
 // It holds the switches and thresholds of the after-tool-call hook that nudges a session back to batching its calls.
 // Prepare copies it into the run's state file, so a running session keeps the values it started with.
 type BatchingNudgeConfig struct {
@@ -52,12 +52,11 @@ type BatchingNudgeConfig struct {
 	MaxNudges int `yaml:"max_nudges" json:"max_nudges"`
 }
 
-// batchingNudgeKey is the key of the codex.batching_nudge block.
+// batchingNudgeKey is codex.yaml's key of the batching_nudge block.
 const batchingNudgeKey = "batching_nudge"
 
-// validateBatchingNudge refuses a codex.batching_nudge block a run could not use while the hook is on:
-// a negative codex.batching_nudge.context_tokens, or a codex.batching_nudge.lookup_run below 1.
-// So is a codex.batching_nudge.edit_run, codex.batching_nudge.slice_lines or codex.batching_nudge.max_nudges below 1.
+// validateBatchingNudge refuses a batching_nudge block a run could not use while the hook is on:
+// a negative context_tokens, or a lookup_run, edit_run, slice_lines or max_nudges below 1.
 // The refusal names the key.
 func validateBatchingNudge(nudge BatchingNudgeConfig) error {
 	if !nudge.Enabled {
@@ -75,7 +74,7 @@ func validateBatchingNudge(nudge BatchingNudgeConfig) error {
 	}
 	for _, bound := range bounds {
 		if bound.value < bound.least {
-			return fmt.Errorf("%s is %d, below its least value %d", keyName(batchingNudgeKey+"."+bound.key), bound.value, bound.least)
+			return fmt.Errorf("codex.yaml's %s.%s is %d, below its least value %d", batchingNudgeKey, bound.key, bound.value, bound.least)
 		}
 	}
 	return nil

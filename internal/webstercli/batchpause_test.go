@@ -26,7 +26,7 @@ import (
 const undecodableRecord = "{not json"
 
 // TestBatchVerbs_RefuseUnderAPause drives the batch verbs under a live hub entry with Master's strand lookup stubbed.
-// Serial: its rows capture the process-global logger, so only the subtests after those rows run in parallel.
+// It does not run in parallel: envMasterStrand's part sets an environment variable, and the logger is process-global.
 func TestBatchVerbs_RefuseUnderAPause(t *testing.T) {
 	tiergate.Require(t, 1)
 	const (
@@ -117,8 +117,9 @@ func TestBatchVerbs_RefuseUnderAPause(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("FABRIC_SKIP_GIT", "1")
 			logs := logcapture.Capture(t)
-			fx := newSkipGitVerbsFixture(t)
+			fx := newVerbsFixture(t)
 			fx.initState(t)
 			recordPath := filepath.Join(t.TempDir(), pauserecord.RecordFileName)
 			fx.CLI.pause = pauserecord.Geometry{RecordPath: recordPath, Slug: "pair"}
@@ -208,8 +209,8 @@ func TestBatchVerbs_RefuseUnderAPause(t *testing.T) {
 	}
 
 	t.Run("the other verbs are not refused by the pause", func(t *testing.T) {
-		t.Parallel()
-		fx := newSkipGitVerbsFixture(t)
+		t.Setenv("FABRIC_SKIP_GIT", "1")
+		fx := newVerbsFixture(t)
 		fx.initState(t)
 		recordPath := filepath.Join(t.TempDir(), pauserecord.RecordFileName)
 		fx.CLI.pause = pauserecord.Geometry{RecordPath: recordPath, Slug: "pair"}
@@ -238,25 +239,26 @@ func TestBatchVerbs_RefuseUnderAPause(t *testing.T) {
 		}
 	})
 
-	t.Run("masterStrandLookup resolves the strand name it is given to its guid", func(t *testing.T) {
-		t.Parallel()
+	t.Run("envMasterStrand reads the strand-name variable and resolves its guid", func(t *testing.T) {
 		var resolved string
-		resolve := func(name string) (string, error) {
+		lookup := envMasterStrand(func(name string) (string, error) {
 			resolved = name
 			return "guid-for-" + name, nil
+		})
+
+		t.Setenv(agentname.StrandNameEnv, "")
+		if _, _, err := lookup(); err == nil || !strings.Contains(err.Error(), agentname.StrandNameEnv) {
+			t.Errorf("lookup() with the variable empty = %v; want an error naming %s", err, agentname.StrandNameEnv)
 		}
 
-		if _, _, err := masterStrandLookup("", resolve)(); err == nil || !strings.Contains(err.Error(), agentname.StrandNameEnv) {
-			t.Errorf("lookup() with an empty name = %v; want an error naming %s", err, agentname.StrandNameEnv)
-		}
-
-		name, guid, err := masterStrandLookup(masterName, resolve)()
+		t.Setenv(agentname.StrandNameEnv, masterName)
+		name, guid, err := lookup()
 		if err != nil || name != masterName || guid != "guid-for-"+masterName || resolved != masterName {
 			t.Errorf("lookup() = (%q, %q, %v) after resolving %q; want (%q, %q, nil)", name, guid, err, resolved, masterName, "guid-for-"+masterName)
 		}
 
 		failing := errors.New("no such strand")
-		if _, _, err := masterStrandLookup(masterName, func(string) (string, error) { return "", failing })(); !errors.Is(err, failing) {
+		if _, _, err := envMasterStrand(func(string) (string, error) { return "", failing })(); !errors.Is(err, failing) {
 			t.Errorf("lookup() whose resolve fails = %v; want %v", err, failing)
 		}
 	})

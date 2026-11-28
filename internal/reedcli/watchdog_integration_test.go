@@ -32,7 +32,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fswatch"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -163,7 +163,7 @@ func TestWatchdogDaemon(t *testing.T) {
 	prime := h.PrimeWorktree()
 	pair := h.PairCodeWorktree(pairSlug)
 	socket := reedengine.ServerName(h.Path)
-	lockPath := filepath.Join(fabriclayout.HubScratchDir(h.Path), watchdogLockFileName)
+	lockPath := filepath.Join(fabricengine.HubScratchDir(h.Path), watchdogLockFileName)
 
 	cfg, err := reedengine.LoadConfig(configengine.Dirs{Anchor: h.Location.AnchorPath()}, "reed")
 	if err != nil {
@@ -173,7 +173,7 @@ func TestWatchdogDaemon(t *testing.T) {
 	tmuxkit.KillOnCleanup(t, tmuxPath, socket)
 
 	// DaemonLockAndLogs drives the daemon command against a hub that has never run one.
-	// It points the durable log sink at fabriclayout.HubLogsDir(hub) before it takes the lock;
+	// It points the durable log sink at fabricengine.HubLogsDir(hub) before it takes the lock;
 	// it keeps the logger's stderr half.
 	// The sink shows as a trace-*.log file there; the stderr half shows the daemon's "watchdog daemon starting" line.
 	// The daemon holds the single-instance lock,
@@ -181,7 +181,7 @@ func TestWatchdogDaemon(t *testing.T) {
 	// An unusable lock path exits non-zero:
 	// a hub path whose HubScratchDir cannot be created, because a file sits where an intermediate directory must go.
 	if !t.Run("DaemonLockAndLogs", func(t *testing.T) {
-		logsDir := fabriclayout.HubLogsDir(h.Path)
+		logsDir := fabricengine.HubLogsDir(h.Path)
 		if _, err := os.Stat(logsDir); err == nil {
 			t.Fatalf("hub logs dir %s already exists before the daemon ever ran", logsDir)
 		}
@@ -447,13 +447,12 @@ func TestWatchdogDaemon(t *testing.T) {
 		return
 	}
 
-	// ReEntryReReadsFlippedConfig ups the prime session again with its reed.watchdog key set to off.
-	// It first brings the session back and downs it.
+	// ReEntryReReadsFlippedConfig brings the prime session back, downs it, sets its watchdog key to off, and ups it again.
 	// It asserts two things about re-entry.
 	// The one daemon that keeps running, never restarted and with loopDone still open, rediscovers the re-upped session.
 	// enterSession is the function the daemon's discovery loop calls for each appeared name.
 	// It must read the flipped value from disk, not the value it held before the down/up.
-	// So a watchdog:off worktree enters the known set but starts no name-repair loop.
+	// So a watchdog:off worktree enters the known set but starts no watcher.
 	t.Run("ReEntryReReadsFlippedConfig", func(t *testing.T) {
 		if _, err := eng1.Up(); err != nil {
 			t.Fatalf("eng1.Up() (prime back before the flip): %v", err)
@@ -509,13 +508,13 @@ func TestWatchdogDaemon(t *testing.T) {
 
 		// enterSession is the function the running daemon's discovery loop calls for each newly appeared name.
 		// Called here with the same hub, tmux and session identity, it shows what the daemon reads on its next discovery cycle.
-		ws, err := enterSession(h.Path, tmuxPath, offEng.SessionName(), watchdogDefaultTiming())
+		ws, err := enterSession(h.Path, tmuxPath, offEng.SessionName())
 		if err != nil {
 			t.Fatalf("enterSession (after down + flip-to-off + up): %v", err)
 		}
-		t.Cleanup(func() { stopWatchedSession(t, ws) })
-		if ws.repairsNames {
-			t.Error("enterSession() after down + flip-to-off + up started the name-repair loop; want none — re-entry must re-read the flipped config rather than the value it held before the down/up")
+		if ws.cancel != nil {
+			ws.cancel()
+			t.Error("enterSession() after down + flip-to-off + up returned a non-nil cancel; want nil — re-entry must re-read the flipped config rather than the value it held before the down/up")
 		}
 		if ws.eng == nil {
 			t.Error("enterSession() after re-entry returned a nil eng; want a built Engine so departure bookkeeping stays uniform")
@@ -526,7 +525,7 @@ func TestWatchdogDaemon(t *testing.T) {
 	})
 }
 
-// unusableHubPath returns a hub path for which fabriclayout.HubScratchDir(hub)'s MkdirAll fails.
+// unusableHubPath returns a hub path for which fabricengine.HubScratchDir(hub)'s MkdirAll fails.
 // A regular file sits where an intermediate directory of the hub path must go, so nothing can be created beneath it.
 func unusableHubPath(t *testing.T) string {
 	t.Helper()

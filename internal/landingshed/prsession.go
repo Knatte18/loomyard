@@ -1,5 +1,6 @@
-// prsession.go owns the PR-Review row's one interactive agent session, which the operator works the pull request with.
-// It starts or resumes the session, stops it around the reads that judge the pull request, and builds its spec.
+// prsession.go owns the PR-Review row's one interactive agent session.
+// It starts or resumes the session and stops it around the reads that judge the pull request.
+// It also builds the spec the session starts under.
 
 package landingshed
 
@@ -16,11 +17,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/pullrequest"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
-	"github.com/Knatte18/loomyard/internal/shedtransient"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
+
+// prReviewerRole is the agent-name role the PR-Review session's spawn carries.
+const prReviewerRole = "pr-reviewer"
 
 // prReviewStencilName is the registered name of the PR-Review session's opening prompt.
 const prReviewStencilName = "landing-template-pr-review"
@@ -144,7 +147,7 @@ func RenderPRReviewPrompt(deps Deps, prURL, engine string) (string, error) {
 func (p *PRReview) sessionSpec(rec pullrequest.Record) (shuttleengine.Spec, error) {
 	choice, err := resolveModelChoice(p.deps.Config.PRReviewer, p.deps.Registry)
 	if err != nil {
-		return shuttleengine.Spec{}, fmt.Errorf("landingshed: %s: %s model-spec: %w", p.name, keyName(prReviewerKey), err)
+		return shuttleengine.Spec{}, fmt.Errorf("landingshed: %s: pr_reviewer model-spec: %w", p.name, err)
 	}
 	engine := p.deps.PullRequest.Sessions.EngineName(choice)
 
@@ -160,7 +163,7 @@ func (p *PRReview) sessionSpec(rec pullrequest.Record) (shuttleengine.Spec, erro
 		Interactive:  true,
 		Unawaited:    true,
 		DenyPublish:  true,
-		Role:         string(agentconfig.RolePRReviewer),
+		Role:         prReviewerRole,
 		Segment:      segmentcolor.Landing,
 		ConfigRole:   agentconfig.RolePRReviewer,
 		Skills:       p.deps.LanguageSkills,
@@ -219,7 +222,7 @@ func (p *PRReview) stopRecordedSession() (bool, error) {
 }
 
 // resumeSession brings the session back after a stop that left the review going.
-// A review that already ended has no session to bring back.
+// A review the operator already ended has no session to bring back.
 func (p *PRReview) resumeSession(ctx context.Context) error {
 	pr := p.deps.PullRequest
 	rec, found, err := pullrequest.ReadRecord(pr.RecordPath, pr.RecordLockPath)
@@ -233,12 +236,12 @@ func (p *PRReview) resumeSession(ctx context.Context) error {
 	return err
 }
 
-// endSession stops the session when the call ends with a verdict or a non-transient failure.
-// It leaves the session running when the context was cancelled and when err is transient,
-// so the re-call after an interrupt or the driver's re-step finds it live.
+// endSession stops the session when the call ends with a verdict or a failure of its own.
+// It leaves the session running when the context was cancelled,
+// so the re-call after an interrupt finds it live.
 // A failed stop is logged, since the verdict stands whatever it says.
 func (p *PRReview) endSession(ctx context.Context, err error) {
-	if ctx.Err() != nil || errors.Is(err, context.Canceled) || shedtransient.Class(err) != "" {
+	if ctx.Err() != nil || errors.Is(err, context.Canceled) {
 		return
 	}
 	if _, stopErr := p.stopRecordedSession(); stopErr != nil {

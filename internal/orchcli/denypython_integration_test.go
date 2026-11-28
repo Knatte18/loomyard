@@ -1,4 +1,4 @@
-// denypython_integration_test.go proves the orch config wiring carries the hub's shuttle.deny_python into the launch.
+// denypython_integration_test.go proves the orch launch's config wiring carries the hub's deny_python into the launch.
 // The python hook row stays installed whatever the value.
 // The notice names Python only while the value is true.
 
@@ -11,14 +11,14 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/shellguard"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestOrchIntegration_WireCLILaunchFollowsDenyPythonAtTheDefaultLayer sets shuttle.deny_python at a hub's default layer.
+// TestOrchIntegration_WireCLILaunchFollowsDenyPythonAtTheDefaultLayer sets deny_python at a hub's default layer.
 // It wires the orch CLI over that hub, and prepares a launch on the wired engine set with the wired shuttle config.
 // The launch's system-prompt notice holds the python sentence for true and not for false.
 // The launch's settings carry the python hook's live check for both.
@@ -49,7 +49,7 @@ func TestOrchIntegration_WireCLILaunchFollowsDenyPythonAtTheDefaultLayer(t *test
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-			shuttleFile := configengine.ConfigFile(fabriclayout.BoltDir(h.Path), "shuttle")
+			shuttleFile := configengine.ConfigFile(fabricengine.BoltDir(h.Path), "shuttle")
 			if err := os.MkdirAll(filepath.Dir(shuttleFile), 0o755); err != nil {
 				t.Fatalf("mkdir %s: %v", filepath.Dir(shuttleFile), err)
 			}

@@ -432,12 +432,7 @@ It must be **refused**, naming the path and saying it is not a fabric hub, and `
 The hub name is derived rather than typed.
 In the one-argument form it comes from the binding recorded on the weft.
 The operator never sees the name being deleted.
-Then re-run `--reset` against a real hub that holds no work origin lacks:
-no pair, no unfinished teardown, and a clean prime with no stash and no unpushed commit.
-Confirm the idempotent re-clone still works.
-Then add a pair and run `--reset` over that hub again.
-It must be **refused**, naming the pair worktree and a way forward that moves the hub aside with `mv`,
-and the hub must survive.
+Then re-run `--reset` against a real hub and confirm the idempotent re-clone still works.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -536,6 +531,36 @@ The backup must still be 0644, and your disabled hook must not run.
 Git must not print `hint: the hook was ignored because it's not set as executable`.
 (c) Set `core.hooksPath` to a directory outside `.git` and run `lym fabric add <slug>`.
 Confirm the hook lands in THAT directory, and that `git checkout` onto a diverged branch still warns.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
+### F17 -- The retired hub containers are swept (`add`, `reconcile`, `cleanup`)
+
+**Covers:** fabric
+
+**Goal:** "Plant what an older lym left in the hub's retired `_portals` and `_launchers` containers.
+Confirm the sweeps remove only what fabric wrote there."
+
+**Watch:** After `lym fabric add <slug>`, confirm the hub holds no `_launchers` directory.
+Then the retired-artifact sweep:
+plant a link `<hub>/_portals/<anchor>/<slug>` pointing at `<hub>/<slug>/<anchor>/_lym`;
+plant a file at `<hub>/_launchers/<anchor>/<prime>.code-workspace`;
+plant a foreign file of your own under `<hub>/_portals/<anchor>/`.
+Run a verb that regenerates the hub workspace file, such as `lym fabric add`.
+Confirm its log warns about the retired artifacts and names `lym fabric reconcile`.
+Then run `lym fabric reconcile`:
+the planted link and the old workspace file must be gone;
+your foreign file and `_portals` must survive, and `hub_details` must name the foreign file.
+Then the launchers sweep:
+plant `<hub>/_launchers/<anchor>/<slug>/run.sh` and `<hub>/_launchers/<anchor>/ide-menu.sh`,
+and a foreign file of your own under `<hub>/_launchers/<anchor>/keep/`.
+From the prime, `lym cleanup` must list both scripts and the emptied `<slug>` directory under the `launchers` segment,
+name your foreign file under `kept`, and change nothing.
+`lym cleanup --apply` must remove both scripts and the `<slug>` directory;
+your foreign file and the directories above it must survive.
+Delete your foreign file and run `lym cleanup --apply` again: `_launchers` must be gone.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -919,65 +944,6 @@ The real-provider drive between them stays a manual exercise by design.
 
 ---
 
-### F23 -- One-repository seed and records-store faults (`clone --single-repo`, `cleanup`, `board upsert`)
-
-**Covers:** fabric
-
-**Goal:** "Confirm a `--single-repo` seed leaves origin either whole or empty,
-and that a faulted records store fails closed instead of being read as a two-repository hub."
-
-**Watch:** Seed a fresh one-repository hub from a local bare with `lym fabric clone --single-repo <bare>`.
-On the records store's prime records branch, `git rev-parse --symbolic-full-name <branch>@{u}` must answer `refs/remotes/origin/<branch>`,
-and `git status -sb` must show its ahead count against origin.
-
-Seed a second bare whose `pre-receive` declines `refs/lym/heads/main` only.
-The clone must fail naming origin's hooks or rules declining `refs/lym/heads/main`, never a host that refuses refs outside `refs/heads/`,
-and `git ls-remote <bare>` must list nothing under `refs/lym/`.
-Seed a third bare whose `post-receive` SIGKILLs the client `git push` once `refs/lym/heads/main` is updated.
-The clone must fail with the rerun way forward, leave no hub, and leave nothing under `refs/lym/` on origin.
-Seed a fourth bare whose `post-receive` kills the client the same way once the prime's records ref `refs/lym/heads/<branch>` is updated.
-The outcome must be the same: the rerun way forward, no hub, and nothing under `refs/lym/`.
-Seed a fifth bare whose `pre-receive` SIGKILLs the client `git push` on `refs/lym/heads/main` and then exits non-zero, so origin never takes the board.
-The clone must fail naming `refs/lym/heads/main` and the prime's records ref, keep the hub, and leave the records ref on origin.
-The `git ls-remote` and `git push origin --delete` commands its way forward names must then leave nothing under `refs/lym/`.
-Before those commands are run, a plain `lym fabric clone <bare>` of that fifth bare into another directory must refuse,
-naming a seed that stopped before its board landed and `lym fabric clone --single-repo` as the way forward.
-`lym fabric clone --into <a directory that does not exist> <bare>` must refuse naming that directory, never a failed start of git.
-
-On the first hub, run each fault below in the records store, restoring its config between rows, then run `lym fabric cleanup --remote`:
-`remote.origin.fetch` unset; `remote.origin.fetch` set to `+refs/heads/*:refs/remotes/origin/*`; the `origin` remote removed;
-`remote.origin.fetch` set to that code refspec with both `remote.origin.push` values and `lym.primeRecordsBranch` removed,
-so that `branch.main.merge refs/lym/heads/main` is the one setting left that names `refs/lym/`;
-`lym.primeRecordsBranch` naming a branch that does not exist, with the prime pair checked out on another branch;
-`lym.primeRecordsBranch` set to `main`, the board's branch, with the prime pair checked out on another branch.
-Each must refuse with `ok: false`, name the setting at fault and give the `git -C <store> config` or `git remote add` way forward.
-With `remote.origin.fetch` unset, run `lym board upsert` on a new slug: origin's `refs/heads/main` must not move,
-and the board's push must not reach any ref under plain `refs/heads/`.
-With it still unset, `lym fabric push` in a pair must fail naming that `git -C <store> config --replace-all remote.origin.fetch` command,
-and `lym fabric status` must list the push under `failed_pushes`.
-`lym fabric pull` there must fail the same way, with no `weft_pulled: true`, while origin's records branch is ahead.
-`lym fabric reconcile` must fail naming the same command, and its error must hold no `resolve upstream` text.
-
-On a fresh one-repository hub, add a pair, commit and push a code change on it, then run `lym batten cancel <slug> --remove` from the prime.
-Origin must hold the pair's records archive tag under `refs/lym/tags/archive/<slug>/`,
-its code archive tag under `refs/lym/code-tags/archive/<slug>/`, and no ref under plain `refs/tags/`.
-Run `git remote set-url origin file://<bare>` in the code store and repeat with a second pair:
-its code archive tag must land under `refs/lym/code-tags/` again.
-A second clone of that origin must hold none of those code commits in its records store.
-Then add a pair and push it, commit one more records file in its records worktree without pushing it,
-and install a `pre-receive` hook on origin that sleeps on that pair's `refs/lym/heads/<slug>-weft` and then declines it.
-Run `lym fabric remove <slug> --remote`, and `kill -9` its `lym fabric remote-teardown` child once the hook runs.
-`lym fabric status` and `lym fabric prune` must list the slug under `pending_teardowns`;
-its way forward must name the `git push` of the pair's archive tag and then `lym fabric remove <slug> --remote`.
-With the hook removed, that re-run must leave the archive tag of the unpushed records commit on origin,
-delete both of the pair's branches there and leave `pending_teardowns` empty.
-Then make the hook decline `refs/lym/tags/archive/*` and remove one more pushed pair with `--remote`:
-`pending_teardowns` must keep that slug, with the archive tag push in its way forward, until a re-run succeeds with the hook removed.
-
-**Verdict:** `OK` / `WARN` / `FAIL`
-
----
-
 ## Session log format
 
 After running all scenarios, record a short session summary:
@@ -1003,12 +969,12 @@ F13: <OK|WARN|FAIL> -- <one-line note if not OK>
 F14: <OK|WARN|FAIL> -- <one-line note if not OK>
 F15: <OK|WARN|FAIL> -- <one-line note if not OK>
 F16: <OK|WARN|FAIL> -- <one-line note if not OK>
+F17: <OK|WARN|FAIL> -- <one-line note if not OK>
 F18: <OK|WARN|FAIL> -- <one-line note if not OK>
 F19: <OK|WARN|FAIL> -- <one-line note if not OK>
 F20: <OK|WARN|FAIL> -- <one-line note if not OK>
 F21: <OK|WARN|FAIL> -- <one-line note if not OK>
 F22: <OK|WARN|FAIL> -- <one-line note if not OK>
-F23: <OK|WARN|FAIL> -- <one-line note if not OK>
 
 sandbox-report.json written: <count of WARN/FAIL items>
 ```

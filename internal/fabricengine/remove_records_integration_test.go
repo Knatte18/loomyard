@@ -15,7 +15,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -64,7 +63,7 @@ func TestRemove_CommitsPendingRecordsIntoArchiveTag(t *testing.T) {
 	writeFile(t, filepath.Join(weftWorktree, filepath.FromSlash(rel)), "stopped\n")
 	warpTip := gitkit.RevParse(t, fabricengine.WorktreePath(l, slug), "HEAD")
 
-	res, err := h.Topology.Remove(l, slug, false, false, "")
+	res, err := h.Topology.Remove(l, slug, false, false)
 	if err != nil {
 		t.Fatalf("Remove error = %v", err)
 	}
@@ -79,11 +78,11 @@ func TestRemove_CommitsPendingRecordsIntoArchiveTag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read the archived tip's message: %v", err)
 	}
-	if !strings.Contains(msg, fabriclayout.DefaultCommitMessage) || !strings.Contains(msg, fabriclayout.WarpSHATrailerKey+": "+warpTip) {
-		t.Errorf("archived tip message = %q; want %q with a Warp-SHA trailer for %s", msg, fabriclayout.DefaultCommitMessage, warpTip)
+	if !strings.Contains(msg, fabricengine.DefaultCommitMessage) || !strings.Contains(msg, fabricengine.WarpSHATrailerKey+": "+warpTip) {
+		t.Errorf("archived tip message = %q; want %q with a Warp-SHA trailer for %s", msg, fabricengine.DefaultCommitMessage, warpTip)
 	}
 	mutations := res.Mutated()
-	if got := countKind(&mutations, fabriclayout.KindCommitCreated); got != 1 {
+	if got := countKind(&mutations, fabricengine.KindCommitCreated); got != 1 {
 		t.Errorf("commit_created mutations = %d; want 1", got)
 	}
 }
@@ -108,7 +107,7 @@ func TestRemove_OutOfPathspecSiblingDirtRefusesBeforeAnyMutation(t *testing.T) {
 	writeFile(t, filepath.Join(weftWorktree, "_lym", "record.txt"), "a record\n")
 	tipBefore := gitkit.RevParse(t, weftWorktree, "HEAD")
 
-	res, err := h.Topology.Remove(l, slug, false, false, "")
+	res, err := h.Topology.Remove(l, slug, false, false)
 	if err == nil {
 		t.Fatalf("Remove(force=false) with out-of-pathspec sibling dirt = nil error; want the refusal")
 	}
@@ -127,11 +126,11 @@ func TestRemove_OutOfPathspecSiblingDirtRefusesBeforeAnyMutation(t *testing.T) {
 	if tags := archiveTagsAt(t, h.RecordsBare); len(tags) != 0 {
 		t.Errorf("origin archive tags after a refused Remove = %v; want none", tags)
 	}
-	if tipAfter := gitkit.RevParse(t, weftRoot, fabriclayout.RecordsBranchName(slug)); tipAfter != tipBefore {
+	if tipAfter := gitkit.RevParse(t, weftRoot, fabricengine.RecordsBranchName(slug)); tipAfter != tipBefore {
 		t.Errorf("sibling branch tip = %s after a refused Remove; want unchanged %s", tipAfter, tipBefore)
 	}
 
-	forced, err := h.Topology.Remove(l, slug, true, false, "")
+	forced, err := h.Topology.Remove(l, slug, true, false)
 	if err != nil {
 		t.Fatalf("Remove(force=true) error = %v", err)
 	}
@@ -202,7 +201,7 @@ func TestRemoveRefusal_ProbeLeavesPairUntouched(t *testing.T) {
 		if !gitkit.BranchExists(t, l.WorktreePath(), slug) {
 			t.Errorf("warp branch gone after RemoveRefusal")
 		}
-		if !gitkit.BranchExists(t, weftRoot, fabriclayout.RecordsBranchName(slug)) {
+		if !gitkit.BranchExists(t, weftRoot, fabricengine.RecordsBranchName(slug)) {
 			t.Errorf("weft branch gone after RemoveRefusal")
 		}
 	}
@@ -211,8 +210,8 @@ func TestRemoveRefusal_ProbeLeavesPairUntouched(t *testing.T) {
 		t.Errorf("RemoveRefusal on a clean pair = %v; want nil", err)
 	}
 
-	if err := h.Topology.RemoveRefusal(l, fabriclayout.BoltDirName, false); err == nil {
-		t.Errorf("RemoveRefusal(%q) = nil; want the slug refusal", fabriclayout.BoltDirName)
+	if err := h.Topology.RemoveRefusal(l, fabricengine.BoltDirName, false); err == nil {
+		t.Errorf("RemoveRefusal(%q) = nil; want the slug refusal", fabricengine.BoltDirName)
 	}
 
 	primeName, err := fabricengine.PrimeName(l)
@@ -252,7 +251,7 @@ func TestRemoveRefusal_ProbeLeavesPairUntouched(t *testing.T) {
 	}
 
 	assertUntouched(t)
-	if got := gitkit.RevParse(t, weftWorktree, "HEAD"); got != gitkit.RevParse(t, weftRoot, fabriclayout.RecordsBranchName(slug)) {
+	if got := gitkit.RevParse(t, weftWorktree, "HEAD"); got != gitkit.RevParse(t, weftRoot, fabricengine.RecordsBranchName(slug)) {
 		t.Errorf("sibling HEAD and branch disagree after the probe")
 	}
 }

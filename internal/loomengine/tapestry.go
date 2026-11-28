@@ -27,95 +27,104 @@ const tapestryModule = "tapestry"
 
 // TapestryConfig is the resolved plan-perch configuration from tapestry.yaml.
 // It holds the model-specs, timeout, lens fans and review settings.
-// The tapestry.implementer key is read where the recipe builds the Webster row, never here.
+// The implementer key is read where the recipe builds the Webster row, never here.
 type TapestryConfig struct {
-	Plan  PlanConfig  `yaml:"plan"`
-	Parts PartsConfig `yaml:"parts"`
-}
+	Plan           string `yaml:"plan"`
+	PlanTimeoutMin int    `yaml:"plan_timeout_min"`
 
-// PlanConfig is the plan area of tapestry.yaml: the Plan-Write agent and the Plan-Review perch.
-type PlanConfig struct {
-	// Model is the model-spec of the plan agent.
-	Model      string `yaml:"model"`
-	TimeoutMin int    `yaml:"timeout_min"`
-
-	// Lenses names the lenses.yaml fan the Plan-Write lead forks itself for once its plan is written and self-checked.
+	// PlanLenses names the lenses.yaml fan the Plan-Write lead forks itself for once its plan is written and self-checked.
 	// An empty value turns the forks off.
-	Lenses string `yaml:"lenses"`
+	PlanLenses string `yaml:"plan_lenses"`
 
-	// GateFixer is the model-spec of the cold fixer of Plan-Write's plan gate; empty turns the fixer off.
-	GateFixer string `yaml:"gate_fixer"`
+	// PlanGateFixer is the model-spec of the cold fixer of Plan-Write's plan gate; empty turns the fixer off.
+	PlanGateFixer string `yaml:"plan_gate_fixer"`
 
-	// ReviewerModel and FixerModel are the Plan-Review segment's own model lists; an unset list takes loom.yaml's shared one.
-	ReviewerModel burlerengine.ModelSpecList `yaml:"reviewer_model"`
-	FixerModel    burlerengine.ModelSpecList `yaml:"fixer_model"`
+	// PlanReviewerModel and PlanFixerModel are the Plan-Review segment's own model lists; an unset list takes loom.yaml's shared one.
+	PlanReviewerModel burlerengine.ModelSpecList `yaml:"plan_reviewer_model"`
+	PlanFixerModel    burlerengine.ModelSpecList `yaml:"plan_fixer_model"`
 
-	ReviewerFan lenses.FanList `yaml:"reviewer_fan"`
-	FixerFan    lenses.FanList `yaml:"fixer_fan"`
+	PlanReviewerFan lenses.FanList `yaml:"plan_reviewer_fan"`
+	PlanFixerFan    lenses.FanList `yaml:"plan_fixer_fan"`
 
-	// AssistReviewerModel and AssistReviewerFan are the assistant's per-round lists; an empty model entry skips it.
-	AssistReviewerModel burlerengine.ModelSpecList `yaml:"assist_reviewer_model"`
-	AssistReviewerFan   lenses.FanList             `yaml:"assist_reviewer_fan"`
+	// PlanAssistReviewerModel and PlanAssistReviewerFan are the assistant's per-round lists; an empty model entry skips it.
+	PlanAssistReviewerModel burlerengine.ModelSpecList `yaml:"plan_assist_reviewer_model"`
+	PlanAssistReviewerFan   lenses.FanList             `yaml:"plan_assist_reviewer_fan"`
 
-	// Judge and Seed override loom.review.judge and loom.review.seed for the plan segment when non-empty.
-	Judge string `yaml:"judge"`
-	Seed  string `yaml:"seed"`
+	// PlanJudge and PlanSeed override loom.yaml's judge and seed for the plan segment when non-empty.
+	PlanJudge string `yaml:"plan_judge"`
+	PlanSeed  string `yaml:"plan_seed"`
 
-	// MaxBounces, HardMaxBounces and AutoAccept are the plan perch's bounce budget, hard cap and auto-accept flag.
-	// A nil budget takes loom.review.max_bounces and a hard cap of 0 takes loom.review.hard_max_bounces.
-	MaxBounces     *int `yaml:"max_bounces"`
-	HardMaxBounces int  `yaml:"hard_max_bounces"`
-	AutoAccept     bool `yaml:"auto_accept"`
+	// PlanMaxBounces, PlanHardMaxBounces and PlanAutoAccept are the plan perch's bounce budget, hard cap and auto-accept flag.
+	// A nil budget takes loom.yaml's review_max_bounces and a hard cap of 0 takes its review_hard_max_bounces.
+	PlanMaxBounces     *int `yaml:"plan_max_bounces"`
+	PlanHardMaxBounces int  `yaml:"plan_hard_max_bounces"`
+	PlanAutoAccept     bool `yaml:"plan_auto_accept"`
 
-	// Split turns the Parts-Write and Parts-Plan-Write rows on and Plan-Write off.
-	Split bool `yaml:"split"`
+	// PlanSplit turns the Parts-Write and Parts-Plan-Write rows on and Plan-Write off.
+	PlanSplit bool `yaml:"plan_split"`
+
+	// PartsDepth is the Parts-Write agent's reading depth, light or medium.
+	PartsDepth string `yaml:"parts_depth"`
+
+	// PartsMax is the most parts a parts file may hold.
+	PartsMax int `yaml:"parts_max"`
+
+	// Parts, PartWriter and PartsChair are the model-specs of the Parts-Write agent, of every part writer and of the chair.
+	Parts      string `yaml:"parts"`
+	PartWriter string `yaml:"part_writer"`
+	PartsChair string `yaml:"parts_chair"`
+
+	// PartsChairTimeoutMin is the minutes the chair's run may take; nil takes twice the effective plan timeout.
+	PartsChairTimeoutMin *int `yaml:"parts_chair_timeout_min"`
 }
 
-// PartsConfig is the parts area of tapestry.yaml: the agents that write a plan in parts.
-type PartsConfig struct {
-	// Model, Writer and Chair are the model-specs of the Parts-Write agent, of every part writer and of the chair.
-	Model  string `yaml:"model"`
-	Writer string `yaml:"writer"`
-	Chair  string `yaml:"chair"`
-
-	// Depth is the Parts-Write agent's reading depth, light or medium.
-	Depth string `yaml:"depth"`
-
-	// Max is the most parts a parts file may hold.
-	Max int `yaml:"max"`
-
-	// ChairTimeoutMin is the minutes the chair's run may take; nil takes twice the effective plan timeout.
-	ChairTimeoutMin *int `yaml:"chair_timeout_min"`
-}
-
-// WithTapestry returns c with its plan and parts areas set from t.
+// WithTapestry returns c with its plan fields set from t.
 func (c Config) WithTapestry(t TapestryConfig) Config {
 	c.Plan = t.Plan
+	c.PlanTimeoutMin = t.PlanTimeoutMin
+	c.PlanLenses = t.PlanLenses
+	c.PlanReviewerModel = t.PlanReviewerModel
+	c.PlanFixerModel = t.PlanFixerModel
+	c.PlanReviewerFan = t.PlanReviewerFan
+	c.PlanFixerFan = t.PlanFixerFan
+	c.PlanAssistReviewerModel = t.PlanAssistReviewerModel
+	c.PlanAssistReviewerFan = t.PlanAssistReviewerFan
+	c.PlanJudge = t.PlanJudge
+	c.PlanSeed = t.PlanSeed
+	c.PlanMaxBounces = t.PlanMaxBounces
+	c.PlanHardMaxBounces = t.PlanHardMaxBounces
+	c.PlanAutoAccept = t.PlanAutoAccept
+	c.PlanSplit = t.PlanSplit
+	c.PartsDepth = t.PartsDepth
+	c.PartsMax = t.PartsMax
 	c.Parts = t.Parts
+	c.PartWriter = t.PartWriter
+	c.PartsChair = t.PartsChair
+	c.PartsChairTimeoutMin = t.PartsChairTimeoutMin
 	return c
 }
 
-// PlanTimeout returns the run's effective plan timeout: tapestry.plan.timeout_min minutes, or runTimeout when it is 0.
-// runTimeout is shuttle.run_timeout_min as a duration, which tapestry.yaml's load cannot read.
+// PlanTimeout returns the run's effective plan timeout: PlanTimeoutMin minutes, or runTimeout when PlanTimeoutMin is 0.
+// runTimeout is shuttle's run_timeout_min as a duration, which tapestry.yaml's load cannot read.
 func (c Config) PlanTimeout(runTimeout time.Duration) time.Duration {
-	if c.Plan.TimeoutMin == 0 {
+	if c.PlanTimeoutMin == 0 {
 		return runTimeout
 	}
-	return time.Duration(c.Plan.TimeoutMin) * time.Minute
+	return time.Duration(c.PlanTimeoutMin) * time.Minute
 }
 
 // PartsChairTimeout returns the Parts-Plan-Write chair's timeout.
-// It is tapestry.parts.chair_timeout_min minutes when set, or twice PlanTimeout(runTimeout) when null.
-// A set value not above PlanTimeout(runTimeout) is an error naming the key.
+// It is PartsChairTimeoutMin minutes when set, or twice PlanTimeout(runTimeout) when nil.
+// A set value not above PlanTimeout(runTimeout) is an error naming parts_chair_timeout_min.
 // The chair spans every part writer, which is why the set value must sit above the plan timeout.
 func (c Config) PartsChairTimeout(runTimeout time.Duration) (time.Duration, error) {
 	planTimeout := c.PlanTimeout(runTimeout)
-	if c.Parts.ChairTimeoutMin == nil {
+	if c.PartsChairTimeoutMin == nil {
 		return 2 * planTimeout, nil
 	}
-	chairTimeout := time.Duration(*c.Parts.ChairTimeoutMin) * time.Minute
+	chairTimeout := time.Duration(*c.PartsChairTimeoutMin) * time.Minute
 	if chairTimeout <= planTimeout {
-		return 0, fmt.Errorf("config key %q: %d minutes is not above the effective plan timeout of %s; set it above %s (or %s when that key is 0) or to null for twice it", FullKeyName(partsChairTimeoutMinKey), *c.Parts.ChairTimeoutMin, planTimeout, FullKeyName(planTimeoutMinKey), shuttleRunTimeoutName())
+		return 0, fmt.Errorf("tapestry config key %q: %d minutes is not above the effective plan timeout of %s; set it above plan_timeout_min (or shuttle's run_timeout_min when plan_timeout_min is 0) or to null for twice it", "parts_chair_timeout_min", *c.PartsChairTimeoutMin, planTimeout)
 	}
 	return chairTimeout, nil
 }
@@ -125,43 +134,42 @@ func TapestryConfigTemplate() string {
 	return tapestryTemplate
 }
 
-// TapestryConfigOpenMaps returns the tapestry.yaml paths whose value is a per-round list.
-// configengine carries these values whole through reconcile and --set.
+// TapestryConfigOpenMaps returns the tapestry.yaml keys whose value is a per-round list.
+// configengine carries these keys whole through reconcile and --set.
 func TapestryConfigOpenMaps() []string {
-	return []string{"plan.reviewer_model", "plan.fixer_model", "plan.reviewer_fan", "plan.fixer_fan", "plan.assist_reviewer_model", "plan.assist_reviewer_fan"}
+	return []string{"plan_reviewer_model", "plan_fixer_model", "plan_reviewer_fan", "plan_fixer_fan", "plan_assist_reviewer_model", "plan_assist_reviewer_fan"}
 }
 
 // TapestryConfigSpec returns tapestry's layered-load spec.
 // The module is per-worktree.
-// tapestry.plan.lenses, the two plan fan keys and tapestry.plan.auto_accept can hollow a review or approval gate.
+// plan_lenses, the two plan fan keys and plan_auto_accept can hollow a review or approval gate.
 // They are barred from the local layer; every other key may be overridden there.
 // The plan perch's budget keys come from reviewbudget, without the three run-wide keys, which loom.yaml owns.
 func TapestryConfigSpec() configengine.Spec {
 	none := configengine.CategoryNone
 	guard := configengine.CategoryGuard
 	spec := configengine.Spec{
-		Name:      tapestryModule,
-		Template:  []byte(TapestryConfigTemplate()),
-		OpenMaps:  TapestryConfigOpenMaps(),
-		MovedKeys: tapestryMovedKeys(),
+		Name:     tapestryModule,
+		Template: []byte(TapestryConfigTemplate()),
+		OpenMaps: TapestryConfigOpenMaps(),
 		Categories: map[string]configengine.Category{
-			"plan.model":          none,
-			"plan.timeout_min":    none,
+			"plan":                none,
+			"plan_timeout_min":    none,
 			"implementer":         none,
-			"plan.lenses":         guard,
-			"plan.gate_fixer":     none,
-			"plan.reviewer_model": none,
-			"plan.fixer_model":    none,
-			"plan.reviewer_fan":   guard,
-			"plan.fixer_fan":      guard,
-			"plan.judge":          none,
-			"plan.seed":           none,
+			"plan_lenses":         guard,
+			"plan_gate_fixer":     none,
+			"plan_reviewer_model": none,
+			"plan_fixer_model":    none,
+			"plan_reviewer_fan":   guard,
+			"plan_fixer_fan":      guard,
+			"plan_judge":          none,
+			"plan_seed":           none,
 
-			"plan.assist_reviewer_model": none,
-			"plan.assist_reviewer_fan":   none,
+			"plan_assist_reviewer_model": none,
+			"plan_assist_reviewer_fan":   none,
 		},
 	}
-	for _, key := range []string{planSplitKey, partsDepthKey, partsMaxKey, partsModelKey, partsWriterKey, partsChairKey, partsChairTimeoutMinKey} {
+	for _, key := range []string{"plan_split", "parts_depth", "parts_max", "parts", "part_writer", "parts_chair", "parts_chair_timeout_min"} {
 		spec.Categories[key] = none
 	}
 	for key, category := range reviewbudget.Categories([]string{string(PerchPlan)}) {
@@ -182,18 +190,16 @@ func ValidateTapestryLocalValues(document []byte) error {
 	if err := yaml.Unmarshal(document, &budgets); err != nil {
 		return configengine.MarkInvalid(fmt.Errorf("unmarshal tapestry local values: %w", err))
 	}
-	return reviewbudget.CheckLocal(tapestryModule, budgets, []string{string(PerchPlan)})
+	return reviewbudget.CheckLocal(budgets, []string{string(PerchPlan)})
 }
 
 // LoadTapestryConfig loads the tapestry module's configuration strictly through the layer stack under dirs.
 // It validates model-spec grammar at load time and reads lenses.yaml through the same dirs.
-// It refuses a negative tapestry.plan.timeout_min and a plan perch budget or hard cap below its bound.
-// It also refuses an unparseable parts model and a tapestry.parts.depth other than light or medium.
-// It refuses a tapestry.parts.max below 1.
-// It refuses a tapestry.parts.chair_timeout_min not above a non-zero tapestry.plan.timeout_min.
-// It reads the run-wide loom.review.max_bounces, loom.review.hard_max_bounces and loom.review.amend_max_bounces.
-// They come from loom.yaml and load through the same dirs,
-// so a tapestry.plan.max_bounces of null and a tapestry.plan.hard_max_bounces of 0 resolve against them.
+// It refuses a negative plan_timeout_min and a plan perch budget or hard cap below its bound.
+// It also refuses an unparseable parts model, a parts_depth other than light or medium, and a parts_max below 1.
+// It refuses a parts_chair_timeout_min not above a non-zero plan_timeout_min.
+// The run-wide review_max_bounces, review_hard_max_bounces and review_amend_max_bounces come from loom.yaml.
+// They load through the same dirs, so a plan_max_bounces of null and a plan_hard_max_bounces of 0 resolve against them.
 // Each refusal names the module that owns the key it reports.
 func LoadTapestryConfig(dirs configengine.Dirs, module string) (TapestryConfig, error) {
 	spec := TapestryConfigSpec()
@@ -207,23 +213,23 @@ func LoadTapestryConfig(dirs configengine.Dirs, module string) (TapestryConfig, 
 	if err := yaml.Unmarshal(resolved, &cfg); err != nil {
 		var shape *burlerengine.ModelSpecShapeError
 		if errors.As(err, &shape) {
-			return TapestryConfig{}, fmt.Errorf("config key %q: %w", configengine.KeyName(tapestryModule, configengine.KeyAtLine(resolved, shape.Line)), err)
+			return TapestryConfig{}, fmt.Errorf("tapestry config key %q: %w", configengine.KeyAtLine(resolved, shape.Line), err)
 		}
 		var fanShape *lenses.FanShapeError
 		if errors.As(err, &fanShape) {
-			return TapestryConfig{}, fmt.Errorf("config key %q: %w", configengine.KeyName(tapestryModule, configengine.KeyAtLine(resolved, fanShape.Line)), err)
+			return TapestryConfig{}, fmt.Errorf("tapestry config key %q: %w", configengine.KeyAtLine(resolved, fanShape.Line), err)
 		}
 		return TapestryConfig{}, fmt.Errorf("unmarshal tapestry config: %w", err)
 	}
 
-	if _, err := modelspec.Parse(cfg.Plan.Model); err != nil {
-		return TapestryConfig{}, fmt.Errorf("config key %q: %w", FullKeyName(planModelKey), err)
+	if _, err := modelspec.Parse(cfg.Plan); err != nil {
+		return TapestryConfig{}, fmt.Errorf("tapestry config key %q: %w", "plan", err)
 	}
 
-	// An empty tapestry.plan.gate_fixer turns the fixer off and must load cleanly.
-	if cfg.Plan.GateFixer != "" {
-		if _, err := modelspec.Parse(cfg.Plan.GateFixer); err != nil {
-			return TapestryConfig{}, fmt.Errorf("config key %q: %w; set a model-spec with \"lym config tapestry\", or \"\" to turn the fixer off", FullKeyName(planGateFixerKey), err)
+	// An empty plan_gate_fixer turns the fixer off and must load cleanly.
+	if cfg.PlanGateFixer != "" {
+		if _, err := modelspec.Parse(cfg.PlanGateFixer); err != nil {
+			return TapestryConfig{}, fmt.Errorf("tapestry config key %q: %w; set a model-spec with \"lym config tapestry\", or \"\" to turn the fixer off", "plan_gate_fixer", err)
 		}
 	}
 
@@ -231,8 +237,8 @@ func LoadTapestryConfig(dirs configengine.Dirs, module string) (TapestryConfig, 
 		key   string
 		specs burlerengine.ModelSpecList
 	}{
-		{segmentKey(areaPlan, leafReviewerModel), cfg.Plan.ReviewerModel},
-		{segmentKey(areaPlan, leafFixerModel), cfg.Plan.FixerModel},
+		{"plan_reviewer_model", cfg.PlanReviewerModel},
+		{"plan_fixer_model", cfg.PlanFixerModel},
 	} {
 		if list.specs.Unset() {
 			continue
@@ -242,14 +248,14 @@ func LoadTapestryConfig(dirs configengine.Dirs, module string) (TapestryConfig, 
 		}
 	}
 
-	if err := burlerengine.ValidateAssistModelList(tapestryModule, segmentKey(areaPlan, leafAssistReviewerModel), cfg.Plan.AssistReviewerModel); err != nil {
+	if err := burlerengine.ValidateAssistModelList(tapestryModule, "plan_assist_reviewer_model", cfg.PlanAssistReviewerModel); err != nil {
 		return TapestryConfig{}, err
 	}
 
 	if err := lenses.ValidateFanKeys(dirs, tapestryModule, []lenses.FanKey{
-		{Key: segmentKey(areaPlan, leafReviewerFan), Fans: cfg.Plan.ReviewerFan},
-		{Key: segmentKey(areaPlan, leafFixerFan), Fans: cfg.Plan.FixerFan},
-		{Key: segmentKey(areaPlan, leafAssistReviewerFan), Fans: cfg.Plan.AssistReviewerFan},
+		{Key: "plan_reviewer_fan", Fans: cfg.PlanReviewerFan},
+		{Key: "plan_fixer_fan", Fans: cfg.PlanFixerFan},
+		{Key: "plan_assist_reviewer_fan", Fans: cfg.PlanAssistReviewerFan},
 	}); err != nil {
 		return TapestryConfig{}, err
 	}
@@ -260,43 +266,43 @@ func LoadTapestryConfig(dirs configengine.Dirs, module string) (TapestryConfig, 
 		key   string
 		value string
 	}{
-		{segmentKey(areaPlan, leafJudge), cfg.Plan.Judge},
-		{segmentKey(areaPlan, leafSeed), cfg.Plan.Seed},
+		{"plan_judge", cfg.PlanJudge},
+		{"plan_seed", cfg.PlanSeed},
 	} {
 		if override.value == "" {
 			continue
 		}
 		if _, err := modelspec.Parse(override.value); err != nil {
-			return TapestryConfig{}, fmt.Errorf("config key %q: %w", FullKeyName(override.key), err)
+			return TapestryConfig{}, fmt.Errorf("tapestry config key %q: %w", override.key, err)
 		}
 	}
 
-	// Zero is accepted: a zero timeout defers to shuttle.run_timeout_min.
-	if cfg.Plan.TimeoutMin < 0 {
-		return TapestryConfig{}, fmt.Errorf("config key %q: must not be negative, got %d; use 0 to defer to %s", FullKeyName(planTimeoutMinKey), cfg.Plan.TimeoutMin, shuttleRunTimeoutName())
+	// Zero is accepted: a zero timeout defers to shuttle's run_timeout_min.
+	if cfg.PlanTimeoutMin < 0 {
+		return TapestryConfig{}, fmt.Errorf("tapestry config key %q: must not be negative, got %d; use 0 to defer to shuttle's run_timeout_min", "plan_timeout_min", cfg.PlanTimeoutMin)
 	}
 
 	for _, model := range []struct {
 		key   string
 		value string
 	}{
-		{partsModelKey, cfg.Parts.Model},
-		{partsWriterKey, cfg.Parts.Writer},
-		{partsChairKey, cfg.Parts.Chair},
+		{"parts", cfg.Parts},
+		{"part_writer", cfg.PartWriter},
+		{"parts_chair", cfg.PartsChair},
 	} {
 		if _, err := modelspec.Parse(model.value); err != nil {
-			return TapestryConfig{}, fmt.Errorf("config key %q: %w", FullKeyName(model.key), err)
+			return TapestryConfig{}, fmt.Errorf("tapestry config key %q: %w", model.key, err)
 		}
 	}
-	if cfg.Parts.Depth != "light" && cfg.Parts.Depth != "medium" {
-		return TapestryConfig{}, fmt.Errorf("config key %q: %q is not a reading depth; set it to light or medium", FullKeyName(partsDepthKey), cfg.Parts.Depth)
+	if cfg.PartsDepth != "light" && cfg.PartsDepth != "medium" {
+		return TapestryConfig{}, fmt.Errorf("tapestry config key %q: %q is not a reading depth; set it to light or medium", "parts_depth", cfg.PartsDepth)
 	}
-	if cfg.Parts.Max < 1 {
-		return TapestryConfig{}, fmt.Errorf("config key %q: must be at least 1, got %d; set it to 1 or more", FullKeyName(partsMaxKey), cfg.Parts.Max)
+	if cfg.PartsMax < 1 {
+		return TapestryConfig{}, fmt.Errorf("tapestry config key %q: must be at least 1, got %d; set it to 1 or more", "parts_max", cfg.PartsMax)
 	}
-	// With tapestry.plan.timeout_min 0 the effective plan timeout is shuttle.run_timeout_min, which the table builder checks.
-	if cfg.Parts.ChairTimeoutMin != nil && cfg.Plan.TimeoutMin > 0 && *cfg.Parts.ChairTimeoutMin <= cfg.Plan.TimeoutMin {
-		return TapestryConfig{}, fmt.Errorf("config key %q: %d is not above %s %d; set it above that key or to null for twice it", FullKeyName(partsChairTimeoutMinKey), *cfg.Parts.ChairTimeoutMin, FullKeyName(planTimeoutMinKey), cfg.Plan.TimeoutMin)
+	// With plan_timeout_min 0 the effective plan timeout is shuttle's run_timeout_min, which the table builder checks.
+	if cfg.PartsChairTimeoutMin != nil && cfg.PlanTimeoutMin > 0 && *cfg.PartsChairTimeoutMin <= cfg.PlanTimeoutMin {
+		return TapestryConfig{}, fmt.Errorf("tapestry config key %q: %d is not above plan_timeout_min %d; set it above plan_timeout_min or to null for twice it", "parts_chair_timeout_min", *cfg.PartsChairTimeoutMin, cfg.PlanTimeoutMin)
 	}
 
 	loomSpec := ConfigSpec()
@@ -305,23 +311,21 @@ func LoadTapestryConfig(dirs configengine.Dirs, module string) (TapestryConfig, 
 		return TapestryConfig{}, err
 	}
 	var runWide struct {
-		Review struct {
-			MaxBounces      int `yaml:"max_bounces"`
-			HardMaxBounces  int `yaml:"hard_max_bounces"`
-			AmendMaxBounces int `yaml:"amend_max_bounces"`
-		} `yaml:"review"`
+		ReviewMaxBounces      int `yaml:"review_max_bounces"`
+		ReviewHardMaxBounces  int `yaml:"review_hard_max_bounces"`
+		ReviewAmendMaxBounces int `yaml:"review_amend_max_bounces"`
 	}
 	if err := yaml.Unmarshal(loomResolved, &runWide); err != nil {
 		return TapestryConfig{}, fmt.Errorf("unmarshal loom config: %w", err)
 	}
 	plan := string(PerchPlan)
 	if err := reviewbudget.CheckResolved(dirs, spec, reviewbudget.Values{
-		RunSoft:     runWide.Review.MaxBounces,
-		RunHard:     runWide.Review.HardMaxBounces,
-		RunAmend:    runWide.Review.AmendMaxBounces,
+		RunSoft:     runWide.ReviewMaxBounces,
+		RunHard:     runWide.ReviewHardMaxBounces,
+		RunAmend:    runWide.ReviewAmendMaxBounces,
 		Perches:     []string{plan},
-		PerchSoft:   map[string]*int{plan: cfg.Plan.MaxBounces},
-		PerchHard:   map[string]int{plan: cfg.Plan.HardMaxBounces},
+		PerchSoft:   map[string]*int{plan: cfg.PlanMaxBounces},
+		PerchHard:   map[string]int{plan: cfg.PlanHardMaxBounces},
 		RunWideSpec: loomSpec,
 	}); err != nil {
 		return TapestryConfig{}, err

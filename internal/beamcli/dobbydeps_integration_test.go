@@ -23,13 +23,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
-	"github.com/Knatte18/loomyard/internal/gateslot"
-	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hibernatecli"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
-	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -39,9 +35,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/pawlengine"
 	"github.com/Knatte18/loomyard/internal/proc"
-	"github.com/Knatte18/loomyard/internal/pushledger"
-	"github.com/Knatte18/loomyard/internal/runpusher"
-	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/slackengine"
@@ -49,7 +42,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 	"github.com/Knatte18/loomyard/internal/testkit/creelfake"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
-	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
 
 func TestHubDobbyDeps_PrimeTidyShuttle(t *testing.T) {
@@ -68,29 +60,9 @@ func TestHubDobbyDeps_PrimeTidyShuttle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("hubDobbyDeps(beam) = %v; want nil", err)
 	}
-	stopper, ok := beamDeps.PrimeTidyShuttle.(*runnerAgentShuttle)
+	stopper, ok := beamDeps.PrimeTidyShuttle.(*runnerTidyShuttle)
 	if !ok || stopper.worktree != prime {
-		t.Errorf("beam PrimeTidyShuttle = %#v; want a *runnerAgentShuttle over the prime's location", beamDeps.PrimeTidyShuttle)
-	}
-	if beamDeps.BeamDescribe.Record == nil {
-		t.Errorf("beam BeamDescribe.Record = nil; want the description rewrite wired")
-	}
-	if beamDeps.BeamDescribe.Timeout != 30*time.Minute {
-		t.Errorf("beam BeamDescribe.Timeout = %v; want the landing config's describe_timeout_min, 30 minutes", beamDeps.BeamDescribe.Timeout)
-	}
-	wantModel, err := resolveModel(fabricengine.ConfigDirs(prime), "sonnet[medium]")
-	if err != nil {
-		t.Fatalf("resolveModel(sonnet[medium]) = %v; want nil", err)
-	}
-	if got := beamDeps.BeamDescribe.Model; got.Engine != wantModel.Engine || got.Model != wantModel.Model || got.Effort != wantModel.Effort {
-		t.Errorf("beam BeamDescribe.Model = %+v; want the landing config's describe model %+v", got, wantModel)
-	}
-	describeShuttle, ok := beamDeps.BeamDescribe.Shuttle.(*runnerAgentShuttle)
-	if !ok || describeShuttle.gate == nil {
-		t.Errorf("beam BeamDescribe.Shuttle = %#v; want a *runnerAgentShuttle carrying the describe gate", beamDeps.BeamDescribe.Shuttle)
-	}
-	if tidyShuttle, ok := beamDeps.TidyShuttle.(*runnerAgentShuttle); !ok || tidyShuttle.gate != nil {
-		t.Errorf("beam TidyShuttle = %#v; want a *runnerAgentShuttle with no gate", beamDeps.TidyShuttle)
+		t.Errorf("beam PrimeTidyShuttle = %#v; want a *runnerTidyShuttle over the prime's location", beamDeps.PrimeTidyShuttle)
 	}
 
 	primeGeom, err := hubgeom.DobbyGeometry(prime, prime.WorktreeName)
@@ -103,27 +75,6 @@ func TestHubDobbyDeps_PrimeTidyShuttle(t *testing.T) {
 	}
 	if primeDeps.PrimeTidyShuttle != nil {
 		t.Errorf("prime PrimeTidyShuttle = %#v; want nil", primeDeps.PrimeTidyShuttle)
-	}
-	if primeDeps.BeamDescribe.Record != nil {
-		t.Errorf("prime BeamDescribe.Record is set; want the prime's dobby to rewrite no description")
-	}
-
-	// Only the prime's dobby runs the upkeep checks, and only under the scoper that finds the marked tests.
-	if beamDeps.UpkeepCall != nil {
-		t.Errorf("beam UpkeepCall is set; want nil, since the upkeep checks run on the main branch alone")
-	}
-	if primeDeps.UpkeepCall == nil {
-		t.Fatal("prime UpkeepCall = nil; want the upkeep call's renderer")
-	}
-	if call, err := primeDeps.UpkeepCall(); call != "" || err != nil {
-		t.Errorf("prime UpkeepCall() under the template's none scoper = %q, %v; want no call and nil", call, err)
-	}
-	scoper := []yamlengine.KV{{Key: "scoper", Value: "go"}}
-	if _, err := configengine.Set(fabricengine.ConfigDirs(prime), gateslot.ConfigSpec(), configengine.LayerDefault, scoper); err != nil {
-		t.Fatalf("set the gate scoper: %v", err)
-	}
-	if call, err := primeDeps.UpkeepCall(); call != "lym gate test --gate upkeep" || err != nil {
-		t.Errorf("prime UpkeepCall() under the go scoper = %q, %v; want %q and nil", call, err, "lym gate test --gate upkeep")
 	}
 
 	// The watch opens only a directory that exists, and a tick creates it as a side effect.
@@ -167,184 +118,6 @@ func TestHubDobbyDeps_PrimeTidyShuttle(t *testing.T) {
 	}
 }
 
-// TestHubDobbyDeps_PushSummaryWaitsReadBattenAndPairRecords pins the wired push summary's read of waiting runs.
-// A wait record counts only while a driver holds its run's lock, in the prime and in the pair alike.
-func TestHubDobbyDeps_PushSummaryWaitsReadBattenAndPairRecords(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	hubforge.AddPair(t, h, "task1")
-	prime := h.Location
-	seedBattenRun(t, prime, "task1")
-	primeGeom, err := hubgeom.DobbyGeometry(prime, prime.WorktreeName)
-	if err != nil {
-		t.Fatalf("DobbyGeometry(prime) = %v; want nil", err)
-	}
-	deps, err := hubDobbyDeps(prime, primeGeom)
-	if err != nil {
-		t.Fatalf("hubDobbyDeps(prime) = %v; want nil", err)
-	}
-	pair, err := pairLocation(prime, "task1")
-	if err != nil {
-		t.Fatalf("pairLocation(task1) = %v; want nil", err)
-	}
-
-	runs := []struct {
-		location *lymcwd.Location
-		id       string
-		producer string
-	}{{prime, "task1", "Land"}, {pair, shedrun.SelfRunID, "Finalize"}}
-	for _, run := range runs {
-		record := shedrun.DriveWaitRecord(run.location, run.id)
-		if err := os.MkdirAll(filepath.Dir(record), 0o755); err != nil {
-			t.Fatalf("mkdir the scratch directory: %v", err)
-		}
-		if err := state.WriteJSON(record, record+".lock", sheddriver.DriveWait{Producer: run.producer, Class: "git-transport"}); err != nil {
-			t.Fatalf("write the wait record: %v", err)
-		}
-		held, err := lock.AcquireWriteLock(shedrun.DriverLock(run.location, run.id))
-		if err != nil {
-			t.Fatalf("hold the driver lock: %v", err)
-		}
-		waits, err := deps.PushSummary.Waits()
-		if err != nil || len(waits) != 1 || waits[0].Slug != "task1" || waits[0].WaitProducer != run.producer {
-			t.Errorf("Waits() with the driver lock held at %s = %+v, %v; want task1 at %s alone", run.producer, waits, err, run.producer)
-		}
-		if err := held.Release(); err != nil {
-			t.Fatalf("release the driver lock: %v", err)
-		}
-		if waits, err := deps.PushSummary.Waits(); err != nil || len(waits) != 0 {
-			t.Errorf("Waits() with the driver lock free at %s = %+v, %v; want none", run.producer, waits, err)
-		}
-	}
-}
-
-// TestHubDobbyDeps_PushSummaryBeamCatchUpWaitsReadLiveBeamDobbies pins the wired push summary's read of beam catch-ups.
-// A beam dobby's recorded wait counts only while the dobby holds its lock.
-func TestHubDobbyDeps_PushSummaryBeamCatchUpWaitsReadLiveBeamDobbies(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	hubforge.AddPairWith(t, h, "b", fabricengine.AddOptions{SkipPush: true, Beam: true})
-	geom, err := hubgeom.DobbyGeometry(h.Location, "b")
-	if err != nil {
-		t.Fatalf("DobbyGeometry(b) = %v; want nil", err)
-	}
-	if err := os.MkdirAll(filepath.Dir(geom.StatePath), 0o755); err != nil {
-		t.Fatalf("mkdir the beam directory: %v", err)
-	}
-	err = dobbyengine.UpdateState(geom.StatePath, func(s *dobbyengine.State) error {
-		s.CatchUp = &dobbyengine.CatchUpWait{Reason: dobbyengine.CatchUpWaitOrigin}
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("UpdateState() = %v; want nil", err)
-	}
-	read := hubPushSummary(h.Location).BeamCatchUpWaits
-
-	if waits, err := read(); err != nil || len(waits) != 0 {
-		t.Errorf("BeamCatchUpWaits() with the dobby lock free = %+v, %v; want none", waits, err)
-	}
-	held, err := lock.AcquireWriteLock(geom.LockPath)
-	if err != nil {
-		t.Fatalf("hold the dobby lock: %v", err)
-	}
-	t.Cleanup(func() { _ = held.Release() })
-	if waits, err := read(); err != nil || len(waits) != 1 || waits["b"].Reason != dobbyengine.CatchUpWaitOrigin {
-		t.Errorf("BeamCatchUpWaits() with the dobby lock held = %+v, %v; want the origin wait of b", waits, err)
-	}
-}
-
-// TestHubDobbyDeps_PushSummaryRefusedReadsThePrimeCodeRecord pins the wired push summary's refusal read:
-// the prime's code-branch record refuses the landing target alone, until it is cleared.
-func TestHubDobbyDeps_PushSummaryRefusedReadsThePrimeCodeRecord(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	prime := h.Location
-	refused := hubPushSummary(prime).Refused
-	records := pushledger.RecordsKey(fabricengine.RecordsWorktree(prime))
-	requireRefused := func(key pushledger.Key, entry pushledger.Entry, want string) {
-		t.Helper()
-		wayForward, stands, err := refused(key, entry)
-		if err != nil || stands != (want != "") || wayForward != want {
-			t.Errorf("Refused(%s) = %q, %v, %v; want %q", key, wayForward, stands, err, want)
-		}
-	}
-	record := fabriclayout.FailedPush{
-		Repo: fabriclayout.RepoCode, RepoPath: prime.WorktreePath(), Branch: gitkit.CurrentBranch(t, prime.WorktreePath()),
-		Prime: true, Class: fabriclayout.PushFailureHeldBack, WayForward: "run the recorded step",
-	}
-	if err := fabricengine.RecordPushFailure(h.Path, record, time.Now()); err != nil {
-		t.Fatalf("RecordPushFailure() = %v", err)
-	}
-
-	requireRefused(pushledger.LandingKey, pushledger.Entry{}, "run the recorded step")
-	requireRefused(records, pushledger.Entry{Worktree: prime.WorktreePath()}, "")
-
-	if err := fabricengine.ClearPrimeCodeRefusal(prime); err != nil {
-		t.Fatalf("ClearPrimeCodeRefusal() = %v", err)
-	}
-	requireRefused(pushledger.LandingKey, pushledger.Entry{}, "")
-}
-
-// TestHubDobbyDeps_PrimeTickStartsThePrimesPusherAndABeamsTickNone pins the pushers a dobby asks for.
-// The prime's tick asks for the pushers of the hub's own targets, and its run read asks for each owned pair's.
-// A beam's dobby has no tick.
-func TestHubDobbyDeps_PrimeTickStartsThePrimesPusherAndABeamsTickNone(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	hubforge.AddPair(t, h, "task1")
-	prime := h.Location
-	var started []runpusher.Target
-	start := func(target runpusher.Target) (bool, error) {
-		started = append(started, target)
-		return false, nil
-	}
-
-	primeGeom, err := hubgeom.DobbyGeometry(prime, prime.WorktreeName)
-	if err != nil {
-		t.Fatalf("DobbyGeometry(prime) = %v; want nil", err)
-	}
-	primeDeps, err := hubDobbyDepsStarting(prime, primeGeom, start)
-	if err != nil {
-		t.Fatalf("hubDobbyDepsStarting(prime) = %v; want nil", err)
-	}
-	if _, err := primeDeps.Tick(t.Context(), dobbyengine.TickInput{}); err != nil {
-		t.Fatalf("prime Tick() = %v; want nil", err)
-	}
-	if want := []runpusher.Target{{Location: prime}, runpusher.BoardTarget(prime), runpusher.LandingTarget(prime)}; !slices.Equal(started, want) {
-		t.Errorf("pushers asked for by the prime's tick = %+v; want the hub's own, %+v", started, want)
-	}
-
-	// The run read asks for the pusher of each owned pair that stands here.
-	seedBattenRun(t, prime, "task1")
-	started = nil
-	if _, err := primeDeps.Runs(); err != nil {
-		t.Fatalf("prime Runs() = %v; want nil", err)
-	}
-	if len(started) != 1 || started[0].Slug != "task1" || !started[0].Pair {
-		t.Errorf("pushers asked for by the prime's run read = %+v; want the pair of task1 alone", started)
-	}
-
-	beamGeom, err := hubgeom.DobbyGeometry(prime, "task1")
-	if err != nil {
-		t.Fatalf("DobbyGeometry(task1) = %v; want nil", err)
-	}
-	beamDeps, err := hubDobbyDepsStarting(prime, beamGeom, start)
-	if err != nil {
-		t.Fatalf("hubDobbyDepsStarting(beam) = %v; want nil", err)
-	}
-	if beamDeps.Tick != nil {
-		t.Errorf("beam Tick is set; want nil, so no pusher is asked for by a beam's tick")
-	}
-}
-
 // TestHubDobbyDeps_PrimeTickEnsuresRelay pins that the prime's tick starts the Slack relay.
 // It does so while the presence is slack and the relay is down.
 // It starts nothing in the states `lym slack stop` and a gave-up relay leave.
@@ -364,7 +137,7 @@ func TestHubDobbyDeps_PrimeTickEnsuresRelay(t *testing.T) {
 	if err := slackengine.WriteCredentials(geom.TokenPath, slackengine.Credentials{BotToken: "xoxb-test", AppToken: "xapp-test", AppID: "A1"}); err != nil {
 		t.Fatalf("WriteCredentials = %v", err)
 	}
-	if err := slackengine.WriteSetup(geom.SetupPath, slackengine.Setup{OperatorID: "U1"}); err != nil {
+	if err := slackengine.WriteSetup(geom.SetupPath, slackengine.Setup{ChannelID: "C1", OperatorID: "U1"}); err != nil {
 		t.Fatalf("WriteSetup = %v", err)
 	}
 	// The relay runs only while an orch's slack button is on, so one orch's button is pressed.
@@ -801,7 +574,7 @@ func TestHubLandDeps_FileTaskReleasesTheTaskAndCodeReviewCapsReadTheHubConfig(t 
 	if err := os.MkdirAll(filepath.Dir(loomPath), 0o755); err != nil {
 		t.Fatalf("create the anchor config directory: %v", err)
 	}
-	if err := os.WriteFile(loomPath, []byte("code: {max_bounces: 7, hard_max_bounces: 9}\n"), 0o644); err != nil {
+	if err := os.WriteFile(loomPath, []byte("code_max_bounces: 7\ncode_hard_max_bounces: 9\n"), 0o644); err != nil {
 		t.Fatalf("write the anchor loom.yaml: %v", err)
 	}
 
@@ -833,43 +606,6 @@ func TestHubLandDeps_FileTaskReleasesTheTaskAndCodeReviewCapsReadTheHubConfig(t 
 	}
 	if caps.Soft != 7 || caps.Hard != 9 {
 		t.Errorf("CodeReviewCaps() = %+v; want soft 7 and hard 9, the code perch's caps", caps)
-	}
-
-	// A hub base still holding old keys under a stale stamp is moved before the strict load.
-	// The hard cap sits beside the soft one, since the template's run-wide hard cap is below 7.
-	stale, _ := landingHub(t)
-	gitkit.CommitFile(t, stale.BoardDir(), configengine.ConfigFileRel("loom"), "code_max_bounces: 7\ncode_hard_max_bounces: 9\n", "fixture: old loom keys")
-	caps, err = hubLandDeps(stale.Location).CodeReviewCaps()
-	if err != nil {
-		t.Fatalf("CodeReviewCaps() over old keys = %v; want nil", err)
-	}
-	if caps.Soft != 7 || caps.Hard != 9 {
-		t.Errorf("CodeReviewCaps() over old keys = %+v; want soft 7 and hard 9", caps)
-	}
-}
-
-// A dobby's wiring reconciles a hub whose build stamp is stale before it builds its dependencies.
-func TestWireDobby_StaleStampReconcilesTheHubBase(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	h, _ := landingHub(t)
-	gitkit.CommitFile(t, h.BoardDir(), configengine.ConfigFileRel("loom"), "code_max_bounces: 2\n", "fixture: old loom key")
-	geom, err := hubgeom.DobbyGeometry(h.Location, h.Location.WorktreeName)
-	if err != nil {
-		t.Fatalf("DobbyGeometry(prime) = %v; want nil", err)
-	}
-
-	if _, err := wireDobby(h.Location, geom); err != nil {
-		t.Fatalf("wireDobby() = %v; want nil", err)
-	}
-
-	base, err := os.ReadFile(configengine.ConfigFile(h.BoardDir(), "loom"))
-	if err != nil {
-		t.Fatalf("read the hub base loom.yaml: %v", err)
-	}
-	if got := string(base); !strings.Contains(got, "max_bounces: 2") || strings.Contains(got, "code_max_bounces") {
-		t.Errorf("hub base loom.yaml = %q; want the old key nested", got)
 	}
 }
 
@@ -912,102 +648,34 @@ func TestHubDobbyDeps_PullRequestRecordedReadsTheBeamLandingRecord(t *testing.T)
 	}
 }
 
-func TestDobbyGateHolders(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	declared := []yamlengine.KV{
-		{Key: "slots", Value: "3"},
-		{Key: "tiers.tier1", Value: `{command: "true", all_targets: ./pkg, timeout_min: 35, counter: go-json}`},
-	}
-	if _, err := configengine.Set(fabricengine.ConfigDirs(h.Location), gateslot.ConfigSpec(), configengine.LayerDefault, declared); err != nil {
-		t.Fatalf("declare the gate tier: %v", err)
-	}
-	acquired := []gateslot.Holder{
-		{Worktree: "wt-tier", Site: "site-tier", Tier: "tier1", Marker: "LYM_GATE_TEST_PID=1"},
-		{Worktree: "wt-plain", Site: "site-plain"},
-		{Worktree: "wt-undeclared", Site: "site-undeclared", Tier: "tier9", Marker: "LYM_GATE_TEST_PID=9"},
-	}
-	pool := hubgeom.GateSlots(h.Location)
-	for _, holder := range acquired {
-		lease, err := pool.Acquire(t.Context(), holder)
-		if err != nil {
-			t.Fatalf("Acquire(%q) = %v; want nil", holder.Site, err)
-		}
-		t.Cleanup(func() { _ = lease.Release() })
-	}
-	// The pool picks each slot and its start time, so those two are read from its records.
-	records, err := pool.Holders()
-	if err != nil {
-		t.Fatalf("Holders() = %v; want nil", err)
-	}
-
-	holders, err := dobbyGateHolders(h.Location)()
-	if err != nil {
-		t.Fatalf("dobbyGateHolders() = %v; want nil", err)
-	}
-	if len(holders) != len(acquired) {
-		t.Fatalf("dobbyGateHolders() = %+v; want %d holders", holders, len(acquired))
-	}
-	timeouts := map[string]time.Duration{"tier1": 35 * time.Minute}
-	for _, want := range acquired {
-		recorded := slices.IndexFunc(records, func(r gateslot.Holder) bool { return r.Site == want.Site })
-		mapped := slices.IndexFunc(holders, func(m dobbyengine.GateHolder) bool { return m.Site == want.Site })
-		if recorded < 0 || mapped < 0 {
-			t.Fatalf("no holder at site %q in records %+v and holders %+v", want.Site, records, holders)
-		}
-		got := holders[mapped]
-		if got.Started.IsZero() || !got.Started.Equal(records[recorded].Started) {
-			t.Errorf("holder at %q Started = %v; want %v", want.Site, got.Started, records[recorded].Started)
-		}
-		got.Started = time.Time{}
-		expected := dobbyengine.GateHolder{
-			Slot: records[recorded].Slot, Worktree: want.Worktree, Site: want.Site, Tier: want.Tier, Marker: want.Marker,
-			PID: os.Getpid(), TierTimeout: timeouts[want.Tier],
-		}
-		if got != expected {
-			t.Errorf("holder at %q = %+v; want %+v", want.Site, got, expected)
-		}
-	}
-
-	if err := os.Remove(configengine.ConfigFile(h.BoardDir(), "gate")); err != nil {
-		t.Fatalf("remove the gate config: %v", err)
-	}
-	if _, err := dobbyGateHolders(h.Location)(); err == nil || !strings.Contains(err.Error(), "load the gate config") {
-		t.Errorf("dobbyGateHolders() with no gate config = %v; want an error naming the gate config load", err)
-	}
-}
-
-func TestHubDobbyDeps_LandNoticeReadsTheRunsWorktreeLayer(t *testing.T) {
+func TestHubDobbyDeps_NotifyOnLandSeamsWriteTheHubBoardEntry(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, deps := landingHub(t)
-	beam, err := lymcwd.ResolveWorktree(fabricengine.WorktreePath(h.Location, "b"))
+	cfg, err := boardengine.LoadConfig(configengine.Dirs{Board: h.BoardDir()}, "board")
 	if err != nil {
-		t.Fatalf("resolve the beam worktree: %v", err)
+		t.Fatalf("load board config: %v", err)
+	}
+	cfg.Path = h.BoardDir()
+	board := boardengine.New(cfg)
+
+	if err := deps.SetNotifyOnLand("b"); err != nil {
+		t.Fatalf("SetNotifyOnLand(b) = %v; want nil", err)
+	}
+	if task, found, err := board.GetTask("b"); err != nil || !found || !task.NotifyOnLand {
+		t.Fatalf("GetTask(b) = NotifyOnLand %v, found %v, err %v; want it set", task.NotifyOnLand, found, err)
 	}
 
-	if on, err := deps.LandNotice("b"); on || err != nil {
-		t.Fatalf("LandNotice(b) with no layer setting it = %v, %v; want false, nil", on, err)
-	}
-	if level, err := deps.RunWatch.Level("b"); level != "stops" || err != nil {
-		t.Fatalf("RunWatch.Level(b) with no layer setting it = %q, %v; want stops, nil", level, err)
+	if err := deps.ClearNotifyOnLand("b"); err != nil {
+		t.Fatalf("ClearNotifyOnLand(b) = %v; want nil", err)
 	}
 
-	if got, err := deps.GateHolds.TaskWorktree("b"); got != beam.WorktreePath() || err != nil {
-		t.Errorf("GateHolds.TaskWorktree(b) = %q, %v; want %q, nil", got, err, beam.WorktreePath())
+	task, found, err := board.GetTask("b")
+	if err != nil || !found {
+		t.Fatalf("GetTask(b) = found %v, err %v; want found", found, err)
 	}
-
-	set := []yamlengine.KV{{Key: dobbyengine.LandNoticeKey, Value: "on"}, {Key: dobbyengine.RunWatchKey, Value: "rows"}}
-	if _, err := configengine.Set(fabricengine.ConfigDirs(beam), dobbyengine.ConfigSpec(), configengine.LayerWorktree, set); err != nil {
-		t.Fatalf("set the beam worktree's settings: %v", err)
-	}
-	if on, err := deps.LandNotice("b"); !on || err != nil {
-		t.Errorf("LandNotice(b) with its worktree's beam.yaml setting on = %v, %v; want true, nil", on, err)
-	}
-	if level, err := deps.RunWatch.Level("b"); level != "rows" || err != nil {
-		t.Errorf("RunWatch.Level(b) with its worktree's beam.yaml setting rows = %q, %v; want rows, nil", level, err)
+	if task.NotifyOnLand {
+		t.Errorf("b.NotifyOnLand = true; want it cleared")
 	}
 }

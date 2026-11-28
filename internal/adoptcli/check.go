@@ -22,7 +22,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gatecli"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -135,7 +134,7 @@ type checkDeps struct {
 
 // subjectDir returns the scratch directory of the adopt check of subject, a beam slug or `root`, in the hub at hubPath.
 func subjectDir(hubPath, subject string) string {
-	return filepath.Join(fabriclayout.AdoptScratchDir(hubPath), subject)
+	return filepath.Join(fabricengine.AdoptScratchDir(hubPath), subject)
 }
 
 // runCheck runs the check under check.lock and returns the final record and whether this call ran it.
@@ -389,7 +388,7 @@ func resolveSubjectWorktree(prime *lymcwd.Location, subject string) (*lymcwd.Loc
 // The func returns that owner when another machine than this one owns it, and "" otherwise.
 func subjectOwnedElsewhere(prime *lymcwd.Location, subject string) func() (string, error) {
 	return func() (string, error) {
-		owners, err := boardengine.ReadOwners(fabriclayout.BoardDir(prime.HubPath))
+		owners, err := boardengine.ReadOwners(fabricengine.BoardDir(prime.HubPath))
 		if err != nil {
 			return "", err
 		}

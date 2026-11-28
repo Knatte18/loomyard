@@ -12,37 +12,40 @@ The [README](../README.md) explains the concepts this page uses.
 
 ## Build and make a hub
 
-A hub needs your project's repository on a remote, and a home for LoomYard's records.
-The records go in a second empty-or-existing repository, or in the project's own repository.
+You need two empty-or-existing repositories on a remote: your project, and a records repository for LoomYard's files.
 
 ```bash
 ./update-plugins.sh                  # builds lym into your Go bin dir and installs the plugins
 lym fabric clone --shortname <short> <records-url> <project-url>
 ```
 
-That is the two-repository hub.
-For one repository, seed the hub from the project's URL alone:
-
-```bash
-lym fabric clone --single-repo --shortname <short> <project-url>
-```
-
-The records and the board then live in the project's repository under `refs/lym/heads/` and `refs/lym/tags/`, and the board is the branch `main` there.
-The archive tags of removed code branches live beside them, under `refs/lym/code-tags/`.
-On another machine, a plain `lym fabric clone <project-url>` joins such a hub.
-
 `update-plugins.sh` refuses a dirty tree and is the route to production.
 `./deploy-dev` builds the working tree into `.dev-bin` instead, to try a change without touching production.
-`lym fabric clone --help` describes `--shortname`, `--subpath` for a monorepo, `--reset` and `--single-repo`.
+`lym fabric clone --help` describes `--shortname`, `--subpath` for a monorepo and `--reset`.
 
-### Hazards of one repository
+### A hub of one repository
 
-- GitHub's branch and tag lists do not show `refs/lym/`.
-- Branch protection and rulesets do not cover `refs/lym/`.
-- A `git push --mirror` from either store deletes the other's refs on origin.
-- A `git clone --mirror` carries the records along with the code.
-- A bare `git push` in the records store pushes every local tag into the namespace.
-- `--single-repo` over the code repository of an existing two-repository hub starts a separate hub.
+A project can run as one repository instead of two.
+Clone it with one URL:
+
+```bash
+lym fabric clone --shortname <short> --single-repo <project-url>   # a repository with no hub yet
+lym fabric clone <project-url>                                      # an origin that already holds the branch lym-bolt
+```
+
+The layout puts `.lym-anchor` at the root of every code branch and the records under `<anchor>/_lym`.
+Records are committed beside the agents' work and stripped at every fabric merge, so they never reach the parent branch.
+The board lives on the orphan branch `lym-bolt`, which no code branch merges.
+
+Three hazards:
+
+- `--single-repo` cannot recognise the code repository of an existing two-repository hub.
+  Run there, it starts a separate hub over the same code.
+- Switching, resetting or stashing in the prime holds or drops its live records.
+  A prime off the branch `lym.primeBranch` names refuses every records commit until you switch back,
+  and a `git reset` or `git stash` can drop uncommitted records.
+- A prime whose branch refuses direct pushes keeps its records unpushed.
+  The prime's records push also waits while you have unpushed commits on that branch.
 
 ## Work
 

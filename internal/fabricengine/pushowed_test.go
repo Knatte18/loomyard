@@ -1,4 +1,4 @@
-// pushowed_test.go pins IsPushOwed, the classification a pusher retries an owed push by.
+// pushowed_test.go pins IsPushOwed, the classification a transition seam retries a failed push by, and IsPushProtected.
 
 package fabricengine_test
 
@@ -8,14 +8,13 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // failedWithClass returns a push failure recorded with class.
-func failedWithClass(class fabriclayout.PushFailureClass, cause error) error {
-	return &fabricengine.PushFailedError{Record: fabriclayout.FailedPush{Class: class}, Err: cause}
+func failedWithClass(class fabricengine.PushFailureClass, cause error) error {
+	return &fabricengine.PushFailedError{Record: fabricengine.FailedPush{Class: class}, Err: cause}
 }
 
 func TestIsPushOwed(t *testing.T) {
@@ -23,34 +22,42 @@ func TestIsPushOwed(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name string
-		err  error
-		want bool
+		name          string
+		err           error
+		want          bool
+		wantProtected bool
 	}{
-		{"Transport", failedWithClass(fabriclayout.PushFailureTransport, errors.New("unreachable")), true},
-		{"Deferred", failedWithClass(fabriclayout.PushFailureDeferred, errors.New("deferred")), true},
-		{"TeardownLock", failedWithClass(fabriclayout.PushFailureTeardownLock, fabricengine.ErrPairPushRunning), true},
-		{"PushLockBusy", fmt.Errorf("lock held: %w", fabricengine.ErrPushLockBusy), true},
+		{"Transport", failedWithClass(fabricengine.PushFailureTransport, errors.New("unreachable")), true, false},
+		{"Deferred", failedWithClass(fabricengine.PushFailureDeferred, errors.New("deferred")), true, false},
+		{"TeardownLock", failedWithClass(fabricengine.PushFailureTeardownLock, fabricengine.ErrPairPushRunning), true, false},
+		{"OperatorUnpushed", failedWithClass(fabricengine.PushFailureOperatorUnpushed, errors.New("operator commits")), true, false},
+		{"PushLockBusy", fmt.Errorf("lock held: %w", fabricengine.ErrPushLockBusy), true, false},
 		{"OwedFailuresJoined", errors.Join(
-			failedWithClass(fabriclayout.PushFailureTransport, errors.New("code")),
-			failedWithClass(fabriclayout.PushFailureDeferred, errors.New("records")),
-		), true},
-		{"NotFastForward", failedWithClass(fabriclayout.PushFailureNotFastForward, gitrepo.ErrPushRejected), false},
+			failedWithClass(fabricengine.PushFailureTransport, errors.New("code")),
+			failedWithClass(fabricengine.PushFailureDeferred, errors.New("records")),
+		), true, false},
+		{"NotFastForward", failedWithClass(fabricengine.PushFailureNotFastForward, gitrepo.ErrPushRejected), false, false},
 		{"OwedJoinedWithRejection", errors.Join(
-			failedWithClass(fabriclayout.PushFailureTransport, errors.New("code")),
-			failedWithClass(fabriclayout.PushFailureNotFastForward, gitrepo.ErrPushRejected),
-		), false},
-		{"BareTeardownRefusal", fmt.Errorf("pair is being removed: %w", fabricengine.ErrPairPushRunning), false},
-		{"HandedOver", fmt.Errorf("pushing: %w", fabricengine.ErrHandedOver), false},
-		{"TakeoverPassOwed", fmt.Errorf("pushing: %w", fabricengine.ErrTakeoverPassOwed), true},
-		{"TakeoversError", &fabricengine.TakeoversError{Takeovers: []*fabricengine.TakeoverError{{Slug: "run"}}}, false},
-		{"Nil", nil, false},
+			failedWithClass(fabricengine.PushFailureTransport, errors.New("code")),
+			failedWithClass(fabricengine.PushFailureNotFastForward, gitrepo.ErrPushRejected),
+		), false, false},
+		{"BareTeardownRefusal", fmt.Errorf("pair is being removed: %w", fabricengine.ErrPairPushRunning), false, false},
+		{"HandedOver", fmt.Errorf("pushing: %w", fabricengine.ErrHandedOver), false, false},
+		{"Protected", failedWithClass(fabricengine.PushFailureProtected, errors.New("protected branch")), false, true},
+		{"ProtectedJoinedWithTransport", errors.Join(
+			failedWithClass(fabricengine.PushFailureProtected, errors.New("protected branch")),
+			failedWithClass(fabricengine.PushFailureTransport, errors.New("records")),
+		), false, false},
+		{"Nil", nil, false, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			if got := fabricengine.IsPushOwed(tt.err); got != tt.want {
 				t.Errorf("IsPushOwed(%v) = %v; want %v", tt.err, got, tt.want)
+			}
+			if got := fabricengine.IsPushProtected(tt.err); got != tt.wantProtected {
+				t.Errorf("IsPushProtected(%v) = %v; want %v", tt.err, got, tt.wantProtected)
 			}
 		})
 	}

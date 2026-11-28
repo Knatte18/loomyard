@@ -8,8 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"time"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -63,17 +63,10 @@ func headOrEmpty(path string) (string, error) {
 
 // pushSideDetached pushes one side of a detached push and reports whether the side landed.
 // A side landed when its push returned nil and its worktree then holds nothing unpushed.
-// A side with a ceiling in opts landed once origin holds the ceiling, and is not pushed when origin already does.
 // A push failure it records, a deferral and an ended branch leave the commits unpushed for a later push:
 // each returns landed false and a nil error.
 // Any other error is returned.
 func pushSideDetached(rec *Mutations, hubPath, side, path string, opts SyncOptions, retryRecords func() (bool, error)) (landed bool, err error) {
-	if opts.ceiling != "" {
-		unpushed, err := unpushedUnder(path, opts.ceiling)
-		if err != nil || !unpushed {
-			return err == nil, err
-		}
-	}
 	err = pushClassified(rec, hubPath, side, path, opts, retryRecords)
 	var failed *PushFailedError
 	switch {
@@ -84,7 +77,7 @@ func pushSideDetached(rec *Mutations, hubPath, side, path string, opts SyncOptio
 	default:
 		return false, err
 	}
-	unpushed, err := unpushedUnder(path, opts.ceiling)
+	unpushed, err := gitrepo.New(path).HasUnpushed()
 	if err != nil {
 		return false, fmt.Errorf("fabricengine: push %s side at %s: %w", side, path, err)
 	}
@@ -100,8 +93,8 @@ func pushSideDetached(rec *Mutations, hubPath, side, path string, opts SyncOptio
 // A call with warpPath set and weftPath empty is rejected by the same guard.
 // It blocks until the lock is free,
 // and it marks the sides it pushes pending.
-func CoalescePushBothAt(warpPath, weftPath string, opts SyncOptions) (res fabriclayout.PushResult, err error) {
-	return coalescePushSides(fabriclayout.PushSpawn{WarpPath: warpPath, WeftPath: weftPath}, opts, fabriclayout.MachineNames{}, "CoalescePushBothAt", func(lockPath string) (*lock.FileLock, bool, error) {
+func CoalescePushBothAt(warpPath, weftPath string, opts SyncOptions) (res PushResult, err error) {
+	return coalescePushSides(PushSpawn{WarpPath: warpPath, WeftPath: weftPath}, opts, MachineNames{}, "CoalescePushBothAt", func(lockPath string) (*lock.FileLock, bool, error) {
 		held, err := lock.AcquireWriteLock(lockPath)
 		if err != nil {
 			return nil, false, fmt.Errorf("fabricengine: acquire push lock: %w", err)
@@ -119,7 +112,7 @@ func CoalescePushBothAt(warpPath, weftPath string, opts SyncOptions) (res fabric
 // It honors SkipGit and SkipPush.
 // A rejected records push reads the run's record on origin first, for the run req names, through here.
 // A takeover entry of a machine here does not hold returns a *TakeoverError, with no side pushed after the rejection.
-func CoalescePushRequest(req fabriclayout.PushSpawn, opts SyncOptions, here fabriclayout.MachineNames) (res fabriclayout.PushResult, err error) {
+func CoalescePushRequest(req PushSpawn, opts SyncOptions, here MachineNames) (res PushResult, err error) {
 	return coalescePushSides(req, opts, here, "CoalescePushRequest", lock.TryAcquireWriteLock)
 }
 
@@ -129,29 +122,34 @@ func CoalescePushRequest(req fabriclayout.PushSpawn, opts SyncOptions, here fabr
 // The prime has no such slug, so it reads req.PauseSlug.
 // caller names the public entry point in the error for a missing weft path.
 // The code side goes out with SyncOptions.AfterRecords set, after the records side landed.
-// A records commit held back for the pair's run caps the records side at that commit's first parent.
+// A warp path equal to the weft path names a one-repository pair, whose one branch is pushed once, as the records side.
+// A one-repository prime's records side first passes the operator-commit guard:
+// with commits of the operator's own unpushed, the side is recorded as owed and left unpushed, and the call returns nil.
 // For the duration of the call it installs a gate deferral.
 // A pause triggers it at the gate before an acquire of the lock:
 // the flags of the owed sides go back, and the process exits.
-func coalescePushSides(req fabriclayout.PushSpawn, opts SyncOptions, here fabriclayout.MachineNames, caller string, acquire func(lockPath string) (*lock.FileLock, bool, error)) (res fabriclayout.PushResult, err error) {
+func coalescePushSides(req PushSpawn, opts SyncOptions, here MachineNames, caller string, acquire func(lockPath string) (*lock.FileLock, bool, error)) (res PushResult, err error) {
 	warpPath, weftPath := req.WarpPath, req.WeftPath
 	hubRoot := ""
 	if warpPath != "" {
 		hubRoot = filepath.Dir(warpPath)
 	}
+	if warpPath == weftPath {
+		warpPath = ""
+	}
 	rec := NewMutations(hubRoot)
 	defer func() { res.Mutations = rec.Snapshot() }()
 
 	if opts.SkipGit || opts.SkipPush {
-		return fabriclayout.PushResult{}, nil
+		return PushResult{}, nil
 	}
 	if weftPath == "" {
-		return fabriclayout.PushResult{}, fmt.Errorf("fabricengine: %s requires a weft path for the absorbing push lock", caller)
+		return PushResult{}, fmt.Errorf("fabricengine: %s requires a weft path for the absorbing push lock", caller)
 	}
 
 	lockDir, err := ensureWeftLockDirAt(weftPath)
 	if err != nil {
-		return fabriclayout.PushResult{}, err
+		return PushResult{}, err
 	}
 	hubPath := filepath.Dir(weftPath)
 	runSlug := req.TeardownSlug
@@ -159,9 +157,9 @@ func coalescePushSides(req fabriclayout.PushSpawn, opts SyncOptions, here fabric
 		runSlug = req.PauseSlug
 	}
 
-	owed := map[string]fabriclayout.PushSpawn{pushSideRecords: {WeftPath: weftPath, PauseSlug: req.PauseSlug, TeardownSlug: req.TeardownSlug, ParentLocked: req.ParentLocked}}
+	owed := map[string]PushSpawn{pushSideRecords: {WeftPath: weftPath, PauseSlug: req.PauseSlug, TeardownSlug: req.TeardownSlug, ParentLocked: req.ParentLocked}}
 	if warpPath != "" {
-		owed[pushSideCode] = fabriclayout.PushSpawn{WarpPath: warpPath, PauseSlug: req.PauseSlug, TeardownSlug: req.TeardownSlug, ParentLocked: req.ParentLocked}
+		owed[pushSideCode] = PushSpawn{WarpPath: warpPath, PauseSlug: req.PauseSlug, TeardownSlug: req.TeardownSlug, ParentLocked: req.ParentLocked}
 	}
 
 	codeOpts := opts
@@ -183,22 +181,24 @@ func coalescePushSides(req fabriclayout.PushSpawn, opts SyncOptions, here fabric
 		// The records side goes first, and the code side only once the records side landed.
 		recordsLanded := true
 		if beforeWeft != "" {
-			recordsOpts := opts
-			// The records worktree's name carries the slug of the pair whose run may hold a commit.
-			heldSlug, _ := fabriclayout.WeftWarpSlug(filepath.Base(weftPath))
-			if recordsOpts.ceiling, err = recordsCeilingAt(hubPath, weftPath, heldSlug); err != nil {
-				return false, err
-			}
-			retryWeft := func() (bool, error) {
-				return retryWeftPush(rec, hubPath, weftPath, runSlug, here, recordsOpts.ceiling)
-			}
-			recordsLanded, err = pushSideDetached(rec, hubPath, fabriclayout.RepoRecords, weftPath, recordsOpts, retryWeft)
-			if err != nil {
-				return false, err
+			held := holdPrimePushForOperator(hubPath, weftPath, time.Now())
+			var heldPush *PushFailedError
+			switch {
+			case errors.As(held, &heldPush):
+				logger.Warn("fabricengine: prime push held for the operator's commits; records left unpushed", "path", weftPath, "error", held)
+				recordsLanded = false
+			case held != nil:
+				return false, held
+			default:
+				retryWeft := func() (bool, error) { return retryWeftPush(rec, hubPath, weftPath, runSlug, here) }
+				recordsLanded, err = pushSideDetached(rec, hubPath, failedPushSideRecords, weftPath, opts, retryWeft)
+				if err != nil {
+					return false, err
+				}
 			}
 		}
 		if recordsLanded && warpPath != "" && beforeWarp != "" {
-			if _, err := pushSideDetached(rec, hubPath, fabriclayout.RepoCode, warpPath, codeOpts, nil); err != nil {
+			if _, err := pushSideDetached(rec, hubPath, failedPushSideCode, warpPath, codeOpts, nil); err != nil {
 				return false, err
 			}
 		}
@@ -216,5 +216,5 @@ func coalescePushSides(req fabriclayout.PushSpawn, opts SyncOptions, here fabric
 	}
 
 	_, err = coalesceFlagged(lockDir, owed, acquire, step)
-	return fabriclayout.PushResult{}, err
+	return PushResult{}, err
 }

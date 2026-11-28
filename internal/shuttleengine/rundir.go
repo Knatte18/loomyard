@@ -79,7 +79,7 @@ func runDirRoot(cfg Config, anchorPath string) string {
 }
 
 // runOutcomeRunning is the sentinel RunState.Outcome value that Start writes before any classification.
-// It is explicit, not an empty string, so an unfinalized record never reads as running by default.
+// It is explicit, not an empty string, because an older run.json decodes with an empty Outcome.
 const runOutcomeRunning = "running"
 
 // RunState is the persisted record for one shuttle run, written as <runDir>/run.json.
@@ -100,11 +100,16 @@ type RunState struct {
 	SettingsPath string   `json:"settingsPath"`
 	EventsPath   string   `json:"eventsPath"`
 	CreatedAt    string   `json:"createdAt"`
-	// Outcome holds one of two kinds of value.
+	// Outcome holds one of three kinds of value.
 	// Start writes the sentinel runOutcomeRunning ("running") when it first persists the record.
 	// Run.finalize overwrites it with the classification (done, died, timeout, api-error) for every terminal outcome.
+	// The value "asking" is one only a legacy binary wrote.
 	// Any other value, including the empty string, marks a record that is never attachable.
-	// The sentinel keeps a running record explicit, so an empty value never reads as running.
+	// An empty string is what a run.json written before this field decodes to.
+	// Treating it as attachable would let a worktree upgraded mid-run attach to an idle pane.
+	// Such a run would then wait out a freshly restarted run timeout.
+	// The sentinel keeps a running record explicit,
+	// so a legacy empty value never reads as running.
 	Outcome string `json:"outcome"`
 	// Started is false when Start first persists the record.
 	// It becomes true when the startup probe sees the provider reach shuttleengine.StartupReady,
@@ -116,10 +121,15 @@ type RunState struct {
 	// Without the field, a pane at its shell prompt looks like a booted run by Outcome and liveness alone.
 	// This happens when a driver dies before its first liveness tick, or when the launch's binary does not exist.
 	// Attach reads the field to decide whether the reconstructed run may skip Wait's startup probe.
-	// False is the safe default: it costs one extra probe rather than silently skipping one never earned.
+	// False is the safe default, and a record from an older binary decodes to it.
+	// It costs such a record one extra probe rather than silently skipping one it never earned.
 	Started bool `json:"started"`
+	// AskingOffset is the events-file byte offset an older binary's finalize had consumed when it classified an ask.
+	// This binary leaves it nil and reads it only for legacy records.
+	// Attach replays such a record from this offset and counts the ask before it as already notified.
+	AskingOffset *int64 `json:"askingOffset,omitempty"`
 	// StrandName is the reed name of the run's strand, which a hold notice gives its parent to answer by.
-	// Empty when unknown, where the notice names the strand guid instead.
+	// Empty for a record that predates the field, where the notice names the strand guid instead.
 	StrandName string `json:"strandName,omitempty"`
 	// NotifiedOffset is the events-file byte offset past the last notified held turn end; zero for none.
 	// Wait persists it before calling the notifier and never notifies a held turn end at or below it,
@@ -145,36 +155,34 @@ type RunState struct {
 	// Wait persists it before typing the line and clears it at the next held turn end that is not an API error.
 	// One turn thus gets at most one continue, and a reattached Wait never sends twice.
 	APIContinued bool `json:"apiContinued,omitempty"`
-	// OperatorHoldReminded is true once the run's agent got the line naming its missing output files.
-	// The line follows a held turn end of a turn the operator started.
-	// Wait persists it before typing the line and clears it when the send fails, so a run gets at most one.
-	OperatorHoldReminded bool `json:"operatorHoldReminded,omitempty"`
 	// PromptOffset is the events-file size just before Start sends the prompt.
-	// It is zero when Start loaded no skills.
+	// It is zero when Start loaded no skills or for a record that predates the field.
 	// Readers that replay the events file begin here, so a load turn's end is never read as the run's own.
 	PromptOffset int64 `json:"promptOffset,omitempty"`
 	// PID is the pid of the process that waits on the run; Start records its own, and an attach rewrites it.
-	// Zero for a record with no waiting process, which never counts as live.
+	// Zero for a record an older binary wrote, which therefore never counts as live.
 	PID int `json:"pid,omitempty"`
 	// RecordsSessionStarts is the launch's declaration that it writes a session-start line, copied from the launch.
-	// Startup needs that line beside the ready pane; a false value keeps pane-only startup.
+	// Startup needs that line beside the ready pane; an older binary's record decodes false and keeps pane-only startup.
 	RecordsSessionStarts bool `json:"recordsSessionStarts,omitempty"`
 	// ForkSubagents records whether the spawning Spec authorized forking subagents, copied at spawn.
+	// A record an older binary wrote decodes false and reads as not authorized.
 	ForkSubagents bool `json:"forkSubagents,omitempty"`
 	// Engine is the name of the engine the run was started with.
-	// An empty value reads as the engine set's default engine.
+	// A record written before the field existed reads as the engine set's default engine.
 	Engine string `json:"engine,omitempty"`
 	// RoleKey is the spawning Spec's name override, else its role, which a later run start matches its predecessor by.
-	// It is empty for a Spec with NoCarryOver set.
 	// A record without it is never a predecessor.
 	RoleKey string `json:"roleKey,omitempty"`
 	// CarriedInstructions are the operator instructions a predecessor run carried over, so a re-spawn carries them again.
 	CarriedInstructions []string `json:"carriedInstructions,omitempty"`
 	// Role is the spawning Spec's role segment, kept so the stop path can report the ended session from the record alone.
+	// A record an older binary wrote leaves it empty.
 	Role string `json:"role,omitempty"`
-	// Model is the spawning Spec's model, which the stop path reports.
+	// Model is the spawning Spec's model, which the stop path reports; a record an older binary wrote leaves it empty.
 	Model string `json:"model,omitempty"`
 	// TranscriptCopied is true when the run's latest launch resumed a session after copying its transcript into the account.
+	// A record an older binary wrote decodes false.
 	TranscriptCopied bool `json:"transcriptCopied,omitempty"`
 	// LaunchOffset is the events file's size at the run's latest launch, zero for its first.
 	// A reader counts the first turn end of a resumed launch from it.
@@ -182,14 +190,8 @@ type RunState struct {
 	// RelaunchingAt is the RFC 3339 time a relaunch of the run's session marked the record.
 	// The record's Outcome stays running, so every reader that compares the outcome reads a relaunching run as running.
 	// RunState.relaunching reads the mark against its bound.
+	// A record an older binary wrote decodes with none.
 	RelaunchingAt string `json:"relaunchingAt,omitempty"`
-	// Interrupted is true on a stopped record when lym stopped the run because its session had ended.
-	// It is also true when the run's step was gone, and false when the stop was on purpose.
-	// A later start of the run's role may then resume its session.
-	Interrupted bool `json:"interrupted,omitempty"`
-	// NoResume is true once a later start of the run's role, or a deliberate restart of its work, took the run's place.
-	// No start resumes the session of a run that carries it.
-	NoResume bool `json:"noResume,omitempty"`
 }
 
 // relaunchBound is how long a record's relaunching mark holds its run live: twice the startup timeout.
@@ -369,7 +371,7 @@ func FindRun(cfg Config, anchorPath, guid string) (RunState, string, error) {
 // A directory younger than minAge is never removed, live guid or not.
 // The age guard exists because a starting run creates its directory and run.json before its strand is persisted.
 // An unguarded sweep could delete a run that is still starting up.
-// strandGUIDs comes from one worktree's reed.json, so the configured shuttle.run_dir must stay worktree-local:
+// strandGUIDs comes from one worktree's reed.json, so the configured run_dir must stay worktree-local:
 // under a root shared across worktrees, every other worktree's runs look like orphans,
 // and their kept diagnosis directories would be swept once past the age guard.
 // A directory whose run.json is missing or unreadable counts as an orphan: no strand can be confirmed live for it.
@@ -378,8 +380,6 @@ func FindRun(cfg Config, anchorPath, guid string) (RunState, string, error) {
 // A directory whose record's relaunching mark is within bound of now is kept whatever its strand.
 // A relaunch holds its strand down for a moment.
 // Past its bound the rule above applies.
-// A stopped run that a later start of its role may resume is kept too:
-// its record is the only one saying the run was interrupted.
 // now is the clock the caller supplies, so tests can control aging deterministically.
 // It returns the removed directory paths and a joined error naming every directory that could not be removed.
 // The sweep visits every entry, so one undeletable directory costs only that directory.
@@ -415,9 +415,6 @@ func sweepOrphans(root string, strandGUIDs map[string]bool, minAge time.Duration
 		rs, found, err := loadRunState(runDir)
 		if err == nil && found {
 			if within, _ := rs.relaunching(now, bound); within {
-				continue
-			}
-			if rs.Outcome == runOutcomeStopped && resumableAfterInterruption(rs, now, bound) {
 				continue
 			}
 		}

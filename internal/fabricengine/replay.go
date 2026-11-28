@@ -18,7 +18,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -31,10 +30,6 @@ const (
 	endedDone    = "done"
 	endedRemoved = "removed"
 )
-
-// EndedHandedOver marks, in the EndedSet a prime's records replay reads, a run this machine handed over to another.
-// Its commits go under local set-aside tags like an ended run's, and the other runs' commits replay in order.
-const EndedHandedOver = "handed-over"
 
 // setAsideTagPrefix is the short-name prefix of the local tag that keeps a commit a replay set aside.
 // No archive reader matches it.
@@ -95,12 +90,12 @@ type ReplayOutcome struct {
 	Dropped   []string
 	SetAside  []SetAsideCommit
 	Conflicts []string
-	Lost      []fabriclayout.ReplayFinding
-	Refused   []fabriclayout.ReplayFinding
+	Lost      []ReplayFinding
+	Refused   []ReplayFinding
 }
 
 // ledgerRunsAt reads the runs the ledger's file holds at rev, none when the file is absent there.
-func ledgerRunsAt(repo *gitrepo.Repo, ledger RunLedger, rev string) ([]fabriclayout.LedgerRun, error) {
+func ledgerRunsAt(repo *gitrepo.Repo, ledger RunLedger, rev string) ([]LedgerRun, error) {
 	data, err := blobAt(repo, rev, ledger.File())
 	if err != nil {
 		return nil, err
@@ -129,13 +124,13 @@ func readEndedSet(recordsRoot, boltRef string, slugs []string, localCreated map[
 	if err != nil {
 		return nil, fmt.Errorf("read the ended set: %w", err)
 	}
-	findRun := func(runs []fabriclayout.LedgerRun, slug string) (fabriclayout.LedgerRun, bool) {
+	findRun := func(runs []LedgerRun, slug string) (LedgerRun, bool) {
 		for _, run := range runs {
 			if run.Slug == slug {
 				return run, true
 			}
 		}
-		return fabriclayout.LedgerRun{}, false
+		return LedgerRun{}, false
 	}
 
 	tipRuns, err := ledgerRunsAt(repo, ledger, tip)
@@ -186,7 +181,7 @@ func readEndedSet(recordsRoot, boltRef string, slugs []string, localCreated map[
 
 // createdStampMatches reports whether run carries the created stamp, an RFC 3339 time as the ledger stores it.
 // An empty stamp matches every run.
-func createdStampMatches(run fabriclayout.LedgerRun, stamp string) bool {
+func createdStampMatches(run LedgerRun, stamp string) bool {
 	if stamp == "" {
 		return true
 	}
@@ -359,14 +354,13 @@ func ParentHoldsTaskWork(l, pairLocation *lymcwd.Location, slug string) (bool, e
 
 // withoutFinalizeEntered returns the part of ended whose slugs this machine's own landing has not reached,
 // so a replay never sets aside the commits of a run this machine landed.
-// A run marked EndedHandedOver stays, since its commits are never replayed here.
 func withoutFinalizeEntered(l *lymcwd.Location, ended EndedSet) EndedSet {
 	if len(ended) == 0 {
 		return ended
 	}
 	live := EndedSet{}
 	for slug, how := range ended {
-		if how != EndedHandedOver && finalizeEntered(l, slug, how) {
+		if finalizeEntered(l, slug, how) {
 			logger.Info("fabricengine: a run origin has ended is left to this machine's own landing", "slug", slug)
 			continue
 		}
@@ -442,6 +436,60 @@ func replayStop(outcome ReplayOutcome, err error) (ReplayOutcome, error) {
 	return outcome, err
 }
 
+// localCodeCommitsStop is the stop of a one-repository replay that found local commits changing a code path.
+// Such a commit is never rewritten, so the replay moves nothing and names the commits.
+type localCodeCommitsStop struct {
+	commits []string
+}
+
+func (e *localCodeCommitsStop) Error() string {
+	return fmt.Sprintf("the branch holds local commits that change code paths (%s), so no local commit was replayed onto origin's", joinOrNone(e.commits))
+}
+
+// unpushedCodeCommits returns the local commits of the worktree that upstream lacks and that are not records-only.
+// The commits come oldest first.
+// upstream is a commit SHA.
+func unpushedCodeCommits(worktree, upstream string) ([]string, error) {
+	repo := gitrepo.New(worktree)
+	head, err := repo.CurrentSHA()
+	if err != nil {
+		return nil, err
+	}
+	local, err := repo.CommitsNotIn(head, upstream)
+	if err != nil {
+		return nil, err
+	}
+	slices.Reverse(local)
+	var code []string
+	for _, sha := range local {
+		recordsOnly, err := IsRecordsOnlyCommit(worktree, sha)
+		if err != nil {
+			return nil, err
+		}
+		if !recordsOnly {
+			code = append(code, sha)
+		}
+	}
+	return code, nil
+}
+
+// rewordWarpSHA returns the message rewrite of a replayed commit's Warp-SHA trailer.
+// A trailer naming a commit in replayed becomes forkPoint, the commit whose code the replayed commit was made over.
+// Any other trailer stays as it is.
+func rewordWarpSHA(replayed map[string]bool, forkPoint string) func(message string) string {
+	prefix := WarpSHATrailerKey + ":"
+	return func(message string) string {
+		lines := strings.Split(message, "\n")
+		for i, line := range lines {
+			value, found := strings.CutPrefix(strings.TrimSpace(line), prefix)
+			if found && replayed[strings.TrimSpace(value)] {
+				lines[i] = prefix + " " + forkPoint
+			}
+		}
+		return strings.Join(lines, "\n")
+	}
+}
+
 // replayWeft brings a weft worktree's branch level with upstream when both moved, under its caller's locks.
 // It refuses with ErrReplayDirty, naming the paths, when a tracked change sits on a path the local commits touch,
 // and it leaves the branch unmoved.
@@ -451,15 +499,29 @@ func replayStop(outcome ReplayOutcome, err error) (ReplayOutcome, error) {
 // The other commits are replayed onto upstream oldest first, and a commit that becomes empty is dropped.
 // A conflict returns ErrReplayConflict with the starting tip restored.
 // The ended set is first narrowed to the runs this machine's own landing has not reached.
+// In a one-repository worktree a local commit that changes a code path is never rewritten:
+// the replay then moves nothing and returns a *localCodeCommitsStop naming those commits.
+// Otherwise only records-only commits are replayed.
+// Each replayed commit's Warp-SHA trailer that names a replayed commit becomes the fork point with upstream.
 func replayWeft(rec *Mutations, l *lymcwd.Location, worktree, upstream string, ended EndedSet) (ReplayOutcome, error) {
 	repo := gitrepo.New(worktree)
 	upstreamSHA, err := repo.ResolveSHA(upstream)
 	if err != nil {
 		return ReplayOutcome{}, err
 	}
-	_, ahead, err := replayAhead(repo, upstreamSHA)
+	tip, ahead, err := replayAhead(repo, upstreamSHA)
 	if err != nil || len(ahead) == 0 {
 		return ReplayOutcome{}, err
+	}
+	oneRepo := oneRepositoryAt(worktree)
+	if oneRepo {
+		codeCommits, err := unpushedCodeCommits(worktree, upstreamSHA)
+		if err != nil {
+			return ReplayOutcome{}, err
+		}
+		if len(codeCommits) > 0 {
+			return ReplayOutcome{}, &localCodeCommitsStop{commits: codeCommits}
+		}
 	}
 
 	live := withoutFinalizeEntered(l, ended)
@@ -486,9 +548,25 @@ func replayWeft(rec *Mutations, l *lymcwd.Location, worktree, upstream string, e
 		return outcome, err
 	}
 	req := replayRequest(worktree, ownedWarpCheckout(worktree), touched)
-	dropped, err := cherryPickOnto(rec, req, repo, upstreamSHA, kept)
-	if err != nil {
-		return replayStop(outcome, err)
+	var dropped []string
+	if oneRepo {
+		forkPoint, err := repo.MergeBase(tip, upstreamSHA)
+		if err != nil {
+			return outcome, err
+		}
+		replaying := make(map[string]bool, len(kept))
+		for _, sha := range kept {
+			replaying[sha] = true
+		}
+		dropped, err = cherryPickReworded(rec, req, repo, upstreamSHA, kept, rewordWarpSHA(replaying, forkPoint))
+		if err != nil {
+			return replayStop(outcome, err)
+		}
+	} else {
+		dropped, err = cherryPickOnto(rec, req, repo, upstreamSHA, kept)
+		if err != nil {
+			return replayStop(outcome, err)
+		}
 	}
 	outcome.Dropped = dropped
 	for _, sha := range kept {
@@ -497,6 +575,34 @@ func replayWeft(rec *Mutations, l *lymcwd.Location, worktree, upstream string, e
 		}
 	}
 	return outcome, nil
+}
+
+// replayOneRepositoryRecords replays the local records-only commits of f's one-repository worktree onto upstream.
+// upstream is a commit SHA, and the caller holds the records write lock and the push lock.
+// The errors are replayWeft's.
+func (f *Fabric) replayOneRepositoryRecords(rec *Mutations, upstream string) error {
+	l, err := f.hubLocation()
+	if err != nil {
+		return err
+	}
+	head, err := f.records.CurrentSHA()
+	if err != nil {
+		return err
+	}
+	ahead, err := f.records.CommitsNotIn(head, upstream)
+	if err != nil {
+		return err
+	}
+	ended, err := f.weftEndedByOrigin(l, ahead)
+	if err != nil {
+		return err
+	}
+	outcome, err := replayWeft(rec, l, f.warpPath, upstream, ended)
+	if err != nil {
+		return err
+	}
+	logWeftReplay(f.warpPath, outcome)
+	return nil
 }
 
 // endedRunSlug returns the slug of the first ended run a commit of paths belongs to.
@@ -545,7 +651,7 @@ func setAsideTag(rec *Mutations, repo *gitrepo.Repo, slug, sha string) (string, 
 		}
 		slug = "replayer/" + ledgerName
 	}
-	tag := setAsideTagPrefix + slug + "/" + sha[:fabriclayout.ArchiveTagSHALen]
+	tag := setAsideTagPrefix + slug + "/" + sha[:ArchiveTagSHALen]
 	commonDir, err := repo.CommonDir()
 	if err != nil {
 		return "", fmt.Errorf("tag set-aside commit %s: %w", sha, err)
@@ -562,7 +668,7 @@ func setAsideTag(rec *Mutations, repo *gitrepo.Repo, slug, sha string) (string, 
 	case existing != sha:
 		return "", fmt.Errorf("set-aside tag %q already exists at %s, not %s", tag, existing, sha)
 	}
-	rec.Append(fabriclayout.KindTagCreated, filepath.Dir(commonDir), tag)
+	rec.Append(KindTagCreated, filepath.Dir(commonDir), tag)
 	return tag, nil
 }
 
@@ -670,7 +776,7 @@ func hubLocationOfBolt(boltDir string) (*lymcwd.Location, error) {
 		if !entry.Main {
 			continue
 		}
-		slug, ok := fabriclayout.WeftWarpSlug(filepath.Base(filepath.Clean(filepath.FromSlash(entry.Path))))
+		slug, ok := WeftWarpSlug(filepath.Base(filepath.Clean(filepath.FromSlash(entry.Path))))
 		if !ok {
 			return nil, fmt.Errorf("the main worktree %s of the records repository is no weft sibling", entry.Path)
 		}
@@ -815,14 +921,14 @@ func replayBolt(rec *Mutations, l *lymcwd.Location, boltDir, upstream string, en
 	}
 
 	if len(seed) > 0 {
-		rec.Append(fabriclayout.KindCommitsDropped, boltDir, strings.Join(seed, " "))
+		rec.Append(KindCommitsDropped, boltDir, strings.Join(seed, " "))
 	}
 	endTip, err := repo.CurrentSHA()
 	if err != nil {
 		return restoreOnFailure(err)
 	}
 	if endTip != afterPicks {
-		rec.Append(fabriclayout.KindRepoAdvanced, boltDir, endTip)
+		rec.Append(KindRepoAdvanced, boltDir, endTip)
 	}
 	return outcome, nil
 }
@@ -847,7 +953,7 @@ func replayClaimedCommit(rec *Mutations, repo *gitrepo.Repo, boltDir, mergeBase 
 
 	type replayerFiles struct {
 		replayer BoltReplayer
-		files    []fabriclayout.ReplayFile
+		files    []ReplayFile
 	}
 	var groups []*replayerFiles
 	for _, path := range step.paths {
@@ -855,7 +961,7 @@ func replayClaimedCommit(rec *Mutations, repo *gitrepo.Repo, boltDir, mergeBase 
 		if skipLedger && replayer.Name() == ledgerName {
 			continue
 		}
-		file := fabriclayout.ReplayFile{Path: path}
+		file := ReplayFile{Path: path}
 		if file.Base, err = blobAt(repo, mergeBase, path); err != nil {
 			return err
 		}
@@ -877,7 +983,7 @@ func replayClaimedCommit(rec *Mutations, repo *gitrepo.Repo, boltDir, mergeBase 
 	if skipLedger {
 		aside = &SetAsideCommit{Commit: step.sha, Slug: step.runs[0]}
 	}
-	asideFor := func(name string, finding fabriclayout.ReplayFinding) {
+	asideFor := func(name string, finding ReplayFinding) {
 		if aside != nil {
 			return
 		}
@@ -889,7 +995,7 @@ func replayClaimedCommit(rec *Mutations, repo *gitrepo.Repo, boltDir, mergeBase 
 	}
 	allEmpty := true
 	for _, group := range groups {
-		result, err := group.replayer.Apply(fabriclayout.ReplayRequest{Dir: boltDir, Files: group.files})
+		result, err := group.replayer.Apply(ReplayRequest{Dir: boltDir, Files: group.files})
 		if err != nil {
 			return fmt.Errorf("replay Bolt commit %s by entry with %s: %w", step.sha, group.replayer.Name(), err)
 		}

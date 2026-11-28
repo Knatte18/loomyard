@@ -12,7 +12,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -114,7 +113,7 @@ func manifestReportOf(layout *lymcwd.Location, cfg shuttleengine.Config, dirs co
 	if err != nil {
 		return shuttleparity.ManifestReport{}, fmt.Errorf("load the model registry: %w", err)
 	}
-	shortname, found := fabricengine.ReadShortname(fabriclayout.BoltDir(layout.HubPath))
+	shortname, found := fabricengine.ReadShortname(fabricengine.BoltDir(layout.HubPath))
 	if !found {
 		return shuttleparity.ManifestReport{}, fmt.Errorf("the hub records no shortname; way forward: record one with `lym fabric shortname <shortname>`")
 	}
@@ -127,8 +126,8 @@ func manifestReportOf(layout *lymcwd.Location, cfg shuttleengine.Config, dirs co
 		return shuttleparity.ManifestReport{}, err
 	}
 	env := shuttleparity.SeatEnv{
-		StencilsDir: fabriclayout.StencilsDir(layout.HubPath),
-		SpecsDir:    fabriclayout.SpecsDir(layout.HubPath),
+		StencilsDir: fabricengine.StencilsDir(layout.HubPath),
+		SpecsDir:    fabricengine.SpecsDir(layout.HubPath),
 		Registry:    registry,
 		Location:    layout,
 		Dirs:        dirs,

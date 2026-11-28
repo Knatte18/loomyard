@@ -92,8 +92,6 @@ func testdataPromptRoots(t *testing.T, root string) []string {
 	return roots
 }
 
-//lym:guard
-//lym:only parent-align finalize
 func TestAgentMessaging_NoEngineTool(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

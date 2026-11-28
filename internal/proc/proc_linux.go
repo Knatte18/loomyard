@@ -160,48 +160,6 @@ func TreeSample(root int) ([]ProcessSample, error) {
 	return tree, nil
 }
 
-// ResidentInCgroup returns every process whose cgroup v2 path is cgroup or lies below it.
-// Each entry carries the parent, the executable path and the memory the process holds resident, but no CPU time.
-// A caller under a nearly spent memory limit reads it to name what holds the limit's memory.
-// A process that ends between the /proc listing and its reads, or whose cgroup the caller may not read, is skipped;
-// an unreadable /proc is an error.
-func ResidentInCgroup(cgroup string) ([]ProcessSample, error) {
-	entries, err := os.ReadDir("/proc")
-	if err != nil {
-		return nil, fmt.Errorf("proc: list /proc: %w", err)
-	}
-
-	pageSize := int64(os.Getpagesize())
-	var held []ProcessSample
-	for _, entry := range entries {
-		pid, err := strconv.Atoi(entry.Name())
-		if err != nil {
-			continue
-		}
-		member, ok := readCgroupV2Path("/proc/" + entry.Name() + "/cgroup")
-		if !ok || !withinCgroup(member, cgroup) {
-			continue
-		}
-		fields, ok := statFieldsAfterName(pid)
-		if !ok || len(fields) < 22 {
-			continue
-		}
-		// The remainder starts at field 3, so field 4 (parent pid) is entry 1 and field 24 (resident pages) is entry 21.
-		parent, parentErr := strconv.Atoi(fields[1])
-		residentPages, residentErr := strconv.ParseInt(fields[21], 10, 64)
-		if parentErr != nil || residentErr != nil {
-			continue
-		}
-		held = append(held, ProcessSample{PID: pid, Parent: parent, Path: executablePath(pid), RSS: residentPages * pageSize})
-	}
-	return held, nil
-}
-
-// withinCgroup reports whether the cgroup v2 path member is cgroup or lies below it.
-func withinCgroup(member, cgroup string) bool {
-	return cgroup == "/" || member == cgroup || strings.HasPrefix(member, cgroup+"/")
-}
-
 // executablePath returns the executable of pid from its /proc exe link.
 // When that link cannot be read, it falls back to the first field of the command line.
 // The 15-character command name in stat is never used, so a long test-binary name keeps its suffix.

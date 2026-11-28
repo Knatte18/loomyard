@@ -1,4 +1,4 @@
-// ownerset.go holds the owner write, which alone records a beam project's owner machine and the hub's prime owner.
+// ownerset.go holds the owner write, the only writer of a beam project's owner machine and of the hub's prime owner.
 //
 // SetOwners records a machine as the owner of named beam projects in one pull-first Bolt commit and pushes it;
 // ReadOwners reads the owners a board directory's local board.json records;
@@ -17,7 +17,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -50,7 +49,7 @@ func PullBolt(boardDir string) error {
 	switch result.Skipped {
 	case "":
 		return nil
-	case fabriclayout.BoltSkipFetchFailed:
+	case fabricengine.BoltSkipFetchFailed:
 		return fmt.Errorf("%w: %s", ErrOwnerOriginUnreachable, result.SkipDetail)
 	default:
 		return fmt.Errorf("the board could not be brought up to date: %s", result.SkipDetail)
@@ -170,7 +169,7 @@ func SetOwners(boardDir string, req OwnerRequest) (OwnerWrite, error) {
 		}
 		switch result.Skipped {
 		case "":
-		case fabriclayout.BoltSkipFetchFailed:
+		case fabricengine.BoltSkipFetchFailed:
 			return OwnerWrite{}, fmt.Errorf("%w: %s", ErrOwnerOriginUnreachable, result.SkipDetail)
 		default:
 			return OwnerWrite{}, fmt.Errorf("board: the owner write was refused, since the board could not be brought up to date: %s", result.SkipDetail)
@@ -358,7 +357,7 @@ func pushOwnerCommit(bolt *fabricengine.Bolt, opts fabricengine.SyncOptions, rec
 	for attempt := 1; ; attempt++ {
 		if err := bolt.PushRecorded(opts, rec); err != nil {
 			var failed *fabricengine.PushFailedError
-			if errors.As(err, &failed) && failed.Record.Class == fabriclayout.PushFailureTransport {
+			if errors.As(err, &failed) && failed.Record.Class == fabricengine.PushFailureTransport {
 				return fmt.Errorf("%w: %w", ErrOwnerOriginUnreachable, err)
 			}
 			return fmt.Errorf("board: the commit was kept locally and not pushed: %w", err)

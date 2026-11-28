@@ -371,26 +371,15 @@ func TestResume(t *testing.T) {
 				t.Errorf("report %+v, err %v, pushed %v; want only p1 pushed", report, err, e.pushedPairs)
 			}
 		}},
-		{"a lifted entry spawns the push of a pair holding commits origin lacks and of no level one", func(t *testing.T) {
+		{"a lifted entry over a pair with no deferred push spawns no pair push", func(t *testing.T) {
 			e := newEnv(t, newPair("p1"), newPair("p2"))
-			e.pushOwed = map[string]bool{"p2": true}
+			e.pushDeferred = map[string]bool{"p2": true}
 			e.seedLive(hubEntry(e.clock.Now()))
 
 			report, err := e.resume("")
 
 			if err != nil || !reflect.DeepEqual(e.pushedPairs, []string{"p2"}) || !reflect.DeepEqual(report.Spawned, []string{"pair:p2", "prime-records", "board-sync"}) {
-				t.Errorf("report %+v, err %v, pushed %v; want only p2, which is ahead", report, err, e.pushedPairs)
-			}
-		}},
-		{"a failing read of what a pair owes is listed under spawn_failed", func(t *testing.T) {
-			e := newEnv(t, newPair("p1"))
-			e.pushOwedErr = errors.New("ref unreadable")
-			e.seedLive(hubEntry(e.clock.Now()))
-
-			report, err := e.resume("")
-
-			if err != nil || len(e.pushedPairs) != 0 || len(report.SpawnFailed) != 1 || !strings.Contains(report.SpawnFailed[0].Reason, "ref unreadable") {
-				t.Errorf("report %+v, err %v, pushed %v; want no pair push and the read error listed", report, err, e.pushedPairs)
+				t.Errorf("report %+v, err %v, pushed %v; want only p2, whose push a pause deferred", report, err, e.pushedPairs)
 			}
 		}},
 		{"a lifted entry whose pair is gone spawns no pair push", func(t *testing.T) {

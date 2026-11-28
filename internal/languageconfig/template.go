@@ -9,8 +9,7 @@ import _ "embed"
 //go:embed template.yaml
 var configTemplate string
 
-// ConfigTemplate returns the default language.yaml template:
-// an empty language.skills list and an empty language.rename_tools list.
+// ConfigTemplate returns the default language.yaml template: an empty skills list and an empty rename_tools list.
 func ConfigTemplate() string {
 	return configTemplate
 }

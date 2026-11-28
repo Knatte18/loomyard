@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -32,45 +31,48 @@ import (
 // The drop is an index manipulation on a worktree that never had the files.
 // It deletes nothing, so it stays outside the Fabric Destruction Chokepoint.
 // An index-only removal after a full checkout would not do: shedrun reads seeds from disk.
-func createWeftWorktreeDroppingRuns(rec *Mutations, l *lymcwd.Location, slug, branch, startPoint string) (rootTracked bool, err error) {
+//
+// It returns the tokens proving it created the worktree and its branch.
+// They are the zero tokens when the creation failed, and valid when only a later step failed.
+func createWeftWorktreeDroppingRuns(rec *Mutations, l *lymcwd.Location, slug, branch, startPoint string) (rootTracked bool, worktreeTok createdToken, branchTok createdBranchToken, err error) {
 	weftPath := RecordsWorktreePath(l, slug)
 	weftRepoRoot, err := RecordsRepoRoot(l)
 	if err != nil {
-		return false, fmt.Errorf("resolve weft repo root: %w", err)
+		return false, worktreeTok, branchTok, fmt.Errorf("resolve weft repo root: %w", err)
 	}
-	if err := containedWorktreeAdd(weftRepoRoot, l.HubPath, weftPath, func(worktreePath string) []string {
+	worktreeTok, branchTok, err = createGitWorktree(rec, weftRepoRoot, l.HubPath, weftPath, branch, func(worktreePath string) []string {
 		return []string{"worktree", "add", "--no-checkout", "-b", branch, worktreePath, startPoint}
-	}); err != nil {
-		return false, fmt.Errorf("create weft worktree %q for branch %q failed: %w", weftPath, branch, err)
+	})
+	if err != nil {
+		return false, worktreeTok, branchTok, fmt.Errorf("create weft worktree %q for branch %q failed: %w", weftPath, branch, err)
 	}
-	rec.Append(fabriclayout.KindWorktreeCreated, weftPath, "")
-	rec.AppendRef(fabriclayout.KindBranchCreated, branch, refDetail("records", weftRepoRoot, ""))
+	rec.AppendRef(KindBranchCreated, branch, refDetail("records", weftRepoRoot, ""))
 
-	root := fabriclayout.ScopedPathspec(l.AnchorRel, []string{shedrun.RunsRootRel()})[0]
+	root := ScopedPathspec(l.AnchorRel, []string{shedrun.RunsRootRel()})[0]
 	root = filepath.ToSlash(root)
 
 	if _, err := gitexec.Run([]string{"read-tree", "HEAD"}, weftPath); err != nil {
-		return false, fmt.Errorf("populate weft index in %q: %w", weftPath, err)
+		return false, worktreeTok, branchTok, fmt.Errorf("populate weft index in %q: %w", weftPath, err)
 	}
 	rootTracked, err = PathTracked(weftPath, root)
 	if err != nil {
-		return false, err
+		return false, worktreeTok, branchTok, err
 	}
 	if rootTracked {
 		if _, err := gitexec.Run([]string{"rm", "-r", "--cached", "-q", "--", root}, weftPath); err != nil {
-			return false, fmt.Errorf("drop run records from weft index in %q: %w", weftPath, err)
+			return false, worktreeTok, branchTok, fmt.Errorf("drop run records from weft index in %q: %w", weftPath, err)
 		}
 	}
 	if _, err := gitexec.Run([]string{"checkout-index", "-a", "-u"}, weftPath); err != nil {
-		return false, fmt.Errorf("write weft worktree %q: %w", weftPath, err)
+		return false, worktreeTok, branchTok, fmt.Errorf("write weft worktree %q: %w", weftPath, err)
 	}
 	if rootTracked {
 		if _, err := gitexec.Run([]string{"read-tree", "-m", "HEAD"}, weftPath); err != nil {
-			return false, fmt.Errorf("restore run records in weft index in %q: %w", weftPath, err)
+			return false, worktreeTok, branchTok, fmt.Errorf("restore run records in weft index in %q: %w", weftPath, err)
 		}
 	}
 	if _, err := ensureWeftLockDirAt(weftPath); err != nil {
-		return false, fmt.Errorf("create weft lock dir in %q: %w", weftPath, err)
+		return false, worktreeTok, branchTok, fmt.Errorf("create weft lock dir in %q: %w", weftPath, err)
 	}
-	return rootTracked, nil
+	return rootTracked, worktreeTok, branchTok, nil
 }

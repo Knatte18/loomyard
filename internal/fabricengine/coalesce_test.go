@@ -13,7 +13,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -113,7 +112,7 @@ type pendingFlagFixture struct {
 }
 
 // encodeFlag returns flag as the JSON a pending flag file holds.
-func encodeFlag(t *testing.T, flag fabriclayout.PushSpawn) []byte {
+func encodeFlag(t *testing.T, flag PushSpawn) []byte {
 	t.Helper()
 	content, err := json.Marshal(flag)
 	if err != nil {
@@ -127,7 +126,7 @@ func newPendingFlagFixture(t *testing.T) pendingFlagFixture {
 	t.Helper()
 	hub := t.TempDir()
 	records := weftname.SiblingPath(hub, "feat")
-	lockDir := fabriclayout.RecordsLockDirPath(records)
+	lockDir := RecordsLockDirPath(records)
 	if err := os.MkdirAll(lockDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll(%s): %v", lockDir, err)
 	}
@@ -146,7 +145,7 @@ func TestPushDeferral_PutsBackEveryOwedFlag(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	f := newPendingFlagFixture(t)
-	owed := map[string]fabriclayout.PushSpawn{
+	owed := map[string]PushSpawn{
 		pushSideCode:    {WarpPath: f.code, PauseSlug: "feat", TeardownSlug: "feat", ParentLocked: true},
 		pushSideRecords: {WeftPath: f.records, PauseSlug: "feat", TeardownSlug: "feat", ParentLocked: true},
 	}
@@ -187,7 +186,7 @@ func TestCoalesceFlagged_PendingFlags(t *testing.T) {
 
 		steps := 0
 		step := func() (bool, error) { steps++; return false, nil }
-		owed := map[string]fabriclayout.PushSpawn{pushSideRecords: {WeftPath: f.records}}
+		owed := map[string]PushSpawn{pushSideRecords: {WeftPath: f.records}}
 		acquired, err := coalesceFlagged(f.lockDir, owed, tryAcquire, step)
 		if acquired || err != nil {
 			t.Errorf("coalesceFlagged() = (%v, %v); want (false, nil)", acquired, err)
@@ -202,7 +201,7 @@ func TestCoalesceFlagged_PendingFlags(t *testing.T) {
 
 	t.Run("FlagSetDuringStepRunsStepAgain", func(t *testing.T) {
 		f := newPendingFlagFixture(t)
-		owed := map[string]fabriclayout.PushSpawn{pushSideRecords: {WeftPath: f.records}}
+		owed := map[string]PushSpawn{pushSideRecords: {WeftPath: f.records}}
 		steps := 0
 		step := func() (bool, error) {
 			steps++
@@ -227,7 +226,7 @@ func TestCoalesceFlagged_PendingFlags(t *testing.T) {
 
 	t.Run("MissedReacquireAfterStepReportsAcquiredAndKeepsFlag", func(t *testing.T) {
 		f := newPendingFlagFixture(t)
-		owed := map[string]fabriclayout.PushSpawn{pushSideRecords: {WeftPath: f.records}}
+		owed := map[string]PushSpawn{pushSideRecords: {WeftPath: f.records}}
 		step := func() (bool, error) { return false, markPending(f.lockDir, owed) }
 		calls := 0
 		acquire := func(lockPath string) (*lock.FileLock, bool, error) {
@@ -250,7 +249,7 @@ func TestCoalesceFlagged_PendingFlags(t *testing.T) {
 		f := newPendingFlagFixture(t)
 		wantErr := errors.New("boom")
 		step := func() (bool, error) { return false, wantErr }
-		_, err := coalesceFlagged(f.lockDir, map[string]fabriclayout.PushSpawn{pushSideRecords: {WeftPath: f.records}}, tryAcquire, step)
+		_, err := coalesceFlagged(f.lockDir, map[string]PushSpawn{pushSideRecords: {WeftPath: f.records}}, tryAcquire, step)
 		if !errors.Is(err, wantErr) {
 			t.Fatalf("coalesceFlagged() error = %v; want %v", err, wantErr)
 		}
@@ -264,26 +263,26 @@ func TestCoalesceFlagged_PendingFlags(t *testing.T) {
 	t.Run("OwedFlagsAreOnlyTaken", func(t *testing.T) {
 		tests := []struct {
 			name  string
-			owed  func(f pendingFlagFixture) map[string]fabriclayout.PushSpawn
+			owed  func(f pendingFlagFixture) map[string]PushSpawn
 			side  string
 			bytes func(f pendingFlagFixture) []byte
 		}{
 			{
 				name: "CorruptRecordsFlagSetByStep",
-				owed: func(f pendingFlagFixture) map[string]fabriclayout.PushSpawn {
-					return map[string]fabriclayout.PushSpawn{pushSideRecords: {WeftPath: f.records}}
+				owed: func(f pendingFlagFixture) map[string]PushSpawn {
+					return map[string]PushSpawn{pushSideRecords: {WeftPath: f.records}}
 				},
 				side:  pushSideRecords,
 				bytes: func(pendingFlagFixture) []byte { return []byte("{not json") },
 			},
 			{
 				name: "CodeFlagOfAnUnpairedPath",
-				owed: func(f pendingFlagFixture) map[string]fabriclayout.PushSpawn {
-					return map[string]fabriclayout.PushSpawn{pushSideCode: {WarpPath: filepath.Join(f.hub, "unpaired")}}
+				owed: func(f pendingFlagFixture) map[string]PushSpawn {
+					return map[string]PushSpawn{pushSideCode: {WarpPath: filepath.Join(f.hub, "unpaired")}}
 				},
 				side: pushSideCode,
 				bytes: func(f pendingFlagFixture) []byte {
-					return encodeFlag(t, fabriclayout.PushSpawn{WarpPath: filepath.Join(f.hub, "unpaired")})
+					return encodeFlag(t, PushSpawn{WarpPath: filepath.Join(f.hub, "unpaired")})
 				},
 			},
 		}
@@ -293,9 +292,9 @@ func TestCoalesceFlagged_PendingFlags(t *testing.T) {
 				var logged bytes.Buffer
 				logger.SetOutput(&logged)
 				t.Cleanup(func() { logger.SetOutput(logger.DefaultOutput()) })
-				var spawned []fabriclayout.PushSpawn
+				var spawned []PushSpawn
 				original := spawnDetachedPushFn
-				spawnDetachedPushFn = func(req fabriclayout.PushSpawn) error { spawned = append(spawned, req); return nil }
+				spawnDetachedPushFn = func(req PushSpawn) error { spawned = append(spawned, req); return nil }
 				t.Cleanup(func() { spawnDetachedPushFn = original })
 
 				steps := 0
@@ -334,11 +333,11 @@ func TestCoalesceFlagged_PendingFlags(t *testing.T) {
 				tests := []struct {
 					name string
 					// edit changes the valid flag; raw, when set, replaces its encoded bytes.
-					edit func(f pendingFlagFixture, flag *fabriclayout.PushSpawn)
+					edit func(f pendingFlagFixture, flag *PushSpawn)
 					raw  []byte
 				}{
 					{name: "ValidFlag"},
-					{name: "PathOfAnotherWorktree", edit: func(f pendingFlagFixture, flag *fabriclayout.PushSpawn) {
+					{name: "PathOfAnotherWorktree", edit: func(f pendingFlagFixture, flag *PushSpawn) {
 						setSidePath(side, filepath.Join(f.hub, "badworktree"), flag)
 					}},
 					{name: "NotJSON", raw: []byte("{not json")},
@@ -349,12 +348,12 @@ func TestCoalesceFlagged_PendingFlags(t *testing.T) {
 						var logged bytes.Buffer
 						logger.SetOutput(&logged)
 						t.Cleanup(func() { logger.SetOutput(logger.DefaultOutput()) })
-						var spawned []fabriclayout.PushSpawn
+						var spawned []PushSpawn
 						original := spawnDetachedPushFn
-						spawnDetachedPushFn = func(req fabriclayout.PushSpawn) error { spawned = append(spawned, req); return nil }
+						spawnDetachedPushFn = func(req PushSpawn) error { spawned = append(spawned, req); return nil }
 						t.Cleanup(func() { spawnDetachedPushFn = original })
 
-						flag := fabriclayout.PushSpawn{PauseSlug: "pause", TeardownSlug: "teardown"}
+						flag := PushSpawn{PauseSlug: "pause", TeardownSlug: "teardown"}
 						setSidePath(side, validSidePath(side, f), &flag)
 						if tt.edit != nil {
 							tt.edit(f, &flag)
@@ -368,9 +367,9 @@ func TestCoalesceFlagged_PendingFlags(t *testing.T) {
 						}
 
 						// The holder owes the side the flag is not for.
-						owed := map[string]fabriclayout.PushSpawn{pushSideRecords: {WeftPath: f.records}}
+						owed := map[string]PushSpawn{pushSideRecords: {WeftPath: f.records}}
 						if side == pushSideRecords {
-							owed = map[string]fabriclayout.PushSpawn{pushSideCode: {WarpPath: f.code}}
+							owed = map[string]PushSpawn{pushSideCode: {WarpPath: f.code}}
 						}
 						steps := 0
 						step := func() (bool, error) { steps++; return false, nil }
@@ -410,7 +409,7 @@ func validSidePath(side string, f pendingFlagFixture) string {
 }
 
 // setSidePath sets the path field flag carries for side.
-func setSidePath(side, path string, flag *fabriclayout.PushSpawn) {
+func setSidePath(side, path string, flag *PushSpawn) {
 	if side == pushSideCode {
 		flag.WarpPath = path
 		return

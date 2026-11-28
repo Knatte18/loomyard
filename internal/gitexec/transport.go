@@ -5,10 +5,6 @@ package gitexec
 
 import (
 	"errors"
-	"io/fs"
-	"os"
-	"path/filepath"
-	"regexp"
 	"strings"
 )
 
@@ -22,10 +18,7 @@ var remoteSubcommands = map[string]bool{
 	"clone":     true,
 }
 
-// transportPhrases are the lower-cased stderr fragments git prints when a remote operation fails in transit.
-// Git prints them when it cannot reach the remote.
-// It prints them when the connection drops before the remote's answer is complete.
-// It prints them when the remote's front end answers with a gateway error before git reaches the repository.
+// transportPhrases are the lower-cased stderr fragments git prints when it cannot reach the remote.
 var transportPhrases = []string{
 	"could not resolve host",
 	"connection refused",
@@ -35,80 +28,12 @@ var transportPhrases = []string{
 	"network is unreachable",
 	"failed to connect to",
 	"operation too slow",
-	"http/2 stream",
-	"recv failure",
-	"send failure",
-	"empty reply from server",
-	"early eof",
-	"unexpected disconnect while reading sideband packet",
-	"gnutls_handshake() failed",
-	"tls connection was non-properly terminated",
-	"the requested url returned error: 502",
-	"the requested url returned error: 503",
-	"the requested url returned error: 504",
-}
-
-// httpClientStatusPattern matches the HTTP 4xx status git prints in lower-cased stderr.
-// Such an answer is a refusal that running the command again does not lift.
-// The statuses of httpRetryableClientStatuses are the exception.
-// The remote may close the connection after refusing, so a disconnect phrase can follow the refusal in the same stderr.
-var httpClientStatusPattern = regexp.MustCompile(`(?:the requested url returned error: |rpc failed; http )(4\d\d)`)
-
-// httpRetryableClientStatuses are the 4xx statuses that name a moment rather than a refusal.
-// They are a request timeout and a rate limit.
-var httpRetryableClientStatuses = map[string]bool{"408": true, "429": true}
-
-// holdsHTTPClientRefusal reports whether the lower-cased stderr holds a 4xx status other than a retryable one.
-func holdsHTTPClientRefusal(stderr string) bool {
-	for _, match := range httpClientStatusPattern.FindAllStringSubmatch(stderr, -1) {
-		if !httpRetryableClientStatuses[match[1]] {
-			return true
-		}
-	}
-	return false
-}
-
-// missingRepositoryPattern matches the stderr line git prints when the repository a remote names cannot be opened.
-// Its first group is the path git names, kept in its own case.
-// Push, fetch, pull and ls-remote print the first form, and clone prints the second.
-var missingRepositoryPattern = regexp.MustCompile(`(?i)'(.+)' does not appear to be a git repository|repository '(.+)' does not exist`)
-
-// namesMissingLocalPath reports whether stderr names a repository path that does not exist on this machine.
-// A relative path is read against dir, the directory git ran in.
-// A name with no path separator is never read as a path, since git names an unconfigured remote that way.
-// A path that exists but holds no repository is not missing, while a link whose target is gone is.
-func namesMissingLocalPath(stderr, dir string) bool {
-	match := missingRepositoryPattern.FindStringSubmatch(stderr)
-	if match == nil {
-		return false
-	}
-	named := match[1] + match[2]
-	if filepath.Base(named) == named {
-		return false
-	}
-	path := strings.TrimPrefix(named, "file://")
-	if !filepath.IsAbs(path) {
-		path = filepath.Join(dir, path)
-	}
-	_, err := os.Stat(path)
-	return errors.Is(err, fs.ErrNotExist)
 }
 
 // IsTransportFailure reports whether err holds a *GitError for a remote operation that failed to reach the remote.
 // Remote operations are push, fetch, pull, ls-remote and clone.
 // A *GitError with a non-zero Timeout counts too, since git was killed for outliving its deadline or stalling twice.
-// A remote whose repository path is gone counts too, since the path may come back, as a refused connection may.
-// A removed directory is gone, and so is one below an unmounted mount point.
-// A path that exists but holds no repository is a refusal.
-// So is an unconfigured remote name that holds no path separator.
-// Bound: a mount point left as an empty directory reads as a refusal.
-// Bound: a relative remote path with no path separator reads as a refusal too.
-// Bound: a relative remote path is read against the directory git ran in.
-// For push, fetch, pull and ls-remote that matches git only when the directory is the worktree top.
-// Bound: an ssh remote naming a server path that is also absent on this machine reads as unreachable.
 // A rejected push, an authentication failure, a missing ref or a local command is not a transport failure.
-// A stderr holding an HTTP 4xx status is a refusal, whatever disconnect phrase follows it.
-// The exceptions are 408 and 429, which name a moment rather than a refusal.
 // An error with no *GitError in its chain is not one either.
 // An unlisted stderr message is not a transport failure.
 func IsTransportFailure(err error) bool {
@@ -123,15 +48,12 @@ func IsTransportFailure(err error) bool {
 		return true
 	}
 	stderr := strings.ToLower(gitErr.Stderr)
-	if holdsHTTPClientRefusal(stderr) {
-		return false
-	}
 	for _, phrase := range transportPhrases {
 		if strings.Contains(stderr, phrase) {
 			return true
 		}
 	}
-	return namesMissingLocalPath(gitErr.Stderr, gitErr.Dir)
+	return false
 }
 
 // subcommand returns the first argument after git's global options.

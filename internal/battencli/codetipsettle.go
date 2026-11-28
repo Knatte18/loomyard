@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
@@ -24,7 +23,7 @@ var codeTipSettling logger.EpisodeSet
 // codeTipDeps holds what settleCodeTip reads and does, so a tier0 test drives every branch with fakes.
 type codeTipDeps struct {
 	// Read reads the code tip the run's last transition on origin names, from the refs the last fetch left.
-	Read func(slug string) (fabriclayout.CodeTipReading, error)
+	Read func(slug string) (fabricengine.CodeTipReading, error)
 	// Fetch fetches the run's code and records branches from origin.
 	Fetch func(slug string) error
 	// HoldsTip reports whether the run's local code branch holds tip.
@@ -43,9 +42,9 @@ func hubCodeTipDeps(prime *lymcwd.Location) codeTipDeps {
 	pairOf := func(slug string) (*lymcwd.Location, error) {
 		return lymcwd.ResolveWorktree(fabricengine.WorktreePath(prime, slug))
 	}
-	push := pairteardown.RunPush{LockWait: fabriclayout.StatusPushLockWait, TeardownWait: fabriclayout.StatusPushLockWait}
+	push := pairteardown.RunPush{LockWait: fabricengine.StatusPushLockWait, TeardownWait: fabricengine.StatusPushLockWait}
 	return codeTipDeps{
-		Read: func(slug string) (fabriclayout.CodeTipReading, error) { return fabricengine.OriginCodeTip(prime, slug) },
+		Read: func(slug string) (fabricengine.CodeTipReading, error) { return fabricengine.OriginCodeTip(prime, slug) },
 		Fetch: func(slug string) error {
 			pair, err := pairOf(slug)
 			if err != nil {

@@ -68,11 +68,6 @@ var spawnObservabilityAllowedSpawners = []scankit.Entry{
 			"and the one-time probe's systemd-run spawn goes unlogged, since a caller sees only its outcome",
 	},
 	{
-		Key: "internal/proc/processscope_linux.go",
-		Why: "structurally barred: internal/logger imports internal/proc, so importing logger here would " +
-			"close an import cycle; the callers of CapProcessMemory and OOMKillsInCgroup log the busctl and journalctl spawns",
-	},
-	{
 		Key: "internal/hubforge/hub.go",
 		Why: "not governed: a test-fixture builder, not a code path reachable from a lym command",
 	},
@@ -107,7 +102,6 @@ const spawnObservabilityMinScannedFiles = 200
 // A file listed in spawnObservabilityAllowedSpawners is exempt.
 //
 //lym:guard
-//lym:only parent-align finalize
 func TestSpawnObservability_ProductionSpawnsAreLogged(t *testing.T) {
 	tiergate.Require(t, 0)
 	allow := scankit.NewAllowlist(spawnObservabilityAllowedSpawners)

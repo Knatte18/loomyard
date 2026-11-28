@@ -13,12 +13,9 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
-	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/standalonegeom"
 	"github.com/Knatte18/loomyard/internal/standalonestate"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -151,28 +148,6 @@ func TestCommand_WronglyEnteredHub_Refuses(t *testing.T) {
 
 	assertEmptyDir(t, xdgStateHome)
 	assertEmptyDir(t, localAppData)
-}
-
-// Hub wiring reconciles a hub whose build stamp is stale before it loads a config.
-func TestWire_HubModeStaleStampReconcilesTheHubBase(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	gitkit.CommitFile(t, h.BoardDir(), configengine.ConfigFileRel("loom"), "code_max_bounces: 2\n", "fixture: old loom key")
-
-	c := &websterCLI{}
-	if err := c.wire(h.Location, preflight.ModeHub, "", "", "", ""); err != nil {
-		t.Fatalf("wire() = %v; want nil", err)
-	}
-
-	base, err := os.ReadFile(configengine.ConfigFile(h.BoardDir(), "loom"))
-	if err != nil {
-		t.Fatalf("read the hub base loom.yaml: %v", err)
-	}
-	if got := string(base); !strings.Contains(got, "max_bounces: 2") || strings.Contains(got, "code_max_bounces") {
-		t.Errorf("hub base loom.yaml = %q; want the old key nested", got)
-	}
 }
 
 // assertEmptyDir fails the test if dir contains any entry, proving no standalone state tree was

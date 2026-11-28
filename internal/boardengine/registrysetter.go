@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/machinename"
 )
 
@@ -181,7 +180,7 @@ func commitBoardWriteAndPush(boardDir, message string, write func() ([]string, e
 	}
 	switch result.Skipped {
 	case "":
-	case fabriclayout.BoltSkipFetchFailed:
+	case fabricengine.BoltSkipFetchFailed:
 		return fmt.Errorf("%w: %s", ErrOwnerOriginUnreachable, result.SkipDetail)
 	default:
 		return errors.New("board: the write was refused, since the board could not be brought up to date: " + result.SkipDetail)

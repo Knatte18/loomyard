@@ -16,7 +16,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -30,16 +29,16 @@ func (fakeReplayer) Name() string { return "fake" }
 
 func (fakeReplayer) Claims(path string) bool { return path == "notes/fake.json" }
 
-func (fakeReplayer) Apply(req fabriclayout.ReplayRequest) (fabriclayout.ReplayResult, error) {
+func (fakeReplayer) Apply(req fabricengine.ReplayRequest) (fabricengine.ReplayResult, error) {
 	for _, file := range req.Files {
 		if err := os.MkdirAll(filepath.Join(req.Dir, filepath.Dir(file.Path)), 0o755); err != nil {
-			return fabriclayout.ReplayResult{}, err
+			return fabricengine.ReplayResult{}, err
 		}
 		if err := os.WriteFile(filepath.Join(req.Dir, file.Path), file.After, 0o644); err != nil {
-			return fabriclayout.ReplayResult{}, err
+			return fabricengine.ReplayResult{}, err
 		}
 	}
-	return fabriclayout.ReplayResult{Lost: []fabriclayout.ReplayFinding{{Entry: "x", Reason: "origin changed it too"}}}, nil
+	return fabricengine.ReplayResult{Lost: []fabricengine.ReplayFinding{{Entry: "x", Reason: "origin changed it too"}}}, nil
 }
 
 // emptyEntryLedger is the board's replayer and run ledger, whose Apply reports one loss that names no entry.
@@ -47,8 +46,8 @@ type emptyEntryLedger struct {
 	boardengine.FabricReplay
 }
 
-func (emptyEntryLedger) Apply(fabriclayout.ReplayRequest) (fabriclayout.ReplayResult, error) {
-	return fabriclayout.ReplayResult{Empty: true, Lost: []fabriclayout.ReplayFinding{{Reason: "origin changed it too"}}}, nil
+func (emptyEntryLedger) Apply(fabricengine.ReplayRequest) (fabricengine.ReplayResult, error) {
+	return fabricengine.ReplayResult{Empty: true, Lost: []fabricengine.ReplayFinding{{Reason: "origin changed it too"}}}, nil
 }
 
 func TestBoltReplayers(t *testing.T) {
@@ -108,7 +107,7 @@ func TestBoltReplayers(t *testing.T) {
 			t.Errorf("ReadEndedSetForTest error = %v, want ErrReplayerMissing", err)
 		}
 		seams := fabricengine.OriginSeams{OwnerOf: func(string, []byte, string) (string, string, bool, error) { return "", "", false, nil }}
-		if _, err := fabricengine.ReconcileOrigin(pair.Location, fabriclayout.ReconcileScope{}, seams, fabricengine.ReconcileOptions{}); !errors.Is(err, fabricengine.ErrReplayerMissing) {
+		if _, err := fabricengine.ReconcileOrigin(pair.Location, fabricengine.ReconcileScope{}, seams, fabricengine.ReconcileOptions{}); !errors.Is(err, fabricengine.ErrReplayerMissing) {
 			t.Errorf("ReconcileOrigin error = %v, want it to wrap ErrReplayerMissing", err)
 		}
 	})

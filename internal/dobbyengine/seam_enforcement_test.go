@@ -19,19 +19,17 @@ import (
 // dobbyengineAllowedImports are the only non-stdlib import paths production code in this package may use.
 var dobbyengineAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/agentconfig",
-	"github.com/Knatte18/loomyard/internal/beamsetting",
 	"github.com/Knatte18/loomyard/internal/boardengine",
 	"github.com/Knatte18/loomyard/internal/configengine",
 	"github.com/Knatte18/loomyard/internal/desktoplauncher",
 	"github.com/Knatte18/loomyard/internal/editdirective",
-	"github.com/Knatte18/loomyard/internal/envsource",
+	"github.com/Knatte18/loomyard/internal/fixtries",
 	"github.com/Knatte18/loomyard/internal/lock",
 	"github.com/Knatte18/loomyard/internal/logger",
 	"github.com/Knatte18/loomyard/internal/machinename",
 	"github.com/Knatte18/loomyard/internal/parentdirective",
 	"github.com/Knatte18/loomyard/internal/pauserecord",
 	"github.com/Knatte18/loomyard/internal/proc",
-	"github.com/Knatte18/loomyard/internal/pushledger",
 	"github.com/Knatte18/loomyard/internal/runfsm",
 	"github.com/Knatte18/loomyard/internal/segmentcolor",
 	"github.com/Knatte18/loomyard/internal/selfexec",
@@ -39,7 +37,6 @@ var dobbyengineAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/state",
 	"github.com/Knatte18/loomyard/internal/stencil",
 	"github.com/Knatte18/loomyard/internal/stencilstore",
-	"github.com/Knatte18/loomyard/internal/yamlengine",
 	"gopkg.in/yaml.v3",
 }
 

@@ -169,44 +169,6 @@ func (c *GoClient) Log(filter creelengine.LogFilter) ([]creelengine.LogEntry, er
 	return resp.Log, err
 }
 
-// AwaitsReply reports whether strand awaits the reply to a question it asked.
-func (c *GoClient) AwaitsReply(strand string) (bool, error) {
-	resp, err := c.client.Call(creelengine.Request{Verb: creelengine.VerbAwaitsReply, From: strand}, goCallTimeout, nil)
-	return resp.AwaitsReply, err
-}
-
-// AwaitsReplyProbe returns a probe that reports whether a strand of the location's hub awaits a reply.
-// The reply is the answer to a question the strand asked.
-// Each call asks the hub's daemon.
-// A caller in the pane of a strand that is not an orch's signs as that strand.
-// It signs as program when the daemon refuses that claim as coming from outside the pane.
-// Any other caller signs as program.
-func AwaitsReplyProbe(location *lymcwd.Location, program string) func(strand string) (bool, error) {
-	return func(strand string) (bool, error) {
-		if claimed := os.Getenv(agentname.StrandNameEnv); claimsNonOrchStrand(claimed) {
-			client, err := NewStrandClient(location, claimed)
-			if err != nil {
-				return false, err
-			}
-			awaits, err := client.AwaitsReply(strand)
-			if !errors.Is(err, creelengine.ErrStrandClaimOutsidePane) {
-				return awaits, err
-			}
-		}
-		client, err := NewProgramClient(location, program)
-		if err != nil {
-			return false, err
-		}
-		return client.AwaitsReply(strand)
-	}
-}
-
-// claimsNonOrchStrand reports whether name is a strand name whose role is not an orch's.
-func claimsNonOrchStrand(name string) bool {
-	parsed, err := agentname.Parse(name)
-	return err == nil && !agentname.MatchesRole(parsed.Role, agentname.RoleOrch)
-}
-
 // Hold holds receiver's deliveries to the caller's own for duration.
 func (c *GoClient) Hold(receiver string, duration time.Duration) error {
 	_, err := c.client.Call(creelengine.Request{Verb: creelengine.VerbHold, Receiver: receiver, ForSeconds: int64(duration / time.Second)}, goCallTimeout, nil)

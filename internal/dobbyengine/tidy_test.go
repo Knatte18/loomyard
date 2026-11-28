@@ -182,35 +182,6 @@ func TestCountLandingsAndTidy(t *testing.T) {
 		}
 	})
 
-	t.Run("the agent runs the upkeep call the seam renders, and none when the seam is unset or fails", func(t *testing.T) {
-		t.Parallel()
-		tests := []struct {
-			name   string
-			render func() (string, error)
-			want   string
-		}{
-			{"Unset", nil, "Run no upkeep checks"},
-			{"RenderError", func() (string, error) { return "", errors.New("no gate config") }, "Run no upkeep checks"},
-			{"Rendered", func() (string, error) { return "lym gate test --gate upkeep", nil }, "`lym gate test --gate upkeep`"},
-		}
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				t.Parallel()
-				h := newTidyHarness(t, 5)
-				h.d.deps.UpkeepCall = tt.render
-				h.step()
-				h.landed = five
-				h.step()
-				if len(h.shuttle.started) != 1 {
-					t.Fatalf("agents started = %d; want 1", len(h.shuttle.started))
-				}
-				if prompt := h.shuttle.started[0].Prompt; !strings.Contains(prompt, tt.want) {
-					t.Errorf("prompt = %q; want it to hold %q", prompt, tt.want)
-				}
-			})
-		}
-	})
-
 	t.Run("an engine that cannot be resolved starts no agent and reports its error", func(t *testing.T) {
 		t.Parallel()
 		h := newTidyHarness(t, 5)
@@ -422,20 +393,6 @@ func TestTidyPrompt(t *testing.T) {
 	}
 	if strings.Contains(prompt, "{{") {
 		t.Errorf("TidyPrompt() holds an unfilled marker")
-	}
-
-	const upkeepCall = "lym gate test --gate upkeep"
-	if strings.Contains(prompt, upkeepCall) {
-		t.Errorf("TidyPrompt() with no upkeep call names %q", upkeepCall)
-	}
-	upkeepInput := input
-	upkeepInput.UpkeepCall = upkeepCall
-	upkeepPrompt, err := TidyPrompt(stencils, "claude", upkeepInput)
-	if err != nil {
-		t.Fatalf("TidyPrompt(upkeep) = _, %v; want nil", err)
-	}
-	if !strings.Contains(upkeepPrompt, "`"+upkeepCall+"`") || strings.Contains(upkeepPrompt, "{{") {
-		t.Errorf("TidyPrompt(upkeep) = %q; want the upkeep call %q and no unfilled marker", upkeepPrompt, upkeepCall)
 	}
 
 	spec := TidySpec(prompt, "/report.md", "claude", shuttleengine.ModelChoice{Engine: "b", Model: "sonnet"}, 30*time.Minute)

@@ -23,7 +23,7 @@ type lockWatch struct {
 // A record is released once its owner's agents have all waited for IdleBound with none busy;
 // the watch restarts whenever the owner changes, and a failed agent read releases nothing.
 // Every release logs one Info, and a failure of a seam warns once per episode and changes nothing.
-// While a pause covers the slug it releases nothing.
+// While a pause covers the slug it releases nothing, except the record of a pause held for an owner.
 func (p *innerRunProducer) lockStep(ctx context.Context, w *childWait) {
 	lock := p.deps.ParentLock
 	if lock == nil {
@@ -31,7 +31,11 @@ func (p *innerRunProducer) lockStep(ctx context.Context, w *childWait) {
 	}
 	// A covered holder keeps its record,
 	// and the idle watch restarts after the resume so paused time never counts as waiting.
+	// A pause held for an owner releases the record instead, unless a Finalize past its parent-side merge keeps it.
 	if w.pause.Covered {
+		if w.pause.OwnerHeld && !p.keepsLockForFinalize(w.status) {
+			p.releaseChildLock(w, "an owner pause holds the run")
+		}
 		w.lock = lockWatch{}
 		return
 	}

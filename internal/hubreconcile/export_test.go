@@ -3,17 +3,6 @@
 
 package hubreconcile
 
-import (
-	"errors"
-
-	"github.com/Knatte18/loomyard/internal/configreg"
-)
-
-// EnsureFailingRunSettingsCarry runs the reconcile walk and fails the run_settings carry once it has saved board.json.
-func EnsureFailingRunSettingsCarry(geom Geometry, opts Options) error {
-	return ensure(geom, opts, walkHooks{afterRunSettingsCarrySave: func() error { return errors.New("the carry is made to fail") }})
-}
-
 // SetSpawnBoardSyncForTest replaces the detached board sync that the hub-wide reconcile spawns.
 // It returns a function that reinstates the previous sync.
 // The swap is package-global, so a test calling it must not run in parallel.
@@ -21,15 +10,6 @@ func SetSpawnBoardSyncForTest(spawn func(boardPath string) error) (restore func(
 	previous := spawnBoardSync
 	spawnBoardSync = spawn
 	return func() { spawnBoardSync = previous }
-}
-
-// SetReinterpretationModulesForTest replaces the modules whose reinterpretations the walk applies.
-// It returns a function that reinstates the previous list.
-// The swap is package-global, so a test calling it must not run in parallel.
-func SetReinterpretationModulesForTest(modules func() []configreg.Module) (restore func()) {
-	previous := reinterpretationModules
-	reinterpretationModules = modules
-	return func() { reinterpretationModules = previous }
 }
 
 // EnsureWithHooks runs the reconcile walk with test hooks.

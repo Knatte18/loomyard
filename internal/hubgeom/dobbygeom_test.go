@@ -12,7 +12,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/machinename"
@@ -51,10 +50,10 @@ func standMove(t *testing.T, prime *lymcwd.Location, worktree string) string {
 	t.Helper()
 
 	records := fabricengine.RecordsWorktreePath(prime, worktree)
-	if err := os.MkdirAll(fabriclayout.RecordsLockDirPath(records), 0o755); err != nil {
+	if err := os.MkdirAll(fabricengine.RecordsLockDirPath(records), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	record := fabriclayout.MoveRecordPath(records)
+	record := fabricengine.MoveRecordPath(records)
 	if err := os.WriteFile(record, []byte(`{"a":".","b":"sub","kind":"move","pid":4242}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -164,8 +163,8 @@ func TestDobbyGeometry(t *testing.T) {
 
 			root := filepath.Join(hub, tt.worktree)
 			beamDir := filepath.Join(root, tt.wantAnchor, lymdirs.DotLymDirName, lymdirs.BeamDirName)
-			if got.HubRoot != hub || got.BoardDir != fabriclayout.BoardDir(hub) || got.PrimeAnchor != prime.AnchorPath() {
-				t.Errorf("DobbyGeometry(%q) hub paths = %q, %q, %q; want %q, %q, %q", tt.worktree, got.HubRoot, got.BoardDir, got.PrimeAnchor, hub, fabriclayout.BoardDir(hub), prime.AnchorPath())
+			if got.HubRoot != hub || got.BoardDir != fabricengine.BoardDir(hub) || got.PrimeAnchor != prime.AnchorPath() {
+				t.Errorf("DobbyGeometry(%q) hub paths = %q, %q, %q; want %q, %q, %q", tt.worktree, got.HubRoot, got.BoardDir, got.PrimeAnchor, hub, fabricengine.BoardDir(hub), prime.AnchorPath())
 			}
 			if got.WorktreeRoot != root || got.WorktreeName != tt.worktree || got.Slug != tt.wantSlug {
 				t.Errorf("DobbyGeometry(%q) worktree = %q, %q, slug %q; want %q, %q, slug %q", tt.worktree, got.WorktreeRoot, got.WorktreeName, got.Slug, root, tt.worktree, tt.wantSlug)
@@ -187,7 +186,7 @@ func TestDobbyGeometry(t *testing.T) {
 					t.Fatalf("NamedWorktree(%q) = %v; want nil", tt.worktree, err)
 				}
 				paths := PawlPaths(beam)
-				for name, path := range map[string]string{"LandRequest": paths.LandRequest, "DobbyStopMarker": paths.DobbyStopMarker, "AwaitMarker": paths.AwaitMarker, "HandOffMarker": paths.HandOffMarker, "DrainMarker": paths.DrainMarker} {
+				for name, path := range map[string]string{"LandRequest": paths.LandRequest, "ReopenRequest": paths.ReopenRequest, "DobbyStopMarker": paths.DobbyStopMarker, "AwaitMarker": paths.AwaitMarker, "HandOffMarker": paths.HandOffMarker} {
 					if filepath.Dir(path) != beamDir {
 						t.Errorf("PawlPaths(%q).%s = %q; want it directly under the dobby's directory %q", tt.worktree, name, path, beamDir)
 					}
@@ -199,9 +198,9 @@ func TestDobbyGeometry(t *testing.T) {
 			if got.LymExecutable == "" || !filepath.IsAbs(got.LymExecutable) {
 				t.Errorf("DobbyGeometry(%q).LymExecutable = %q; want an absolute path", tt.worktree, got.LymExecutable)
 			}
-			wantRecords := []string{fabriclayout.MoveRecordPath(fabricengine.RecordsWorktreePath(prime, prime.WorktreeName))}
+			wantRecords := []string{fabricengine.MoveRecordPath(fabricengine.RecordsWorktreePath(prime, prime.WorktreeName))}
 			if tt.worktree != prime.WorktreeName {
-				wantRecords = append([]string{fabriclayout.MoveRecordPath(fabricengine.RecordsWorktreePath(prime, tt.worktree))}, wantRecords...)
+				wantRecords = append([]string{fabricengine.MoveRecordPath(fabricengine.RecordsWorktreePath(prime, tt.worktree))}, wantRecords...)
 			}
 			if !slices.Equal(got.MoveRecords, wantRecords) {
 				t.Errorf("DobbyGeometry(%q).MoveRecords = %v; want %v, the worktree's own record and then the prime's", tt.worktree, got.MoveRecords, wantRecords)

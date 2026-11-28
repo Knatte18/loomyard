@@ -465,7 +465,7 @@ func TestRecoverBatch_SecondCall(t *testing.T) {
 			},
 		},
 		{
-			// The default wait budget outlasts webster.recovery_timeout_min.
+			// The default wait budget outlasts recovery_timeout_min.
 			// A strand that never reports classifies dead/timeout inside one call,
 			// and it never returns a running snapshot.
 			name:       "the default wait budget ends a silent strand dead inside one call",
@@ -523,8 +523,8 @@ func TestRecoverBatch_SecondCall(t *testing.T) {
 			check: checkRecoveryRunning,
 		},
 		{
-			// A shell only the transcript reports keeps the strand running past shuttle.background_shell_wait_min.
-			// As with a payload-reported shell, no shell expires; webster.recovery_timeout_min bounds the strand.
+			// A shell only the transcript reports keeps the strand running past background_shell_wait_min.
+			// As with a payload-reported shell, no shell expires; recovery_timeout_min bounds the strand.
 			name: "a turn end waiting on a transcript-reported shell keeps the strand running past background_shell_wait_min",
 			afterFirst: func(t *testing.T, fx *recoverFixture, clk *recoverFakeClock) secondCall {
 				fx.Deps.Engines = namedEngines(shuttlefake.EngineName, claudeengine.New())
@@ -564,26 +564,6 @@ func TestRecoverBatch_SecondCall(t *testing.T) {
 			check: checkRecoveryAsking,
 		},
 		{
-			// A closing message is no request to the parent: the strand stays dead, and the message is kept for the halt note.
-			name: "a turn end carrying a message stays dead asking and records the message",
-			afterFirst: func(t *testing.T, fx *recoverFixture, clk *recoverFakeClock) secondCall {
-				fx.Deps.Engines = namedEngines(shuttlefake.EngineName, claudeengine.New())
-				appendClaudeHook(t, fx, "Stop", clk.now.Add(-10*time.Second), map[string]any{
-					"background_tasks":       []any{},
-					"last_assistant_message": "  All cards are\ncommitted,   I think.\n",
-				})
-				return secondCall{}
-			},
-			check: func(t *testing.T, fx *recoverFixture, a attempt) {
-				checkRecoveryAsking(t, fx, a)
-				const wantMessage = "All cards are committed, I think."
-				bs := fx.Deps.State.Batches[1]
-				if !bs.Terminal || bs.Digest == nil || bs.Digest.LastMessage != wantMessage {
-					t.Errorf("Batches[1] Terminal, Digest = %v, %+v; want true and LastMessage %q", bs.Terminal, bs.Digest, wantMessage)
-				}
-			},
-		},
-		{
 			name: "a recorded session whose engine key is absent reads its turn end through the default",
 			afterFirst: func(t *testing.T, fx *recoverFixture, clk *recoverFakeClock) secondCall {
 				fx.Deps.Engines = namedEngines(shuttlefake.EngineName, claudeengine.New())
@@ -616,7 +596,7 @@ func TestRecoverBatch_SecondCall(t *testing.T) {
 			afterFirst: func(t *testing.T, fx *recoverFixture, clk *recoverFakeClock) secondCall {
 				fx.Deps.Engines = namedEngines(shuttlefake.EngineName, struct{ shuttleengine.Engine }{fx.Engine})
 				fx.Deps.State.Batches[1].RecoveryEngines = nil
-				return secondCall{refusal: []string{"shuttle.engine", "set shuttle.engine in shuttle.yaml back to an engine with fork audit"}}
+				return secondCall{refusal: []string{"engine:", "set engine: in shuttle.yaml back to an engine with fork audit"}}
 			},
 		},
 	}
@@ -737,8 +717,8 @@ func TestRecoverBatch_TerminalRunsTheSamePostBatchChecksAsRecordBatch(t *testing
 	if bs.Digest == nil || len(bs.Digest.Reasons) == 0 {
 		t.Errorf("failed digest = %+v; want reasons naming the done-check finding", bs.Digest)
 	}
-	if !strings.Contains(err.Error(), "way forward: amend the card's Create target") || !strings.Contains(err.Error(), "--drops-create <target>") || !strings.Contains(err.Error(), "to build the target as the card names it") {
-		t.Errorf("RecoverBatch() second call error = %q; want the card amendment, the dropping decision and recover-batch as its way forward", err)
+	if !strings.Contains(err.Error(), "way forward: amend the card's Create target") || strings.Contains(err.Error(), "to build the target as the card names it") {
+		t.Errorf("RecoverBatch() second call error = %q; want the card amendment alone as its way forward", err)
 	}
 	if _, statErr := os.Stat(filepath.Join(fx.ReportsDir, websterengine.ReportFileName(1, "json-flag"))); !os.IsNotExist(statErr) {
 		t.Errorf("stat(live report) = %v; want the report archived away", statErr)
@@ -959,71 +939,6 @@ func TestRecoverBatch_AmendedCards(t *testing.T) {
 	}
 }
 
-// TestRecoverBatch_WaitingResume walks a waiting recovery through two resumes.
-// A resume with no answer is refused before any strand starts, so a repeated wait never loops unanswered.
-// A resume whose strand fails to start says the re-run needs the answer again.
-// A resumed strand's prompt holds every need the batch waited on beside the parent's answer, and spends no recovery.
-func TestRecoverBatch_WaitingResume(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	fx := newRecoverFixture(t)
-	clk := &recoverFakeClock{now: time.Unix(0, 0)}
-	fx.Deps.State.Batches[1] = &websterengine.BatchState{
-		Slug: "json-flag", Kind: "recovery", Status: websterengine.DigestStatusWaiting, Recoveries: 1,
-		Digest: &websterengine.Digest{Batch: "01-json-flag", Status: websterengine.DigestStatusWaiting, Need: "keep the old flag?"},
-	}
-
-	resume := func(answer string) (*recoverDriveResult, error) {
-		deps := fx.Deps
-		deps.Answer = answer
-		return driveRecoverBatch(deps, 1, time.Second, clk)
-	}
-	requireRefused := func(need string) {
-		t.Helper()
-		prompts := fx.Engine.PrepareCalls
-		_, err := resume(" \n")
-		if err == nil || !strings.Contains(err.Error(), need) || !strings.Contains(err.Error(), "lym webster recover-batch 1 --answer") {
-			t.Fatalf("resume with no answer: err = %v; want a refusal naming %q and --answer", err, need)
-		}
-		if fx.Engine.PrepareCalls != prompts {
-			t.Fatalf("resume with no answer started a strand; want none")
-		}
-	}
-	requireResumed := func(answer string, wantEntries ...string) {
-		t.Helper()
-		res, err := resume(answer)
-		if err != nil || !res.Spawned || !res.Running {
-			t.Fatalf("resume(%q) = %+v, %v; want a running spawned recovery", answer, res, err)
-		}
-		for _, want := range wantEntries {
-			if !strings.Contains(fx.Engine.LastPrompt, want) {
-				t.Errorf("resumed prompt lacks %q", want)
-			}
-		}
-		if got := fx.Deps.State.Batches[1].Recoveries; got != 1 {
-			t.Errorf("Recoveries = %d; want 1, since a resume is not counted", got)
-		}
-	}
-
-	const first = "- need: keep the old flag?\n  answer: keep it\n  for one release"
-	const second = "- need: which default?\n  answer: false"
-	requireRefused("keep the old flag?")
-	failing := fx.Deps
-	failing.Answer, failing.Starter = "keep it", erroringStarter{}
-	if _, err := driveRecoverBatch(failing, 1, time.Second, clk); !errors.Is(err, shuttleengine.ErrNotStarted) || !strings.Contains(err.Error(), "pass the same --answer") {
-		t.Fatalf("resume with a failing start: err = %v; want the start error naming the same --answer", err)
-	}
-	requireResumed("keep it\nfor one release\n", first)
-
-	writeRecoverReport(t, fx.ReportsDir, "status: NEEDS_PARENT\nhead_sha: "+fx.Git.head+"\nneed: which default?\n")
-	if res, err := resume(""); err != nil || res.Digest == nil || res.Digest.Status != websterengine.DigestStatusWaiting {
-		t.Fatalf("attach to the asking recovery = %+v, %v; want a waiting digest", res, err)
-	}
-	requireRefused("which default?")
-	requireResumed("false", first, second)
-}
-
 // failedRecord builds the record a batch leaves behind when it failed on its merits:
 // terminal, status failed, reasons ending with the suspect paths.
 func failedRecord(reasons ...string) *websterengine.BatchState {
@@ -1237,7 +1152,7 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 				if err == nil || spawned {
 					t.Fatalf("RecoverSpawnOrAttach() = spawned %v, error %v; want a refusal", spawned, err)
 				}
-				for _, want := range []string{"recovery", strconv.Quote(engine), "set webster.recovery in webster.yaml"} {
+				for _, want := range []string{"recovery", strconv.Quote(engine), "set recovery in webster.yaml"} {
 					if !strings.Contains(err.Error(), want) {
 						t.Errorf("error %q lacks %q", err, want)
 					}
@@ -1985,24 +1900,6 @@ func TestRecoveryRetry(t *testing.T) {
 				start := g.head
 				g.commit()
 				return deadRecovery(2, start)
-			},
-			wantRecoveries: 2,
-		},
-		{
-			name: "a dead recovery at two recoveries holding an unrendered amendment retries",
-			setup: func(g *fakeGit) *websterengine.BatchState {
-				rec := deadRecovery(2, g.head)
-				rec.AmendedCards = []websterengine.AmendedCard{{Card: "01-json-flag", Rendered: false}}
-				return rec
-			},
-			wantRetry: true, wantRecoveries: 2,
-		},
-		{
-			name: "a dead recovery at two recoveries holding only a rendered amendment does not retry",
-			setup: func(g *fakeGit) *websterengine.BatchState {
-				rec := deadRecovery(2, g.head)
-				rec.AmendedCards = []websterengine.AmendedCard{{Card: "01-json-flag", Rendered: true}}
-				return rec
 			},
 			wantRecoveries: 2,
 		},

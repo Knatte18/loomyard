@@ -87,14 +87,14 @@ func (g *fakeGit) mint() string {
 	return fmt.Sprintf("%040x", g.counter)
 }
 
-// commit adds a commit on top of HEAD whose message carries departures as `Pattern-Departure:` trailers, and returns it.
-func (g *fakeGit) commit(subject string, departures ...string) string {
+// commit adds a commit on top of HEAD and returns it.
+func (g *fakeGit) commit(subject string) string {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	sha := g.mint()
 	g.parents[sha] = []string{g.head}
 	g.head = sha
-	g.log = append(g.log, runplan.CommitLogEntry{SHA: sha, Subject: subject, Departures: departures})
+	g.log = append(g.log, runplan.CommitLogEntry{SHA: sha, Subject: subject})
 	return sha
 }
 
@@ -159,8 +159,6 @@ type fakeIndex struct {
 	planindex.Index
 	// notDone is what DoneChecks reports.
 	notDone []planindex.Finding
-	// notDoneTarget, when set, limits notDone to the asked cards that still name this Create target.
-	notDoneTarget string
 	// removed is what the delta reports as removed later targets.
 	removed []planindex.Finding
 	// removedOnlyWithLaterCards limits removed to a batch that has a card still to be built after it.
@@ -169,28 +167,14 @@ type fakeIndex struct {
 	rewriteRenames bool
 	// dispatch is what the dispatch re-resolution reports.
 	dispatch []planindex.Finding
-	// outsideTargets is what the scope guard reports as files changed outside the batch's targets.
-	outsideTargets []planindex.Finding
 }
 
 func (i fakeIndex) ValidateDispatch(*planparser.Plan, string, []planparser.Card, []planparser.Card) ([]planindex.Finding, error) {
 	return i.dispatch, nil
 }
 
-// DoneChecks reports notDone.
-// When notDoneTarget is set, it reports notDone only while a Create group of the asked cards still names that target.
-func (i fakeIndex) DoneChecks(_ *planparser.Plan, cards []planparser.Card, _ string) ([]planindex.Finding, error) {
-	if i.notDoneTarget == "" {
-		return i.notDone, nil
-	}
-	for _, c := range cards {
-		for _, g := range c.TargetGroups {
-			if g.Type == planparser.CardTypeCreate && slices.Contains(g.Refs, i.notDoneTarget) {
-				return i.notDone, nil
-			}
-		}
-	}
-	return nil, nil
+func (i fakeIndex) DoneChecks(*planparser.Plan, []planparser.Card, string) ([]planindex.Finding, error) {
+	return i.notDone, nil
 }
 
 func (fakeIndex) RebindResigns(*planparser.Plan, []planparser.Card, string) ([]planindex.Finding, error) {
@@ -198,7 +182,7 @@ func (fakeIndex) RebindResigns(*planparser.Plan, []planparser.Card, string) ([]p
 }
 
 func (i fakeIndex) Delta(string, string, string) (planindex.Delta, error) {
-	return fakeDelta{removed: i.removed, removedOnlyWithLaterCards: i.removedOnlyWithLaterCards, rewriteRenames: i.rewriteRenames, outsideTargets: i.outsideTargets}, nil
+	return fakeDelta{removed: i.removed, removedOnlyWithLaterCards: i.removedOnlyWithLaterCards, rewriteRenames: i.rewriteRenames}, nil
 }
 
 type fakeDelta struct {
@@ -206,16 +190,13 @@ type fakeDelta struct {
 	removed                   []planindex.Finding
 	removedOnlyWithLaterCards bool
 	rewriteRenames            bool
-	outsideTargets            []planindex.Finding
 }
 
 func (fakeDelta) BindHandles(*planparser.Plan, string, []planparser.Card) ([]planindex.Finding, []planindex.BindOutcome, error) {
 	return nil, nil, nil
 }
 
-func (d fakeDelta) ScopeGuard(*planparser.Plan, []planparser.Card) []planindex.Finding {
-	return d.outsideTargets
-}
+func (fakeDelta) ScopeGuard(*planparser.Plan, []planparser.Card) []planindex.Finding { return nil }
 
 func (d fakeDelta) RemovedTargets(plan *planparser.Plan, completed, own []planparser.Card, _ []planindex.Rename) []planindex.Finding {
 	if d.removedOnlyWithLaterCards {
@@ -280,16 +261,12 @@ type attemptScript struct {
 	report runplan.Report
 	// commit makes the attempt commit before it writes its report.
 	commit bool
-	// departure makes the attempt commit with this `Pattern-Departure:` trailer before it writes its report.
-	departure string
 	// rawReport writes these bytes as the report instead.
 	rawReport string
 	// failGate makes the named gate entry fail terminally.
 	failGate string
 	// dieAfterStart makes reed lose the strand, so the wait fails.
 	dieAfterStart bool
-	// paneDies marks the strand's pane dead after the start and writes no report, so the strand dies before its report.
-	paneDies bool
 	// dirty is the dirty paths the worktree holds when the attempt ends.
 	dirty []string
 	// abbreviate writes the report's head_sha as its first twelve digits.
@@ -369,10 +346,7 @@ func (r *scriptedRunner) StartGated(spec shuttleengine.Spec, gate shuttleengine.
 	if err != nil {
 		return nil, err
 	}
-	switch {
-	case script.departure != "":
-		r.git.commit("the attempt's work", script.departure)
-	case script.commit:
+	if script.commit {
 		r.git.commit("the attempt's work")
 	}
 	r.git.mu.Lock()
@@ -380,14 +354,6 @@ func (r *scriptedRunner) StartGated(spec shuttleengine.Spec, gate shuttleengine.
 	r.git.mu.Unlock()
 	if script.dieAfterStart {
 		r.reed.StatusErr = fmt.Errorf("reed lost the strand")
-		return run, nil
-	}
-	if script.paneDies {
-		for i := range r.reed.Strands {
-			if r.reed.Strands[i].GUID == run.StrandGUID() {
-				r.reed.Strands[i].Live = false
-			}
-		}
 		return run, nil
 	}
 	if script.noReport {
@@ -451,16 +417,9 @@ type fixerScript struct {
 	commit string
 }
 
-// The time one run of the scripted verify and one wait on a fake fixer take on the run's clock.
-const (
-	verifyRunTime = time.Minute
-	fixerRunTime  = 5 * time.Minute
-)
-
 // fakeFixer is a gatefixer.Fixer over scripts.
 type fakeFixer struct {
-	git   *fakeGit
-	clock *fakeClock
+	git *fakeGit
 
 	mu      sync.Mutex
 	scripts []fixerScript
@@ -495,7 +454,6 @@ func (f *fakeFixer) Await(rec *gatefixer.Record, _, _ time.Duration) (*gatefixer
 	if script.commit != "" {
 		f.git.commit(script.commit)
 	}
-	f.clock.Sleep(fixerRunTime)
 	result := &gatefixer.Result{Status: gatefixer.StatusDone, Warnings: script.warnings}
 	if script.dead {
 		result.Status, result.DeadReason = gatefixer.StatusDead, gatefixer.DeadReasonDied
@@ -517,8 +475,7 @@ type verifyScript struct {
 
 // scriptedVerify is a weaverengine.VerifyFunc over scripts; a call past the scripts passes.
 type scriptedVerify struct {
-	dir   string
-	clock *fakeClock
+	dir string
 
 	mu      sync.Mutex
 	scripts []verifyScript
@@ -530,7 +487,6 @@ func (v *scriptedVerify) run(_ verifytree.Site, command string) (verifytree.Resu
 	defer v.mu.Unlock()
 	index := len(v.calls)
 	v.calls = append(v.calls, command)
-	v.clock.Sleep(verifyRunTime)
 	if index >= len(v.scripts) {
 		return verifytree.Result{Status: verifytree.StatusPassed}, nil
 	}
@@ -610,16 +566,15 @@ func newRunFixture(t *testing.T, chunk int, slugs ...string) *runFixture {
 	inner := shuttleengine.NewRunner(reed, shuttlefake.EngineSet(engine), anchor, anchor, shuttleCfg)
 	inner.SetClock(&fakeClock{now: time.Unix(0, 0)})
 
-	clock := &fakeClock{now: time.Unix(0, 0)}
 	fx := &runFixture{
 		t: t, anchor: anchor, git: git, index: index, reed: reed,
 		runner: &scriptedRunner{inner: inner, reed: reed, git: git},
-		fixer:  &fakeFixer{git: git, clock: clock},
-		verify: &scriptedVerify{dir: t.TempDir(), clock: clock},
+		fixer:  &fakeFixer{git: git},
+		verify: &scriptedVerify{dir: t.TempDir()},
 	}
 	fx.deps = weaverengine.RunDeps{
 		Geom:    geom,
-		Config:  weaverengine.Config{Ladder: []string{"a", "b", "c"}, AttemptTimeoutMin: 45, FixerTimeoutMin: 7, VerifyGate: "webster"},
+		Config:  weaverengine.Config{Ladder: []string{"a", "b", "c"}, FixerTimeoutMin: 7, VerifyGate: "webster"},
 		Ladder:  []shuttleengine.ModelChoice{{Model: "model-a"}, {Model: "model-b"}, {Model: "model-c"}},
 		Batcher: chunkBatcher{size: chunk},
 		Runner:  fx.runner,
@@ -636,7 +591,7 @@ func newRunFixture(t *testing.T, chunk int, slugs ...string) *runFixture {
 			return nil
 		},
 		RecordsHead: func() (string, error) { return "records-head", nil },
-		Clock:       clock,
+		Clock:       &fakeClock{now: time.Unix(0, 0)},
 	}
 	return fx
 }

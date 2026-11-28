@@ -8,18 +8,12 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
-	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lymcwd"
-	"github.com/Knatte18/loomyard/internal/pairteardown"
-	"github.com/Knatte18/loomyard/internal/pushledger"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -97,43 +91,10 @@ func TestTearDownLeftovers_RemovesALandedAndACancelledPairAndTheirWorkspaceFolde
 		}
 	}
 
-	// A landed pair stays while origin lacks a tip of it, and then while its landing is owed, with no failure reported.
-	pair, err := lymcwd.ResolveWorktree(h.PairCodeWorktree(landed))
-	if err != nil {
-		t.Fatalf("ResolveWorktree: %v", err)
-	}
-	tip := gitkit.CommitFile(t, h.PairCodeWorktree(landed), "ahead.txt", "ahead\n", "test: a tip origin lacks")
-	setLanding := func(landings []pushledger.Landing) {
-		t.Helper()
-		err := pushledger.Update(h.Path, pushledger.LandingKey, time.Unix(1, 0), func(pushledger.Entry, bool) (pushledger.Entry, bool, error) {
-			return pushledger.Entry{Landings: landings}, len(landings) > 0, nil
-		})
-		if err != nil {
-			t.Fatalf("write the landing entry: %v", err)
-		}
-	}
-	requireLeftStanding := func(reason string) {
-		t.Helper()
-		got := <-tearDownLeftovers(prime, []dobbyengine.LeftoverPair{{Slug: landed, Kind: dobbyengine.LeftoverLanded}}, fabricengine.ReconcileOptions{})
-		if want := map[string]error{landed: nil}; !reflect.DeepEqual(got, want) {
-			t.Errorf("tearDownLeftovers() with %s = %v; want %v", reason, got, want)
-		}
-		if _, err := os.Stat(h.PairCodeWorktree(landed)); err != nil {
-			t.Fatalf("stat the pair with %s = %v; want it left standing", reason, err)
-		}
-	}
-	requireLeftStanding("a tip origin lacks")
-	if _, err := pairteardown.PushRun(prime, pair, landed, pairteardown.RunPush{LockWait: fabriclayout.LockWaitUnbounded}); err != nil {
-		t.Fatalf("PushRun(%s): %v", landed, err)
-	}
-	setLanding([]pushledger.Landing{{Run: landed, Tip: tip, ParentBranch: "main", At: time.Unix(1, 0)}})
-	requireLeftStanding("its landing entry standing")
-	setLanding(nil)
-
 	got := <-tearDownLeftovers(prime, []dobbyengine.LeftoverPair{
 		{Slug: landed, Kind: dobbyengine.LeftoverLanded},
 		{Slug: cancelled, Kind: dobbyengine.LeftoverCancelled},
-	}, fabricengine.ReconcileOptions{})
+	})
 
 	if want := map[string]error{landed: nil, cancelled: nil}; !reflect.DeepEqual(got, want) {
 		t.Errorf("tearDownLeftovers() = %v; want %v", got, want)

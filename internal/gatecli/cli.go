@@ -14,7 +14,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/envconfig"
 	"github.com/Knatte18/loomyard/internal/gateslot"
@@ -46,7 +45,7 @@ func Command() *cobra.Command {
 // goBinary is the go command a prebuilding tier builds `lym` with;
 // samplePeriod is how often the CPU watchdog samples a tier's process tree;
 // preTierCeiling bounds the work before the first tier;
-// timeoutUnit is the length of one `gate.tiers.<tier>.timeout_min` minute;
+// timeoutUnit is the length of one `timeout_min` minute;
 // rerunDelay is how long a tier waits before its one rerun after a resource shortage or a crashed test runner;
 // pipeWaitDelay is how long a tier's or the build's output is still read after its shell exits;
 // seams holds the bounds and launcher of a capped call's front.
@@ -62,35 +61,34 @@ func newCommand(goBinary string, samplePeriod, preTierCeiling, timeoutUnit, reru
 
 	var dir, tags, base, gate string
 	var tiers []int
-	var upto, copies int
+	var upto int
 	var cards []string
-	var all, guards, wait, mainPackages, stopOnFail, noCarry bool
+	var all, guards, wait, mainPackages, stopOnFail, mapMode bool
 	testCmd := &cobra.Command{
 		Use:         "test [<targets>...]",
 		Short:       "run the hub's test tiers once their gate slots are free",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: `test runs the tiers of gate.tiers, in ascending tier number, going on past a failed one unless --stop-on-fail ends the call there.
---gate K runs the tiers and the scope that key K of ` + keyName(gatesKey) + ` names, and goes with none of --tier, --upto, --all and --base.
-A key of scope card needs --card <id> per card, scope all runs every tier whole, and scope diff takes the default diff scope.
-Scope marked runs only the key's //lym:only tests.
-While ` + keyName(scoperKey) + ` is go, a --gate call skips other keys' //lym:only tests.
+		Long: `test runs the tiers the hub declares in gate.yaml, in ascending tier number, going on past a failed one unless --stop-on-fail ends the call there.
+--gate K runs the tiers and the scope the gate key K of gate.yaml names, and goes with none of --tier, --upto, --all and --base.
+A key of scope card needs --card <id> per card, scope all runs every tier whole, or no tier when every changed file is inert, and scope diff runs the diff from the merge base with the pair's parent branch.
 Explicit <targets> beside --gate replace the key's scope.
 --tier N names a tier and may repeat; the default is tier0 without --upto or --gate.
---upto N adds every declared tier from 0 through N, bar a manual one, which --tier alone runs.
-Each tier takes the gate slots it asks for, bounded by its ` + tierKeyName("<tier>", tierTimeoutMinLeaf) + `.
+--upto N adds every declared tier numbered 0 through N but a manual one, which runs only when --tier names it.
+Each tier takes the gate slots it asks for and runs its command through the platform shell, bounded by its timeout_min.
 Without --wait, an agent strand's call runs in a detached runner it starts or joins and answers done false with exit 75, no failure, once its keep-warm cap passes:
 run the same command again in a turn that does nothing else, so the prompt cache stays warm; it prints the result once the run ended.
 With --wait, and with no strand, the tiers run in this process.
+Inside a slot an enclosing gate run holds it acquires no other.
 The exit code is the first failing run's own, or 0.
-Each tier's stderr summary line shows its slot wait as wait and its run time without that wait as wall.
 Without --gate the scope is the explicit <targets>, --all, --card <id>, --base <rev>, or the diff from the merge base with the pair's parent branch.
 Arguments after "--" fill each tier's {args}.
-A --filter among them is ANDed with the tier's filter where the tier's command holds {filter}.
---guards, and a narrower scope while ` + keyName(scoperKey) + ` is go, also run the //lym:guard tests outside the scope; --card adds tier-skipped ones.
+--guards, and a narrower scope under the go scoper, also run the //lym:guard tests outside the scope.
+--map builds the tier0 and tier1 coverage maps, and refuses the flags that pick tiers or steps.
 
 Examples:
 
   lym gate test --wait ./internal/foo
+  lym gate test --wait --map internal/foo
   lym gate test --tier 0 --tier 1 --all
   lym gate test --wait --gate card --card 3
   lym gate test --base main
@@ -101,10 +99,10 @@ Examples:
 				return nil
 			}
 			request := testRequest{
-				goBinary: goBinary, samplePeriod: samplePeriod, preTierCeiling: preTierCeiling, timeoutUnit: timeoutUnit, rerunDelay: rerunDelay, pipeWaitDelay: pipeWaitDelay,
+				goBinary: goBinary, samplePeriod: samplePeriod, preTierCeiling: preTierCeiling, timeoutUnit: timeoutUnit, secondUnit: time.Second, rerunDelay: rerunDelay, pipeWaitDelay: pipeWaitDelay,
 				stderr: cmd.ErrOrStderr(), dir: dir, tags: tags, gate: gate, tiers: tiers, cards: cards, mainPackages: mainPackages, base: base, all: all, guards: guards, targets: args,
-				upto: upto, uptoGiven: cmd.Flags().Changed("upto"), stopOnFail: stopOnFail, copies: copies, noCarry: noCarry,
-				phase: phaseFrom(cmd.Context()), runAgent: os.Getenv(agentname.StrandNameEnv) != "",
+				upto: upto, uptoGiven: cmd.Flags().Changed("upto"), stopOnFail: stopOnFail, mapMode: mapMode,
+				phase: phaseFrom(cmd.Context()),
 			}
 			if dash := cmd.ArgsLenAtDash(); dash >= 0 {
 				request.targets, request.args = args[:dash], args[dash:]
@@ -119,23 +117,24 @@ Examples:
 	}
 	testCmd.Flags().StringVarP(&dir, "dir", "C", "", "directory the tiers run in, with explicit targets only; defaults to each tier's own dir")
 	testCmd.Flags().StringVar(&tags, "tags", "", "refused: name the tier that compiles the tags with --tier")
-	testCmd.Flags().StringVar(&gate, "gate", "", "key of "+keyName(gatesKey)+" whose tiers and scope the call runs; goes with none of --tier, --upto, --all and --base")
+	testCmd.Flags().StringVar(&gate, "gate", "", "gate.yaml key whose tiers and scope the call runs; goes with none of --tier, --upto, --all and --base")
 	testCmd.Flags().IntSliceVar(&tiers, "tier", nil, "tier number to run; repeatable, default 0")
 	testCmd.Flags().IntVar(&upto, "upto", 0, "run every declared tier numbered 0 through N but the manual ones")
-	testCmd.Flags().StringArrayVar(&cards, "card", nil, "plan card id whose packages, and the packages that depend on them, are the scope; repeatable")
+	testCmd.Flags().StringArrayVar(&cards, "card", nil, "plan card id whose packages are the scope; repeatable")
 	testCmd.Flags().BoolVar(&mainPackages, gateslot.MainPackagesFlag, false, "with --card under the go scoper, add every package main of tier0's module to the scope")
 	testCmd.Flags().StringVar(&base, "base", "", "revision whose diff to the working tree is the scope")
 	testCmd.Flags().BoolVar(&all, "all", false, "run every tier over its all_targets")
 	testCmd.Flags().BoolVar(&guards, "guards", false, "after the listed tiers, run every //lym:guard test of the module under the tier its file belongs to")
 	testCmd.Flags().BoolVar(&stopOnFail, gateslot.StopOnFailFlag, false, "end the call at its first failed run, so no later tier, vet or guard run starts")
-	testCmd.Flags().BoolVar(&noCarry, gateslot.NoCarryFlag, false, "run every tier of the call even where its last green run covers the unchanged tree")
-	testCmd.Flags().IntVar(&copies, "copies", 0, "with --gate and explicit targets, run this many copies of the key's one tier side by side inside one slot lease; 0 is off")
+	testCmd.Flags().BoolVar(&mapMode, mapFlag, false, "build the per-package coverage maps of tier0 and tier1 over the scope's packages instead of running the tiers")
 	testCmd.Flags().BoolVar(&wait, "wait", false, "run the tiers in this process and block until they end, instead of in the detached runner an agent call starts or joins")
 	cmd.AddCommand(testCmd)
 	cmd.AddCommand(statusCmd())
 	cmd.AddCommand(reportCmd())
 	cmd.AddCommand(cardVerifyCmd(seams))
-	cmd.AddCommand(redFirstCmd(goBinary, samplePeriod, preTierCeiling, timeoutUnit, rerunDelay, pipeWaitDelay))
+	cmd.AddCommand(redundantCmd(goBinary, timeoutUnit, pipeWaitDelay))
+	cmd.AddCommand(mutateCmd(goBinary, timeoutUnit, pipeWaitDelay))
+	cmd.AddCommand(reachCmd())
 	cmd.AddCommand(runnerCmd(func() *cobra.Command {
 		return newCommand(goBinary, samplePeriod, preTierCeiling, timeoutUnit, rerunDelay, pipeWaitDelay, seams)
 	}, seams))
@@ -151,8 +150,10 @@ type testRequest struct {
 	samplePeriod time.Duration
 	// preTierCeiling bounds the work before the first tier.
 	preTierCeiling time.Duration
-	// timeoutUnit is the length of one `gate.tiers.<tier>.timeout_min` minute.
+	// timeoutUnit is the length of one `timeout_min` minute, and of one minute of the redundancy step's minute keys.
 	timeoutUnit time.Duration
+	// secondUnit is the length of one second of `redundancy_test_timeout_sec`.
+	secondUnit time.Duration
 	// rerunDelay is how long a tier waits before its one rerun after a resource shortage or a crashed test runner.
 	rerunDelay time.Duration
 	// pipeWaitDelay is how long a tier's or the build's output is still read after its shell exits.
@@ -182,32 +183,17 @@ type testRequest struct {
 	guards bool
 	// stopOnFail is the --stop-on-fail flag: the call ends at its first failed run, bar a crashed test runner.
 	stopOnFail bool
-	// noCarry is the --no-carry flag: every tier of the call runs as a carry: false tier does, so no green record is carried.
-	noCarry bool
-	// copies is the --copies value: how many copies of the gate key's one tier run side by side; 0 is off.
-	copies int
-	// copiesRun is how many copies the tier run in progress runs; 0 runs the tier once.
-	// runWithSlots sets it once the lease is held.
-	copiesRun int
-	// runAgent is true when the call comes from a run agent's session, which the strand name in its environment shows.
-	// Only the verb's flag parsing sets it.
-	runAgent bool
+	// mapMode is the --map flag: the call builds the coverage maps over its scope instead of running the tiers.
+	mapMode bool
 	// targets are the arguments before `--`.
 	targets []string
 	// args are the arguments after `--`, which fill each tier's {args}.
 	args []string
-	// terms are the class filter terms each invocation of explicit targets runs under; only `lym gate red-first` sets them.
-	terms []string
-	// checkoutRoot, when set, replaces the worktree root that the tiers' dirs and the build's dir resolve against.
-	// `lym gate red-first` sets it to a checkout of the base, so the hub's tiers build and run that code.
-	checkoutRoot string
 
 	// The fields below are filled by runTest once the hub is resolved and the config loaded, and read by the tier runs.
 
 	// hubEnv is the hub's env.yaml variables, which the call's children run with.
 	hubEnv envconfig.Config
-	// sessionEnv is the environment of the session that started the call, against which each tier's env is compared.
-	sessionEnv []string
 	// root is the worktree root the tiers' dirs and a prebuild are relative to.
 	root string
 	// prebuiltStore is the hub's store of prebuilt `lym` binaries; empty outside a hub.
@@ -220,13 +206,6 @@ type testRequest struct {
 	memoryQuit int64
 	// memoryGuarding is whether the memory guard applies to this run.
 	memoryGuarding bool
-	// held are the sorted names of the `//lym:only` tests whose marker does not name the call's --gate key.
-	// Every listed tier run skips them and the guard step leaves them out; empty without --gate or under another scoper.
-	held []string
-	// marked holds the `//lym:only` tests whose marker names the call's --gate key.
-	// It groups them by their file's tier, then by package directory relative to the scanned module;
-	// a key of scope marked runs them in its guard step.
-	marked map[int]map[string][]string
 	// observer hears each tier start and end; its zero value observes nothing.
 	observer TierObserver
 	// phase, when set, hears where the call stands as each tier waits for slots and runs; only a detached runner sets it.

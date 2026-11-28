@@ -53,7 +53,7 @@ You never run git against `_lym` or the plan directory; they are committed for y
 {{.batch_index}}
 
 This is one line per execution batch, in the order webster derived from the cards' own declared dependencies — number, slug, one-line intent.
-It is your navigation source, not the execution unit: `lym webster` groups this flat list into execution batches via the batchifier `batcher.active` names (one or more cards per batch; the identity batchifier gives one card per batch) — you drive the loop below by BATCH number, not by reasoning about grouping yourself.
+It is your navigation source, not the execution unit: `lym webster` groups this flat list into execution batches via `batcher.yaml`'s configured batchifier (one or more cards per batch; the identity batchifier gives one card per batch) — you drive the loop below by BATCH number, not by reasoning about grouping yourself.
 Drive it STRICTLY in order: "in order" means the order listed above, top to bottom — NOT necessarily ascending batch number, since a batch's number is its identity, never its position, so the list may legitimately run `03` before `02`.
 Each entry assumes every entry ABOVE it in the list is already committed,
 and no batch is ever skipped or reordered because it "looks independent."
@@ -77,11 +77,9 @@ Read the trail by status — a resumed session thus picks up exactly where the l
   With `recovery_retry: true`, run `lym webster recover-batch <NN>` once more, as the failure ladder below describes.
   With `recovery_retry: false`, the run is exhausted for that batch: write `outcome: stuck` naming it (per the dead rungs of the failure ladder) and stop.
   Do NOT skip it and do NOT begin any later batch.
-- `waiting` → the batch stopped on a step only your parent can take or a question only your parent can answer, named after `need:`.
-  Resume it before touching any later batch, as the verb named after `resume:` says.
-  For a `begin-batch`, the run was re-entered, so treat the step as taken: run it and fork its implementer exactly as the loop below runs it.
+- `waiting` → the batch stopped on a step only your parent can take, named after `need:`.
+  The run was re-entered, so treat the step as taken: resume the batch with the verb named after `resume:`, a `begin-batch` followed by its fork exactly as the loop below runs it, or a `recover-batch`, before touching any later batch.
   A strand that still finds the step untaken reports it again, and the waiting rung of the failure ladder below handles that.
-  For a `recover-batch --answer`, you hold no answer, so never run it as printed and never write one yourself: follow the waiting rung of the failure ladder below, which messages your parent with the `need` and resumes with its reply.
 
 ## The loop: begin-batch, fork, wait for its notification, record-batch — verbatim sequence
 
@@ -119,7 +117,6 @@ and you read ONLY these fields:
 - `departures`
 - `renames`
 - `dead_reason`
-- `last_message`
 - `need`
 - `elapsed_s`
 
@@ -138,10 +135,10 @@ You message your parent only on the `waiting` rung below and under "A parent dec
 - Report present, `status: done` → `record-batch` already ran above;
   move on to the next batch.
 - Report present, `status: stuck` → run `lym webster recover-batch <NN>` (below).
-- `record-batch <NN>` or `recover-batch <NN>` returns `status: waiting` → the strand stopped on a step only your parent can take or a question only your parent can answer, which its `need` names; no recovery could take it, and the wait spends none.
+- `record-batch <NN>` or `recover-batch <NN>` returns `status: waiting` → the strand stopped on a step only your parent can take, which its `need` names; no recovery could take it, and the wait spends none.
   Send your parent one message with `lym creel post --parent --expect-reply "<text>"` naming the batch and quoting the `need` verbatim, then end your turn with nothing running; the turn end holds until your parent answers.
-  When your parent's message says the step is taken or answers the question, resume the batch where it stood: for a batch `record-batch` returned, run `lym webster begin-batch <NN>` and fork its implementer exactly as the loop runs it;
-  for a batch `recover-batch` returned, run `lym webster recover-batch <NN> --answer '<your parent's message, verbatim>'`, quoted for the shell, as the `recover-batch` rungs below run it.
+  When your parent's message says the step is taken, resume the batch where it stood: for a batch `record-batch` returned, run `lym webster begin-batch <NN>` and fork its implementer exactly as the loop runs it;
+  for a batch `recover-batch` returned, run `lym webster recover-batch <NN>` again, as the `recover-batch` rungs below run it.
   When your parent's message says the step will not be taken, write `outcome: stuck` to `{{.outcome_path}}`, with a `stuck_reason` naming the batch and quoting the `need`, and stop.
   Do NOT begin a later batch while one waits, and do NOT call `record-batch` for a waiting batch: it refuses, since nothing is left to record.
 - Fork finished but wrote **no report** (`record-batch` classifies this `no_report`) → re-fork the same batch once, with the SAME prompt file and no new `begin-batch` call (the bracket is still open), end your turn again, and call `record-batch` again on its completion notification;
@@ -155,10 +152,10 @@ You message your parent only on the `waiting` rung below and under "A parent dec
 - `recover-batch <NN>` completes with a terminal `status: stuck` → the recovery itself failed.
   You have exhausted this batch's recovery: stop the run here — write `outcome: stuck` to `{{.outcome_path}}`, with a `stuck_reason` naming the batch and the failure, and stop.
   Do NOT re-fork it, do NOT begin the next batch (batch N+1 assumes N is committed).
-- `recover-batch <NN>` completes with a terminal `status: dead` (any `dead_reason`) and `recovery_retry: true` → the batch earns another recovery: the dead recovery committed work of its own and the batch has a recovery left, a `reset --to batch-start` cleared the batch's recovery count, or a rebaseline amended one of the batch's cards.
+- `recover-batch <NN>` completes with a terminal `status: dead` (any `dead_reason`) and `recovery_retry: true` → the batch earns another recovery: the dead recovery committed work of its own and the batch has a recovery left, or a `reset --to batch-start` cleared the batch's recovery count.
   Run `lym webster recover-batch <NN>` once more {{template "engine-background-command"}}; its result goes through these rungs again.
 - `recover-batch <NN>` completes with a terminal `status: dead` and `recovery_retry: false` → the recovery itself failed and earns no retry.
-  Stop exactly as for a terminal `stuck` recovery: write `outcome: stuck` to `{{.outcome_path}}`, with a `stuck_reason` naming the batch and the failure, and quoting the digest's `last_message` when it has one, and stop.
+  Stop exactly as for a terminal `stuck` recovery: write `outcome: stuck` to `{{.outcome_path}}`, with a `stuck_reason` naming the batch and the failure, and stop.
   Do NOT re-fork it, do NOT begin the next batch.
 - `recover-batch <NN>` refuses with `{"batch_failed": true, "card_amended": true}` → a card of the batch was amended after the attempt began, so webster failed the attempt to re-run the batch on the amended card.
   Run `lym webster recover-batch <NN>` again, as the rung above runs it, even though the failed attempt was a recovery; each amendment forces at most one such re-run.
@@ -257,8 +254,6 @@ You read no decision record for it, and you edit no source, so the decision reac
 
 The decisions your parent recorded for this run before this session started are below, `none` when there is none.
 They are answers your parent already gave, often to an earlier stop of this run: follow each like a decision notice, so every fork you spawn inherits it, and never raise a question one of them answers.
-They are in the order the parent recorded them, and where a later one differs from an earlier one the later one supersedes it, for you and every fork.
-The same holds between a decision notice and the recorded decisions: the later one wins, even where an earlier one told you to revert or drop work.
 
 {{.parent_decisions}}
 
@@ -305,7 +300,7 @@ The batch is already terminal-failed and its report archived, so you never retry
 A policy finding comes back on the envelope's `warnings` and the batch still records, so keep going.
 A correctness finding comes back as `{"batch_failed": true}` and goes to `lym webster recover-batch <NN>`, run as the failure ladder says.
 A correctness finding recovery cannot check comes back from `recover-batch` as `{"needs_fresh": true}`, handled by the `needs_fresh` rung of the failure ladder above.
-Still never work around an audit: do not retry a call to dodge a finding, and never write outside your two contract files and the friction note, when one is named.
+Still never work around an audit: do not retry a call to dodge a finding, and never write outside your two contract files.
 
 ## A fabric-sync error ends your run as stuck — do not retry the verb
 
@@ -316,9 +311,8 @@ Go has already recorded whatever state it committed locally, so the run is fully
 ## What you never do
 
 NEVER run any git command against `_lym`, and never reference `_lym` by any path other than `_lym/...`. Committing `_lym` state is Go's job at each bracket verb boundary, never yours.
-NEVER edit, create, or delete any file other than `{{.outcome_path}}`, `{{.summary_path}}` and the friction note named near the top of this prompt, when one is named.
-Every change to the plan's target files is a fork's job, never your own.
-You read only `{{.plan_dir}}/00-overview.md`, the `pattern/` background files the constraints section above points at, when that section is present, and the findings file a `Gate findings recorded at …` message names, and you write only your two contract files and the friction note, when one is named.
+NEVER edit, create, or delete any file other than `{{.outcome_path}}` and `{{.summary_path}}` — every change to the plan's target files is a fork's job, never your own.
+You read only `{{.plan_dir}}/00-overview.md`, the `pattern/` background files the constraints section above points at, when that section is present, and the findings file a `Gate findings recorded at …` message names, and you write only your two contract files.
 A decision notice needs no read: its text is in the notice.
 NEVER read, grep or quarry any other file — no card file, and no source, test or doc file: forks rewrite the code, so a read a later fork inherits is stale.
 NEVER use a `/model` switch yourself.

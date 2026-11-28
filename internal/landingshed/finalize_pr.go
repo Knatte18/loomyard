@@ -18,9 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 )
 
-// prMergeRetryWindow is how long retries are scheduled under the lock.
-// It bounds the retries of a pending refusal.
-// It also bounds those of a refusal whose merge-state reading says the pull request can merge.
+// prMergeRetryWindow is how long a merge GitHub refuses as pending is retried under the lock.
 const prMergeRetryWindow = pullrequest.MergeRetryWindow
 
 // prLanding is what the decision about the run's pull request hands the landing.
@@ -47,10 +45,9 @@ type prLanding struct {
 	record pullrequest.Record
 }
 
-// beamModeUnreadableReason is the Stuck reason of a failed lookup of beam.pull_request for a landing.
-// err is the lookup's error.
-func beamModeUnreadableReason(err error) string {
-	return fmt.Sprintf("%s for this landing could not be read: %v; way forward: fix the beam.yaml file the error names, with lym config beam --set pull_request=<review|off|trail|merge-in> run in that worktree, or for the hub's default file with lym config beam --layer default --set pull_request=<review|off|trail|merge-in> from the prime, then run lym loom resume; a run_settings change applies from the next run", beamPullRequestName(), err)
+// beamModeUnreadableReason is the Stuck reason of a receiving branch's beam.yaml that could not be read in worktree.
+func beamModeUnreadableReason(worktree string, err error) string {
+	return fmt.Sprintf("the receiving branch's beam.yaml could not be read in worktree %s: %v; way forward: fix it with lym config beam --set pull_request=<on|off|required|merge> in that worktree, then run lym loom resume", worktree, err)
 }
 
 // pushHaltReason is the Stuck reason of a push of the task branch that failed for a reason other than a transient one.
@@ -238,8 +235,7 @@ func removePRRecord(pr PullRequestDeps, producer string) error {
 }
 
 // pullRequestLanding decides, under the parent lock, how the landing relates to the run's pull request.
-// The decision reads beam.pull_request for the landing and GitHub's rules for the parent branch.
-// It never reads the record alone.
+// The decision reads the parent's mode and GitHub's rules for the parent branch, never the record alone.
 // A no closes a recorded pull request that GitHub reports open, removes the record, and lands locally.
 // A yes halts without the recorded pull request, or with a closed one the operator did not end the review of.
 // A yes marked MergeAtOnce has no review to end.
@@ -249,23 +245,29 @@ func removePRRecord(pr PullRequestDeps, producer string) error {
 // A merged pull request lands through the parent-side merge's already-landed path;
 // an open one is marked to merge on GitHub;
 // a closed one whose review the operator ended is reopened and marked to merge, since GitHub merges only open ones.
-// Without the Mode seam, the step is skipped and the landing is local.
-// A beam's landing reads the beam's landing record beside the run's record.
+// Without the ParentMode seam, the step is skipped and the landing is local.
+// A beam's landing reads the beam's landing record beside the run's record, and never the entry's field.
 // In a beam with no pull request recorded, an open pull request in the run's record is merged as it stands;
 // the parent rule is not consulted for it, and a closed or merged one is decided as any other record is.
 // A non-nil ending ends the call at once.
 func (fz *Finalize) pullRequestLanding(ctx context.Context) (prLanding, *ending) {
 	pr := fz.deps.PullRequest
-	if pr.Mode == nil {
+	if pr.ParentMode == nil {
 		return prLanding{}, nil
 	}
 	failed := func(what string, err error) (prLanding, *ending) {
 		return prLanding{}, fail(ctx, finalizeName, fmt.Errorf("landingshed: %s: %s: %w", finalizeName, what, err))
 	}
 
-	mode, err := pr.Mode()
+	mode, worktree, err := pr.ParentMode()
 	if err != nil {
-		return prLanding{}, halt(ctx, finalizeName, LandingStopPrefix+beamModeUnreadableReason(err))
+		return prLanding{}, halt(ctx, finalizeName, LandingStopPrefix+beamModeUnreadableReason(worktree, err))
+	}
+	field := ""
+	if pr.BeamRecord == nil {
+		if field, err = pr.EntryField(); err != nil {
+			return failed("read the landing entry's pull_request", err)
+		}
 	}
 	origin, err := pr.Origin()
 	if err != nil {
@@ -304,7 +306,7 @@ func (fz *Finalize) pullRequestLanding(ctx context.Context) (prLanding, *ending)
 			return prLanding{merge: true, atOnce: true, api: api, record: rec}, nil
 		}
 	}
-	decision, err := resolveWithParentRule(ctx, finalizeName, fz.deps, mode, beam, origin, hasCommits, found)
+	decision, err := resolveWithParentRule(ctx, finalizeName, fz.deps, mode, field, beam, origin, hasCommits, found)
 	if err != nil {
 		return prLanding{}, fail(ctx, finalizeName, err)
 	}
@@ -324,8 +326,6 @@ func (fz *Finalize) pullRequestLanding(ctx context.Context) (prLanding, *ending)
 // A no closes a recorded pull request GitHub reports open and lands locally.
 // A yes needs the recorded pull request, unless it is marked MergeAtOnce;
 // a MergeAtOnce yes has the pull request opened, or reopened if closed, when it merges.
-// A closed pull request is reopened and merged when the operator ended its review or the yes is marked MergeAtOnce.
-// Any other closed one halts.
 // A non-nil ending ends the call at once.
 func (fz *Finalize) landingForDecision(ctx context.Context, decision PullRequestDecision, origin Origin, rec pullrequest.Record, found bool) (prLanding, *ending) {
 	pr := fz.deps.PullRequest
@@ -405,7 +405,7 @@ func (fz *Finalize) recordedBeamLanding(ctx context.Context, mode string, record
 			return prLanding{}, fail(ctx, finalizeName, fmt.Errorf("landingshed: %s: list the task commits the merged pull request lacks: %w", finalizeName, err))
 		}
 		if len(missing) > 0 {
-			again, err := resolveWithParentRule(ctx, finalizeName, fz.deps, mode, BeamWithoutPullRequest, origin, hasCommits, found)
+			again, err := resolveWithParentRule(ctx, finalizeName, fz.deps, mode, "", BeamWithoutPullRequest, origin, hasCommits, found)
 			if err != nil {
 				return prLanding{}, fail(ctx, finalizeName, err)
 			}
@@ -450,24 +450,14 @@ func pullRequestCommitTitle(title string, number int) string {
 // mergeOnGitHub merges the run's pull request on GitHub, after the lock re-check and before the parent-side merge.
 // It pushes the task branch first.
 // It reopens the pull request when marked to reopen it, and finds or opens it when marked to open it.
-// For a recorded pull request of a run that is not a beam's, it then reads the pull request's status.
-// When GitHub holds other text, it sets the pull request's title and body to title and message.
 // It merges with the pushed head as the expected head.
-// The merge squashes when landing.squash is set;
+// The merge squashes when landing.yaml's squash is set;
 // it always squashes for a parent that takes its pull request with no review.
 // The commit title is the title with the pull request's number in parentheses;
 // the commit message is the message passed in.
 // A merge that GitHub refuses as pending is retried for up to `prMergeRetryWindow`, on `PullRequest.Now`'s clock.
-// Any other refusal but a method one has GitHub's merge state read, waiting out a mergeability not yet computed;
-// the merge is retried while that state reports the pull request can merge.
-// A retry is scheduled only while the window has not passed.
-// Each merge-state reading can wait up to a further window.
-// A scheduled retry sleeps its backoff first.
-// So Finalize halts within about two and a half windows.
 // It then fetches the parent's upstream and fast-forwards the parent pair to it,
 // so the parent-side merge that follows finds the parent holding the task's work.
-// A transient failure of that fetch is an error the driver re-steps over its network waits;
-// the re-entry finds the pull request merged and lands through the already-landed path.
 // It returns nil when the landing goes on; each halt opens with LandingStopPrefix.
 func (fz *Finalize) mergeOnGitHub(ctx context.Context, parentHandle parentMerger, landing prLanding, title, message string) *ending {
 	pr := fz.deps.PullRequest
@@ -489,10 +479,6 @@ func (fz *Finalize) mergeOnGitHub(ctx context.Context, parentHandle parentMerger
 			return end
 		}
 		landing.record = rec
-	} else if pr.BeamRecord == nil {
-		if end := fz.setRecordedText(ctx, landing, title, message); end != nil {
-			return end
-		}
 	}
 
 	squash := fz.deps.Config.Squash || landing.atOnce
@@ -507,32 +493,17 @@ func (fz *Finalize) mergeOnGitHub(ctx context.Context, parentHandle parentMerger
 		if !errors.As(err, &refusal) {
 			return fz.githubFailure(ctx, "merge the pull request", err)
 		}
-		retry := refusal.Kind == pullrequest.RefusalPending
-		var state *pullrequest.MergeState
-		if refusal.Kind == pullrequest.RefusalOther {
-			// GitHub refuses a merge as not mergeable while it has not yet computed mergeability,
-			// so its own reading of the pull request decides whether the refusal lasts.
-			read, err := pullrequest.ReadMergeState(ctx, landing.api, landing.record.Number, head, fz.deps.ParentBranch, pr.Now, pr.Sleep)
-			if err != nil {
-				return fz.githubFailure(ctx, "read whether the pull request can merge", err)
-			}
-			state = &read
-			retry = read.MergeableNow
-		}
-		if retry && pr.Now().Before(deadline) {
+		if refusal.Kind == pullrequest.RefusalPending && pr.Now().Before(deadline) {
 			if err := pr.Sleep(ctx, wait); err != nil {
 				return fail(ctx, finalizeName, fmt.Errorf("landingshed: %s: sleep before retrying the merge: %w", finalizeName, err))
 			}
 			wait = nextPRWait(wait, false)
 			continue
 		}
-		return halt(ctx, finalizeName, LandingStopPrefix+fz.mergeRefusalReason(landing, refusal, state))
+		return halt(ctx, finalizeName, LandingStopPrefix+fz.mergeRefusalReason(landing, refusal))
 	}
 
 	if _, err := fz.deps.ReadParentTips(true); err != nil {
-		if terr := transientFailure(ctx, finalizeName, "fetch the parent's upstream after the merge", err); terr != nil {
-			return &ending{err: terr}
-		}
 		return halt(ctx, finalizeName, LandingStopPrefix+fz.mergedButNotPulledReason(landing.record, fmt.Sprintf("the parent's upstream could not be fetched: %v", err)))
 	}
 	result, err := parentHandle.FastForwardPair(fabricengine.SyncOptions{SkipPush: fz.deps.PushSkipped})
@@ -541,24 +512,6 @@ func (fz *Finalize) mergeOnGitHub(ctx context.Context, parentHandle parentMerger
 	}
 	if result.Refusal != "" {
 		return halt(ctx, finalizeName, LandingStopPrefix+fz.mergedButNotPulledReason(landing.record, fmt.Sprintf("the parent pair refused the fast-forward: %s", result.Refusal)))
-	}
-	return nil
-}
-
-// setRecordedText sets the title and body of the landing's recorded pull request to title and body.
-// It edits only when GitHub holds other text, so the pull request follows the change description when it merges.
-// A non-nil ending ends the call at once: a GitHub failure is either a transient error or a halt.
-func (fz *Finalize) setRecordedText(ctx context.Context, landing prLanding, title, body string) *ending {
-	number := landing.record.Number
-	status, err := landing.api.Status(ctx, number)
-	if err != nil {
-		return fz.githubFailure(ctx, "read the pull request's status", err)
-	}
-	if (prText{title: title, body: body}).matches(status.Title, status.Body) {
-		return nil
-	}
-	if err := landing.api.Edit(ctx, number, title, body); err != nil {
-		return fz.githubFailure(ctx, "set the pull request's title and body", err)
 	}
 	return nil
 }
@@ -601,44 +554,23 @@ func (fz *Finalize) openAtOnce(ctx context.Context, api pullrequest.API, head, t
 // mergeRefusalReason is the Stuck reason for a merge GitHub refused for good.
 // It also covers a merge GitHub kept refusing as pending past the retry window.
 // A method refusal names the squash setting, or the repository's settings for a parent that always squashes.
-// A beam's refusal never names a cancel.
-// It names GitHub's message, the pull request's status verb and the resume.
-// The exception is a refusal outlasting the window while GitHub reports the pull request can merge.
-// That one names the resume alone.
-// state is GitHub's merge state read after the refusal, nil when none was read;
-// each cause it names follows GitHub's message.
-// A state that can merge names the resume alone;
-// a state whose only cause is a mergeability GitHub has not computed names waiting for it, with no approval or cancel.
-func (fz *Finalize) mergeRefusalReason(landing prLanding, refusal *pullrequest.MergeRefusal, state *pullrequest.MergeState) string {
+// A beam's refusal never names a cancel: it names GitHub's message, the pull request's status verb and the resume.
+func (fz *Finalize) mergeRefusalReason(landing prLanding, refusal *pullrequest.MergeRefusal) string {
 	rec := landing.record
-	reported := ""
-	if state != nil {
-		if state.MergeableNow {
-			return fmt.Sprintf("GitHub refused to merge pull request %s: %s, yet GitHub now reports it can merge; way forward: run lym loom resume, which retries the merge", rec.URL, refusal.Message)
-		}
-		reported = "; GitHub reports: " + strings.Join(state.Causes, ", ")
-		if state.MergeabilityUncomputed() {
-			wait := "wait until GitHub computes whether the pull request can merge"
-			if fz.deps.PullRequest.BeamRecord != nil {
-				wait += fmt.Sprintf(", which lym beam pr status %s shows", fz.deps.Slug)
-			}
-			return fmt.Sprintf("GitHub refused to merge pull request %s: %s%s; way forward: %s, then run lym loom resume", rec.URL, refusal.Message, reported, wait)
-		}
-	}
 	if fz.deps.PullRequest.BeamRecord != nil {
 		check := fmt.Sprintf("check the pull request with lym beam pr status %s, then run lym loom resume", fz.deps.Slug)
 		if refusal.Kind == pullrequest.RefusalMethod {
 			return fmt.Sprintf("GitHub refused the squash merge of pull request %s: %s; way forward: allow squash merging in the repository's settings on GitHub, since a beam always lands by squash, then %s", rec.URL, refusal.Message, check)
 		}
-		return fmt.Sprintf("GitHub refused to merge pull request %s: %s%s; way forward: settle on GitHub what the message names, then %s", rec.URL, refusal.Message, reported, check)
+		return fmt.Sprintf("GitHub refused to merge pull request %s: %s; way forward: settle on GitHub what the message names, then %s", rec.URL, refusal.Message, check)
 	}
 	if refusal.Kind == pullrequest.RefusalMethod && landing.atOnce {
-		return fmt.Sprintf("GitHub refused the squash merge of pull request %s: %s; way forward: allow squash merging in the repository's settings on GitHub, since a landing whose %s is trail always squashes, then run lym loom resume", rec.URL, refusal.Message, beamPullRequestName())
+		return fmt.Sprintf("GitHub refused the squash merge of pull request %s: %s; way forward: allow squash merging in the repository's settings on GitHub, since a parent whose beam.yaml pull_request is merge always squashes, then run lym loom resume", rec.URL, refusal.Message)
 	}
 	if refusal.Kind == pullrequest.RefusalMethod {
-		return fmt.Sprintf("GitHub refused the merge method for pull request %s: %s; way forward: set %s to the method the repository allows with lym config landing --set squash=<true|false> in the prime worktree, or allow the method in the repository's settings, then run lym loom resume", rec.URL, refusal.Message, keyName(squashKey))
+		return fmt.Sprintf("GitHub refused the merge method for pull request %s: %s; way forward: set landing.yaml's squash to the method the repository allows with lym config landing --set squash=<true|false> in the prime worktree, or allow the method in the repository's settings, then run lym loom resume", rec.URL, refusal.Message)
 	}
-	return fmt.Sprintf("GitHub refused to merge pull request %s: %s%s; way forward: a second person approves the pull request again or settles the required check or conflict on GitHub, then runs lym loom resume; or the operator runs lym batten cancel %s", rec.URL, refusal.Message, reported, fz.deps.Slug)
+	return fmt.Sprintf("GitHub refused to merge pull request %s: %s; way forward: a second person approves the pull request again or settles the required check or conflict on GitHub, then runs lym loom resume; or the operator runs lym batten cancel %s", rec.URL, refusal.Message, fz.deps.Slug)
 }
 
 // mergedButNotPulledReason is the Stuck reason for a pull request GitHub merged that the parent pair could not take in.

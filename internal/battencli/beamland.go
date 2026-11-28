@@ -11,7 +11,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
@@ -20,12 +19,10 @@ import (
 // Slug names the entry, and HasPair reports whether this machine holds its pair as a registered worktree.
 // A directory left at the pair's path reads as no pair.
 // Running reports whether the board status is a run status, so a run is in flight on some machine.
-// Beam reports whether the entry is itself a beam, which may be open on another machine with neither of those set.
 type BeamLandMember struct {
 	Slug    string
 	HasPair bool
 	Running bool
-	Beam    bool
 }
 
 // BeamLandBlockers is what still works under a beam: its open members and the local pairs forked from it.
@@ -50,7 +47,7 @@ type landingSeams struct {
 func hubLandingSeams(location *lymcwd.Location, slug string) landingSeams {
 	return landingSeams{
 		Project: func() (bool, error) {
-			owners, err := boardengine.ReadOwners(fabriclayout.BoardDir(location.HubPath))
+			owners, err := boardengine.ReadOwners(fabricengine.BoardDir(location.HubPath))
 			if err != nil {
 				return false, err
 			}
@@ -114,7 +111,7 @@ func beamLandRefusal(slug string, blockers BeamLandBlockers) error {
 // beamMembers lists, sorted by slug, the open tasks and beam projects whose parent is the beam slug.
 // Parentage counts through any depth of grouping projects.
 func beamMembers(prime *lymcwd.Location, slug string) ([]BeamLandMember, error) {
-	tasks, err := boardengine.ReadTasks(fabriclayout.BoardDir(prime.HubPath))
+	tasks, err := boardengine.ReadTasks(fabricengine.BoardDir(prime.HubPath))
 	if err != nil {
 		return nil, fmt.Errorf("battencli: read the board for the members of the beam %s: %w", slug, err)
 	}
@@ -134,7 +131,7 @@ func beamMembers(prime *lymcwd.Location, slug string) ([]BeamLandMember, error) 
 			continue
 		}
 		hasPair := fabricengine.PairWorktreeStands(prime, task.Slug)
-		members = append(members, BeamLandMember{Slug: task.Slug, HasPair: hasPair, Running: boardengine.IsRunStatus(task.Status), Beam: task.Beam})
+		members = append(members, BeamLandMember{Slug: task.Slug, HasPair: hasPair, Running: boardengine.IsRunStatus(task.Status)})
 	}
 	slices.SortFunc(members, func(a, b BeamLandMember) int { return strings.Compare(a.Slug, b.Slug) })
 	return members, nil

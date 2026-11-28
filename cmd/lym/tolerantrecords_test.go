@@ -48,7 +48,6 @@ func strictDecodeFindings(filename string, data []byte) ([]string, error) {
 // TestTolerantRecords_NoStrictJSONDecode enforces `PATTERN-tolerant-records`.
 //
 //lym:guard
-//lym:only parent-align finalize
 func TestTolerantRecords_NoStrictJSONDecode(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Run("detector", func(t *testing.T) {

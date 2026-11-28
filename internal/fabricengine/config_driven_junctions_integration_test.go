@@ -15,7 +15,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -113,7 +112,7 @@ func TestHealthy_NarrowPathspecIsHealthy(t *testing.T) {
 	if !ok {
 		t.Errorf("Healthy ok = false (reason %+v); want true with _lym wired structurally even though the config names neither structural directory", reason)
 	}
-	if reason.Cause == fabriclayout.CauseConfigLoadFailed {
+	if reason.Cause == fabricengine.CauseConfigLoadFailed {
 		t.Errorf("Healthy reason = %+v; want a real verdict, not CauseConfigLoadFailed", reason)
 	}
 }

@@ -1,5 +1,4 @@
-// batchingnudge.go implements the batching nudge:
-// the claude.batching_nudge block, the PostToolUse hook command that runs it, the per-run state file Prepare seeds,
+// batchingnudge.go implements the batching nudge: claude.yaml's batching_nudge block, the PostToolUse hook command that runs it, the per-run state file Prepare seeds,
 // and the judgment that reads the calling chain's transcript tail for a breach of lym's batching rules and answers with one line of additional context.
 
 package claudeengine
@@ -22,8 +21,7 @@ import (
 
 var _ shuttleengine.BatchingNudger = (*Claude)(nil)
 
-// BatchingNudgeConfig is the claude.batching_nudge block:
-// the switches and thresholds of the after-tool-call hook that nudges a session back to batching its calls.
+// BatchingNudgeConfig is claude.yaml's batching_nudge block: the switches and thresholds of the after-tool-call hook that nudges a session back to batching its calls.
 // Prepare copies it into the run's state file, so a running session keeps the values it started with.
 type BatchingNudgeConfig struct {
 	// Enabled installs the hook; off, a run's settings carry no batching hook and Prepare writes no state file.
@@ -46,12 +44,11 @@ type BatchingNudgeConfig struct {
 	MaxNudges int `yaml:"max_nudges" json:"max_nudges"`
 }
 
-// batchingNudgeKey is the key of the claude.batching_nudge block.
+// batchingNudgeKey is claude.yaml's key of the batching_nudge block.
 const batchingNudgeKey = "batching_nudge"
 
-// ValidateBatchingNudge refuses a claude.batching_nudge block a run could not use while the hook is on:
-// a negative claude.batching_nudge.context_tokens, or a claude.batching_nudge.lookup_run below 1.
-// So is a claude.batching_nudge.edit_run, claude.batching_nudge.slice_lines or claude.batching_nudge.max_nudges below 1.
+// ValidateBatchingNudge refuses a batching_nudge block a run could not use while the hook is on:
+// a negative context_tokens, or a lookup_run, edit_run, slice_lines or max_nudges below 1.
 // The refusal names the key and the way forward, lym config claude.
 func ValidateBatchingNudge(cfg Config) error {
 	nudge := cfg.BatchingNudge
@@ -70,8 +67,8 @@ func ValidateBatchingNudge(cfg Config) error {
 	}
 	for _, bound := range bounds {
 		if bound.value < bound.least {
-			return fmt.Errorf("claudeengine: %s is %d, below its least value %d; way forward: lym config claude --set %s.%s=<n>",
-				keyName(batchingNudgeKey+"."+bound.key), bound.value, bound.least, batchingNudgeKey, bound.key)
+			return fmt.Errorf("claudeengine: claude.yaml's %s.%s is %d, below its least value %d; way forward: lym config claude --set %s.%s=<n>",
+				batchingNudgeKey, bound.key, bound.value, bound.least, batchingNudgeKey, bound.key)
 		}
 	}
 	return nil

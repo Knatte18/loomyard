@@ -13,7 +13,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/runfsm"
@@ -46,13 +45,10 @@ type runFakes struct {
 	localParentHolds  bool
 	restepped         bool
 
-	owedPush    []fabriclayout.FailedPush
-	codeTip     fabriclayout.CodeTipReading
+	owedPush    []fabricengine.FailedPush
+	codeTip     fabricengine.CodeTipReading
 	owedPushErr error
 	codeTipErr  error
-
-	localHoldsTip    bool
-	localHoldsTipErr error
 
 	boardErr error
 
@@ -83,13 +79,9 @@ func (f *runFakes) reader() runReader {
 		identity:    func() (machinename.Identity, error) { return f.identity, nil },
 		parentOf:    func(slug string) (string, error) { return f.parents[slug], nil },
 		pauseCovers: func(string) (bool, error) { return f.pauseCovers, nil },
-		owedPush:    func(string) ([]fabriclayout.FailedPush, error) { return f.owedPush, f.owedPushErr },
-		codeTip:     func(string) (fabriclayout.CodeTipReading, error) { return f.codeTip, f.codeTipErr },
-		localHoldsTip: func(string, string) (bool, error) {
-			f.calls = append(f.calls, "local-tip")
-			return f.localHoldsTip, f.localHoldsTipErr
-		},
-		skipPush: f.skipPush,
+		owedPush:    func(string) ([]fabricengine.FailedPush, error) { return f.owedPush, f.owedPushErr },
+		codeTip:     func(string) (fabricengine.CodeTipReading, error) { return f.codeTip, f.codeTipErr },
+		skipPush:    f.skipPush,
 		originParentHolds: func(string) (bool, error) {
 			f.calls = append(f.calls, "parent-origin")
 			return f.originParentHolds, nil
@@ -228,21 +220,7 @@ func TestReadRun(t *testing.T) {
 			wantCalls: []string{"child-here", "restepped", "parent-origin"},
 		},
 		{
-			name: "FinalizeRunningWithTheWorkOnTheLocalParentAloneIsPastTheMerge",
-			fakes: runFakes{
-				batten: statusAt(shedengine.StateRunning, runShedRow), battenFound: true,
-				pairHere: true, childHere: statusAt(shedengine.StateRunning, loomshed.NameFinalize), childHereFound: true,
-				localParentHolds: true,
-			},
-			want: runfsm.Records{
-				Batten: statusAt(shedengine.StateRunning, runShedRow), BattenFound: true, BattenStarted: true,
-				Child: statusAt(shedengine.StateRunning, loomshed.NameFinalize), ChildFound: true, ChildLanding: true,
-			},
-			wantIn:    runfsm.Inputs{PastParentMerge: true},
-			wantCalls: []string{"child-here", "parent-origin", "parent-local"},
-		},
-		{
-			name: "BattenAtLandWithThePairHereAndNeitherParentHoldingTheWorkIsNotPastTheMerge",
+			name: "BattenAtLandIsPastTheParentMergeWithNoParentRead",
 			fakes: runFakes{
 				batten: statusAt(shedengine.StateRunning, landRow), battenFound: true,
 				pairHere: true, childHere: statusAt(shedengine.StateRunning, loomshed.NameFinalize), childHereFound: true,
@@ -251,18 +229,8 @@ func TestReadRun(t *testing.T) {
 				Batten: statusAt(shedengine.StateRunning, landRow), BattenFound: true, BattenStarted: true,
 				Child: statusAt(shedengine.StateRunning, loomshed.NameFinalize), ChildFound: true, ChildLanding: true,
 			},
-			wantCalls: []string{"child-here", "parent-origin", "parent-local"},
-		},
-		{
-			name: "BattenAtLandWithThePairGoneIsPastTheMergeWithNoParentRead",
-			fakes: runFakes{
-				batten: statusAt(shedengine.StateRunning, landRow), battenFound: true,
-			},
-			want: runfsm.Records{
-				Batten: statusAt(shedengine.StateRunning, landRow), BattenFound: true, BattenStarted: true, ChildLanding: true,
-			},
 			wantIn:    runfsm.Inputs{PastParentMerge: true},
-			wantCalls: []string{"child-origin"},
+			wantCalls: []string{"child-here"},
 		},
 		{
 			name: "BattenAtWorktreeTeardownIsPastTheParentMergeWithNoChild",
@@ -342,42 +310,25 @@ func TestReadRun(t *testing.T) {
 		},
 		{
 			name: "AnOwedPushCarriesTheNewestRecordsErrorAndWorktree",
-			fakes: runFakes{owedPush: []fabriclayout.FailedPush{
+			fakes: runFakes{owedPush: []fabricengine.FailedPush{
 				{Error: "connection refused", RepoPath: "/hub/task-records"},
 				{Error: "older failure", RepoPath: "/hub/task"},
 			}},
 			wantIn: runfsm.Inputs{
 				PushOwed: true, PushOwedError: "connection refused", PushOwedWorktree: "/hub/task-records",
-				PushOwedWayForward: fabricengine.FailedPushWayForward(fabriclayout.FailedPush{Error: "connection refused", RepoPath: "/hub/task-records"}),
+				PushOwedWayForward: fabricengine.FailedPushWayForward(fabricengine.FailedPush{Error: "connection refused", RepoPath: "/hub/task-records"}),
 			},
 			wantCalls: []string{"child-origin"},
 		},
 		{
 			name:      "AMissingCodeTipSetsTheThreeCodeTipInputs",
-			fakes:     runFakes{codeTip: fabriclayout.CodeTipReading{Tip: "abc123", Missing: true, Machine: "oslo"}},
-			wantIn:    runfsm.Inputs{CodeTipMissing: true, CodeTip: "abc123", CodeTipMachine: "oslo", CodeTipPairAbsent: true},
+			fakes:     runFakes{codeTip: fabricengine.CodeTipReading{Tip: "abc123", Missing: true, Machine: "oslo"}},
+			wantIn:    runfsm.Inputs{CodeTipMissing: true, CodeTip: "abc123", CodeTipMachine: "oslo"},
 			wantCalls: []string{"child-origin"},
 		},
 		{
-			name:      "AMissingCodeTipWithAPairHereLeavesThePairAbsentInputClear",
-			fakes:     runFakes{pairHere: true, codeTip: fabriclayout.CodeTipReading{Tip: "abc123", Missing: true, Machine: "oslo"}},
-			wantIn:    runfsm.Inputs{CodeTipMissing: true, CodeTip: "abc123", CodeTipMachine: "oslo"},
-			wantCalls: []string{"child-here", "local-tip"},
-		},
-		{
-			name:      "AMissingCodeTipTheLocalBranchHoldsSetsNoCodeTipInput",
-			fakes:     runFakes{pairHere: true, localHoldsTip: true, codeTip: fabriclayout.CodeTipReading{Tip: "abc123", Missing: true, Machine: "oslo"}},
-			wantCalls: []string{"child-here", "local-tip"},
-		},
-		{
-			name:      "AFailedLocalTipReadNamesTheReadAndTheSlug",
-			fakes:     runFakes{pairHere: true, localHoldsTipErr: errors.New("boom"), codeTip: fabriclayout.CodeTipReading{Tip: "abc123", Missing: true, Machine: "oslo"}},
-			wantErr:   "read whether the local code branch holds the code tip of slug: boom",
-			wantCalls: []string{"child-here", "local-tip"},
-		},
-		{
 			name:      "ACodeTipOriginHoldsSetsNoCodeTipInput",
-			fakes:     runFakes{codeTip: fabriclayout.CodeTipReading{Tip: "abc123", Machine: "oslo"}},
+			fakes:     runFakes{codeTip: fabricengine.CodeTipReading{Tip: "abc123", Machine: "oslo"}},
 			wantCalls: []string{"child-origin"},
 		},
 		{

@@ -52,11 +52,8 @@ type greenEntry struct {
 	Commit string `json:"commit"`
 	// ModuleDir is the run directory relative to the worktree root, "." for the root.
 	ModuleDir string `json:"module_dir"`
-	// Args are the words after `--` the tier ran with, the held tests' skip left out.
+	// Args are the words after `--` the tier ran with.
 	Args []string `json:"args"`
-	// Held names the `//lym:only` tests the run skipped because its gate key did not name them, sorted.
-	// The entry covers only a request that holds back each of them too.
-	Held []string `json:"held,omitempty"`
 	// Whole means the tier passed over every target it can run.
 	Whole bool `json:"whole"`
 	// Packages are the module-relative package arguments that passed, when Whole is not set.
@@ -70,7 +67,7 @@ type greenRecord struct {
 }
 
 // tierFingerprint hashes tier's declaration without its parallel, timeouts and slots.
-// A changed command, env, targets, counter, results, filter or carry setting therefore never carries a pass over.
+// A changed command, env, targets, counter, filter or carry setting therefore never carries a pass over.
 // build is hashed only for a tier with shared_build, and inert only when non-empty.
 // Optional keys are hashed only at a non-default value, so a tier that sets none of them keeps its fingerprint.
 func tierFingerprint(tier gateslot.Tier, build gateslot.BuildStep, inert []string) string {
@@ -84,7 +81,6 @@ func tierFingerprint(tier gateslot.Tier, build gateslot.BuildStep, inert []strin
 		Covers      []int
 		PrebuiltLym bool
 		Manual      bool
-		Results     string              `json:",omitempty"`
 		Filter      string              `json:",omitempty"`
 		SharedBuild bool                `json:",omitempty"`
 		NoCarry     bool                `json:",omitempty"`
@@ -92,7 +88,7 @@ func tierFingerprint(tier gateslot.Tier, build gateslot.BuildStep, inert []strin
 		Inert       []string            `json:",omitempty"`
 	}{
 		About: tier.About, Command: tier.Command, Dir: tier.Dir, Env: tier.Env, AllTargets: tier.AllTargets, Counter: tier.Counter, Covers: tier.Covers, PrebuiltLym: tier.PrebuiltLym, Manual: tier.Manual,
-		Results: tier.Results, Filter: tier.Filter, SharedBuild: tier.SharedBuild, NoCarry: tier.NoCarry, Inert: inert,
+		Filter: tier.Filter, SharedBuild: tier.SharedBuild, NoCarry: tier.NoCarry, Inert: inert,
 	}
 	if tier.SharedBuild {
 		declaration.Build = &build
@@ -140,7 +136,7 @@ func recordGreen(path string, entry greenEntry, now time.Time) error {
 func (r greenRecord) with(entry greenEntry, now time.Time) greenRecord {
 	entry.Written = now
 	sameKey := func(other greenEntry) bool {
-		return other.Fingerprint == entry.Fingerprint && other.Tree == entry.Tree && other.ModuleDir == entry.ModuleDir && slices.Equal(other.Args, entry.Args) && slices.Equal(other.Held, entry.Held)
+		return other.Fingerprint == entry.Fingerprint && other.Tree == entry.Tree && other.ModuleDir == entry.ModuleDir && slices.Equal(other.Args, entry.Args)
 	}
 
 	var entries []greenEntry
@@ -183,10 +179,9 @@ func (r greenRecord) with(entry greenEntry, now time.Time) greenRecord {
 // whole when an entry passed over every target, else the union of the packages the matching entries passed.
 // An entry with empty args matches a request with empty args, the guard step's own -run filter and the watch skip;
 // an entry with any other args matches only exactly.
-// An entry matches only when the request's held tests, heldTests, include every test the entry held back.
-func (r greenRecord) covered(fingerprint, tree, moduleDir string, args, heldTests []string) (whole bool, packages []string) {
+func (r greenRecord) covered(fingerprint, tree, moduleDir string, args []string) (whole bool, packages []string) {
 	for _, held := range r.Entries {
-		if held.Fingerprint != fingerprint || held.Tree != tree || held.ModuleDir != moduleDir || !argsMatch(held.Args, args) || !heldWithin(held.Held, heldTests) {
+		if held.Fingerprint != fingerprint || held.Tree != tree || held.ModuleDir != moduleDir || !argsMatch(held.Args, args) {
 			continue
 		}
 		if held.Whole {
@@ -204,12 +199,11 @@ func (r greenRecord) covered(fingerprint, tree, moduleDir string, args, heldTest
 // Only commits unrelated by history compare by write time.
 // Only an entry that ran with empty args counts:
 // a whole pass under `-- -run X` covers less than the tier, and a package entry covers only part of it.
-// Nor does an entry that held back a test heldTests does not hold back, which the request runs.
-func (r greenRecord) newestWholeAncestor(fingerprint, moduleDir string, heldTests []string, isAncestor func(commit, of string) bool) (string, bool) {
+func (r greenRecord) newestWholeAncestor(fingerprint, moduleDir string, isAncestor func(commit, of string) bool) (string, bool) {
 	var newest greenEntry
 	found := false
 	for _, held := range r.Entries {
-		if !held.Whole || held.Fingerprint != fingerprint || held.ModuleDir != moduleDir || len(held.Args) > 0 || !heldWithin(held.Held, heldTests) {
+		if !held.Whole || held.Fingerprint != fingerprint || held.ModuleDir != moduleDir || len(held.Args) > 0 {
 			continue
 		}
 		if !isAncestor(held.Commit, "HEAD") {
@@ -232,11 +226,6 @@ func argsMatch(entryArgs, requestArgs []string) bool {
 		return len(requestArgs) == 0 || isGuardRunFilter(requestArgs) || isWatchSkip(requestArgs)
 	}
 	return slices.Equal(entryArgs, requestArgs)
-}
-
-// heldWithin reports whether every test of entryHeld is in requestHeld, so the entry skipped no test the request runs.
-func heldWithin(entryHeld, requestHeld []string) bool {
-	return !slices.ContainsFunc(entryHeld, func(name string) bool { return !slices.Contains(requestHeld, name) })
 }
 
 // isGuardRunFilter reports whether args are exactly the -run filter the guard step builds over its guard test names.
@@ -268,7 +257,7 @@ type greenRun struct {
 	scoperGo bool
 	goBinary string
 	// cfg is the call's gate config.
-	// Its build step and gate.inert_paths join a tier's fingerprint, and its gate.inert_paths decide an inert carry.
+	// Its build step and inert_paths join a tier's fingerprint, and its inert_paths decide an inert carry.
 	cfg gateslot.Config
 }
 
@@ -338,7 +327,7 @@ type greenPlan struct {
 // A command whose targets render to more than greenCommandBudget bytes keeps the whole invocation.
 // A command whose packages cannot be listed also keeps the whole invocation.
 // A tier with carry: false keeps every invocation.
-// Under gate.inert_paths, a whole invocation the record holds nothing for can still be carried.
+// Under inert_paths, a whole invocation the record holds nothing for can still be carried.
 // That happens when an ancestor's whole entry stands for it over an inert-only diff,
 // and its module key then joins the plan's inertCarried.
 func (g *greenRun) subtract(ctx context.Context, run tierRun, env []string) greenPlan {
@@ -351,7 +340,7 @@ func (g *greenRun) subtract(ctx context.Context, run tierRun, env []string) gree
 	hasTargets := gateslot.HoldsTargets(run.tier.Command)
 	for _, inv := range run.invocations {
 		key := moduleKey(g.root, inv.dir)
-		whole, packages := g.record.covered(fingerprint, g.tree, key, run.greenArgs(), run.held)
+		whole, packages := g.record.covered(fingerprint, g.tree, key, run.args)
 		if whole {
 			continue
 		}
@@ -390,9 +379,9 @@ func (g *greenRun) subtract(ctx context.Context, run tierRun, env []string) gree
 // That ancestor's diff to the working tree must be inert.
 // Only a whole invocation of a tier's own run qualifies:
 // not the guard or vet step, not a run with args, not a partial invocation.
-// A hub with no gate.inert_paths carries nothing this way.
+// A hub with no inert_paths carries nothing this way.
 func (g *greenRun) carriesOverInert(ctx context.Context, run tierRun, inv invocation, key, fingerprint string) bool {
-	if len(g.cfg.InertPaths) == 0 || len(run.greenArgs()) > 0 || run.guardStep || run.vetStep || inv.partial {
+	if len(g.cfg.InertPaths) == 0 || len(run.args) > 0 || run.guardStep || run.vetStep || inv.partial {
 		return false
 	}
 	if gateslot.HoldsTargets(run.tier.Command) && (key != moduleKey(g.root, run.tier.Dir) || !slices.Equal(inv.targets, strings.Fields(run.tier.AllTargets))) {
@@ -402,7 +391,7 @@ func (g *greenRun) carriesOverInert(ctx context.Context, run tierRun, inv invoca
 		held, err := gitrepo.New(g.root).IsAncestor(commit, of)
 		return err == nil && held
 	}
-	base, found := g.record.newestWholeAncestor(fingerprint, key, run.held, isAncestor)
+	base, found := g.record.newestWholeAncestor(fingerprint, key, isAncestor)
 	return found && allInertSince(ctx, g.cfg, g.root, base)
 }
 
@@ -412,7 +401,7 @@ func (g *greenRun) carriesOverInert(ctx context.Context, run tierRun, inv invoca
 func (g *greenRun) recordInertCarried(run tierRun, plan greenPlan, now time.Time) {
 	fingerprint := g.fingerprint(run.tier)
 	for _, key := range plan.inertCarried {
-		entry := greenEntry{Fingerprint: fingerprint, Tree: g.tree, Commit: g.commit, ModuleDir: key, Held: run.held, Whole: true}
+		entry := greenEntry{Fingerprint: fingerprint, Tree: g.tree, Commit: g.commit, ModuleDir: key, Whole: true}
 		if err := recordGreen(g.path, entry, now); err != nil {
 			logger.Warn("gate test: could not write the green record", "tier", tierName(run.number), "cause", err)
 		}
@@ -455,7 +444,7 @@ func (g *greenRun) recordPass(ctx context.Context, run tierRun, ran []invocation
 	fingerprint := g.fingerprint(run.tier)
 	for _, inv := range ran {
 		key := moduleKey(g.root, inv.dir)
-		entry := greenEntry{Fingerprint: fingerprint, Tree: g.tree, Commit: g.commit, ModuleDir: key, Args: run.greenArgs(), Held: run.held}
+		entry := greenEntry{Fingerprint: fingerprint, Tree: g.tree, Commit: g.commit, ModuleDir: key, Args: run.args}
 		switch {
 		case inv.partial:
 			continue

@@ -15,7 +15,7 @@ const moduleName = "language"
 // skillsKey is the key holding the skills every code role loads.
 const skillsKey = "skills"
 
-// retiredVerifyTiersKey is the retired language.yaml key for verify tiers; gate.tiers replaces it.
+// retiredVerifyTiersKey is the retired language.yaml key for verify tiers; gate.yaml's tiers replace it.
 const retiredVerifyTiersKey = "verify_tiers"
 
 // renameToolsKey is the key holding the hub's structure-aware rename tools.
@@ -55,9 +55,6 @@ func ConfigSpec() configengine.Spec {
 		},
 		RetiredKeys: map[string]configengine.Category{
 			retiredVerifyTiersKey: configengine.CategoryGuard,
-		},
-		RetiredWayForward: map[string]string{
-			retiredVerifyTiersKey: `set the verify tiers in gate.yaml with "lym config gate" from the prime`,
 		},
 	}
 }

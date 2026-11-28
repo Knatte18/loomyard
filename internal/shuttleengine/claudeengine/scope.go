@@ -1,5 +1,5 @@
 // scope.go decides a Claude session's scope: the plugins, skills and memory the session gets.
-// It reads the claude.session_scope block, the skills the session preloads and the plugins Claude Code has installed.
+// It reads claude.yaml's session_scope block, the skills the session preloads and the plugins Claude Code has installed.
 // It also declares the settings fields that carry the scope.
 
 package claudeengine
@@ -18,10 +18,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
-// sessionScopeKey is the key of the claude.session_scope block.
+// sessionScopeKey is claude.yaml's key of the session_scope block.
 const sessionScopeKey = "session_scope"
 
-// ScopeConfig is the claude.session_scope block:
+// ScopeConfig is claude.yaml's session_scope block:
 // whether lym scopes what each session loads, and the skills it turns off in every session.
 type ScopeConfig struct {
 	// Enabled writes the scope into every session's settings;

@@ -13,7 +13,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -45,7 +44,7 @@ var beamHubRegistration = &hubforge.Registration{
 		if err := os.WriteFile(filepath.Join(hub.BoardDir(), "board.json"), []byte(board), 0o644); err != nil {
 			tb.Fatalf("write board.json: %v", err)
 		}
-		if err := os.WriteFile(filepath.Join(hub.BoardDir(), fabriclayout.ShortnameFileName), []byte(testShort+"\n"), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(hub.BoardDir(), fabricengine.ShortnameFileName), []byte(testShort+"\n"), 0o644); err != nil {
 			tb.Fatalf("write the shortname record: %v", err)
 		}
 	},
@@ -139,7 +138,7 @@ func TestDecisionParent_ABeamsRecordIsItsOwnOrchs(t *testing.T) {
 	t.Run("AHubWithNoShortnameIsRefusedNamingTheWayForward", func(t *testing.T) {
 		t.Parallel()
 		bareHub, bare := beamHub(t)
-		if err := os.Remove(filepath.Join(bareHub.BoardDir(), fabriclayout.ShortnameFileName)); err != nil {
+		if err := os.Remove(filepath.Join(bareHub.BoardDir(), fabricengine.ShortnameFileName)); err != nil {
 			t.Fatalf("remove the shortname record: %v", err)
 		}
 		_, err := decisionParent(bare(testBeam), runRecord{project: true}, func(*lymcwd.Location) (bool, error) { return true, nil })

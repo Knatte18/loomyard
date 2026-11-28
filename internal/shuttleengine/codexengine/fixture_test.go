@@ -100,7 +100,7 @@ func (r repoFixture) routeGitDirsThroughLink(t *testing.T, anchor string) {
 	writeFile(t, filepath.Join(anchor, ".git"), "gitdir: "+gitDir+"\n")
 }
 
-// writeWritableRoots writes anchor's codex.yaml worktree layer, the one layer that may set codex.writable_roots;
+// writeWritableRoots writes anchor's codex.yaml worktree layer, the one layer that may set writable_roots;
 // it names roots as the YAML list's items.
 func writeWritableRoots(t *testing.T, anchor, roots string) {
 	t.Helper()

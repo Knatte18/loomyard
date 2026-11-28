@@ -1,7 +1,6 @@
 package scankit
 
 import (
-	"fmt"
 	"go/parser"
 	"os"
 	"path/filepath"
@@ -186,102 +185,6 @@ func TestImportViolations_Errors(t *testing.T) {
 	dir := writeTree(t, map[string]string{"a.go": "not go at all"})
 	if _, err := importViolations(dir, nil); err == nil {
 		t.Error("unparsable file: want error")
-	}
-}
-
-// recordingTB records the failures an assertion reports instead of failing the test.
-// Its Fatalf returns to the caller, and any other testing.TB method panics on the nil embedded value.
-type recordingTB struct {
-	testing.TB
-	errors []string
-	fatals []string
-}
-
-func (r *recordingTB) Helper() {}
-
-func (r *recordingTB) Error(args ...any) { r.errors = append(r.errors, fmt.Sprint(args...)) }
-
-func (r *recordingTB) Errorf(format string, args ...any) {
-	r.errors = append(r.errors, fmt.Sprintf(format, args...))
-}
-
-func (r *recordingTB) Fatalf(format string, args ...any) {
-	r.fatals = append(r.fatals, fmt.Sprintf(format, args...))
-}
-
-func TestBannedImports(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-	tree := writeTree(t, map[string]string{
-		"p/a.go":       "package p\n\nimport (\n\t\"os/exec\"\n\t\"os\"\n\t\"github.com/x/bad\"\n\t\"fmt\"\n)\n",
-		"p/a_test.go":  "package p\n\nimport \"net\"\n",
-		"p/sub/b.go":   "package sub\n\nimport \"net\"\n",
-		"clean/a.go":   "package p\n\nimport \"fmt\"\n",
-		"broken/a.go":  "not go at all",
-		"empty/README": "no go files",
-	})
-	scans := []struct {
-		name       string
-		dir        string
-		banned     []string
-		want       []string
-		wantParsed int
-		wantErr    bool
-	}{
-		{name: "Exact", dir: "p", banned: []string{"os/exec", "os"}, want: []string{"a.go: os/exec", "a.go: os"}, wantParsed: 1},
-		{name: "Subtree", dir: "p", banned: []string{"os/..."}, want: []string{"a.go: os/exec"}, wantParsed: 1},
-		{name: "NonStdlib", dir: "p", banned: []string{"github.com/x/bad"}, want: []string{"a.go: github.com/x/bad"}, wantParsed: 1},
-		{name: "TestFileAndSubdirectoryNotScanned", dir: "p", banned: []string{"net"}, wantParsed: 1},
-		{name: "Clean", dir: "clean", banned: []string{"os"}, wantParsed: 1},
-		{name: "MissingDir", dir: "missing", wantErr: true},
-		{name: "Unparsable", dir: "broken", wantErr: true},
-	}
-	for _, tt := range scans {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			got, parsed, err := bannedImports(filepath.Join(tree, tt.dir), tt.banned)
-			if (err != nil) != tt.wantErr {
-				t.Fatalf("bannedImports() error = %v; want error %v", err, tt.wantErr)
-			}
-			if !reflect.DeepEqual(got, tt.want) || parsed != tt.wantParsed {
-				t.Errorf("bannedImports() = %v, %d; want %v, %d", got, parsed, tt.want, tt.wantParsed)
-			}
-		})
-	}
-
-	// Each want list holds one fragment list per recorded message, in order.
-	asserts := []struct {
-		name       string
-		dir        string
-		wantFatals [][]string
-		wantErrors [][]string
-	}{
-		{name: "AssertMissingDir", dir: "missing", wantFatals: [][]string{{"scankit:"}}},
-		{name: "AssertEmptyDir", dir: "empty", wantErrors: [][]string{{"vacuous"}}},
-		{name: "AssertBannedImport", dir: "p", wantErrors: [][]string{{filepath.Join(tree, "p"), "a.go: os/exec"}}},
-	}
-	for _, tt := range asserts {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			rec := &recordingTB{}
-			AssertNoImports(rec, filepath.Join(tree, tt.dir), "os/exec")
-			for _, got := range []struct {
-				kind     string
-				messages []string
-				want     [][]string
-			}{{"fatal", rec.fatals, tt.wantFatals}, {"error", rec.errors, tt.wantErrors}} {
-				if len(got.messages) != len(got.want) {
-					t.Fatalf("AssertNoImports() %s messages = %q; want %d", got.kind, got.messages, len(got.want))
-				}
-				for i, fragments := range got.want {
-					for _, fragment := range fragments {
-						if !strings.Contains(got.messages[i], fragment) {
-							t.Errorf("AssertNoImports() %s = %q; want it to contain %q", got.kind, got.messages[i], fragment)
-						}
-					}
-				}
-			}
-		})
 	}
 }
 

@@ -10,7 +10,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
@@ -78,7 +77,7 @@ func ResolveBattenPrime(location *lymcwd.Location) (*lymcwd.Location, error) {
 // It returns empty when the entry is absent or its run does not hold it.
 // A pawl run from Worktree-Create through Beam-Await holds nothing, so a verb runs inside the beam then.
 func beamLanding(location *lymcwd.Location) (string, error) {
-	tasks, err := boardengine.ReadTasks(fabriclayout.BoardDir(location.HubPath))
+	tasks, err := boardengine.ReadTasks(fabricengine.BoardDir(location.HubPath))
 	if err != nil {
 		return "", fmt.Errorf("battencli: read the board to tell whether the beam %q is being landed: %w", location.WorktreeName, err)
 	}
@@ -91,7 +90,7 @@ func beamLanding(location *lymcwd.Location) (string, error) {
 }
 
 // parentWorktreeOrPrime returns the parent worktree that origin records, or the prime's name when origin records none.
-func parentWorktreeOrPrime(origin fabriclayout.Origin, primeName string) string {
+func parentWorktreeOrPrime(origin fabricengine.Origin, primeName string) string {
 	if origin.ParentWorktree == "" {
 		return primeName
 	}
@@ -102,7 +101,7 @@ func parentWorktreeOrPrime(origin fabriclayout.Origin, primeName string) string 
 // A beam counts only when its worktree exists, and the prime's name is returned when there is none.
 // A record that cannot be read, a parent that is gone, or a cycle ends the walk.
 // The walk then returns the prime's name, since the answer only names where to run a verb.
-func nearestBeamAbove(location *lymcwd.Location, origin fabriclayout.Origin, primeName string) string {
+func nearestBeamAbove(location *lymcwd.Location, origin fabricengine.Origin, primeName string) string {
 	visited := map[string]bool{location.WorktreeName: true}
 	for parent := origin.ParentWorktree; parent != "" && parent != primeName && !visited[parent]; {
 		visited[parent] = true

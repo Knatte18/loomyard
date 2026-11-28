@@ -21,7 +21,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/buildvcs"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/preflight"
@@ -117,7 +116,7 @@ func seedStencilsAt(hub, worktree string, mode stencilstore.Mode, running buildv
 	}
 
 	var writes []fabricengine.BoltWrite
-	if write, due := seedSubtree(fabriclayout.StencilsDir(hub), fabriclayout.StencilsSubtreeRel(), stencils.Registry(), mode, fabricengine.StencilSource(worktree, sourceDir, running), "stencils"); due {
+	if write, due := seedSubtree(fabricengine.StencilsDir(hub), fabricengine.StencilsSubtreeRel(), stencils.Registry(), mode, fabricengine.StencilSource(worktree, sourceDir, running), "stencils"); due {
 		writes = append(writes, write)
 	}
 
@@ -127,7 +126,7 @@ func seedStencilsAt(hub, worktree string, mode stencilstore.Mode, running buildv
 	// and a deployed copy is never authored.
 	// A per-name source mapping is not built either: the travelling docs live in different directories,
 	// and one's basename differs from its registered name, so no single sourceDir shape fits.
-	if write, due := seedSubtree(fabriclayout.SpecsDir(hub), fabriclayout.SpecsSubtreeRel(), specs.Registry(), mode, fabricengine.StencilSource(worktree, "", running), "specs"); due {
+	if write, due := seedSubtree(fabricengine.SpecsDir(hub), fabricengine.SpecsSubtreeRel(), specs.Registry(), mode, fabricengine.StencilSource(worktree, "", running), "specs"); due {
 		writes = append(writes, write)
 	}
 
@@ -135,7 +134,7 @@ func seedStencilsAt(hub, worktree string, mode stencilstore.Mode, running buildv
 		return
 	}
 
-	res, err := fabricengine.NewBolt(fabriclayout.BoltDir(hub)).PullThenCommitWritten(writes, fabricengine.NewMutations(hub))
+	res, err := fabricengine.NewBolt(fabricengine.BoltDir(hub)).PullThenCommitWritten(writes, fabricengine.NewMutations(hub))
 	if err != nil {
 		logger.Warn("stencilseed: seeding the board failed", "error", err)
 		return
@@ -166,7 +165,7 @@ func seedSubtree(baseDir, subtreeRel string, registry stencilstore.Registry, mod
 	}
 
 	return fabricengine.BoltWrite{
-		Message: fabriclayout.SeedCommitMessage(label, fabricengine.BinaryLabel()),
+		Message: fabricengine.SeedCommitMessage(label, fabricengine.BinaryLabel()),
 		Write: func() ([]string, error) {
 			written, err := stencilstore.Reconcile(baseDir, registry, mode, source)
 			if err != nil {

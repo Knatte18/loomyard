@@ -5,7 +5,7 @@ package boardengine
 import (
 	"fmt"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 )
 
 // checkNewSlugs refuses a write that makes a task or project slug the validate seam refuses or the raddle store holds.
@@ -65,7 +65,7 @@ func checkNewSlugs(loaded, after []Task, renamedTo string, validate func(slug st
 // the way forward is then `lym board rename` of the note, a note's rename not being judged.
 func newSlugError(slug string, reason error, after []Task, validate func(slug string) error, store RaddleStore, promotion bool) error {
 	suggestion := slug + "-task"
-	if warp, paired := fabriclayout.WeftWarpSlug(slug); paired {
+	if warp, paired := fabricengine.WeftWarpSlug(slug); paired {
 		suggestion = warp
 	}
 	_, storeHolds := store.Holds(suggestion)

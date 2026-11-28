@@ -53,9 +53,9 @@ func newBindingsFixture(t *testing.T) *bindingsFixture {
 	}
 	recordPath := filepath.Join(t.TempDir(), "recorded-args")
 	scriptPath := filepath.Join(scriptDir, "lym-recorder")
-	// The bar's state jobs also run this script, as `slack bar` and `fabric sync-status`, at every redraw.
+	// The bar's state jobs also run this script, as `slack bar`, at every redraw.
 	// It records nothing for those.
-	script := "#!/bin/sh\ncase \"$1\" in slack|orch|fabric) exit 0;; esac\nprintf '%s\\n' \"$@\" > " + recordPath + "\n"
+	script := "#!/bin/sh\ncase \"$1\" in slack|orch) exit 0;; esac\nprintf '%s\\n' \"$@\" > " + recordPath + "\n"
 	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
 		t.Fatalf("write recorder script: %v", err)
 	}
@@ -423,8 +423,7 @@ func TestBindings_ButtonClickRunsTheVerbInTheRunDirectory(t *testing.T) {
 	beamDir := t.TempDir()
 	recordPath := filepath.Join(t.TempDir(), "record")
 	scriptPath := filepath.Join(t.TempDir(), "lym-button-recorder")
-	// The bar's state jobs also run this script, as `slack bar` and `fabric sync-status`, and it records nothing for those.
-	script := "#!/bin/sh\ncase \"$1\" in slack|fabric) exit 0;; esac\n{ pwd; echo \"strand=${LYM_STRAND_NAME+set}\"; echo \"parent=${LYM_PARENT+set}\"; printf '%s\\n' \"$@\"; } > " + recordPath + "\nexit 3\n"
+	script := "#!/bin/sh\n[ \"$1\" = slack ] && exit 0\n{ pwd; echo \"strand=${LYM_STRAND_NAME+set}\"; echo \"parent=${LYM_PARENT+set}\"; printf '%s\\n' \"$@\"; } > " + recordPath + "\nexit 3\n"
 	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
 		t.Fatalf("write recorder script: %v", err)
 	}

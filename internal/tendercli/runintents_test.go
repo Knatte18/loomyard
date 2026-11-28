@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -19,10 +18,10 @@ func TestOwedIntentPush(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	failure := func(class fabriclayout.PushFailureClass) error {
-		return &fabricengine.PushFailedError{Record: fabriclayout.FailedPush{Class: class}, Err: errors.New("push refused")}
+	failure := func(class fabricengine.PushFailureClass) error {
+		return &fabricengine.PushFailedError{Record: fabricengine.FailedPush{Class: class}, Err: errors.New("push refused")}
 	}
-	notFastForward := failure(fabriclayout.PushFailureNotFastForward)
+	notFastForward := failure(fabricengine.PushFailureNotFastForward)
 	tests := []struct {
 		name       string
 		err        error
@@ -30,7 +29,7 @@ func TestOwedIntentPush(t *testing.T) {
 		wantOutput []string
 	}{
 		{name: "NoError"},
-		{name: "OwedTransportFailure", err: failure(fabriclayout.PushFailureTransport), wantOutput: []string{"some-slug", "push refused", "lym fabric push"}},
+		{name: "OwedTransportFailure", err: failure(fabricengine.PushFailureTransport), wantOutput: []string{"some-slug", "push refused", "lym fabric push"}},
 		{name: "NotFastForwardIsReturned", err: notFastForward, wantErr: notFastForward},
 	}
 	for _, tt := range tests {

@@ -41,7 +41,7 @@ func TestRaddleTable(t *testing.T) {
 			t.Parallel()
 			layout := discussionTableLayout(t)
 			stencilsDir := newTestStencilsDir(t)
-			cfg := Config{Raddle: RaddleConfig{Model: "opus[effort=high]"}, Discussion: DiscussionConfig{TimeoutMin: 480}, SubagentModel: "haiku"}
+			cfg := Config{Raddle: "opus[effort=high]", DiscussionTimeoutMin: 480, SubagentModel: "haiku"}
 			interactive := tt.mode == RaddleModeInteractive
 
 			table, err := RaddleTable(layout, stencilsDir, discussionTableSpecsDir, cfg, reg, discussionTableSlug, tt.mode, tt.returnReason)
@@ -66,7 +66,7 @@ func TestRaddleTable(t *testing.T) {
 			if !slices.Equal(seat.Outputs, []string{wantOutput}) {
 				t.Errorf("seat outputs = %v; want only %q", seat.Outputs, wantOutput)
 			}
-			if want := (shuttleengine.ModelKey{Module: "loom", Key: "raddle.model"}); seat.ModelKey != want {
+			if want := (shuttleengine.ModelKey{Module: "loom", Key: "raddle"}); seat.ModelKey != want {
 				t.Errorf("seat ModelKey = %+v; want %+v", seat.ModelKey, want)
 			}
 			if seat.Name != "" || seat.Stencil != raddleStencil || seat.Engine != "claude" || seat.Model == "" || seat.Effort != "high" || seat.ConfigRole != agentconfig.RoleRaddle || len(seat.Skills) != 0 || seat.ForkSubagents {
@@ -111,7 +111,7 @@ func TestRaddleTable(t *testing.T) {
 	t.Run("AnEmptySlugIsRefused", func(t *testing.T) {
 		t.Parallel()
 		layout := discussionTableLayout(t)
-		if _, err := RaddleTable(layout, newTestStencilsDir(t), discussionTableSpecsDir, Config{Raddle: RaddleConfig{Model: "opus[high]"}}, reg, "", RaddleModeAuto, ""); err == nil {
+		if _, err := RaddleTable(layout, newTestStencilsDir(t), discussionTableSpecsDir, Config{Raddle: "opus[high]"}, reg, "", RaddleModeAuto, ""); err == nil {
 			t.Error("RaddleTable() with an empty slug = nil error; want one")
 		}
 	})

@@ -1,7 +1,7 @@
 // batchingnudge_test.go pins the batching nudge: which breach a transcript tail fires, and what holds it back.
 // It covers the main session and subagents' transcripts, the state file's counts, and the transcript tail read.
 // It also covers the wait for a call to reach the transcript.
-// It also covers the bounds of the claude.batching_nudge block and the hook and state file Prepare installs from it.
+// It also covers the bounds of claude.yaml's batching_nudge block and the hook and state file Prepare installs from it.
 
 package claudeengine
 
@@ -484,9 +484,8 @@ func TestEngineConstructorsSetTheTranscriptWait(t *testing.T) {
 	}
 }
 
-// TestValidateBatchingNudge pins the bounds of the claude.batching_nudge block:
-// claude.batching_nudge.context_tokens may be 0, the other numbers must be at least 1,
-// and a block that is off is not checked.
+// TestValidateBatchingNudge pins the bounds of the batching_nudge block:
+// context_tokens may be 0, the other numbers must be at least 1, and a block that is off is not checked.
 func TestValidateBatchingNudge(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -526,7 +525,7 @@ func TestValidateBatchingNudge(t *testing.T) {
 	}
 }
 
-// TestPrepare_BatchingNudgeHook pins that the template's claude.batching_nudge installs the hook.
+// TestPrepare_BatchingNudgeHook pins that the template's batching_nudge installs the hook.
 // The hook names the run's state file, and that file is seeded with the block.
 // An off switch installs neither, and a threshold below its least value refuses the run before any artifact.
 func TestPrepare_BatchingNudgeHook(t *testing.T) {

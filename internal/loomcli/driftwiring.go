@@ -19,7 +19,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -71,7 +70,7 @@ type driftTables struct {
 func driftRecordsDeps(location *lymcwd.Location) driftengine.Deps {
 	return driftengine.Deps{
 		Paths: driftengine.NewPaths(location.AnchorPath()),
-		TrailerCommit: func(key string, newest bool) (fabriclayout.TrailerCommit, bool, error) {
+		TrailerCommit: func(key string, newest bool) (fabricengine.TrailerCommit, bool, error) {
 			return fabricengine.FindTrailerCommit(location, key, newest)
 		},
 		FileAt: func(rev, relPath string) ([]byte, bool, error) {
@@ -96,25 +95,15 @@ func driftJudgeSessionOpen(location *lymcwd.Location) func() (bool, error) {
 	}
 }
 
-// runAutonomy reports whether autonomy is on for the run of l's worktree, read at the moment of the call.
-func runAutonomy(l *lymcwd.Location) bool {
-	return hubgeom.Autonomy(l, l.WorktreeName)
-}
-
 // driftDeps builds the seams the Drift rows read over location's worktree.
 // statusPath and statusLockPath locate the run status.
-// The config seam answers the loaded config with the run's autonomy applied, read at each call.
 // The seat runner, clock, gate findings file and review base are left unset.
 // The registry entries fill them from the recipe's environment.
 func driftDeps(location *lymcwd.Location, statusPath, statusLockPath string, tables driftTables) driftengine.Deps {
 	paths := driftengine.NewPaths(location.AnchorPath())
 	pool, waitDir := hubgeom.GateSlots(location), gateslot.WaitDir(location.AnchorPath())
 	config := func() (driftengine.Config, error) {
-		cfg, err := driftengine.LoadConfig(fabricengine.ConfigDirs(location))
-		if err != nil {
-			return driftengine.Config{}, err
-		}
-		return driftengine.ApplyAutonomy(cfg, runAutonomy(location)), nil
+		return driftengine.LoadConfig(fabricengine.ConfigDirs(location))
 	}
 	status := func() (shedengine.Status, error) {
 		st, found, err := state.ReadJSON[shedengine.Status](statusPath, statusLockPath)
@@ -188,12 +177,12 @@ func driftDeps(location *lymcwd.Location, statusPath, statusLockPath string, tab
 			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, relPaths, fmt.Sprintf("loom: drift records for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
 			return err
 		},
-		CommitWithTrailers: func(relPaths []string, trailers []fabriclayout.Trailer) error {
+		CommitWithTrailers: func(relPaths []string, trailers []fabricengine.Trailer) error {
 			message := fmt.Sprintf("loom: drift records for %s", seedSlug(location.WorktreeName))
 			_, _, err := fabricengine.CommitAnchoredPathsWithTrailers(fabricengine.NewMutations(""), location, relPaths, message, trailers, fabricengine.EnvSyncOptions())
 			return err
 		},
-		TrailerCommit: func(key string, newest bool) (fabriclayout.TrailerCommit, bool, error) {
+		TrailerCommit: func(key string, newest bool) (fabricengine.TrailerCommit, bool, error) {
 			return fabricengine.FindTrailerCommit(location, key, newest)
 		},
 		FileAt: func(rev, relPath string) ([]byte, bool, error) {
@@ -206,19 +195,12 @@ func driftDeps(location *lymcwd.Location, statusPath, statusLockPath string, tab
 			}
 			return fabric.CommitLog(base, "HEAD")
 		},
-		ChangedFiles: func(base string) ([]fabriclayout.FileDiff, error) {
+		ChangedFiles: func(base string) ([]fabricengine.FileDiff, error) {
 			fabric, err := fabricengine.Open(location)
 			if err != nil {
 				return nil, err
 			}
 			return fabric.CommittedFileDiffs(base)
-		},
-		RangeDiff: func(base string) (string, error) {
-			fabric, err := fabricengine.Open(location)
-			if err != nil {
-				return "", err
-			}
-			return fabric.ReadCommittedDiff(base)
 		},
 		CommitMessages: func(base string) ([]string, error) {
 			fabric, err := fabricengine.Open(location)
@@ -264,7 +246,7 @@ func driftDeps(location *lymcwd.Location, statusPath, statusLockPath string, tab
 				JudgementPath:      paths.Judgement,
 			}, cfg, tables.registry)
 		},
-		Checkouts: func() (fabriclayout.CheckoutState, fabriclayout.CheckoutState, error) {
+		Checkouts: func() (fabricengine.CheckoutState, fabricengine.CheckoutState, error) {
 			return fabricengine.CheckoutStates(location)
 		},
 		RecordsChangedSince: func(rev string) ([]string, error) {
@@ -306,7 +288,7 @@ func driftDeps(location *lymcwd.Location, statusPath, statusLockPath string, tab
 			request.LockRetry = driftCompareLockRetry
 			return driftengine.RunCompare(ctx, request)
 		},
-		JudgeSnapshotDir: filepath.Join(fabriclayout.HubScratchDir(location.HubPath), lymdirs.DriftJudgeDirName, seedSlug(location.WorktreeName)),
+		JudgeSnapshotDir: filepath.Join(fabricengine.HubScratchDir(location.HubPath), lymdirs.DriftJudgeDirName, seedSlug(location.WorktreeName)),
 		LoomRecordsDirs:  loomRecordsDirs(location, tables.runID),
 		DecisionRecord:   tables.decisionRecordPath,
 		LockDecisionRecord: func() (func() error, error) {
@@ -436,7 +418,7 @@ func captureSpawnRequest(location *lymcwd.Location, paths driftengine.Paths, exe
 		Executable: executable,
 		AnchorDir:  location.AnchorPath(),
 		Paths:      paths,
-		RunProcDir: fabriclayout.RunProcDir(location.HubPath),
+		RunProcDir: fabricengine.RunProcDir(location.HubPath),
 		Owner:      location.WorktreeName,
 		RecordWait: driftCaptureRecordWait,
 		Poll:       driftCaptureRecordPoll,

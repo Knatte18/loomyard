@@ -202,20 +202,7 @@ func TestAuditForks_WriteEventsCarryTimeAndResult(t *testing.T) {
 	sessionID := "sess-writes"
 	projectDir := filepath.Join(home, ".claude", "projects", encodeForTest(workdir))
 	copyFixture(t, "parent-writes-results.jsonl", filepath.Join(projectDir, sessionID+".jsonl"))
-	// The fork makes the same writes under its own tool_use ids:
-	// an id the parent transcript also holds is inherited history, not the fork's call.
-	data, err := os.ReadFile(filepath.Join("testdata", "parent-writes-results.jsonl"))
-	if err != nil {
-		t.Fatalf("read fixture: %v", err)
-	}
-	forkTranscript := filepath.Join(projectDir, sessionID, "subagents", "01-writer.jsonl")
-	if err := os.MkdirAll(filepath.Dir(forkTranscript), 0o755); err != nil {
-		t.Fatalf("mkdir %q: %v", filepath.Dir(forkTranscript), err)
-	}
-	forkData := strings.ReplaceAll(string(data), "toolu_w", "toolu_fork_w")
-	if err := os.WriteFile(forkTranscript, []byte(forkData), 0o644); err != nil {
-		t.Fatalf("write %q: %v", forkTranscript, err)
-	}
+	copyFixture(t, "parent-writes-results.jsonl", filepath.Join(projectDir, sessionID, "subagents", "01-writer.jsonl"))
 
 	audit, err := New().AuditForks(sessionID, workdir)
 	if err != nil {

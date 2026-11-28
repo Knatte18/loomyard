@@ -13,7 +13,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -156,7 +155,7 @@ func TestPrune_ReportsANonWorktreeDirectoryAtAPairPath(t *testing.T) {
 			t.Fatalf("%s: Prune error = %v", mode.name, err)
 		}
 
-		var entry *fabriclayout.PruneEntry
+		var entry *fabricengine.PruneEntry
 		for i := range result.Entries {
 			if filepath.Clean(filepath.FromSlash(result.Entries[i].CodeWorktree)) == filepath.Clean(stray) {
 				entry = &result.Entries[i]

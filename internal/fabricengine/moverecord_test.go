@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -24,11 +23,11 @@ func TestMoveRecord_ReadAndRemove(t *testing.T) {
 	if _, found, err := fabricengine.ReadMoveRecord(weft); err != nil || found {
 		t.Fatalf("ReadMoveRecord(no record) = (found %v, %v); want not found", found, err)
 	}
-	if _, err := os.Stat(fabriclayout.RecordsLockDirPath(weft)); !os.IsNotExist(err) {
+	if _, err := os.Stat(fabricengine.RecordsLockDirPath(weft)); !os.IsNotExist(err) {
 		t.Errorf("reading an absent record created the lock directory (stat error %v); want nothing created", err)
 	}
 
-	want := fabriclayout.MoveRecord{A: "a", B: "b", Kind: fabriclayout.MoveKindIntegrate, U: "abc123", PID: 42}
+	want := fabricengine.MoveRecord{A: "a", B: "b", Kind: fabricengine.MoveKindIntegrate, U: "abc123", PID: 42}
 	writeMoveRecord(t, weft, want)
 	got, found, err := fabricengine.ReadMoveRecord(weft)
 	if err != nil || !found || got != want {
@@ -50,13 +49,13 @@ func TestMoveInProgress(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	const slug = "beam"
-	staleRecord := fabriclayout.MoveRecord{A: "a", B: "b", Kind: fabriclayout.MoveKindMove, PID: 4242}
+	staleRecord := fabricengine.MoveRecord{A: "a", B: "b", Kind: fabricengine.MoveKindMove, PID: 4242}
 	ownStartTime, _ := proc.StartTime(os.Getpid())
-	liveRecord := fabriclayout.MoveRecord{A: "a", B: "b", Kind: fabriclayout.MoveKindMove, PID: os.Getpid(), StartTime: ownStartTime}
+	liveRecord := fabricengine.MoveRecord{A: "a", B: "b", Kind: fabricengine.MoveKindMove, PID: os.Getpid(), StartTime: ownStartTime}
 
 	tests := []struct {
 		name         string
-		record       *fabriclayout.MoveRecord
+		record       *fabricengine.MoveRecord
 		holdLock     bool
 		wantStanding bool
 		want         []string

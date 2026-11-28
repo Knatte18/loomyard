@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -178,16 +178,12 @@ func ComputeTiming(src Sources, opts TimingOptions) (TimingReport, error) {
 		return report, nil
 	}
 
-	batten, err := newBattenIndex(src, since)
-	if err != nil {
-		return TimingReport{}, err
-	}
 	var scratch Report
-	if err := selectRuns(src, Options{Since: since}, &scratch, batten); err != nil {
+	if err := selectRuns(src, Options{Since: since}, &scratch); err != nil {
 		return TimingReport{}, err
 	}
 	report.Findings = append(report.Findings, scratch.Findings...)
-	inFlight, err := selectInFlight(src, opts, batten, &report.Findings)
+	inFlight, err := selectInFlight(src, opts, &report.Findings)
 	if err != nil {
 		return TimingReport{}, err
 	}
@@ -229,14 +225,13 @@ func ComputeTiming(src Sources, opts TimingOptions) (TimingReport, error) {
 
 // selectInFlight returns the runs of live pairs, read from the records branches in src.Branches.
 // Only a pair records branch counts:
-// a branch other than src.RecordsBranch whose name is the one fabriclayout.RecordsBranchName forms from a slug.
+// a branch other than src.RecordsBranch whose name is the one fabricengine.RecordsBranchName forms from a slug.
 // A branch whose tip is the commit of one of its slug's archive tags is landed and skipped;
 // a branch whose slug opts.Live names is in flight;
 // any other is abandoned, left out with a finding.
 // A pair not seeded yet, or seeded to a recipe a report does not select, is left out silently,
 // and a record that does not decode is a finding.
-// Each run's batten source comes from batten.
-func selectInFlight(src Sources, opts TimingOptions, batten *battenIndex, findings *[]Finding) ([]RunRow, error) {
+func selectInFlight(src Sources, opts TimingOptions, findings *[]Finding) ([]RunRow, error) {
 	live := map[string]bool{}
 	for _, slug := range opts.Live {
 		live[slug] = true
@@ -244,7 +239,7 @@ func selectInFlight(src Sources, opts TimingOptions, batten *battenIndex, findin
 	taggedTips := map[string]map[string]bool{}
 	newestTag := map[string]time.Time{}
 	for _, tag := range src.Tags {
-		slug, named := fabriclayout.ArchiveTagSlug(tag.Name)
+		slug, named := fabricengine.ArchiveTagSlug(tag.Name)
 		if !named {
 			continue
 		}
@@ -257,6 +252,7 @@ func selectInFlight(src Sources, opts TimingOptions, batten *battenIndex, findin
 		}
 	}
 
+	var batten *battenIndex
 	var rows []RunRow
 	for _, branch := range src.Branches {
 		if branch.Name == src.RecordsBranch {
@@ -304,6 +300,11 @@ func selectInFlight(src Sources, opts TimingOptions, batten *battenIndex, findin
 			continue
 		}
 
+		if batten == nil {
+			if batten, err = newBattenIndex(src); err != nil {
+				return nil, err
+			}
+		}
 		row := RunRow{
 			Tag:             branch.Name,
 			Slug:            slug,
@@ -321,7 +322,7 @@ func selectInFlight(src Sources, opts TimingOptions, batten *battenIndex, findin
 		if newest, tagged := newestTag[slug]; tagged {
 			earlier = &newest
 		}
-		snapshots, recordCommit, battenFindings, err := batten.snapshotsOfRun(slug, branch.Name, earlier, seed.StartedAt, src.SnapshotAt)
+		snapshots, recordCommit, battenFindings, err := batten.snapshotsOfRun(slug, branch.Name, earlier, src.SnapshotAt)
 		if err != nil {
 			return nil, err
 		}
@@ -359,7 +360,7 @@ func selectInFlight(src Sources, opts TimingOptions, batten *battenIndex, findin
 // pairSlug returns the slug whose pair records branch is named branch, and false when branch is no such name or names an empty slug.
 // The suffix is taken from the fabric engine's records branch name, so the two cannot drift apart.
 func pairSlug(branch string) (string, bool) {
-	slug, ok := strings.CutSuffix(branch, fabriclayout.RecordsBranchName(""))
+	slug, ok := strings.CutSuffix(branch, fabricengine.RecordsBranchName(""))
 	return slug, ok && slug != ""
 }
 

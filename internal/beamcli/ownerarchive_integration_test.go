@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/machinename"
@@ -22,7 +21,7 @@ import (
 func archiveOwnerTagsOnCodeOrigin(t *testing.T, h *hubforge.Hub) []string {
 	t.Helper()
 
-	out := gitkit.Git(t, h.CodeBare, "tag", "--list", fabriclayout.OwnerArchiveTagPrefix+"*")
+	out := gitkit.Git(t, h.CodeBare, "tag", "--list", fabricengine.OwnerArchiveTagPrefix+"*")
 	if out == "" {
 		return nil
 	}
@@ -61,7 +60,7 @@ func TestArchiveOwnerTips_CoversTheWorktreesOwnPairAndTheRunsUnderIt(t *testing.
 			}
 			var want []string
 			for _, slug := range tt.taggedSlugs {
-				want = append(want, fabriclayout.OwnerArchiveTagName(slug, tips[slug]))
+				want = append(want, fabricengine.OwnerArchiveTagName(slug, tips[slug]))
 			}
 			slices.Sort(want)
 			worktree := tt.worktree
@@ -111,7 +110,7 @@ func TestOwnerArchiveBeforeRefusal_SkipsWhileAnAdoptCoversTheWorktree(t *testing
 	if err := archive(); err != nil {
 		t.Fatalf("archive() with no hold = %v; want nil", err)
 	}
-	if got, want := archiveOwnerTagsOnCodeOrigin(t, h), []string{fabriclayout.OwnerArchiveTagName("root", tip)}; !slices.Equal(got, want) {
+	if got, want := archiveOwnerTagsOnCodeOrigin(t, h), []string{fabricengine.OwnerArchiveTagName("root", tip)}; !slices.Equal(got, want) {
 		t.Errorf("owner archive tags with no hold = %v; want %v", got, want)
 	}
 }

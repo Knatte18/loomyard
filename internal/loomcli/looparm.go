@@ -13,7 +13,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -85,7 +84,7 @@ func (c *loomCLI) loopExecutable() string {
 // registerRunProcess registers the calling process in the hub's owner record under owner with the given role.
 // A failure is logged at Warn and never fails the role, since the record only lets a teardown find the process.
 func registerRunProcess(loc *lymcwd.Location, owner, role string) {
-	if err := runproc.Register(fabriclayout.RunProcDir(loc.HubPath), owner, runproc.SelfRecord(role)); err != nil {
+	if err := runproc.Register(fabricengine.RunProcDir(loc.HubPath), owner, runproc.SelfRecord(role)); err != nil {
 		logger.Warn("loom: could not register the run process", "owner", owner, "role", role, "error", err.Error())
 	}
 }

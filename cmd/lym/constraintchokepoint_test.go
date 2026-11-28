@@ -79,7 +79,6 @@ func glyphChokepointViolation(data []byte) (line int, reason string) {
 // It fails on each file carrying a chokepoint violation.
 //
 //lym:guard
-//lym:only parent-align finalize
 func TestGlyphConversionChokepoint_NoLocalConversion(t *testing.T) {
 	tiergate.Require(t, 0)
 	var failures []string

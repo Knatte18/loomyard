@@ -22,8 +22,7 @@ Every never-tracked file lives under `.lym`, at the mirrored subpath of the `_ly
   Everything else run-related under `.lym` is a cache:
   the merge record, the driver park marker and resume report, batten's per-row marks, the dobby's `beam/state.json`,
   shuttle run directories, reed state, loom scratch, gate and verify records, the parent lock, the run process registry,
-  the creel journal, adopt check views, failed-push records, the hibernate request, the pause record,
-  the push ledger, the Go driver's network wait record and the merge-in base file.
+  the creel journal, adopt check views, failed-push records, the hibernate request and the pause record.
 - An absent cache reads as empty and refuses nothing.
   A lost sent-notice memory can repeat a notice or a revive once.
 - A tracked value that holds only on the machine that wrote it, such as a Claude session id or an absolute path,
@@ -34,8 +33,8 @@ Every never-tracked file lives under `.lym`, at the mirrored subpath of the `_ly
 - A module's local config override sits in the mirrored directory, as `.lym/config/<module>.local.yaml`.
   It never sits at the mirrored file path `.lym/config/<module>.yaml`, which is the editor staging copy's.
 - A module's machine override sits under the board dir's `.lym/config/`, as `.lym/config/<module>.machine.yaml`.
-- The split is structural, held in `fabriclayout.StructuralCommittedDirs` and `StructuralNeverCommittedDirs`.
-  It is never read from `fabric.pathspec`.
+- The split is structural, held in `fabricengine.structuralCommittedDirs` and `structuralNeverCommittedDirs`.
+  It is never read from `fabric.yaml`'s `pathspec`.
 - Weft content is per-branch and is never a merge participant in either direction.
 - `internal/logger`'s durable trace sink arms its cwd-anchored fallback only inside a worktree lym owns.
   Such a worktree has `_lym` at the anchor.
@@ -46,6 +45,9 @@ Every never-tracked file lives under `.lym`, at the mirrored subpath of the `_ly
   Fabric seeds those lines from its exclude-list key under the anchor.
   The files sit beside the repository's own instruction files in the sessions' working directory.
   The temporary directory sits beside them, so a rename onto them never crosses a filesystem.
+
+In a one-repository hub `_lym` and `.lym` are real directories at the anchor.
+Records are per-branch and never a merge participant, because fabric's merge restores them to the receiving side.
 
 ### Single declarer
 

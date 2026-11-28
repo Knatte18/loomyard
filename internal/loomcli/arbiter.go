@@ -168,7 +168,6 @@ func (c *loomCLI) arbiterDepsFor() (shedarbiter.Deps, error) {
 		},
 		Prompt: shedarbiter.PromptInput{
 			Recipe:             arbiterRecipeDescription(c.recipe, weaverengine.ArbiterNote(implementer, location.AnchorPath())),
-			ParentName:         c.parentName,
 			Slug:               seedSlug(location.WorktreeName),
 			Worktree:           location.WorktreePath(),
 			DecisionRecordPath: record.path,

@@ -1,8 +1,8 @@
 // sync.go implements fabricSync, the package-local helper that each batch-boundary commit point calls.
 // It stages, commits and pushes the webster artifacts just written: state.json, a batch report and outcome.yaml.
-// It does so through the fabric repo, using fabricengine.Fabric.CommitWithTrailers.
+// It does so through the fabric repo, using fabricengine.Fabric.Commit.
 // Machine-local runtime artifacts never reach the pathspec this helper stages against.
-// They live under .lym: run.lock, mutate.lock and webster's rendered fork prompts.
+// They live under .lym: run.lock, mutate.lock, treadle's round-loop pause flag and webster's rendered fork prompts.
 // The pathspec is positive only, with no ":(exclude)" magic of its own.
 // fabricSync takes its fabric handle from a lazy opener, and its scope from a separate anchor-relative path.
 // The scope is passed separately because fabricengine.Fabric exposes no anchor-relative path of its own.
@@ -14,20 +14,19 @@ import (
 	"fmt"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
 // fabricSync stages and commits the _lym pathspec under anchorRel through the fabric repo that open returns.
-// The records commit's message ends with trailers, one line each, after the trailer fabric always writes.
-// opts.SkipGit makes it report (false, nil) without opening the fabric, and opts reaches the commit as is.
 // A nil open means standalone mode: fabricSync then reports (false, nil) without touching git.
-func fabricSync(open func() (*fabricengine.Fabric, error), anchorRel string, opts fabricengine.SyncOptions, label string, trailers ...fabriclayout.Trailer) (bool, error) {
+func fabricSync(open func() (*fabricengine.Fabric, error), anchorRel, label string) (bool, error) {
+	opts := fabricengine.EnvSyncOptions()
+
 	if open == nil {
 		return false, nil
 	}
 
-	files := fabriclayout.ScopedPathspec(anchorRel, []string{lymdirs.LymDirName})
+	files := fabricengine.ScopedPathspec(anchorRel, []string{lymdirs.LymDirName})
 
 	var committed bool
 	if !opts.SkipGit {
@@ -35,7 +34,7 @@ func fabricSync(open func() (*fabricengine.Fabric, error), anchorRel string, opt
 		if err != nil {
 			return false, err
 		}
-		res, err := f.CommitWithTrailers(files, fmt.Sprintf("webster: %s", label), trailers, opts)
+		res, err := f.Commit(files, fmt.Sprintf("webster: %s", label), nil, opts)
 		committed = res.Committed()
 		if err != nil {
 			return committed, err

@@ -12,12 +12,12 @@ Rule: Naming the wired composite: "fabric". (test)
 **`host` is retired** in the fabric sense, everywhere.
 
 - Owner set (bare weft and warp carve-out):
-  `fabricengine`, `fabriccli`, `fabriclayout`, `fabriccore`, `weftname`, `gitkit`, `hubforge`, `boardengine`, `configsync`, `fabricvocab`.
+  `fabricengine`, `fabriccli`, `weftname`, `gitkit`, `hubforge`, `boardengine`, `configsync`, `fabricvocab`.
 - `internal/fabricvocab` is the home of the predicates the scan and the plan check share; neither declares its own.
 - Scope of the bare weft and warp rule outside the owner set:
   - every `*_test.go` file anywhere in the module;
   - every non-test `.go` file under `internal/` and the doc roots;
-  - every `.md` and `.yaml` file under `contracts/`, `docs/`, `plugins/` and `cmd/`;
+  - every `.md` and `.yaml` file under `contracts/`, `docs/`, `plugins/`, `crucible/` and `cmd/`;
   - every `.md` file under `internal/`;
   - `README.md`:
     it may spell the public records repository's proper name `loomyard-weft` (`fabricvocab.BareTokenInRootDoc`);
@@ -55,11 +55,11 @@ The entry binds lym's own code only.
 ### Weft commits
 
 - **Board carve-out:** `boardengine` may write to `weft:main` from any worktree or session, always through `Bolt`.
-- Every weft-commit caller passes a positive-only file list via `fabriclayout.ScopedPathspec`.
-- `fabriclayout.StructuralNeverCommittedDirs` paths route to a third bucket in `fabriclayout.ClassifyPaths`,
+- Every weft-commit caller passes a positive-only file list via `fabricengine.ScopedPathspec`.
+- `structuralNeverCommittedDirs` paths route to a third bucket in `classifyPaths`,
   and `Commit` hard-errors on a non-empty third bucket.
 - `Commit` refuses, before any lock, a commit that would add a new path `internal/secretpath` matches,
-  over lym's shipped patterns and the ones `fabric.secret_paths` adds.
+  over lym's shipped patterns and the ones `fabric.yaml`'s `secret_paths` adds.
 
 ### Excludes
 
@@ -70,6 +70,7 @@ The entry binds lym's own code only.
   and every ignore it needs there goes to `.git/info/exclude` through `fabricengine`.
 - The one weft-side `.gitignore` writer is `boardengine`'s render-manifest pattern in the Bolt checkout.
   The Bolt checkout is the weft's `main` worktree.
+  The writer removes the retired `*.lock` and `*.swaplock` lines.
 
 ### Unwire and teardown
 
@@ -82,8 +83,6 @@ The entry binds lym's own code only.
   The child pushes the weft branch first when origin lacks the local tip, then the tag,
   and a diverged or ahead origin tip gets a tag of its own;
   only then does it delete on origin.
-  Before those steps it pushes every `archive/<slug>/*` tag an earlier teardown left on this machine alone,
-  so the re-run after a child that died deletes no branch on origin whose tip only a local tag holds.
   A rolled-back `Add` also deletes the warp branch it created, locally only:
   `Add` pushes nothing, so no origin branch is its to delete.
 - `Add` leaves the new pair's branches committed locally;
@@ -92,6 +91,12 @@ The entry binds lym's own code only.
   so the local archive tag holds them;
   `force` skips neither the commit nor the tag.
 - `Add` replaces a leftover remote weft branch only when an `archive/<slug>/*` tag covers its tip.
+
+### One-repository hub
+
+In a one-repository hub the exclude gets `.lym`, the `.scratch` link and heddle's files, and never `_lym`, `.lym-anchor` or the weft artifact lines.
+The Bolt's render-manifest `.gitignore` stays on `lym-bolt`, which no code branch merges.
+Teardown tags and pushes the branch tip, deletes the branch and the `lym-view/` ref.
 
 ### Destruction chokepoint
 

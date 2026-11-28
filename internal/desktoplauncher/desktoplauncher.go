@@ -49,7 +49,7 @@ type Desktop struct {
 // A lym path a `.cmd` launcher under WSL cannot quote is an error, and nothing is written.
 // Both writes happen under the desktop's lock, so a concurrent Remove never sees one without the other.
 func (d Desktop) Add(lymPath, shortname string) error {
-	hub, err := d.content(lymPath, shortname, shortname)
+	hub, err := d.content(lymPath, "start the hub "+shortname, shortname)
 	if err != nil {
 		return err
 	}
@@ -135,8 +135,8 @@ func (d Desktop) fileMode() os.FileMode {
 }
 
 // content returns the text of a launcher that runs `<lymPath> machine start`, with shortname as its argument when set.
-// title follows "lym: " in a `.desktop` launcher's `Name=` key and in a `.cmd` launcher's `rem` line.
-func (d Desktop) content(lymPath, title, shortname string) (string, error) {
+// purpose says what the launcher does, for its name and comment.
+func (d Desktop) content(lymPath, purpose, shortname string) (string, error) {
 	verb := strings.TrimSpace("machine start " + shortname)
 	sh := shell.Posix()
 	posixRun := sh.Invoke(lymPath) + " " + verb
@@ -146,7 +146,7 @@ func (d Desktop) content(lymPath, title, shortname string) (string, error) {
 		return strings.Join([]string{
 			"[Desktop Entry]",
 			"Type=Application",
-			"Name=lym: " + title,
+			"Name=lym: " + purpose,
 			"Comment=Runs lym " + verb + " on this machine",
 			"Exec=bash -lc " + execArgument(line),
 			"Terminal=true",
@@ -161,17 +161,16 @@ func (d Desktop) content(lymPath, title, shortname string) (string, error) {
 		if d.Distro != "" {
 			run += ` -d "` + d.Distro + `"`
 		}
-		return cmdFile(title, run+` -- bash -lc "`+posixRun+`"`), nil
+		return cmdFile(purpose, run+` -- bash -lc "`+posixRun+`"`), nil
 	default:
-		return cmdFile(title, `"`+lymPath+`" `+verb), nil
+		return cmdFile(purpose, `"`+lymPath+`" `+verb), nil
 	}
 }
 
-// cmdFile returns a `.cmd` launcher titled "lym: <title>" that runs run and pauses,
-// so its window shows the outcome until a key is pressed.
+// cmdFile returns a `.cmd` launcher that runs run and pauses, so its window shows the outcome until a key is pressed.
 // Each "%" is doubled, since a batch file reads "%" as a variable reference.
-func cmdFile(title, run string) string {
-	lines := []string{"@echo off", "rem lym: " + title, run, "pause", ""}
+func cmdFile(purpose, run string) string {
+	lines := []string{"@echo off", "rem lym: " + purpose, run, "pause", ""}
 	return strings.ReplaceAll(strings.Join(lines, "\r\n"), "%", "%%")
 }
 

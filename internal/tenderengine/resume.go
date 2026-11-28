@@ -259,10 +259,10 @@ func liftEntries(deps Deps, pick func(record *pauserecord.Record) ([]pauserecord
 	return report, nil
 }
 
-// spawnOwed spawns the pushes and the board sync that a pause held back and the lift uncovers.
+// spawnOwed spawns the detached pushes and the board sync that a pause deferred and the lift uncovers.
 // It records each spawn in report.
 // A pair is pushed when a lifted entry covered it and no live entry of record still covers it.
-// It is pushed only when no other machine owns it, it holds commits origin lacks, and the hub still holds it;
+// It is pushed only when no other machine owns it, a pause deferred a detached push of it, and the hub still holds it;
 // a pair that is gone had its owed push go with it.
 // An owners reading that fails spawns no pair push, since an owner it cannot read may be another machine.
 // A seam error is recorded under SpawnFailed and never fails the lift.
@@ -306,15 +306,8 @@ func pairsToPush(deps Deps, record pauserecord.Record, lifted []pauserecord.Entr
 		if slices.ContainsFunc(owners, func(owner PairOwner) bool { return owner.Slug == slug && owner.Local && !owner.OwnedHere }) {
 			continue
 		}
-		if deps.PushOwed != nil {
-			owed, err := deps.PushOwed(slug)
-			if err != nil {
-				report.SpawnFailed = append(report.SpawnFailed, SessionNote{Strand: "pair:" + slug, Slug: slug, Reason: "reading what the pair owes failed: " + err.Error()})
-				continue
-			}
-			if !owed {
-				continue
-			}
+		if deps.PushDeferred != nil && !deps.PushDeferred(slug) {
+			continue
 		}
 		slugs = append(slugs, slug)
 	}

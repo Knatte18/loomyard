@@ -16,7 +16,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -46,7 +45,7 @@ var mergeNoConflicts = []string{}
 // the accumulated mutation record, and a non-nil Conflicts slice.
 // Each verb calls it from a deferred call on its named result, so it runs on every return, error returns included.
 // Without it, error returns would marshal a nil slice as "conflicts": null.
-func finalizeMergeResult(res *fabriclayout.MergeResult, rec *Mutations) {
+func finalizeMergeResult(res *MergeResult, rec *Mutations) {
 	res.Mutations = rec.Snapshot()
 	if res.Conflicts == nil {
 		res.Conflicts = mergeNoConflicts
@@ -91,11 +90,34 @@ func (f *Fabric) recheckMergePreconditionsUnderLock() error {
 	return nil
 }
 
+// MergeOptions controls Merge.
+// Squash selects a squash merge, and Message overrides the conclude commit's message.
+type MergeOptions struct {
+	Squash  bool
+	Message string
+}
+
+// MergeResult reports what a merge verb did to the pair.
+// AlreadyUpToDate reports a no-op: both sides' resolved source SHA was already an ancestor of that side's HEAD.
+// Conflicts lists the unified, worktree-relative paths a merge attempt left conflicted.
+// It is empty, never nil, on every return, error returns included.
+// Committed reports whether the pair now carries this merge's conclude commit.
+// A merge that fast-forwarded both sides creates no commit and reports Committed false.
+// A call that finds the work already done after taking the lock reports AlreadyUpToDate true.
+// It reports the same answer a strictly sequential run of the same calls gives.
+// MutationRecord is embedded and carries the mutations accumulated over the call.
+type MergeResult struct {
+	MutationRecord
+	AlreadyUpToDate bool     `json:"already_up_to_date"`
+	Conflicts       []string `json:"conflicts"`
+	Committed       bool     `json:"committed"`
+}
+
 // MergeIn merges source into f's current pair's warp checkout; the weft side is not a merge participant.
 // Conflicts are a result state, not an error.
 // A call that produces conflicts returns (MergeResult{Conflicts: […]}, nil) and leaves the pair mid-merge.
 // The caller resolves that merge with MergeContinue or MergeAbort. MergeIn never squashes.
-func (f *Fabric) MergeIn(source string) (res fabriclayout.MergeResult, err error) {
+func (f *Fabric) MergeIn(source string) (res MergeResult, err error) {
 	return f.mergeIn(source, "")
 }
 
@@ -105,7 +127,7 @@ func (f *Fabric) MergeIn(source string) (res fabriclayout.MergeResult, err error
 // So MergeContinue and MergeAbort treat the call as a merge-in of source.
 // A warpSHA that names no commit in the pair's code repository fails the source-not-found guard.
 // Nothing is merged in that case.
-func (f *Fabric) MergeInAt(source, warpSHA string) (res fabriclayout.MergeResult, err error) {
+func (f *Fabric) MergeInAt(source, warpSHA string) (res MergeResult, err error) {
 	return f.mergeIn(source, warpSHA)
 }
 
@@ -113,17 +135,18 @@ func (f *Fabric) MergeInAt(source, warpSHA string) (res fabriclayout.MergeResult
 // An empty warpSHA resolves the code side from source through the freshness rule.
 // A set warpSHA replaces that pick after checking it resolves to a commit.
 // The records side and every other guard still resolve from source.
-func (f *Fabric) mergeIn(source, warpSHA string) (res fabriclayout.MergeResult, err error) {
+// In a one-repository worktree the merge keeps the receiving side's records, as Merge does.
+func (f *Fabric) mergeIn(source, warpSHA string) (res MergeResult, err error) {
 	rec := NewMutations(filepath.Dir(f.warpPath))
 	defer func() { finalizeMergeResult(&res, rec) }()
 
 	l, err := lymcwd.ResolveWorktree(f.warpPath)
 	if err != nil {
-		return fabriclayout.MergeResult{}, fmt.Errorf("fabricengine: resolve layout for %s: %w", f.warpPath, err)
+		return MergeResult{}, fmt.Errorf("fabricengine: resolve layout for %s: %w", f.warpPath, err)
 	}
 	anchorRel, wiredNames, err := resolveMergeGeometry(l)
 	if err != nil {
-		return fabriclayout.MergeResult{}, fmt.Errorf("fabricengine: resolve merge geometry for %s: %w", f.warpPath, err)
+		return MergeResult{}, fmt.Errorf("fabricengine: resolve merge geometry for %s: %w", f.warpPath, err)
 	}
 
 	// Foreign-state refusal: git-level merge state that fabric did not itself start refuses the whole call.
@@ -132,15 +155,15 @@ func (f *Fabric) mergeIn(source, warpSHA string) (res fabriclayout.MergeResult, 
 	// a recorded merge takes the in-progress guard path below.
 	recordExists, err := f.mergeRecordExists()
 	if err != nil {
-		return fabriclayout.MergeResult{}, err
+		return MergeResult{}, err
 	}
 	if !recordExists {
 		foreign, err := f.foreignMergeStatePresent()
 		if err != nil {
-			return fabriclayout.MergeResult{}, err
+			return MergeResult{}, err
 		}
 		if foreign {
-			return fabriclayout.MergeResult{}, &ErrForeignMergeState{}
+			return MergeResult{}, &ErrForeignMergeState{}
 		}
 	}
 
@@ -149,26 +172,23 @@ func (f *Fabric) mergeIn(source, warpSHA string) (res fabriclayout.MergeResult, 
 	var reasons []string
 	inProgressReasons, err := mergeInProgressReason(f)
 	if err != nil {
-		return fabriclayout.MergeResult{}, err
+		return MergeResult{}, err
 	}
 	reasons = append(reasons, inProgressReasons...)
 
 	dirtyReasons, dirtyPaths, err := pairDirtyReason(f)
 	if err != nil {
-		return fabriclayout.MergeResult{}, err
+		return MergeResult{}, err
 	}
 	reasons = append(reasons, dirtyReasons...)
 
 	detachedReasons, err := detachedHeadReason(f)
 	if err != nil {
-		return fabriclayout.MergeResult{}, err
+		return MergeResult{}, err
 	}
 	reasons = append(reasons, detachedReasons...)
 
-	sources, sourceReasons, err := resolveMergeSources(f, source)
-	if err != nil {
-		return fabriclayout.MergeResult{}, err
-	}
+	sources, sourceReasons := resolveMergeSources(f, source)
 	if warpSHA != "" {
 		sourceReasons = nil
 		if _, err := f.code.CommitTree(warpSHA); err != nil {
@@ -180,7 +200,7 @@ func (f *Fabric) mergeIn(source, warpSHA string) (res fabriclayout.MergeResult, 
 	reasons = append(reasons, sourceReasons...)
 
 	if len(reasons) > 0 {
-		return fabriclayout.MergeResult{}, newMergeGuardError(reasons).withDirt(f.warpPath, dirtyPaths)
+		return MergeResult{}, newMergeGuardError(reasons).withDirt(f.warpPath, dirtyPaths)
 	}
 
 	// Pre-lock already-up-to-date probe: no lock taken, no record written, empty mutation record.
@@ -189,23 +209,23 @@ func (f *Fabric) mergeIn(source, warpSHA string) (res fabriclayout.MergeResult, 
 	// The record's starts are re-read under the lock, where no concurrent writer can stale them.
 	warpStart, err := f.code.CurrentSHA()
 	if err != nil {
-		return fabriclayout.MergeResult{}, fmt.Errorf("fabricengine: resolve checkout HEAD: %w", err)
+		return MergeResult{}, fmt.Errorf("fabricengine: resolve checkout HEAD: %w", err)
 	}
 	warpUpToDate, err := f.code.IsAncestor(sources.warpSHA, warpStart)
 	if err != nil {
-		return fabriclayout.MergeResult{}, fmt.Errorf("fabricengine: classify merge source: %w", err)
+		return MergeResult{}, fmt.Errorf("fabricengine: classify merge source: %w", err)
 	}
 	if warpUpToDate {
-		return fabriclayout.MergeResult{AlreadyUpToDate: true, Conflicts: mergeNoConflicts}, nil
+		return MergeResult{AlreadyUpToDate: true, Conflicts: mergeNoConflicts}, nil
 	}
 
 	lockDir, err := f.ensureWeftLockDir()
 	if err != nil {
-		return fabriclayout.MergeResult{}, err
+		return MergeResult{}, err
 	}
 	fileLock, err := acquireWeftWriteLock(lockDir)
 	if err != nil {
-		return fabriclayout.MergeResult{}, fmt.Errorf("fabricengine: acquire weft write lock: %w", err)
+		return MergeResult{}, fmt.Errorf("fabricengine: acquire weft write lock: %w", err)
 	}
 	defer func() { _ = fileLock.Release() }()
 
@@ -215,7 +235,16 @@ func (f *Fabric) mergeIn(source, warpSHA string) (res fabriclayout.MergeResult, 
 	// so the other merge's content would conclude under this record's name.
 	// A plain-git merge or tracked edit a human makes during the wait would be adopted or force-reset by MergeStart.
 	if err := f.recheckMergePreconditionsUnderLock(); err != nil {
-		return fabriclayout.MergeResult{}, err
+		return MergeResult{}, err
+	}
+
+	// In a one-repository worktree the source's marker edits are judged and the receiving records are committed first.
+	// The commit moves HEAD, so the starts below are read after it.
+	oneRepo := oneRepositoryAt(f.warpPath)
+	if oneRepo {
+		if err := f.prepareOneRepositoryMerge(rec, sources.warpSHA); err != nil {
+			return MergeResult{}, err
+		}
 	}
 
 	// Re-read warpStart under the lock and discard the pre-lock read.
@@ -225,11 +254,11 @@ func (f *Fabric) mergeIn(source, warpSHA string) (res fabriclayout.MergeResult, 
 	// weftStart has no pre-lock read; the weft is not a merge participant, so this is its only read.
 	warpStart, err = f.code.CurrentSHA()
 	if err != nil {
-		return fabriclayout.MergeResult{}, fmt.Errorf("fabricengine: resolve checkout HEAD: %w", err)
+		return MergeResult{}, fmt.Errorf("fabricengine: resolve checkout HEAD: %w", err)
 	}
 	weftStart, err := f.records.CurrentSHA()
 	if err != nil {
-		return fabriclayout.MergeResult{}, fmt.Errorf("fabricengine: resolve checkout HEAD: %w", err)
+		return MergeResult{}, fmt.Errorf("fabricengine: resolve checkout HEAD: %w", err)
 	}
 
 	// WeftOutcome is set in the literal, before the record's first write, not in a second write after it.
@@ -237,38 +266,46 @@ func (f *Fabric) mergeIn(source, warpSHA string) (res fabriclayout.MergeResult, 
 	// and an empty outcome is what mergeAttemptIncompleteReason refuses a MergeContinue resume on.
 	// A crash in that window would leave an unresumable record for a state this code never intends to occupy.
 	st := &mergeState{
-		Verb:        fabriclayout.MergeVerbMergeIn,
-		Source:      source,
-		Squash:      false,
-		Message:     "",
-		WarpStart:   warpStart,
-		WeftStart:   weftStart,
-		WarpSource:  sources.warpSHA,
-		WeftSource:  sources.weftSHA,
-		WeftOutcome: mergeOutcomeAlreadyUpToDate,
-		StartedAt:   time.Now(),
+		Verb:             MergeVerbMergeIn,
+		RecordsUnsettled: oneRepo,
+		Source:           source,
+		Squash:           false,
+		Message:          "",
+		WarpStart:        warpStart,
+		WeftStart:        weftStart,
+		WarpSource:       sources.warpSHA,
+		WeftSource:       sources.weftSHA,
+		WeftOutcome:      mergeOutcomeAlreadyUpToDate,
+		StartedAt:        time.Now(),
 	}
 	if err := f.saveMergeState(st); err != nil {
-		return fabriclayout.MergeResult{}, err
+		return MergeResult{}, err
 	}
 
-	warpOutcome, err := f.code.MergeStart(sources.warpSHA, false)
+	warpOutcome, err := f.startMerge(sources.warpSHA, false, oneRepo)
 	if err != nil {
-		return fabriclayout.MergeResult{}, f.selfAbortMergeAttempt(rec, st, "warp", err)
+		return MergeResult{}, f.selfAbortMergeAttempt(rec, st, "warp", err)
 	}
 	st.WarpOutcome = mergeOutcomeString(warpOutcome)
 	if err := f.saveMergeState(st); err != nil {
-		return fabriclayout.MergeResult{}, err
+		return MergeResult{}, err
 	}
 	if warpOutcome != gitrepo.MergeAlreadyUpToDate {
-		rec.Append(fabriclayout.KindMergeStaged, f.warpPath, sources.warpSHA)
+		rec.Append(KindMergeStaged, f.warpPath, sources.warpSHA)
+	}
+
+	if oneRepo {
+		warpOutcome, err = f.settleRecordsAfterMergeStart(rec, st, warpOutcome)
+		if err != nil {
+			return MergeResult{}, err
+		}
 	}
 
 	if warpOutcome == gitrepo.MergeConflicted {
 		var warpConflicts []string
 		warpConflicts, err = f.code.ConflictedFiles()
 		if err != nil {
-			return fabriclayout.MergeResult{}, err
+			return MergeResult{}, err
 		}
 
 		unified, unmappable := unifyConflictPaths(warpConflicts, nil, anchorRel, wiredNames)
@@ -276,39 +313,39 @@ func (f *Fabric) mergeIn(source, warpSHA string) (res fabriclayout.MergeResult, 
 			logger.Warn("fabricengine: MergeIn produced unmappable conflict paths; self-aborting",
 				"warp_conflicts", warpConflicts)
 			if err := f.resetMergeSides(rec, st.WarpStart); err != nil {
-				return fabriclayout.MergeResult{}, err
+				return MergeResult{}, err
 			}
 			if err := f.deleteMergeState(); err != nil {
-				return fabriclayout.MergeResult{}, err
+				return MergeResult{}, err
 			}
-			return fabriclayout.MergeResult{}, &ErrUnmergeableState{}
+			return MergeResult{}, &ErrUnmergeableState{}
 		}
 
-		return fabriclayout.MergeResult{Conflicts: unified}, nil
+		return MergeResult{Conflicts: unified}, nil
 	}
 
 	// With both sides clean, conclude the merge and record the pair's post-merge correspondence.
 	// Record it even when one side never moved, then clear the record.
 	if err := concludeMergeSides(f, rec, st, ""); err != nil {
-		return fabriclayout.MergeResult{}, err
+		return MergeResult{}, err
 	}
 
 	newWarpHEAD, err := f.code.CurrentSHA()
 	if err != nil {
-		return fabriclayout.MergeResult{}, err
+		return MergeResult{}, err
 	}
 	newWeftHEAD, err := f.records.CurrentSHA()
 	if err != nil {
-		return fabriclayout.MergeResult{}, err
+		return MergeResult{}, err
 	}
 	if err := f.RecordCorrespondence(newWarpHEAD, newWeftHEAD); err != nil {
-		return fabriclayout.MergeResult{}, err
+		return MergeResult{}, err
 	}
 	if err := f.deleteMergeState(); err != nil {
-		return fabriclayout.MergeResult{}, err
+		return MergeResult{}, err
 	}
 
-	return fabriclayout.MergeResult{
+	return MergeResult{
 		AlreadyUpToDate: st.bothSidesAlreadyUpToDate(),
 		Conflicts:       mergeNoConflicts,
 		Committed:       st.landedConcludeCommit(),
@@ -330,7 +367,10 @@ func (f *Fabric) mergeIn(source, warpSHA string) (res fabriclayout.MergeResult, 
 // The sync step checks it again after the fetch and refuses with the same not-synced reason.
 // The sync runs inside the weft write lock, not ahead of it.
 // It mutates the warp checkout while no merge record exists yet, so only the lock serializes it.
-func (f *Fabric) Merge(source string, opts fabriclayout.MergeOptions) (res fabriclayout.MergeResult, err error) {
+// In a one-repository worktree the merge keeps the receiving side's records.
+// It commits them first and refuses a source that edited the anchor marker by hand.
+// It never fast-forwards, and it sets the records of both sides back to the receiving HEAD's once the merge is staged.
+func (f *Fabric) Merge(source string, opts MergeOptions) (res MergeResult, err error) {
 	rec := NewMutations(filepath.Dir(f.warpPath))
 	defer func() { finalizeMergeResult(&res, rec) }()
 
@@ -340,15 +380,15 @@ func (f *Fabric) Merge(source string, opts fabriclayout.MergeOptions) (res fabri
 	// a recorded merge takes the in-progress guard path below.
 	recordExists, err := f.mergeRecordExists()
 	if err != nil {
-		return fabriclayout.MergeResult{}, err
+		return MergeResult{}, err
 	}
 	if !recordExists {
 		foreign, err := f.foreignMergeStatePresent()
 		if err != nil {
-			return fabriclayout.MergeResult{}, err
+			return MergeResult{}, err
 		}
 		if foreign {
-			return fabriclayout.MergeResult{}, &ErrForeignMergeState{}
+			return MergeResult{}, &ErrForeignMergeState{}
 		}
 	}
 
@@ -362,36 +402,33 @@ func (f *Fabric) Merge(source string, opts fabriclayout.MergeOptions) (res fabri
 	var reasons []string
 	inProgressReasons, err := mergeInProgressReason(f)
 	if err != nil {
-		return fabriclayout.MergeResult{}, err
+		return MergeResult{}, err
 	}
 	reasons = append(reasons, inProgressReasons...)
 
 	dirtyReasons, dirtyPaths, err := pairDirtyReason(f)
 	if err != nil {
-		return fabriclayout.MergeResult{}, err
+		return MergeResult{}, err
 	}
 	reasons = append(reasons, dirtyReasons...)
 
 	detachedReasons, err := detachedHeadReason(f)
 	if err != nil {
-		return fabriclayout.MergeResult{}, err
+		return MergeResult{}, err
 	}
 	reasons = append(reasons, detachedReasons...)
 
 	syncReasons, err := syncedToUpstreamReason(f)
 	if err != nil {
-		return fabriclayout.MergeResult{}, err
+		return MergeResult{}, err
 	}
 	reasons = append(reasons, syncReasons...)
 
-	sources, sourceReasons, err := resolveMergeSources(f, source)
-	if err != nil {
-		return fabriclayout.MergeResult{}, err
-	}
+	sources, sourceReasons := resolveMergeSources(f, source)
 	reasons = append(reasons, sourceReasons...)
 
 	if len(reasons) > 0 {
-		return fabriclayout.MergeResult{}, newMergeGuardError(reasons).withDirt(f.warpPath, dirtyPaths)
+		return MergeResult{}, newMergeGuardError(reasons).withDirt(f.warpPath, dirtyPaths)
 	}
 
 	// The write lock is taken here, ahead of the sync step, because the sync step mutates both checkouts.
@@ -403,11 +440,11 @@ func (f *Fabric) Merge(source string, opts fabriclayout.MergeOptions) (res fabri
 	// Only MergeIn can defer its acquisition, because MergeIn has no sync step and mutates nothing before the record.
 	lockDir, err := f.ensureWeftLockDir()
 	if err != nil {
-		return fabriclayout.MergeResult{}, err
+		return MergeResult{}, err
 	}
 	fileLock, err := acquireWeftWriteLock(lockDir)
 	if err != nil {
-		return fabriclayout.MergeResult{}, fmt.Errorf("fabricengine: acquire weft write lock: %w", err)
+		return MergeResult{}, fmt.Errorf("fabricengine: acquire weft write lock: %w", err)
 	}
 	defer func() { _ = fileLock.Release() }()
 
@@ -416,7 +453,7 @@ func (f *Fabric) Merge(source string, opts fabriclayout.MergeOptions) (res fabri
 	// A record that appeared during the wait would mean writing into a pair another merge is in flight on.
 	// Mid-wait foreign state or dirt would let `merge --ff-only` and MergeStart run on a checkout the guard never saw.
 	if err := f.recheckMergePreconditionsUnderLock(); err != nil {
-		return fabriclayout.MergeResult{}, err
+		return MergeResult{}, err
 	}
 
 	// Pre-merge sync step: a recorded mutation, not a guard, and the first thing that touches either checkout.
@@ -427,7 +464,7 @@ func (f *Fabric) Merge(source string, opts fabriclayout.MergeOptions) (res fabri
 	// A caller matching *MergeGuardError then sees the same error shape a pre-lock refusal would give.
 	// A sync-step message would describe the step that detected the problem, not the precondition that failed.
 	if err := f.syncSideBeforeMerge(rec, f.code, f.warpPath, "warp"); err != nil {
-		return fabriclayout.MergeResult{}, wrapMergeSyncError(err)
+		return MergeResult{}, wrapMergeSyncError(err)
 	}
 
 	// Already-up-to-date probe after the sync step.
@@ -435,18 +472,33 @@ func (f *Fabric) Merge(source string, opts fabriclayout.MergeOptions) (res fabri
 	// The sync's own advance is real upstream catch-up that the merge did not cause, so it stays recorded.
 	warpStart, err := f.code.CurrentSHA()
 	if err != nil {
-		return fabriclayout.MergeResult{}, fmt.Errorf("fabricengine: resolve checkout HEAD: %w", err)
+		return MergeResult{}, fmt.Errorf("fabricengine: resolve checkout HEAD: %w", err)
 	}
 	weftStart, err := f.records.CurrentSHA()
 	if err != nil {
-		return fabriclayout.MergeResult{}, fmt.Errorf("fabricengine: resolve checkout HEAD: %w", err)
+		return MergeResult{}, fmt.Errorf("fabricengine: resolve checkout HEAD: %w", err)
 	}
 	warpUpToDate, err := f.code.IsAncestor(sources.warpSHA, warpStart)
 	if err != nil {
-		return fabriclayout.MergeResult{}, fmt.Errorf("fabricengine: classify merge source: %w", err)
+		return MergeResult{}, fmt.Errorf("fabricengine: classify merge source: %w", err)
 	}
 	if warpUpToDate {
-		return fabriclayout.MergeResult{AlreadyUpToDate: true, Conflicts: mergeNoConflicts}, nil
+		return MergeResult{AlreadyUpToDate: true, Conflicts: mergeNoConflicts}, nil
+	}
+
+	// In a one-repository worktree the source's marker edits are judged and the receiving records are committed.
+	// The commit moves HEAD, so the starts are read again after it.
+	oneRepo := oneRepositoryAt(f.warpPath)
+	if oneRepo {
+		if err := f.prepareOneRepositoryMerge(rec, sources.warpSHA); err != nil {
+			return MergeResult{}, err
+		}
+		if warpStart, err = f.code.CurrentSHA(); err != nil {
+			return MergeResult{}, fmt.Errorf("fabricengine: resolve checkout HEAD: %w", err)
+		}
+		if weftStart, err = f.records.CurrentSHA(); err != nil {
+			return MergeResult{}, fmt.Errorf("fabricengine: resolve checkout HEAD: %w", err)
+		}
 	}
 
 	// Pre-merge SHAs are captured after the sync step, so MergeAbort returns the pair to its synced state.
@@ -454,36 +506,39 @@ func (f *Fabric) Merge(source string, opts fabriclayout.MergeOptions) (res fabri
 	// WeftOutcome is set in the literal rather than by a second write.
 	// That avoids saving an intermediate record with an empty outcome.
 	st := &mergeState{
-		Verb:        fabriclayout.MergeVerbMerge,
-		Source:      source,
-		Squash:      opts.Squash,
-		Message:     opts.Message,
-		WarpStart:   warpStart,
-		WeftStart:   weftStart,
-		WarpSource:  sources.warpSHA,
-		WeftSource:  sources.weftSHA,
-		WeftOutcome: mergeOutcomeAlreadyUpToDate,
-		StartedAt:   time.Now(),
+		Verb:             MergeVerbMerge,
+		RecordsUnsettled: oneRepo,
+		Source:           source,
+		Squash:           opts.Squash,
+		Message:          opts.Message,
+		WarpStart:        warpStart,
+		WeftStart:        weftStart,
+		WarpSource:       sources.warpSHA,
+		WeftSource:       sources.weftSHA,
+		WeftOutcome:      mergeOutcomeAlreadyUpToDate,
+		StartedAt:        time.Now(),
 	}
 	if err := f.saveMergeState(st); err != nil {
-		return fabriclayout.MergeResult{}, err
+		return MergeResult{}, err
 	}
 
-	var warpOutcome gitrepo.MergeOutcome
-	if opts.NoFastForward && !opts.Squash {
-		warpOutcome, err = f.code.MergeStartNoFastForward(sources.warpSHA)
-	} else {
-		warpOutcome, err = f.code.MergeStart(sources.warpSHA, opts.Squash)
-	}
+	warpOutcome, err := f.startMerge(sources.warpSHA, opts.Squash, oneRepo)
 	if err != nil {
-		return fabriclayout.MergeResult{}, f.selfAbortMergeAttempt(rec, st, "warp", err)
+		return MergeResult{}, f.selfAbortMergeAttempt(rec, st, "warp", err)
 	}
 	st.WarpOutcome = mergeOutcomeString(warpOutcome)
 	if err := f.saveMergeState(st); err != nil {
-		return fabriclayout.MergeResult{}, err
+		return MergeResult{}, err
 	}
 	if warpOutcome != gitrepo.MergeAlreadyUpToDate {
-		rec.Append(fabriclayout.KindMergeStaged, f.warpPath, sources.warpSHA)
+		rec.Append(KindMergeStaged, f.warpPath, sources.warpSHA)
+	}
+
+	if oneRepo {
+		warpOutcome, err = f.settleRecordsAfterMergeStart(rec, st, warpOutcome)
+		if err != nil {
+			return MergeResult{}, err
+		}
 	}
 
 	// Any conflict on the warp side self-aborts.
@@ -492,37 +547,37 @@ func (f *Fabric) Merge(source string, opts fabriclayout.MergeOptions) (res fabri
 	// and the source travels in its own field.
 	if warpOutcome == gitrepo.MergeConflicted {
 		if err := f.resetMergeSides(rec, st.WarpStart); err != nil {
-			return fabriclayout.MergeResult{}, err
+			return MergeResult{}, err
 		}
 		if err := f.deleteMergeState(); err != nil {
-			return fabriclayout.MergeResult{}, err
+			return MergeResult{}, err
 		}
-		return fabriclayout.MergeResult{}, &ErrMergeInRequired{Source: source}
+		return MergeResult{}, &ErrMergeInRequired{Source: source}
 	}
 
 	// Both sides clean: conclude the merge, record the pair's post-merge correspondence, and clear the record.
 	// The correspondence is recorded even when one side never moved.
 	// Message precedence: opts.Message, already carried in st.Message, then git's own prepared MERGE_MSG or SQUASH_MSG.
 	if err := concludeMergeSides(f, rec, st, ""); err != nil {
-		return fabriclayout.MergeResult{}, err
+		return MergeResult{}, err
 	}
 
 	newWarpHEAD, err := f.code.CurrentSHA()
 	if err != nil {
-		return fabriclayout.MergeResult{}, err
+		return MergeResult{}, err
 	}
 	newWeftHEAD, err := f.records.CurrentSHA()
 	if err != nil {
-		return fabriclayout.MergeResult{}, err
+		return MergeResult{}, err
 	}
 	if err := f.RecordCorrespondence(newWarpHEAD, newWeftHEAD); err != nil {
-		return fabriclayout.MergeResult{}, err
+		return MergeResult{}, err
 	}
 	if err := f.deleteMergeState(); err != nil {
-		return fabriclayout.MergeResult{}, err
+		return MergeResult{}, err
 	}
 
-	return fabriclayout.MergeResult{
+	return MergeResult{
 		AlreadyUpToDate: st.bothSidesAlreadyUpToDate(),
 		Conflicts:       mergeNoConflicts,
 		Committed:       st.landedConcludeCommit(),
@@ -537,6 +592,10 @@ func (f *Fabric) Merge(source string, opts fabriclayout.MergeOptions) (res fabri
 // MergeFFOnly fails loudly on a raced divergence rather than silently discarding history.
 // An observed advance is recorded as KindRepoAdvanced, with the checkout path as Target and the new SHA as Detail.
 // Equal and ahead are no-ops.
+//
+// In a one-repository worktree the uncommitted records are committed first.
+// A diverged side then replays its local records-only commits onto the upstream, under the push lock.
+// It refuses only when a local commit changes a code path or the replay stops.
 //
 // Diverged refuses with mergeReasonNotSynced.
 // The pre-merge guard stage decides from remote-tracking state before anything fetches,
@@ -565,6 +624,12 @@ func (f *Fabric) syncSideBeforeMerge(rec *Mutations, repo *gitrepo.Repo, dir, si
 		return nil
 	}
 
+	oneRepo := oneRepositoryAt(dir)
+	if oneRepo {
+		if err := f.commitReceivingRecords(rec); err != nil {
+			return err
+		}
+	}
 	head, err := repo.CurrentSHA()
 	if err != nil {
 		return fmt.Errorf("fabricengine: resolve HEAD in %s: %w", dir, err)
@@ -581,7 +646,7 @@ func (f *Fabric) syncSideBeforeMerge(rec *Mutations, repo *gitrepo.Repo, dir, si
 		if err := repo.MergeFFOnly(upstreamSHA); err != nil {
 			return err
 		}
-		rec.Append(fabriclayout.KindRepoAdvanced, dir, upstreamSHA)
+		rec.Append(KindRepoAdvanced, dir, upstreamSHA)
 		return nil
 	}
 
@@ -593,7 +658,41 @@ func (f *Fabric) syncSideBeforeMerge(rec *Mutations, repo *gitrepo.Repo, dir, si
 		return nil
 	}
 
+	if oneRepo {
+		return f.replayDivergedOneRepository(rec, dir, upstreamSHA)
+	}
 	return newMergeGuardError([]string{mergeReasonNotSynced})
+}
+
+// replayDivergedOneRepository levels the diverged one-repository worktree at dir with upstreamSHA before a merge.
+// It replays the local records-only commits onto the upstream.
+// The replay runs under the push lock, beside the write lock its caller holds.
+// A local commit that changes a code path, or a replay that stops, refuses with mergeReasonNotSynced.
+func (f *Fabric) replayDivergedOneRepository(rec *Mutations, dir, upstreamSHA string) error {
+	notSynced := newMergeGuardError([]string{mergeReasonNotSynced})
+	codeCommits, err := unpushedCodeCommits(dir, upstreamSHA)
+	if err != nil {
+		return err
+	}
+	if len(codeCommits) > 0 {
+		return notSynced
+	}
+	lockDir, err := f.ensureWeftLockDir()
+	if err != nil {
+		return err
+	}
+	pushLock, err := lock.AcquireWriteLock(filepath.Join(lockDir, weftPushLockFile))
+	if err != nil {
+		return fmt.Errorf("fabricengine: acquire push lock: %w", err)
+	}
+	releasePush := holdPushLock(pushLock, lockDir, time.Now())
+	defer func() { _ = releasePush() }()
+
+	err = f.replayOneRepositoryRecords(rec, upstreamSHA)
+	if errors.Is(err, ErrReplayConflict) || errors.Is(err, ErrReplayDirty) {
+		return notSynced
+	}
+	return err
 }
 
 // wrapMergeSyncError shapes an error from the pre-merge sync step for Merge's return.

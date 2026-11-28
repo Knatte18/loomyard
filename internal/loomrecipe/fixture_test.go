@@ -21,7 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -363,7 +363,7 @@ func writeBouncerJudge(spec shuttleengine.Spec, verdict string) (shuttleengine.R
 		return shuttleengine.Result{}, fmt.Errorf("loom shuttle: write bouncer ledger %s: %w", spec.OutputFiles[1], err)
 	}
 
-	// The focus file targets round+1, the path shedadapters.FocusPath(runDir, round+1) names.
+	// The focus file targets round+1, the path shedadapters.focusPath(runDir, round+1) names.
 	// Bouncer.settle never reads it on a CONVERGED verdict,
 	// so this write matters only when the verdict scripts a CONTINUE round.
 	focusContent := fmt.Sprintf("---\nround: %d\nexclude_lenses: []\nfocus: []\n---\n", round+1)
@@ -533,12 +533,12 @@ func buildSequenceFixture(t *testing.T) (anchorPath string, env shedrecipe.Env, 
 		t.Fatalf("Seed(): %v", err)
 	}
 
-	landing := envkit.LandingDeps(t, dir)
+	landing := envkit.LandingDeps(dir)
 	landing.Config.DeployBranches = []string{landing.ParentBranch}
 	// The origin reconcile reports the run's entry stopped, so Merge-In halts before it merges anything.
-	landing.Reconcile = func() (fabriclayout.OriginReport, error) {
-		return fabriclayout.OriginReport{
-			Entries: []fabriclayout.EntryOutcome{{State: fabriclayout.EntryStopped, WayForward: "resolve the fixture's stop"}},
+	landing.Reconcile = func() (fabricengine.OriginReport, error) {
+		return fabricengine.OriginReport{
+			Entries: []fabricengine.EntryOutcome{{State: fabricengine.EntryStopped, WayForward: "resolve the fixture's stop"}},
 		}, nil
 	}
 

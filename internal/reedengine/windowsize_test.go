@@ -1,10 +1,11 @@
-// windowsize_test.go covers windowsize.go's geometry pins.
+// windowsize_test.go covers windowsize.go's geometry pins and the window-resized unpin.
 // Every case is driven through TmuxCmd's execHook seam, with no live server, no external process spawn and no sleep.
 
 package reedengine
 
 import (
 	"errors"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -13,8 +14,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
+// resizedUnpinCount is how many window-resized unpins one pinGeometryOptionsLocked run issues:
+// two wherever set-hook exists, none on Windows.
+func resizedUnpinCount() int {
+	if runtime.GOOS == "windows" {
+		return 0
+	}
+	return 2
+}
+
 // bindKeyArgvCount counts the bind-key calls one pinBindingsLocked run issues.
-// With no session-switch command and no follow jump, that is every binding argv.
+// With no session-switch command and no follow jump, that is every binding argv but the Alt+z unbind.
 func bindKeyArgvCount() int {
 	count := 0
 	for _, argv := range bindingArgvs("", "", false, false, false, false) {
@@ -37,14 +47,22 @@ func wantButtonRowArgv(target, plain, agent, specJSON, dirWord, orchDirWord stri
 	}
 }
 
+// wantResizedUnpins is the window-scoped then the session-scoped unpin of the window-resized hook on target.
+func wantResizedUnpins(target string) [][]string {
+	return [][]string{
+		{"set-hook", "-u", "-w", "-t", target, windowResizedHookName},
+		{"set-hook", "-u", "-t", target, windowResizedHookName},
+	}
+}
+
 // TestPinGeometryOptionsLocked drives pinGeometryOptionsLocked against the fake tmux.
 // It records every set-option argv issued.
 // It asserts the three-line bar's pins plus the window-size pin are all issued with the expected target and value:
 // all three status formats global, status 3 and status-position on the session, and no pane-border pin.
 // It asserts that no call's failure stops the calls after it,
-// and that no window-resized hook is set or unset, whatever the watchdog value.
+// and that the window-resized hook is unpinned in both scopes, whatever the watchdog value, and never installed.
 //
-//testtiming:keep pins the set-option calls issued to pin the geometry: the three global status formats, status 3 and the position on the session, the prime mark on the prime's session alone, window-size and no pane-border pin, no failure stopping the calls after it, and no window-resized hook call on every watchdog value; its covering tests run this code without asserting it
+//testtiming:keep pins the set-option calls issued to pin the geometry: the three global status formats, status 3 and the position on the session, the prime mark on the prime's session alone, window-size and no pane-border pin, no failure stopping the calls after it, and the window-resized unpin in both scopes on every watchdog value; its covering tests run this code without asserting it
 func TestPinGeometryOptionsLocked(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Run("AllOptionsIssued", func(t *testing.T) {
@@ -72,7 +90,6 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 			{"set-option", "-gu", "@lym_slack_toggle_command"},
 			{"set-option", "-gu", "@lym_slack_state_command"},
 			{"set-option", "-gu", "@lym_rc_click_command"},
-			{"set-option", "-gu", "@lym_sync_status_command"},
 			// The test binary carries no VCS stamp, so the bindings' build stamp is unset.
 			{"set-option", "-gu", "@lym_bindings_build"},
 		}
@@ -100,7 +117,6 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 			{"set-option", "-gu", "@lym_slack_toggle_command"},
 			{"set-option", "-gu", "@lym_slack_state_command"},
 			{"set-option", "-gu", "@lym_rc_click_command"},
-			{"set-option", "-gu", "@lym_sync_status_command"},
 			{"set-option", "-gu", "@lym_bindings_build"},
 		}
 		if len(calls) < len(wantTail)+len(wantLast) {
@@ -150,6 +166,9 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 		// The fixture's tmux binary does not exist, so the two session-switch keys stay unbound and the follow jump is unpinned.
 		if want := bindKeyArgvCount(); bindings != want {
 			t.Errorf("pinGeometryOptionsLocked issued %d bind-key calls, want %d", bindings, want)
+		}
+		if got := fake.Count("unbind-key"); got != 1 {
+			t.Errorf("pinGeometryOptionsLocked issued %d unbind-key calls, want 1 for the retired Alt+z", got)
 		}
 		if firstBinding < lastOption {
 			t.Errorf("first bind-key call at %d precedes the last set-option call at %d, want the bindings after the option pins", firstBinding, lastOption)
@@ -256,8 +275,8 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 			wantCalls int
 			wantWarn  string
 		}{
-			{"Pair", false, func(call int, _ []string) bool { return call == 1 }, 16, ""},
-			{"PrimeMark", true, func(_ int, args []string) bool { return slices.Contains(args, primeSessionOption) }, 17, primeSessionOption},
+			{"Pair", false, func(call int, _ []string) bool { return call == 1 }, 15, ""},
+			{"PrimeMark", true, func(_ int, args []string) bool { return slices.Contains(args, primeSessionOption) }, 16, primeSessionOption},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -288,7 +307,7 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 		}
 	})
 
-	t.Run("LeavesWindowResizedAloneOnEveryWatchdogValue", func(t *testing.T) {
+	t.Run("UnpinsWindowResizedInBothScopesOnEveryWatchdogValue", func(t *testing.T) {
 		for _, watchdog := range []string{"on", "off", "bogus"} {
 			e := newTestEngine(t)
 			e.cfg.Watchdog = watchdog
@@ -297,27 +316,33 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 
 			e.pinGeometryOptionsLocked(target, "")
 
-			if got := fake.SetHookCalls(windowResizedHookName); len(got) != 0 {
-				t.Errorf("watchdog %q: set-hook calls naming %s = %v, want none", watchdog, windowResizedHookName, got)
+			var want [][]string
+			if resizedUnpinCount() > 0 {
+				want = wantResizedUnpins(target)
+			}
+			if got := fake.SetHookCalls(windowResizedHookName); !slices.EqualFunc(got, want, slices.Equal[[]string]) {
+				t.Errorf("watchdog %q: set-hook calls naming %s = %v, want exactly the two unpins %v", watchdog, windowResizedHookName, got, want)
 			}
 			assertUnseenClearHookPinned(t, e, fake)
 		}
 	})
 
-	t.Run("FailedHookPinIsNonFatal", func(t *testing.T) {
+	t.Run("FailedUnpinsAreNonFatal", func(t *testing.T) {
 		e := newTestEngine(t)
 		fake := installFakeTmux(t, e)
 		fake.answer("set-hook", "", errors.New("boom"))
 
 		e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()), "")
 
-		if got := fake.Count("set-option"); got != 16 {
-			t.Errorf("set-option calls = %d, want 16 (every pin still attempted)", got)
+		if got := fake.Count("set-option"); got != 15 {
+			t.Errorf("set-option calls = %d, want 15 (every pin still attempted)", got)
 		}
 		if got, want := fake.Count("bind-key"), bindKeyArgvCount(); got != want {
 			t.Errorf("bind-key calls = %d, want all %d still issued", got, want)
 		}
-		if got, want := fake.Count("set-hook"), unseenClearPinCount(); got != want {
+		// The unseen-clear pin and both unpins are attempted while each errors;
+		// the session-scoped unpin follows the failed window-scoped one.
+		if got, want := fake.Count("set-hook"), unseenClearPinCount()+resizedUnpinCount(); got != want {
 			t.Errorf("set-hook calls = %d, want %d", got, want)
 		}
 	})

@@ -391,8 +391,8 @@ recorded it unanswered after chasing its holder.
 --wait-reply marks it too.
 
 With --parent the text goes to your parent orch, so no receiver is given: from a
-pair its recorded parent's, from a beam or the prime its own, even when down.
-A stopped or unstarted one passes it to a live orch above, else the prime's.
+pair the nearest live orch up from its recorded parent, else the prime's; from a
+beam or the prime that worktree's own orch when live.
 
 --interrupt stops the receiver's running turn first; it needs a receiver
 shuttle launched with creel's hooks, and the answer says whether a turn was
@@ -855,7 +855,7 @@ func logEntryFields(entry creelengine.LogEntry) map[string]any {
 		fields["id"] = entry.ID
 	}
 	for key, value := range map[string]string{
-		"from": entry.From, "to": entry.To, "by": entry.By, "receiver": entry.Receiver, "subject": entry.Subject, "reason": entry.Reason, "kind": entry.Kind,
+		"from": entry.From, "to": entry.To, "by": entry.By, "receiver": entry.Receiver, "subject": entry.Subject, "notice": entry.Notice, "reason": entry.Reason, "kind": entry.Kind,
 		"command": string(entry.Command), "argument": entry.Argument,
 	} {
 		if value != "" {

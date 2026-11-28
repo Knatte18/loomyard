@@ -18,7 +18,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fronttask"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
@@ -368,7 +367,7 @@ func fixRemovalError(deps fixDeps, slug string, err error) string {
 }
 
 // hubFixDeps fills fixDeps for the failed end of the check of subject over the hub of prime.
-// The try limit is `beam.adopt_fix_tries` of the config stack of the subject's worktree,
+// The try limit is `adopt_fix_tries` of the config stack of the subject's worktree,
 // and the board's vocabulary is the prime's.
 // FixHold writes the hold of this machine with the subject's tries alone.
 // It leaves Tries and Rerun unset, which its caller sets.
@@ -393,7 +392,7 @@ func hubFixDeps(prime *lymcwd.Location, subject string) (fixDeps, error) {
 	if err != nil {
 		return fixDeps{}, err
 	}
-	boardDir := fabriclayout.BoardDir(prime.HubPath)
+	boardDir := fabricengine.BoardDir(prime.HubPath)
 	project := ""
 	if subject != boardengine.RootSubject {
 		project = subject

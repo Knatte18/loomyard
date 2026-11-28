@@ -15,11 +15,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
-	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -866,9 +864,6 @@ func TestStartup_ChecksAfterStartup(t *testing.T) {
 // A ready start returns the strand, session id and engine with a run record reading running.
 // A spec without Unawaited is refused before any strand is added, and a ResumeSessionID reaches the engine's launch.
 // StopStrand on the started run records it stopped and removes its strand.
-// A spec with EndsWithSession registers a strand that removes itself and that a resume drops.
-// A strand already gone at the startup teardown counts as removed.
-// A spec with NoCarryOver takes no operator instructions over and records no role key.
 func TestRunner_StartSession(t *testing.T) {
 	tiergate.Require(t, 0)
 	newReed := func() *fakeReed {
@@ -927,101 +922,6 @@ func TestRunner_StartSession(t *testing.T) {
 		}
 		if len(engine.PrepareCalls) != 1 || engine.PrepareCalls[0].Spec.ResumeSessionID != spec.ResumeSessionID {
 			t.Errorf("Prepare calls = %+v; want one carrying ResumeSessionID %q", engine.PrepareCalls, spec.ResumeSessionID)
-		}
-	})
-
-	for _, tt := range []struct {
-		name   string
-		resume string
-		// wantResumed is the statement the resume line opens with, empty for a resume line that only exits.
-		wantResumed string
-	}{
-		{"EndsWithSession chains the self-removal and marks the strand done on exit", "resume", "resume"},
-		{"EndsWithSession removes the strand of a resume that revives no session", "exit", ""},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			reed := newReed()
-			engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd", ResumeCmd: tt.resume, SessionID: "session-1"}}
-			readyStart(reed, engine)
-			fx := newFixture(t, reed, engine, withConfig(fastConfig))
-
-			spec := unawaited
-			spec.EndsWithSession = true
-			if _, err := fx.Runner.StartSession(spec); err != nil {
-				t.Fatalf("StartSession() error = %v; want nil", err)
-			}
-
-			if len(reed.AddStrandCalls) != 1 {
-				t.Fatalf("AddStrandCalls = %+v; want one", reed.AddStrandCalls)
-			}
-			add := reed.AddStrandCalls[0]
-			marker := filepath.Join(soleStartupRunDir(t, fastConfig, fx.Anchor), "session.exited")
-			if !reflect.DeepEqual(add.DoneWhen, []string{marker}) {
-				t.Errorf("DoneWhen = %v; want [%s]", add.DoneWhen, marker)
-			}
-			sh := shell.ForGOOS()
-			selfRemove := sh.Invoke("lym") + " reed remove --name " + sh.EnvRef(agentname.StrandNameEnv) + " --detach"
-			if want := sh.Chain("cmd", sh.Touch(marker), selfRemove, "exit"); add.Cmd != want {
-				t.Errorf("Cmd = %q; want %q", add.Cmd, want)
-			}
-			if want := sh.Chain(tt.wantResumed, sh.Touch(marker), selfRemove, "exit"); add.ResumeCmd != want {
-				t.Errorf("ResumeCmd = %q; want %q", add.ResumeCmd, want)
-			}
-		})
-	}
-
-	t.Run("a strand that removed itself before the startup teardown counts as removed", func(t *testing.T) {
-		reed := newReed()
-		reed.RemoveStrandErr = fmt.Errorf("%w %q", reedengine.ErrUnknownStrand, "strand-1")
-		engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd", SessionID: "session-1"}, StartupScript: []StartupState{StartupPending}}
-		readyStart(reed, engine)
-		fx := newFixture(t, reed, engine, withConfig(shortStartupConfig))
-
-		_, err := fx.Runner.StartSession(unawaited)
-
-		if err == nil || !strings.Contains(err.Error(), "the strand was removed") {
-			t.Fatalf("StartSession() error = %v; want one saying the strand was removed", err)
-		}
-		if len(reed.RemoveStrandCalls) != 1 {
-			t.Errorf("RemoveStrandCalls = %+v; want one, with no retry", reed.RemoveStrandCalls)
-		}
-	})
-
-	t.Run("NoCarryOver takes no instructions from an unfinished run of the role", func(t *testing.T) {
-		reed := newReed()
-		engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd", SessionID: "session-1"}}
-		readyStart(reed, engine)
-		fx := newFixture(t, reed, instructionEngine{engine}, withConfig(fastConfig))
-		var notices []string
-		fx.Runner.SetNotifier(func(line string) error {
-			notices = append(notices, line)
-			return nil
-		})
-		seedPredecessor(t, fx, RunState{RunID: "run-old", CreatedAt: "2026-10-28T08:00:00Z", Outcome: runOutcomeRunning, PID: -1, RoleKey: "pr-review"}, predecessorEvents)
-
-		spec := unawaited
-		spec.NoCarryOver = true
-		if _, err := fx.Runner.StartSession(spec); err != nil {
-			t.Fatalf("StartSession() error = %v; want nil", err)
-		}
-
-		if len(engine.PrepareCalls) != 1 || engine.PrepareCalls[0].Spec.Prompt != "x" {
-			t.Errorf("Prepare calls = %+v; want one with the prompt %q alone", engine.PrepareCalls, "x")
-		}
-		if len(notices) != 0 {
-			t.Errorf("notices = %q; want none", notices)
-		}
-		for _, runDir := range runDirsUnder(t, fx.RunRoot) {
-			if filepath.Base(runDir) == "run-old" {
-				continue
-			}
-			rs, found, err := loadRunState(runDir)
-			if err != nil || !found {
-				t.Fatalf("loadRunState: found=%v err=%v", found, err)
-			}
-			if rs.RoleKey != "" || rs.CarriedInstructions != nil {
-				t.Errorf("new record RoleKey, CarriedInstructions = %q, %q; want both empty", rs.RoleKey, rs.CarriedInstructions)
-			}
 		}
 	})
 
@@ -1365,7 +1265,7 @@ func TestStartup_RunGatedMappings(t *testing.T) {
 }
 
 // TestStartup_RunDeadlineShorterThanWindow_NeverReady pins the run-deadline anchoring:
-// a Spec.Timeout far shorter than shuttle.startup_timeout_s still expires the run on its own schedule,
+// a Spec.Timeout far shorter than startup_timeout_s still expires the run on its own schedule,
 // classified OutcomeTimeout rather than OutcomeDied from the longer startup window.
 func TestStartup_RunDeadlineShorterThanWindow_NeverReady(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -2361,27 +2261,19 @@ func TestStartup_SendFailuresTearDown(t *testing.T) {
 		wantDiedRecord bool
 		// wantOneTail asserts the pane's last lines appear once in the error: the cause carries them and the teardown adds none.
 		wantOneTail bool
-		// wantHeldNotice is true when the start prompt stays held busy, so the parent gets one notice naming the strand;
-		// every other row sends no notice.
-		wantHeldNotice bool
-		// wantHeldReason is the literal delimited reason the held-start notice carries, checked when wantHeldNotice is set.
-		wantHeldReason string
-		// interactive sets Spec.Interactive.
-		interactive bool
 	}{
 		{name: "a skill-load send that stays busy", skill: true, reports: skillMissing, idle: false, wantIs: []error{ErrNotStarted, ErrSessionBusy}, wantDiedRecord: true, wantOneTail: true},
 		{name: "a prompt delivery that does not land", idle: true, box: prompt, wantIs: []error{ErrNotStarted, ErrSubmissionNotLanded}, wantDiedRecord: true, wantCaptureHolds: prompt},
 		{name: "a skill load held past the send window by an active operator", skill: true, reports: skillMissing, idle: true, active: []bool{true}, wantIs: []error{ErrNotStarted, ErrSessionBusy}, wantDiedRecord: true},
-		{name: "a prompt delivery held past the send window by an active operator", idle: true, active: []bool{true}, wantIs: []error{ErrNotStarted, ErrSessionBusy}, wantDiedRecord: true, wantHeldNotice: true, wantHeldReason: "because «the operator typed in this pane within the last "},
+		{name: "a prompt delivery held past the send window by an active operator", idle: true, active: []bool{true}, wantIs: []error{ErrNotStarted, ErrSessionBusy}, wantDiedRecord: true},
 		{name: "a prompt delivery that finds a foreign box", idle: true, box: "somebody else's draft", paste: true, wantIs: []error{ErrNotStarted, ErrSessionBusy}, wantDiedRecord: true, wantPastes: 1},
 		{name: "a prompt-offset persist that fails", skill: true, reports: skillMissing, idle: true, breakRecord: true, wantIs: []error{ErrNotStarted}},
 		{name: "an unlanded prompt followed by a turn start landed late", idle: true, box: prompt, startOnWindowClose: true, wantStarted: true},
 		{name: "a prompt held busy for one send window is sent again", busyFor: sendReadyTimeout(fastConfig) + time.Second, wantStarted: true, wantPromptTypings: 1, wantWaits: 2},
-		{name: "a prompt that stays busy is sent again up to the retry cap", wantIs: []error{ErrNotStarted, ErrSessionBusy}, wantDiedRecord: true, wantWaits: startPromptBusyRetries + 1, wantNoSend: true, wantHeldNotice: true, wantHeldReason: "because «the pane is not idle»."},
-		{name: "an interactive run whose prompt stays busy sends no notice", interactive: true, wantIs: []error{ErrNotStarted, ErrSessionBusy}, wantDiedRecord: true, wantWaits: startPromptBusyRetries + 1, wantNoSend: true},
-		{name: "a busy prompt send past the run's deadline is not sent again", timeout: sendReadyTimeout(fastConfig) / 2, wantIs: []error{ErrNotStarted, ErrSessionBusy}, wantDiedRecord: true, wantWaits: 1, wantNoSend: true, wantHeldNotice: true, wantHeldReason: "because «the pane is not idle»."},
+		{name: "a prompt that stays busy is sent again up to the retry cap", wantIs: []error{ErrNotStarted, ErrSessionBusy}, wantDiedRecord: true, wantWaits: startPromptBusyRetries + 1, wantNoSend: true},
+		{name: "a busy prompt send past the run's deadline is not sent again", timeout: sendReadyTimeout(fastConfig) / 2, wantIs: []error{ErrNotStarted, ErrSessionBusy}, wantDiedRecord: true, wantWaits: 1, wantNoSend: true},
 		{name: "a failed prompt delivery saves the styled pane for an engine that reads one", idle: true, box: prompt, styled: "STYLED PANE", wantIs: []error{ErrNotStarted, ErrSubmissionNotLanded}, wantDiedRecord: true, wantCaptureHolds: "STYLED PANE", wantCaptureLacks: prompt},
-		{name: "a failure capture that fails keeps the boot capture", failCaptureAfter: time.Second, wantIs: []error{ErrNotStarted, ErrSessionBusy}, wantDiedRecord: true, wantCaptureHolds: bootScreen, wantHeldNotice: true, wantHeldReason: "because «the pane could not be captured: pane gone"},
+		{name: "a failure capture that fails keeps the boot capture", failCaptureAfter: time.Second, wantIs: []error{ErrNotStarted, ErrSessionBusy}, wantDiedRecord: true, wantCaptureHolds: bootScreen},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -2442,11 +2334,6 @@ func TestStartup_SendFailuresTearDown(t *testing.T) {
 				runEngine = &styledStartSendEngine{engine}
 			}
 			fx := newFixture(t, reed, runEngine, withConfig(fastConfig), withClock(clock))
-			var notices []string
-			fx.Runner.SetNotifier(func(line string) error {
-				notices = append(notices, line)
-				return nil
-			})
 			skills.EventsPath = func() string { return filepath.Join(soleStartupRunDir(t, fastConfig, fx.Anchor), eventsFileName) }
 			if tt.startOnWindowClose {
 				start := clock.Now()
@@ -2467,7 +2354,7 @@ func TestStartup_SendFailuresTearDown(t *testing.T) {
 					}
 				}
 			}
-			spec := Spec{Prompt: "x", OutputFiles: []string{filepath.Join(t.TempDir(), "out.md")}, Timeout: tt.timeout, Interactive: tt.interactive}
+			spec := Spec{Prompt: "x", OutputFiles: []string{filepath.Join(t.TempDir(), "out.md")}, Timeout: tt.timeout}
 			if tt.skill {
 				spec.Skills = []string{"a"}
 			}
@@ -2476,22 +2363,6 @@ func TestStartup_SendFailuresTearDown(t *testing.T) {
 
 			if tt.wantWaits > 0 && waits != tt.wantWaits {
 				t.Errorf("idle waits = %d; want %d", waits, tt.wantWaits)
-			}
-			heldNotices := 0
-			for _, notice := range notices {
-				if strings.Contains(notice, "Agent strand-1 never took its start prompt") {
-					heldNotices++
-				}
-			}
-			wantNotices := 0
-			if tt.wantHeldNotice {
-				wantNotices = 1
-			}
-			if heldNotices != wantNotices || len(notices) != wantNotices {
-				t.Errorf("notices = %q; want %d naming strand-1's held start prompt", notices, wantNotices)
-			}
-			if tt.wantHeldNotice && len(notices) == 1 && !strings.Contains(notices[0], tt.wantHeldReason) {
-				t.Errorf("notice = %q; want it to hold %q", notices[0], tt.wantHeldReason)
 			}
 			if tt.wantStarted {
 				if err != nil || run == nil {

@@ -12,7 +12,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
@@ -41,8 +40,8 @@ up is substrate-only: it never launches or relaunches a strand command.
 Bringing strand content back after a server restart is "lym reed resume"'s
 job, not up's.
 
-Setting ` + reedKeyName("debug_log") + ` (or LYM_REED_DEBUG=1) enables server verbose
-logging to <hub>/` + fabriclayout.BoltDirName + `/.lym/logs/, as forensics for unexplained server deaths; it
+Setting debug_log in reed.yaml (or LYM_REED_DEBUG=1) enables server verbose
+logging to <hub>/` + fabricengine.BoltDirName + `/.lym/logs/, as forensics for unexplained server deaths; it
 applies only when this up actually boots the shared per-hub server, and
 an existing reed.yaml lacking the key takes the default until "lym config reconcile" writes it.
 

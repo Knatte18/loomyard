@@ -15,7 +15,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/creelcli"
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -98,18 +97,18 @@ func HubDeps(location *lymcwd.Location, strand string) (tenderengine.Deps, []str
 		executable = ""
 	}
 
-	locks := &parentlock.Store{Dir: parentlock.Dir(fabriclayout.BoltDir(location.HubPath))}
+	locks := &parentlock.Store{Dir: parentlock.Dir(fabricengine.BoltDir(location.HubPath))}
 	deps := tenderengine.Deps{
 		RecordPath: geometry.RecordPath,
 		Pairs:      pairs,
 		Prime:      primePair,
 		Processes:  proc.ListProcesses,
 		RunProcs: func() (map[string][]runproc.Record, error) {
-			return runproc.Owners(fabriclayout.RunProcDir(location.HubPath))
+			return runproc.Owners(fabricengine.RunProcDir(location.HubPath))
 		},
 		Worktrees: func() ([]string, error) { return worktreePaths, nil },
 		EndOwner: func(owner string) ([]runproc.Ended, error) {
-			return runproc.End(fabriclayout.RunProcDir(location.HubPath), owner, os.Getpid())
+			return runproc.End(fabricengine.RunProcDir(location.HubPath), owner, os.Getpid())
 		},
 		EndProcess: func(pid int, startTime string) ([]runproc.Ended, error) {
 			return runproc.EndProcess(pid, startTime, "")
@@ -128,7 +127,7 @@ func HubDeps(location *lymcwd.Location, strand string) (tenderengine.Deps, []str
 			if err != nil {
 				return nil, err
 			}
-			owners, err := boardengine.ReadOwners(fabriclayout.BoardDir(location.HubPath))
+			owners, err := boardengine.ReadOwners(fabricengine.BoardDir(location.HubPath))
 			if err != nil {
 				return nil, err
 			}
@@ -140,7 +139,7 @@ func HubDeps(location *lymcwd.Location, strand string) (tenderengine.Deps, []str
 		PushPair: func(slug string) error {
 			return fabricengine.SpawnPairPush(pairLocations[slug])
 		},
-		PushOwed: func(slug string) (bool, error) { return fabricengine.RunCommitsAhead(pairLocations[slug]) },
+		PushDeferred: func(slug string) bool { return fabricengine.PairPushDeferred(pairLocations[slug]) },
 		PushPrimeRecords: func() error {
 			if prime == nil {
 				return nil
@@ -149,7 +148,7 @@ func HubDeps(location *lymcwd.Location, strand string) (tenderengine.Deps, []str
 			return err
 		},
 		SyncBoardIfOwed: func() error {
-			boltDir := fabriclayout.BoltDir(location.HubPath)
+			boltDir := fabricengine.BoltDir(location.HubPath)
 			bolt := fabricengine.NewBolt(boltDir)
 			return syncBoardIfOwed(bolt.HasUnpushed, bolt.HasUncommitted, func() error { return boardengine.SpawnSync(boltDir) })
 		},

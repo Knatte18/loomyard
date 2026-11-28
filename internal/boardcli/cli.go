@@ -6,9 +6,8 @@
 // The intake group (list, import, close) comes from intakeCommand in intake.go, over the hub repository the hubRepo closure opens from the resolved location.
 // list and find take --text to print the compact listing from text.go instead of JSON.
 // Configuration resolution happens once in a PersistentPreRunE.
-// The config file (board.readme, board.design_prefix) is loaded from the Bolt checkout's _lym/config/board.yaml.
-// It is loaded whatever worktree the verb runs in,
-// and the board data dir is resolved as fabriclayout.BoardDir(layout.HubPath) via lymcwd.Resolve.
+// The config file (readme, design_prefix) is loaded from the Bolt checkout's _lym/config/board.yaml, whatever worktree the verb runs in,
+// and the board data dir is resolved as fabricengine.BoardDir(layout.HubPath) via lymcwd.Resolve.
 // The hidden --board-path persistent flag overrides the data dir for the detached sync child
 // process launched by internal/boardengine/spawn.go, bypassing both config and path resolution.
 
@@ -24,13 +23,11 @@ import (
 	"slices"
 	"strings"
 	"time"
-	"unicode"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/hubissues"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -105,11 +102,11 @@ one type label, a note exactly one, and every label must be configured in board.
 carries a handle the board assigns, T and a number for a task, P and a number for a project, a
 note's type letter and a number for a note, such as T4 or B2. The README renders tasks split into dependency layers and notes grouped by
 type, each table sorted by handle. Agents read and write the
-board through "lym board", never through the JSON files under ` + fabriclayout.BoltDirName + `.
+board through "lym board", never through the JSON files under ` + fabricengine.BoltDirName + `.
 
-The config file is the hub's <hub>/` + fabriclayout.BoltDirName + `/_lym/config/board.yaml, read whatever worktree the verb runs in.
-It controls non-geometry settings: the ` + boardKeyName("readme") + `
-and ` + boardKeyName("design_prefix") + ` filenames and the ` + boardKeyName("types") + ` and ` + boardKeyName("labels") + ` lists. The board data dir (<hub>/` + fabriclayout.BoltDirName + `) is
+The config file is the hub's <hub>/` + fabricengine.BoltDirName + `/_lym/config/board.yaml, read whatever worktree the verb runs in.
+It controls non-geometry settings: readme
+and design_prefix filenames and the types and labels lists. The board data dir (<hub>/` + fabricengine.BoltDirName + `) is
 derived from the worktree layout via lymcwd and is not config- or
 env-overridable. The hidden --board-path flag overrides the data dir for the
 detached sync child process. Running "lym board" with no subcommand lists
@@ -153,7 +150,7 @@ available subcommands without requiring a git repo.
 				return nil
 			}
 			location = layout
-			boardDir := fabriclayout.BoardDir(layout.HubPath)
+			boardDir := fabricengine.BoardDir(layout.HubPath)
 
 			cfg, err = boardengine.LoadConfig(fabricengine.ConfigDirs(layout), "board")
 			if err != nil {
@@ -188,8 +185,7 @@ available subcommands without requiring a git repo.
 		Long: `Turn a note into a task. A task is returned unchanged, and nothing is written.
 The promoted entry loses its priority, which only a note carries, and its note handle: it takes
 the lowest free T handle.
---recipe <name> sets the task's recipe in the same write.
-The task keeps the note's own depends_on, and a "depends_on" in the payload replaces it.
+--recipe <name> sets the task's recipe in the same write, and "depends_on" sets its dependencies.
 A Sketch, or any discussed note whose decision record is stored, becomes a task only with recipe
 raddle, which keeps its record and releases the task so its raddle run starts: a promote with no
 --recipe gives it raddle, --recipe raddle is accepted, and any other recipe is refused.
@@ -206,7 +202,7 @@ Fields:
   "slug"       string  — entry slug (one of slug, id or handle)
   "id"         integer — entry id (one of slug, id or handle)
   "handle"     string  — entry handle, such as B4 (one of slug, id or handle)
-  "depends_on" array   — dependency slugs the promoted task waits on, replacing the note's own (optional)
+  "depends_on" array   — dependency slugs the promoted task waits on (optional)
 
 Examples:
   lym board promote '{"slug":"my-note"}'
@@ -302,7 +298,9 @@ Example:
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Without --apply, prune is a read-only dry run: it prints the slugs it would remove and changes nothing.
 With --apply it removes every task whose status is done, strips the removed slugs from the remaining
-tasks' depends_on, and prints the removed slugs. Takes no payload. The output carries "applied": true or false.
+tasks' depends_on, and prints the removed slugs. A done entry still carrying notify_on_land is kept
+until its dobby has sent the landing line and cleared the field. Takes no payload. The output carries
+"applied": true or false.
 
 Example:
   lym board prune
@@ -319,7 +317,7 @@ Example:
 			return output.Ok(out, map[string]any{"removed": removed, "applied": pruneApply})
 		}),
 	}
-	pruneCmd.Flags().BoolVar(&pruneApply, "apply", false, "remove the done tasks (default is dry-run/report)")
+	pruneCmd.Flags().BoolVar(&pruneApply, "apply", false, "remove the done tasks, keeping one still carrying notify_on_land (default is dry-run/report)")
 
 	var findText bool
 	var findLabels []string
@@ -332,7 +330,7 @@ The arguments are joined with single spaces into one search text. At least one a
 Prints the same tasks array as "lym board list", in an envelope without prime_owner; with --text it prints the compact one-line-per-task
 listing instead (errors stay JSON); its columns are handle, kind, priority, age, time since last revision, slug, title, labels and, when set, [status].
 --label <name> keeps only entries carrying that label; repeat it to require several (AND).
-A label that is in neither ` + boardKeyName("types") + ` nor ` + boardKeyName("labels") + ` and that no entry carries is refused.
+A label that is in neither the types nor the labels list of board.yaml and that no entry carries is refused.
 
 Examples:
   lym board find retry backoff
@@ -378,9 +376,34 @@ Example:
 		}),
 	}
 
+	var retireLegacyApply bool
+	retireLegacyCmd := &cobra.Command{
+		Use:         "retire-legacy",
+		Short:       "delete the legacy tasks.json and notes.json files once no pre-upgrade lym reads them",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
+		Long: `Without --apply, retire-legacy is a read-only dry run: it prints the legacy files it would delete
+under legacy_files and changes nothing.
+With --apply it ends the compatibility window with a pre-upgrade lym: it folds any last done marks
+from the legacy files into board.json, then deletes tasks.json and notes.json. Errors when neither
+file exists. Takes no payload. The output carries "applied": true or false.
+
+Example:
+  lym board retire-legacy
+  lym board retire-legacy --apply`,
+		Args: cobra.NoArgs,
+		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
+			legacyFiles, err := b.RetireLegacy(retireLegacyApply)
+			if err != nil {
+				return outputError(out, err.Error())
+			}
+			return output.Ok(out, map[string]any{"legacy_files": legacyFiles, "applied": retireLegacyApply})
+		}),
+	}
+	retireLegacyCmd.Flags().BoolVar(&retireLegacyApply, "apply", false, "delete the legacy files (default is dry-run/report)")
+
 	rerenderCmd := &cobra.Command{
 		Use:         "rerender",
-		Short:       "rebuild the board's rendered files from board.json",
+		Short:       "rebuild the README and design docs from board.json",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceInternal},
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if err := b.Rerender(); err != nil {
@@ -447,7 +470,7 @@ defaults maps a recipe to the profile a task of that recipe takes when it names 
 Edit the profiles with "lym config profiles".
 
 Output:
-  {"ok":true,"defaults":{"tapestry":"light"},"profiles":[{"name":"light","settings":{"tapestry":{"tapestry":{"plan":{"max_bounces":1}}}}}]}
+  {"ok":true,"defaults":{"tapestry":"light"},"profiles":[{"name":"light","settings":{"tapestry":{"tapestry":{"plan_max_bounces":1}}}}]}
 
 Example:
   lym board profiles`,
@@ -474,11 +497,10 @@ Example:
 		renameCmd,
 		pruneCmd,
 		findCmd,
+		retireLegacyCmd,
 		rerenderCmd,
 		syncCmd,
 		intakeCommand(board, hubRepo),
-		serveCommand(func() boardengine.Config { return config }, func() *lymcwd.Location { return location }),
-		openCommand(func() *lymcwd.Location { return location }),
 	)
 
 	return cmd
@@ -561,7 +583,7 @@ func storeVerbs(board func() *boardengine.Board, profiles func() (runprofile.Pro
 	// upsert subcommand: create or update a single task.
 	var bodyFile, recordFile string
 	upsertCmd := &cobra.Command{
-		Use:         "upsert {slug, title?, brief?, body?, depends_on?, isolated?, status?, kind?, labels?, recipe?, priority?, short_name?, issues?, created?, revised?, run_settings?, profile?, owner_machine?, project?, order?, beam?, front?, on_land?, discussed?}",
+		Use:         "upsert {slug, title?, brief?, body?, depends_on?, isolated?, status?, kind?, labels?, recipe?, priority?, short_name?, issues?, created?, revised?, run_settings?, profile?, pull_request?, notify_on_land?, owner_machine?, project?, order?, beam?, front?, on_land?, discussed?}",
 		Short:       "create or update a single task",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Create or update a task identified by its slug.
@@ -574,20 +596,21 @@ Optional fields:
   "title"      string — display title
   "brief"      string — one-line summary
   "body"       string — markdown body
-  "depends_on" array  — slugs this task or note waits on
+  "depends_on" array  — slugs this task depends on
   "isolated"   bool   — no dependencies by design
   "status"     string — lifecycle status
   "kind"       string — "task", "note" or "project", default "note"
   "labels"     array  — replaces the list; a task needs a type label, a note exactly one
-  "recipe"    string — "darn", "tapestry", "hardener" or "motif", or ` + boardKeyName("default_recipe") + `
+  "recipe"    string — "darn", "tapestry", "arras" or "motif", or default_recipe
   "priority"   string — a note's "high", "normal" or "low"; "normal" clears it
   "short_name" string — display label; falls back to the slug
   "issues"     array  — hub issue numbers
   "created"    string — RFC 3339 creation
   "revised"    string — RFC 3339 scope change
-  "run_settings" object — module name to config keys; {} clears it;
-                  beam.pull_request, beam.land_notice, beam.autonomy and beam.run_watch are per task
+  "run_settings" object — module name to config keys; {} clears it
   "profile"    string — a "lym board profiles" name; "" clears it
+  "pull_request" string — "on", "off" or "merge-in" (a true merge, no PR) overrides beam.yaml; "" clears it
+  "notify_on_land" bool — tell the orch when the run lands, at once if it has
   "owner_machine" string — the effective owner only; "lym adopt" moves it
   "project"    string — slug of the open project holding the entry; "" leaves none
   "order"      array  — a project's member slugs, in order
@@ -595,7 +618,7 @@ Optional fields:
   "front", "on_land", "discussed" — marks only lym writes: a front task, its land action, an approved Discussion
 
 Flag:
-  --body-file <path>  read "body" from the file, or "-" for stdin; not with "body"; not for a file with an error envelope line.
+  --body-file <path>  read "body" from the file, or "-" for stdin; not with "body".
 
 Example:
   lym board upsert '{"slug":"my-task","title":"My Task","brief":"Short summary","kind":"task","labels":["enhancement"]}'` + slugLimitNote(),
@@ -627,6 +650,9 @@ Example:
 						return outputError(out, err.Error())
 					}
 				}
+				if err := refuseNoticeOnAbsentEntry(board(), fields); err != nil {
+					return outputError(out, err.Error())
+				}
 				notice, err := prepareRunSettings(board(), fields, strandNameFromEnv(), profiles)
 				if err != nil {
 					return outputError(out, err.Error())
@@ -641,7 +667,7 @@ Example:
 					return outputError(out, err.Error())
 				}
 				envelope := map[string]any{"task": result.Task}
-				if notices := joinNotices(notice, siblingNotice(result.Siblings)); notices != "" {
+				if notices := joinNotices(notice, siblingNotice(result.Siblings), landedNotice(result.Task, fields)); notices != "" {
 					envelope["notice"] = notices
 				}
 				if result.RecordWarning != "" {
@@ -736,7 +762,7 @@ Fields:
   "slug"   string      — task slug (one of slug, id or handle)
   "id"     integer     — numeric task ID (one of slug, id or handle)
   "handle" string      — task handle, such as T4 (one of slug, id or handle)
-  "status" string|null — new status value; null releases a draft task
+  "status" string|null — new status value; null releases a draft task, or a task an older binary left discussed
 
 Examples:
   lym board set-status '{"slug":"my-task","status":"active"}'
@@ -826,7 +852,6 @@ Fields:
 Examples:
   lym board get '{"id":96}'
   lym board get B4
-  lym board get my-task
   lym board get '{"slug":"my-task"}' --body
   lym board get '{"slug":"my-task"}' --record` + slugLimitNote(),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -903,14 +928,13 @@ Examples:
 beside "prime_owner", the machine that owns the hub's prime ("" when none is recorded).
 A task's "owner_machine" is its effective owner, its beam's or root's; only a beam project records one.
 With --text, print a "prime owner: <machine>" line ("none" when none is recorded),
-then the compact one-line-per-task listing (handle, kind, priority, age, time since last revision, slug, title, labels,
-"after <slugs>" naming the dependencies not yet met, [status]) instead of JSON; errors stay JSON.
-An entry's "pending" lists its dependencies not yet met, a note's included.
+then the compact one-line-per-task listing (handle, kind, priority, age, time since last revision, slug, title, labels, [status])
+instead of JSON; errors stay JSON.
 Without --label, the --text listing shows the root project, the prime, as a P0 row with slug root
 before the first project, note or done entry, and last under --sort; the JSON "tasks" array holds no root row.
 An entry's "parent_beam" is the slug of the beam above it, "root" when the prime is its parent.
 --label <name> keeps only entries carrying that label; repeat it to require several (AND).
-A label that is in neither ` + boardKeyName("types") + ` nor ` + boardKeyName("labels") + ` and that no entry carries is refused.
+A label that is in neither the types nor the labels list of board.yaml and that no entry carries is refused.
 --sort age lists the oldest entries first, --sort revised the longest unrevised first;
 an entry without the date goes last, and entries that tie keep README order.
 
@@ -984,15 +1008,14 @@ Fields:
     "slug"   string      — task slug (one of slug, id or handle)
     "id"     integer     — numeric task ID (one of slug, id or handle)
     "handle" string      — task handle, such as T4 (one of slug, id or handle)
-    "status" string|null — new status; null releases a draft task
+    "status" string|null — new status; null releases a draft task, or a task an older binary left discussed
 
 A task the merge creates is "draft", and a "set_status" of null releases it.
 
 Flag:
   --body-file <path>  read the upsert's "body" from the file, or from stdin when the path is "-"; every other field still comes from the payload.
                       Refused when the payload's "upsert" also carries "body" (drop one of them),
-                      and when the payload argument is itself "-" (stdin can feed only one of them),
-                      and when the file holds a CLI error envelope line outside a fenced code block (a failed verb's captured output).
+                      and when the payload argument is itself "-" (stdin can feed only one of them).
 
 Example:
   lym board merge '{"remove_slugs":["old"],"upsert":{"slug":"new","title":"New"},"set_status":{"slug":"new","status":"active"}}'` + slugLimitNote(),
@@ -1087,15 +1110,14 @@ Example:
 	}
 	mergeCmd.Flags().StringVar(&mergeBodyFile, "body-file", "", `read the upsert's "body" from this file, or from stdin when "-"`)
 
-	// set-deps subcommand: replace the depends_on list for a task or a note.
+	// set-deps subcommand: replace the depends_on list for a task.
 	// depends_on is required: an absent key is an error, while an explicit [] clears the list.
 	// That separates an intentional clear from a typo that would otherwise silently wipe the list.
 	setDepsCmd := &cobra.Command{
 		Use:         "set-deps {slug|id|handle, depends_on}",
-		Short:       "replace a task's or note's depends_on list",
+		Short:       "replace a task's depends_on list",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: `Replace the full depends_on list for a task or a note wholesale.
-A note's depends_on names what it waits for on the board; promote keeps it.
+		Long: `Replace the full depends_on list for a task wholesale.
 An absent "depends_on" is an error; an explicit [] clears the list.
 The "notice" names siblings sharing a new depends_on and a label.
 
@@ -1193,13 +1215,10 @@ func writeListing(out io.Writer, tasks []boardengine.BriefTask, text bool) int {
 // keys declares the slug|id|handle group and any further keys;
 // each of its required keys must be present, and a null value counts as present.
 // A raw payload that is a bare handle, such as B4, reads as {"handle":"B4"}.
-// Any other bare slug, such as my-task, reads as {"slug":"my-task"}.
 func resolveLookup(raw []byte, keys payloadKeys) (any, map[string]any, error) {
 	var m map[string]any
 	if _, _, ok := boardengine.ParseHandle(string(raw)); ok {
 		m = map[string]any{"handle": string(raw)}
-	} else if isBareSlug(string(raw)) {
-		m = map[string]any{"slug": string(raw)}
 	} else if err := json.Unmarshal(raw, &m); err != nil {
 		return nil, nil, fmt.Errorf("invalid json: %v", err)
 	}
@@ -1216,21 +1235,6 @@ func resolveLookup(raw []byte, keys payloadKeys) (any, map[string]any, error) {
 		}
 	}
 	return selector, m, nil
-}
-
-// isBareSlug reports whether raw has the shape of a slug standing alone:
-// a letter first, then only letters, digits, hyphens, underscores and dots.
-// No JSON object has that shape, so the reading never shadows a payload.
-func isBareSlug(raw string) bool {
-	for i, r := range raw {
-		if unicode.IsLetter(r) {
-			continue
-		}
-		if i == 0 || !(unicode.IsDigit(r) || r == '-' || r == '_' || r == '.') {
-			return false
-		}
-	}
-	return raw != ""
 }
 
 // lookupSelector returns the selector that m addresses.
@@ -1310,6 +1314,31 @@ func siblingNotice(siblings []boardengine.Sibling) string {
 			sibling.Task, strings.Join(sibling.Deps, ", "), sibling.Sibling, strings.Join(sibling.Labels, ", "))
 	}
 	return strings.Join(lines, "\n")
+}
+
+// refuseNoticeOnAbsentEntry refuses a payload that only asks for a landing notice on a slug the board does not hold.
+// Such a payload has two fields, slug and notify_on_land set to true.
+// Land prunes an entry once its run lands, so such an upsert would file a new entry for a run that already landed.
+func refuseNoticeOnAbsentEntry(board *boardengine.Board, fields map[string]any) error {
+	slug, _ := fields["slug"].(string)
+	if fields["notify_on_land"] != true || len(fields) != 2 || slug == "" {
+		return nil
+	}
+	_, found, err := board.GetTask(slug)
+	if err != nil || found {
+		return err
+	}
+	return fmt.Errorf("no entry %q is on the board, and Land prunes an entry once its run lands, so a run of that slug already landed or the slug is wrong: lym batten status %s shows the run; nothing was written", slug, slug)
+}
+
+// landedNotice returns the notice for an upsert whose payload sets notify_on_land on a done entry.
+// Such an entry's run already landed, so its parent's dobby handles the request at its next tick.
+// Any other write gets an empty notice.
+func landedNotice(task boardengine.Task, fields map[string]any) string {
+	if fields["notify_on_land"] != true || !task.NotifyOnLand || !boardengine.IsDoneStatus(task.Status) {
+		return ""
+	}
+	return fmt.Sprintf("%q is done, so its run already landed: its parent's dobby sends the landing line at its next tick, or only clears notify_on_land when land_notice is off", task.Slug)
 }
 
 // joinNotices joins its non-empty notices with newlines.

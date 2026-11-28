@@ -12,7 +12,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
@@ -44,7 +43,7 @@ func newChangedPair(t *testing.T) (warpPath, warpBare, weftPath, weftBare string
 // It takes the lock by one try and releases it at once.
 func pushLockFree(t *testing.T, weftPath string) bool {
 	t.Helper()
-	path := filepath.Join(fabriclayout.RecordsLockDirPath(weftPath), weftPushLockFile)
+	path := filepath.Join(RecordsLockDirPath(weftPath), weftPushLockFile)
 	held, acquired, err := lock.TryAcquireWriteLock(path)
 	if err != nil {
 		t.Errorf("TryAcquireWriteLock(%s) error = %v", path, err)
@@ -84,14 +83,14 @@ func TestCoalescePushRequest_CoveredCallDefers(t *testing.T) {
 		finished := make(chan struct{})
 		go func() {
 			defer close(finished)
-			CoalescePushRequest(fabriclayout.PushSpawn{WarpPath: warpPath, WeftPath: weftPath}, SyncOptions{}, fabriclayout.MachineNames{}) //nolint:errcheck
+			CoalescePushRequest(PushSpawn{WarpPath: warpPath, WeftPath: weftPath}, SyncOptions{}, MachineNames{}) //nolint:errcheck
 		}()
 		<-finished
 
 		if exits != 1 || !lockFreeAtExit {
 			t.Errorf("deferral exits = %d with the push lock free %v; want 1, at the gate before the lock is taken", exits, lockFreeAtExit)
 		}
-		lockDir := fabriclayout.RecordsLockDirPath(weftPath)
+		lockDir := RecordsLockDirPath(weftPath)
 		for _, side := range []string{pushSideCode, pushSideRecords} {
 			if _, err := os.Stat(pendingFlagPath(lockDir, side)); err != nil {
 				t.Errorf("pending flag of %s: %v; want it back on disk", side, err)
@@ -121,7 +120,7 @@ func TestCoalescePushRequest_CoveredCallDefers(t *testing.T) {
 		defer func() { _ = holder.Release() }()
 		cover, waits := PauseGateForTest(t, nil)
 
-		if _, err := CoalescePushRequest(fabriclayout.PushSpawn{WarpPath: warpPath, WeftPath: weftPath}, SyncOptions{}, fabriclayout.MachineNames{}); err != nil {
+		if _, err := CoalescePushRequest(PushSpawn{WarpPath: warpPath, WeftPath: weftPath}, SyncOptions{}, MachineNames{}); err != nil {
 			t.Fatalf("CoalescePushRequest() with the push lock held error = %v; want nil", err)
 		}
 		cover()
@@ -143,7 +142,7 @@ func TestCoalescePushRequest_CoveredCallDefers(t *testing.T) {
 			}
 		}
 
-		if _, err := CoalescePushRequest(fabriclayout.PushSpawn{WarpPath: warpPath, WeftPath: weftPath}, SyncOptions{}, fabriclayout.MachineNames{}); err != nil {
+		if _, err := CoalescePushRequest(PushSpawn{WarpPath: warpPath, WeftPath: weftPath}, SyncOptions{}, MachineNames{}); err != nil {
 			t.Fatalf("CoalescePushRequest() error = %v; want nil", err)
 		}
 

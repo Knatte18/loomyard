@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -75,7 +74,7 @@ func TestCoalescePushBothAt_AdvancesBothSidesAndLeavesNoWarpRootLock(t *testing.
 	if got := fabricengine.BareBranchSHAForTest(t, warpBare, "main"); got != warpSHA {
 		t.Errorf("warp bare main = %q; want it advanced to local HEAD %q", got, warpSHA)
 	}
-	if got := fabricengine.BareBranchSHAForTest(t, weftFixture.RecordsBare, fabriclayout.RecordsBranchName("main")); got != weftSHA {
+	if got := fabricengine.BareBranchSHAForTest(t, weftFixture.RecordsBare, fabricengine.RecordsBranchName("main")); got != weftSHA {
 		t.Errorf("weft bare main = %q; want it advanced to local HEAD %q", got, weftSHA)
 	}
 
@@ -129,7 +128,7 @@ func TestCoalescePushBothAt_DivergedWarpRemote_ReturnsNilWithoutSpinning(t *test
 		t.Fatalf("fabricengine.CoalescePushBothAt() error = %v; want nil (a rejected push is not a genuine failure)", callErr)
 	}
 	records, err := fabricengine.ListFailedPushes(weftFixture.Location.HubPath)
-	if err != nil || len(records) != 1 || records[0].Repo != "code" || records[0].Branch != "main" || records[0].Class != fabriclayout.PushFailureNotFastForward {
+	if err != nil || len(records) != 1 || records[0].Repo != "code" || records[0].Branch != "main" || records[0].Class != fabricengine.PushFailureNotFastForward {
 		t.Errorf("ListFailedPushes() = %+v, %v; want the one not-fast-forward code record of branch main", records, err)
 	}
 

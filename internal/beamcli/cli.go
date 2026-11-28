@@ -19,7 +19,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -58,8 +57,7 @@ func prCmd() *cobra.Command {
 		Use:   "pr",
 		Short: "open, update, check and close the pull request from a beam's branch into its parent",
 		Long: `The pull request verbs of a beam. The beam's orch runs them when the operator
-says so, so it never runs gh by hand; under autonomy, the steps of role-autonomy.md
-beside the orch's role are the exception. They act only on the pull request from the
+says so, so it never runs gh by hand. They act only on the pull request from the
 beam's own branch into its parent, read a GitHub token only through lym's own
 client, and never merge a pull request: Finalize merges it on GitHub when the beam
 lands. All but "status", which changes nothing, refuse once "lym beam ready" has
@@ -224,8 +222,7 @@ func describeCmdOver(run func(cmd *cobra.Command, slug string, draft bool) (*map
 		Short:       "record the change description the orch wrote for a beam, which its pull request carries",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Records the change description of the beam <slug>: summary.md in the beam
-worktree's _lym/landing directory, which the beam's orch writes. Under autonomy the
-orch runs it as role-autonomy.md says. A heading line is
+worktree's _lym/landing directory, which the beam's orch writes. A heading line is
 the pull request's title and the text under it its body. The verb validates the
 file, stamps the landing record and commits the two together. When a pull request
 is recorded it then runs "lym beam pr update <slug>", so the pull request carries
@@ -279,10 +276,9 @@ func mergeParentCmd() *cobra.Command {
 parent branch into the beam: its writer runs "lym fabric merge-in <parent branch>"
 in the task's own worktree, settles the conflicts and the gate failures, and its
 Code-Review perch, turned on through the task's run_settings, reviews the merge
-alone. The task's run_settings set ` + pullRequestName() + ` to merge-in, so its landing
-brings the merge into the beam as a true merge, with no pull request, whatever
-the beam's own ` + pullRequestName() + `, so the beam keeps the parent's commit as an
-ancestor; the beam's own pull request reviews the merge again. The
+alone. The task's landing brings the merge into the beam as a true merge, with no
+pull request, whatever the beam's pull_request mode, so the beam keeps the parent's
+commit as an ancestor; the beam's own pull request reviews the merge again. The
 beam's dobby starts it as any member, at any time. The orch runs it before
 "lym beam ready", which refuses while the parent holds commits the beam lacks;
 Finalize merges the parent in again at landing.
@@ -337,11 +333,10 @@ func statusCmd() *cobra.Command {
 		Short:       "show the dobby and the orch of the prime and of every local beam",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Prints, once, what a beam's window draws for a dobby, for the hub's prime and
-for every local beam: whether the dobby is alive with its ` + maxRunsName() + `, each run it
-drives with its state, stage, time in the stage, last pass and whether it owes a
-landing notice, and each released task it has not
+for every local beam: whether the dobby is alive with its max_runs and
+land_notice, each run it drives with its state, stage, time in the stage and last pass, and each released task it has not
 started with what the task waits on -- open dependencies, another machine's
-ownership, a pause, a start batten refuses, a refused start and its retry, or ` + maxRunsName() + `.
+ownership, a pause, a start batten refuses, a refused start and its retry, or max_runs.
 A ready task shows its last refused start when one is recorded. Each entry
 carries the structured view and its rendered lines, and the beam's orch: whether its
 strand is live, whether its watcher is live and the session id it recorded.
@@ -420,7 +415,7 @@ func dobbyStatus(prime *lymcwd.Location, now time.Time) (statusResult, error) {
 		failures = append(failures, fmt.Errorf("adopt checks: %w", err))
 	}
 	result.AdoptChecks = checks
-	owners, err := boardengine.ReadOwners(fabriclayout.BoardDir(prime.HubPath))
+	owners, err := boardengine.ReadOwners(fabricengine.BoardDir(prime.HubPath))
 	if err != nil {
 		failures = append(failures, fmt.Errorf("adopt hold: %w", err))
 	} else if len(owners.Holds) > 0 {
@@ -464,10 +459,10 @@ type startEntry struct {
 	AbandonedSession string                     `json:"abandoned_session,omitempty"`
 	Warnings         []string                   `json:"warnings,omitempty"`
 	Error            string                     `json:"error,omitempty"`
-	Reconcile        *fabriclayout.OriginReport `json:"reconcile,omitempty"`
+	Reconcile        *fabricengine.OriginReport `json:"reconcile,omitempty"`
 	FailedPushes     []map[string]any           `json:"failed_pushes,omitempty"`
 	OwnerPauses      []map[string]string        `json:"owner_pauses,omitempty"`
-	Mutations        []fabriclayout.Mutation    `json:"mutations,omitempty"`
+	Mutations        []fabricengine.Mutation    `json:"mutations,omitempty"`
 }
 
 // startCmd returns the `beam start` verb.
@@ -713,15 +708,7 @@ machine owns the beam. It is launched by "lym beam start", never by hand.`,
 // The registration waits for the lock,
 // so a dobby that finds another one holding it ends the call with nothing registered.
 func runDobby(ctx context.Context, out io.Writer, root string) int {
-	return runDobbyWith(ctx, out, root, wireDobby, orchcli.NotifyFromScoped, reapInheritedChildren)
-}
-
-// wireDobby builds the dependencies of the dobby whose geometry is geom over the hub of prime.
-// The hub's config is reconciled before the dependencies are built,
-// so a dobby re-executed on a new binary reconciles before it reads a setting.
-func wireDobby(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengine.Deps, error) {
-	hubgeom.ReconcileBeforeLoad(prime)
-	return hubDobbyDeps(prime, geom)
+	return runDobbyWith(ctx, out, root, hubDobbyDeps, orchcli.NotifyFromScoped, reapInheritedChildren)
 }
 
 // reapInheritedChildren waits on the batten passes a dobby re-exec'd onto a new binary keeps from its old image.
@@ -768,7 +755,7 @@ func runDobbyWith(
 		return output.Err(out, fmt.Sprintf("lym beam dobby: wire the dobby over the hub: %v", err))
 	}
 	deps.Locked = func() error {
-		if err := registerDobby(fabriclayout.RunProcDir(prime.HubPath), geom); err != nil {
+		if err := registerDobby(fabricengine.RunProcDir(prime.HubPath), geom); err != nil {
 			return fmt.Errorf("register the dobby: %w", err)
 		}
 		if selfexecs() {
@@ -853,7 +840,7 @@ finishes a stopped create:
 Before step 3 it removes a done batten run under the same slug whose pair is gone and
 whose child ran motif, and the envelope reports it as "motif_run_cleared". Any other done
 run is refused, naming "lym batten cleanup --apply", until the parent's dobby removes it
-once its landing and run watch are settled.
+once its landing is counted and its notice decided.
 
 A pawl run in flight is reported live and starts nothing. A first pass a covering
 pause refused leaves no run, and the same "lym beam create <slug> [--anchor <dir>]"
@@ -947,7 +934,7 @@ way forward:
   - a parent branch that holds commits the beam lacks, "lym beam merge-parent <slug>"
     brings them in
   - a change description that is not written or fails validation
-  - a pull request that GitHub's rules demand, with none recorded
+  - a required parent, or GitHub's rules, with no pull request recorded
   - a recorded pull request that is closed, at a head other than the beam's, in a
     state that cannot merge now, or merged without a beam commit
 

@@ -297,7 +297,7 @@ func TestBurlerReviewProducer_Call_ParentAskingRule(t *testing.T) {
 				}
 			}
 			if tt.focusOffset != 0 {
-				setNanosecondWriteTime(t, FocusPath(f.runDir, 1), parentSeedTime.Add(tt.focusOffset))
+				setNanosecondWriteTime(t, focusPath(f.runDir, 1), parentSeedTime.Add(tt.focusOffset))
 			}
 			seed := parentSeedTime.Add(tt.focusOffset).Format(time.RFC3339Nano)
 			if tt.rewritten {
@@ -365,7 +365,7 @@ func TestBurlerReviewProducer_Call_ParentRecordOrSeedUnreadable(t *testing.T) {
 	}{
 		{"a missing round-1 focus file", func(t *testing.T, f *parentFixture) {
 			t.Helper()
-			if err := os.Remove(FocusPath(f.runDir, 1)); err != nil {
+			if err := os.Remove(focusPath(f.runDir, 1)); err != nil {
 				t.Fatalf("remove the focus file: %v", err)
 			}
 		}},
@@ -547,7 +547,7 @@ func TestBurlerReviewProducer_Call_ParentAskThatDoesNotGoOut(t *testing.T) {
 		},
 		{
 			name: "a post error", postErr: errors.New("boom"), wantResolve: 1, wantPosts: 1,
-			wantState: "undelivered", wantReason: "the request was not delivered: boom", wantStrand: resolvedStrand,
+			wantState: burlerengine.ParentAskNoParent, wantReason: "the request was not delivered: boom", wantStrand: resolvedStrand,
 		},
 		{
 			name: "a wait the chair's timeout leaves no room for", skipReason: "the chair's timeout leaves no room",

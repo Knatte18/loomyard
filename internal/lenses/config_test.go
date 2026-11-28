@@ -346,7 +346,7 @@ func TestLoad(t *testing.T) {
 // The spike (docs/research/burler/session-fork-spike.md, Q2) found this, so every lens is emphasis-only by design.
 //
 // It extends the same checks to every shipped language layer:
-// each loads under its own lenses.lens_set, its lenses and fans replace or extend the base's by name,
+// each loads under its own lens_set, its lenses and fans replace or extend the base's by name,
 // and a layer fan keeps the base fan's entries first.
 //
 //testtiming:keep pins the seeded lens and fan counts, the defined-lens cross-references and the no-"ignore " phrasing, which the ResolveFan test covering its blocks does not assert, and the per-layer load and superset checks

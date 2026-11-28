@@ -20,7 +20,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/desktoplauncher"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubregistry"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
@@ -116,7 +115,7 @@ func newStartDeps(t *testing.T, root string, fixtures ...hubFixture) (deps, *sta
 	live := []hubregistry.Entry{}
 	for _, f := range fixtures {
 		hub := filepath.Join(root, f.shortname+"-LYMHUB")
-		byHub[hub], byBoard[fabriclayout.BoardDir(hub)] = f, f
+		byHub[hub], byBoard[fabricengine.BoardDir(hub)] = f, f
 		if !f.gone {
 			live = append(live, hubregistry.Entry{HubPath: hub, Shortname: f.shortname})
 		}
@@ -131,7 +130,7 @@ func newStartDeps(t *testing.T, root string, fixtures ...hubFixture) (deps, *sta
 			}
 			return "", errors.New("the machine record holds no hub under " + shortname)
 		},
-		pull:       func(string) (fabriclayout.BoltSkip, string, error) { return "", "", nil },
+		pull:       func(string) (fabricengine.BoltSkip, string, error) { return "", "", nil },
 		readOwners: func(boardDir string) (boardengine.Owners, error) { return byBoard[boardDir].owners(), nil },
 		identity:   func() (machinename.Identity, error) { return startHereIdentity, nil },
 		hubStart: func(hub string) (*lymcwd.Location, dobbyengine.StartDeps, error) {

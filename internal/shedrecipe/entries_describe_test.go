@@ -4,18 +4,13 @@
 package shedrecipe
 
 import (
-	"errors"
-	"io/fs"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shedengine"
-	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -70,20 +65,6 @@ func TestDescribeEntry_ConstructionFailures(t *testing.T) {
 func TestDescribeEntry_HappyPath(t *testing.T) {
 	tiergate.Require(t, 0)
 	env := newDescribeTestEnv(t)
-	bare := env.DescribeTable
-	reviewDir := t.TempDir()
-	records := []string{filepath.Join(reviewDir, "describe-review.ready"), filepath.Join(reviewDir, "describe-review.sent")}
-	for _, record := range records {
-		if err := os.WriteFile(record, []byte("an earlier session's"), 0o644); err != nil {
-			t.Fatalf("WriteFile(%q) = %v; want nil", record, err)
-		}
-	}
-	env.DescribeTable = func() (seatengine.Table, error) {
-		table, err := bare()
-		table.Gate = shuttleengine.GateSpec{{Name: "table-own", Attempts: 1}}
-		table.Seats = append(table.Seats, seatengine.Seat{Name: landingshed.DescribeReviewSeatName, EndMarker: filepath.Join(reviewDir, "describe-review.end")})
-		return table, err
-	}
 	fake := &shedfake.SeatRunner{Results: []seatengine.Result{leadDoneResult(env.DescriptionPath)}}
 	env.Seats = fake
 	p, err := describeEntry(RowIdentity{Name: "Row"}, gatesCfg("description", 2), env)
@@ -96,17 +77,12 @@ func TestDescribeEntry_HappyPath(t *testing.T) {
 
 	pointer := shedfake.RequireOutcome(t, p, shedengine.Done)
 
-	for _, record := range records {
-		if _, err := os.Stat(record); !errors.Is(err, fs.ErrNotExist) {
-			t.Errorf("Stat(%q) = %v; want a fresh spawn to have removed the earlier review record", record, err)
-		}
-	}
 	if len(fake.GotTables) != 1 {
 		t.Fatalf("seat runner saw %d tables; want 1", len(fake.GotTables))
 	}
 	gate := fake.GotTables[0].Gate
-	if len(gate) != 2 || gate[0].Name != "description" || gate[0].Attempts != 2 || gate[1].Name != "table-own" {
-		t.Errorf("table gate = %+v; want the \"description\" entry with 2 attempts, then the table's own entry", gate)
+	if len(gate) != 1 || gate[0].Name != "description" || gate[0].Attempts != 2 {
+		t.Errorf("table gate = %+v; want one \"description\" entry with 2 attempts", gate)
 	}
 	if pointer.Path != env.DescriptionPath {
 		t.Errorf("Call() OutputPointer.Path = %q; want the lead's output %q", pointer.Path, env.DescriptionPath)

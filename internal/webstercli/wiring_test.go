@@ -31,9 +31,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/cliwire"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -56,7 +55,7 @@ func hubLocation(t *testing.T, hub, worktreeName, anchorRel string) *lymcwd.Loca
 }
 
 // seedLoomConfigWithFriction writes <anchorPath>/_lym/config/loom.yaml with a full literal.
-// Its loom.friction.model is the caller-chosen value; empty means Tier 2 is off.
+// Its friction key is the caller-chosen value; empty means Tier 2 is off.
 // Every key is written explicitly so the literal pins every value rather than relying on template fills.
 func seedLoomConfigWithFriction(t *testing.T, anchorPath, friction string) {
 	t.Helper()
@@ -65,15 +64,15 @@ func seedLoomConfigWithFriction(t *testing.T, anchorPath, friction string) {
 		t.Fatalf("MkdirAll(%q) = %v; want nil", configDir, err)
 	}
 	cfgPath := filepath.Join(configDir, "loom.yaml")
-	contents := fmt.Sprintf(`discussion:
-  model: opus[effort=high]
-  timeout_min: 480
-  interactive: false
-review:
-  timeout_min: 240
-friction:
-  model: %s
-  timeout_min: 30
+	contents := fmt.Sprintf(`discussion: opus[effort=high]
+discussion_timeout_min: 480
+discussion_interactive: false
+plan: opus[effort=high]
+plan_timeout_min: 120
+review: opus[effort=high]
+review_timeout_min: 240
+friction: %s
+friction_timeout_min: 30
 driver: ""
 `, friction)
 	if err := os.WriteFile(cfgPath, []byte(contents), 0o644); err != nil {
@@ -98,18 +97,13 @@ func seedStandalonePlanDir(t *testing.T, dir string) {
 // Another is an unpaired sibling, and the last is a worktree whose paired sibling has been removed.
 // Keying mode on whether a location is wired would send every one of these to standalone mode.
 // None of them may be refused, and none of them may land in standalone.
-// Each wired CLI also holds the sync skips and the strand name of the environment it was wired in.
-// It sets those variables, so it is not parallel.
 func TestWire_ModeHubSelectsHubMode(t *testing.T) {
 	tiergate.Require(t, 0)
-	t.Setenv("FABRIC_SKIP_GIT", "1")
-	t.Setenv("FABRIC_SKIP_PUSH", "1")
-	t.Setenv(agentname.StrandNameEnv, "wired-strand")
 	tests := []struct {
 		name         string
 		worktreeName string
 	}{
-		{"BoardLevelWorktree", fabriclayout.BoltDirName},
+		{"BoardLevelWorktree", fabricengine.BoltDirName},
 		{"UnpairedSibling", "orphan-code"},
 		{"WorktreeWhosePairWasRemoved", "was-paired-code"},
 	}
@@ -122,13 +116,6 @@ func TestWire_ModeHubSelectsHubMode(t *testing.T) {
 			c := &websterCLI{}
 			if err := c.wire(loc, preflight.ModeHub, "", "", "", ""); err != nil {
 				t.Fatalf("wire() = %v; want nil -- a healthy-but-unwired hub location must never be refused", err)
-			}
-
-			if !c.syncOptions.SkipGit || !c.syncOptions.SkipPush {
-				t.Errorf("syncOptions = %+v; want SkipGit and SkipPush read from the environment", c.syncOptions)
-			}
-			if c.strandName != "wired-strand" {
-				t.Errorf("strandName = %q; want %q", c.strandName, "wired-strand")
 			}
 
 			if c.geom.AnchorRoot != loc.AnchorPath() {
@@ -145,12 +132,6 @@ func TestWire_ModeHubSelectsHubMode(t *testing.T) {
 			}
 			if c.refMatcher == nil {
 				t.Error("refMatcher = nil; want a non-nil matcher in hub mode")
-			}
-			if c.runID != loc.WorktreeName {
-				t.Errorf("runID = %q; want the worktree's own run %q", c.runID, loc.WorktreeName)
-			}
-			if !c.runner.HasReplyProbe() {
-				t.Error("runner.HasReplyProbe() = false; want the reply probe wired in hub mode")
 			}
 			if c.runDeps().InstructionFiles == nil {
 				t.Error("runDeps().InstructionFiles = nil; want Master's instruction file lister supplied for `lym webster run`")
@@ -212,13 +193,9 @@ func hash8For(t *testing.T, target string) string {
 // the in-process reed bring-up is armed, and the friction directory is empty.
 // The default plan directory has its run-refusal mark clear.
 // A runner's public entry points return their ordinary verdict, not a told-path refusal.
-// The CLI holds the sync skips and the strand name of the environment it was wired in.
-// It sets environment variables, so it is not parallel.
+// It sets XDG_STATE_HOME and LOCALAPPDATA, so it is not parallel.
 func TestWire_StandaloneMode(t *testing.T) {
 	tiergate.Require(t, 0)
-	t.Setenv("FABRIC_SKIP_GIT", "1")
-	t.Setenv("FABRIC_SKIP_PUSH", "1")
-	t.Setenv(agentname.StrandNameEnv, "wired-strand")
 	target := t.TempDir()
 	stateHome := t.TempDir()
 	t.Setenv("XDG_STATE_HOME", stateHome)
@@ -244,12 +221,6 @@ func TestWire_StandaloneMode(t *testing.T) {
 		t.Fatalf("wire() = %v; want nil", err)
 	}
 
-	if !c.syncOptions.SkipGit || !c.syncOptions.SkipPush {
-		t.Errorf("syncOptions = %+v; want SkipGit and SkipPush read from the environment", c.syncOptions)
-	}
-	if c.strandName != "wired-strand" {
-		t.Errorf("strandName = %q; want %q", c.strandName, "wired-strand")
-	}
 	if c.geom.WorktreeRoot != target {
 		t.Errorf("geom.WorktreeRoot = %q; want the target %q", c.geom.WorktreeRoot, target)
 	}
@@ -691,7 +662,7 @@ func TestWireModule_DescriptorIsVerbatim(t *testing.T) {
 
 // TestWireHub_FrictionDirResolution covers the tolerant friction-directory resolution of wireHub.
 // It returns a non-empty directory when loom's config enables Tier 2.
-// It returns an empty directory with no error when the loom.friction.model key is present but empty.
+// It returns an empty directory with no error when the friction key is present but empty.
 // It returns an empty directory with no error when loom.yaml is absent.
 // That tolerance matters: a `lym webster` verb must never fail because an unrelated module's config could not be read.
 func TestWireHub_FrictionDirResolution(t *testing.T) {
@@ -790,7 +761,7 @@ func TestWireHub_LanguageSkills(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			hub := t.TempDir()
 			loc := hubLocation(t, hub, "pair", ".")
-			configDir := filepath.Join(fabriclayout.BoardDir(hub), "_lym", "config")
+			configDir := filepath.Join(fabricengine.BoardDir(hub), "_lym", "config")
 			if err := os.MkdirAll(configDir, 0o755); err != nil {
 				t.Fatalf("MkdirAll(%q) = %v; want nil", configDir, err)
 			}
@@ -889,7 +860,7 @@ func TestWireHub_LanguageSkills(t *testing.T) {
 }
 
 // TestProductionFiles_NeverReferenceHubWatchdogMechanism proves no production file uses the per-hub watchdog daemon.
-// It belongs to hub mode alone: standalone computes no hub lock path (fabriclayout.HubScratchDir),
+// It belongs to hub mode alone: standalone computes no hub lock path (fabricengine.HubScratchDir),
 // and it spawns no daemon (the "reed watchdog" verb).
 //
 //testtiming:keep internal/loomcli/cli_test.go names this test
@@ -910,8 +881,8 @@ func TestProductionFiles_NeverReferenceHubWatchdogMechanism(t *testing.T) {
 			t.Fatalf("read %s: %v", path, err)
 		}
 		content := string(data)
-		if strings.Contains(content, "fabriclayout.HubScratchDir") {
-			t.Errorf("%s references fabriclayout.HubScratchDir; standalone must compute no hub lock path", path)
+		if strings.Contains(content, "fabricengine.HubScratchDir") {
+			t.Errorf("%s references fabricengine.HubScratchDir; standalone must compute no hub lock path", path)
 		}
 		if strings.Contains(content, "reed watchdog") {
 			t.Errorf("%s references \"reed watchdog\"; standalone must spawn no daemon", path)

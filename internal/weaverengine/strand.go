@@ -10,7 +10,6 @@ import (
 	"io/fs"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/gateslot"
@@ -77,15 +76,12 @@ type attemptLaunch struct {
 	Label string
 	// Skills are the hub's language skills, loaded after the implementer role's own.
 	Skills []string
-	// Timeout bounds the attempt's strand from its spawn, or from an attach for a strand a crash left.
-	Timeout time.Duration
 }
 
 // attemptSpec builds the spawn of one batch attempt.
 // The attempt runs autonomously under the implementer role's skills, in a pane with no operator.
 func attemptSpec(in attemptLaunch) shuttleengine.Spec {
 	return shuttleengine.Spec{
-		Timeout:      in.Timeout,
 		Prompt:       string(in.Prompt),
 		PromptEngine: in.Engine,
 		OutputFiles:  []string{in.ReportPath},
@@ -144,13 +140,21 @@ func batchGateSpec(geom Geometry, cards []planparser.Card, last bool, rowGates s
 		if i < len(cards) {
 			name = gateKeyCard + " " + cards[i].ID()
 		}
-		spec = append(spec, shuttleengine.GateEntry{Name: name, Gate: batchGateClosure(geom, name, call), Attempts: batchGateAttempts})
+		gate := batchGateClosure(geom, name, call)
+		if i >= len(cards) && geom.ReachPending != nil {
+			gate = verifytree.WithReachTurn(gate, verifytree.ReachTurn{
+				Pending:    func() (verifytree.ReachPending, bool, error) { return geom.ReachPending(gateKeyBatch) },
+				Attempts:   batchGateAttempts,
+				ListedPath: verifytree.ReachListedPath(geom.VerifyDir, batchGateSite),
+			})
+		}
+		spec = append(spec, shuttleengine.GateEntry{Name: name, Gate: gate, Attempts: batchGateAttempts})
 	}
 	return append(spec, rowGates...), nil
 }
 
 // batchGateClosure returns the gate that runs call through verifytree.Verify at each arrival.
-// A dirty tree and a failed run fail with findings the agent reads, and a run that judged no code fails terminally.
+// A dirty tree and a failed run fail with findings the agent reads, and a crashed test runner fails terminally.
 func batchGateClosure(geom Geometry, name, call string) shuttleengine.Gate {
 	paths := verifytree.NewPaths(geom.PaneCwd, geom.VerifyDir)
 	attempt := 0
@@ -167,8 +171,8 @@ func batchGateClosure(geom Geometry, name, call string) shuttleengine.Gate {
 		case verifytree.StatusDirty:
 			return shuttleengine.GateResult{Findings: verifytree.UncommittedFindings(res.Dirty)}, nil
 		}
-		if res.Unjudged() {
-			return shuttleengine.GateResult{Terminal: true, Findings: unjudgedFindings(res)}, nil
+		if res.RunnerCrash {
+			return shuttleengine.GateResult{Terminal: true, Findings: runnerCrashFindings(res)}, nil
 		}
 		output, err := readVerifyLog(res.Log)
 		if err != nil {
@@ -179,9 +183,9 @@ func batchGateClosure(geom Geometry, name, call string) shuttleengine.Gate {
 	}
 }
 
-// unjudgedFindings words a verify that judged no code, which no code change mends.
-func unjudgedFindings(res verifytree.Result) string {
-	return fmt.Sprintf("The verify command's %s, so no test judged the code: %s. No change to the code mends it; before it runs again, note that %s; output: %s.", res.UnjudgedStop(), res.Detail, res.UnjudgedAdvice(), res.Log)
+// runnerCrashFindings words a verify whose every failed run crashed its test runner, which no code change mends.
+func runnerCrashFindings(res verifytree.Result) string {
+	return fmt.Sprintf("The verify command's test runner crashed in its run and its one rerun, so no test judged the code: %s. No change to the code mends it; output: %s.", res.Detail, res.Log)
 }
 
 // readVerifyLog returns the content of the verify log at path.
@@ -196,6 +200,7 @@ func readVerifyLog(path string) (string, error) {
 // failureReport builds the verify-failure record of a failed run of command.
 // A timed-out run carries its timeout and the log tail.
 // A failure that names no test carries the log tail alone, and any other carries its failing identities.
+// A log whose failure report holds triage lines under its failed tests adds them to the record.
 func failureReport(command string, attempt, budget int, res verifytree.Result, output string) runplan.VerifyGateReport {
 	report := runplan.VerifyGateReport{Attempt: attempt, Cap: budget, Command: command, ExitCode: res.ExitCode, LogPath: res.Log}
 	if res.TimedOut {
@@ -203,6 +208,7 @@ func failureReport(command string, attempt, budget int, res verifytree.Result, o
 		report.LogTail = runplan.LogTail(output)
 		return report
 	}
+	report.Triage = gateslot.TriageLines(output)
 	failures := runplan.ParseVerifyRun(output, false)
 	if len(failures) == 1 && failures[0].Kind == runplan.FailureKindOpaque {
 		report.LogTail = runplan.LogTail(output)

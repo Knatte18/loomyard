@@ -46,6 +46,12 @@ type ShedPaths struct {
 	// BudgetWayForward is copied onto the built shed.
 	// It is not checked here.
 	BudgetWayForward string
+	// RetiredMove is copied onto the built shed.
+	// It is not checked here.
+	RetiredMove func(from, to string, resumed bool) error
+	// RetiredWayForward is copied onto the built shed.
+	// It is not checked here.
+	RetiredWayForward string
 }
 
 // NewShed parses recipe and builds it against env.
@@ -100,5 +106,9 @@ func NewShedFrom(recipe Recipe, env shedrecipe.Env, paths ShedPaths) (*shedengin
 		PauseWayForward:         paths.PauseWayForward,
 		RerouteCapWayForward:    paths.RerouteCapWayForward,
 		BudgetWayForward:        paths.BudgetWayForward,
+
+		Retired:           recipe.Retired,
+		RetiredMove:       paths.RetiredMove,
+		RetiredWayForward: paths.RetiredWayForward,
 	}, nil
 }

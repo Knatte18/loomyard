@@ -10,7 +10,6 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
@@ -18,9 +17,17 @@ import (
 // trailerKeyPattern is the charset of a trailer key a caller may write: a letter, then letters, digits and hyphens.
 var trailerKeyPattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9-]*$`)
 
+// Trailer is one git trailer a commit message ends with.
+type Trailer struct {
+	// Key is the trailer's key, matching [A-Za-z][A-Za-z0-9-]*.
+	Key string
+	// Value is the trailer's value: non-empty and on one line.
+	Value string
+}
+
 // validateTrailer returns an error naming t when its key is outside the trailer key charset.
 // It does the same when its value is blank or spans lines.
-func validateTrailer(t fabriclayout.Trailer) error {
+func validateTrailer(t Trailer) error {
 	if !trailerKeyPattern.MatchString(t.Key) {
 		return fmt.Errorf("fabricengine: invalid trailer key %q: must match %s", t.Key, trailerKeyPattern.String())
 	}
@@ -68,7 +75,7 @@ func parseTrailerValue(message, key string) (value string, ok bool) {
 // So is one whose value is empty or holds a line break.
 // Both refusals come before anything is staged.
 // With nothing staged, committed is false.
-func CommitAnchoredPathsWithTrailers(rec *Mutations, l *lymcwd.Location, relPaths []string, msg string, trailers []fabriclayout.Trailer, opts SyncOptions) (sha string, committed bool, err error) {
+func CommitAnchoredPathsWithTrailers(rec *Mutations, l *lymcwd.Location, relPaths []string, msg string, trailers []Trailer, opts SyncOptions) (sha string, committed bool, err error) {
 	for _, trailer := range trailers {
 		if err := validateTrailer(trailer); err != nil {
 			return "", false, err
@@ -89,7 +96,7 @@ func CommitAnchoredPathsWithTrailers(rec *Mutations, l *lymcwd.Location, relPath
 // The block holds the warp checkout's HEAD as a Warp-SHA trailer, left out while the warp has no commit.
 // One line per trailer follows, in order.
 // The trailers must already be validated.
-func messageWithTrailers(l *lymcwd.Location, msg string, trailers []fabriclayout.Trailer) (string, error) {
+func messageWithTrailers(l *lymcwd.Location, msg string, trailers []Trailer) (string, error) {
 	f, err := Open(l)
 	if err != nil {
 		return "", err
@@ -106,6 +113,20 @@ func messageWithTrailers(l *lymcwd.Location, msg string, trailers []fabriclayout
 		message = appendTrailerLine(message, trailer.Key, trailer.Value)
 	}
 	return message, nil
+}
+
+// TrailerCommit is a weft commit that carries a trailer key.
+type TrailerCommit struct {
+	// SHA is the weft commit's full object name.
+	SHA string
+	// Value is the last value of the searched key in the commit's message.
+	Value string
+	// CodeHead is the commit's Warp-SHA value, the code checkout's HEAD the commit was made at, empty when it carries none.
+	CodeHead string
+	// Position is the commit's first-parent position on the records branch:
+	// the number of first-parent steps from the branch's root commit, so the root is 0 and each later commit is one more.
+	// Positions from different reads of the same branch compare as long as no history is rewritten.
+	Position int
 }
 
 // recordsFirstParentCommits returns every first-parent commit of the records branch from HEAD, newest first.
@@ -133,20 +154,20 @@ func recordsFirstParentCommits(l *lymcwd.Location) ([]gitrepo.LogCommit, error) 
 // Each holds its SHA, the key's last value, its Warp-SHA value and its first-parent position.
 // A records branch with no commit yet returns nil and no error.
 // The walk follows first parents, so a merge's side branches are not read.
-func TrailerCommits(l *lymcwd.Location, key string) ([]fabriclayout.TrailerCommit, error) {
+func TrailerCommits(l *lymcwd.Location, key string) ([]TrailerCommit, error) {
 	commits, err := recordsFirstParentCommits(l)
 	if err != nil {
 		return nil, fmt.Errorf("fabricengine: list commits for trailer %q: %w", key, err)
 	}
 
-	var found []fabriclayout.TrailerCommit
+	var found []TrailerCommit
 	for i, commit := range commits {
 		value, ok := parseTrailerValue(commit.Message, key)
 		if !ok {
 			continue
 		}
-		warpSHA, _ := parseTrailerValue(commit.Message, fabriclayout.WarpSHATrailerKey)
-		found = append(found, fabriclayout.TrailerCommit{SHA: commit.SHA, Value: value, CodeHead: warpSHA, Position: len(commits) - 1 - i})
+		warpSHA, _ := parseTrailerValue(commit.Message, WarpSHATrailerKey)
+		found = append(found, TrailerCommit{SHA: commit.SHA, Value: value, CodeHead: warpSHA, Position: len(commits) - 1 - i})
 	}
 	return found, nil
 }
@@ -155,13 +176,13 @@ func TrailerCommits(l *lymcwd.Location, key string) ([]fabriclayout.TrailerCommi
 // It returns the newest commit whose message carries key when newest is true, and the oldest otherwise.
 // found is false when no commit carries the key, and for a weft with no commit yet.
 // The walk follows first parents, so a merge's side branches are not read.
-func FindTrailerCommit(l *lymcwd.Location, key string, newest bool) (fabriclayout.TrailerCommit, bool, error) {
+func FindTrailerCommit(l *lymcwd.Location, key string, newest bool) (TrailerCommit, bool, error) {
 	found, err := TrailerCommits(l, key)
 	if err != nil {
-		return fabriclayout.TrailerCommit{}, false, err
+		return TrailerCommit{}, false, err
 	}
 	if len(found) == 0 {
-		return fabriclayout.TrailerCommit{}, false, nil
+		return TrailerCommit{}, false, nil
 	}
 	if newest {
 		return found[0], true, nil
@@ -186,7 +207,7 @@ func RecordsCommitIsAfter(l *lymcwd.Location, rev, sha string) (bool, error) {
 // AnchoredFileAt returns the anchor-relative relPath as stored in the weft commit rev, unaffected by any later change.
 // found is false with a nil error when the path is absent at rev; an invalid rev is an error.
 func AnchoredFileAt(l *lymcwd.Location, rev, relPath string) ([]byte, bool, error) {
-	scoped := filepath.ToSlash(fabriclayout.ScopedPathspec(l.AnchorRel, []string{relPath})[0])
+	scoped := filepath.ToSlash(ScopedPathspec(l.AnchorRel, []string{relPath})[0])
 	data, err := gitrepo.New(RecordsWorktree(l)).FileAtRevision(rev, scoped)
 	if err != nil {
 		if errors.Is(err, gitrepo.ErrPathNotAtRevision) {

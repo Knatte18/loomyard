@@ -65,7 +65,7 @@ func ValidateFanKeys(dirs configengine.Dirs, module string, keys []FanKey) error
 	var loadedConfig *Config
 	for _, fan := range keys {
 		if len(fan.Fans) == 0 {
-			return fmt.Errorf(`config key %q: the list is empty; write "" to run the round solo or with the single fixer`, configengine.KeyName(module, fan.Key))
+			return fmt.Errorf(`%s config key %q: the list is empty; write "" to run the round solo or with the single fixer`, module, fan.Key)
 		}
 		for i, name := range fan.Fans {
 			if name == "" {
@@ -74,12 +74,12 @@ func ValidateFanKeys(dirs configengine.Dirs, module string, keys []FanKey) error
 			if loadedConfig == nil {
 				loaded, err := Load(dirs)
 				if err != nil {
-					return fmt.Errorf("config key %q: %w; fix lenses.yaml, or set the key to empty to run the segment solo", configengine.KeyName(module, fan.Key), err)
+					return fmt.Errorf("%s config key %q: %w; fix lenses.yaml, or set the key to empty to run the segment solo", module, fan.Key, err)
 				}
 				loadedConfig = &loaded
 			}
 			if _, err := ResolveFan(*loadedConfig, name); err != nil {
-				return fmt.Errorf(`config key %q entry %d: %w; define the fan in lenses.yaml, or set the entry to ""`, configengine.KeyName(module, fan.Key), i+1, err)
+				return fmt.Errorf(`%s config key %q entry %d: %w; define the fan in lenses.yaml, or set the entry to ""`, module, fan.Key, i+1, err)
 			}
 		}
 	}

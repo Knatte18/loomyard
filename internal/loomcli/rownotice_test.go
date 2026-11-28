@@ -162,7 +162,7 @@ func TestWatchRows_NoticeNeverStopsTheCall(t *testing.T) {
 	}
 }
 
-// TestNewShed_WrapsTheRowsNotifyParentOnNames covers the activation from loom.notify_parent_on:
+// TestNewShed_WrapsTheRowsNotifyParentOnNames covers the activation from loom.yaml's notify_parent_on:
 // an empty list wraps nothing, a recipe row's producer is wrapped over the run's status and row-notice paths,
 // and a name that is no row of the recipe is refused with no shed.
 func TestNewShed_WrapsTheRowsNotifyParentOnNames(t *testing.T) {
@@ -187,7 +187,7 @@ func TestNewShed_WrapsTheRowsNotifyParentOnNames(t *testing.T) {
 				t.Fatalf("wire() = %v; want nil", err)
 			}
 			// The landing deps are filled at arm time, after wire(); the Publish and Finalize rows refuse to build without them.
-			c.env.Landing = envkit.LandingDeps(t, t.TempDir())
+			c.env.Landing = envkit.LandingDeps(t.TempDir())
 			plain, err := c.newShed()
 			if err != nil {
 				t.Fatalf("newShed() with no notify_parent_on = %v; want nil", err)
@@ -248,7 +248,7 @@ func TestWatchRows_UnknownRowNamesTheRecipeRows(t *testing.T) {
 	if err == nil {
 		t.Fatal("watchRows = nil; want a refusal")
 	}
-	for _, want := range []string{`"loom.notify_parent_on"`, `"Drift-Judge"`, "darn recipe", "way forward", "Darn-Write, Drift-Verify"} {
+	for _, want := range []string{`"notify_parent_on"`, `"Drift-Judge"`, "darn recipe", "way forward", "Darn-Write, Drift-Verify"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("watchRows error = %q; want it to contain %q", err, want)
 		}

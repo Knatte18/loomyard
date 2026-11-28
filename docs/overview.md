@@ -147,9 +147,10 @@ The two-sided design is documented in `internal/fabricengine`'s package doc.
   └── <RepoName>.code-workspace     (the hub's VS Code workspace; lym-owned)
 ```
 
-`_bolt` is hub geometry, and `_portals` and `_launchers` are names no verb writes, so none of them can be claimed as a worktree slug.
-The check is `fabriclayout.IsReservedHubName`.
-`.lym` is slug-reserved too, but via `fabriclayout.StructuralNeverCommittedDirs` rather than as hub geometry.
+`_bolt` is hub geometry, and `_portals` and `_launchers` are retired hub containers, so none of them can be claimed as a worktree slug.
+`lym cleanup` removes what a hub still holds under `_launchers`.
+The check is `fabricengine.IsReservedHubName`.
+`.lym` is slug-reserved too, but via `structuralNeverCommittedDirs` rather than as hub geometry.
 It has no hub-level presence of its own.
 
 ### Git ownership
@@ -202,12 +203,12 @@ Code worktrees use **junctions** (Windows) or symlinks to route writes into the 
 Worktrees are wired at `lym fabric clone` and `lym fabric add` time, with no separate setup step.
 Each of them materializes junctions, `_lym`, and config in one call.
 
-The wired junction set is not hardcoded, and it is not purely the repo-wide `fabric.pathspec` list.
-It is `fabriclayout.StructuralCommittedDirs` ∪ `fabriclayout.StructuralNeverCommittedDirs` ∪ the hub-reserved-filtered config names, deduplicated.
+The wired junction set is not hardcoded, and it is not purely the repo-wide `pathspec` list.
+It is `structuralCommittedDirs` ∪ `structuralNeverCommittedDirs` ∪ the hub-reserved-filtered config names, deduplicated.
 The two structural sets, `_lym` and `.lym`, are injected in code and never read from `fabric.yaml`.
-The third piece comes from the **repo-wide** `fabric.pathspec` list, recorded once at `<BoltDir>/_lym/config/fabric.yaml`.
-It is read from the records main branch in the Bolt checkout, via `fabriclayout.BoltDir`.
-It is filtered against `fabriclayout.HubReservedNames()`.
+The third piece comes from the **repo-wide** `pathspec` list, recorded once at `<BoltDir>/_lym/config/fabric.yaml`.
+It is read from the records main branch in the Bolt checkout, via `fabricengine.BoltDir`.
+It is filtered against `fabricengine.HubReservedNames()`.
 Those are the hub-structural tokens `_bolt` (the Bolt checkout), `_portals` and `_launchers`, which can never be a per-worktree junction.
 `board.yaml` is hub-wide too: it is read and written at `<BoltDir>/_lym/config/board.yaml`, never in a worktree's `_lym/config/`.
 A hub-wide module skips the worktree file in its layer stack, which [internal/configengine](../internal/configengine/doc.go) describes.
@@ -229,10 +230,10 @@ At a subpath anchor nothing is wired or excluded at the repository root.
 [PATTERN-cwd-resolution](../pattern/PATTERN-cwd-resolution.md) holds the rule that no hub-level container is ever junctioned into a worktree.
 The Bolt checkout (`<hub>/_bolt`) is one such container.
 
-The optional `fabric.pathspec` default is empty.
-A records-backed module is wired by appending its directory name to `fabric.pathspec`'s template default, with no `fabric`/`lymcwd` code change;
+The optional `pathspec` default is empty.
+A records-backed module is wired by appending its directory name to `pathspec`'s template default, with no `fabric`/`lymcwd` code change;
 that mechanism applies to *optional* directories only.
-A structural directory is never sourced from `fabric.pathspec`.
+A structural directory is never sourced from `pathspec`.
 
 A raddle run's directory is anchor-level by design.
 It lives at `_lym/raddle/`, reached through the `_lym` junction, with no `_raddle` junction of its own.
@@ -291,16 +292,15 @@ github.com/Knatte18/loomyard/
 ├── internal/agentconfig/         the hub-wide `agents.yaml` config: the skills each role lym starts loads, and the effort of its Claude sessions and their subagents by role and model, a leaf
 ├── internal/agentname/           the sole former, parser and validator of agent names (`<shortname>:<slug>:<role>`), a stdlib-only leaf
 ├── internal/beamcli/             the beam CLI command (`lym beam`, the making and starting of beams from board project entries, and the wiring of their dobby, the prime's carrying the hibernate request and bringing back the Slack relay)
-├── internal/dobbyengine/         dobby, the daemon of a beam worktree: it starts released tasks, drives their batten runs in passes and spawns the board-tidy agent and a beam's describer agent
+├── internal/dobbyengine/         dobby, the daemon of a beam worktree: it starts released tasks, drives their batten runs in passes and spawns the board-tidy agent
 ├── internal/boardcli/            the board CLI command
 ├── internal/boardengine/         the board domain kernel
-├── internal/boardserve/          the board's loopback server: the viewer page, the board's view projection, its live changes and the page's writes
 ├── internal/hubissues/           the GitHub issues of the hub's own repository that `lym board intake` lists, reads, comments on and closes
 ├── internal/pullrequest/         the run's pull-request record and its GitHub calls, for PR-Review, Finalize and pair teardown
 ├── internal/cleanupcli/          the cleanup CLI command (`lym cleanup`, the routine cleanups of the hub prime's leftover state, a dry run by default)
 ├── internal/fabriccli/           the fabric CLI command (git coordination of code and records)
 ├── internal/fabricengine/        the fabric domain kernel
-├── internal/gatecli/             the gate CLI command (`lym gate test`, the tier runner: the hub's test tiers over a scope, slotted, bounded, counted and logged; `lym gate status`, the holders of the hub's gate slots; `lym gate report`, the machine's run records totalled per slug and gate key; `lym gate red-first`, the tests the worktree's diff adds or changes, run once on the merge base's code)
+├── internal/gatecli/             the gate CLI command (`lym gate test`, the tier runner: the hub's test tiers over a scope, slotted, bounded, counted and logged; `lym gate status`, the holders of the hub's gate slots; `lym gate report`, the machine's run records totalled per slug and gate key; `lym gate test --map`, the per-package coverage maps built on command at the HEAD of the worktree it runs in; `lym gate redundant`, one package's redundancy candidates read from its coverage map and confirmed by mutation; `lym gate reach`, the tests that reach one function, or the landings of a branch that a test reaches, read from the coverage maps; `lym gate mutate`, the mutants of the lines the worktree's diff changes, run against the tests that cover them, a check the gate's `mutation` report step also runs)
 ├── internal/helpcli/             the help CLI command (`lym help [<command>...]`, `lym help index`)
 ├── internal/shortcutcli/         the top-level operator shortcuts (`lym a`, `lym s`, `lym p`, `lym r`) from one embedded file
 ├── internal/idecli/              the ide CLI command
@@ -316,30 +316,27 @@ github.com/Knatte18/loomyard/
 ├── internal/retroengine/         the retro domain kernel (the last retro's stamp, the landed runs a retro covers under its cap, and the retro task's body and board fields)
 ├── internal/orchcli/             the orch CLI command
 ├── internal/orchengine/          the orch domain kernel (config, stencil renders, persisted state, cycle state machine)
-├── internal/orchroute/           the orch lookups below `orchcli`: the orch paths, the liveness of a worktree's orch, its strand name and the walk to the orch a notice goes to (`Destination`, `Asker`)
+├── internal/orchroute/           the orch lookups below `orchcli`: the orch paths, the liveness of a worktree's orch, its strand name and the walk to the nearest live orch (`Asker`)
 ├── internal/ghissuescli/         the ghissues CLI command
 ├── internal/ghissuesengine/      the ghissues domain kernel
 ├── internal/selfreportcli/       the selfreport CLI command
 ├── internal/selfreportengine/    the selfreport domain kernel, filing LoomYard bugs to LoomYard's own repository only
 ├── internal/shuttleengines/      the engine registry: the named engines a shuttle config builds into a set, and the only production importer of a concrete engine
-├── internal/operatoragent/       the spec and opening prompt of the agent session a status-bar agent button starts through `lym shuttle agent`
 ├── internal/shuttleparity/       the per-seat comparison of the engines' launch manifests: the seat catalog, the manifest report behind `lym shuttle manifest`, and the parity tests over every seat and launch-spec producer
-├── internal/hardenshed/          the Hardener campaign's engine: live gate, sandbox hubs, sandbox reaper and round rows
+├── internal/treadleengine/       generalized round-loop engine (judge/gate/round-spawn/cap/pause/lock)
 ├── internal/shedengine/          generic outer phase-FSM: walks one flat producer list, honoring resume, crash-recovery, and pause at producer granularity
 ├── internal/shedtransient/       the one translation from lower-level failure classifications into the shed engine's transient mark
 ├── internal/seatengine/          the seat runner: starts, joins, probes, resumes and stops a chair and its advisors over shuttle, each seat in its own strand
 ├── internal/shedadapters/        the Shed engine adapters (Webster, Weaver, the Burler review and fix row producers, MultiLLMProducer, and the Bouncer) over shuttle/websterengine/burlerengine/seatengine
 ├── internal/loomcli/             loom's cobra module: the session bootstrap, arming `internal/shedverbs`' generic status and pause verb bodies, and mounting `internal/sheddriver` for `lym loom drive`
 ├── internal/loomshed/            loom's own row-name constants and producer constructors over `shedengine`
-├── internal/loomrecipe/          assembles the `*shedengine.Shed` of the tapestry, darn, pawl, sampler, motif, raddle and arras recipes from their embedded files, arras kept in code but not offered, and expands tapestry's and arras's `Motif` block from motif, the recipe that makes a sketch, the decision record
+├── internal/loomrecipe/          assembles the `*shedengine.Shed` of the tapestry, darn, pawl, sampler, motif, raddle and arras recipes from their embedded files, and expands tapestry's and arras's `Motif` block from motif, the recipe that makes a sketch, the decision record
 ├── internal/shedrecipe/          the engine registry — the name to `ShedProducer`-constructor mapping a recipe loader resolves each row's `Engine` against
 ├── internal/shedbuild/           the recipe file format's loader and builder — decodes a recipe document and assembles the producer-definition list the shed engine already consumes
 ├── internal/shedverbs/           the generic run/step/status/pause/goto cobra verb bodies shared by every module that arms a `*shedengine.Shed` onto a CLI subtree
 ├── internal/sheddriver/          the shed layer's Go driver: its settle loop, rule table and hand-back, the tackler agent call, and the `shed` config module, told its paths and seams by the arming module
-├── internal/shedcli/             the `lym shed` subtree: a named-recipe arming table for the tapestry, motif, raddle, arras (kept in code but not offered), darn, pawl, sampler, hardener and batten recipes plus the three CLI seams that register it under the lym root
-├── internal/runpusher/           the background pusher of one push target: its start conditions, spawn, push loop, parent step and exit protocol
-├── internal/pushledger/          the machine-local ledger of owed pushes and unpushed landings, one entry per push target
-├── internal/statuscommit/        the shared per-transition status commit core (skip while mid-merge, commit hard-errors, start the worktree's pusher) that `loomcli` and `battencli` wrap
+├── internal/shedcli/             the `lym shed` subtree: a named-recipe arming table for the tapestry, motif, raddle, arras, darn, pawl, sampler and batten recipes plus the three CLI seams that register it under the lym root
+├── internal/statuscommit/        the shared per-transition status commit core (wait while a git operation blocks the commit, then commit; commit hard-errors, push spawn warns) that `loomcli` and `battencli` wrap
 ├── internal/statuspane/          the pane mechanics the runs overview and the gate checklist share: a redraw-in-place pane loop and a lock-free status-file reader
 ├── internal/landingshed/         landing's general ShedProducers, Parent-Align, the PR-Review row and Finalize, shared by reference across producer lists
 ├── internal/pawlengine/          the pawl recipe's own producers, Beam-Up, Beam-Await and Beam-Down, the land request Beam-Await consumes and the beam's ready record, told their geometry and seams by their caller
@@ -359,7 +356,7 @@ github.com/Knatte18/loomyard/
 ├── internal/hubgeom/             the hub-mode told-geometry teller that converts a resolved `lymcwd.Location` into each engine's geometry struct
 ├── internal/standalonegeom/      the told-mode geometry teller that builds each engine's geometry struct from told absolute path strings
 ├── internal/cliwire/             the shared standalone/hub wiring resolver for the standalone-capable CLIs, the layer that runs after `preflight.ResolveMode` has chosen a mode
-├── internal/hubreconcile/        the hub config walk run once after a binary change, by the first start verb or verb outside `lym config` that loads the loom or tapestry config: build stamp, hub lock, reconcile and commit of every worktree's config
+├── internal/hubreconcile/        the hub config walk a start verb runs once after a binary change: build stamp, hub lock, reconcile and commit of every worktree's config
 ├── internal/preflightshed/       the general `Preflight` `ShedProducer` over `internal/preflight`'s tier-1/tier-2 checks, shared by reference across producer lists
 ├── internal/preflight/           orchestrator-agnostic tier-1/tier-2 precondition checks (geometry, worktree-pair cleanliness, Fabric readiness/sync) + the shared Report result type
 ├── internal/lymcwd/              cwd resolution entry gate (the sole owner of cwd resolution, nothing else)
@@ -395,7 +392,7 @@ github.com/Knatte18/loomyard/
 ├── internal/reportconfig/        the hub-wide `report.yaml` config: the run count a cell of `lym report cost` needs before it shows figures
 ├── internal/hubregistry/         the machine record of hubs in the per-user state directory, which maps a hub's shortname to its path, over `internal/state` and the Bolt shortname record
 ├── internal/creelconfig/         the hub-wide `creel.yaml` config: the shortnames of the hubs whose orch this hub obeys
-├── internal/creelcli/            the `lym creel` commands (`post`, `inject`, `interrupt`, `forward`, `read`, `inbox`, `log`, `hold`, `release`, `hubs` and the hidden `daemon`, `hook-read` and `hook-wait`), their hub wiring, the delivery adapter over reed and shuttle, and the Go client with its reply probe
+├── internal/creelcli/            the `lym creel` commands (`post`, `inject`, `interrupt`, `forward`, `read`, `inbox`, `log`, `hold`, `release`, `hubs` and the hidden `daemon`, `hook-read` and `hook-wait`), their hub wiring and the delivery adapter over reed and shuttle
 ├── internal/creelengine/         the per-hub message daemon: the journal-folded pool of mail and queued injects, sender identity, reminders for a strand without hook delivery, the per-strand mail flags, the tool-boundary and Stop claim, the idle waiter and bell, injects, holds, the removed-holder sweep and the socket protocol, over a delivery seam
 ├── internal/slackcli/            the `lym slack` commands (`login`, `setup`, `start`, `stop`, `away`, `back`, `status` and the hidden `relay`, `hook`, `bar` and `toggle`), their pane check and hub wiring
 ├── internal/slackengine/         the per-hub Slack relay: the Web API client, the Socket Mode connection, the machine's credential and presence files and the hub's setup, forwarding, channel-map and relay-state files, the push-woken inbound read of each orch's channel with its presence commands, the outbound read of mail for SLACK, and the relay's run loop and double-fork start
@@ -409,8 +406,8 @@ github.com/Knatte18/loomyard/
 ├── internal/commentlint/        the comment line lint: fixed-column wraps and over-long lines in the `//` comment blocks a diff creates, over a told worktree and base
 ├── internal/patternlint/        the PATTERN headroom lint: growth of the overview past its headroom line, over a told worktree and base
 ├── internal/impactset/          the impacted-set command a gate key's `diff` scope runs: the packages a diff reaches over the import graph, plus the `//lym:guard` tests, or a fallback reason to run the full verify
-├── internal/testcover/          the per-test coverage engine of `cmd/testtiming -redundancy`: runs each test of a package alone under a coverage binary and judges contained and removable tests
-├── internal/testreach/          the tests a diff adds or changes, found from the file contents of both sides; runs no git
+├── internal/testcover/          the per-test coverage engine: runs each test of a package alone under a coverage binary, keys blocks by content, judges contained and removable tests, reads and writes the per-package coverage map, and compares a map with a commit to plan which tests a build re-measures or to name the miss that rebuilds the package whole
+├── internal/testreach/          the one cross-package reader of the per-test coverage maps: finds the functions a diff changes from the file contents of both sides, runs no git
 ├── internal/dotnetimpact/       the `dotnet` scoper's derivation: the test projects and test classes a C# diff or a card's targets reach, by type-name closure over the source, or a fallback reason to run the tier whole
 ├── internal/runplan/            the run-plan state and batch machinery an implementer embeds and calls: plan fingerprint and file hashes, recorded partition, batch records, the batch report contract, dispatch re-resolution and plan-conflict record, post-batch checks, suspect-path checks, digest, card gates, report await and verify-failure record, told its paths and each refusal's way forward by the implementer
 ├── internal/weaverengine/       Weaver, the cold-start implementer with model escalation
@@ -465,9 +462,9 @@ User-facing modules each get one `lym <module>` namespace:
 
 - **board** — the task-tracker board, which is also the roadmap (`internal/boardcli` + `internal/boardengine`).
   One `board.json` store holds every entry, and each entry is a task or a note with labels; only a task runs.
-  `board.types` and `board.labels` are maps from label to description;
+  `types` and `labels` in `board.yaml` are maps from label to description;
   `lym board labels` prints both in file order.
-  `board.default_recipe` names the recipe a task with no recipe field runs, `darn` in the template.
+  `default_recipe` names the recipe a task with no recipe field runs, `darn` in the template.
   A Sketch, or any discussed note whose decision record is stored, becomes a task only as a raddle run's entry.
   A plain `lym board promote` of it makes that entry.
   `lym board raddle <slug>` prints the approved proposal from the raddle store on the Bolt.
@@ -477,18 +474,18 @@ User-facing modules each get one `lym <module>` namespace:
   The hub's repository is the one its recorded binding names, else its origin remote,
   so only the loomyard hub's intake reads LoomYard's issues.
   Intake never goes through selfreport.
-  The README renders tasks in sections by Running, Ready (waiting on nothing open) and dependency layer.
+  The README renders Tasks split into Running, Ready (waiting on nothing open) and dependency layers.
   The entries of one dependency layer can run in parallel.
-  It then renders one section per note type label, Sketches first, and leaves out every section with no entry.
-  Each section is one numbered table that links each slug to its design doc.
+  It then renders Notes grouped by type label, Sketches first.
+  Each subsection is one numbered table that links each slug to its design doc.
   A discussed entry's row also carries a `Sketch` link to the decision record `decision-<slug>.md`.
   Every project, the root included as `P0` with its file `project-root.md`, renders through one project section.
-  A section nests the projects under it, each with its own slug, age, owner and entries.
+  A section nests the projects under it, each with its own slug, age, owner, Tasks, Notes and Done.
   The README therefore shows every open project's entries split the same way, with the root's section last.
-  A beam project's heading ends in `BEAM`.
+  Each of its top-level sections, the root's included, is a `<details open>` block the reader can collapse.
   A project file shows its project and the projects under it.
   An entry may carry a priority, `high` or `low`, absent meaning normal.
-  The priority orders the entry first or last within its section.
+  The priority orders the entry first or last within its subsection.
   A task may name a run profile in its `profile` field,
   and `lym board profiles` prints the hub's profiles with their settings and each recipe's default profile.
   Agents use the board through the `ly:board` skill.
@@ -505,26 +502,25 @@ User-facing modules each get one `lym <module>` namespace:
   It prunes but never fills a present board file that is not seed-only.
   For a seed-only board file such as `profiles.yaml`, it carries a template change in and keeps the operator's values.
   The change is made against the template base `<module>.template-base` beside the file.
+  It lists the one-time base strip as pending; only a start verb's hub reconcile performs that strip.
   With `--apply`, run from the prime, it commits the changes in the Bolt checkout.
   `lym config <module> --set key=value` (repeatable) writes one or more config values directly with no editor invocation.
   It gives scripts and agents a non-interactive path.
   A key under a module's declared open map adds or rewrites one entry.
   For example, `lym config board --set labels.quarry="glyphs and the quarry index"`.
   A key that takes one value or a per-round list is written as a list when its value starts with `[`.
-  `loom.review.reviewer_model` and `tapestry.plan.reviewer_model` are such keys.
-  For example, `lym config tapestry --set 'plan.reviewer_model=["opus[medium]", "sonnet[high]"]'`.
+  Loom's `reviewer_model` and tapestry's `plan_reviewer_model` are such keys.
+  For example, `lym config tapestry --set 'plan_reviewer_model=["opus[medium]", "sonnet[high]"]'`.
   A bracketed value that is not a list of scalars is refused.
-  `lym config <module> --unset key` (repeatable) removes a key, or one entry of a map, from the layer's file the same way.
-  For example, `lym config gate --unset gates.harden-live-copies` removes a retired gate key.
-  Every `--set` and `--unset` write is loaded through the module's own loader.
-  A value the loader refuses, such as a list given to the single-model `tapestry.plan.model`, is refused with the key named.
+  Every `--set` write is loaded through the module's own loader.
+  A value the loader refuses, such as a list given to loom's single-model `plan`, is refused with the key named.
   The file is left as it was.
   A module resolves key by key through its layers.
   The embedded template comes first, then the repo default at `<BoltDir>/_lym/config/<module>.yaml`.
   The worktree's sparse file follows, and the untracked local override at `<anchor>/.lym/config/<module>.local.yaml` is last.
   See [internal/configengine](../internal/configengine/doc.go).
   A module's machine keys also take a machine override.
-  Examples are `gate.slots`, `gate.tier_parallel`, `codex.sandbox_mode` and `fabric.branch_prefix`.
+  Examples are gate's `slots` and `tier_parallel`, codex's `sandbox_mode` and fabric's `branch_prefix`.
   The override lives at `<BoltDir>/.lym/config/<module>.machine.yaml` and is never tracked.
   It is written from the prime beside the local override.
   `lym config --layer default|worktree|machine|local` picks the layer a verb addresses,
@@ -535,9 +531,8 @@ User-facing modules each get one `lym <module>` namespace:
   Seed-Child writes the profile's block for the task's recipe under the task's `run_settings`.
   A task naming no profile takes its recipe's default profile.
   The starting profiles are the ladder `speed`, `light`, `solid` and `wide`, plus the darn-only `docs`.
-  No starting profile or default covers `arras`, a recipe kept in code but not offered.
   `lym config profiles --set <name>='<json object>'` adds or replaces one whole profile,
-  and a dotted key such as `docs.darn.loom.code.max_bounces=0` sets one value inside it.
+  and a dotted key such as `docs.darn.loom.code_max_bounces=0` sets one value inside it.
   See [internal/runprofile](../internal/runprofile/doc.go). ✅ Implemented.
 - **fabric** — the sole git-coordination module over the code and its records (`internal/fabriccli` + `internal/fabricengine`).
   It unifies two `internal/gitrepo.Repo` instances in one command tree.
@@ -553,6 +548,7 @@ User-facing modules each get one `lym <module>` namespace:
   CLI surface is `lym fabric clone|add|list|remove|checkout|pairs|reconcile|prune|cleanup|unwire|shortname|status|commit|push|pull|sync|diff|merge-in|merge|merge-stage`.
   `clone` takes the records URL first with the code URL optional.
   When omitted, the code URL is derived from the code binding recorded on the records main branch.
+  `reconcile` backfills that binding for hubs whose records predate it.
   `clone` also takes `--shortname` to record the repo's shortname as `.lym-shortname` on the records main branch,
   and `shortname [<shortname>]` prints the recorded shortname or records one on a hub that has none.
   `status` is the unified both-sides uncommitted-change view (`Fabric.Status`);
@@ -575,18 +571,17 @@ User-facing modules each get one `lym <module>` namespace:
   The files are lym-owned and regenerated on each prime or beam spawn, overwriting any edit made in them;
   a task slug opens its bare folder.
   `lym ide spawn` and `lym ide open` also open files beside the folder or workspace.
-  The hub-wide `ide.open_files` lists them for the worktree's place: the prime, a beam or a task.
+  The hub-wide `ide.yaml` lists them under `open_files` for the worktree's place: the prime, a beam or a task.
   Paths are relative to the worktree's anchored directory, and `{beam}` stands for the beam's slug.
   An entry naming no file is skipped.
   The template opens nothing for any place.
-  `ide.render_markdown` is on by default.
+  `ide.yaml`'s `render_markdown` is on by default.
   With it on, a seed points the `*.md` entry of `workbench.editorAssociations` at the markdown preview,
   so a markdown file opens rendered.
   The entry lives in the worktree's `settings.json`, and a setting the operator holds in its array form is left as it is.
-  The generated `tasks.json` holds an on-demand `reed attach` task and a `board open` task.
-  The `lym` path in them is stamped absolute at generation time.
-  The tasks are reached through "Tasks: Run Task" or the seeded key bindings:
-  `ctrl+alt+a` runs `reed attach` and `alt+shift+9` runs `board open`;
+  The generated `tasks.json` holds one on-demand `reed attach` task.
+  The `lym` path in it is stamped absolute at generation time.
+  The task is reached through "Tasks: Run Task" or the seeded `ctrl+alt+a` key binding;
   no task runs on folder open, so opening a worktree in VS Code starts no session and no `claude`.
   `lym ide spawn` and batten's Seed-IDE row write this config through one shared path.
   `lym ide spawn` regenerates `tasks.json` on every spawn, overwriting an untracked one.
@@ -604,15 +599,13 @@ User-facing modules each get one `lym <module>` namespace:
   Each has the workspace look:
   `window.title` names the hub shortname, then the repository or beam followed by `workspace`,
   and the activity bar takes the workspace's blue-grey, which no worktree takes.
-  Each also carries one `beam start` task:
-  `lym beam start root` for the hub's file and `lym beam start <beam>` for a beam's, which `alt+shift+0` runs.
   `lym ide seed` writes the same config and, for the prime, the hub workspace file, and launches nothing;
   with no slug it seeds the worktree it runs in, the prime included.
   It keeps `.vscode/` out of git through the repository's shared `info/exclude` at the anchor subpath, not `.gitignore`.
   It leaves a tracked `tasks.json` alone with a warning.
   `lym ide spawn` and `lym ide seed` also seed a `// lym:begin` … `// lym:end` block in the user's `keybindings.json`.
   The block forwards the Alt keys of reed's tmux bindings through VS Code's integrated terminal.
-  It also binds `ctrl+alt+a` to run the `reed attach` task, `alt+shift+9` to run `board open` and `alt+shift+0` to run `beam start`.
+  It also binds `ctrl+alt+a` to run the `reed attach` task.
   Both verbs report the outcome in their JSON result.
   A user-level binding applies in every VS Code window, so the keys reach reed in any hub.
   It writes only between its own markers,
@@ -648,10 +641,7 @@ User-facing modules each get one `lym <module>` namespace:
   Every other reed verb still refuses on a cold worktree.
   ✅ Implemented.
   See the `internal/reedengine` package documentation.
-- **shuttle** — run **one** LLM agent as an interactive tmux strand over the file contract (`internal/shuttleengine` + `internal/shuttleengine/claudeengine` + `internal/shuttleengine/codexengine` + `internal/shuttleengine/bashlookup` + `internal/shuttleengines` + `internal/shuttlecli` + `internal/shuttleparity`; `lym shuttle run|open|agent|manifest|state|await|await-forks`).
-  `lym shuttle agent --name <name>` starts the agent session a status-bar agent button opens: an unawaited interactive run session whose opening prompt names its hub, its worktree and the board entry it serves or the prime, with the agents.yaml skills of the agent role and the hub's language skills;
-  its window closes when the session exits, it is refused under a pause, and it carries no operator instructions over from an earlier session;
-  it and `lym shuttle open --role` join a typed name's words with dashes and lower them, and refuse a name still outside the role grammar, naming the rule.
+- **shuttle** — run **one** LLM agent as an interactive tmux strand over the file contract (`internal/shuttleengine` + `internal/shuttleengine/claudeengine` + `internal/shuttleengine/codexengine` + `internal/shuttleengine/bashlookup` + `internal/shuttleengines` + `internal/shuttlecli` + `internal/shuttleparity`; `lym shuttle run|open|manifest|state|await|await-forks`).
   `lym shuttle manifest <seat>` prints the launch manifest each engine writes for one seat of the seat catalog and exits non-zero when the Codex manifest lacks a compared item of Claude's;
   it starts no session, runs no plugin hook or sandbox probe, and keeps no manifest copy.
   `lym shuttle open` starts a named session with no turn in its own window, which closes when the session exits,
@@ -677,16 +667,15 @@ User-facing modules each get one `lym <module>` namespace:
   a start whose skill-load hold read its cap of API errors ends `api-error` too, after the hold's back-offs.
   Any other turn end without every output file never ends a run:
   `Wait` holds it and keeps polling the same agent until the outputs exist, the pane dies or the deadline passes, whatever the agent's reason (a question, a status report, a live `AskUserQuestion` call).
-  A turn end that would end a run, or start its gate's evaluation, is held too while creel's `awaits-reply` reports the run's strand awaiting the reply to a question it asked, so the reply starts a turn in a live session; every runner that notifies a parent asks it.
   An autonomous run notifies its parent once per held turn end as creel mail to the orch,
   and once per permission or input dialog its pane shows past 60 s,
-  and once per edit loop, one file edited back to content it held earlier `shuttle.edit_loop_edits` times within `shuttle.edit_loop_window_s`,
+  and once per edit loop, one file edited back to content it held earlier `edit_loop_edits` times within `edit_loop_window_s`,
   and an interactive run is answered in its pane;
   a line typed into a run's pane goes through `lym creel post`, `lym creel inject` or `lym creel interrupt`, never a shuttle verb.
   Background work is read off the Stop payload's `background_tasks` first, with the transcript as the fallback when the payload carries no list;
   a turn end with outstanding work is waiting, not held, unless its only outstanding work is non-awaited shells, which a gated run holds at once with an output file missing, a gated run with every output file present counts done once they pass the shell wait bound after telling the agent to read them,
   and an ungated run holds once they pass the shell wait bound.
-  `Attach` waits on a held run instead of respawning beside it.
+  `Attach` waits on a held run, and on a legacy `asking` record whose strand is still live, instead of respawning beside it.
   `died` is narrow:
   it means a strand reed still tracks has a pane that is not alive, the provider never came up inside the startup window, or the provider's process is proven gone behind a live pane shell (by the process registry, or a process-ending `SessionEnd` line past the wait's first liveness tick), with `done` instead when every output file exists.
   Reed's strand table losing the strand entirely — a `reed down`/`remove`, a deleted or rebuilt `reed.json`, a worktree renamed under an in-flight run — is reported as a mechanism failure carrying the run's identity, never as `died`, because reed's bookkeeping going away says nothing about the agent, whose process is often still working in its pane;
@@ -694,8 +683,8 @@ User-facing modules each get one `lym <module>` namespace:
   No guardrail denies the in-process `Agent` tool:
   a subagent or fork shows in the session's own pane and lym reads its transcript under the session's `subagents` directory.
   A `PreToolUse` guardrail denies `AskUserQuestion` when the run is autonomous (`Interactive: false`, the default);
-  a `PreToolUse(Bash)` guardrail denies `python`, `python3` and `python3.<minor>` in command position in every run mode, a version check included (on by default, switchable off via `shuttle.deny_python`, which the hook reads on each matching call through the hidden `lym shuttle hook-python-allowed`, so a change reaches running sessions; the notice sentence follows the value at launch),
-  and a second `PreToolUse(Bash)` guardrail, installed in every run mode with no switch, denies a raw module-wide `go test`, `go build` or `go vet`, a raw `go test` over the `tmux` or `llm` tier, and any command naming the gate-slot or strand-name environment variable, steering the session to `lym gate test`, and to a package-scoped compile check the hub's `gate.refuse_raw` does not refuse,
+  a `PreToolUse(Bash)` guardrail denies `python`, `python3` and `python3.<minor>` in command position in every run mode, a version check included (on by default, switchable off via `shuttle.yaml`'s `deny_python`, which the hook reads on each matching call through the hidden `lym shuttle hook-python-allowed`, so a change reaches running sessions; the notice sentence follows the value at launch),
+  and a second `PreToolUse(Bash)` guardrail, installed in every run mode with no switch, denies a raw module-wide `go test`, `go build` or `go vet`, a raw `go test` over the `tmux` or `llm` tier, and any command naming the gate-slot or strand-name environment variable, steering the session to `lym gate test`, and to a package-scoped compile check the hub's `refuse_raw` does not refuse,
   and a third `PreToolUse(Bash)` guardrail, installed in every run mode with no switch, denies an `rm` on a computed path (a command substitution or a variable expansion in the command) so no permission dialog stalls the run,
   and a fourth `PreToolUse(Bash)` guardrail, installed in every run mode with no switch, denies `sed -i`, `perl -i`, and a redirect, heredoc or `tee` into a source file, steering the session to read a file with Read and change it with Edit or Write,
   and a fifth `PreToolUse(Bash)` guardrail, installed in every run mode with no switch, denies a headless `claude` launch with `-p` or `--print`, whose work shows in no pane, steering the session to a subagent through the `Agent` tool;
@@ -708,37 +697,35 @@ User-facing modules each get one `lym <module>` namespace:
   What every session of a worktree shares comes from the worktree's heddle-rendered `.claude/settings.local.json`:
   Claude Code's `attribution` with empty commit and pull-request texts, so no session lym launches credits itself and a landing's credit block stays the one credit,
   prompt suggestions off, which the idle read needs, and claude.ai connectors, Claude Code's bundled skills and its `Workflow` tool off.
-  While the `claude.session_scope` block is on, the documents scope what each session loads, over the user's and the repository's settings:
-  an installed plugin is on only when the session preloads one of its skills, so the orch and the board session get the `ly` plugin in every hub and a writer does not, the `claude.session_scope.skills_off` list is off, a plugin that is on lists all of its skills, since no setting hides one skill of it,
+  While `claude.yaml`'s `session_scope` block is on, the documents scope what each session loads, over the user's and the repository's settings:
+  an installed plugin is on only when the session preloads one of its skills, so the orch and the board session get the `ly` plugin in every hub and a writer does not, the block's `skills_off` list is off, a plugin that is on lists all of its skills, since no setting hides one skill of it,
   and every session but the orch's gets no auto-memory.
   Every agent keeps the same tool set, so no document denies a tool to one role.
-  The skills a session loads come from the hub's `agents.skills`, by the config role its spec names, followed by `language.skills` for a code role;
-  a launch whose model-spec names no effort takes `--effort` from the `agents.efforts` table by role and model.
+  The skills a session loads come from the hub's `agents.yaml`, by the config role its spec names, followed by `language.yaml`'s skills for a code role;
+  a launch whose model-spec names no effort takes `--effort` from `agents.yaml`'s efforts table by role and model.
   The appended prompt tells the session the explicit `effort` each Agent tool call takes and the skills a subagent's brief names,
   and the settings set `CLAUDE_CODE_SUBAGENT_EFFORT`, so a subagent whose call names no effort still runs at the role's.
   The worktree's `.claude/settings.local.json` carries the efforts table's default as `effortLevel` and as that variable,
   so a session started by hand in the worktree runs at it.
-  The engine sets the main conversation's prompt-cache TTL per role on launch, resume and open from `claude.prompt_cache_ttl` and `claude.prompt_cache_ttl_roles` (template: 5 minutes for `driver`, 1 hour for `webster` and `orch`, 5 minutes for every other role).
-  `claude.keep_warm_cap` (template 250s) and `claude.keep_warm_cap_roles` set the per-role keep-warm cap beside them.
-  Every request outside the main conversation, a subagent's, a fork's or a helper's, runs under a one-hour prompt cache.
-  The reason is that Claude Code backgrounds a 5-minute-cache subagent's foreground Bash call after 180 seconds.
-  While the `claude.batching_nudge` block is on, a `PostToolUse` hook after each `Read`, `Grep`, `Glob`, `Bash`, `Edit` or `Write` call runs the hidden `lym shuttle hook-batching`, which adds one line naming the breach and quoting the rule to a session above the block's context threshold whose recent messages make a chain of single lookups (a Bash call with a read-only lookup command such as `grep`, `find` or a git read counting as one), a sliced read of a short or already-read file, or a chain of edit-only messages;
+  The engine sets the prompt-cache TTL per role on launch, resume and open from `claude.yaml`'s `prompt_cache_ttl` and `prompt_cache_ttl_roles` (template: 5 minutes for `driver`, 1 hour for `webster` and `orch`, 5 minutes for every other role).
+  `claude.yaml`'s `keep_warm_cap` (template 250s) and `keep_warm_cap_roles` set the per-role keep-warm cap beside them.
+  While `claude.yaml`'s `batching_nudge` block is on, a `PostToolUse` hook after each `Read`, `Grep`, `Glob`, `Bash`, `Edit` or `Write` call runs the hidden `lym shuttle hook-batching`, which adds one line naming the breach and quoting the rule to a session above the block's context threshold whose recent messages make a chain of single lookups (a Bash call with a read-only lookup command such as `grep`, `find` or a git read counting as one), a sliced read of a short or already-read file, or a chain of edit-only messages;
   a subagent's or fork's call is judged against that agent's own transcript, context and nudge count;
   it never denies a call, and the block's switches and thresholds are config.
-  While `shuttle.edit_loop_edits` is above 0, an autonomous run's file edits, `Edit` and `Write` on claude and `apply_patch` on codex, run the hidden `lym shuttle hook-edit`, which records each edited file and a hash of its content for the edit-loop notice.
+  While `shuttle.yaml`'s `edit_loop_edits` is above 0, an autonomous run's file edits, `Edit` and `Write` on claude and `apply_patch` on codex, run the hidden `lym shuttle hook-edit`, which records each edited file and a hash of its content for the edit-loop notice.
   The provider is swappable behind an **engine** seam;
-  the engine is picked from the registry by the `shuttle.engine` key, or per run by a model-spec naming it.
+  the engine is picked from the registry by `shuttle.yaml`'s `engine:` key, or per run by a model-spec naming it.
   The registered engines are `claude` and `codex`.
-  `codex` drives the Codex CLI's TUI under one shared lym Codex home (`codex.home`, linked to the operator's own login and sessions, its folder trust rendered by lym), with `-a never -s` and the mode `codex.sandbox_mode` settles (`auto`, the template's, probes Codex's sandbox at each launch and runs `workspace-write` when it starts, `danger-full-access` with a warning when it refuses to start, as on a machine whose bubblewrap cannot create a user namespace, and refuses the launch when the probe itself cannot run; an explicit `workspace-write` refuses the launch there, naming the cause; a machine key the hub's machine override may pin) and, under `workspace-write`, as writable roots, the records checkout it is told through its config dirs (none outside a hub), the checkout's git dir and the common git dir it links to, so a session in a linked worktree can commit, and the folders of `codex.writable_roots` that exist (template: the Go build cache);
-  it loads skills as SKILL.md files the model reads by absolute path under `codex.skill_roots`, and installs the shell guard rows of the `shellguard` table as `PreToolUse` hooks matching `Bash` with Codex's own steer and notice texts (`apply_patch` in place of Read, Edit and Write), the python row in every launch, asking the hidden `lym shuttle hook-python-allowed` on a match, with its notice following `shuttle.deny_python` at launch, the publish row following its switch and the refuse-raw row a non-empty `gate.refuse_raw` list;
+  `codex` drives the Codex CLI's TUI under one shared lym Codex home (`codex.yaml`'s `home`, linked to the operator's own login and sessions, its folder trust rendered by lym), with `-a never -s` and the mode `codex.yaml`'s `sandbox_mode` settles (`auto`, the template's, probes Codex's sandbox at each launch and runs `workspace-write` when it starts, `danger-full-access` with a warning when it refuses to start, as on a machine whose bubblewrap cannot create a user namespace, and refuses the launch when the probe itself cannot run; an explicit `workspace-write` refuses the launch there, naming the cause; a machine key the hub's machine override may pin) and, under `workspace-write`, as writable roots, the records checkout it is told through its config dirs (none outside a hub), the checkout's git dir and the common git dir it links to, so a session in a linked worktree can commit, and the folders of `codex.yaml`'s `writable_roots` that exist (template: the Go build cache);
+  it loads skills as SKILL.md files the model reads by absolute path under `codex.yaml`'s `skill_roots`, and installs the shell guard rows of the `shellguard` table as `PreToolUse` hooks matching `Bash` with Codex's own steer and notice texts (`apply_patch` in place of Read, Edit and Write), the python row in every launch, asking the hidden `lym shuttle hook-python-allowed` on a match, with its notice following `deny_python` at launch, the publish row following its switch and the refuse-raw row a non-empty `refuse_raw` list;
   an autonomous Codex launch also denies `request_user_input` and `request_user_input_async` through a `*`-matcher `PreToolUse` entry,
-  and while the `codex.batching_nudge` block is on, a `*`-matcher `PostToolUse` hook runs `lym shuttle hook-batching codex`,
+  and while `codex.yaml`'s `batching_nudge` block is on, a `*`-matcher `PostToolUse` hook runs `lym shuttle hook-batching codex`,
   which judges the thread's exec cells by Claude's rules, keys its counts by the payload's `transcript_path` and hands the line over as additional context, never a block;
-  while `shuttle.edit_loop_edits` is above 0 an autonomous Codex launch also carries an `apply_patch`-matcher `PostToolUse` hook running `lym shuttle hook-edit codex`, which records each file a patch touches;
+  while `edit_loop_edits` is above 0 an autonomous Codex launch also carries an `apply_patch`-matcher `PostToolUse` hook running `lym shuttle hook-edit codex`, which records each file a patch touches;
   a Codex run in a hub carries creel's hook delivery, the mail handed over as a hook block after a tool call and at a turn end, an idle session woken by its async waiter hook through `codex queue`, and the creel trust sentence in its developer instructions, while an opened Codex session stays a pane-mail strand;
   the launch line carries the standing items as `developer_instructions`: the deny notice with the creel trust sentence, the subagent passage, the heddle passages, the user's Claude instruction files, the instruction-file pointers, the skill listing and the plugin contexts, in that order, and a launch whose setting reaches the 128 KiB argument cap is refused naming the largest item;
-  the subagent passage and `agents.default_subagent_reasoning_effort` carry the effort `agents.efforts` gives the role when `codex.efforts` lists it, and `agents.max_concurrent_threads_per_session` carries `codex.max_subagent_threads`;
-  the user's Claude setup comes through the claude engine's user-setup source: the global `CLAUDE.md` and each `CLAUDE.md` above the repository root with its `@` imports expanded, the skills the session scope turns on, and the context of each plugin `SessionStart` command hook of a plugin it turns on, each hook bounded by its own timeout, or by `codex.plugin_hook_timeout` when it sets none;
+  the subagent passage and `agents.default_subagent_reasoning_effort` carry the effort `agents.yaml` gives the role when `codex.yaml`'s efforts lists it, and `agents.max_concurrent_threads_per_session` carries `codex.yaml`'s `max_subagent_threads`;
+  the user's Claude setup comes through the claude engine's user-setup source: the global `CLAUDE.md` and each `CLAUDE.md` above the repository root with its `@` imports expanded, the skills the session scope turns on, and the context of each plugin `SessionStart` command hook of a plugin it turns on, each hook bounded by its own timeout, or by `codex.yaml`'s `plugin_hook_timeout` when it sets none;
   `project_doc_max_bytes` is raised to the size of the files Codex reads from the checkout root down to its anchor, never below Codex's own default, and `CLAUDE.md` is a fallback instruction file;
   heddle's `codex-file` render writes `AGENTS.override.md` carrying `AGENTS.md` and the import-expanded `CLAUDE.md`, and the pointers name each `CLAUDE.md` Codex does not read itself;
   it has no fork audit, and the model registry's `sol`, `astra` and `luna` aliases name it.
@@ -768,13 +755,13 @@ User-facing modules each get one `lym <module>` namespace:
   bracket verbs (`begin-batch`/`record-batch`) drive each in-session fork (Master ends its turn while a backgrounded fork works and records the batch on the fork's completion notification, shuttle reading that turn end as waiting rather than done),
   and a model escalation (recovery after a stuck/report-less fork) spawns a cold strand.
   Consumes the flat card-list plan (pinned in the plan-format blocks `contracts/stencils/loom/loom-block-plan-*.md`, which `contracts/stencils/loom/loom-template-plan.md`, the Plan producer's own stencil, includes) via its own sole parser, `internal/planparser`.
-  It groups cards into execution batches via `internal/batcher`, a separate config-selected registry module webster consumes (the `batcher.profiles` entries, the `wide` cost profile by default), then runs those batches in card order, refusing a backward dependency derived from the cards' own `Targets`/`Uses` refs.
+  It groups cards into execution batches via `internal/batcher`, a separate config-selected registry module webster consumes (profiles in `batcher.yaml`, the `wide` cost profile by default), then runs those batches in card order, refusing a backward dependency derived from the cards' own `Targets`/`Uses` refs.
   It records the partition in `state.json` at first init.
   The run-plan part of `state.json` and the batch machinery around it (report contract, plan fingerprint and conflict refusal, post-batch checks, suspect-path checks, digest, card gates, report await and verify-failure record) live in `internal/runplan`, which webster's `State` embeds and which names webster's way forward in each refusal only through what webster passes it.
   It also carries the plan's `## verify:` command as a must-pass gate on Merriam's strand:
   a failure is rerun once (a pass on the rerun records the identities as flaky;
   a run that exceeds the verify timeout is not rerun, since a hang is not flakiness, and fails the gate at once with the timeout, the log path and the log tail as findings),
-  and a failure that survives goes back to Merriam, who fixes it through one fixer fork, or on the gate's last attempt and after a fixer that committed nothing through the cold fixer `lym webster fix-verify` spawns at the recovery role, up to `webster.verify_gate_attempts` attempts (`internal/websterengine` + `internal/webstercli`).
+  and a failure that survives goes back to Merriam, who fixes it through one fixer fork, or on the gate's last attempt and after a fixer that committed nothing through the cold fixer `lym webster fix-verify` spawns at the recovery role, up to `verify_gate_attempts` attempts (`internal/websterengine` + `internal/webstercli`).
   ✅ Implemented.
   `lym webster verify` runs the same plan-level verify on demand through `internal/verifytree`;
   like the other read-only verbs it boots no reed session.
@@ -792,7 +779,7 @@ User-facing modules each get one `lym <module>` namespace:
   and only a conflict whose fix would change what a card does ends the run stuck.
   `recover-batch`, `fix-verify` and `fix-plan` boot the same private reed session `run` does, because each spawns a cold strand of its own;
   the read-only verbs still boot nothing.
-  Loom's `Webster` row runs webster when the `tapestry.implementer` key, settable per task through `run_settings`, names `webster`, its only value;
+  Loom's `Webster` row runs webster when `tapestry.yaml`'s `implementer` key, settable per task through `run_settings`, names `webster`, its only value;
   the row's `Implementer` engine reads the key,
   and webster partitions the plan itself at the row's start.
   See [webster-spec.md](../contracts/specs/webster-spec.md) and [implementer-spec.md](../contracts/specs/implementer-spec.md), the contract every implementer of that row keeps.
@@ -819,7 +806,8 @@ User-facing modules each get one `lym <module>` namespace:
 - **cleanup** — the routine cleanups of the hub prime's leftover state, as one verb (`internal/cleanupcli`; `lym cleanup [--apply]`, from the prime and from any beam).
   Without `--apply` it is a dry run that lists, per segment, what `--apply` would remove.
   The segments run in order and each calls its owner's own cleanup in-process:
-  `lym batten cleanup`, `lym board prune`, the orch's handoff cleanup, the `.scratch/` children at the prime's anchor older than 14 days that no open board entry cites, logger's trace retention sweep, and the temp root's sweep of dead owners' run directories.
+  `lym batten cleanup`, `lym board prune`, the orch's handoff cleanup, the `.scratch/` children at the prime's anchor older than 14 days that no open board entry cites, logger's trace retention sweep, the temp root's sweep of dead owners' run directories,
+  and fabric's sweep of the hub's retired `_launchers` directory.
   A failing segment never stops the later ones.
   ✅ Implemented. See the `internal/cleanupcli` package documentation.
 - **adopt** — the takeover of beam projects, or of root, and of the runs under them from another machine of the operator, as one verb (`internal/adoptcli`; `lym adopt <beam>...`, `lym adopt root` and `lym adopt --all`, from the prime and from any beam).
@@ -840,25 +828,22 @@ User-facing modules each get one `lym <module>` namespace:
 - **beam** — the making, landing, starting and stopping of a beam, a long-lived pair that groups board work, and dobby, the daemon every beam and the prime run (`internal/beamcli` + `internal/dobbyengine`; `lym beam create <slug>`, `lym beam ready <slug>`, which flags the beam ready to merge so its dobby writes the land request once nothing works under it, and is final: no verb takes the flag back, `lym beam land <slug>`, which writes the land request the beam's pawl run consumes at Beam-Await and refuses a beam not flagged ready, `lym beam merge-parent <slug>`, which files a darn task in the beam, its Code-Review perch on, whose run merges the beam's parent branch into the beam, `lym beam start [slug] [--all]`, `lym beam stop [slug] [--all]`, whose `--all` takes the whole hub down on this machine from a detached process, and `lym beam status`, from the prime and from any beam, and the hidden `lym beam dobby`).
   Create runs from the beam's parent worktree, claims the root when none is recorded, records this machine as a board project's owner with the beam flag and the pawl recipe, and starts the beam's pawl run as a detached first pass, whose Worktree-Create makes the pair, forked from the parent beam of a nested beam, whose Record-Write writes the project record from the project entry's body under `_lym/project/<slug>/`, and whose Beam-Up marks it.
   Before it starts that run, create removes a done batten run under the same slug whose pair is gone and whose child ran motif, reporting `motif_run_cleared`;
-  any other done run is refused, naming `lym batten cleanup --apply`, until the parent's dobby removes it.
-  The dobby does so once its landing is counted, its notice decided, no `[run watch]` line of it is owed and its `beam.run_watch` has been read.
+  any other done run is refused, naming `lym batten cleanup --apply`, until the parent's dobby removes it once its landing is counted and its notice decided.
   The project record binds every member:
   a member's Discussion-Write lead and darn writer read each enclosing beam's record from that beam's worktree, the board refuses an edit of the project's body once the record exists,
   and `lym loom decision add <beam-slug>` or `lym loom decision replace <beam-slug>`, run by the beam's orch, are the only ways its scope changes, its notice reaching every live member run under the beam.
   The pawl recipe is a loom recipe whose rows are Preflight, Record-Write, Beam-Up, Beam-Await, Finalize and Beam-Down, with Beam-Await as its build row and no review round of its own.
   At Beam-Await the beam's orch works the landing with the operator through `lym beam describe`, which records the change description the orch writes, the end result and every member pull request, never the record's added entries, and updates a recorded pull request, `lym beam pr open`, `update`, `status` and `close`, and `lym beam ready`, which is final;
   Finalize then merges the beam into its parent, through the pull request the beam's landing record names when one is recorded, and keeps that pull request's text.
-  While a pull request is recorded, a describer agent rewrites the description after each member landing.
-  The beam's dobby spawns it and records its draft as `lym beam describe` records the orch's text.
-  An autonomous beam's Beam-Await row posts one `[beam drained]` line to its orch once the beam holds commits beyond its parent and no member, child pair or ready record stands.
   Land starts a short batten run over the `beam` recipe, after a refusal that stops it while members or forked pairs remain under the beam.
   Start brings up a beam's dobby and orch, the one the acting worktree is or the one a slug names, or with `--all` the prime and every beam this machine owns, each part only when it is not live.
   Stop takes a beam's orch and dobby down.
   Status prints, once, the dobby section a beam's window draws, for the prime and for each local beam:
   alive or not, the runs it drives with their state, stage, time in stage and last pass, and each released task it has not started with what the task waits on, and the beam's orch: strand live, watcher live and the recorded session, then one adopt check item per subject, shown only when the hub holds a record of it: the subject, its state, the tier in flight, the tiers done and the paths of its log and output.
-  Dobby starts the beam's released tasks from an empty status, drives their batten runs in short passes, sends its beam's orch, or while that orch is not started or is stopped the nearest live orch above, its own notices, the `[dobby notice]` lines of a running child (a dead driver, an API-error stall, a usage limit, idle agents) and the `[run watch]` lines of every run it drives, one per stop or, under `beam.run_watch: rows`, one per change, and a `[dobby notice]` for a gate slot a driven run holds past its bound, spawns the board-tidy agent every few landings, and, while a beam's pull request is recorded, spawns a describer agent after each member landing to rewrite the beam's change description.
+  Dobby starts the beam's released tasks from an empty status, drives their batten runs in short passes, sends the nearest live orch its own notices and the `[dobby notice]` lines of a running child (a dead driver, an API-error stall, a usage limit, idle agents), and spawns the board-tidy agent every few landings.
+  No dobby builds the shared coverage maps: the operator builds them on command with `lym gate test --map`, and the gate's `reach` and `mutation` steps refresh only a task worktree's own.
   It logs to its `dobby.log` the changes it sees, such as a task start, a run changing state and a failing pass episode, plus a heartbeat line every ten minutes.
-  A front task, filed through `internal/fronttask`, is the one open task of its worktree that dobby starts first, past `beam.max_runs`, while no other task of that worktree starts.
+  A front task, filed through `internal/fronttask`, is the one open task of its worktree that dobby starts first, past `max_runs`, while no other task of that worktree starts.
   Its `on_land` action runs once it lands or its entry is removed by hand with `lym board remove`, from a closed action table and on the subject's owner machine only.
   The verbs call each owning module's function in-process, and `internal/dobbyengine` holds the daemon.
   ✅ Implemented. See the `internal/beamcli` package documentation.
@@ -866,7 +851,7 @@ User-facing modules each get one `lym <module>` namespace:
   The convergence report says, per finished run and per ISO week, what woke the orch, what stopped and repaired runs, how many review rounds each segment took and how landings fared.
   The timing report says where run time went, per run, per phase and per day or week, with machine sleep, waits and the time a run stood paused apart, and who settled each stop.
   The cost report says, per recipe, profile and stored-record flag, what landed runs cost in dollars and hours, read from the usage records each run keeps, with a fixed cost and a cost per 100 changed lines fitted over the runs that landed code;
-  a cell under `report.cost_min_runs` reads "too few runs".
+  a cell under `report.yaml`'s `cost_min_runs` reads "too few runs".
   The raddle report says, per Sketch a raddle run filed, the cost its approved proposal predicted against the summed cost of its filed parts' runs, the parts not yet landed and whether the operator changed the proposal, read from the raddle store on the board branch.
   The replies report counts, per receiver role over the creel journal's seven days, the replies creel was asked for, the replies it got, the chases it sent and the messages left unanswered.
   Convergence and timing cover tapestry and darn runs, each tagged with its recipe, and read records lym already writes.
@@ -892,10 +877,9 @@ User-facing modules each get one `lym <module>` namespace:
   `lym tender status` lists the live entries, the network operations in flight and the parent locks held, every live session in the hub with its state, cause and whether an entry covers it, each pair with no reed session under `skipped`, the lym processes running a replaced binary, the processes registered to runs with their orphans, and each pair's owner machine with the run-held entries owned by another machine;
   it changes nothing, and any caller may run it.
   `lym tender reap` ends the orphans of one fresh reading of that processes part, which are the processes of a slug with no pair and no running batten and the unregistered lym processes in a deleted hub directory, never a hub-owner process or one working inside a registered worktree;
-  the prime's orch and an external caller may run it,
+  the orch and an external caller may run it,
   and a survivor makes it exit non-zero naming the pid and role.
   An agent may pause, resume or revive only its own pair; the orchestrator and an external caller may do each for the hub or any pair.
-  A beam's orch may pause, resume or revive its beam and every pair under it, but not the whole hub or another pair, and it may not reap.
   Every lym process in a hub runs its network git and GitHub calls under a gate that waits while a pause covers it,
   and every reader that reacts to an unexpected stop or to idle time consults the record (`internal/pauserecord`).
   ✅ Implemented. See the `internal/tenderengine` and `internal/tendercli` package documentation.
@@ -904,7 +888,7 @@ User-facing modules each get one `lym <module>` namespace:
   the trigger is at once, the end of one batten run's Land row, or no batten run in flight.
   The prime's dobby carries the request, and no beam's dobby does:
   it takes the request up from disk, again after a restart, waits for its trigger, pauses the hub through tender's engine, confirms every session paused, hibernates the machine, detects the wake and reconciles the hub with origin, then posts creel mail to the orch when it is done or failed.
-  The wake lifts the request's own pause entry by identity only when the request resumes on wake, chosen by `--resume-on-wake` or else the hub-wide `hibernate.resume_on_wake`, off by default;
+  The wake lifts the request's own pause entry by identity only when the request resumes on wake, chosen by `--resume-on-wake` or else the hub-wide `hibernate.yaml`'s `resume_on_wake`, off by default;
   otherwise the hub stays paused until `lym tender resume` or `lym hibernate cancel` lifts it,
   and a new request is refused meanwhile.
   `cancel` ends the request and lifts the entry, and is refused while the machine is going into hibernation;
@@ -934,7 +918,7 @@ User-facing modules each get one `lym <module>` namespace:
   and `lym creel post --interrupt` stops the receiver's running turn and then posts.
   The daemon also carries mail from a strand to a strand of another hub on the machine:
   the sending daemon queues the post, the receiving daemon confirms it with the sending one before any agent sees it,
-  and the orch of a hub `creel.trusted_hubs` lists is obeyed.
+  and the orch of a hub the `creel` config lists as trusted is obeyed.
   Every Claude session shuttle launches gets the sentence that tells it to follow `[creel]` mail and how to reply through one `append-system-prompt.txt` file;
   it names the session's own hub and the stamps of mail from another hub.
   The first verb of a hub starts its daemon, which folds its pool from an append-only journal, names a sender from the connecting process's ancestry, and delivers through shuttle only into a pane that reads idle.
@@ -953,24 +937,25 @@ User-facing modules each get one `lym <module>` namespace:
   and a second press switches the orch's forwarding off and leaves the channel in place.
   The relay runs only while some orch of the hub has its button on, so the machine's connection follows the buttons.
   One relay of the machine holds the Socket Mode connection, and each event it receives wakes the relay of the hub whose channel it belongs to.
-  The relay forwards the operator's messages in an orch's channel to that orch as creel mail from `<shortname>:SLACK` that carries their text alone, answers the relay commands `lym away`, `lym back`, `lym status`, `lym approve` and `lym revoke` in the channel, and posts the mail the orchs and programs leave for `SLACK` to their own channel, at least once, and a message Slack accepted is not posted again within one relay process.
+  The relay forwards the operator's messages in an orch's channel to that orch as creel mail from `<shortname>:SLACK` that carries their text alone, answers `away`, `back` and `status` in the channel, and posts the mail the orchs and programs leave for `SLACK` to their own channel, at least once, and a message Slack accepted is not posted again within one relay process.
   Each post goes under its sender's name in the cross-machine address form `<machine>::<sender>`.
   A channel is archived only when its orch retires, under a dated name, and `lym slack stop` archives nothing.
   It starts through a double fork, so no pane's tree holds it, and its files sit in the hub's `.lym/slack/` directory.
   The presence is the machine's, beside its credential file, so away holds for every hub and orch on the machine.
   The operator's message in Slack sets the presence to `slack`, and a line the operator types in an orch's pane sets it back to `terminal`, through the orch's prompt hook (`lym slack hook`), which tells those lines from the ones lym types.
   While the presence is `slack`, the turn-end hook of an orch whose button is on posts each turn's final reply to its channel.
-  While the orch's autonomy is on, the hook posts only a reply that opens with `[operator]`.
-  reed's status bar shows the session orch's button and the presence as the `slack` and `away` toggles; a click on `slack` flips that orch's button, and on `away` switches the presence; a click that fails shows why on the bar, and in the trace log when the click runs in a lym worktree.
-  While the presence is `slack`, each worktree's dobby leaves `SLACK` one line for a run waiting at PR-Review or Sampler-Session, every `slack.remind_after_min` minutes of the wait.
+  reed's status bar shows the session orch's button and the presence as the `slack` and `away` toggles; a click on `slack` flips that orch's button, and on `away` switches the presence.
+  While the presence is `slack`, each worktree's dobby leaves `SLACK` one line for a run waiting at PR-Review or Sampler-Session, every `remind_after_min` minutes of the wait.
   ✅ Implemented. See the `internal/slackengine` and `internal/slackcli` package documentation.
 - **gate** — the tier runner:
-  `lym gate test` runs the numbered tiers the hub declares in `gate.tiers` over explicit targets or `--all`, each tier taking the hub-wide gate slots it asks for, bounded by its `gate.tiers.<tier>.timeout_min`, counted by its `go-json` or `vstest` counter, and logged with a summary line and a run record under the board;
-  a `--card` scope under the `go` scoper takes the cards' packages and every package whose build or tests reach one of them,
-  and it also vets those packages under each other tier tag that adds a file to one of them,
+  `lym gate test` runs the numbered tiers the hub declares in `gate.yaml` over explicit targets or `--all`, each tier taking the hub-wide gate slots it asks for, bounded by its `timeout_min`, counted by its `go-json` or `vstest` counter, and logged with a summary line and a run record under the board;
+  a `--card` scope under the `go` scoper also vets the card's packages under each other tier tag that adds a file to one of them,
   so a tag-set compile break fails at the card;
   a failing tier stops no later tier, vet or guard run;
   the gate key's lint steps run after the tiers;
+  a gate key's advisory `reach` report step runs before it, finding the functions the diff changes, refreshing the worktree's own coverage maps of their packages and noting the tests that reach each,
+  and its advisory `redundancy` report step runs last, judging the diff's new and changed Go tests against the coverage maps without changing the result,
+  and Code-Review's rubric reads its report while it matches the reviewed HEAD's tree;
   a failure report lists every failure with its package, test and first lines, the files the change touches and each failed run's log;
   a closing line names every failed run,
   and the call exits with the first failing run's code.
@@ -980,21 +965,55 @@ User-facing modules each get one `lym <module>` namespace:
   `--gate <key>` runs the tiers and scope `gate.yaml`'s gate key names,
   and with `--guards` the verb also runs every `//lym:guard` test of the module under the command of the tier its file belongs to).
   `lym gate card-verify <card id>` runs a plan card's `**Verify:**` line through the shared `internal/cardverify` runner and exits with the line's code.
-  `lym gate red-first --gate <key> [--base <rev>]` runs the tests the worktree's diff adds or changes, which `internal/testreach` names, once under the key's tiers,
-  with a Go overlay that puts the base's production files and the non-Go files they embed back, and exits 0 when one of them fails there;
-  under the `dotnet` scoper it runs the changed C# test methods, which `internal/dotnetimpact` names, by fully qualified name in a checkout of the base
-  where the changed files of their test projects keep their working-tree text, and a test that does not build there counts as failing;
-  a run in which every one passes, a diff with no test, and a run the check cannot judge (a hub whose scoper is neither `go` nor `dotnet`, C# tests no filter or tier can reach, a C# test file whose project cannot be told, or a C# run that discovered no test) each exit with their own code from `internal/gateslot`.
+  `lym gate redundant <package>` judges one package's coverage map by the redundancy verdict,
+  then confirms each candidate inside one gate slot by running it and its covering tests with each mutant of its blocks on:
+  a candidate stays listed only when its covering tests kill every mutant it kills,
+  and one that kills a mutant they miss is listed as refuted.
+  Each listed candidate comes with its seconds, its covering tests and whether it is in the removable set.
+  Every test run is capped at `redundancy_test_memory_mb` of memory, in a transient systemd scope where the user manager caps one,
+  so a mutant that keeps memory for ever is killed alone;
+  a run that ends at the cap or at its time bound is unjudged, never a kill, and is listed,
+  and a candidate whose answer rests on such a run is listed as unconfirmed, with those mutants.
+  `lym gate reach <file>#<Func>` prints the tests that reach one function from the coverage maps, with the commit and age of each map read,
+  and `lym gate reach --test <package>.<Test> --since <rev> [--branch <name>]` lists the landings on a branch, walked first-parent from the commit, whose changed functions the test reaches;
+  it runs no build, takes no gate slot and writes nothing.
+  `lym gate mutate [--base <rev>]` mutates the lines the worktree's diff changes, from the merge base with the parent branch or from `--base`, and lists the mutants no covering test kills:
+  it refreshes the worktree's own maps of the changed packages under `reach_budget_min`, then holds one gate slot to its end and judges each package whose map is fresh,
+  placing at most one mutant on each changed line of a block a test covers, up to `mutation_max_mutants` over the changed functions in turn,
+  and running each mutant against the map's tests that cover its block until one fails, bounded by `mutation_budget_min`;
+  every build is bounded by `redundancy_build_timeout_min`, every test run by `redundancy_test_timeout_sec` and capped at `redundancy_test_memory_mb`,
+  and a run that ends at the cap or its time bound is unjudged, never a kill.
+  A mutant every covering test passes is a survivor, listed with the tests of other packages that reach its function;
+  the call also lists the changed blocks no test covers and the packages it did not judge, with the reason, and exits 0 once it ran.
+  `lym gate test --map [<targets>...]` builds the per-package coverage maps of `internal/testcover` over its scope's packages at the HEAD of the worktree it runs in, only on command
+  (the `reach` report step's refresh of a task worktree's own maps runs the same measurement under the same build and test bounds and memory cap),
+  the hub's shared maps from the prime and a worktree's own, under its `.lym`, from any other worktree:
+  each tier0 and tier1 test runs alone in its own process, a package's tier0 tests before its tier1 tests,
+  each tier's tests up to its `parallel` side by side and fewer when memory is short or the tier's `memory_mb` divides into fewer caps,
+  inside the larger of the two tiers' gate-slot asks, where `slots: all` ranks above any count,
+  with no `lym` built for them,
+  bounded by `redundancy_build_timeout_min` and `redundancy_test_timeout_sec` and capped at `redundancy_test_memory_mb`,
+  under a coverage binary over every in-module package its test binary links; the gate selects no test from the maps, and a call from the prime whose HEAD stayed put also writes the index `internal/testreach` reads the shared maps through.
+  A test that fails beside others runs again alone, and one that then passes is listed as `passed_alone`.
+  The call exits 1 when a build failed, a package was left unmeasured or an entry it wrote records a failed or timed-out test, after writing every map and listing the tests as `failed_tests`.
+  A map is written only when HEAD is still the commit the call read at its start and no file the package or a linked package owns is modified or untracked,
+  checked once its build ended and again before the write, over every path that writes a map, a failed build's included.
+  A package that fails a check is listed as `unmeasured` with its reason, and a moved HEAD ends the walk and lists every package not yet measured.
+  An edit made between a package's checks and reverted before the next goes unseen,
+  and a gitignored Go file the build compiles enters the map under HEAD's hashes.
   A run inside a slot an enclosing gate run holds takes no second one,
   and a git worktree outside every hub runs unslotted under its own `gate.yaml`.
-  A Go test binary that keeps a core busy past `gate.busy_quit_sec` gets one SIGQUIT,
+  A Go test binary that keeps a core busy past `busy_quit_sec` gets one SIGQUIT,
   so its goroutine stacks reach the log long before the tier's own timeout.
-  A memory guard kills a Go test binary whose process tree holds more than `gate.memory_quit_mb`,
-  or the largest one once the memory limit lym sits under runs short, and names its package;
-  a tier's `memory_mb` runs its whole command under a kernel memory cap.
+  A memory guard kills a Go test binary whose process tree holds more than `memory_quit_mb`,
+  or the largest one once the memory limit lym sits under runs short, and names its package,
+  under `lym gate test` (its redundancy report step and the refresh of its reach report step included), `lym gate redundant`, `lym gate mutate` and `lym gate test --map` alike,
+  and a test run it kills is listed as not judged under the redundancy paths, never as a mutant kill,
+  and recorded as failed by `lym gate test --map`;
+  a tier's `memory_mb` runs its whole command under the kernel cap `lym gate redundant` uses.
   The `dotnet` scoper narrows a C# hub's computed, `--base` and `--card` scopes to the test projects and classes that name a changed type, rendered into the tier's `{filter}` placeholder (`internal/dotnetimpact`),
   and a hub's `build` step runs once per call inside the slots of the first tier that sets `shared_build`, with its own summary line and run record.
-  `gate.inert_paths` makes a diff of files no test reads run no tier,
+  `inert_paths` makes a diff of files no test reads run no tier,
   and a tier with `carry: false` runs whole under every scope form but explicit targets and never carries.
   [dotnet-hub.md](dotnet-hub.md) sets a .NET hub up.
   ✅ Implemented.
@@ -1029,7 +1048,7 @@ User-facing modules each get one `lym <module>` namespace:
   so do the `description` gate on loom's `Describe` row and the `lym loom validate-description` verb.
   ✅ Implemented.
 - **batcher** — the batchifier registry that groups a plan's flat card list into webster's execution batches.
-  The named `batcher.profiles` define the groupings, and `batcher.active` picks one.
+  Named profiles in `batcher.yaml` define the groupings, and the `active:` key picks one.
   The template default is the `wide` profile, the cost batchifier;
   an empty value resolves to identity, one card per batch.
   It is its own standalone configreg module, separate from webster's (`internal/batcher`).
@@ -1079,16 +1098,9 @@ User-facing modules each get one `lym <module>` namespace:
   `Drift-Expect` seals the changes the task is expected to make.
   One gated `Darn-Write` writer reads the record as its scope, edits, tests and commits;
   its `drift` gate entry checks the code's changes against that expectation.
-  For an entry labelled `bug`, its `red-first` gate entry runs `lym gate red-first` and holds the handoff until a test the diff adds or changes fails on the merge base,
-  unless the parent recorded an added decision titled `No test seam`, or `No bug fixed` for a change that only adds tests pinning existing behaviour;
-  a diff with no test holds the handoff without spending an attempt until a new commit or that record;
-  a hub whose scoper is neither go nor dotnet passes the gate, since the check cannot judge the tests there;
-  the fix's commit carries a `Root-Cause:` trailer that the `Code-Review` perch checks.
   `Drift-Verify` checks the writer's code by containment and has a judge rule on the expected changes.
-  The judge also rules on each loosened check, an assertion, tolerance or limit widened or removed in a test existing at the review base, as caused or uncaused.
-  A removed assertion that another test still holds, no looser, is no loosened check.
-  An uncaused one makes the row Stuck until a `Loosened-Check` trailer commit, a revert or a commit adding the dropped checks to a test, then `lym loom resume`.
-  A change to a file of the review range has the judge rule on the uncaused file again.
+  The judge also rules on each loosened check, an assertion, tolerance or limit widened in a test existing at the review base, as caused or uncaused.
+  An uncaused one makes the row Stuck until a `Loosened-Check` trailer commit or a revert, then `lym loom resume`.
   The `Code-Review` perch (`Code-Bouncer`, `Code-Burler-Review` and `Code-Burler-Fix`) reviews the committed diff.
   It carries its open findings into the record.
   `Drift-Recheck` then checks again, by containment and the judge, the code the perch's fixes committed.
@@ -1100,14 +1112,13 @@ User-facing modules each get one `lym <module>` namespace:
   A writer that finds the entry overtaken writes a stop report as its description and creates the stop marker.
   The marker halts the run after the session, with the report as the reason.
   The parent records its answer with `lym loom decision add`, and the run resumes.
-  Once the task's scope is closed, the parent files the answer as a board note saying so instead.
   The perch is loom's own, with the same rows and rubric.
-  It uses the `loom.code.*` keys for models, fans, budget, hard cap and auto-accept.
+  It uses the `loom.yaml` `code_*` keys for models, fans, budget, hard cap and auto-accept.
   Only its answer key differs.
   In darn the answer key is the decision record alone:
   its `## Goal` holds the task's board entry, as amended by the record's `Added after Discussion` entries,
   and the record's other sections are the writer's own claim, checked against the amended entry.
-  A `loom.code.max_bounces` of `0` makes `Code-Bouncer` settle approved at once and `Describe`'s entry gate skip the row.
+  A `code_max_bounces` of `0` makes `Code-Bouncer` settle approved at once and `Describe`'s entry gate skip the row.
   The writer's own description then stands.
   A perch key found in `darn.yaml` moves to its `loom.yaml` key at reconcile and in a task's `run_settings`.
   A further embedded recipe, `contracts/recipes/sampler-recipe.yaml`, drives a sampler run.
@@ -1132,8 +1143,7 @@ User-facing modules each get one `lym <module>` namespace:
   A run with no seed gets `tapestry`.
   `lym loom start` never rewrites a recorded recipe.
   The `lym loom` verbs serve loom runs only:
-  a recipe declaring `contract: loom` is served, among them tapestry, motif, raddle, darn, pawl and sampler,
-  and arras, which is kept in code but not offered.
+  a recipe declaring `contract: loom` is served, among them tapestry, motif, raddle, arras, darn, pawl and sampler.
   A run of any other recipe is refused, naming the `lym shed` verbs;
   a seed naming no recipe this lym knows is refused, naming the re-seed.
   A verb that applies to some loom recipes refuses on the others by the recipe's rows, never its name:
@@ -1146,9 +1156,10 @@ User-facing modules each get one `lym <module>` namespace:
   The verify gates of the writer and of `Code-Burler-Fix` both use them.
   The writer's gate halts the run for the parent once the budget is spent.
   The darn gates run the diff's impacted set or their row key over the touched trees' targets.
-  `darn.tree_scope` scopes a non-production diff at every verify site, Finalize included.
+  `tree_scope` in `darn.yaml` scopes a non-production diff at every verify site, Finalize included.
   `lym loom resume` re-spawns `Darn-Write`.
   `lym loom goto --to Darn-Write` re-enters it and keeps the spent review budget and any settled review verdict.
+  A `lym loom` verb that arms a darn run whose status file names the writer row `Darn` renames it onto `Darn-Write`.
   `start` is the session bootstrap, performing these steps in order:
   it resolves the recorded parent branch and seeds and commits the status file with the records when it is absent.
   It ensures the worktree's tmux session is up, and it keeps or adds the status strand.
@@ -1181,9 +1192,8 @@ User-facing modules each get one `lym <module>` namespace:
   `lym loom resume` wakes a halted run's live, parked driver through the same branch.
   A run awaiting at a review segment's Bouncer row with a pending circling decision takes that branch too:
   its driver's step re-calls the Bouncer, which acts on the decision.
-  `lym loom resume` never spawns an LLM driver.
+  `lym loom resume` never spawns an LLM driver, adds a strand or brings reed up.
   It spawns a Go driver for a halted go-seeded run that has none.
-  Before it spawns or wakes a driver it brings reed up and restores the run's status strand, as `start` does.
   It reads the driver strand from reed's sessionless directory.
   It refuses every other state with its way forward.
   [refusal-spec.md](../contracts/specs/refusal-spec.md) defines a way forward.
@@ -1211,7 +1221,7 @@ User-facing modules each get one `lym <module>` namespace:
   Each history entry a producer call writes records the call's start in `started_at` beside its `at`.
   A routed `stuck` reads as `bounced to <row>` in `activity.last`.
   The run directory is named by the worktree slug (`_lym/shed/<slug>/`).
-  `self` is an alias that resolves to it.
+  `self` is an alias that resolves to it, and a `_lym/shed/self/` directory resolves too.
   `pause` records a `--before` or `--after` condition and refuses bare.
   The refusal names `lym tender pause` for stopping the agents.
   `validate-discussion` runs the same checks Discussion-Write's and Discussion-Burler-Fix's own gates run, standalone.
@@ -1227,11 +1237,6 @@ User-facing modules each get one `lym <module>` namespace:
   It appends one design call made after the Discussion to the decision record.
   The call goes under an `Added after Discussion` heading.
   It re-runs the discussion check, restoring the record on a finding, and commits the record.
-  It and `decision replace` refuse every caller once the task's scope is closed, from the recipe's first Code-Review row,
-  or once that segment has run, until its Finalize row; a later call becomes a board note for a new task.
-  `decision add` still takes a `bug` entry's record titled `No test seam` or `No bug fixed` that changes nothing else.
-  At a Code-Review decision escalation, `lym loom circling continue --in-scope <finding-id>` rules a finding the record already asks for in scope,
-  and the next round's fixer takes it.
   `--pattern-entry <id> --pattern-action adds|changes|removes|withdraws` writes the entry's bullet too.
   The bullet goes under `## PATTERN changes`; for `withdraws`, the call strikes it in the same commit.
   `--from <file>` in place of the per-entry flags records a JSON array of such calls in one write and one commit.
@@ -1255,8 +1260,7 @@ User-facing modules each get one `lym <module>` namespace:
   The call also appends the title of each entry to the plan amendment record, committed with the entries.
   It is refused on a recipe with no Plan-Write row and for a plan that is not approved.
   It is refused while Discussion-Write is running.
-  It refuses a named session that is not an orch on the run's beam chain:
-  the orchs above the run's pair, or for a beam's project record the beam's own orch and those above it.
+  It refuses a named session other than the run's parent orch, the nearest live orch up its beam chain.
   The operator's own unnamed shell always passes.
   It resumes nothing.
   After the commit it sends one creel line to each live shuttle run of the worktree.
@@ -1287,9 +1291,8 @@ User-facing modules each get one `lym <module>` namespace:
   `validate-description` runs the same checks the `Describe` row's `description` gate runs, standalone.
   It checks `_lym/landing/summary.md`, with the same exit-code and findings-envelope contract.
   `lint-comments [--base <commit>]` runs `internal/commentlint` over the worktree:
-  it reports the fixed-column-wrapped breaks and the over-long lines in `//` comment blocks that the working tree creates,
-  uncommitted edits and untracked files included.
-  It compares the working tree with HEAD, or with `--base` when given.
+  it reports the fixed-column-wrapped breaks and the over-long lines in `//` comment blocks that the working tree creates.
+  With `--base` it reports those that the range from `--base` to HEAD creates.
   `lint-pattern [--base <commit>]` runs `internal/patternlint` over the worktree:
   it compares `PATTERN.md` at HEAD with the working tree's, or at `--base` with HEAD's.
   It fails when the overview grew past its headroom line, naming the bytes to cut.
@@ -1323,7 +1326,7 @@ User-facing modules each get one `lym <module>` namespace:
   `Plan-Bouncer` skips its judge only for an exempt generation:
   one whose live cards are all `Prosa` on non-source files.
   The `Webster` row commits the plan directory alongside its run record.
-  `commit-records` commits the run's records through fabric and starts the pair's pusher, which pushes them and the task branch.
+  `commit-records` commits and pushes the run's records through fabric, and pushes the task branch along with them.
   The records are the status file, the review round record, friction notes and drive reports.
   The loom driver's end-of-session command runs it after the driver writes its stop report.
   A loom-launched driver runs it at a hand-back, before it parks until `lym loom start` resumes it.
@@ -1364,51 +1367,37 @@ User-facing modules each get one `lym <module>` namespace:
   The fixer settles a conflict or a failing tree and aligns the task to what the parent brought in.
   It writes the merge record with the aligned tip, and the Code-Perch then reviews the task's code against that.
   `PR-Review` lands the task through a GitHub pull request when the resolver says so.
-  The resolver decides from the landing run's `beam.pull_request`, which the per-task lookup reads from the run's worktree up,
-  and from GitHub's rules for the parent branch.
+  The resolver decides from the parent's `beam.yaml`, the entry and GitHub's rules for the parent branch.
   The row pushes the task branch and opens or finds the pull request.
-  A re-entry whose record holds another gated head than the task head leaves that push to the wait, behind its gate.
-  A re-entry on a review not ended reads the pull request before it pushes.
   It sets the pull request's title and body from the change description, records it and waits on it.
   When the resolver does not say so, the row passes.
   The wait takes no parent lock.
-  `beam.pull_request: review` waits for the operator; `trail` passes, and `Finalize` opens the pull request and merges it at once.
-  Under `review` the row keeps one interactive PR-Review session in the task's window, whatever the run's autonomy,
-  on `landing.pr_reviewer`'s model and under the publish shell guard.
-  The operator works the pull request with its agent, which answers comments and commits fixes.
-  The row stops the session at every verdict and around each read that may end the review, and resumes it after;
-  a session that ends while the review is open halts the row, and the resume resumes it.
-  The wait gates and pushes a commit made in the task worktree through the `pr-review` gate key, never onto a merged pull request.
-  It mails a failure to the session once per head;
-  a failure it cannot mail, and one in an ended review, halts the row.
-  A failure outside the change, such as a file another process held open, is retried with `lym loom pr-continue`.
-  That verb also ends the review once a head passes the gate, so it needs the operator's word.
+  It gates and pushes the agent's commits through the `pr-review` gate key, never onto a merged pull request.
+  It mails a failure to the agent once per head, and the agent's `lym loom pr-continue` makes it gate that head again.
   It reads the pull request at most once a minute and before each gate.
   It ends Done when the pull request is merged or approved at the gated head.
-  It also ends Done when `lym loom pr-continue` ends the review on the operator's word.
-  The operator runs the verb, or the session or an orch runs it when the operator says so; it refuses any other lym agent session.
+  It also ends Done when the operator's `lym loom pr-continue` ends the review.
+  With `loom.yaml`'s `pr_review_ask_parent` on, the row asks the parent orch to review the open pull request.
+  It asks once per pull request until a send-back clears the ask, and the orch answers the row's session, whose agent fixes the findings.
+  `pr_review_small_max` bounds how many findings that agent fixes in place between two send-backs, or before the first, when none is BLOCKING.
+  The agent runs `lym loom pr-findings <file>` on every findings set.
+  The verb sends the set back to Code-Review when a finding is BLOCKING or the set passes that bound, and the row then reroutes.
+  It writes a friction note for each send-back, and a set that stays is only counted.
+  The row asks and does not gate: its endings do not wait on the orch's answer.
   That ending leaves the pull request for `Finalize` to merge on GitHub.
-  A commit pushed to the pull request's branch on GitHub by hand, which the task worktree lacks, halts the row.
-  A re-entry on a review not ended, with the pull request open, halts on it before any push.
   Any other ending is Stuck.
   A pause that covers the run holds it.
   The driver strand's mark reads `PR #<n>`.
-  `Finalize` merges the parent's tip into the task in place with no parent lock held.
-  It runs its owner checks before that merge, and again under the lock.
-  It resolves a conflict with the conflict session.
+  `Finalize` takes the parent lock first and merges the parent into the task in place.
+  It resolves a conflict with the conflict session under the lock.
   It runs the `finalize` gate key and the merge fixer in finalize mode.
-  It then takes the parent lock and lands only while the parent's head is still the tip it merged and gated.
-  A parent that moved frees the lock, and the merge and the gate run again unlocked.
-  After `landing.finalize_lost_races` lost races, and over a parent that already holds the task's work,
-  it merges and gates under the lock.
   It lands on the parent with the credit block and releases the lock on every exit.
   It frees the lock while its fixer or fix review works.
-  It then runs both passes again, the unlocked one first while lost races remain,
-  and retakes the lock at the front of the queue.
-  It merges the parent anew and verifies under the lock before it lands; a tree already verified skips the verify.
+  It then retakes the lock at the front of the queue.
+  It merges the parent anew and verifies under the lock before it lands.
   Finalize never reroutes.
   A fixer change over the caps goes to its fix review, which reads only the fixer's commits.
-  A rejection hands the findings back to the fixer to fix in place, for up to `landing.finalize_fix_review_rounds` reviews.
+  A rejection hands the findings back to the fixer to fix in place, for up to `finalize_fix_review_rounds` reviews.
   An approval lands the change.
   The last review that does not approve halts for the operator.
   The operator's `lym loom circling accept` lands the change with the open findings in the change description.
@@ -1420,19 +1409,10 @@ User-facing modules each get one `lym <module>` namespace:
   `Webster` reroutes to `Plan-Burler-Review` after begin-batch leaves a new plan conflict.
   The plan fixer `lym webster fix-plan` could not clear that conflict.
   `Describe` writes the change description at `_lym/landing/summary.md`, the single source for the landing commit.
-  Its `description` gate, `validate-description` and `lym beam describe` refuse each line that matches a `landing.describe_forbidden_terms` pattern.
-  The template's patterns name LoomYard's own vocabulary, which a repository's reader never sees;
-  a hub whose repository owns those names, as LoomYard's own hub does, sets the key to `[]`.
-  A reviewer assistant on `landing.describe_review`'s model checks the description against the diff and the scope.
-  Once the description passes that gate, the reviewer is released to read it,
-  and the writer's turn end waits for the reviewer's report, at most `landing.describe_review_timeout_min` without a break.
-  While a reviewer runs, the writer's run and the reviewer's are each limited to
-  `landing.describe_timeout_min` plus `landing.describe_review_timeout_min`.
-  The writer gets the findings once and fixes the description; an empty `landing.describe_review` runs no reviewer.
   The landing commit's message and the pull request's body both end in a plain-line credit block.
-  Go appends the block while `landing.credit` is on.
-  The block is `landing.credit_heading`, then a ` - ` line for `landing.credit_loomyard`.
-  Another ` - ` line follows for the `landing.credit_engines` text of each engine that ran a session in the task.
+  Go appends the block while `landing.yaml`'s `credit` is on.
+  The block is `credit_heading`, then a ` - ` line for `credit_loomyard`.
+  Another ` - ` line follows for the `credit_engines` text of each engine that ran a session in the task.
   An empty text adds no line.
   `Finalize` tolerates an already-landed parent and marks the board task `done` after the parent merge.
   Every run transition before that writes the board task's status as `<state> · <producer>`.
@@ -1447,17 +1427,17 @@ User-facing modules each get one `lym <module>` namespace:
   `Parent-Align` and `Finalize` each run the plan's verify command after a parent merge-in that changed the task tree.
   A failure halts Stuck, with the command's output in the loom verify-output log.
   A pending-verify marker keeps the gate armed across a resume until a verify passes.
-  The `landing.fixer` model-spec and `landing.fixer_timeout_min` govern the merge fixer.
+  `landing.yaml` also holds the `fixer` model-spec and `fixer_timeout_min`, which govern the merge fixer.
   They also govern the fix review session `Finalize` runs over an over-cap fixer change.
-  `landing.parent_align_fix_attempts`, `landing.finalize_fix_attempts` and `landing.finalize_fix_max_lines`
-  are landing keys too.
-  `landing.finalize_fix_review_rounds` is a landing key as well.
-  `landing.deploy_branches` lists the base branches whose landing runs `landing.deploy`.
-  `landing.describe` (the `Describe` row's model), `landing.describe_timeout_min` and the `landing.credit*` keys
-  are there too.
+  It holds `parent_align_fix_attempts`, `finalize_fix_attempts` and `finalize_fix_max_lines` too.
+  `finalize_fix_review_rounds` is a landing key as well.
+  `deploy_branches` lists the base branches whose landing runs `deploy`.
+  `lym config reconcile` renames it from the retired `require_pr_to_base`.
+  Reconcile also renames the retired `merge_fix_attempts` key to `parent_align_fix_attempts`.
+  It renames `gate.yaml`'s `merge-in` gate key to `parent-align`.
+  `landing.yaml` also holds `describe` (the `Describe` row's model), `describe_timeout_min` and the `credit` keys.
   An existing hub takes their template defaults until `lym config reconcile --apply` writes them.
-  That run also prunes the retired `landing.co_authored_by`, `landing.trailer_text`
-  and `landing.engine_trailers` keys.
+  That run also prunes the retired `co_authored_by`, `trailer_text` and `engine_trailers` keys.
   An in-flight run parked past `Webster-Bouncer` is restarted rather than migrated.
   `lym loom status --watch` is this module's registered interactive-handoff exception.
   [PATTERN-cli-cobra](../pattern/PATTERN-cli-cobra.md) defines the exception.
@@ -1465,93 +1445,84 @@ User-facing modules each get one `lym <module>` namespace:
   Every fallible step runs pre-flight, on the envelope, and only that tail is exempt from emitting JSON.
   ✅ Implemented.
   loom's config module is `loom.yaml`, which holds what every loom recipe shares.
-  It holds the `loom.discussion.model` and `loom.review.judge` role model-specs
-  and the shared `loom.review.reviewer_model` and `loom.review.fixer_model`.
-  `loom.review.reviewer_model` and `loom.review.fixer_model` each take one model-spec or a per-round list.
-  `loom.review.seed` names the Bouncer seed pass model.
-  `loom.discussion.judge`/`loom.code.judge` and `loom.discussion.seed`/`loom.code.seed`
-  override the judge and seed per review segment.
+  It holds the `discussion` and `judge` role model-specs and the shared `reviewer_model` and `fixer_model`.
+  `reviewer_model` and `fixer_model` each take one model-spec or a per-round list.
+  `seed` names the Bouncer seed pass model.
+  `discussion_judge`/`code_judge` and `discussion_seed`/`code_seed` override the judge and seed per review segment.
   An empty one takes its fallback.
-  `loom.<segment>.reviewer_model`/`loom.<segment>.fixer_model` for Discussion and Code override them per review segment.
-  `loom.split.reviewer_model`/`loom.split.fixer_model` do the same for the arras recipe's split perch, Raddle-Review.
-  An empty `loom.split.fixer_model` takes the `loom.raddle.model` key's model while that key is set.
-  `loom.split.judge` overrides the judge for the split perch, which has no seed key of its own.
-  `loom.discussion.reviewer_fan`/`loom.code.reviewer_fan` cluster-review Discussion-Review or Code-Review.
+  `<segment>_reviewer_model`/`<segment>_fixer_model` for Discussion and Code override them per review segment.
+  `split_reviewer_model`/`split_fixer_model` do the same for the arras recipe's split perch, Raddle-Review.
+  An empty `split_fixer_model` takes the `raddle` key's model while that key is set.
+  `split_judge` overrides the judge for the split perch, which has no seed key of its own.
+  `discussion_reviewer_fan`/`code_reviewer_fan` cluster-review Discussion-Review or Code-Review.
   Each names a `lenses.yaml` fan, or lists one per round.
-  `loom.discussion.fixer_fan`/`loom.code.fixer_fan` do the same for the fixer, an empty entry running the single fixer.
-  `loom.code.reviewer_fan` is open to the local layer, and the other three are closed to it.
-  `loom.split.reviewer_fan`/`loom.split.fixer_fan` do the same for the split perch,
-  and both are closed to the local layer.
+  `discussion_fixer_fan`/`code_fixer_fan` do the same for the fixer, an empty entry running the single fixer.
+  `code_reviewer_fan` is open to the local layer, and the other three are closed to it.
+  `split_reviewer_fan`/`split_fixer_fan` do the same for the split perch, and both are closed to the local layer.
   The assistant reviewer sits beside the Discussion-Review or Code-Review chair.
-  `loom.discussion.assist_reviewer_model`/`loom.code.assist_reviewer_model` name its model,
-  as one model-spec or a per-round list.
+  `discussion_assist_reviewer_model`/`code_assist_reviewer_model` name its model, as one model-spec or a per-round list.
   An empty entry runs no assistant that round.
-  `loom.discussion.assist_reviewer_fan`/`loom.code.assist_reviewer_fan` name the `lenses.yaml` fan the assistant runs.
-  `loom.review.assist_reviewer_timeout_min` is the assistant's run bound,
-  capped to end before the chair's own timeout.
-  `loom.discussion.timeout_min`/`loom.review.timeout_min` are timeouts,
-  and `loom.discussion.interactive` selects the Discussion mode.
-  `loom.discussion.advisors` lists the Discussion-Write advisors, one `{name, model}` entry each.
+  `discussion_assist_reviewer_fan`/`code_assist_reviewer_fan` name the `lenses.yaml` fan the assistant runs.
+  `assist_reviewer_timeout_min` is the assistant's run bound, capped to end before the chair's own timeout.
+  `discussion_timeout_min`/`review_timeout_min` are timeouts, and `discussion_interactive` selects the Discussion mode.
+  `discussion_advisors` lists the Discussion-Write advisors, one `{name, model}` entry each.
   An empty list runs the lead alone, deciding each question itself.
-  `loom.raddle.model` is the raddle agent's model-spec.
-  `loom.raddle.auto_approve` files a raddle proposal once its gate passes, with no operator approval;
-  a run whose recipe rows hold a split perch never reads it.
-  `loom.discussion.review_ask_parent` has each Discussion-Review round ask the parent orch to review the decision record.
-  `loom.discussion.review_parent_timeout_min` sets the minutes from that ask to its deadline,
-  capped so the reviewer keeps room to consolidate before `loom.review.timeout_min`; both are open to `run_settings`.
+  `raddle` is the raddle agent's model-spec.
+  `raddle_auto_approve` files a raddle proposal once its gate passes, with no operator approval; a run whose recipe rows hold a split perch never reads it.
+  `pr_review_ask_parent` has PR-Review ask the parent orch to review the open pull request.
+  It is open to the local layer, so a task's `run_settings` sets it for one run.
+  `pr_review_small_max` is the most findings PR-Review fixes in place between two send-backs to Code-Review, or before the first, when none is BLOCKING; the default is 3.
+  It is open to the local layer too.
+  `discussion_review_ask_parent` has each Discussion-Review round ask the parent orch to review the decision record.
+  `discussion_review_parent_timeout_min` sets the minutes from that ask to its deadline,
+  capped so the reviewer keeps room to consolidate before `review_timeout_min`; both are open to `run_settings`.
   The parent answers with `lym loom parent-review answer`, and the reviewer waits with `lym loom parent-review await`.
   A round asks when the record is new to the parent or rewritten since its last ask, or to confirm the fixes of its findings.
   The reviewer keeps every parent finding as `origin: parent`, and a gate entry holds the review to each report id.
-  `loom.code.review_ask_parent` has every Code-Review round ask the parent orch to review the task's code change,
+  `code_review_ask_parent` has every Code-Review round ask the parent orch to review the task's code change,
   once the round's fixer report exists and before its Bouncer judges the round.
   The ask names the round's own review and fixer report, so the parent sees each ruling,
   and the Bouncer's judge waits for the answer and keeps every finding the parent returns.
   A CONVERGED verdict is refused while the parent's report holds findings.
-  `loom.code.review_parent_timeout_min` sets the minutes to that ask's deadline,
-  capped to end before the judge's own timeout, `shuttle.run_timeout_min`; both are open to `run_settings`.
-  `loom.notify_parent_on` lists recipe rows whose start lym mails the parent orch as a `[row reached]` line,
+  `code_review_parent_timeout_min` sets the minutes to that ask's deadline,
+  capped to end before the judge's own timeout, `run_timeout_min`; both are open to `run_settings`.
+  `notify_parent_on` lists recipe rows whose start lym mails the parent orch as a `[row reached]` line,
   once each time the run reaches the row and again on a re-call after an escalation's answer or a resumed halt,
   so the parent can brief the row's agent; it is open to `run_settings`.
-  `loom.discussion.lenses` names the `lenses.yaml` fan whose lenses the Discussion-Write lead forks itself for.
+  `discussion_lenses` names the `lenses.yaml` fan whose lenses the Discussion-Write lead forks itself for.
   Empty turns the forks off, and the key is closed to the local layer.
-  `loom.subagent_model` names the model of the fresh subagents
-  that Plan, Discussion-Write and darn writers hand lookups to.
-  `loom.review.circling_checkpoint` and `loom.review.max_bounces` are review budget keys too.
-  `loom.review.stalemate_rounds` is the number of unchanged review rounds in a row that escalate a stalemate;
-  0 turns the check off.
-  `loom.review.amend_max_bounces` is the amendment allowance
-  a review segment re-entered over a changed subject runs under.
-  The per-perch `loom.discussion.max_bounces`/`loom.code.max_bounces` take `loom.review.max_bounces` when null.
+  `subagent_model` names the model of the fresh subagents that Plan, Discussion-Write and darn writers hand lookups to.
+  `review_circling_checkpoint` and `review_max_bounces` are review budget keys too.
+  `review_stalemate_rounds` is the number of unchanged review rounds in a row that escalate a stalemate; 0 turns the check off.
+  `review_amend_max_bounces` is the amendment allowance a review segment re-entered over a changed subject runs under.
+  The per-perch `discussion_max_bounces`/`code_max_bounces` take `review_max_bounces` when null.
   A value of 0 runs no review round.
-  `loom.review.hard_max_bounces` and the per-perch `loom.discussion.hard_max_bounces`/`loom.code.hard_max_bounces`
-  are the hard caps.
-  A per-perch 0 takes `loom.review.hard_max_bounces`, and a hard cap below its perch's budget is refused at load.
-  `loom.discussion.auto_accept`/`loom.code.auto_accept` make a perch accept a harvested round at a spent budget.
+  `review_hard_max_bounces` and the per-perch `discussion_hard_max_bounces`/`code_hard_max_bounces` are the hard caps.
+  A per-perch 0 takes `review_hard_max_bounces`, and a hard cap below its perch's budget is refused at load.
+  `discussion_auto_accept`/`code_auto_accept` make a perch accept a harvested round at a spent budget.
   The perch then skips the soft-cap rule.
-  On a perch whose Bouncer sets `blocking_escalates`, a round with an open BLOCKING finding escalates to the run's parent instead of being accepted.
-  A verifier pass first checks each such finding the fixer reported fixed against the fix commits, and closes the ones it confirms.
-  `loom.split.max_bounces`, `loom.split.hard_max_bounces` and `loom.split.auto_accept`
-  are the split perch's budget, hard cap and auto-accept.
-  `loom.split.auto_accept` defaults to false,
-  and a null `loom.split.max_bounces` and a 0 `loom.split.hard_max_bounces` take the shared values.
+  `split_max_bounces`, `split_hard_max_bounces` and `split_auto_accept` are the split perch's budget, hard cap and auto-accept.
+  `split_auto_accept` defaults to false, and a null `split_max_bounces` and a 0 `split_hard_max_bounces` take the shared values.
   `tapestry.yaml` is the tapestry recipe's module, per-worktree, and holds the plan perch's own keys.
-  Those are the `tapestry.plan.model` model-spec, `tapestry.plan.timeout_min`, `tapestry.implementer`
-  and `tapestry.plan.lenses`.
-  They also include `tapestry.plan.reviewer_model`/`tapestry.plan.fixer_model`
-  and `tapestry.plan.reviewer_fan`/`tapestry.plan.fixer_fan`.
-  `tapestry.plan.assist_reviewer_model`/`tapestry.plan.assist_reviewer_fan`
-  and `tapestry.plan.judge`/`tapestry.plan.seed` are plan keys too.
-  So are `tapestry.plan.max_bounces`, `tapestry.plan.hard_max_bounces` and `tapestry.plan.auto_accept`.
+  Those are the `plan` model-spec, `plan_timeout_min`, `implementer` and `plan_lenses`.
+  They also include `plan_reviewer_model`/`plan_fixer_model` and `plan_reviewer_fan`/`plan_fixer_fan`.
+  `plan_assist_reviewer_model`/`plan_assist_reviewer_fan` and `plan_judge`/`plan_seed` are plan keys too.
+  So are `plan_max_bounces`, `plan_hard_max_bounces` and `plan_auto_accept`.
   An unset model list, judge or seed, a null budget and a hard cap of 0 take `loom.yaml`'s value.
   Both modules exist and reconcile via `lym config reconcile --apply`.
   The bare verb is a dry run that only reports added and removed keys and writes nothing.
-  Reconcile drops the retired `merge_*` perch keys and `rework`.
+  Reconcile renames the retired `webster_*` perch keys of `loom.yaml` to `code_*`.
+  It renames the retired `review` and `fix` keys of `loom.yaml` to their new names.
+  It renames the retired `<segment>_review`, `<segment>_fix`, `<segment>_fan` and `<segment>_fix_fan` keys the same way.
+  It moves a value `loom.yaml` tuned for a plan perch key, or for `implementer`, into `tapestry.yaml`.
+  `darn.yaml`'s perch keys, `review_fan` and `review_fix_fan` among them, move to `loom.yaml`'s `code_*` keys.
+  It drops the retired `merge_*` perch keys and `rework`.
   It also drops `alignment_pr_approve`, `alignment`, `alignment_timeout_min` and `skip_alignment`.
   `parent_review_wait_min` is dropped too.
   The driver, tackler and arbiter keys live in `shed.yaml` alone.
   A loom recipe that needs other values sets them in its profile block's `shed` object.
   That object lands in the pair's local `shed.yaml` layer like any run setting.
-  The reviewer and fixer model keys and `loom.review.timeout_min` are the review segments' own models and timeout.
+  The reviewer and fixer model keys and `review_timeout_min` are the review segments' own models and timeout.
   They live here rather than in the recipe because the recipe is embedded in the binary,
   and a recipe-literal model would be untunable without a rebuild.
   The Discussion producer is a seat table run on `MultiLLMProducer`.
@@ -1560,25 +1531,28 @@ User-facing modules each get one `lym <module>` namespace:
   Its prompt is `contracts/stencils/loom/loom-template-discussion.md`.
   The prompt ships as an embedded default in the top-level `contracts/stencils` package.
   It is read at call time from the hub's stencils directory.
-  The producer runs in one of two modes, selected by `loom.discussion.interactive`.
+  The producer runs in one of two modes, selected by `discussion_interactive`.
   Interactive mode, set by the key, lets an operator interview the agent from its pane.
   Autonomous mode, the default, has the agent self-judge every answer.
   Both prompt renderings ship in the same stencil, selected by the `{{.mode_rules}}` marker.
   Two independent axes shape the table, both set in `loom.yaml`.
   The first is the advisors.
-  With `loom.discussion.advisors` empty, the default, the lead works alone:
+  With `discussion_advisors` empty, the default, the lead works alone:
   it interviews and writes the same two files, deciding each question itself.
   With one `{name, model}` entry per advisor, the lead is a chair.
   The advisors study the task, the board, the code and PATTERN in parallel.
   Each advisor is a seat named by its entry, and it answers the chair over the session message channel.
   It writes a notes file `advisor-<name>.md` beside the discussion files.
   The second is the lens forks.
-  With `loom.discussion.lenses` naming a `lenses.yaml` fan, the lead settles its design and writes and self-checks the record.
+  With `discussion_lenses` naming a `lenses.yaml` fan, the lead settles its design and writes and self-checks the record.
   It then forks itself once per lens of that fan, takes the forks' findings in and finalises.
   The forks review the record their inherited context holds, without reading it again.
   Only the lead forks, never an advisor.
   Both axes together are valid: advisors with the lead's lens forks.
-  The lead's session may spawn fork subagents when `loom.discussion.lenses` is set.
+  Reconcile rewrites a `loom.yaml` that holds the retired `discussion_producer` or `plan_producer` key.
+  `twill` becomes the twill fan in the new lens key, and every other value becomes an empty one.
+  `discussion_advisors` is set to match, the retired `seats` entries becoming `advisor-<n>` for the operator to rename.
+  The lead's session may spawn fork subagents when `discussion_lenses` is set.
   The lead opens with `contracts/stencils/loom/loom-template-discussion-chair.md`.
   That stencil includes the discussion stencil whole and adds the advisors section.
   The section also covers a lead with no advisors, so a table without advisors runs the lead alone.
@@ -1587,7 +1561,7 @@ User-facing modules each get one `lym <module>` namespace:
   The Planner producer is built the same way.
   Its prompt is `contracts/stencils/loom/loom-template-plan.md`.
   `internal/loomengine`'s `prompt.go` and `plan.go` compose it.
-  With `tapestry.plan.lenses` naming a `lenses.yaml` fan, the plan writer explores.
+  With `plan_lenses` naming a `lenses.yaml` fan, the plan writer explores.
   It has one fork (fork0) write and self-check the plan.
   The writer then reads the plan in full and self-checks it.
   It forks itself once per lens of that fan and judges each finding as a critical fixer.
@@ -1600,9 +1574,9 @@ User-facing modules each get one `lym <module>` namespace:
   The row keeps its name, `gates` key and routing;
   a fork-authorized run's plan gate also requires the lens review.
   Plan has no advisor key.
-  With `tapestry.plan.split` true, the plan is written in two steps by the `Parts-Write` and `Parts-Plan-Write` rows.
+  With `tapestry.plan_split` true, the plan is written in two steps by the `Parts-Write` and `Parts-Plan-Write` rows.
   They sit between `Drift-Baseline` and `Plan-Write`.
-  Each carries the entry gate `tapestry.plan.split`, and `Plan-Write` carries `tapestry.plan.split != true`.
+  Each carries the entry gate `tapestry.plan_split`, and `Plan-Write` carries `tapestry.plan_split != true`.
   With the flag off, both new rows are recorded skipped and `Plan-Write` runs as before;
   with it on, `Parts-Plan-Write`'s Done enters `Plan-Write`, whose gate skips it to `Plan-Bouncer`.
   `Parts-Write` splits the task into parts with contracts in `_lym/parts/parts.md`, guarded by the `parts` gate.
@@ -1611,7 +1585,7 @@ User-facing modules each get one `lym <module>` namespace:
   Neither row carries `on_stuck`.
   Each reads the flag when the run enters it, so the flag is meant to be set before a run starts.
   See the `internal/loomengine` and `internal/loomcli` package documentation.
-- **shed** — the generic outer phase-FSM under `loom` and its `hardener` recipe (`internal/shedengine`).
+- **shed** — the generic outer phase-FSM under `loom` and the eventual `Hardener` (`internal/shedengine`).
   It is a Go engine that walks one flat, ordered producer list with no predefined slots.
   It honors resume, crash-recovery and pause uniformly at producer granularity.
   The shipped engine adapters live in one package, `internal/shedadapters`.
@@ -1677,42 +1651,39 @@ User-facing modules each get one `lym <module>` namespace:
   Each is the unnamed lead of its own one-seat table on the seats engine, in strands `burler-review` and `burler-fix`.
   Each review perch's fan key turns the lens fan on for it, and its fix fan key turns on the twill fixer.
   Both are per round and off by default.
-  The keys are `loom.discussion.reviewer_fan` and `loom.code.reviewer_fan`.
-  The third is `tapestry.plan.reviewer_fan`.
-  Their partners are `loom.discussion.fixer_fan`, `loom.code.fixer_fan` and `tapestry.plan.fixer_fan`, and the last pair serves a darn run's Code-Review too.
-  The arras recipe's split perch has its own pair, `loom.split.reviewer_fan` and `loom.split.fixer_fan`.
-  The `loom.discussion.assist_reviewer_fan`, `loom.code.assist_reviewer_fan` and `tapestry.plan.assist_reviewer_fan` keys name the fan that perch's assistant reviewer runs.
+  The keys are `discussion_reviewer_fan` and `code_reviewer_fan` in `loom.yaml`.
+  The third is `plan_reviewer_fan` in `tapestry.yaml`.
+  Each has a `*_fixer_fan` partner, and the last pair serves a darn run's Code-Review too.
+  The arras recipe's split perch has its own pair, `split_reviewer_fan` and `split_fixer_fan` in `loom.yaml`.
+  Each perch's `*_assist_reviewer_fan` key names the fan its assistant reviewer runs.
   The forks of a code perch reach the diff through read-only git.
-  The `lenses.fans.review-code` and `lenses.fans.fix-code` fans carry lenses for a committed diff.
+  `lenses.yaml`'s `review-code` and `fix-code` fans carry lenses for a committed diff.
   The reviewer writes the review, Go accepts it and records its digest, and only then does a fixer start.
   The fixer validates and fixes the findings.
   It disputes a finding only with evidence that its premise is false or that every fix makes the target worse.
   It fixes a real finding with its own change when the proposed one is wrong.
   A round is profile-driven: `{overlay, source}` fix-scope, tool-use and `language-skills`.
   A code round's seats load the hub's `language.yaml` skills after their own.
-  Each review segment's `<module>.<segment>.reviewer_model` and `<module>.<segment>.fixer_model` keys
-  pick each seat's model per round.
-  They fall back to `loom.review.reviewer_model` and `loom.review.fixer_model`.
+  Each review segment's `<segment>_reviewer_model` and `<segment>_fixer_model` keys pick each seat's model per round.
+  They fall back to `loom.yaml`'s `reviewer_model` and `fixer_model`.
   Cluster review fans the reviewer out into N fork-subagent reviewers by naming a fan (`cluster-fan`) from `lenses.yaml`.
   It is never on by default.
   The verdict parse of the frontmatter is strict.
   `lym burler run` is the debug CLI.
   `lym burler validate-review <review-file>` is the read-only review-gate self-check. ✅ Implemented.
   See the `internal/burlerengine` package documentation.
-- **hardener** — the `hardener` loom recipe, an autonomous behaviour-review campaign.
-  It *runs* a live-substrate module against throwaway sandbox hubs round after round,
-  through the Bouncer, the `burler` review row and a fix row gated by a Go-run live gate, and lands the fixes through Finalize.
-  The Bouncer's seed pass reads the modules and writes the campaign's charter, so a task needs only the modules and an optional focus.
-  `lym harden sandbox new` builds the sandbox hubs, two-repository or, with `--single-repo`, one-repository.
-  See the `internal/hardenshed` package documentation, which also holds the campaign's method.
+- **hardener** — **DRAFT / concept.**
+  Behavior-based reviewer that *runs* a live-substrate module (needs a sandbox repo) to harden it before merge;
+  on-demand, post-loom, **off the spine**, shares only the `burler` round discipline.
+  See the board's `hardener` note.
 - **batten** — drives one task worktree's whole lifecycle as a single Shed run from the hub's prime worktree.
   The lifecycle is to create the worktree, seed the child's own inner run from the Board task's own `recipe`,
   run it to a terminal state, land it into the prime, and tear down.
-  The `recipe` is one of `tapestry`, `motif`, `raddle`, `darn` and `sampler`.
-  An empty `recipe` means `board.default_recipe`.
+  The `recipe` is one of `tapestry`, `motif`, `raddle`, `arras`, `darn` and `sampler`.
+  An empty `recipe` means `board.yaml`'s `default_recipe`.
   `motif` is for a Discussion-only child that lands no code.
   `raddle` is for a child that files a Sketch's split on the board.
-  `arras` is no longer offered on the board: a tapestry-sized note runs `motif`.
+  `arras` is for a child that discusses a task and splits its decision record into board entries.
   `darn` is for a darn child, and `sampler` for a sampler child.
   The code is `internal/battenshed`, `internal/battenrecipe` and `internal/battencli`.
   Its verbs are `lym batten run|step|status|pause|goto|cancel <run-id>` and `lym batten cleanup [--apply]`.
@@ -1720,7 +1691,6 @@ User-facing modules each get one `lym <module>` namespace:
   `lym batten cancel <slug> [--remove]` ends a run for good from the prime, whatever its state.
   It leaves the task's claim `draft` and keeps batten's record with the cancel's finish, state `cancelled`.
   `--remove` also removes its pair and task branches and deletes the record.
-  On a beam it also clears the project's beam flag, ending the beam's life and leaving a plain project with its members.
   The hidden `lym batten overview` is the pane process of the `runs` strand of the prime and of each beam.
   `lym beam start` ensures it, in the beam's window named `beam: prime` or `<handle>: beam: <slug>`.
   A pawl run's `lym loom start` first puts a `loom-status` strand in an overview window, the session's first.
@@ -1739,8 +1709,7 @@ User-facing modules each get one `lym <module>` namespace:
   It removes each done run's records run directory with a records commit and a spawned push.
   It also empties that run's scratch beside its lock files, and any orphan scratch older than a day.
   A done motif run is also cleared by `lym beam create` and by the start of a raddle run under its slug.
-  The parent worktree's dobby removes any done run itself, with its task branch.
-  It does so once its landing is counted, its notice decided, no `[run watch]` line of it is owed and its `beam.run_watch` has been read.
+  The parent worktree's dobby removes any done run itself, with its task branch, once its landing is counted and its notice decided.
   A run is one pass after another.
   `lym batten run <slug>` runs one pass and exits, started by the run's parent worktree's dobby or by hand.
   A hand pass makes sure that dobby is live once it is over.
@@ -1760,24 +1729,24 @@ User-facing modules each get one `lym <module>` namespace:
   `lym batten run` drives its own run through the same driver body in-process, over the loop `step --until-stop` runs.
   An unexpected stop meets the driver's rule table.
   A stop no rule settles meets a cold tackler agent in the prime's reed session, before it is handed to the orch.
-  `batten.tackler`, `batten.tackler_timeout_min` and `batten.tackler_max_spawns` set the tackler.
+  `batten.yaml`'s `tackler`, `tackler_timeout_min` and `tackler_max_spawns` set the tackler.
   They override `shed.yaml`'s keys of the same names.
   A stop the tackler escalates meets the arbiter next, wired in batten's driver after the tackler.
-  `batten.arbiter`, `batten.arbiter_timeout_min` and `batten.arbiter_max_spawns` set the arbiter.
+  `batten.yaml`'s `arbiter`, `arbiter_timeout_min` and `arbiter_max_spawns` set the arbiter.
   They override `shed.yaml`'s keys of the same names.
   The arbiter's goto is held to the halted row.
   The process holds the run's driver lock for its life, so a second `lym batten run` for the slug is refused.
   The `Command` rows `Open-Window`, `Seed-IDE` and `Open-IDE` sit between `Seed-Child` and `Run-Shed`.
   Each runs one shell command through `internal/shedadapters`' `Command` producer.
   Each runs only when its entry gate's `batten.yaml` setting is on, and a task's `run_settings` may set that setting.
-  `Open-Window` (`batten.open_window`, on by default, command `batten.open_window_command`) opens one desktop terminal window.
+  `Open-Window` (`open_window`, on by default, command `open_window_command`) opens one desktop terminal window.
   The window opens on the task worktree through `lym reed window`.
   The window is titled with the task's console title, `<T#> [<hub shortname>:<P#>] <slug>`, through the command's `{title}` placeholder.
   A part the hub or board does not give is left out.
-  `Seed-IDE` (`batten.seed_ide`, on, command `batten.seed_ide_command`) runs `lym ide seed`.
+  `Seed-IDE` (`seed_ide`, on, command `seed_ide_command`) runs `lym ide seed`.
   `lym ide seed` writes the task worktree's VS Code title, colours and `.vscode/` config and the user's key bindings.
   `lym ide spawn` writes the same.
-  `Open-IDE` (`batten.open_ide`, off, command `batten.open_ide_command`) runs `lym ide open`, which opens VS Code on it.
+  `Open-IDE` (`open_ide`, off, command `open_ide_command`) runs `lym ide open`, which opens VS Code on it.
   After the window opens, `lym reed window`, `lym ide spawn` and `lym ide open` each wait `desktop.window_wait_ms`.
   They then run the machine's `desktop.window_command`.
   An example is a script that snaps the new window into the desktop's tiling.
@@ -1818,10 +1787,11 @@ User-facing modules each get one `lym <module>` namespace:
   `Land` runs between `Run-Shed` and `Worktree-Teardown`, once the child run is done, under a hub-level land lock.
   A child that landed no code only has the done entries pruned off the board, with no pull, deploy or notice.
   Such a child is one whose status history holds no finished `Finalize`, such as a motif run.
+  An entry still carrying `notify_on_land` stays until its dobby has sent the line and cleared the field.
   Otherwise `Land` pulls the prime when the child's parent branch is the prime's branch.
   It waits up to 10 min for the prime's tracked files to be clean.
-  It runs the hub-wide `landing.deploy` command in the prime when that parent branch is in `landing.deploy_branches`.
-  It prunes the done entries off the board.
+  It runs the landing config's hub-wide `deploy` command in the prime when that parent branch is in `deploy_branches`.
+  It prunes the done entries off the board, again keeping one that still carries `notify_on_land`.
   It notices the orch only when the pull's records side stopped, the one notice of a successful landing.
   A failed `Land` step halts batten `blocked` at `Land` with the pair intact and one failure notice per episode.
   A `lym batten pause` seen while `Land` waits does the same with no notice.
@@ -1829,7 +1799,7 @@ User-facing modules each get one `lym <module>` namespace:
   Batten does not notice the orch of a done child.
   The `Worktree-Teardown` row notifies only on a failure, and the `Land` row also notifies every landing.
   The `Open-Window`, `Seed-IDE` and `Open-IDE` rows own the terminal window and VS Code; `Run-Shed` opens neither.
-  VS Code opens only when `batten.open_ide` is on or the operator runs `lym ide`.
+  VS Code opens only when `open_ide` is on or the operator runs `lym ide`.
   A run resumed past `Open-Window` runs that command again when no client is attached to the pair's reed session.
   The re-run needs `batten.open_window` on, and a resume with a client attached opens none.
   That window closes when the run's session ends or its worktree is removed.
@@ -1901,7 +1871,7 @@ User-facing modules each get one `lym <module>` namespace:
   `lym loom step` is the single-producer primitive of the same shape over a run that is already seeded.
   `run` and `step` carry `--driver` and `--child-driver`.
   `--driver` is batten's own and `go`-only: batten has no bootstrap verb, so `llm` is refused by name.
-  `--child-driver` is the driver the task worktree's own inner run uses, `llm` or `go`; unset, it is `shed.driver_kind`, `go` by default.
+  `--child-driver` is the driver the task worktree's own inner run uses, `llm` or `go`; unset, it is `shed.yaml`'s `driver_kind`, `go` by default.
   `--driver` is recorded into the run's write-once seed at first seeding, and `--child-driver` only when typed.
   An explicitly typed flag that disagrees with an already-seeded run is refused rather than silently dropped.
   `Run-Shed` checks its child once per call, and a call that ends nothing yields instead of waiting.
@@ -1980,8 +1950,7 @@ and the baseline capture is a detached registered process, not a gate tier.
 See [internal/driftengine](../internal/driftengine/doc.go).
 
 The batten Shed nests loom's, as its own recipe.
-Its `Run-Shed` row seeds a task's run, tapestry, motif, raddle, darn, sampler or hardener,
-or arras, which is kept in code but not offered, and drives it as a child process,
+Its `Run-Shed` row seeds a task's run, tapestry, motif, raddle, arras, darn or sampler and drives it as a child process,
 and it polls that run's own persisted status for the verdict.
 There are two status files by design:
 the task's, committed on the task branch, and batten's own, durable under prime's own `_lym/shed/<slug>/`.
@@ -2048,7 +2017,7 @@ See [PATTERN-cwd-resolution](../pattern/PATTERN-cwd-resolution.md) for the rule.
   the reed view takes the foreground.
   A `.lym/lymrun.cmd` launcher makes it one click.
 - `reed`, `shuttle`, and `loom` each get a user-facing `lym <module>` CLI.
-  `lym shuttle run|open|agent|manifest|state|await|await-forks` lets an operator or another process drive one agent standalone.
+  `lym shuttle run|open|manifest|state|await` lets an operator or another process drive one agent standalone.
   `burler` is composed by loom's own review segments (`lym burler run` is a debug-only wrapper, not a product verb),
   and `proc` alone stays an internal library with no CLI of its own.
 
@@ -2077,7 +2046,7 @@ loom wants a plan-reviewer for worktree `feature-x`:
 - About **running an LLM and getting its answer**? → `shuttle`.
 - About **one review+fix round**? → `burler`.
 - About **whether an artifact passes (loop rounds until clean/stuck)**? → a `Bouncer` review segment.
-- About **hardening a live-substrate module by running it**? → the `hardener` recipe and `internal/hardenshed`.
+- About **hardening a live-substrate module by running it** (post-loom, off-spine)? → `hardener` (DRAFT).
 - About **what to run next**? → `loom`.
 
 ## Tests
@@ -2100,9 +2069,8 @@ It asserts nothing itself, and it never imports fabric.
 It builds every hub fixture in the repo through `fabriccli.CloneAndWire`, never a hand-assembled stand-in.
 It asserts nothing about fabric either.
 `internal/testkit` holds the shared test kits, one package per kit, for test support used by two or more packages.
-That support covers builders, fixtures, the scan harness and stand-ins.
+That support covers fakes, builders, fixtures and the scan harness.
 [PATTERN-test-isolation](../pattern/PATTERN-test-isolation.md) states what a kit may import and assert.
-[PATTERN-test-stand-ins](../pattern/PATTERN-test-stand-ins.md) states what a test may stand in for.
 `internal/testkit/scankit` is the harness every invariant scan runs on.
 It provides module-root lookup, file walk and allowlists that report stale entries.
 It also provides a vacuity floor and an import-allowlist assertion.
@@ -2113,8 +2081,6 @@ It gives each test a self-cleaning `-L` key through `Socket`.
 `internal/testkit/stencilkit` seeds stencil fixtures from the registry through `stencilstore`.
 Seeded files carry production's hash stamp.
 `internal/testkit/shedcheckkit` checks an assembled OnDone/OnStuck producer graph for structural defects.
-`internal/testkit/tmuxrec` replays recorded tmux, process-table and user-manager answers below `reedengine`,
-through `reedengine.NewOver`.
 
 ## Sandbox Hub
 
@@ -2139,8 +2105,9 @@ See [sandbox-howto.md](sandbox-howto.md) for the step-by-step runbook and [sandb
 - `internal/reedengine` package documentation — the window to the world: tmux overlay + strand bookkeeping + render.
 - `internal/shuttleengine` package documentation — run one LLM agent via a swappable engine over the file contract.
 - `internal/burlerengine` package documentation — one review+fix round: reviewer then fixer, no self-grading.
-- `internal/hardenshed` package documentation — the Hardener campaign's engine and its method:
-  behaviour-based hardening of a live-substrate module by running it, driven by the `hardener` recipe.
+- `internal/treadleengine` package documentation — the generalized round-loop engine,
+  with a pluggable `RoundRunner` seam a future consumer (Tenter) can drive.
+- The board's `hardener` note — **DRAFT/concept**: behavior-based hardening of a live-substrate module (post-loom, off-spine).
 - [benchmarks/](benchmarks/board-performance.md) — board performance, tracked across revisions.
 - [shared-libs/](shared-libs/README.md) — the shared infrastructure plumbing.
 - [research/](research/README.md) — measurement studies of LoomYard's own runs and tools, grouped by topic, with an index.
@@ -2150,3 +2117,7 @@ See [sandbox-howto.md](sandbox-howto.md) for the step-by-step runbook and [sandb
 - The board — tasks and notes, the single home for unscheduled ideas too (no separate long-term-ideas file).
 - [sandbox-howto.md](sandbox-howto.md) — operator runbook: deploy `lym`, build the Hub, run the suite agent (procedure).
 - [sandbox-hub.md](sandbox-hub.md) — the sandbox Hub: a dedicated bench for manual (dogfooding) testing.
+- [crucible/README.md](../crucible/README.md) — **`crucible`**, the **serial review+fix loop**: a reusable method for hardening a live-substrate module before merge (orchestrator-driven, model-rotating, clean-room self-fixing rounds + independent verification).
+  The hand-executed prototype of the review-gate + `burler` (see the `internal/burlerengine` package documentation) round loop (and the origin of the board's `hardener` concept, named separately to avoid colliding with it);
+  ships two paste-ready prompts — an [orchestrator prompt](../crucible/orchestrator-prompt.md) (drives the loop + verifies) and a [round-agent prompt template](../crucible/review-prompt-template.md) (the reviewer-fixer), to instantiate per module.
+  Lives at the repo root, not under `docs/`, since it's a working method/prompt set, not documentation of shipped code.

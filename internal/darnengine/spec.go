@@ -61,8 +61,7 @@ type DarnInputs struct {
 	StopMarkerPath string
 	// ConditionStopMarkerPath is the absolute path of the marker the writer creates when a task-named condition stops it.
 	ConditionStopMarkerPath string
-	// PriorWork tells of an earlier spawn's outcome or interruption and of the work already on the branch or in scratch.
-	// It is empty when there is none of these to tell.
+	// PriorWork names what an earlier spawn left unfinished or broken; empty on a first spawn.
 	PriorWork string
 	// LanguageSkills are the hub's language skills the writer loads after the darn role's agents.yaml skills.
 	// Empty means none.
@@ -74,9 +73,6 @@ type DarnInputs struct {
 	// so the writer and its subagents run no gate, except the writer's single measuring run of one test class,
 	// and the writer asks its parent for a reported failure's single run.
 	GateFixed bool
-	// MeasureCall is the gate call the writer runs to measure one test class, in a form the hub's gate config can run.
-	// Only the Step 4 list of a writer whose verify gate has a cold fixer names it, so only a GateFixed writer needs it.
-	MeasureCall string
 }
 
 // DarnTable builds the seatengine.Table of one darn writer spawn: one lead that writes the change description.
@@ -87,12 +83,10 @@ type DarnInputs struct {
 // and the seat engine renders the parent and edit directives from its geometry.
 // The table carries no gate; the producer entry sets it.
 // With in.GateFixed, the prompt's Step 4 has the writer and its subagents run no gate.
-// The exceptions are the writer's single measuring run of one test class.
-// It serves a value only a test run shows, or a fact about how an external tool behaves.
+// The one exception is the writer's single measuring run of one test class for a value only a test run shows.
 // They act only on what the verify gate's fixer leaves.
 // The writer asks its parent for the single run of the test a task's reported failure names.
 // Otherwise the step has them run the gate after each commit.
-// Either way the writer asks its parent before the measurement calls of an entry whose deliverable is gate measurements.
 // With cfg.ReportDir set, a passage after the step has the writer commit the task's report under that directory.
 // A friction directive that fails to render is logged and left empty, because the note is optional bookkeeping.
 func DarnTable(in DarnInputs, cfg Config, reg modelspec.Registry) (seatengine.Table, error) {
@@ -106,9 +100,6 @@ func DarnTable(in DarnInputs, cfg Config, reg modelspec.Registry) (seatengine.Ta
 		{"StopMarkerPath", in.StopMarkerPath},
 		{"ConditionStopMarkerPath", in.ConditionStopMarkerPath},
 		{"SubagentModel", in.SubagentModel},
-	}
-	if in.GateFixed {
-		required = append(required, struct{ field, value string }{"MeasureCall", in.MeasureCall})
 	}
 	for _, r := range required {
 		if r.value == "" {
@@ -135,7 +126,7 @@ func DarnTable(in DarnInputs, cfg Config, reg modelspec.Registry) (seatengine.Ta
 		frictionDirective = ""
 	}
 	engine := shuttleengine.NewModelChoice(resolved).Engine
-	makeChange, err := makeChangeList(in.StencilsDir, engine, in.GateFixed, in.SubagentModel, in.MeasureCall)
+	makeChange, err := makeChangeList(in.StencilsDir, engine, in.GateFixed, in.SubagentModel)
 	if err != nil {
 		return seatengine.Table{}, fmt.Errorf("darn: DarnTable: Step 4 list: %w", err)
 	}
@@ -173,10 +164,10 @@ func DarnTable(in DarnInputs, cfg Config, reg modelspec.Registry) (seatengine.Ta
 }
 
 // makeChangeList returns the writer prompt's Step 4 list, worded for engine, the engine the writer launches on.
-// It reads the list at call time from stencilsDir and fills subagentModel and measureCall into it;
-// only the Claude wording names that model, and only the gated fragment names the call.
+// It reads the list at call time from stencilsDir and fills subagentModel into it;
+// only the Claude wording names that model.
 // It uses the gated fragment when gateFixed is set, and the ungated one otherwise.
-func makeChangeList(stencilsDir, engine string, gateFixed bool, subagentModel, measureCall string) (string, error) {
+func makeChangeList(stencilsDir, engine string, gateFixed bool, subagentModel string) (string, error) {
 	name := makeChangeStencil
 	if gateFixed {
 		name = makeChangeGatedStencil
@@ -185,7 +176,7 @@ func makeChangeList(stencilsDir, engine string, gateFixed bool, subagentModel, m
 	if err != nil {
 		return "", err
 	}
-	filled, err := stencil.Fill(content, map[string]string{"subagent_model": subagentModel, "measure_call": measureCall})
+	filled, err := stencil.Fill(content, map[string]string{"subagent_model": subagentModel})
 	if err != nil {
 		return "", fmt.Errorf("fill stencil %s: %w", name, err)
 	}

@@ -8,18 +8,17 @@ package fabricengine
 import (
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
-	"github.com/Knatte18/loomyard/internal/weftname"
 )
+
+// ArchiveTagSHALen is how many leading hex digits of the tip SHA the archive tag name carries.
+const ArchiveTagSHALen = 12
 
 // archiveTagPushHook is nil in production.
 // When set, it runs before each attempt of an archive-tag push with the tag's full ref.
@@ -33,6 +32,23 @@ var archiveTagPushHook func(tagRef string) error
 // So the schedule waits out a remote hiccup of about a minute; a plain push's shorter schedule would fail the row.
 func archiveTagPushDelays() []time.Duration {
 	return []time.Duration{2 * time.Second, 4 * time.Second, 8 * time.Second, 16 * time.Second, 32 * time.Second}
+}
+
+// ArchiveTagPrefix is the short-name prefix every archive tag carries.
+const ArchiveTagPrefix = "archive/"
+
+// ArchiveTagSlug returns the slug of the short tag name archive/<slug>/<sha>.
+// The bool is false unless name has the archive prefix, a non-empty slug segment, and a non-empty final segment.
+func ArchiveTagSlug(name string) (string, bool) {
+	rest, ok := strings.CutPrefix(name, ArchiveTagPrefix)
+	if !ok {
+		return "", false
+	}
+	slug, tip, ok := strings.Cut(rest, "/")
+	if !ok || slug == "" || tip == "" {
+		return "", false
+	}
+	return slug, true
 }
 
 // ErrArchiveFailed is the sentinel every archive error wraps.
@@ -57,13 +73,18 @@ type weftArchive struct {
 	leaseTip string
 }
 
+// ArchiveTagName returns the archive tag name of a tip: archive/<slug>/<first 12 hex of tip>.
+// The tip must hold at least ArchiveTagSHALen characters.
+func ArchiveTagName(slug, tip string) string {
+	return ArchiveTagPrefix + slug + "/" + tip[:ArchiveTagSHALen]
+}
+
 // archiveWeftTip archives the tip of weftBranch under an archive/<slug>/<first 12 hex of the tip SHA> tag.
 // It pushes the tag to the weft repo's origin.
 // When tip is empty, the tip is the local refs/heads/<weftBranch> when present, else origin's copy, which is fetched.
 // A caller that read the tip before deleting the branch passes it as tip.
 // The tag name is deterministic from slug and tip, so a resumed teardown on the same tip finds its own tag and succeeds.
 // A new tip archives under a new name.
-// A non-empty hold replaces tip with the first parent of hold, so nothing pushed to origin reaches hold.
 //
 // With no origin remote, it archives nothing and returns a skippedReason and no error.
 // A branch present neither locally nor on origin also archives nothing, with no reason and no error.
@@ -85,7 +106,7 @@ type weftArchive struct {
 // Retries wait on the archive push's delay schedule, sleeping through sleep, and a nil sleep sleeps for real.
 // Every returned error wraps ErrArchiveFailed.
 // KindTagPushed is recorded on rec only after the push observably succeeded.
-func archiveWeftTip(rec *Mutations, l *lymcwd.Location, slug, weftBranch, tip string, pushBranch bool, hold string, sleep func(time.Duration)) (archive weftArchive, skippedReason string, err error) {
+func archiveWeftTip(rec *Mutations, l *lymcwd.Location, slug, weftBranch, tip string, pushBranch bool, sleep func(time.Duration)) (archive weftArchive, skippedReason string, err error) {
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf("%w: %w", ErrArchiveFailed, err)
@@ -103,14 +124,11 @@ func archiveWeftTip(rec *Mutations, l *lymcwd.Location, slug, weftBranch, tip st
 			originRemoteName, urlErr), nil
 	}
 
-	switch {
-	case hold != "":
-		tip, err = heldCeiling(weftRoot, hold)
-	case tip == "":
+	if tip == "" {
 		tip, err = resolveArchiveTip(weftRoot, weftBranch)
-	}
-	if err != nil {
-		return weftArchive{}, "", err
+		if err != nil {
+			return weftArchive{}, "", err
+		}
 	}
 	if tip == "" {
 		return weftArchive{}, "", nil
@@ -118,7 +136,7 @@ func archiveWeftTip(rec *Mutations, l *lymcwd.Location, slug, weftBranch, tip st
 
 	originTip, err := remoteHeadTip(weftRoot, weftBranch)
 	if err != nil {
-		return weftArchive{}, "", fmt.Errorf("push archive tag %q to %q: read the tip of weft branch %q there: %w", fabriclayout.ArchiveTagName(slug, tip), originRemoteName, weftBranch, err)
+		return weftArchive{}, "", fmt.Errorf("push archive tag %q to %q: read the tip of weft branch %q there: %w", ArchiveTagName(slug, tip), originRemoteName, weftBranch, err)
 	}
 	if originTip != "" && originTip != tip {
 		if _, err := gitrepo.New(weftRoot).FetchWithArgs(originRemoteName, originTip); err != nil {
@@ -135,11 +153,7 @@ func archiveWeftTip(rec *Mutations, l *lymcwd.Location, slug, weftBranch, tip st
 			}
 		}
 		if !originHoldsTip {
-			ns, err := originNamespaceAt(weftRoot)
-			if err != nil {
-				return weftArchive{}, "", fmt.Errorf("read the layout of the repo holding weft branch %q: %w", weftBranch, err)
-			}
-			if pushErr := gitrepo.New(weftRoot).PushCommit(originRemoteName, tip, weftBranch, ns); pushErr != nil {
+			if pushErr := gitrepo.New(weftRoot).PushCommit(originRemoteName, tip, weftBranch); pushErr != nil {
 				logger.Warn("fabricengine: pushing the weft branch before its archive tag failed; the tag still holds the local tip", "branch", weftBranch, "error", pushErr)
 			} else {
 				originTip = tip
@@ -199,53 +213,12 @@ func tagAndPushArchiveTip(rec *Mutations, repoDir, slug, tip, side string, sleep
 	return tag, nil
 }
 
-// archiveTagNamespaceAt returns the origin namespace the archive tags of the repository at dir live under.
-// A store that reads the one-repository namespace keeps its tags there.
-// A code store whose hub's records store reads that namespace has a prefix of its own below the namespace root.
-// So no archive tag of a one-repository hub lands under origin's plain refs/tags/.
-// Neither store lists or fetches the other's tags and commits.
-// The hub's records store is the records sibling of the code store's prime worktree.
-// How either store spells origin's URL plays no part.
-// Any other repository, and a dir that holds no repository, keeps its tags under refs/tags/.
-// A records store whose layout cannot be read is an error, so no tag is pushed to a namespace guessed past it.
-func archiveTagNamespaceAt(dir string) (gitrepo.RefNamespace, error) {
-	identity := gitrepo.RefNamespace{}
-	ns, err := originNamespaceAt(dir)
-	if err != nil || ns != identity {
-		return ns, err
-	}
-	if _, err := os.Lstat(filepath.Join(dir, ".git")); err != nil {
-		return identity, nil
-	}
-	commonDir, err := gitrepo.New(dir).CommonDir()
-	if err != nil {
-		return identity, fmt.Errorf("fabricengine: find the hub of the repository at %s: %w", dir, err)
-	}
-	if filepath.Base(commonDir) != ".git" {
-		return identity, nil
-	}
-	prime := filepath.Dir(commonDir)
-	recordsRoot := weftname.SiblingPath(filepath.Dir(prime), filepath.Base(prime))
-	recordsNamespace, err := originNamespaceAt(recordsRoot)
-	if err != nil || recordsNamespace == identity {
-		return identity, err
-	}
-	return gitrepo.RefNamespace{Tags: fabriclayout.RecordsNamespaceRoot + fabriclayout.RecordsNamespaceCodeTags}, nil
-}
-
 // pushArchiveTag pushes the tag named tag in the repo at repoDir to origin.
-// The tag lands under the store's own archive prefix on origin:
-// a one-repository hub gives each of its stores one below the records namespace root;
-// any other repository pushes to refs/tags/.
 // A push refused with a bare "(failed)", "cannot lock ref" or "missing necessary objects" is retried.
 // The retries follow the archive push's delay schedule and sleep through sleep; a nil sleep sleeps for real.
 // KindTagPushed is recorded on rec only after the push observably succeeded.
 func pushArchiveTag(rec *Mutations, repoDir, tag string, sleep func(time.Duration)) error {
 	tagRef := "refs/tags/" + tag
-	ns, err := archiveTagNamespaceAt(repoDir)
-	if err != nil {
-		return fmt.Errorf("push archive tag %q to %q: %w", tag, originRemoteName, err)
-	}
 
 	pushTag := func() error {
 		if archiveTagPushHook != nil {
@@ -253,61 +226,13 @@ func pushArchiveTag(rec *Mutations, repoDir, tag string, sleep func(time.Duratio
 				return err
 			}
 		}
-		_, err := gitexec.Run([]string{"push", originRemoteName, tagRef + ":" + ns.Tag(tag)}, repoDir)
+		_, err := gitexec.Run([]string{"push", originRemoteName, tagRef}, repoDir)
 		return err
 	}
-	if err := gitrepo.PushWithRetryReasons(pushTag, tagRef, ns, archiveTagPushDelays(), sleep, []string{"missing necessary objects"}); err != nil {
+	if err := gitrepo.PushWithRetryReasons(pushTag, tagRef, archiveTagPushDelays(), sleep, []string{"missing necessary objects"}); err != nil {
 		return fmt.Errorf("push archive tag %q to %q: %w", tag, originRemoteName, err)
 	}
-	rec.Append(fabriclayout.KindTagPushed, repoDir, tag)
-	return nil
-}
-
-// pushLocalArchiveTags pushes each archive/<slug>/* tag of the repository at dir that origin lacks.
-// A teardown that ended before its tag push leaves such a tag on this machine alone,
-// and its re-run finds no local branch to archive that tip from.
-// The tag of ownTip is left out, since the caller's own archive step settles that tip; an empty ownTip leaves none out.
-// A repository with no origin remote, and one holding no such tag, is left alone with no read of origin.
-// A push refused retryably is retried on the archive push's delay schedule, sleeping through sleep.
-// Every returned error wraps ErrArchiveFailed.
-func pushLocalArchiveTags(rec *Mutations, dir, slug, ownTip string, sleep func(time.Duration)) error {
-	if _, urlErr := gitrepo.New(dir).RemoteURL(originRemoteName); urlErr != nil {
-		return nil
-	}
-	fail := func(err error) error {
-		return fmt.Errorf("%w: push the archive tags of %q that only %s holds: %w", ErrArchiveFailed, slug, dir, err)
-	}
-
-	listed, err := gitexec.Run([]string{"for-each-ref", "--format=%(refname)", "refs/tags/" + fabriclayout.ArchiveTagPrefix + slug}, dir)
-	if err != nil {
-		return fail(fmt.Errorf("list the local archive tags: %w", err))
-	}
-	ownTag := ""
-	if ownTip != "" {
-		ownTag = fabriclayout.ArchiveTagName(slug, ownTip)
-	}
-	var local []string
-	for _, ref := range strings.Fields(listed) {
-		if tag := strings.TrimPrefix(ref, "refs/tags/"); tag != ownTag {
-			local = append(local, tag)
-		}
-	}
-	if len(local) == 0 {
-		return nil
-	}
-
-	onOrigin, err := remoteTagsUnder(dir, fabriclayout.ArchiveTagPrefix+slug+"/")
-	if err != nil {
-		return fail(fmt.Errorf("list the archive tags on %q: %w", originRemoteName, err))
-	}
-	for _, tag := range local {
-		if _, held := onOrigin[tag]; held {
-			continue
-		}
-		if err := pushArchiveTag(rec, dir, tag, sleep); err != nil {
-			return fail(err)
-		}
-	}
+	rec.Append(KindTagPushed, repoDir, tag)
 	return nil
 }
 
@@ -315,9 +240,8 @@ func pushLocalArchiveTags(rec *Mutations, dir, slug, ownTip string, sleep func(t
 // The tag is archive/<slug>/<first 12 hex of the tip>, and the function returns the tip and the tag.
 // A weft repo with no origin remote tags nothing and returns the reason no archive tag is pushed,
 // and a branch with no local copy returns an empty tip and tag.
-// With a non-empty hold the tip tagged and returned is the first parent of hold, never the branch's own.
 // Every returned error wraps ErrArchiveFailed.
-func tagWeftTipForArchive(l *lymcwd.Location, slug, weftBranch, hold string) (tip, tag, skippedReason string, err error) {
+func tagWeftTipForArchive(l *lymcwd.Location, slug, weftBranch string) (tip, tag, skippedReason string, err error) {
 	weftRoot, err := RecordsRepoRoot(l)
 	if err != nil {
 		return "", "", "", fmt.Errorf("%w: archive weft tip of %q: resolve weft repo: %w", ErrArchiveFailed, weftBranch, err)
@@ -331,11 +255,6 @@ func tagWeftTipForArchive(l *lymcwd.Location, slug, weftBranch, hold string) (ti
 			err = fmt.Errorf("%w: %w", ErrArchiveFailed, err)
 		}
 		return "", "", "", err
-	}
-	if hold != "" {
-		if tip, err = heldCeiling(weftRoot, hold); err != nil {
-			return "", "", "", fmt.Errorf("%w: %w", ErrArchiveFailed, err)
-		}
 	}
 	tag, err = createArchiveTag(weftRoot, slug, tip, "weft")
 	if err != nil {
@@ -351,7 +270,7 @@ func tagWeftTipForArchive(l *lymcwd.Location, slug, weftBranch, hold string) (ti
 // A teardown takes it before it deletes a branch locally,
 // so the tip stays reachable while the tag's push is still to come.
 func createArchiveTag(repoDir, slug, tip, side string) (string, error) {
-	tag := fabriclayout.ArchiveTagName(slug, tip)
+	tag := ArchiveTagName(slug, tip)
 	if err := createTagAt(repoDir, tag, tip, side); err != nil {
 		return "", err
 	}
@@ -396,12 +315,7 @@ func resolveArchiveTip(weftRoot, weftBranch string) (string, error) {
 		return tip, err
 	}
 
-	ns, err := originNamespaceAt(weftRoot)
-	if err != nil {
-		return "", err
-	}
-	wanted := ns.Branch(weftBranch)
-	listed, err := gitexec.Run([]string{"ls-remote", originRemoteName, wanted}, weftRoot)
+	listed, err := gitexec.Run([]string{"ls-remote", "--heads", originRemoteName, "refs/heads/" + weftBranch}, weftRoot)
 	if err != nil {
 		var gitErr *gitexec.GitError
 		if errors.As(err, &gitErr) {
@@ -413,7 +327,7 @@ func resolveArchiveTip(weftRoot, weftBranch string) (string, error) {
 	tip := ""
 	for _, line := range strings.Split(listed, "\n") {
 		sha, ref, found := strings.Cut(strings.TrimSpace(line), "\t")
-		if found && ref == wanted {
+		if found && ref == "refs/heads/"+weftBranch {
 			tip = sha
 		}
 	}

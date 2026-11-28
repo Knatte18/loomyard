@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -122,7 +121,7 @@ func TestParseWarpSHATrailer(t *testing.T) {
 // Tests use it to check that appended snapshot trailers parse back.
 func parseSnapshotTags(message string) []string {
 	var tags []string
-	prefix := fabriclayout.SnapshotTrailerKey + ":"
+	prefix := SnapshotTrailerKey + ":"
 	for _, line := range strings.Split(message, "\n") {
 		trimmed := strings.TrimSpace(line)
 		if !strings.HasPrefix(trimmed, prefix) {
@@ -240,30 +239,6 @@ func TestAppendSnapshotTrailers_RejectsInvalidTags(t *testing.T) {
 			}
 			if invalidTagErr.Tag != tt.wantBadTag {
 				t.Errorf("ErrInvalidSnapshotTag.Tag = %q; want %q", invalidTagErr.Tag, tt.wantBadTag)
-			}
-		})
-	}
-}
-
-// TestCommitWithTrailers_RefusesAnInvalidTrailerBeforeTouchingAnything covers the refusal ahead of every git call.
-// The Fabric is the zero value, so any step past the trailer check would fail on it instead of refusing.
-func TestCommitWithTrailers_RefusesAnInvalidTrailerBeforeTouchingAnything(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-	tests := []struct {
-		name    string
-		trailer fabriclayout.Trailer
-	}{
-		{"KeyWithASpace", fabriclayout.Trailer{Key: "Bad Key", Value: "run-1"}},
-		{"BlankValue", fabriclayout.Trailer{Key: fabriclayout.TransitionTrailerKey, Value: " "}},
-		{"ValueSpanningLines", fabriclayout.Trailer{Key: fabriclayout.TransitionTrailerKey, Value: "run-1\nInjected: x"}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			result, err := (&Fabric{}).CommitWithTrailers([]string{"README"}, "msg", []fabriclayout.Trailer{tt.trailer}, SyncOptions{})
-			if err == nil || result.Committed() {
-				t.Errorf("CommitWithTrailers(%+v) = %+v, %v; want a refusal that commits nothing", tt.trailer, result, err)
 			}
 		})
 	}

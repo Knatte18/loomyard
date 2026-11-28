@@ -37,7 +37,6 @@ const ghLookPathLiteral = `LookPath("gh")`
 // Both banned forms therefore carry the quoted binary name, so no English word can match.
 //
 //lym:guard
-//lym:only parent-align finalize
 func TestGHGuard_NoShellOutOutsideGithubclient(t *testing.T) {
 	tiergate.Require(t, 0)
 	allow := scankit.NewAllowlist(ghGuardAllowlist)
@@ -129,7 +128,6 @@ const pullRequestImportLine = `"github.com/Knatte18/loomyard/internal/pullreques
 // The read-only `.PullRequests.List(` calls open, merge and close nothing and stay allowed.
 //
 //lym:guard
-//lym:only parent-align finalize
 func TestPullRequestGuard_OnlyLandingAndTeardown(t *testing.T) {
 	tiergate.Require(t, 0)
 	calls := scankit.NewAllowlist(pullRequestCallAllowlist)

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/runfsm"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -55,31 +56,22 @@ func TestRun_CatchUp(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	t.Run("a fresh start runs the catch-up before the first pass, and a re-exec only while a wait is recorded", func(t *testing.T) {
+	t.Run("a fresh start runs the catch-up before the first pass and a re-exec runs none", func(t *testing.T) {
 		t.Parallel()
 		for _, tt := range []struct {
 			name         string
 			reexec       bool
-			waiting      bool
 			wantFirst    string
 			wantCatchUps int
 		}{
-			{"FreshStart", false, false, "catch-up", 1},
-			{"ReExec", true, false, "pass r1 continue", 0},
-			{"ReExecDuringAWait", true, true, "catch-up", 1},
+			{"FreshStart", false, "catch-up", 1},
+			{"ReExec", true, "pass r1 continue", 0},
 		} {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
 				h := newLoopHarness(t, 2)
 				if tt.reexec {
-					err := UpdateState(h.geom.StatePath, func(s *State) error {
-						s.PID, s.StartTicks = os.Getpid(), loopStartTicks
-						if tt.waiting {
-							s.CatchUp = &CatchUpWait{Reason: CatchUpWaitOrigin}
-						}
-						return nil
-					})
-					if err != nil {
+					if err := UpdateState(h.geom.StatePath, func(s *State) error { s.PID, s.StartTicks = os.Getpid(), loopStartTicks; return nil }); err != nil {
 						t.Fatalf("UpdateState() = %v; want nil", err)
 					}
 				}
@@ -108,32 +100,6 @@ func TestRun_CatchUp(t *testing.T) {
 					t.Errorf("catch-ups = %d; want %d", got, tt.wantCatchUps)
 				}
 			})
-		}
-	})
-
-	t.Run("a fresh start counts a wait from its own failure, not from the one a stopped dobby recorded", func(t *testing.T) {
-		t.Parallel()
-		h := newLoopHarness(t, 1)
-		recorded := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
-		err := UpdateState(h.geom.StatePath, func(s *State) error {
-			s.CatchUp = &CatchUpWait{Reason: CatchUpWaitOrigin, At: recorded, Since: recorded}
-			return nil
-		})
-		if err != nil {
-			t.Fatalf("UpdateState() = %v; want nil", err)
-		}
-		h.deps.CatchUp = fakeCatchUpDeps(func() error { return ErrOriginUnreachable })
-
-		if err := h.run(t); err != nil {
-			t.Fatalf("Run() = %v; want nil", err)
-		}
-
-		record, _, err := ReadState(h.geom.StatePath)
-		if err != nil {
-			t.Fatalf("ReadState() = %v; want nil", err)
-		}
-		if record.CatchUp == nil || !record.CatchUp.Since.After(recorded) {
-			t.Errorf("recorded wait = %+v; want one that began after %v", record.CatchUp, recorded)
 		}
 	})
 
@@ -270,26 +236,6 @@ func TestRun_CatchUp(t *testing.T) {
 		}
 	})
 
-	t.Run("the wait's start restarts when the failure reason changes and holds while it repeats", func(t *testing.T) {
-		t.Parallel()
-		h := newPassHarness(t)
-		failure := errors.New("the board diverged")
-		h.d.deps.CatchUp = fakeCatchUpDeps(func() error { return failure })
-		h.d.catchUpOwed = true
-		first := h.clock.now()
-		second, third := first.Add(time.Hour), first.Add(2*time.Hour)
-
-		h.d.catchUp(t.Context(), first)
-		failure = ErrOriginUnreachable
-		h.d.catchUp(t.Context(), second)
-		h.d.catchUp(t.Context(), third)
-
-		wait := h.stateRecord().CatchUp
-		if wait == nil || !wait.Since.Equal(second) || !wait.At.Equal(third) {
-			t.Errorf("recorded wait = %+v; want Since %v and At %v", wait, second, third)
-		}
-	})
-
 	t.Run("a listed run handing over with its pair present owes the catch-up, gets no pass and is handed over", func(t *testing.T) {
 		t.Parallel()
 		h := newPassHarness(t, handOverRun("r1", true))
@@ -346,6 +292,45 @@ func TestRun_CatchUp(t *testing.T) {
 		h.tick(true)
 		if catchUps != 2 {
 			t.Errorf("catch-ups after the run stopped answering hand over and answered again = %d; want 2", catchUps)
+		}
+	})
+
+	t.Run("a failing first read keeps the catch-up owed and spawns no pass, and a succeeding one runs once", func(t *testing.T) {
+		t.Parallel()
+		h := newPassHarness(t, runningRun("r1"))
+		pulls, reads := 0, 0
+		h.d.deps.CatchUp = fakeCatchUpDeps(func() error { pulls++; return nil })
+		h.d.deps.Upgrade = fakeUpgradeDeps(t, func() ([]pauserecord.Entry, error) {
+			reads++
+			if reads == 1 {
+				return nil, errors.New("pause record locked")
+			}
+			return nil, nil
+		})
+		h.d.catchUpOwed = true
+
+		h.tick(false)
+
+		wait := h.stateRecord().CatchUp
+		if wait == nil || wait.Reason != CatchUpWaitFailed || !strings.Contains(wait.Detail, "pause record locked") {
+			t.Errorf("recorded wait = %+v; want the failed wait carrying the first read's error", wait)
+		}
+		if pulls != 0 || len(h.fake.spawned) != 0 {
+			t.Errorf("catch-ups, passes = %d, %d; want none while the first read fails", pulls, len(h.fake.spawned))
+		}
+
+		h.tickAfter(time.Second)
+		if reads != 2 || pulls != 1 || h.stateRecord().CatchUp != nil {
+			t.Errorf("reads, catch-ups, wait = %d, %d, %+v; want the first read retried once, the catch-up after it and the wait cleared", reads, pulls, h.stateRecord().CatchUp)
+		}
+		if got := h.fake.spawned; len(got) != 1 || got[0].continuePass {
+			t.Errorf("passes after the first read = %+v; want one full pass", got)
+		}
+
+		h.d.catchUpOwed = true
+		h.tick(false)
+		if reads != 2 || pulls != 2 {
+			t.Errorf("reads, catch-ups after a later absence = %d, %d; want no second first read and a second catch-up", reads, pulls)
 		}
 	})
 

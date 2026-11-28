@@ -97,16 +97,3 @@ func TestEnforcement_PermkitStdlibOnly(t *testing.T) {
 	tiergate.Require(t, 0)
 	scankit.AssertImportAllowlist(t, "internal/testkit/permkit")
 }
-
-// TestEnforcement_FabrickitLeafOnly holds the imports of non-test fabrickit files to a closed set.
-// The set is the standard library, fabric's layout and fabric's core.
-// It also fails when the layout or the core is no longer imported.
-// A narrowed gate runs it only when a fabrickit or scankit file changes; a whole gate always runs it.
-//
-//lym:guard
-//lym:watch internal/testkit/fabrickit/*.go internal/testkit/scankit/*.go
-func TestEnforcement_FabrickitLeafOnly(t *testing.T) {
-	tiergate.Require(t, 0)
-	scankit.AssertImportAllowlistNoStale(t, "internal/testkit/fabrickit",
-		modulePath+"internal/fabriclayout", modulePath+"internal/fabriccore")
-}

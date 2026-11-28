@@ -9,7 +9,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -40,7 +40,7 @@ const (
 // judgeFixture holds the fake code and records checkouts and a scratch directory.
 // It also holds the records history a test changes between the snapshot and the comparison.
 type judgeFixture struct {
-	code, records fabriclayout.CheckoutState
+	code, records fabricengine.CheckoutState
 	// recordsChanged is what RecordsChangedSince answers.
 	recordsChanged []string
 	// sinceRevs records each revision RecordsChangedSince was asked about.
@@ -61,8 +61,8 @@ type judgeFixture struct {
 func newJudgeFixture(t *testing.T) *judgeFixture {
 	t.Helper()
 	f := &judgeFixture{
-		code:    fabriclayout.CheckoutState{Root: t.TempDir(), Head: "code-1"},
-		records: fabriclayout.CheckoutState{Root: t.TempDir(), Head: "records-1"},
+		code:    fabricengine.CheckoutState{Root: t.TempDir(), Head: "code-1"},
+		records: fabricengine.CheckoutState{Root: t.TempDir(), Head: "records-1"},
 		scratch: t.TempDir(),
 	}
 	f.deps = Deps{
@@ -71,7 +71,7 @@ func newJudgeFixture(t *testing.T) *judgeFixture {
 		JudgeSnapshotDir: filepath.Join(t.TempDir(), "snapshot"),
 		LoomRecordsDirs:  []string{testRunDirRel, testFrictionRel, testFrictionPrefix},
 		DecisionRecord:   filepath.Join(f.code.Root, filepath.FromSlash(testRecordRel)),
-		Checkouts: func() (fabriclayout.CheckoutState, fabriclayout.CheckoutState, error) {
+		Checkouts: func() (fabricengine.CheckoutState, fabricengine.CheckoutState, error) {
 			if f.deps.DecisionRecord != "" && !f.lockHeld {
 				f.unlockedReads++
 			}
@@ -89,8 +89,8 @@ func newJudgeFixture(t *testing.T) *judgeFixture {
 			f.replacedSince = append(f.replacedSince, sinceHead)
 			return []byte(f.replaced), f.replaced != "" && sinceHead != f.replacedAt, nil
 		},
-		TrailerCommit: func(string, bool) (fabriclayout.TrailerCommit, bool, error) {
-			return fabriclayout.TrailerCommit{}, false, nil
+		TrailerCommit: func(string, bool) (fabricengine.TrailerCommit, bool, error) {
+			return fabricengine.TrailerCommit{}, false, nil
 		},
 		FileAt: func(string, string) ([]byte, bool, error) { return nil, false, nil },
 	}

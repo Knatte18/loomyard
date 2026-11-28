@@ -22,7 +22,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -63,8 +62,8 @@ func TestReconcile_RecreatesHandDeletedWeftWorktree(t *testing.T) {
 			continue
 		}
 		found = true
-		if pair.Action != fabriclayout.ReconcileActionWeftRecreated {
-			t.Errorf("Action = %q; want %q", pair.Action, fabriclayout.ReconcileActionWeftRecreated)
+		if pair.Action != fabricengine.ReconcileActionWeftRecreated {
+			t.Errorf("Action = %q; want %q", pair.Action, fabricengine.ReconcileActionWeftRecreated)
 		}
 		if pair.Error != "" {
 			t.Errorf("Error = %q; want empty (stale registration must be pruned before adopt)", pair.Error)
@@ -77,7 +76,7 @@ func TestReconcile_RecreatesHandDeletedWeftWorktree(t *testing.T) {
 	if info, err := os.Stat(weftPath); err != nil || !info.IsDir() {
 		t.Fatalf("weft worktree not recreated at %s: %v", weftPath, err)
 	}
-	if got, want := gitkit.CurrentBranch(t, weftPath), fabriclayout.RecordsBranchName(slug); got != want {
+	if got, want := gitkit.CurrentBranch(t, weftPath), fabricengine.RecordsBranchName(slug); got != want {
 		t.Errorf("recreated weft worktree branch = %q; want %q", got, want)
 	}
 }
@@ -116,8 +115,8 @@ func TestReconcile_MissingWeftRepoIsDiagnosedByName(t *testing.T) {
 	if !strings.Contains(pr.Error, "re-clone") {
 		t.Errorf("Reconcile() pair error = %q; want it to name a remedy", pr.Error)
 	}
-	if pr.Action != fabriclayout.ReconcileActionUnmanagedReported {
-		t.Errorf("Reconcile() pair action = %q; want %q (report, never a corrective attempt against a missing repo)", pr.Action, fabriclayout.ReconcileActionUnmanagedReported)
+	if pr.Action != fabricengine.ReconcileActionUnmanagedReported {
+		t.Errorf("Reconcile() pair action = %q; want %q (report, never a corrective attempt against a missing repo)", pr.Action, fabricengine.ReconcileActionUnmanagedReported)
 	}
 	if got := describeEntry(t, root); got != "absent" {
 		t.Errorf("root .scratch = %q; want no link for a pair whose weft is missing", got)
@@ -127,7 +126,7 @@ func TestReconcile_MissingWeftRepoIsDiagnosedByName(t *testing.T) {
 	}
 }
 
-// seedRepoWideFabricConfig materializes the repo-wide fabric.yaml at fabriclayout.BoltDir(hub).
+// seedRepoWideFabricConfig materializes the repo-wide fabric.yaml at fabricengine.BoltDir(hub).
 // That is the Bolt checkout's _lym/config/fabric.yaml.
 // A real hub built by hubforge.NewHub materializes the Bolt checkout via CloneAndWire but not this file,
 // so this creates the file and its _lym/config/ first.
@@ -136,7 +135,7 @@ func TestReconcile_MissingWeftRepoIsDiagnosedByName(t *testing.T) {
 func seedRepoWideFabricConfig(t testing.TB, hub string) {
 	t.Helper()
 
-	boardDir := fabriclayout.BoardDir(hub)
+	boardDir := fabricengine.BoardDir(hub)
 	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
 		t.Fatalf("mkdir repo-wide config dir: %v", err)
 	}
@@ -146,9 +145,9 @@ func seedRepoWideFabricConfig(t testing.TB, hub string) {
 	}
 }
 
-// findPruneEntryByWeftPath returns the fabriclayout.PruneEntry matching
+// findPruneEntryByWeftPath returns the fabricengine.PruneEntry matching
 // weftPath, failing the test if none is found.
-func findPruneEntryByWeftPath(t *testing.T, entries []fabriclayout.PruneEntry, weftPath string) *fabriclayout.PruneEntry {
+func findPruneEntryByWeftPath(t *testing.T, entries []fabricengine.PruneEntry, weftPath string) *fabricengine.PruneEntry {
 	t.Helper()
 	for i := range entries {
 		if filepath.Clean(entries[i].RecordsWorktree) == filepath.Clean(weftPath) {
@@ -160,7 +159,7 @@ func findPruneEntryByWeftPath(t *testing.T, entries []fabriclayout.PruneEntry, w
 }
 
 // countPruneEntriesForWeft counts how many prune entries reference weftPath.
-func countPruneEntriesForWeft(entries []fabriclayout.PruneEntry, weftPath string) int {
+func countPruneEntriesForWeft(entries []fabricengine.PruneEntry, weftPath string) int {
 	n := 0
 	for i := range entries {
 		if filepath.Clean(entries[i].RecordsWorktree) == filepath.Clean(weftPath) {
@@ -170,9 +169,9 @@ func countPruneEntriesForWeft(entries []fabriclayout.PruneEntry, weftPath string
 	return n
 }
 
-// findCleanupEntry returns the fabriclayout.CleanupBranchEntry for branch,
+// findCleanupEntry returns the fabricengine.CleanupBranchEntry for branch,
 // failing the test if none is found.
-func findCleanupEntry(t *testing.T, entries []fabriclayout.CleanupBranchEntry, branch string) *fabriclayout.CleanupBranchEntry {
+func findCleanupEntry(t *testing.T, entries []fabricengine.CleanupBranchEntry, branch string) *fabricengine.CleanupBranchEntry {
 	t.Helper()
 	for i := range entries {
 		if entries[i].Branch == branch {
@@ -279,7 +278,7 @@ func TestCleanup_PrimaryBranchSurvivesForceWhenNotCheckedOut(t *testing.T) {
 	l := h.Location
 	topology := h.Topology
 
-	mainWeft := fabriclayout.RecordsBranchName("main")
+	mainWeft := fabricengine.RecordsBranchName("main")
 	weftPrime := fabricengine.RecordsWorktree(l)
 
 	// Move the weft primary off main-weft so main-weft is not the
@@ -319,7 +318,7 @@ func TestCleanup_DetachedWarpHeadProtectsCheckedOutWeftBranch(t *testing.T) {
 	warpPath := fabricengine.WorktreePath(l, slug)
 	gitkit.MustRun(t, warpPath, "git", "checkout", "--detach")
 
-	weftBranch := fabriclayout.RecordsBranchName(slug)
+	weftBranch := fabricengine.RecordsBranchName(slug)
 
 	// Dry-run must already report the branch protected, so dry-run and apply
 	// agree about its fate.
@@ -386,8 +385,8 @@ func TestHealthy_RealDirNotAJunction(t *testing.T) {
 	if ok {
 		t.Errorf("Healthy = true with a real _lym directory; want false")
 	}
-	if reason.Cause != fabriclayout.CauseNotAJunction || reason.Detail != "_lym is not a junction" {
-		t.Errorf("Healthy reason = %+v; want {Cause: %q, Detail: %q}", reason, fabriclayout.CauseNotAJunction, "_lym is not a junction")
+	if reason.Cause != fabricengine.CauseNotAJunction || reason.Detail != "_lym is not a junction" {
+		t.Errorf("Healthy reason = %+v; want {Cause: %q, Detail: %q}", reason, fabricengine.CauseNotAJunction, "_lym is not a junction")
 	}
 }
 
@@ -408,7 +407,7 @@ func TestCleanup_VerdictIsIndependentOfDryRunAndForce(t *testing.T) {
 	l := h.Location
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
-	if _, err := topology.Remove(l, slug, true, false, ""); err != nil {
+	if _, err := topology.Remove(l, slug, true, false); err != nil {
 		t.Fatalf("Remove: %v", err)
 	}
 
@@ -418,12 +417,12 @@ func TestCleanup_VerdictIsIndependentOfDryRunAndForce(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RecordsRepoRoot: %v", err)
 	}
-	orphan := fabriclayout.RecordsBranchName(slug)
+	orphan := fabricengine.RecordsBranchName(slug)
 	gitkit.MustRun(t, weftRepoRoot, "git", "branch", orphan)
 	const unmanaged = "legacy-notes"
 	gitkit.MustRun(t, weftRepoRoot, "git", "branch", unmanaged)
 
-	findEntry := func(t *testing.T, entries []fabriclayout.CleanupBranchEntry) fabriclayout.CleanupBranchEntry {
+	findEntry := func(t *testing.T, entries []fabricengine.CleanupBranchEntry) fabricengine.CleanupBranchEntry {
 		t.Helper()
 		for _, e := range entries {
 			if e.Branch == orphan {
@@ -431,7 +430,7 @@ func TestCleanup_VerdictIsIndependentOfDryRunAndForce(t *testing.T) {
 			}
 		}
 		t.Fatalf("cleanup result has no entry for %q: %+v", orphan, entries)
-		return fabriclayout.CleanupBranchEntry{}
+		return fabricengine.CleanupBranchEntry{}
 	}
 
 	// The two dry runs change nothing, so they come first, over the untouched fixture.

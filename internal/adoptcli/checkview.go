@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 )
 
 // checkEndedWithoutVerdict is the state shown for a running record whose process is gone.
@@ -41,7 +41,7 @@ type CheckView struct {
 // An absent scratch directory or record creates no directory or lock file.
 // A running record whose process is gone, or whose pid a later boot reused, shows as ended without a verdict.
 func ReadCheckViews(hubPath string) ([]CheckView, error) {
-	adoptDir := fabriclayout.AdoptScratchDir(hubPath)
+	adoptDir := fabricengine.AdoptScratchDir(hubPath)
 	entries, err := os.ReadDir(adoptDir)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil

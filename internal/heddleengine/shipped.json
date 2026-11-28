@@ -17,14 +17,6 @@
       ]
     },
     {
-      "slug": "lym-shell-directory",
-      "text": "## Keep the shell where it started\n\n- The shell keeps the directory a `cd` moves it to for every later command, so a `lym` verb run after the `cd` may be refused, far from the `cd` that caused it.\n- Reach another directory through an absolute path, `git -C <dir>` or `env -C <dir>` instead of `cd`.",
-      "order": 30,
-      "targets": [
-        "agents-file"
-      ]
-    },
-    {
       "slug": "lym-no-attribution",
       "text": "{\"attribution\": {\"commit\": \"\", \"pr\": \"\"}}",
       "order": 100,

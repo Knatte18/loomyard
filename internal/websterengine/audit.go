@@ -1,8 +1,7 @@
 // audit.go implements webster's fail-loud policy over the fork facts in shuttleengine.ForkAudit and ForkReport.
 // Forks are implementers, so CheckFork allows Write/Edit and repo-native git.
 // It bans nested Agent calls, fabric references, and writes to contract files, the plan, or run state.
-// CheckParent guards Master's own parent transcript.
-// Master may write only the two contract files and the friction notes the run's Master prompts named.
+// CheckParent guards Master's own parent transcript, which may write only the two contract files.
 // Every function here is pure: facts in, verdict out. Transcript reading stays in claudeengine.
 
 package websterengine
@@ -11,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -53,8 +51,8 @@ const (
 	// ClassNamedSpawn means Master's parent transcript recorded one or more Agent calls carrying a name parameter.
 	// Named forks silently lose inherited context.
 	ClassNamedSpawn AuditViolationClass = "named-spawn"
-	// ClassParentWrite means Master's parent transcript wrote a file Master may not write.
-	// Master may write only outcome.yaml, summary.md and any friction note a Master prompt of the run named.
+	// ClassParentWrite means Master's parent transcript wrote a file besides the two contract files.
+	// Master may write only outcome.yaml and summary.md.
 	// Any other write means Master is implementing a batch itself or hand-writing a batch report.
 	ClassParentWrite AuditViolationClass = "parent-write"
 	// ClassForkContractWrite means a fork's transcript wrote one of the run's two contract files.
@@ -118,14 +116,13 @@ func (v AuditViolation) Error() string {
 	return fmt.Sprintf("webster: %s violation in %q: %s", v.Class, v.TranscriptPath, v.Detail)
 }
 
-// isWriteOf reports whether write, resolved against workdir, is target:
-// equal to its cleaned path, or canonicalizing to the same path.
-func isWriteOf(workdir, write, target string) bool {
+// isOwnReportWrite reports whether write, resolved against workdir, is ownReport: equal to its cleaned path, or canonicalizing to the same path.
+func isOwnReportWrite(workdir, write, ownReport string) bool {
 	resolved := runplan.ResolveWritePath(workdir, write)
-	if resolved == filepath.Clean(target) {
+	if resolved == filepath.Clean(ownReport) {
 		return true
 	}
-	canonOwn, err := runplan.CanonicalPath(target)
+	canonOwn, err := runplan.CanonicalPath(ownReport)
 	if err != nil {
 		return false
 	}
@@ -190,7 +187,7 @@ func CheckFork(f shuttleengine.ForkReport, outcomePath, summaryPath, workdir str
 				break
 			}
 		}
-		if isWriteOf(workdir, w, ownReport) {
+		if isOwnReportWrite(workdir, w, ownReport) {
 			continue
 		}
 		for _, dir := range websterDirs {
@@ -253,16 +250,13 @@ func dirSpellings(dir string) ([]string, error) {
 }
 
 // CheckParent reports the violations in Master's own parent session.
-// Master may write only to the two contract files, outcomePath and summaryPath, and to any of notePaths.
-// notePaths are the friction notes the run's Master prompts named, each compared in its told and link-resolved spellings;
-// a resumed Master's prompt names a fresh note, and the note an earlier Master wrote stays Master's own.
-// Empty notePaths allow no note.
+// Master may write only to the two contract files (outcomePath and summaryPath).
 // It bans three hard violations:
-// any named spawn, any other parent write, and any Bash command referencing the fabric repo.
+// any named spawn, any parent write outside the contract files, and any Bash command referencing the fabric repo.
 // fabricRef classifies fabric-reference commands.
 // It must not be nil: Matches is called unguarded, and a nil interface panics.
 // A hub run passes the fabric reference scanner; a standalone run passes a matcher that never matches.
-func CheckParent(a shuttleengine.ForkAudit, outcomePath, summaryPath string, notePaths []string, workdir string, fabricRef RefMatcher) []AuditViolation {
+func CheckParent(a shuttleengine.ForkAudit, outcomePath, summaryPath, workdir string, fabricRef RefMatcher) []AuditViolation {
 	var violations []AuditViolation
 
 	for i := 1; i <= a.NamedSpawns; i++ {
@@ -280,16 +274,14 @@ func CheckParent(a shuttleengine.ForkAudit, outcomePath, summaryPath string, not
 	cleanSummary := filepath.Clean(summaryPath)
 	for i, w := range a.ParentWrites {
 		cw := runplan.ResolveWritePath(workdir, w)
-		isNoteWrite := slices.ContainsFunc(notePaths, func(notePath string) bool { return isWriteOf(workdir, w, notePath) })
-		if cw == cleanOutcome || cw == cleanSummary || isNoteWrite {
-			continue
+		if cw != cleanOutcome && cw != cleanSummary {
+			violations = append(violations, AuditViolation{
+				Class:  ClassParentWrite,
+				Key:    parentKey(ClassParentWrite, i),
+				Path:   w,
+				Detail: fmt.Sprintf("Master wrote %q — Master may write only its two contract files (outcome.yaml and summary.md); any other write means Master implemented a batch itself or hand-wrote a batch report", w),
+			})
 		}
-		violations = append(violations, AuditViolation{
-			Class:  ClassParentWrite,
-			Key:    parentKey(ClassParentWrite, i),
-			Path:   w,
-			Detail: fmt.Sprintf("Master wrote %q — Master may write only its two contract files (outcome.yaml and summary.md) and the friction notes the run's Master prompts named; any other write means Master implemented a batch itself or hand-wrote a batch report", w),
-		})
 	}
 
 	for i, cmd := range a.ParentBashCommands {

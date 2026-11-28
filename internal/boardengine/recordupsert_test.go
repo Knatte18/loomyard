@@ -142,7 +142,7 @@ func TestUpsertTaskWithRecord_Refusals(t *testing.T) {
 					t.Fatalf("SetRunStatus() error = %v; want nil", err)
 				}
 			},
-			wantErr: []string{"is held by a run", "lym loom decision replace idea", "kind note"},
+			wantErr: []string{"is held by a run", "lym loom decision replace idea"},
 		},
 		{
 			name: "TaskWorktreeStands", pairExists: func(string) bool { return true },

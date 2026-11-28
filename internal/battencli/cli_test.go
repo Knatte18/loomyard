@@ -15,7 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/runfsm"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -310,13 +310,13 @@ func TestStartFirstPass(t *testing.T) {
 				if err := os.MkdirAll(filepath.Join(hub, beam), 0o755); err != nil {
 					t.Fatal(err)
 				}
-				if err := os.MkdirAll(fabriclayout.BoardDir(hub), 0o755); err != nil {
+				if err := os.MkdirAll(fabricengine.BoardDir(hub), 0o755); err != nil {
 					t.Fatal(err)
 				}
 				board := `{"version":1,"entries":[` +
 					`{"id":0,"slug":"` + beam + `","title":"Beam","kind":"project","labels":["bug"],"beam":true},` +
 					`{"id":1,"slug":"some-slug","title":"Member","kind":"task","labels":["bug"],"project":"` + beam + `"}]}`
-				if err := os.WriteFile(filepath.Join(fabriclayout.BoardDir(hub), "board.json"), []byte(board), 0o644); err != nil {
+				if err := os.WriteFile(filepath.Join(fabricengine.BoardDir(hub), "board.json"), []byte(board), 0o644); err != nil {
 					t.Fatal(err)
 				}
 			}

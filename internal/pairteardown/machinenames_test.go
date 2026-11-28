@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -20,30 +20,30 @@ func TestMachineNamesOf(t *testing.T) {
 		name     string
 		here     machinename.Identity
 		registry boardengine.Registry
-		want     fabriclayout.MachineNames
+		want     fabricengine.MachineNames
 	}{
 		{
 			name: "NoEntryReadsTheFilesNames",
 			here: machinename.Identity{ID: "id1", Name: "new", Former: []string{"old"}},
-			want: fabriclayout.MachineNames{Current: "new", Former: []string{"old"}},
+			want: fabricengine.MachineNames{Current: "new", Former: []string{"old"}},
 		},
 		{
 			name:     "AnEntryHoldingAFormerNameTheFileLacksAddsIt",
 			here:     machinename.Identity{ID: "id1", Name: "new", Former: []string{"old"}},
 			registry: boardengine.Registry{"id1": {Name: "new", Former: []string{"older", "old"}}},
-			want:     fabriclayout.MachineNames{Current: "new", Former: []string{"old", "older"}},
+			want:     fabricengine.MachineNames{Current: "new", Former: []string{"old", "older"}},
 		},
 		{
 			name:     "AnEntryOfAnotherIdAddsNothing",
 			here:     machinename.Identity{ID: "id1", Name: "new", Former: []string{"old"}},
 			registry: boardengine.Registry{"id2": {Name: "other", Former: []string{"elsewhere"}}},
-			want:     fabriclayout.MachineNames{Current: "new", Former: []string{"old"}},
+			want:     fabricengine.MachineNames{Current: "new", Former: []string{"old"}},
 		},
 		{
 			name:     "AFormerNameOfTheFileAnotherEntryHoldsAsItsCurrentNameIsLeftOut",
 			here:     machinename.Identity{Name: "new", Former: []string{"old", "taken"}},
 			registry: boardengine.Registry{"id2": {Name: "taken"}},
-			want:     fabriclayout.MachineNames{Current: "new", Former: []string{"old"}},
+			want:     fabricengine.MachineNames{Current: "new", Former: []string{"old"}},
 		},
 	}
 	for _, tt := range tests {

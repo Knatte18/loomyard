@@ -8,7 +8,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
@@ -17,12 +16,12 @@ import (
 // It takes the temp root path without opening it, so its caller owns the lymtemp root.
 // A hub with no recorded shortname is an error naming the shortname record and the hub.
 func CreelGeometry(hubPath, tempRoot string) (creelengine.Geometry, error) {
-	boltDir := fabriclayout.BoltDir(hubPath)
+	boltDir := fabricengine.BoltDir(hubPath)
 	shortname, found := fabricengine.ReadShortname(boltDir)
 	if !found {
-		return creelengine.Geometry{}, fmt.Errorf("hub %q has no usable shortname record %s", hubPath, filepath.Join(boltDir, fabriclayout.ShortnameFileName))
+		return creelengine.Geometry{}, fmt.Errorf("hub %q has no usable shortname record %s", hubPath, filepath.Join(boltDir, fabricengine.ShortnameFileName))
 	}
-	stateDir := filepath.Join(fabriclayout.HubScratchDir(hubPath), lymdirs.CreelDirName)
+	stateDir := filepath.Join(fabricengine.HubScratchDir(hubPath), lymdirs.CreelDirName)
 	return creelengine.Geometry{
 		HubPath:       hubPath,
 		Shortname:     shortname,

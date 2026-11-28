@@ -122,13 +122,11 @@ type ChildArbiterStop struct {
 	// Eligible reports whether the arbiter verb would admit the stop.
 	// It is read from the arbiter eligibility rule over the status file, the escalation record and the verify record.
 	Eligible bool
-	// On reports whether the child's shed.arbiter_max_spawns is above 0.
-	// It is read from the arbiter keys in shed.yaml with the recipe's module override.
+	// On reports whether the child's arbiter_max_spawns is above 0, read from the arbiter keys in shed.yaml with the recipe's module override.
 	On bool
 	// Timeout is one arbiter spawn's resolved timeout, read from the arbiter keys in shed.yaml with the recipe's module override.
 	Timeout time.Duration
-	// SpawnsLeft reports whether the run has arbiter spawns left.
-	// It holds when the attempt records in its arbiter directory are fewer than shed.arbiter_max_spawns.
+	// SpawnsLeft reports whether the run's attempt records in its arbiter directory are fewer than arbiter_max_spawns.
 	SpawnsLeft bool
 	// Attempt reports whether an attempt exists at the stop's key; the fields below describe the newest such attempt.
 	Attempt bool
@@ -322,16 +320,15 @@ const (
 // Every field is a seam that a test replaces with a stub; the seed encoding stays behind those seams,
 // and this type never imports internal/shedrun.
 type SeedChildDeps struct {
-	// ReadBoardType returns the non-empty recipe the Board task runs: its own recipe field, else board.default_recipe.
+	// ReadBoardType returns the non-empty recipe the Board task runs: its own recipe field, else the board's default_recipe.
 	// Each call evaluates it afresh, so a recipe corrected after prime was seeded is still honoured.
 	ReadBoardType func(ctx context.Context) (string, error)
-	// ChildDriver returns the driver for the resolved recipe.
-	// It is the prime seed's child_driver, else the recipe's driver_kind, else shed.driver_kind.
-	// SeedChild calls it after the local overrides are written, so shed.driver_kind is read from the layer just written.
+	// ChildDriver returns the driver for the resolved recipe: prime seed's child_driver, else driver_kind, else shed.yaml.
+	// SeedChild calls it after the local overrides are written, so driver_kind is read from the layer just written.
 	ChildDriver func(recipe string) (string, error)
 	// ReadRunSettings returns the Board task's run profile and settings, read afresh each call; SeedChild sets the Recipe.
 	ReadRunSettings func(ctx context.Context) (RunSettings, error)
-	// PrepareRunSettings returns each module's local-layer document, the task's keys laid over the profile's block.
+	// PrepareRunSettings returns each module's migrated local-layer document, the task's keys laid over the profile's block.
 	// An empty profile takes the recipe's default profile, and a recipe with none takes the task's settings alone.
 	// An error wrapping ErrInvalidRunSettings (unknown profile, no block, bad key) goes to Stuck; other errors are hard.
 	PrepareRunSettings func(settings RunSettings) (map[string][]byte, error)
@@ -359,24 +356,15 @@ type SeedChildDeps struct {
 	MarkWatched func(ctx context.Context) (held bool, err error)
 }
 
-// TeardownDeps carries the closures a worktree teardown calls in sequence:
-// Shutdown strictly before Push, Push before Level, and Level before Remove.
-// They are separate fields so that Remove never runs when Shutdown, Push or Level fails,
-// and the stuck reason names which of them failed.
+// TeardownDeps carries the two closures a worktree teardown calls in sequence: Shutdown strictly before Remove.
+// They are separate fields so that Remove never runs when Shutdown fails,
+// and the stuck reason names which of the two failed.
 // The abandoned-session value Shutdown returns must surface on an otherwise Done row.
-// Shutdown and Remove are expected to wrap the two phases of the pair-teardown composite, EndSession and RemovePair.
+// Both closures are expected to wrap the two phases of the pair-teardown composite, EndSession and RemovePair.
 type TeardownDeps struct {
 	// Shutdown ends the loom session's own driving process, if one is still attached.
 	// It returns the name of any session it had to abandon rather than cleanly end.
 	Shutdown func(ctx context.Context) (abandonedSession string, err error)
-	// Push asks for the pair's commits to be brought to origin, with no prime lock held and without waiting for them.
-	// An error, from the push or from a step the closure runs ahead of it, keeps the pair.
-	// A nil Push pushes nothing.
-	Push func(ctx context.Context) error
-	// Level reports whether the pair may be removed: origin holds its tips and no landing of it is owed.
-	// A false read leaves the pair standing and ends the row.
-	// A nil Level reads level.
-	Level func() (bool, error)
-	// Remove deletes the task worktree pair, and runs only after Shutdown, Push and Level succeeded.
+	// Remove deletes the task worktree pair, and runs only after Shutdown has succeeded.
 	Remove func(ctx context.Context) error
 }

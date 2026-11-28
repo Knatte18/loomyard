@@ -36,16 +36,6 @@ type Spec struct {
 	// Unawaited marks a session nobody waits on, with no output file: its run record reads running until a stop ends it.
 	// Only Runner.StartSession accepts such a spec, and validation refuses one that also names output files.
 	Unawaited bool
-	// EndsWithSession, set on an Unawaited spec, gives the session an end of life no caller has to drive.
-	// When the provider exits, the pane line writes an exit marker in the run directory.
-	// It then asks reed to remove the strand and exits the shell, so the session's window closes.
-	// The strand carries the marker as its done-when list, so a resume drops a closed session.
-	// The run record reads running until the orphan sweep removes the run directory.
-	EndsWithSession bool
-	// NoCarryOver marks a session whose role names no predecessor and which is no later run's predecessor.
-	// Its start appends no earlier run's operator instructions to the prompt,
-	// and its record holds no role key, so no later start reads the instructions typed into it.
-	NoCarryOver bool
 	// ModelChoice is the engine and the model, effort and version the run uses.
 	ModelChoice
 	// PromptEngine names the engine Prompt was rendered for.
@@ -67,9 +57,6 @@ type Spec struct {
 	// DenyPublish, when true, makes the engine install a shell guard for this one run and announce it.
 	// The guard refuses git push and gh calls beyond reads, comments, and title and body edits.
 	DenyPublish bool
-	// AllowRawTmux, when true, exempts this one run from the shell guard that refuses a raw tmux or script command.
-	// Only a session whose task is to start tmux servers of its own, such as the sampler's trials, sets it.
-	AllowRawTmux bool
 	// Advisor, when non-empty, names the model the session consults through its provider's advisor tool, for this run alone.
 	// The value is provider vocabulary and is passed through as given; Spec validation does not check it.
 	// An engine whose provider has no advisor refuses a non-empty value before it writes anything.
@@ -90,7 +77,7 @@ type Spec struct {
 	// Autonomous runs add the AskUserQuestion PreToolUse deny.
 	// Interactive runs do not.
 	// The Agent tool deny and the python deny are included in both modes.
-	// The python deny is toggleable via the shuttle.deny_python key.
+	// The python deny is toggleable via the shuttle config's deny_python key.
 	// The Agent tool and AskUserQuestion denies are toggleable via the claude engine's own config.
 	// Whether the launch carries --dangerously-skip-permissions follows the resolved PermissionMode.
 	// An empty PermissionMode skips in both modes.
@@ -256,7 +243,7 @@ func (s *Spec) validate(worktreeRoot string, cfg Config) error {
 	// Otherwise the run would launch and classify OutcomeTimeout on its first poll tick.
 	// It would then keep its live pane and run dir as stray state.
 	if s.Timeout < 0 {
-		return fmt.Errorf("shuttle: spec.Timeout must not be negative (got %s); use 0 for the config default %s", s.Timeout, keyName(runTimeoutMinKey))
+		return fmt.Errorf("shuttle: spec.Timeout must not be negative (got %s); use 0 for the config default run_timeout_min", s.Timeout)
 	}
 	if s.Timeout == 0 {
 		s.Timeout = time.Duration(cfg.RunTimeoutMin) * time.Minute

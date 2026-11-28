@@ -7,20 +7,29 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
+
+// CodeWorktree names one code worktree of a hub.
+type CodeWorktree struct {
+	// Path is the worktree root, cleaned and in native path separators.
+	Path string
+	// Anchor is the worktree's anchor dir, where its _lym/config lives.
+	Anchor string
+	// Main is true for the hub's main worktree, the prime.
+	Main bool
+}
 
 // CodeWorktrees lists the code worktrees of the repository that the worktree at worktreePath belongs to.
 // The main worktree comes first.
 // A prunable entry and an entry whose directory no longer exists are skipped;
 // any other failure to resolve an entry is returned naming its path.
-func CodeWorktrees(worktreePath string) ([]fabriclayout.CodeWorktree, error) {
+func CodeWorktrees(worktreePath string) ([]CodeWorktree, error) {
 	entries, err := List(worktreePath)
 	if err != nil {
 		return nil, err
 	}
-	var worktrees []fabriclayout.CodeWorktree
+	var worktrees []CodeWorktree
 	for _, entry := range entries {
 		if entry.Prunable {
 			continue
@@ -33,7 +42,7 @@ func CodeWorktrees(worktreePath string) ([]fabriclayout.CodeWorktree, error) {
 		if err != nil {
 			return nil, fmt.Errorf("fabricengine: resolve code worktree %s: %w", path, err)
 		}
-		worktrees = append(worktrees, fabriclayout.CodeWorktree{Path: path, Anchor: l.AnchorPath(), Main: entry.Main})
+		worktrees = append(worktrees, CodeWorktree{Path: path, Anchor: l.AnchorPath(), Main: entry.Main})
 	}
 	return worktrees, nil
 }

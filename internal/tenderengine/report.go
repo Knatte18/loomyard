@@ -110,9 +110,10 @@ type Deps struct {
 	BoltHold func() (BoltHoldState, error)
 	// PushPair spawns the detached push of the pair slug names; nil spawns none.
 	PushPair func(slug string) error
-	// PushOwed reports whether the pair slug names holds commits origin lacks, which a lift then has pushed.
-	// A nil PushOwed reads every pair as owed.
-	PushOwed func(slug string) (bool, error)
+	// PushDeferred reports whether a pause deferred a detached push of the pair slug names, which a lift then pays.
+	// A run's transition pushes synchronously and owes no lift a push.
+	// A nil PushDeferred reads every pair as owed one.
+	PushDeferred func(slug string) bool
 	// PushPrimeRecords spawns the detached push of the prime's records; nil spawns none.
 	PushPrimeRecords func() error
 	// SyncBoardIfOwed spawns the board sync when the board holds changes a deferred sync left; nil spawns none.

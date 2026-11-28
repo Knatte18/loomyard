@@ -3,18 +3,13 @@
 package dobbyengine
 
 import (
-	"context"
 	"errors"
-	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/runfsm"
-	"github.com/Knatte18/loomyard/internal/testkit/permkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -97,7 +92,6 @@ func TestClearDoneRuns(t *testing.T) {
 	t.Parallel()
 
 	const slug = "beam-merge-in"
-	cleared := time.Date(2026, 11, 15, 12, 0, 0, 0, time.UTC)
 	tests := []struct {
 		name  string
 		state string
@@ -112,17 +106,11 @@ func TestClearDoneRuns(t *testing.T) {
 		// clearResult and clearErr are what the clear seam returns.
 		clearResult bool
 		clearErr    error
-		// watch seeds the run's run watch entry, none when nil.
-		watch *RunWatchState
-		// posts runs the run watch step, whose post succeeds, between a first clear and the second.
-		posts       bool
 		wantCalled  bool
 		wantCleared bool
 	}{
-		{name: "DoneRunIsCleared", state: runStateDone, clearResult: true, watch: &RunWatchState{Level: RunWatchStops}, wantCalled: true, wantCleared: true},
-		{name: "DoneRunWithACountedLandingIsClearedAndLeavesTheCount", state: runStateDone, landed: true, counted: true, clearResult: true, watch: &RunWatchState{Level: RunWatchStops}, wantCalled: true, wantCleared: true},
-		{name: "DoneRunOwingAWatchLineIsNotCleared", state: runStateDone, clearResult: true, watch: &RunWatchState{Owed: []OwedWatchLine{{Line: "line", OwedAt: cleared}}}},
-		{name: "DoneRunIsClearedOnceItsOwedWatchLinePosted", state: runStateDone, clearResult: true, watch: &RunWatchState{Level: RunWatchStops, Owed: []OwedWatchLine{{Line: "line", OwedAt: cleared}}}, posts: true, wantCalled: true, wantCleared: true},
+		{name: "DoneRunIsCleared", state: runStateDone, clearResult: true, wantCalled: true, wantCleared: true},
+		{name: "DoneRunWithACountedLandingIsClearedAndLeavesTheCount", state: runStateDone, landed: true, counted: true, clearResult: true, wantCalled: true, wantCleared: true},
 		{name: "RunningRunIsNotCleared", state: runStateRunning},
 		{name: "DoneRunWithItsDriverLockHeldIsNotCleared", state: runStateDone, driverLockHeld: true},
 		{name: "DoneRunWithAPassInFlightIsNotCleared", state: runStateDone, inFlight: true},
@@ -166,32 +154,13 @@ func TestClearDoneRuns(t *testing.T) {
 				if tt.counted {
 					s.CountedLandings[slug] = true
 				}
-				if tt.watch != nil {
-					s.Watches = map[string]RunWatchState{slug: *tt.watch}
-				}
 				return nil
 			})
 			if err != nil {
 				t.Fatalf("UpdateState() = %v; want nil", err)
 			}
 
-			d.clearDoneRuns(cleared)
-			if tt.posts {
-				if len(calls) != 0 {
-					t.Fatalf("ClearDoneRun calls = %v; want none while the watch line is owed", calls)
-				}
-				d.deps.Log = nil
-				d.deps.RunWatch = RunWatchDeps{
-					Level: func(string) (string, error) { return RunWatchStops, nil },
-					Post:  func(context.Context, string, string) (bool, error) { return true, nil },
-				}
-				d.runWatch(context.Background(), cleared)
-				d.deps.Log = func(_, line string, _ bool) {
-					_, text, _ := strings.Cut(line, " ")
-					logged = append(logged, text)
-				}
-				d.clearDoneRuns(cleared)
-			}
+			d.clearDoneRuns(time.Date(2026, 11, 15, 12, 0, 0, 0, time.UTC))
 
 			if called := slices.Equal(calls, []string{slug}); called != tt.wantCalled {
 				t.Errorf("ClearDoneRun calls = %v; want called %t", calls, tt.wantCalled)
@@ -216,100 +185,6 @@ func TestClearDoneRuns(t *testing.T) {
 			if after.CountedLandings["gone"] {
 				t.Errorf("CountedLandings = %v; want the entry of a slug neither landed nor listed dropped", after.CountedLandings)
 			}
-			if _, kept := after.Watches[slug]; tt.wantCleared && kept {
-				t.Errorf("Watches = %v; want the cleared run's entry gone", after.Watches)
-			}
 		})
 	}
-
-	t.Run("DoneRunIsNotClearedOnATickWhoseRunWatchCouldNotRecord", func(t *testing.T) {
-		t.Parallel()
-		if runtime.GOOS == "windows" || os.Geteuid() == 0 {
-			t.Skip("directory mode bits do not refuse the write here")
-		}
-		var calls []string
-		recordDir := t.TempDir()
-		d := &daemon{
-			geom: Geometry{WorktreeName: "prime", StatePath: filepath.Join(recordDir, StateFileName)},
-			deps: Deps{
-				ClearDoneRun: func(slug string) (bool, error) {
-					calls = append(calls, slug)
-					return true, nil
-				},
-				RunWatch: RunWatchDeps{
-					Level: func(string) (string, error) { return RunWatchStops, nil },
-					Post:  func(context.Context, string, string) (bool, error) { return true, nil },
-				},
-			},
-			flights:    map[string]flight{},
-			listedRuns: []RunView{{Slug: slug, State: runStateDone}},
-		}
-		if err := UpdateState(d.geom.StatePath, func(s *State) error {
-			s.Watches = map[string]RunWatchState{slug: {Level: RunWatchStops}}
-			return nil
-		}); err != nil {
-			t.Fatalf("UpdateState() = %v; want nil", err)
-		}
-		permkit.Chmod(t, recordDir, 0o555)
-
-		d.runWatch(context.Background(), cleared)
-		d.clearDoneRuns(cleared)
-
-		// The clear reads the record itself, so an unreadable one would hold it for another reason.
-		if _, _, err := ReadState(d.geom.StatePath); err != nil {
-			t.Fatalf("ReadState() = %v; want the record readable", err)
-		}
-		if len(calls) != 0 {
-			t.Errorf("ClearDoneRun calls = %v; want none while the watch cannot record", calls)
-		}
-	})
-
-	t.Run("DoneRunWhoseRunWatchNeverReadsWaitsForItAndThenClears", func(t *testing.T) {
-		t.Parallel()
-		var calls, posted []string
-		levelErr := errors.New("level unreadable")
-		d := &daemon{
-			geom: Geometry{WorktreeName: "prime", StatePath: filepath.Join(t.TempDir(), StateFileName)},
-			deps: Deps{
-				ClearDoneRun: func(slug string) (bool, error) {
-					calls = append(calls, slug)
-					return true, nil
-				},
-				RunWatch: RunWatchDeps{
-					Level: func(string) (string, error) { return RunWatchStops, levelErr },
-					Post: func(_ context.Context, _, line string) (bool, error) {
-						posted = append(posted, line)
-						return true, nil
-					},
-				},
-			},
-			flights:    map[string]flight{},
-			listedRuns: []RunView{{Slug: slug, State: runStateDone, Run: runfsm.Landed, Producer: "Done", PastLand: true, Landed: true, StatusModified: cleared}},
-		}
-		if err := UpdateState(d.geom.StatePath, func(s *State) error {
-			s.Watches = map[string]RunWatchState{slug: {}}
-			return nil
-		}); err != nil {
-			t.Fatalf("UpdateState() = %v; want nil", err)
-		}
-
-		for range 2 {
-			d.runWatch(context.Background(), cleared)
-			d.clearDoneRuns(cleared)
-		}
-		if len(calls) != 0 || len(posted) != 0 {
-			t.Fatalf("ClearDoneRun calls = %v, lines = %q; want none while the level does not read", calls, posted)
-		}
-
-		levelErr = nil
-		d.runWatch(context.Background(), cleared)
-		d.clearDoneRuns(cleared)
-
-		if want := []string{"[run watch] " + slug + ": landed; batten done at Done; child none; since 2026-11-15T12:00:00Z"}; !slices.Equal(posted, want) {
-			t.Errorf("lines posted = %q; want %q", posted, want)
-		}
-		if !slices.Equal(calls, []string{slug}) {
-			t.Errorf("ClearDoneRun calls = %v; want the one call once the landed line posted", calls)
-		}
-	})
 }

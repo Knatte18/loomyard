@@ -9,7 +9,7 @@
 //
 // `-LYMHUB` is the only hub container suffix; no code parses, trims or recognises the older `-HUB`.
 // The suffix is declared twice on purpose:
-// this package's private hubSuffix derives RepoName, and internal/fabriclayout's exported HubSuffix backs HubPath.
+// this package's private hubSuffix derives RepoName, and internal/fabricengine's exported HubSuffix backs HubPath.
 // Both change together, with the geometryTokenOwners row of TestEnforcement_GeometryLiterals as the third site.
 // Hub discovery ignores the name:
 // the hub is the worktree root's parent, and looksLikeHub checks its structure.
@@ -81,7 +81,7 @@ func Getwd() (string, error) {
 //
 // It returns the Location on success.
 // It returns ErrNotAGitRepo when cwd is outside a git repo.
-// It returns an *AnchorGateError, which wraps ErrCwdOutsideAnchor, when cwd is not exactly the anchored directory.
+// It returns ErrCwdOutsideAnchor when cwd is not exactly the anchored directory.
 func Resolve(cwd string) (*Location, error) {
 	return resolveCore(cwd, true)
 }
@@ -147,7 +147,10 @@ func ResolveWithin(cwd string) (*Location, error) {
 	}
 
 	hubPath := filepath.Dir(workTreeRoot)
-	ownerName, inRecordsSibling := ownerOfRecordsSibling(hubPath, filepath.Base(workTreeRoot))
+	ownerName, inRecordsSibling := filepath.Base(workTreeRoot), false
+	if !OneRepository(workTreeRoot) {
+		ownerName, inRecordsSibling = ownerOfRecordsSibling(hubPath, ownerName)
+	}
 	anchorRel, err := anchorRelOrRoot(hubPath, ownerName)
 	if err != nil {
 		return nil, err
@@ -165,8 +168,20 @@ func ResolveWithin(cwd string) (*Location, error) {
 // ownerOfRecordsSibling returns the name of the worktree whose records sibling is the worktree called name in hubPath.
 // It also reports whether name is such a records sibling.
 // A name that ends in the records-sibling suffix with no worktree of the trimmed name beside it is not a records sibling.
-// Such a name comes back unchanged.
+// Such a name comes back unchanged, and so does one whose trimmed owner is a one-repository worktree.
 func ownerOfRecordsSibling(hubPath, name string) (string, bool) {
+	owner, isSibling := recordsSiblingOwner(hubPath, name)
+	if isSibling && OneRepository(filepath.Join(hubPath, owner)) {
+		return name, false
+	}
+	return owner, isSibling
+}
+
+// recordsSiblingOwner returns the directory in hubPath that the worktree called name is the records sibling of.
+// It also reports whether name is one:
+// it ends in the records-sibling suffix with a directory of the trimmed name beside it.
+// It never reads a layout marker.
+func recordsSiblingOwner(hubPath, name string) (string, bool) {
 	owner, hasSuffix := strings.CutSuffix(name, weftname.Suffix)
 	if !hasSuffix || owner == "" {
 		return name, false

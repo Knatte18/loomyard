@@ -1,7 +1,7 @@
 // destroy_landedwork_integration_test.go drives the pair-warp ownership kind.
 // It also drives the untracked-tracked-at ownership kind and the unlanded-work dirtiness kind.
 // It runs them against real throwaway git repositories, with hermetic git from testmain_test.go.
-// It uses an empty fabric.branch_prefix, so the warp branch is the bare slug.
+// It uses an empty branch_prefix, so the warp branch is the bare slug.
 // No hub is involved: the gate reads only the repository named by repoDir.
 
 package fabricengine
@@ -12,7 +12,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -39,7 +38,7 @@ func TestReplayRequest_RefusesABoardWorktreeOfNoHub(t *testing.T) {
 	t.Parallel()
 
 	repo, _ := landedWorkRepo(t)
-	foreign := filepath.Join(t.TempDir(), "elsewhere", fabriclayout.BoardDirName)
+	foreign := filepath.Join(t.TempDir(), "elsewhere", BoardDirName)
 	if err := os.MkdirAll(filepath.Dir(foreign), 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}

@@ -9,6 +9,8 @@ package fabricengine
 import (
 	"sort"
 	"strings"
+
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // The closed set of guard-reason strings a *MergeGuardError may carry.
@@ -30,6 +32,7 @@ const (
 	mergeReasonAttemptIncomplete   = "merge attempt did not reach both sides"
 	mergeReasonConcludeLanded      = "merge conclude already landed"
 	mergeReasonRecordedMergeGone   = "checkout no longer carries the recorded merge"
+	mergeReasonRecordsUnsettled    = "merge records step unfinished"
 )
 
 // MergeGuardError aggregates every failed merge precondition as a sorted, deduplicated list of
@@ -41,15 +44,22 @@ const (
 // Checkout is the absolute path of the code checkout the guard read.
 // DirtyPaths lists its tracked dirty paths relative to it, slash-separated and sorted.
 // Both are set only beside that reason, and DirtyPaths is then never empty.
+// Parked reports that the refusal left a merge parked with its records unsettled, and Error then names the way forward.
 type MergeGuardError struct {
 	Reasons    []string
 	Checkout   string
 	DirtyPaths []string
+	Parked     bool
 }
 
 // Error implements the error interface, joining the aggregated reasons with "; ".
+// A parked refusal adds the abort that clears the parked merge.
 func (e *MergeGuardError) Error() string {
-	return "fabricengine: merge preconditions failed: " + strings.Join(e.Reasons, "; ")
+	message := "fabricengine: merge preconditions failed: " + strings.Join(e.Reasons, "; ")
+	if e.Parked {
+		message += `; the merge is left in progress: run "lym fabric merge --abort", then merge again`
+	}
+	return message
 }
 
 // has reports whether e's aggregated reasons include reason.
@@ -122,6 +132,18 @@ type ErrMergeInRequired struct{ Source string }
 // Error implements the error interface with a fixed message that does not include Source.
 func (e *ErrMergeInRequired) Error() string {
 	return `fabricengine: merge produced conflicts and was aborted; run "lym fabric merge-in" in the source branch's own worktree first, then retry`
+}
+
+// ErrMarkerChange reports a merge whose source branch edits the anchor marker outside an anchor change.
+// An anchor change made through `lym fabric anchor` carries a trailer that lets the merge pass.
+// Commit names the newest source commit that edits the marker without that trailer, the one detail outside the message.
+type ErrMarkerChange struct{ Commit string }
+
+// Error implements the error interface with a fixed message that does not include Commit.
+func (e *ErrMarkerChange) Error() string {
+	return "fabricengine: the source branch edits the anchor marker " + lymcwd.AnchorFileName + " outside an anchor change; " +
+		"commit " + lymcwd.AnchorFileName + " on the source branch back at the value its merge base holds, " +
+		`or change the anchor with "lym fabric anchor", then merge again`
 }
 
 // ErrForeignMergeState reports git merge state on either side that fabric did not start.

@@ -1458,11 +1458,6 @@ func TestGate_WaitsForIdleWriter(t *testing.T) {
 // A writer turn that starts meanwhile cancels it.
 // Its idle wait and submit window end by the run deadline,
 // and a re-prompt that stays undelivered is retried until the run deadline.
-// repromptCounter is a RepromptRecorder counting into n.
-type repromptCounter struct{ n *int }
-
-func (c repromptCounter) RecordReprompt() { *c.n++ }
-
 func TestGate_UnsentRepromptRetries(t *testing.T) {
 	tiergate.Require(t, 0)
 	const never = 24 * time.Hour
@@ -1527,16 +1522,6 @@ func TestGate_UnsentRepromptRetries(t *testing.T) {
 			if tt.wantEndBy > 0 {
 				rig.run.deadline = rig.start.Add(3 * time.Second)
 			}
-			// reprompted counts the entry's recorded re-prompts, one per delivery.
-			reprompted := 0
-			inner := rig.run.gate[0].Gate
-			rig.run.gate[0].Gate = func() (GateResult, error) {
-				result, err := inner()
-				if !result.Passed {
-					result.Reprompted = repromptCounter{&reprompted}
-				}
-				return result, err
-			}
 			callsAtStart := -1
 			if tt.startAt > 0 {
 				rig.clock.onSleep = func(now time.Time) {
@@ -1572,9 +1557,6 @@ func TestGate_UnsentRepromptRetries(t *testing.T) {
 			}
 			if reworks != tt.wantAttempts {
 				t.Errorf("rework spans = %d, want %d", reworks, tt.wantAttempts)
-			}
-			if reprompted != tt.wantAttempts {
-				t.Errorf("recorded re-prompts = %d, want %d, one per delivery", reprompted, tt.wantAttempts)
 			}
 			if tt.wantTypedMin > 0 && rig.reed.typedAt.Sub(rig.start) < tt.wantTypedMin {
 				t.Errorf("first text typed %v after the start, want at least %v", rig.reed.typedAt.Sub(rig.start), tt.wantTypedMin)

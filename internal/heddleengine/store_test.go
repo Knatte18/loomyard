@@ -185,7 +185,6 @@ func TestStore(t *testing.T) {
 		}{
 			{"lym-batching", "agents-file", "## Batch your calls", false},
 			{"lym-plan-edits-before-gate", "agents-file", "## Make every round of edits in this order", false},
-			{"lym-shell-directory", "agents-file", "## ", true},
 			{"lym-no-attribution", "claude-settings", "", false},
 			{"lym-plugins", "claude-settings", "", false},
 			{"lym-tool-deny", "claude-settings", "", false},
@@ -266,7 +265,7 @@ func TestStore(t *testing.T) {
 		}
 	})
 
-	t.Run("ClaudeFileIsReadAsWrittenWhateverTheStoreVersion", func(t *testing.T) {
+	t.Run("StoreVersionDecidesHowClaudeFileIsRead", func(t *testing.T) {
 		t.Parallel()
 		tests := []struct {
 			name    string
@@ -274,7 +273,11 @@ func TestStore(t *testing.T) {
 			targets string
 			want    []string
 		}{
-			{"UnversionedClaudeFile", "", `["claude-file"]`, []string{"claude-file"}},
+			{"ClaudeFile", "", `["claude-file"]`, []string{"agents-file"}},
+			{"ClaudeAndCodexFile", "", `["codex-file", "claude-file"]`, []string{"agents-file"}},
+			{"ClaudeFileBesideAPrompt", "", `["claude-prompt", "claude-file"]`, []string{"claude-prompt", "agents-file"}},
+			{"CodexFileAlone", "", `["codex-file"]`, []string{"codex-file"}},
+			{"AgentsFileBesideClaudeFile", "", `["agents-file", "claude-file"]`, []string{"agents-file"}},
 			{"VersionedClaudeFile", `"version": 1, `, `["claude-file"]`, []string{"claude-file"}},
 			{"NewerVersionedClaudeFile", `"version": 2, `, `["claude-file"]`, []string{"claude-file"}},
 		}

@@ -33,16 +33,6 @@ type CatchUpWait struct {
 	Detail string `json:"detail,omitempty"`
 	// At is when the failure was read.
 	At time.Time `json:"at"`
-	// Since is when the catch-up first failed with this reason in a row, so how long it has waited.
-	Since time.Time `json:"since,omitzero"`
-}
-
-// waitingSince returns when the wait began, At for a record written before Since was kept.
-func (w CatchUpWait) waitingSince() time.Time {
-	if w.Since.IsZero() {
-		return w.At
-	}
-	return w.Since
 }
 
 // oweCatchUp marks the catch-up from origin owed.
@@ -54,6 +44,8 @@ func (d *daemon) oweCatchUp() {
 }
 
 // catchUp runs the owed catch-up from origin when its next try is due, and reports whether it stands owed after the call.
+// The first read after an upgrade runs before the catch-up until one run of it succeeds,
+// and a failed read keeps the catch-up owed as a failed catch-up does.
 // Success clears the wait, resets the delay and owes every listed run a full pass.
 // It also drops the per-run memory of the runs the catch-up touched.
 // Failure keeps the catch-up owed and schedules the next try one delay later, doubling from a second to idleCeiling.
@@ -64,6 +56,17 @@ func (d *daemon) catchUp(ctx context.Context, now time.Time) bool {
 	}
 	if now.Before(d.catchUpNext) {
 		return true
+	}
+	if !d.upgraded && d.deps.Upgrade.Entries != nil {
+		read, err := UpgradeRead(d.deps.Upgrade)
+		if err != nil {
+			d.catchUpFailed(ctx, now, err)
+			return true
+		}
+		d.upgraded = true
+		if read.Dropped > 0 {
+			d.logLine(now, fmt.Sprintf("first read after the upgrade: %d pause entries turned into the Bolt model", read.Dropped))
+		}
 	}
 	report, err := CatchUp(d.deps.CatchUp)
 	if err != nil {
@@ -81,11 +84,7 @@ func (d *daemon) catchUpFailed(ctx context.Context, now time.Time, err error) {
 	d.catchUpDelay = nextCatchUpDelay(d.catchUpDelay)
 	d.catchUpNext = now.Add(d.catchUpDelay)
 	if updateErr := UpdateState(d.geom.StatePath, func(s *State) error {
-		since := now
-		if s.CatchUp != nil && s.CatchUp.Reason == reason {
-			since = s.CatchUp.waitingSince()
-		}
-		s.CatchUp = &CatchUpWait{Reason: reason, Detail: detail, At: now, Since: since}
+		s.CatchUp = &CatchUpWait{Reason: reason, Detail: detail, At: now}
 		return nil
 	}); updateErr != nil {
 		logger.Warn("dobbyengine: the catch-up wait could not be recorded", "worktree", d.geom.WorktreeName, "error", updateErr)
@@ -112,7 +111,6 @@ func (d *daemon) catchUpFailed(ctx context.Context, now time.Time, err error) {
 // The per-run memory of each run the catch-up touched is dropped, so the run's next pass is a full pass.
 func (d *daemon) catchUpSucceeded(now time.Time, report CatchUpReport) {
 	d.catchUpOwed, d.catchUpDelay, d.catchUpNext, d.catchUpNoticed = false, 0, time.Time{}, nil
-	d.catchUpSuccesses++
 	if d.catchUpReason != "" {
 		d.catchUpReason = ""
 		d.logLine(now, "catch-up succeeds again")

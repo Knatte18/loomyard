@@ -20,19 +20,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
-	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/google/go-cmp/cmp"
 	"github.com/spf13/cobra"
@@ -63,7 +60,7 @@ func newFakeClockRunner(reed shuttleengine.ReedOps, engine shuttleengine.Engine,
 	return runner
 }
 
-// TestCommand_Run_FlagValidation drives runCmd, and openCmd for the rows named Open*.
+// TestCommand_Run_FlagValidation drives runCmd, and openCmd for its OpenMissingRole and OpenInvalidModelSpec rows.
 // It drives them directly rather than through clihelp.Execute, so no parent PersistentPreRunE runs.
 // No abort is in play, so this is the flag-shape check on its own terms, which is what these cases are about.
 // Its companion below covers what happens when a pre-run abort and a flag error coincide.
@@ -83,12 +80,6 @@ func TestCommand_Run_FlagValidation(t *testing.T) {
 			name:    "OpenMissingRole",
 			build:   (*shuttleCLI).openCmd,
 			wantErr: "--role is required",
-		},
-		{
-			name:    "OpenInvalidRole",
-			build:   (*shuttleCLI).openCmd,
-			args:    []string{"--role", "my_agent"},
-			wantErr: `--role "my_agent" is no valid agent name: use lowercase letters, digits and dashes, starting with a letter, as in my-agent`,
 		},
 		{
 			name:    "OpenInvalidModelSpec",
@@ -971,12 +962,9 @@ func TestOpenCmd_ModelAliasEngine(t *testing.T) {
 		wantEffort string
 		wantMode   string
 		wantSkills []string
-		// wantRole is the role the engine's spec must carry; empty checks none.
-		wantRole string
 		// openErr scripts the wanted engine's refusal.
 		openErr error
 	}{
-		{name: "a typed role is joined with dashes and lowered", args: []string{"--role", "My Agent"}, wantEngine: shuttlefake.EngineName, wantRole: "my-agent"},
 		{
 			name: "skills are passed in the order given", args: []string{"--role", "board", "--skill", "ly:board-policy", "--skill", "ly:board"},
 			wantEngine: shuttlefake.EngineName, wantSkills: []string{"ly:board-policy", "ly:board"},
@@ -1039,89 +1027,6 @@ func TestOpenCmd_ModelAliasEngine(t *testing.T) {
 				}
 				if len(recorder.specs) != 1 || recorder.specs[0].PermissionMode != tt.wantMode || !slices.Equal(recorder.specs[0].Skills, tt.wantSkills) {
 					t.Errorf("engine %s saw specs %+v; want exactly one with PermissionMode %q and Skills %v", name, recorder.specs, tt.wantMode, tt.wantSkills)
-				}
-				if tt.wantRole != "" && (len(recorder.specs) != 1 || recorder.specs[0].Role != tt.wantRole) {
-					t.Errorf("engine %s saw specs %+v; want exactly one with Role %q", name, recorder.specs, tt.wantRole)
-				}
-			}
-		})
-	}
-}
-
-// TestAgentCmd_StartsSessionFromGeometry drives agentCmd over a task worktree's reed geometry.
-// It pins the spec the engine prepares.
-// That spec carries the normalized name, the agent role, the language skills and a prompt naming the worktree's places.
-// It also pins the --name and --model refusals, which prepare nothing.
-func TestAgentCmd_StartsSessionFromGeometry(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-	tests := []struct {
-		name string
-		args []string
-		// wantErr is the refusal's text; empty means the session's spec reaches the engine.
-		wantErr string
-	}{
-		{name: "a typed name starts the session", args: []string{"--name", "My Agent"}},
-		{
-			name: "a name outside the grammar is refused with the rule", args: []string{"--name", "my_agent"},
-			wantErr: `--name "my_agent" is no valid agent name: use lowercase letters, digits and dashes, starting with a letter, as in my-agent`,
-		},
-		{name: "a malformed model spec is refused", args: []string{"--model", "opus[nope"}, wantErr: "--model"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			hub := t.TempDir()
-			worktree := t.TempDir()
-			board := t.TempDir()
-			stencilsDir := fabriclayout.StencilsDir(hub)
-			stencilkit.SeedInto(t, stencilsDir)
-			stencilkit.SeedEngineBlockCopies(t, stencilsDir, shuttlefake.EngineName)
-			if err := os.MkdirAll(configengine.ConfigDir(board), 0o755); err != nil {
-				t.Fatalf("MkdirAll: %v", err)
-			}
-			if err := os.WriteFile(configengine.ConfigFile(board, "language"), []byte("skills:\n  - scribe:golang-testing\n"), 0o644); err != nil {
-				t.Fatalf("WriteFile: %v", err)
-			}
-			dirs := configengine.Dirs{Anchor: t.TempDir(), Board: board}
-			agents, err := agentconfig.Load(dirs)
-			if err != nil {
-				t.Fatalf("agentconfig.Load: %v", err)
-			}
-			engine := &shuttlefake.Engine{PrepareErr: errSpecCaptured}
-			runner := shuttleengine.NewRunner(&shuttlefake.Reed{}, shuttlefake.EngineSet(engine), worktree, worktree, shuttleengine.Config{RunTimeoutMin: 30, Agents: agents})
-			c := &shuttleCLI{runner: runner, configDirs: dirs, reedGeometry: reedengine.Geometry{
-				HubPath: hub, WorktreeRoot: worktree, NameShortname: "ly", NameSlug: "fix-the-thing", ParentName: "ly:orch",
-			}}
-			cmd := c.agentCmd()
-			var out bytes.Buffer
-			cmd.SetOut(&out)
-			cmd.SetArgs(tt.args)
-			if err := cmd.Execute(); err != nil {
-				t.Fatalf("cmd.Execute() error: %v; output: %s", err, out.String())
-			}
-
-			envelope := parseSingleEnvelope(t, out.Bytes())
-			message, _ := envelope["error"].(string)
-			if tt.wantErr != "" {
-				if !strings.Contains(message, tt.wantErr) || engine.PrepareCalls != 0 {
-					t.Errorf("error = %q, Prepare calls = %d; want an error holding %q and no call", message, engine.PrepareCalls, tt.wantErr)
-				}
-				return
-			}
-			if engine.PrepareCalls != 1 {
-				t.Fatalf("Prepare calls = %d; want 1; output: %s", engine.PrepareCalls, out.String())
-			}
-			spec := engine.LastSpec
-			if spec.Role != "my-agent" || spec.ConfigRole != agentconfig.RoleAgent || !spec.Unawaited {
-				t.Errorf("Spec Role, ConfigRole, Unawaited = %q, %q, %v; want %q, %q, true", spec.Role, spec.ConfigRole, spec.Unawaited, "my-agent", agentconfig.RoleAgent)
-			}
-			if !slices.Contains(spec.Skills, "scribe:golang-testing") {
-				t.Errorf("Spec.Skills = %v; want the hub's language skill among them", spec.Skills)
-			}
-			for _, want := range []string{"`ly`", "`" + hub + "`", "`" + worktree + "`", "`fix-the-thing`", "`ly:orch`"} {
-				if !strings.Contains(spec.Prompt, want) {
-					t.Errorf("Spec.Prompt lacks %q:\n%s", want, spec.Prompt)
 				}
 			}
 		})

@@ -18,7 +18,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/tendercli"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
@@ -135,7 +135,7 @@ func TestPauseSlugOverride(t *testing.T) {
 			t.Parallel()
 			cmd := &cobra.Command{Use: "push"}
 			if tt.declared {
-				cmd.Flags().String(fabriclayout.PauseSlugFlag, "", "")
+				cmd.Flags().String(fabricengine.PauseSlugFlag, "", "")
 			}
 			if err := cmd.ParseFlags(tt.args); err != nil {
 				t.Fatalf("ParseFlags(%q): %v", tt.args, err)
@@ -166,11 +166,10 @@ func TestDetachedChild(t *testing.T) {
 		args     []string
 		want     tendercli.DetachedChild
 	}{
-		{"PauseSlugSet", []string{fabriclayout.PauseSlugFlag}, []string{"--pause-slug", "child"}, tendercli.DetachedChild{Deferrable: true}},
+		{"PauseSlugSet", []string{fabricengine.PauseSlugFlag}, []string{"--pause-slug", "child"}, tendercli.DetachedChild{Deferrable: true}},
 		{"DeferrableSet", []string{boardengine.DeferrableSyncFlag}, []string{"--deferrable"}, tendercli.DetachedChild{Deferrable: true, HubScope: true}},
-		{"BoardPusherSet", []string{fabriclayout.PusherBoardFlag}, []string{"--board"}, tendercli.DetachedChild{Deferrable: true, HubScope: true}},
-		{"ParentLockedBesidePauseSlug", []string{fabriclayout.PauseSlugFlag, fabriclayout.ParentLockedFlag}, []string{"--pause-slug=child", "--parent-locked"}, tendercli.DetachedChild{Deferrable: true, ParentLocked: true}},
-		{"DeclaredButUnset", []string{fabriclayout.PauseSlugFlag, boardengine.DeferrableSyncFlag, fabriclayout.ParentLockedFlag}, nil, tendercli.DetachedChild{}},
+		{"ParentLockedBesidePauseSlug", []string{fabricengine.PauseSlugFlag, fabricengine.ParentLockedFlag}, []string{"--pause-slug=child", "--parent-locked"}, tendercli.DetachedChild{Deferrable: true, ParentLocked: true}},
+		{"DeclaredButUnset", []string{fabricengine.PauseSlugFlag, boardengine.DeferrableSyncFlag, fabricengine.ParentLockedFlag}, nil, tendercli.DetachedChild{}},
 		{"NotDeclared", nil, nil, tendercli.DetachedChild{}},
 	}
 	for _, tt := range tests {
@@ -178,7 +177,7 @@ func TestDetachedChild(t *testing.T) {
 			t.Parallel()
 			cmd := &cobra.Command{Use: "push"}
 			for _, name := range tt.declared {
-				if name == fabriclayout.PauseSlugFlag {
+				if name == fabricengine.PauseSlugFlag {
 					cmd.Flags().String(name, "", "")
 				} else {
 					cmd.Flags().Bool(name, false, "")

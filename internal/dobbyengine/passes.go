@@ -34,12 +34,6 @@ type RunView struct {
 	// State is batten's status state and Producer its current producer.
 	State    string
 	Producer string
-	// HistoryLen is the length of batten's status history.
-	// LastRepeats is the folded repeats of its last entry, zero for an empty history.
-	HistoryLen  int
-	LastRepeats int
-	// Error is batten's status reason.
-	Error string
 	// StatusModified is the modification time of batten's own status file and ChildStatusModified that of the child's status file.
 	StatusModified      time.Time
 	ChildStatusModified time.Time
@@ -52,24 +46,16 @@ type RunView struct {
 	Verdict runfsm.Verdict
 	// DriverLockHeld reports whether the run's driver lock is held, which a pass in flight does.
 	DriverLockHeld bool
-	// Waiting reports that a live driver of the run, the child's or batten's own, is waiting out a network failure.
-	// WaitDied reports that such a driver died while it waited, so the run is stopped.
-	Waiting  bool
-	WaitDied bool
-	// WaitProducer, WaitClass and WaitSince are the row, the failure class and the start of that wait.
-	// WaitSince is zero for a wait whose record is not yet written.
-	WaitProducer string
-	WaitClass    string
-	WaitSince    time.Time
 	// Covered reports whether a pause entry covers the hub or the slug.
 	Covered bool
-	// Held reports whether a live pause entry of the run's own scope is a bolt-hold entry.
-	// It carries pauserecord.BoltHoldCaller, and the dobby lifts it itself.
+	// Held reports whether a live pause entry of the run's own scope is an adopt pause or a bolt-hold entry.
+	// An adopt pause carries pauserecord.AdoptCaller, or the legacy pauserecord.HoldCaller, and only a hand lifts it.
+	// A bolt-hold entry carries pauserecord.BoltHoldCaller, and the dobby lifts it itself.
 	Held bool
-	// NoSlot reports whether the run takes no slot under beam.max_runs: a pawl run whose landing hold does not stand.
+	// NoSlot reports whether the run takes no slot under max_runs: a pawl run whose landing hold does not stand.
 	NoSlot bool
 	// EntryEnded reports whether the run's board entry is done or gone from the board, whatever batten's state says.
-	// Such a run takes no slot under beam.max_runs.
+	// Such a run takes no slot under max_runs.
 	EntryEnded bool
 	// PairPresent reports whether the run's task worktree is still on disk.
 	PairPresent bool
@@ -90,8 +76,6 @@ type RunView struct {
 	LandingCommit string
 	// EmptyLanding reports that the run's landing changed no code path on its parent branch, so none of its work reached it.
 	EmptyLanding bool
-	// Motif reports whether the run's child ran the motif recipe, whose landing leaves its entry a Sketch.
-	Motif bool
 	// ReachedParent reports whether the run's work already reached its parent branch.
 	// Then only its Land and Worktree-Teardown rows are left.
 	// It is read for a paused run only.
@@ -417,8 +401,7 @@ func (d *daemon) collectExits(now time.Time) {
 // Exit 0 clears the run's failing-pass count and noticed texts.
 // It also clears the owed full pass when the pass was full.
 // A refused continue pass owes a full pass, and a covered pass counts as no failure.
-// The owned-elsewhere, origin-wait and refused-catch-up exits are never a failing pass.
-// Each of them owes the catch-up from origin.
+// The owned-elsewhere exit and the origin-wait exit are never a failing pass, and each owes the catch-up from origin.
 // Any other exit counts a failure by its error text.
 // Once the count reaches failingPassNoticeAfter, one notice per error text goes to the nearest live orch.
 func (d *daemon) passExited(slug string, full bool, code int, errText string, at time.Time) {
@@ -436,7 +419,7 @@ func (d *daemon) passExited(slug string, full bool, code int, errText string, at
 			}
 		case PassExitContinueRefused:
 			rs.FullPassOwed = true
-		case PassExitCovered, PassExitOwnedElsewhere, PassExitOriginWait, PassExitCatchUpRefused:
+		case PassExitCovered, PassExitOwnedElsewhere, PassExitOriginWait:
 		default:
 			if errText == rs.FailingPassError {
 				rs.FailingPassCount++
@@ -465,7 +448,7 @@ func (d *daemon) passExited(slug string, full bool, code int, errText string, at
 	if noticeDue {
 		d.noticeFailingPass(slug, errText)
 	}
-	if code == PassExitOriginWait || code == PassExitCatchUpRefused {
+	if code == PassExitOriginWait {
 		d.oweCatchUp()
 	}
 	if code == PassExitOwnedElsewhere {

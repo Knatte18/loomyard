@@ -22,6 +22,7 @@ const (
 	// ForwardingFileName is the hub's record of whether each orch's slack button is on.
 	ForwardingFileName = "forwarding.json"
 	// ChannelMapFileName is the hub's record of the Slack channel of each orch.
+	// The channels an older map named `channels.json` recorded are never read, so the relay leaves them alone.
 	ChannelMapFileName = "orch-channels.json"
 	// InboxDirName is the directory where the socket holder drops a wake hint for the hub's relay.
 	InboxDirName = "inbox"

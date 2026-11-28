@@ -13,7 +13,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -59,7 +58,7 @@ func TestAnchoredFileFirstParentHistory(t *testing.T) {
 		if err != nil {
 			t.Fatalf("AnchoredFileFirstParentHistory error = %v", err)
 		}
-		want := []fabriclayout.AnchoredFileVersion{
+		want := []fabricengine.AnchoredFileVersion{
 			{SHA: third, Position: firstParentPosition(t, l, third), Data: []byte("third")},
 			{SHA: second, Position: firstParentPosition(t, l, second), Data: []byte("second")},
 			{SHA: first, Position: firstParentPosition(t, l, first), Data: []byte("first")},

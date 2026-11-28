@@ -22,10 +22,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
@@ -69,21 +67,12 @@ func newFakeReceiver(t *testing.T, shutdown func(ctx context.Context) (string, e
 		location: &lymcwd.Location{RepoName: "example", HubPath: dir, WorktreeName: "hub-repo", AnchorRel: "."},
 		slug:     "some-slug",
 	}
-	// The driver reads fabric's push timing, so the fake hub keeps a fabric config in its Bolt checkout.
-	// A config load takes that checkout as its base layer once the directory exists, which a pause record alone brings about.
-	boltDir := fabriclayout.BoltDir(c.location.HubPath)
-	if err := os.MkdirAll(configengine.ConfigDir(boltDir), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(configengine.ConfigFile(boltDir, "fabric"), []byte(fabricengine.ConfigTemplate()), 0o644); err != nil {
-		t.Fatal(err)
-	}
 	// The fake receiver has no git pair, so the run's records commit through stubs that find nothing to commit.
 	c.recordsDeps = func() commitStatusDeps {
 		return commitStatusDeps{
 			MergeActive: func() (bool, error) { return false, nil },
 			Commit:      func(string) (bool, error) { return false, nil },
-			StartPush:   func() bool { return false },
+			Push:        func() error { return nil },
 		}
 	}
 	c.shedPaths = shedbuild.ShedPaths{
@@ -241,9 +230,8 @@ func writeStatus(t *testing.T, c *battenCLI, st shedengine.Status) {
 // An absent status file never runs the reconcile.
 // Over a fake catch-up, which runs before the reconcile:
 // an unreachable origin refuses with the origin-wait exit and the re-run;
-// a registration refusal passes its way forward with the refused-catch-up exit;
-// any other failure names its error and the re-run with the same exit;
-// a run handed over exits owned elsewhere;
+// a registration refusal passes its way forward;
+// any other failure names its error and the re-run, and a run handed over exits owned elsewhere;
 // a clean catch-up goes on to the reconcile.
 // Over fake owner seams:
 // an owned_elsewhere verdict refuses naming the owner and "lym adopt";
@@ -257,14 +245,14 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 
 	const slug = "some-slug"
 	land := battenrecipe.NameLand
-	activeReport := fabriclayout.OriginReport{Entries: []fabriclayout.EntryOutcome{{Slug: slug, State: fabriclayout.EntryActive}}}
-	elsewhereReport := fabriclayout.OriginReport{Entries: []fabriclayout.EntryOutcome{{Slug: slug, State: fabriclayout.EntryOwnedElsewhere, Owner: "there", AdoptSubject: "some-beam"}}}
-	unreachableReport := fabriclayout.OriginReport{Unreachable: true}
+	activeReport := fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryActive}}}
+	elsewhereReport := fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryOwnedElsewhere, Owner: "there", AdoptSubject: "some-beam"}}}
+	unreachableReport := fabricengine.OriginReport{Unreachable: true}
 	owning := func(fake fakeOwners) func() *fakeOwners { return func() *fakeOwners { return &fake } }
 	const stopWayForward = "`lym fabric pull` in /hub/example"
-	stoppedReport := fabriclayout.OriginReport{
-		Branches: []fabriclayout.BranchOutcome{{Branch: "some-slug", Repo: "code", Slug: slug, State: fabriclayout.BranchRewritten, WayForward: stopWayForward}},
-		Entries:  []fabriclayout.EntryOutcome{{Slug: slug, State: fabriclayout.EntryStopped, WayForward: stopWayForward}},
+	stoppedReport := fabricengine.OriginReport{
+		Branches: []fabricengine.BranchOutcome{{Branch: "some-slug", Repo: "code", Slug: slug, State: fabricengine.BranchRewritten, WayForward: stopWayForward}},
+		Entries:  []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryStopped, WayForward: stopWayForward}},
 	}
 	tests := []struct {
 		name         string
@@ -272,7 +260,7 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 		producer     string
 		pauseAfter   string
 		lockErr      error
-		report       fabriclayout.OriginReport
+		report       fabricengine.OriginReport
 		reconcileErr error
 		wantOutcome  string
 		wantErrors   []string
@@ -306,11 +294,11 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 		{name: "failed_again", state: shedengine.StateFailed, producer: battenrecipe.NameLand, lockErr: errors.New("prime lock unavailable"), wantErrors: []string{"prime lock unavailable"}, wantReconcile: 1},
 		{
 			name: "reconcile_active", state: shedengine.StateRunning, wantOutcome: "done", wantReconcile: 1,
-			report: fabriclayout.OriginReport{Entries: []fabriclayout.EntryOutcome{{Slug: slug, State: fabriclayout.EntryActive}}},
+			report: fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryActive}}},
 		},
 		{
 			name: "reconcile_ended", state: shedengine.StateRunning, wantReconcile: 1,
-			report:     fabriclayout.OriginReport{Entries: []fabriclayout.EntryOutcome{{Slug: slug, State: fabriclayout.EntryEnded, How: "done"}}},
+			report:     fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryEnded, How: "done"}}},
 			wantErrors: []string{"landed", "lym cleanup --apply", "from the prime"},
 		},
 		{
@@ -320,7 +308,7 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 		},
 		{
 			name: "reconcile_unreachable", state: shedengine.StateRunning, wantOutcome: "done", wantReconcile: 1,
-			report: fabriclayout.OriginReport{Unreachable: true},
+			report: fabricengine.OriginReport{Unreachable: true},
 		},
 		{
 			name: "catch_up_unreachable_refuses_before_the_reconcile", state: shedengine.StateRunning,
@@ -335,7 +323,7 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 			catchUp: func() (dobbyengine.CatchUpReport, error) {
 				return dobbyengine.CatchUpReport{}, &boardengine.RegistrationError{Reason: "the name is taken", WayForward: "rename this machine"}
 			},
-			wantCatchUps: 1, wantExit: dobbyengine.PassExitCatchUpRefused,
+			wantCatchUps: 1, wantExit: dobbyengine.PassExitOriginWait,
 			wantErrors: []string{"machine registration refused: the name is taken", "way forward: rename this machine"},
 		},
 		{
@@ -343,7 +331,7 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 			catchUp: func() (dobbyengine.CatchUpReport, error) {
 				return dobbyengine.CatchUpReport{}, errors.New("push refused")
 			},
-			wantCatchUps: 1, wantExit: dobbyengine.PassExitCatchUpRefused,
+			wantCatchUps: 1, wantExit: dobbyengine.PassExitOriginWait,
 			wantErrors: []string{"push refused", "fix the cause it names, then run lym batten run " + slug + " again"},
 		},
 		{
@@ -433,7 +421,7 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 				}()
 			}
 			reconciled := 0
-			c.reconcile = func(got string) (fabriclayout.OriginReport, error) {
+			c.reconcile = func(got string) (fabricengine.OriginReport, error) {
 				reconciled++
 				if got != slug {
 					t.Errorf("reconcile(%q); want the run's slug %q", got, slug)

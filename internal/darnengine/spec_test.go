@@ -36,12 +36,8 @@ func newSpecInputs(t *testing.T) DarnInputs {
 
 		ConditionStopMarkerPath: filepath.Join(t.TempDir(), "condition-stop-marker"),
 		SubagentModel:           "haiku",
-		MeasureCall:             measureCall,
 	}
 }
-
-// measureCall is the measuring call the inputs carry, a form no stencil spells itself.
-const measureCall = "lym gate test --tier 0 -- <args>"
 
 // newTestRegistry loads an empty-directory model registry, which still resolves the built-in aliases.
 func newTestRegistry(t *testing.T) modelspec.Registry {
@@ -82,8 +78,7 @@ const (
 	gatedNoGateStep     = "3. Run no `lym gate test` yourself."
 )
 
-// The values the report passage fills for a darn.report_dir of reportDir,
-// and the heading of the step the passage follows.
+// The values the report passage fills for a report_dir of reportDir, and the heading of the step the passage follows.
 const (
 	reportDir   = "docs/research"
 	reportPath  = reportDir + "/fix-the-thing.md"
@@ -101,7 +96,7 @@ func TestDarnSpec(t *testing.T) {
 	tests := []struct {
 		name      string
 		configure func(in *DarnInputs)
-		// reportDir is the Config's darn.report_dir for the row; empty asks for no report file.
+		// reportDir is the Config's report_dir for the row; empty asks for no report file.
 		reportDir    string
 		parentName   string
 		wantInPrompt func(in DarnInputs) []string
@@ -118,7 +113,7 @@ func TestDarnSpec(t *testing.T) {
 			wantInPrompt: func(in DarnInputs) []string {
 				return []string{"fix-the-thing", in.DescriptionPath, filepath.ToSlash(in.SpecsDir), in.DecisionRecordPath, in.StopMarkerPath, in.ConditionStopMarkerPath, `model: "haiku"`, ungatedTestStep, ungatedSubagentGate}
 			},
-			wantNotInPrompt: []string{gatedNoGateStep, reportPath, measureCall},
+			wantNotInPrompt: []string{gatedNoGateStep, reportPath},
 			wantNone:        1,
 			wantNoParent:    true,
 		},
@@ -132,21 +127,12 @@ func TestDarnSpec(t *testing.T) {
 			wantNoParent:   true,
 		},
 		{
-			name:      "an ungated writer builds with no measuring call",
-			configure: func(in *DarnInputs) { in.MeasureCall = "" },
-			wantInPrompt: func(in DarnInputs) []string {
-				return []string{ungatedTestStep}
-			},
-			wantNone:     1,
-			wantNoParent: true,
-		},
-		{
 			name:      "a cold fixer on the verify gate has the writer and its subagents run no gate",
 			configure: func(in *DarnInputs) { in.GateFixed = true },
 			wantInPrompt: func(in DarnInputs) []string {
-				return []string{`model: "haiku"`, gatedNoGateStep, "run that one test class once through `" + measureCall + "`"}
+				return []string{`model: "haiku"`, gatedNoGateStep}
 			},
-			wantNotInPrompt: []string{ungatedTestStep, ungatedSubagentGate, "--gate darn-write"},
+			wantNotInPrompt: []string{ungatedTestStep, ungatedSubagentGate},
 			wantNone:        1,
 			wantNoParent:    true,
 		},
@@ -300,10 +286,6 @@ func TestDarnSpec_Refusals(t *testing.T) {
 		{"empty StopMarkerPath", func(t *testing.T, in *DarnInputs, cfg *Config) { in.StopMarkerPath = "" }, "StopMarkerPath"},
 		{"empty ConditionStopMarkerPath", func(t *testing.T, in *DarnInputs, cfg *Config) { in.ConditionStopMarkerPath = "" }, "ConditionStopMarkerPath"},
 		{"empty SubagentModel", func(t *testing.T, in *DarnInputs, cfg *Config) { in.SubagentModel = "" }, "SubagentModel"},
-		{"empty MeasureCall of a gate-fixed writer", func(t *testing.T, in *DarnInputs, cfg *Config) {
-			in.GateFixed = true
-			in.MeasureCall = ""
-		}, "MeasureCall"},
 		{"malformed writer spec", func(t *testing.T, in *DarnInputs, cfg *Config) { cfg.Writer = "opus[effort=high" }, "writer model-spec"},
 		{"missing stencil", func(t *testing.T, in *DarnInputs, cfg *Config) { stencilkit.Remove(t, in.StencilsDir, darnStencilName) }, darnStencilName},
 		{"missing Step 4 fragment", func(t *testing.T, in *DarnInputs, cfg *Config) {

@@ -11,11 +11,11 @@ The whole policy is machine-local: it is never committed, and no other machine r
 Two keys of the `claude` module hold the policy.
 They live only in the machine layer, so set them with `lym config claude --layer machine`, never in a tracked file.
 
-- `claude.accounts` lists the accounts.
+- `accounts` lists the accounts.
   Each has a `name` (a-z, 0-9 and `-`), a `config_dir` (absolute, or starting with `~/`),
   a `weight` (0 retires the account) and `windows`.
   `windows` gives, per `five_hour` and `seven_day`, the used percentage from 1 to 100 at or above which the account is passed over.
-- `claude.account_pins` pins the hub's worktrees (`hub`) or its beams (`beams`) to one listed account of non-zero weight.
+- `account_pins` pins the hub's worktrees (`hub`) or its beams (`beams`) to one listed account of non-zero weight.
   A hub pin also keeps the worktree from switching away from it on a usage limit.
 
 An example with two accounts, the second pinned for the hub's beams:
@@ -51,7 +51,7 @@ The operator owns this work; lym only reads the result.
 4. Copy the MCP servers of `~/.claude.json` into `<dir>/.claude.json`, so both accounts load the same tools.
    A transcript copied from one account into the other resumes only where the tools it used are present.
 5. Link the user-level instruction file as wanted.
-6. Add the account to `claude.accounts` as above.
+6. Add the account to `accounts` as above.
 
 Logging in, preparing the directories, and whether the use is within the accounts' and the organisation's terms
 are the operator's to settle.

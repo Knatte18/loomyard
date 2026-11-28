@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
-	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -29,15 +28,15 @@ import (
 // discussionAskParentKey and codeAskParentKey are those settings.
 const (
 	askParentModule        = "loom"
-	discussionAskParentKey = "discussion.review_ask_parent"
-	codeAskParentKey       = "code.review_ask_parent"
+	discussionAskParentKey = "discussion_review_ask_parent"
+	codeAskParentKey       = "code_review_ask_parent"
 )
 
 // parentSeatInputs holds what the review segments' parent seats are built from.
 type parentSeatInputs struct {
 	location *lymcwd.Location
 	cfg      loomengine.Config
-	// runTimeout is shuttle.run_timeout_min and startAllowance its launch allowance.
+	// runTimeout is shuttle's run_timeout_min and startAllowance its launch allowance.
 	runTimeout     time.Duration
 	startAllowance time.Duration
 	// awaitCap returns the keep-warm cap of a perch's review chair.
@@ -77,7 +76,7 @@ func codeParentSeat(in parentSeatInputs) *shedadapters.ParentReviewSeat {
 	seat.Tag = shedadapters.CodeParentAskLineTag
 	seat.Subject = "the task's code change in the task worktree " + in.location.WorktreePath()
 	seat.AskBeforeJudge = true
-	// The Bouncer's judge waits for the parent inside its own session, which shuttle bounds by shuttle.run_timeout_min.
+	// The Bouncer's judge waits for the parent inside its own session, which shuttle bounds by run_timeout_min.
 	// The review chair's keep-warm cap stands in for the judge's await cap.
 	awaitCap := in.awaitCap(loomengine.PerchCode)
 	seat.Wait = func() (time.Duration, string) {
@@ -111,12 +110,12 @@ func baseParentSeat(in parentSeatInputs, perch loomengine.Perch, key string) *sh
 func askParentSetting(setting func(module, key string) (any, error), key string) bool {
 	value, err := setting(askParentModule, key)
 	if err != nil {
-		logger.Warn("loomcli: the parent-review setting is unreadable; this round asks no parent", "key", configengine.KeyName(askParentModule, key), "error", err)
+		logger.Warn("loomcli: the parent-review setting is unreadable; this round asks no parent", "key", key, "error", err)
 		return false
 	}
 	on, ok := value.(bool)
 	if !ok {
-		logger.Warn("loomcli: the parent-review setting is not a boolean; this round asks no parent", "key", configengine.KeyName(askParentModule, key), "value", value)
+		logger.Warn("loomcli: the parent-review setting is not a boolean; this round asks no parent", "key", key, "value", value)
 		return false
 	}
 	return on

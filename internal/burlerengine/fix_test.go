@@ -87,8 +87,7 @@ func fixInstructionFiles(t *testing.T, root string) map[string]string {
 
 // TestEngine_Fix_TableShapeAndFiles proves Fix spawns exactly one seat for a review holding only a NIT finding.
 // It proves its spec and gate are built as the fix half pins them, for a single fixer and for a twill fixer.
-// It also proves the instruction files hold the review path, the review format and the target paths,
-// and that the fix step's work carries the opts' rerun.
+// It also proves the instruction files hold the review path, the review format and the target paths.
 // They hold none of the rubric, fasit, PATTERN directive, focus file or prior rounds.
 // The single row's fix step equals the fix stencil with the self-check marker removed and has no lenses;
 // the twill row's forks, empty seat model key, self-check part and lenses are the fixer fan's.
@@ -138,11 +137,10 @@ func checkFixTableShapeAndFiles(t *testing.T, twill bool) {
 		Timeout: 5 * time.Minute,
 		Round:   "1",
 		Gate:    gateOf("build", shuttleengine.GateResult{Passed: false, Findings: "build broke"}, nil, &gateCalls),
-		Rerun:   FixRerun{Reason: "the round halted", Report: filepath.Join(root, "old-fixer-report.md")},
 	}
 	if twill {
-		opts.FixKey = shuttleengine.ModelKey{Module: "loom", Key: "discussion.fixer_model"}
-		opts.FixFanKey = "loom.discussion.fixer_fan"
+		opts.FixKey = shuttleengine.ModelKey{Module: "loom", Key: "discussion_fixer_model"}
+		opts.FixFanKey = "discussion_fixer_fan"
 	}
 	resolved := p
 	if err := resolved.validateFix(root, cfg); err != nil {
@@ -204,7 +202,7 @@ func checkFixTableShapeAndFiles(t *testing.T, twill bool) {
 		t.Errorf("review-format.md is empty; want the review-file format written")
 	}
 	singleStep, err := stencil.FillWith(bytes.ReplaceAll(stencils.BurlerStepFix, []byte("{{.self_check}}"), nil), fixStepIncludes(), map[string]string{
-		"work":              fixWork(resolved.ReviewPath, "", false, opts.Rerun),
+		"work":              fixWork(resolved.ReviewPath, "", false),
 		"fix_scope_rules":   fixScopeRules(&resolved),
 		"review_path":       resolved.ReviewPath,
 		"fixer_report_path": resolved.FixerReportPath,
@@ -408,10 +406,10 @@ func TestEngine_Fix_Outcomes(t *testing.T) {
 		{
 			name:   "a twill fixer under a loom key names the key, the fan key and the resume step",
 			fixFan: "standard",
-			opts:   RunOpts{FixKey: shuttleengine.ModelKey{Module: "loom", Key: "discussion.fixer_model"}, FixFanKey: "loom.discussion.fixer_fan"},
+			opts:   RunOpts{FixKey: shuttleengine.ModelKey{Module: "loom", Key: "discussion_fixer_model"}, FixFanKey: "discussion_fixer_fan"},
 			wantContains: []string{
-				"burler: the twill fixer's fan from loom.discussion.fixer_fan needs forks, which the engine of loom.discussion.fixer_model cannot run",
-				"move loom.discussion.fixer_model to an engine with forks, then resume",
+				"burler: the twill fixer's fan from discussion_fixer_fan needs forks, which the engine of discussion_fixer_model in loom.yaml cannot run",
+				"move discussion_fixer_model in loom.yaml to an engine with forks, then resume",
 			},
 		},
 		{
@@ -419,7 +417,7 @@ func TestEngine_Fix_Outcomes(t *testing.T) {
 			fixFan: "standard",
 			opts:   RunOpts{FixKey: shuttleengine.ModelKey{DefaultEngine: true}, FixFanKey: "fix-fan"},
 			wantContains: []string{
-				"which the engine of shuttle.engine cannot run",
+				"which the engine of engine: in shuttle.yaml cannot run",
 				"remove fix-fan from the profile, and re-run",
 			},
 		},

@@ -34,6 +34,7 @@ func planApprovalRow(parsed shedbuild.Recipe) (string, bool) {
 // InImplementerSpan reports whether a run of the named recipe at currentRow stands past its plan's approval.
 // It answers false for a row past the recipe's last Implementer row.
 // A run there has an approved plan its Webster sessions build from, and each fresh Webster prompt is rendered from it.
+// currentRow is mapped through RetiredRows first.
 // The approval counts as passed after the last row of the approval row's segment.
 // It answers false for a recipe with no plan approval row or no Implementer row.
 // It also answers false for an empty currentRow or one the recipe does not hold.
@@ -46,6 +47,9 @@ func InImplementerSpan(recipe, currentRow string) (bool, error) {
 	approvalRow, hasRow := planApprovalRow(parsed)
 	if !hasRow || currentRow == "" {
 		return false, nil
+	}
+	if mapped, retired := RetiredRows(recipe)[currentRow]; retired {
+		currentRow = mapped
 	}
 
 	segment := ""

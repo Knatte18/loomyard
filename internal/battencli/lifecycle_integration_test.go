@@ -24,7 +24,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -36,7 +35,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
@@ -205,36 +203,6 @@ func seedBoardTask(t *testing.T, h *hubforge.Hub, slug, recipeType string) {
 	}
 }
 
-// madeRecorder is a worktree seam that records the roots of the worktrees it was told were made.
-type madeRecorder struct {
-	mu    sync.Mutex
-	roots []string
-}
-
-// Made records event's root.
-func (r *madeRecorder) Made(event fabriclayout.WorktreeEvent) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.roots = append(r.roots, event.Root)
-	return nil
-}
-
-// TookIn records nothing.
-func (r *madeRecorder) TookIn(fabriclayout.WorktreeEvent) error { return nil }
-
-// madeCount returns how many times the seam was told the worktree at root was made.
-func (r *madeRecorder) madeCount(root string) int {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	count := 0
-	for _, got := range r.roots {
-		if filepath.Clean(got) == filepath.Clean(root) {
-			count++
-		}
-	}
-	return count
-}
-
 // pathExists reports whether path exists on disk.
 func pathExists(path string) bool {
 	_, err := os.Stat(path)
@@ -242,12 +210,12 @@ func pathExists(path string) bool {
 }
 
 // TestBattenIntegration_RunReconcilesTheHubBeforeAndThePairAfterCreating pins both reconcile calls of `lym batten run`.
-// With a fresh stamp the first call is a no-op.
-// A second worktree-made notification for the new pair comes only from the unconditional pair call after the create row.
+// With a fresh stamp the first call is a no-op,
+// so the new pair losing the prime's retired key can only come from the unconditional pair call after the create row.
 // Against an absent stamp, `arm` for run reconciles ahead of armAt's non-prime refusal and its auto-seed.
-// It does not call t.Parallel: it installs the process-wide worktree seam.
 func TestBattenIntegration_RunReconcilesTheHubBeforeAndThePairAfterCreating(t *testing.T) {
 	tiergate.Require(t, 1)
+	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	const slug = "batten-reconcile-pair"
@@ -263,8 +231,9 @@ func TestBattenIntegration_RunReconcilesTheHubBeforeAndThePairAfterCreating(t *t
 		t.Fatalf("write stamp: %v", err)
 	}
 
-	seam := &madeRecorder{}
-	t.Cleanup(fabricengine.InstallWorktreeSeam(seam))
+	batcher, _ := configreg.Lookup("batcher")
+	retired := strings.Replace(batcher.Template(), "orientation: 31400", "master_base: 52000", 1)
+	gitkit.CommitFile(t, h.PrimeRecords(), configengine.ConfigFileRel("batcher"), retired, "fixture: retired key")
 
 	c := &battenCLI{location: h.Location}
 	if err := c.wire(h.Location, slug); err != nil {
@@ -290,8 +259,8 @@ func TestBattenIntegration_RunReconcilesTheHubBeforeAndThePairAfterCreating(t *t
 	if got := pairPushCounts.count(pair); got != 1 {
 		t.Errorf("pair pushes spawned for %s = %d; want 1", pair, got)
 	}
-	if got := seam.madeCount(pair); got < 2 {
-		t.Errorf("worktree-made notifications for the new pair = %d; want the create row's and the pair reconcile's", got)
+	if data, err := os.ReadFile(configengine.ConfigFile(pair, "batcher")); err != nil || strings.Contains(string(data), "master_base") {
+		t.Errorf("new pair's batcher.yaml still carries the retired key (err %v)", err)
 	}
 	if status := gitkit.GitStatusPorcelain(t, h.PairRecordsSibling(slug)); status != "" {
 		t.Errorf("new pair's records worktree is dirty after the create row:\n%s", status)
@@ -333,107 +302,69 @@ func gitShow(t *testing.T, dir, spec string) []byte {
 	return out
 }
 
-// rowStep is one step of an end-to-end rows group: a name and the function that runs it over the group's hub.
-type rowStep struct {
-	name string
-	run  func(t *testing.T, h *hubforge.Hub)
-}
-
-// TestBattenIntegration_Rows runs the end-to-end rows in groups, each over a hubforge hub of its own.
-// The groups run in parallel, and the steps of one group run one after another on its hub.
+// TestBattenIntegration_Rows runs the end-to-end rows over one hubforge hub.
 // Each step gets its own slug, so its pair, branches and records stay apart from every other step's.
-// The steps of a group share only the hub itself: its prime worktree, records origin and board.
+// The steps share only the hub itself: its prime worktree, records origin and board.
 // A step that changes the hub for the next one restores it before returning.
-// A step that leaves the hub changed in a way a later step would trip on runs last in its group.
-// The dirtied prime is one such change.
-// A failed step ends its group, and the other groups run on.
+// The last step is the exception: it dirties the prime worktree.
+// It therefore relies on running after every step that creates a pair.
+// The test calls t.Parallel, but no step does: the steps serialise on that one shared hub.
 //
 //testtiming:keep the start-cost step pins the start-cost bound on a Command row beyond its status commit and its process, a wall-clock bound no other test asserts
 func TestBattenIntegration_Rows(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	groups := []struct {
-		name  string
-		steps []rowStep
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	steps := []struct {
+		name string
+		run  func(t *testing.T, h *hubforge.Hub)
 	}{
-		{"SeedChild", []rowStep{
-			{"SeedChild_WritesASeedTheChildBootstrapAgreesWith", stepSeedChild_WritesASeedTheChildBootstrapAgreesWith},
-			{"SeedChild_WriteSeedRewrapsARealDisagreeingChildSeed", stepSeedChild_WriteSeedRewrapsARealDisagreeingChildSeed},
-			{"SeedChild_WritesTheRunSettingsIntoThePairsLocalLayer", stepSeedChild_WritesTheRunSettingsIntoThePairsLocalLayer},
-			{"RealReadStatus_OnAFreshPairReportsAbsentRatherThanErroring", stepRealReadStatus_OnAFreshPairReportsAbsentRatherThanErroring},
-			{"SeedChild_IgnoresPrimesCommittedBattenRecords", stepSeedChild_IgnoresPrimesCommittedBattenRecords},
-			{"RealReadStatus_IgnoresPrimesCommittedStatusForTheSameSlug", stepRealReadStatus_IgnoresPrimesCommittedStatusForTheSameSlug},
-		}},
-		{"FourRowRun", []rowStep{
-			{"FourRowRun_SeedsChildCommitsAndTearsDown", stepFourRowRun_SeedsChildCommitsAndTearsDown},
-		}},
-		{"TeardownRemote", []rowStep{
-			{"Teardown_AlreadyGonePairFinishesItsBranchDeletion", stepTeardown_AlreadyGonePairFinishesItsBranchDeletion},
-			{"Teardown_FailedRemoteDeletionHaltsResumably", stepTeardown_FailedRemoteDeletionHaltsResumably},
-			{"Teardown_UnreachableRemoteHaltsBeforeRemovalResumably", stepTeardown_UnreachableRemoteHaltsBeforeRemovalResumably},
-		}},
-		{"TeardownLocal", []rowStep{
-			{"Teardown_AlreadyGonePairWithNoBranchIsDone", stepTeardown_AlreadyGonePairWithNoBranchIsDone},
-			{"Teardown_ResumedRowWhosePairIsGoneFinishesDone", stepTeardown_ResumedRowWhosePairIsGoneFinishesDone},
-			{"Teardown_ReEntryAfterCompletedRemovalIsDone", stepTeardown_ReEntryAfterCompletedRemovalIsDone},
-			{"Teardown_SiblingDirtOutsideRecordPathsRefusesShutdown", stepTeardown_SiblingDirtOutsideRecordPathsRefusesShutdown},
-			{"MidListResume_SkipsTheCompletedCreateRow", stepMidListResume_SkipsTheCompletedCreateRow},
-			{"AwaitingChildDoneTeardown_ArchivesTheRunRecords", stepAwaitingChildDoneTeardown_ArchivesTheRunRecords},
-		}},
-		{"RunShed", []rowStep{
-			{"StepDrivenRunShed_ReturnsOnTheChildsStateChange", stepStepDrivenRunShed_ReturnsOnTheChildsStateChange},
-			{"RunShedPausedChild_WaitsThenTearsDownOnceDone", stepRunShedPausedChild_WaitsThenTearsDownOnceDone},
-			{"PairDirNamesTheTaskWorktree", stepPairDirNamesTheTaskWorktree},
-			{"MarkWatched_HoldsTheMarkerOnlyWhileItsNoticesReachTheDriversParent", stepMarkWatched_HoldsTheMarkerOnlyWhileItsNoticesReachTheDriversParent},
-			{"StopReport_ReadsTheParkMarkersContentAndTime", stepStopReport_ReadsTheParkMarkersContentAndTime},
-			{"TaskWorktreeSeams_RunGitOnlyUntilTheFirstResolution", stepTaskWorktreeSeams_RunGitOnlyUntilTheFirstResolution},
-			{"Status_FlagsAHaltedBattenOverADoneChild", stepStatusFlagsAHaltedBattenOverADoneChild},
-		}},
-		{"CreateRow", []rowStep{
-			{"CreateRow_IsIdempotentAgainstAnAlreadyPresentWorktree", stepCreateRow_IsIdempotentAgainstAnAlreadyPresentWorktree},
-			{"CreateRow_PairWithoutOriginRecordIsIncomplete", stepCreateRow_PairWithoutOriginRecordIsIncomplete},
-			{"CreateRow_LeftoverBranchIsRewordedForPrime", stepCreateRow_LeftoverBranchIsRewordedForPrime},
-			{"CreateRow_IncompletePairRefusesRatherThanSkippingAdd", stepCreateRow_IncompletePairRefusesRatherThanSkippingAdd},
-			{"NonPrimeRefusal", stepNonPrimeRefusal},
-			{"RecordsPrimeRefusal", stepRecordsPrimeRefusal},
-			// It must run last in its group: it leaves the prime dirty for every step after it.
-			{"DirtyPrime_CreateRowBlocksBeforeAnythingCreated", stepDirtyPrime_CreateRowBlocksBeforeAnythingCreated},
-		}},
-		{"CommandRows", []rowStep{
-			{"CommandRows_RunTheBoardDefaultCommandsWithEverySwitchOn", posixOnly(stepCommandRows_RunTheBoardDefaultCommandsWithEverySwitchOn)},
-			{"CommandRows_FollowTheTasksLocalSwitch", posixOnly(stepCommandRows_FollowTheTasksLocalSwitch)},
-			{"CommandRows_ResumeAtARowAnOlderBinaryLeftStanding", posixOnly(stepCommandRows_ResumeAtARowAnOlderBinaryLeftStanding)},
-			{"RunRowCommand_ReportsATimeoutAndAnExitCode", posixOnly(stepRunRowCommand_ReportsATimeoutAndAnExitCode)},
-			{"StartCost_CommandRowsCostUnderTheBoundBeyondTheCommitAndTheProcess", posixOnly(stepStartCost_CommandRowsCostUnderTheBoundBeyondTheCommitAndTheProcess)},
-		}},
+		{"SeedChild_WritesASeedTheChildBootstrapAgreesWith", stepSeedChild_WritesASeedTheChildBootstrapAgreesWith},
+		{"SeedChild_WriteSeedRewrapsARealDisagreeingChildSeed", stepSeedChild_WriteSeedRewrapsARealDisagreeingChildSeed},
+		{"SeedChild_WritesTheRunSettingsIntoThePairsLocalLayer", stepSeedChild_WritesTheRunSettingsIntoThePairsLocalLayer},
+		{"RealReadStatus_OnAFreshPairReportsAbsentRatherThanErroring", stepRealReadStatus_OnAFreshPairReportsAbsentRatherThanErroring},
+		{"FourRowRun_SeedsChildCommitsAndTearsDown", stepFourRowRun_SeedsChildCommitsAndTearsDown},
+		{"Teardown_AlreadyGonePairFinishesItsBranchDeletion", stepTeardown_AlreadyGonePairFinishesItsBranchDeletion},
+		{"Teardown_FailedRemoteDeletionHaltsResumably", stepTeardown_FailedRemoteDeletionHaltsResumably},
+		{"Teardown_UnreachableRemoteHaltsBeforeRemovalResumably", stepTeardown_UnreachableRemoteHaltsBeforeRemovalResumably},
+		{"Teardown_AlreadyGonePairWithNoBranchIsDone", stepTeardown_AlreadyGonePairWithNoBranchIsDone},
+		{"StepDrivenRunShed_ReturnsOnTheChildsStateChange", stepStepDrivenRunShed_ReturnsOnTheChildsStateChange},
+		{"RunShedPausedChild_WaitsThenTearsDownOnceDone", stepRunShedPausedChild_WaitsThenTearsDownOnceDone},
+		{"CreateRow_IsIdempotentAgainstAnAlreadyPresentWorktree", stepCreateRow_IsIdempotentAgainstAnAlreadyPresentWorktree},
+		{"CreateRow_PairWithoutOriginRecordIsIncomplete", stepCreateRow_PairWithoutOriginRecordIsIncomplete},
+		{"CreateRow_LeftoverBranchIsRewordedForPrime", stepCreateRow_LeftoverBranchIsRewordedForPrime},
+		{"CreateRow_IncompletePairRefusesRatherThanSkippingAdd", stepCreateRow_IncompletePairRefusesRatherThanSkippingAdd},
+		{"MidListResume_SkipsTheCompletedCreateRow", stepMidListResume_SkipsTheCompletedCreateRow},
+		{"NonPrimeRefusal", stepNonPrimeRefusal},
+		{"RecordsPrimeRefusal", stepRecordsPrimeRefusal},
+		{"Teardown_ReEntryAfterCompletedRemovalIsDone", stepTeardown_ReEntryAfterCompletedRemovalIsDone},
+		{"Teardown_SiblingDirtOutsideRecordPathsRefusesShutdown", stepTeardown_SiblingDirtOutsideRecordPathsRefusesShutdown},
+		{"PairDirNamesTheTaskWorktree", stepPairDirNamesTheTaskWorktree},
+		{"AwaitingChildDoneTeardown_ArchivesTheRunRecords", stepAwaitingChildDoneTeardown_ArchivesTheRunRecords},
+		{"SeedChild_IgnoresPrimesCommittedBattenRecords", stepSeedChild_IgnoresPrimesCommittedBattenRecords},
+		{"RealReadStatus_IgnoresPrimesCommittedStatusForTheSameSlug", stepRealReadStatus_IgnoresPrimesCommittedStatusForTheSameSlug},
+		{"MarkWatched_HoldsTheMarkerOnlyWhileItsNoticesReachTheDriversParent", stepMarkWatched_HoldsTheMarkerOnlyWhileItsNoticesReachTheDriversParent},
+		{"StopReport_ReadsTheParkMarkersContentAndTime", stepStopReport_ReadsTheParkMarkersContentAndTime},
+		{"TaskWorktreeSeams_RunGitOnlyUntilTheFirstResolution", stepTaskWorktreeSeams_RunGitOnlyUntilTheFirstResolution},
+		{"Status_FlagsAHaltedBattenOverADoneChild", stepStatusFlagsAHaltedBattenOverADoneChild},
+		{"CommandRows_RunTheBoardDefaultCommandsWithEverySwitchOn", posixOnly(stepCommandRows_RunTheBoardDefaultCommandsWithEverySwitchOn)},
+		{"CommandRows_IgnoreACommandSetInTheTasksTrackedLayer", posixOnly(stepCommandRows_IgnoreACommandSetInTheTasksTrackedLayer)},
+		{"CommandRows_FollowTheTasksLocalSwitch", posixOnly(stepCommandRows_FollowTheTasksLocalSwitch)},
+		{"CommandRows_ResumeAtARowAnOlderBinaryLeftStanding", posixOnly(stepCommandRows_ResumeAtARowAnOlderBinaryLeftStanding)},
+		{"RunRowCommand_ReportsATimeoutAndAnExitCode", posixOnly(stepRunRowCommand_ReportsATimeoutAndAnExitCode)},
+		{"StartCost_CommandRowsCostUnderTheBoundBeyondTheCommitAndTheProcess", posixOnly(stepStartCost_CommandRowsCostUnderTheBoundBeyondTheCommitAndTheProcess)},
+		// It must run last: it leaves the prime dirty for every step after it.
+		{"DirtyPrime_CreateRowBlocksBeforeAnythingCreated", stepDirtyPrime_CreateRowBlocksBeforeAnythingCreated},
 	}
-	for _, group := range groups {
-		t.Run(group.name, func(t *testing.T) {
-			t.Parallel()
-			h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-			for _, step := range group.steps {
-				if step.run == nil {
-					continue
-				}
-				if !t.Run(step.name, func(t *testing.T) { step.run(t, h) }) {
-					return
-				}
-			}
-		})
+	for _, step := range steps {
+		if step.run == nil {
+			continue
+		}
+		if !t.Run(step.name, func(t *testing.T) { step.run(t, h) }) {
+			return
+		}
 	}
-}
-
-// TestBattenIntegration_CommandRowsIgnoreACommandSetInTheTasksTrackedLayer runs the tracked-layer step on its own hub.
-// It does not call t.Parallel: logcapture redirects the process-global logger.
-func TestBattenIntegration_CommandRowsIgnoreACommandSetInTheTasksTrackedLayer(t *testing.T) {
-	tiergate.Require(t, 1)
-
-	run := posixOnly(stepCommandRows_IgnoreACommandSetInTheTasksTrackedLayer)
-	if run == nil {
-		return
-	}
-	run(t, hubforge.CopyHub(t, hubforge.Shape{Anchor: "."}))
 }
 
 // stepSeedChild_WritesASeedTheChildBootstrapAgreesWith drives Worktree-Create and Seed-Child for real.
@@ -657,7 +588,7 @@ func fourRowRunForRecipe(t *testing.T, h *hubforge.Hub, recipe string) {
 		}
 	}
 
-	// batten.open_ide is off by default, so the Open-IDE entry gate skips that row and the same step runs Run-Shed.
+	// open_ide is off by default, so the Open-IDE entry gate skips that row and the same step runs Run-Shed.
 	step, err := shed.Step(ctx)
 	if err != nil || step.Producer != battenrecipe.NameRunShed {
 		t.Fatalf("Step (Open-IDE gated off) = producer %q, %v; want %q", step.Producer, err, battenrecipe.NameRunShed)
@@ -711,7 +642,7 @@ func fourRowRunForRecipe(t *testing.T, h *hubforge.Hub, recipe string) {
 	// A batten-driven teardown is the task's final removal, and nothing will ever re-adopt its records branch.
 	// The remote copy must therefore not linger.
 	// "lym fabric cleanup" enumerates local branches only, so it can never reach a remote copy.
-	recordsBranch := fabriclayout.RecordsBranchName(slug)
+	recordsBranch := fabricengine.RecordsBranchName(slug)
 	if err := exec.Command("git", "-C", h.RecordsBare, "rev-parse", "--verify", "refs/heads/"+recordsBranch).Run(); err == nil {
 		t.Errorf("records branch %q still present on the remote after teardown; want it deleted alongside the local copy", recordsBranch)
 	}
@@ -738,12 +669,12 @@ func stepTeardown_AlreadyGonePairFinishesItsBranchDeletion(t *testing.T, h *hubf
 		t.Run(tt.name, func(t *testing.T) {
 			slug := "batten-branch-left-" + tt.name
 			hubforge.AddPair(t, h, slug)
-			recordsBranch := fabriclayout.RecordsBranchName(slug)
+			recordsBranch := fabricengine.RecordsBranchName(slug)
 			if !remoteBranchExists(h.RecordsBare, recordsBranch) {
 				t.Fatalf("precondition: %q not on the remote after the create", recordsBranch)
 			}
 			// Both worktrees are removed and the remote copy kept: the state a kill between the local and remote deletions leaves.
-			if _, err := h.Topology.Remove(h.Location, slug, false, false, ""); err != nil {
+			if _, err := h.Topology.Remove(h.Location, slug, false, false); err != nil {
 				t.Fatalf("remove the pair without its remote copy: %v", err)
 			}
 			recordsRepoRoot, err := fabricengine.RecordsRepoRoot(h.Location)
@@ -798,26 +729,6 @@ func remoteArchiveTagExists(bareDir, slug string) bool {
 	return err == nil && strings.TrimSpace(string(out)) != ""
 }
 
-// stepTeardown_ResumedRowWhosePairIsGoneFinishesDone runs the Worktree-Teardown row over a pair already removed.
-// The row's push has nothing to push and its level read reads level, so the row goes on to its removal and finishes Done.
-func stepTeardown_ResumedRowWhosePairIsGoneFinishesDone(t *testing.T, h *hubforge.Hub) {
-	slug := "batten-teardown-resumed-gone"
-	hubforge.AddPair(t, h, slug)
-	if _, err := h.Topology.Remove(h.Location, slug, false, true, ""); err != nil {
-		t.Fatalf("remove the pair: %v", err)
-	}
-	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
-		return shedengine.Status{State: shedengine.StateDone}, true, nil
-	})
-	producer := battenshed.NewWorktreeTeardown(battenrecipe.NameWorktreeTeardown, slug, c.env.Teardown, c.env.PrimeLock, c.env.ScratchDir)
-
-	outcome, pointer, err := producer.Call(context.Background())
-
-	if err != nil || outcome != shedengine.Done {
-		t.Errorf("Worktree-Teardown over a gone pair = %q, reason %q, error %v; want Done", outcome, pointer.Reason, err)
-	}
-}
-
 // stepTeardown_FailedRemoteDeletionHaltsResumably makes the records origin refuse branch deletions during teardown.
 // It asserts the removal half archives the records and removes the pair.
 // It asserts the removal then reports the failed remote deletion instead of done.
@@ -825,7 +736,7 @@ func stepTeardown_ResumedRowWhosePairIsGoneFinishesDone(t *testing.T, h *hubforg
 func stepTeardown_FailedRemoteDeletionHaltsResumably(t *testing.T, h *hubforge.Hub) {
 	slug := "batten-remote-fails"
 	hubforge.AddPair(t, h, slug)
-	recordsBranch := fabriclayout.RecordsBranchName(slug)
+	recordsBranch := fabricengine.RecordsBranchName(slug)
 	restore := refuseRemoteBranchDeletions(t, h.RecordsBare)
 
 	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
@@ -861,7 +772,7 @@ func stepTeardown_FailedRemoteDeletionHaltsResumably(t *testing.T, h *hubforge.H
 func stepTeardown_UnreachableRemoteHaltsBeforeRemovalResumably(t *testing.T, h *hubforge.Hub) {
 	slug := "batten-remote-unreachable"
 	hubforge.AddPair(t, h, slug)
-	recordsBranch := fabriclayout.RecordsBranchName(slug)
+	recordsBranch := fabricengine.RecordsBranchName(slug)
 	recordsRepoRoot, err := fabricengine.RecordsRepoRoot(h.Location)
 	if err != nil {
 		t.Fatalf("resolve records repo root: %v", err)
@@ -906,7 +817,7 @@ func stepTeardown_UnreachableRemoteHaltsBeforeRemovalResumably(t *testing.T, h *
 func stepTeardown_AlreadyGonePairWithNoBranchIsDone(t *testing.T, h *hubforge.Hub) {
 	slug := "batten-teardown-finished"
 	hubforge.AddPair(t, h, slug)
-	if _, err := h.Topology.Remove(h.Location, slug, false, true, ""); err != nil {
+	if _, err := h.Topology.Remove(h.Location, slug, false, true); err != nil {
 		t.Fatalf("remove the pair: %v", err)
 	}
 	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
@@ -1222,7 +1133,7 @@ func TestBattenIntegration_CreateRow_IncompletePairRemedyWorksVerbatimOnAPrefixe
 	if err != nil {
 		t.Fatalf("resolve records repo root: %v", err)
 	}
-	gitkit.MustRun(t, recordsRepoRoot, "git", "worktree", "add", "-b", fabriclayout.RecordsBranchName(branch), h.PairRecordsSibling(slug))
+	gitkit.MustRun(t, recordsRepoRoot, "git", "worktree", "add", "-b", fabricengine.RecordsBranchName(branch), h.PairRecordsSibling(slug))
 
 	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
 		t.Fatal("ReadStatus must not be called by the create row")
@@ -1242,11 +1153,11 @@ func TestBattenIntegration_CreateRow_IncompletePairRemedyWorksVerbatimOnAPrefixe
 	}
 
 	// The remedy, verbatim: the fabric verb's own engine call with --force, then the branch, only if it survived the removal.
-	cfg, err := fabricengine.LoadConfig(configengine.Dirs{Board: fabriclayout.BoardDir(h.Location.HubPath)})
+	cfg, err := fabricengine.LoadConfig(configengine.Dirs{Board: fabricengine.BoardDir(h.Location.HubPath)})
 	if err != nil {
 		t.Fatalf("load fabric config: %v", err)
 	}
-	if _, err := fabricengine.NewTopology(cfg).Remove(h.Location, slug, true, false, ""); err != nil {
+	if _, err := fabricengine.NewTopology(cfg).Remove(h.Location, slug, true, false); err != nil {
 		t.Fatalf("%s: %v", removeCommand, err)
 	}
 	if exec.Command("git", "-C", h.PrimeWorktree(), "rev-parse", "--verify", "--quiet", "refs/heads/"+branch).Run() == nil {
@@ -1398,9 +1309,6 @@ func stepCommandRows_IgnoreACommandSetInTheTasksTrackedLayer(t *testing.T, h *hu
 	c, markers, pair := newCommandRowFixture(t, h, slug)
 	trackedMarker := filepath.Join(t.TempDir(), "tracked")
 	tracked := "open_window_command: " + strconv.Quote("printf %s tracked > "+trackedMarker) + "\n"
-	if err := os.MkdirAll(configengine.ConfigDir(pair), 0o755); err != nil {
-		t.Fatalf("create the pair's config dir: %v", err)
-	}
 	if err := os.WriteFile(configengine.ConfigFile(pair, "batten"), []byte(tracked), 0o644); err != nil {
 		t.Fatalf("write the tracked batten.yaml: %v", err)
 	}
@@ -1447,7 +1355,7 @@ func stepGatedOffCommandRow(t *testing.T, c *battenCLI, row, next string) {
 	}
 }
 
-// stepCommandRows_FollowTheTasksLocalSwitch asserts Open-IDE runs its command with batten.open_ide on.
+// stepCommandRows_FollowTheTasksLocalSwitch asserts Open-IDE runs its command with open_ide on.
 // The switches are read from the task worktree's local layer.
 // With them off, Open-IDE and Open-Window are each skipped by their entry gates.
 func stepCommandRows_FollowTheTasksLocalSwitch(t *testing.T, h *hubforge.Hub) {
@@ -2025,7 +1933,7 @@ func stepSeedChild_WritesTheRunSettingsIntoThePairsLocalLayer(t *testing.T, h *h
 
 	t.Run("a valid setting lands in the pair's local layer", func(t *testing.T) {
 		const slug = "batten-run-settings"
-		result := runWorktreeCreateAndSeedChild(t, slug, map[string]any{"loom": map[string]any{"review": map[string]any{"max_bounces": 2}}})
+		result := runWorktreeCreateAndSeedChild(t, slug, map[string]any{"loom": map[string]any{"review_max_bounces": 2}})
 		if result.Outcome != shedengine.Done {
 			t.Fatalf("Seed-Child outcome = %q (reason %q); want done", result.Outcome, result.Reason)
 		}
@@ -2034,15 +1942,15 @@ func stepSeedChild_WritesTheRunSettingsIntoThePairsLocalLayer(t *testing.T, h *h
 			t.Fatalf("resolve child location: %v", err)
 		}
 		local, err := os.ReadFile(configengine.LocalFile(pair.AnchorPath(), "loom"))
-		if err != nil || !strings.Contains(string(local), "max_bounces: 2") {
-			t.Fatalf("pair loom.local.yaml = %q, %v; want review.max_bounces: 2", local, err)
+		if err != nil || !strings.Contains(string(local), "review_max_bounces: 2") {
+			t.Fatalf("pair loom.local.yaml = %q, %v; want review_max_bounces: 2", local, err)
 		}
 		cfg, err := loomengine.LoadConfig(fabricengine.ConfigDirs(pair), "loom")
 		if err != nil {
 			t.Fatalf("load the pair's loom config: %v", err)
 		}
-		if cfg.Review.MaxBounces != 2 {
-			t.Errorf("resolved review.max_bounces = %d; want 2", cfg.Review.MaxBounces)
+		if cfg.ReviewMaxBounces != 2 {
+			t.Errorf("resolved review_max_bounces = %d; want 2", cfg.ReviewMaxBounces)
 		}
 
 		pairFabric, err := fabricengine.Open(pair)
@@ -2097,7 +2005,7 @@ func stepSeedChild_WritesTheRunSettingsIntoThePairsLocalLayer(t *testing.T, h *h
 }
 
 // posixOnly returns run off Windows and nil on it.
-// A step whose commands are written for sh is wrapped in it, and a caller runs nothing for a nil result.
+// On Windows the step loop generates no subtest for a step whose commands are written for sh.
 func posixOnly(run func(*testing.T, *hubforge.Hub)) func(*testing.T, *hubforge.Hub) {
 	if runtime.GOOS == "windows" {
 		return nil

@@ -11,7 +11,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -45,11 +44,23 @@ type IntegrateOutcome struct {
 // A local commit that changed a path the upstream changed differently stops the integration with ErrIntegrateConflict.
 // The error names the commit, its paths and the steps that settle it.
 // A tracked change on a path the result rewrites returns ErrReplayDirty.
+// In a one-repository worktree only records-only commits are carried, each with its records paths moved to target.
+// A local commit that changes a code path is never rewritten:
+// the integration then moves nothing and returns a *localCodeCommitsStop naming those commits.
 func integrateWeft(rec *Mutations, weftPath, upstream, target string, names []string, fallback string) (IntegrateOutcome, error) {
 	repo := gitrepo.New(weftPath)
 	upstreamSHA, err := repo.ResolveSHA(upstream)
 	if err != nil {
 		return IntegrateOutcome{}, err
+	}
+	if oneRepositoryAt(weftPath) {
+		codeCommits, err := unpushedCodeCommits(weftPath, upstreamSHA)
+		if err != nil {
+			return IntegrateOutcome{}, err
+		}
+		if len(codeCommits) > 0 {
+			return IntegrateOutcome{}, &localCodeCommitsStop{commits: codeCommits}
+		}
 	}
 	head, err := repo.CurrentSHA()
 	if err != nil {
@@ -388,7 +399,7 @@ func commitAuthorEnv(weftPath, sha string) ([]string, error) {
 // A tag on the local tip keeps every dropped commit reachable until the saved changes are written back at target.
 func integrateConflict(weftPath, sha, head, target string, conflicts []string) error {
 	slug := filepath.Base(weftPath)
-	if warpSlug, ok := fabriclayout.WeftWarpSlug(slug); ok {
+	if warpSlug, ok := WeftWarpSlug(slug); ok {
 		slug = warpSlug
 	}
 	return fmt.Errorf("%w: local commit %s changed %s, which the upstream changed too; "+

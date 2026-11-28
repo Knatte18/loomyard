@@ -45,5 +45,5 @@ Copy these lines verbatim into every fork's prompt, ahead of its lens text.
 - You are read-only: never write, edit or delete a file, run only git commands that read, such as `git diff`, `git log` or `git show`, and never one that changes the repository, its index, its refs or its working tree, and spawn no fork or subagent of your own.
 - Return your findings only as your final message, each with a severity (`BLOCKING`, `MEDIUM` or `LOW`, as the rubric defines them), the changed text it concerns, a one-line summary and the evidence, and start it with the list your lens asks for, if it asks for one; return "no findings" when you have none.
 
-A fork spawns nothing; only the fixer and the subagents it starts to make its fixes spawn.
+A fork spawns nothing, so the fixer is the only session that spawns.
 

@@ -18,7 +18,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fabricvocab"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/haltnote"
@@ -54,13 +54,10 @@ type fakeRepo struct {
 	blames    map[string]map[int]string
 	// blameCalls logs every BlameLines call in order.
 	blameCalls []blameCall
-	// fileReads counts the FileAtRevision calls per known commit, and logQueries logs every Log query in order.
-	fileReads  map[string]int
-	logQueries []gitrepo.LogQuery
 }
 
 func newFakeRepo() *fakeRepo {
-	return &fakeRepo{commits: map[string]fakeCommit{}, preImages: map[string]map[string][]int{}, blames: map[string]map[int]string{}, fileReads: map[string]int{}}
+	return &fakeRepo{commits: map[string]fakeCommit{}, preImages: map[string]map[string][]int{}, blames: map[string]map[int]string{}}
 }
 
 // commitOnChain appends a commit to the main line whose tree is the previous commit's with set written and remove deleted.
@@ -121,7 +118,6 @@ func (f *fakeRepo) FileAtRevision(rev, relPath string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	f.fileReads[rev]++
 	content, ok := commit.files[relPath]
 	if !ok {
 		return nil, gitrepo.ErrPathNotAtRevision
@@ -195,7 +191,6 @@ func (f *fakeRepo) Log(tip string, q gitrepo.LogQuery) ([]gitrepo.LogCommit, err
 	if _, known := f.commits[tip]; !known {
 		return nil, fmt.Errorf("fakeRepo: unknown commit %q", tip)
 	}
-	f.logQueries = append(f.logQueries, q)
 	var commits []gitrepo.LogCommit
 	for sha := tip; sha != ""; {
 		commit := f.commits[sha]
@@ -497,7 +492,7 @@ func (w *world) checkpoint(sha string, hour int, slug string) {
 
 // pairOpening commits the origin-record commit that opens slug's pair to the records main line at hour.
 func (w *world) pairOpening(sha string, hour int, slug string) {
-	w.repo.commitOnChainWith(sha, at(hour), fabriclayout.OriginRecordSubject(slug), nil, map[string]string{"origin-" + sha: ""})
+	w.repo.commitOnChainWith(sha, at(hour), fabricengine.OriginRecordSubject(slug), nil, map[string]string{"origin-" + sha: ""})
 }
 
 // parentCommit commits to the parent branch's main line at hour with the given message.
@@ -585,7 +580,7 @@ func (w *world) tagOver(slug, sha, parent string, when time.Time, seed, status s
 		files[rels.Status] = status
 	}
 	w.repo.commitOffChainOn(sha, parent, when, "", files)
-	w.tags = append(w.tags, gitrepo.TagRef{Name: fabriclayout.ArchiveTagPrefix + slug + "/" + sha, Commit: sha, Committed: when})
+	w.tags = append(w.tags, gitrepo.TagRef{Name: fabricengine.ArchiveTagPrefix + slug + "/" + sha, Commit: sha, Committed: when})
 }
 
 // finishedRun adds the archive tag of a full tapestry run of slug at hour.
@@ -606,7 +601,7 @@ func (w *world) pairBranch(slug, sha string, when time.Time, seed, status string
 		files[rels.Status] = status
 	}
 	w.repo.commitOffChainOn(sha, "", when, "", files)
-	w.branches = append(w.branches, gitrepo.BranchRef{Name: fabriclayout.RecordsBranchName(slug), Commit: sha, Committed: when})
+	w.branches = append(w.branches, gitrepo.BranchRef{Name: fabricengine.RecordsBranchName(slug), Commit: sha, Committed: when})
 }
 
 // sources returns the Sources the world presents:

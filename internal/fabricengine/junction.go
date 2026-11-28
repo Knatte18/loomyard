@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -91,12 +90,17 @@ func WireJunctionsWith(rec *Mutations, l *lymcwd.Location, slug string, names []
 
 // wireJunctionSet creates the warp junctions for names and seeds the weft-side exclude.
 // It also appends the junction names to the warp git-exclude and seeds the warp exclude list.
+// A worktree of a one-repository hub gets real directories and no junction, as wireOneRepositoryDirs describes.
 // It loads the fabric config first, so a load failure fails the wiring before anything is written.
 // It records every change into rec.
 func wireJunctionSet(rec *Mutations, l *lymcwd.Location, slug string, names []string) error {
 	cfg, err := LoadConfig(ConfigDirs(l))
 	if err != nil {
 		return fmt.Errorf("load fabric config for wiring %s: %w", slug, err)
+	}
+
+	if oneRepositoryAt(WorktreePath(l, slug)) {
+		return wireOneRepositoryDirs(rec, l, slug, cfg)
 	}
 
 	if err := seedLymJunction(rec, l, slug, names); err != nil {
@@ -118,6 +122,30 @@ func wireJunctionSet(rec *Mutations, l *lymcwd.Location, slug string, names []st
 		return err
 	}
 
+	return seedWarpExcludeLines(rec, WorktreePath(l, slug), l.AnchorRel, cfg.WarpExcludePaths())
+}
+
+// wireOneRepositoryDirs wires a worktree of a one-repository hub, where the records live in the worktree itself.
+// It makes `_lym` and `.lym` real directories at the anchor and links nothing.
+// The only exclude lines it seeds are the anchored `.lym` line and the warp exclude list.
+// `_lym` is tracked records content and `.lym-anchor` is the layout marker, so neither is ever excluded.
+// It records every change into rec.
+func wireOneRepositoryDirs(rec *Mutations, l *lymcwd.Location, slug string, cfg Config) error {
+	anchored := filepath.Join(WorktreePath(l, slug), l.AnchorRel)
+	for _, name := range []string{lymdirs.LymDirName, lymdirs.DotLymDirName} {
+		dir := filepath.Join(anchored, name)
+		if _, err := os.Stat(dir); err == nil {
+			continue
+		}
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return fmt.Errorf("create %s for wiring %s: %w", dir, slug, err)
+		}
+		rec.Append(KindDirCreated, dir, "")
+	}
+
+	if err := seedGitExclude(rec, l, slug, []string{lymdirs.DotLymDirName}); err != nil {
+		return err
+	}
 	return seedWarpExcludeLines(rec, WorktreePath(l, slug), l.AnchorRel, cfg.WarpExcludePaths())
 }
 
@@ -170,7 +198,7 @@ func seedLymJunction(rec *Mutations, l *lymcwd.Location, slug string, names []st
 				if createErr := fslink.CreateDirLink(link, target); createErr != nil {
 					return createErr
 				}
-				rec.Append(fabriclayout.KindLinkCreated, link, "")
+				rec.Append(KindLinkCreated, link, "")
 				continue
 			}
 
@@ -203,7 +231,7 @@ func seedLymJunction(rec *Mutations, l *lymcwd.Location, slug string, names []st
 		if err := fslink.CreateDirLink(link, target); err != nil {
 			return err
 		}
-		rec.Append(fabriclayout.KindLinkCreated, link, "")
+		rec.Append(KindLinkCreated, link, "")
 	}
 
 	return nil
@@ -253,7 +281,7 @@ func adoptDotLymContent(rec *Mutations, link, target string) error {
 		return err
 	}
 
-	rec.Append(fabriclayout.KindFileWritten, target, "adopted")
+	rec.Append(KindFileWritten, target, "adopted")
 
 	if err := os.Remove(link); err != nil {
 		return fmt.Errorf("remove now-empty %s after adoption: %w", link, err)
@@ -262,7 +290,7 @@ func adoptDotLymContent(rec *Mutations, link, target string) error {
 	if err := fslink.CreateDirLink(link, target); err != nil {
 		return err
 	}
-	rec.Append(fabriclayout.KindLinkCreated, link, "")
+	rec.Append(KindLinkCreated, link, "")
 	return nil
 }
 
@@ -358,7 +386,7 @@ func mergeAdoptionTree(src, dst, rootLink, rootTarget string) error {
 // It tells a real reversal apart from a no-op on an already-clean or never-wired worktree.
 // It embeds MutationRecord, which carries the mutations recorded over the call.
 type UnwireResult struct {
-	fabriclayout.MutationRecord
+	MutationRecord
 	// JunctionsRemoved lists the Name of each junction that was actually removed, in visiting order.
 	// It is a name list, not a count or a bool: which junctions were removed is CLI-observable.
 	// A count such as "1 of 2 removed" does not say which junction is still wired.
@@ -511,13 +539,14 @@ func unseedJunctionRecords(rec *Mutations, container string, junctions []WarpJun
 //
 // It resolves the exclude path with `git rev-parse --git-path info/exclude`.
 // The worktree path is joined to it when the resolved path is relative.
-// For each junction, it removes each line that trims to its anchored exclude pattern.
+// For each junction, it removes each line that trims to its anchored exclude pattern or to its legacy bare name.
 // The match is line-exact, the same comparison used to detect presence.
 // The remaining lines keep their original order.
 //
 // A line that another warp worktree in the same hub still needs is kept.
 // That holds even when this worktree no longer wires the name:
-// the line stays while another worktree has the name linked at the same anchored path.
+// the anchored line while another worktree has the name linked at the same anchored path,
+// and the bare line while another worktree has the name linked at any anchor.
 // git resolves info/exclude to the repo's common gitdir, so the repo has one exclude file, not one per worktree.
 // Removing a line a sibling still needs would show its live junctions as untracked dirt in git status.
 // That would trip the no-force dirty gate on worktrees the caller never touched.
@@ -556,18 +585,25 @@ func unseedGitExclude(rec *Mutations, l *lymcwd.Location, slug string, names []s
 		return wouldChange, nil
 	}
 	if changed {
-		rec.Append(fabriclayout.KindFileWritten, excludePath, "")
+		rec.Append(KindFileWritten, excludePath, "")
 	}
 	return changed, nil
 }
 
 // excludeLinesToStrip returns the exclude lines an unwire of names at anchorRel may remove, given the sibling census.
-// The anchored pattern of a name is stripped when no other worktree links it at the same anchored path.
+// Both spellings of a name are stripped when nothing still needs them.
+// One is the anchored pattern this binary writes; the other is the legacy bare name an earlier binary wrote.
+// Stripping both lets a hub wired by an earlier binary revert cleanly.
+// Only worktrees linked at the same anchored path share the anchored line.
+// A bare line matches at every depth, so every worktree wiring the name shares it.
 func excludeLinesToStrip(anchorRel string, names []string, wired siblingWiring) map[string]bool {
 	stripSet := make(map[string]bool)
 	for _, name := range names {
 		if !wired.sameAnchor[name] {
 			stripSet[excludePatternFor(anchorRel, name)] = true
+		}
+		if !wired.anyAnchor[name] {
+			stripSet[name] = true
 		}
 	}
 	return stripSet
@@ -591,6 +627,8 @@ func stripExcludeLines(content string, stripSet map[string]bool) string {
 type siblingWiring struct {
 	// sameAnchor holds the names that another worktree has linked at the same anchored path as this one.
 	sameAnchor map[string]bool
+	// anyAnchor holds the names some other worktree has linked at its own anchored directory, whichever anchor that is.
+	anyAnchor map[string]bool
 }
 
 // namesWiredInSiblingWorktrees takes the census of names over the other warp worktrees registered in this repo.
@@ -598,15 +636,17 @@ type siblingWiring struct {
 // It is what keeps one worktree's unwire from dirtying every sibling:
 // the exclude file it would edit is repo-wide.
 // An anchored entry is only genuinely dead once no worktree links the same anchored path.
+// A bare entry, which matches at every depth, is dead once no worktree wires the name at any anchor.
 //
 // A failure to enumerate worktrees, or a sibling whose anchor cannot be read, reports every name as still wired.
 // Keeping a dead exclude line costs a stale line in a file only lym writes.
 // Removing a live one costs untracked-junction noise in a working tree the caller never asked to touch.
 func namesWiredInSiblingWorktrees(l *lymcwd.Location, slug string, names []string) siblingWiring {
-	wired := siblingWiring{sameAnchor: make(map[string]bool, len(names))}
+	wired := siblingWiring{sameAnchor: make(map[string]bool, len(names)), anyAnchor: make(map[string]bool, len(names))}
 	markAllWired := func() {
 		for _, name := range names {
 			wired.sameAnchor[name] = true
+			wired.anyAnchor[name] = true
 		}
 	}
 
@@ -630,12 +670,14 @@ func namesWiredInSiblingWorktrees(l *lymcwd.Location, slug string, names []strin
 			markAllWired()
 			return wired
 		}
-		if filepath.Clean(sibling.AnchorRel) != filepath.Clean(l.AnchorRel) {
-			continue
-		}
+		sameAnchor := filepath.Clean(sibling.AnchorRel) == filepath.Clean(l.AnchorRel)
 		for _, name := range names {
 			isLink, linkErr := fslink.IsLink(filepath.Join(entryPath, sibling.AnchorRel, name))
-			if linkErr == nil && isLink {
+			if linkErr != nil || !isLink {
+				continue
+			}
+			wired.anyAnchor[name] = true
+			if sameAnchor {
 				wired.sameAnchor[name] = true
 			}
 		}
@@ -660,11 +702,33 @@ func excludePatternFor(anchorRel, name string) string {
 // seedGitExclude adds junction names to the warp worktree's .git/info/exclude file if not already present.
 //
 // It appends the anchored exclude pattern of each warp junction that the file does not already hold.
+// A bare-name line for a seeded junction is replaced by the anchored pattern, not kept beside it.
+// An older binary may have written such a line,
+// so an existing hub converges on the narrower exclusion the first time it is re-wired.
 // Idempotent: re-running when all junction patterns are already present is a no-op.
 // rec is the calling verb's recorder.
 // It records KindFileWritten at the resolved exclude path via Append, only when the rewrite reports changed.
 func seedGitExclude(rec *Mutations, l *lymcwd.Location, slug string, names []string) error {
 	excludePath, changed, err := mutateGitExclude(WorktreePath(l, slug), func(content string) (string, error) {
+		// Drop any legacy bare-name line for a junction being seeded,
+		// so the anchored pattern replaces it rather than accumulating beside it.
+		legacy := make(map[string]bool, len(names))
+		for _, j := range WarpJunctions(l, slug, names) {
+			legacy[j.Name] = true
+		}
+		kept := make([]string, 0)
+		dropped := false
+		for _, line := range strings.Split(content, "\n") {
+			if legacy[strings.TrimSpace(line)] {
+				dropped = true
+				continue
+			}
+			kept = append(kept, line)
+		}
+		if dropped {
+			content = strings.Join(kept, "\n")
+		}
+
 		for _, j := range WarpJunctions(l, slug, names) {
 			pattern := excludePatternFor(l.AnchorRel, j.Name)
 
@@ -691,7 +755,7 @@ func seedGitExclude(rec *Mutations, l *lymcwd.Location, slug string, names []str
 		return err
 	}
 	if changed {
-		rec.Append(fabriclayout.KindFileWritten, excludePath, "")
+		rec.Append(KindFileWritten, excludePath, "")
 	}
 	return nil
 }

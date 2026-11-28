@@ -9,9 +9,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/cliwire"
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/creelcli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/languageconfig"
 	"github.com/Knatte18/loomyard/internal/lenses"
@@ -118,7 +116,7 @@ func (c *burlerCLI) wireHub(loc *lymcwd.Location, stencilsDirOverride, targetDir
 	}
 	languageSkills := language.Skills
 
-	stencilsDir := fabriclayout.StencilsDir(loc.HubPath)
+	stencilsDir := fabricengine.StencilsDir(loc.HubPath)
 	if stencilsDirOverride != "" {
 		// Check the told directory through the same descriptor method standalone's prologue uses,
 		// so the two modes refuse the same inputs.
@@ -150,7 +148,6 @@ func (c *burlerCLI) wireHub(loc *lymcwd.Location, stencilsDirOverride, targetDir
 		_, err := orchcli.NotifyAsker(loc, burlerProgram, line)
 		return err
 	})
-	runner.SetReplyProbe(creelcli.AwaitsReplyProbe(loc, burlerProgram))
 
 	// A `lym burler` run is not a tapestry run and has no friction directory in either mode.
 	burlerGeom, err := hubgeom.BurlerGeometry(loc)
@@ -159,7 +156,6 @@ func (c *burlerCLI) wireHub(loc *lymcwd.Location, stencilsDirOverride, targetDir
 	}
 	burlerGeom.DefaultEngine = shuttleCfg.Engine
 	c.engine = burlerengine.New(seatengine.RunnerShuttle(runner), burlerGeom, lensesCfg, stencilsDir, "", languageSkills)
-	c.runner = runner
 	c.languageSkills = languageSkills
 	c.mode = "hub"
 	c.stateDir = ""

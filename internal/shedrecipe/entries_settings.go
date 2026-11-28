@@ -47,7 +47,7 @@ func settingRef(entry string, row RowIdentity, cfg Config, key string, env Env) 
 	}
 	module, settingKey, hasDot := strings.Cut(text, ".")
 	if !hasDot || module == "" || settingKey == "" {
-		return settingReference{}, false, fmt.Errorf("shedrecipe: %s: row %q: config key %q value %q is not a module.key setting reference; way forward: set %s to a module.key such as %q", entry, row.Name, key, text, key, "loom.discussion.reviewer_fan")
+		return settingReference{}, false, fmt.Errorf("shedrecipe: %s: row %q: config key %q value %q is not a module.key setting reference; way forward: set %s to a module.key such as %q", entry, row.Name, key, text, key, "loom.discussion_reviewer_fan")
 	}
 	if env.Setting == nil {
 		return settingReference{}, false, fmt.Errorf("shedrecipe: %s: row %q: config key %q names setting %q but Env.Setting is nil; way forward: fill Env.Setting in the caller that builds this recipe", entry, row.Name, key, text)

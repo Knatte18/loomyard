@@ -17,7 +17,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
@@ -53,7 +52,7 @@ func hubDepsAs(prime *lymcwd.Location, machine func() (string, error)) (adoptDep
 		return adoptDeps{}, err
 	}
 	topology := fabricengine.NewTopology(config)
-	boardDir := fabriclayout.BoardDir(prime.HubPath)
+	boardDir := fabricengine.BoardDir(prime.HubPath)
 
 	return adoptDeps{
 		Machine:    machine,
@@ -73,7 +72,7 @@ func hubDepsAs(prime *lymcwd.Location, machine func() (string, error)) (adoptDep
 			info, err := os.Stat(fabricengine.WorktreePath(prime, slug))
 			return err == nil && info.IsDir()
 		},
-		AddPair: func(slug string) (fabriclayout.AddResult, error) {
+		AddPair: func(slug string) (fabricengine.AddResult, error) {
 			return topology.Add(prime, slug, fabricengine.AddOptions{})
 		},
 		PickAccount: func(slug string) { battencli.PickWorktreeAccount(prime, slug, false) },
@@ -88,7 +87,7 @@ func hubDepsAs(prime *lymcwd.Location, machine func() (string, error)) (adoptDep
 			}
 			return boardengine.WriteAdopt(boardDir, req)
 		},
-		TakeOver: func(slug, subject string) (fabriclayout.TakeOverResult, error) {
+		TakeOver: func(slug, subject string) (fabricengine.TakeOverResult, error) {
 			return takeOverRun(prime, machine, slug, subject)
 		},
 		CatchUp: func() error {
@@ -154,23 +153,23 @@ func hubDepsAs(prime *lymcwd.Location, machine func() (string, error)) (adoptDep
 
 // takeOverRun moves the run slug, with subject the adopt subject that moves it, to the machine named by machine.
 // It resolves the run's pair and its parent's pair, `nil` for the prime, and calls fabric's takeover.
-func takeOverRun(prime *lymcwd.Location, machine func() (string, error), slug, subject string) (fabriclayout.TakeOverResult, error) {
+func takeOverRun(prime *lymcwd.Location, machine func() (string, error), slug, subject string) (fabricengine.TakeOverResult, error) {
 	name, err := machine()
 	if err != nil {
-		return fabriclayout.TakeOverResult{}, err
+		return fabricengine.TakeOverResult{}, err
 	}
 	pair, err := lymcwd.NamedWorktree(prime.HubPath, slug)
 	if err != nil {
-		return fabriclayout.TakeOverResult{}, err
+		return fabricengine.TakeOverResult{}, err
 	}
 	parentSlug, err := hubgeom.ParentOf(prime, slug)
 	if err != nil {
-		return fabriclayout.TakeOverResult{}, err
+		return fabricengine.TakeOverResult{}, err
 	}
 	var parent *lymcwd.Location
 	if parentSlug != "" {
 		if parent, err = lymcwd.NamedWorktree(prime.HubPath, parentSlug); err != nil {
-			return fabriclayout.TakeOverResult{}, err
+			return fabricengine.TakeOverResult{}, err
 		}
 	}
 	return fabricengine.TakeOverRun(prime, fabricengine.TakeOverRequest{
@@ -186,11 +185,11 @@ func hubArchiveDeps(prime *lymcwd.Location) (archiveDeps, error) {
 		return archiveDeps{}, err
 	}
 	topology := fabricengine.NewTopology(config)
-	boardDir := fabriclayout.BoardDir(prime.HubPath)
+	boardDir := fabricengine.BoardDir(prime.HubPath)
 	return archiveDeps{
 		ReadOwners: func() (boardengine.Owners, error) { return boardengine.ReadOwners(boardDir) },
 		ParentOf:   func(slug string) (string, error) { return hubgeom.ParentOf(prime, slug) },
-		ReadArchives: func(keep func(slug string) bool) ([]fabriclayout.OwnerArchive, error) {
+		ReadArchives: func(keep func(slug string) bool) ([]fabricengine.OwnerArchive, error) {
 			return topology.ReadOwnerArchives(prime, boardengine.RootSubject, keep)
 		},
 	}, nil

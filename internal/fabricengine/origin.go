@@ -1,4 +1,4 @@
-// origin.go reads and writes fabric's provenance record for one worktree pair.
+// origin.go declares fabric's provenance record for one worktree pair.
 // The record, _lym/fabric/origin.json, is the first tracked fabric-owned file under the durable lym directory.
 // Topology.Add commits it on the weft branch.
 
@@ -8,26 +8,75 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// originRecordLockFileName is the file name of the origin record's lock.
-const originRecordLockFileName = "origin.json.lock"
+// Origin is fabric's provenance record for one worktree pair.
+// It is written once at pair creation and read thereafter, never inferred.
+// It names the branch and the worktree the pair was created from.
+type Origin struct {
+	// ParentBranch is the warp branch the pair was forked from.
+	ParentBranch string `json:"parent_branch"`
+	// ParentWorktree is the WorktreeName of the worktree Topology.Add ran from.
+	// A run's parent agent name is resolved from it.
+	// A record that lacks the field, such as a legacy-worktree repair whose creator is unknown, leaves it empty.
+	ParentWorktree string `json:"parent_worktree,omitempty"`
+	// Beam marks the pair as a beam.
+	// A record that lacks the field decodes with it false.
+	Beam bool `json:"beam,omitempty"`
+}
+
+// originRecordDirName, originRecordFileName, and originRecordLockFileName are the segments of the
+// origin record's path and lock path under the durable lym directory.
+// This package declares them alone:
+// a module's durable-storage subdirectory is its own private relative-path constant.
+const (
+	originRecordDirName      = "fabric"
+	originRecordFileName     = "origin.json"
+	originRecordLockFileName = "origin.json.lock"
+)
+
+// OriginRecordRel returns the origin record's path relative to a worktree's anchor.
+// Every path accessor and commit pathspec for the record is built from it,
+// so the segments are joined in one place.
+func OriginRecordRel() string {
+	return filepath.Join(lymdirs.LymDirName, originRecordDirName, originRecordFileName)
+}
+
+// originRecordSubjectPrefix is the commit subject prefix of the commit that records a new pair's origin.
+const originRecordSubjectPrefix = "fabric: record parent branch for "
+
+// OriginRecordSubject returns the commit subject of the origin-record commit that opens the pair for slug.
+// That commit is the oldest commit of the pair's own records history: everything below it is the parent's.
+func OriginRecordSubject(slug string) string {
+	return originRecordSubjectPrefix + slug
+}
+
+// OriginRecordSlug returns the slug an origin-record commit subject names.
+// The second result is false for any other subject and for an empty slug.
+func OriginRecordSlug(subject string) (string, bool) {
+	slug, ok := strings.CutPrefix(subject, originRecordSubjectPrefix)
+	if !ok || slug == "" {
+		return "", false
+	}
+	return slug, true
+}
 
 // OriginRecordPath returns the origin record's path for reading, through l's own anchored worktree.
 // l.AnchorPath() already carries AnchorRel, so a caller in a subpath-anchored hub needs no extra join.
 func OriginRecordPath(l *lymcwd.Location) string {
-	return filepath.Join(l.AnchorPath(), fabriclayout.OriginRecordRel())
+	return filepath.Join(l.AnchorPath(), OriginRecordRel())
 }
 
 // OriginRecordPathFor returns the origin record's path for writing, in the weft worktree for slug.
 // The path is the records worktree root, then AnchorRel, then the durable directory.
 // The pair being written is not the acting worktree; a bare root would miss AnchorRel in a subpath-anchored hub.
 func OriginRecordPathFor(l *lymcwd.Location, slug string) string {
-	return filepath.Join(RecordsWorktreePath(l, slug), l.AnchorRel, fabriclayout.OriginRecordRel())
+	return filepath.Join(RecordsWorktreePath(l, slug), l.AnchorRel, OriginRecordRel())
 }
 
 // originLockPath returns the origin record's lock file path within weftPath's .weft lock
@@ -51,9 +100,9 @@ func originLockPath(weftPath string) (string, error) {
 // A false second return means no record exists for this worktree, the legacy-worktree case, and it is not an error.
 // It creates no directory and seeds no exclude,
 // so a hub reader polling a pair still being built leaves nothing behind.
-func ReadOrigin(l *lymcwd.Location) (fabriclayout.Origin, bool, error) {
-	lockPath := filepath.Join(fabriclayout.RecordsLockDirPath(RecordsWorktree(l)), originRecordLockFileName)
-	return state.ReadJSON[fabriclayout.Origin](OriginRecordPath(l), lockPath)
+func ReadOrigin(l *lymcwd.Location) (Origin, bool, error) {
+	lockPath := filepath.Join(RecordsLockDirPath(RecordsWorktree(l)), originRecordLockFileName)
+	return state.ReadJSON[Origin](OriginRecordPath(l), lockPath)
 }
 
 // ReadOriginFor reads the origin record of slug's worktree pair, for a caller that runs outside that pair.
@@ -64,34 +113,34 @@ func ReadOrigin(l *lymcwd.Location) (fabriclayout.Origin, bool, error) {
 // the message names the worktree and `lym fabric reconcile`, which restores the directory.
 // It creates no directory and seeds no exclude in the other pair's weft worktree,
 // so reading a half-present pair never recreates a weft path it has already lost.
-func ReadOriginFor(l *lymcwd.Location, slug string) (fabriclayout.Origin, bool, error) {
+func ReadOriginFor(l *lymcwd.Location, slug string) (Origin, bool, error) {
 	pair, err := lymcwd.NamedWorktree(l.HubPath, slug)
 	if err != nil {
-		return fabriclayout.Origin{}, false, err
+		return Origin{}, false, err
 	}
 	weftPath := RecordsWorktreePath(pair, slug)
 	path := OriginRecordPathFor(pair, slug)
 	if _, err := os.Stat(path); err != nil {
 		if os.IsNotExist(err) {
-			return fabriclayout.Origin{}, false, nil
+			return Origin{}, false, nil
 		}
-		return fabriclayout.Origin{}, false, err
+		return Origin{}, false, err
 	}
-	lockDir := filepath.Join(weftPath, fabriclayout.RecordsLockDirName)
+	lockDir := RecordsLockDirPath(weftPath)
 	if _, err := os.Stat(lockDir); err != nil {
 		if os.IsNotExist(err) {
-			return fabriclayout.Origin{}, false, fmt.Errorf("weft worktree %s has an origin record but its %s lock directory is missing; run `lym fabric reconcile` to restore it; a session lym refuses the verb from reports status: FAILED and the orch runs it", weftPath, fabriclayout.RecordsLockDirName)
+			return Origin{}, false, fmt.Errorf("weft worktree %s has an origin record but its %s lock directory is missing; run `lym fabric reconcile` to restore it; a session lym refuses the verb from reports status: FAILED and the orch runs it", weftPath, filepath.Base(lockDir))
 		}
-		return fabriclayout.Origin{}, false, err
+		return Origin{}, false, err
 	}
-	return state.ReadJSON[fabriclayout.Origin](path, filepath.Join(lockDir, originRecordLockFileName))
+	return state.ReadJSON[Origin](path, filepath.Join(lockDir, originRecordLockFileName))
 }
 
 // WriteOrigin writes the origin record o for slug's worktree pair, then records KindFileWritten in rec.
 //
 // slug lets one function serve a pair being created and a worktree repairing its own record.
 // A repair passes the worktree's own name, which resolves to the file the read side reads through the junction.
-func WriteOrigin(rec *Mutations, l *lymcwd.Location, slug string, o fabriclayout.Origin) error {
+func WriteOrigin(rec *Mutations, l *lymcwd.Location, slug string, o Origin) error {
 	pair, err := lymcwd.NamedWorktree(l.HubPath, slug)
 	if err != nil {
 		return err
@@ -107,7 +156,7 @@ func WriteOrigin(rec *Mutations, l *lymcwd.Location, slug string, o fabriclayout
 	}
 	// Record only after WriteJSON observably succeeded, per the Mutation Record Invariant's
 	// "after the primitive observably changed state" rule.
-	rec.Append(fabriclayout.KindFileWritten, path, "")
+	rec.Append(KindFileWritten, path, "")
 	return nil
 }
 
@@ -139,7 +188,7 @@ func MarkBeam(rec *Mutations, l *lymcwd.Location, slug string) (bool, error) {
 	if err := WriteOrigin(rec, l, slug, origin); err != nil {
 		return false, err
 	}
-	if _, _, err := CommitRecordsPaths(rec, weftPath, pair.AnchorRel, []string{fabriclayout.OriginRecordRel()}, beamMarkSubjectPrefix+slug, SyncOptions{}); err != nil {
+	if _, _, err := CommitRecordsPaths(rec, weftPath, pair.AnchorRel, []string{OriginRecordRel()}, beamMarkSubjectPrefix+slug, SyncOptions{}); err != nil {
 		return false, fmt.Errorf("commit the beam mark of %s: %w", slug, err)
 	}
 	return true, nil
@@ -151,6 +200,6 @@ func missingOriginRecordError(l *lymcwd.Location, slug, weftPath string) error {
 	if _, err := os.Stat(weftPath); err != nil {
 		return fmt.Errorf("pair %q has no records worktree at %s, so its origin record cannot be marked; way forward: run `lym fabric reconcile`, which recreates the records worktree, then re-run the verb", slug, weftPath)
 	}
-	recordPath := filepath.ToSlash(filepath.Join(l.AnchorRel, fabriclayout.OriginRecordRel()))
+	recordPath := filepath.ToSlash(filepath.Join(l.AnchorRel, OriginRecordRel()))
 	return fmt.Errorf("pair %q has no origin record at %s in its records worktree %s, and a mark on a missing record would invent its parents; way forward: restore the record from the records history in that worktree, with `git checkout HEAD -- %s` while the deletion is uncommitted, else from the commit before the one that deleted it (`git log -1 --format=%%H -- %s` names that commit, and `git checkout <commit>^ -- %s` restores it), then re-run the verb; `lym fabric reconcile` never rewrites a deleted record", slug, recordPath, weftPath, recordPath, recordPath, recordPath)
 }

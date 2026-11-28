@@ -30,7 +30,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -353,7 +352,7 @@ func newRig(t *testing.T) *rig {
 func (r *rig) addHub(t *testing.T, shortname string) *rig {
 	t.Helper()
 	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	if err := fabricengine.WriteShortname(fabriclayout.BoltDir(hub.Path), shortname); err != nil {
+	if err := fabricengine.WriteShortname(fabricengine.BoltDir(hub.Path), shortname); err != nil {
 		t.Fatalf("WriteShortname(%q) = %v", shortname, err)
 	}
 	root, err := lymtemp.ProcessRoot()
@@ -524,7 +523,7 @@ func TestCreelCLI(t *testing.T) {
 			r := newRig(t)
 			gone, kept := r.addHub(t, xx), r.addHub(t, yy)
 			recordHubs(t, gone, kept)
-			if err := os.Remove(filepath.Join(fabriclayout.BoltDir(gone.hub.Path), fabriclayout.ShortnameFileName)); err != nil {
+			if err := os.Remove(filepath.Join(fabricengine.BoltDir(gone.hub.Path), fabricengine.ShortnameFileName)); err != nil {
 				t.Fatalf("Remove(shortname record) = %v", err)
 			}
 			byName := listed(t, runCreel(r.cwd, "hubs"))
@@ -1877,54 +1876,6 @@ func TestCreelCLI(t *testing.T) {
 		entries, err := program.Log(creelengine.LogFilter{ID: id})
 		if err != nil || len(entries) == 0 || entries[0].Command != creelengine.CommandCompact {
 			t.Errorf("Log() = %+v, %v; want the inject's entries carrying its command", entries, err)
-		}
-	})
-
-	t.Run("the reply probe reports a strand's unanswered question and no question of another strand", func(t *testing.T) {
-		r, orch, location := orchRig(t)
-		worker := r.name("worker")
-		pane := creelfake.LiveStrand(orch)
-		pane.PanePID = os.Getpid()
-		r.delivery.SetStrands(pane, creelfake.LiveStrand(worker))
-		if post := runCreel(r.cwd, "post", "--expect-reply", worker, "which schema?"); post.code != 0 {
-			t.Fatalf("post --expect-reply exit = %d, output %q; want 0", post.code, post.raw)
-		}
-		probe := AwaitsReplyProbe(location, "LOOM")
-		for _, tt := range []struct {
-			strand string
-			want   bool
-		}{{orch, true}, {worker, false}} {
-			got, err := probe(tt.strand)
-			if err != nil {
-				t.Fatalf("probe(%q) = %v", tt.strand, err)
-			}
-			if got != tt.want {
-				t.Errorf("probe(%q) = %v; want %v", tt.strand, got, tt.want)
-			}
-		}
-	})
-
-	t.Run("the reply probe run from a non-orch strand pane signs as that strand and answers for it", func(t *testing.T) {
-		r := newRig(t)
-		orch, worker := r.name("orch"), r.name("worker")
-		t.Setenv(agentname.StrandNameEnv, worker)
-		pane := creelfake.LiveStrand(worker)
-		pane.PanePID = os.Getpid()
-		r.delivery.SetStrands(creelfake.LiveStrand(orch), pane)
-		r.startDaemon(t)
-		location, err := lymcwd.Resolve(r.cwd)
-		if err != nil {
-			t.Fatalf("Resolve(%q) = %v", r.cwd, err)
-		}
-		if post := runCreel(r.cwd, "post", "--expect-reply", orch, "which schema?"); post.code != 0 {
-			t.Fatalf("post --expect-reply exit = %d, output %q; want 0", post.code, post.raw)
-		}
-		got, err := AwaitsReplyProbe(location, "LOOM")(worker)
-		if err != nil {
-			t.Fatalf("probe(%q) from the worker's pane = %v; want an answer", worker, err)
-		}
-		if !got {
-			t.Errorf("probe(%q) = false; want true for the worker's open question", worker)
 		}
 	})
 

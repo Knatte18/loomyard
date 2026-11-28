@@ -23,8 +23,9 @@
 // The floor holds only while no code requires a feature newer than it.
 // The audit covers production code, test kits and `tools/`.
 // It lists each git subcommand, flag and config key lym uses that arrived after git 2.20.
-// It also lists each tmux command, option and format feature lym uses that arrived after tmux 3.0.
+// It lists each tmux command, option and format feature lym uses that arrived after tmux 3.0.
 // Each version below is the release that introduced the feature.
+// It is confirmed against git's RelNotes and tmux's upstream CHANGES file.
 //
 // The git features found:
 //
@@ -39,6 +40,8 @@
 //   - the `push.autoSetupRemote` key (2.37)
 //   - `merge-tree --write-tree` and `--no-messages` (2.38)
 //   - `worktree add --orphan` (2.42)
+//
+// All are at or below the floor.
 //
 // The tmux features found:
 //
@@ -61,7 +64,9 @@
 // The one above-floor feature lym uses is the `allow-set-title` pane option (tmux 3.5, TmuxAllowSetTitle).
 // It stays optional:
 // the launch of a strand pane sets it to stop the agent overwriting the pane title.
+// TmuxHasAllowSetTitle reads the same `tmux -V` line as CheckTmux.
 // On a tmux it knows is older, reed skips the `set-option` and logs that once at Info.
+// The title then stays one the agent can overwrite.
 // On a version line that does not parse, reed still tries the `set-option`, and a failure Warns and continues.
 // The floor is never raised to meet this feature.
 //

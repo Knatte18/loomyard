@@ -16,9 +16,8 @@ Every verb prints JSON, except where `--text` asks for the compact listing.
 
 Every entry carries a `kind`:
 
-- `task`: concrete and claimable; only a task can run.
+- `task`: concrete and claimable; only a task can run, and only a task carries `depends_on`.
 - `note`: an idea or observation that is not yet a task, one note per entry.
-  A note may carry `depends_on` naming the entries it waits for; `promote` keeps it, and a `depends_on` in the promote payload replaces it.
 - `project`: a group of entries, with the handle letter `P`.
   A task or note joins one through its `project` field, naming the project's slug,
   and a project lists the order of its members in `order`.
@@ -39,11 +38,10 @@ The board gives every entry a short handle, such as `T4`, `P1`, `B2` or `E7`:
 The number is the lowest of its letter not in use, and it stays while the entry lives;
 a promote or a type change gives the entry a new handle of its new letter.
 The operator names entries by handle,
-and every verb that takes `slug` or `id` takes `handle` instead, or the bare handle or the bare slug as its whole argument:
+and every verb that takes `slug` or `id` takes `handle` instead, or the bare handle as its whole argument:
 
 ```
 lym board get B4
-lym board get my-task
 lym board set-status '{"handle":"T4","status":null}'
 ```
 
@@ -63,8 +61,11 @@ Beside its type label, every entry carries a label for each lym module it touche
 an entry that spans the whole tool takes the modules its work would change first.
 A label in neither map is refused.
 Add it with `lym config board --set labels.<name>=<description>`, or edit the maps in the `lym config board` editor.
-A recipe name goes in `recipe`, never in a label: `tapestry`, `darn` or `motif`.
+A recipe name goes in `recipe`, never in a label: `tapestry`, `darn`, `arras` or `motif`.
 An empty `recipe` means the hub's `default_recipe` in `board.yaml`, which is `darn` unless the hub changed it.
+An `arras` task discusses the entry and splits its decision record into board entries in one run, and lands no code.
+A review of the split, the split perch, approves the proposal in place of the operator.
+The family filing turns the entry into the family's project and re-points the entries that depended on it to the new tasks.
 A `motif` task runs Discussion alone:
 it stores the approved decision record on the entry, flags it `discussed`, lands no code and makes the entry a Sketch.
 A Sketch is a note of the built-in type `sketch` (handle `S`) that keeps its module labels and never runs;
@@ -226,7 +227,6 @@ lym board intake list --full
 lym board intake import '{"issue":12,"slug":"retry-backoff"}'
 lym board intake import '{"issue":13,"into":"retry-backoff"}'
 lym board intake close '{"issue":14,"reason":"Duplicate of #12."}'
-lym board intake close '{"issue":15,"reason":"Already fixed by 6fa7f1740 on main: it guards the nil fabric.","completed":true}'
 ```
 
 - `list` prints the number and title of each open issue no entry records;
@@ -242,22 +242,19 @@ lym board intake close '{"issue":15,"reason":"Already fixed by 6fa7f1740 on main
   only what the entry body quotes or attaches of them is available.
   A label `upsert` on a folded entry carries the entry's whole label list, since `labels` replaces it.
 - `close` ends a noise issue with a stated `reason` and writes nothing to the board.
-  An issue the main branch already fixed is closed with `"completed":true`, its `reason` naming the fixing commit.
 
 ## Writing a body
 
 A `body` renders as ordinary markdown with semantic line breaks.
 A single newline is a soft break, so structure a body with headings and lists rather than relying on line breaks for layout.
-Never name another task as a dependency in an entry's brief or body: put it in `depends_on` with `lym board set-deps`, on a note as on a task.
-The README computes each task's After column and its Ready or layer subsection from `depends_on`,
-and a note's After column from its own; `lym board list --text` ends a waiting entry's row with `after` and the slugs.
+Never name another task as a dependency in a task's brief or body: put it in `depends_on` with `lym board set-deps`.
+The README computes each task's After column and its Ready or layer subsection from `depends_on`.
 It drops a finished entry from After, and `prune` strips it;
 a dependency written as prose goes stale once that entry lands.
 Whenever you set `depends_on`, check the other tasks waiting on the same entry for overlap, not only the running ones.
 Act on the `notice` that `set-deps` and the upsert verbs print: chain overlapping tasks with `lym board set-deps`.
-A note may depend on another note, set with `lym board set-deps`.
-A task waiting on a note waits until the note becomes a task and lands, or is removed.
+A relation between notes has no `depends_on`, so it is a sentence in a body.
 A body holds an entry's design while it is unbuilt.
 The task that builds it documents the result in the repository and never rewrites its own entry's body or scope:
 the landing marks the entry done, and `lym board prune` removes it.
-A landing notice is asked for through `run_settings` `{"beam": {"land_notice": "on"}}`, and prune removes every done entry.
+Prune keeps an entry that still carries `notify_on_land` until its dobby has sent the line and cleared the field.

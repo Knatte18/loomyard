@@ -14,6 +14,7 @@ import (
 
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing/format/gitignore"
+	"github.com/go-git/go-git/v5/storage/filesystem"
 )
 
 // WorktreeChangedFiles returns the repo-relative paths of every file with an uncommitted change:
@@ -80,7 +81,7 @@ func (r *Repo) worktreeStatus() (git.Status, error) {
 // Comment and blank lines are skipped.
 // A missing file yields a nil slice and no error.
 func readGitDirExcludePatterns(repo *git.Repository) ([]gitignore.Pattern, error) {
-	storer, ok := repo.Storer.(unvalidatedBranchConfigStorage)
+	storer, ok := repo.Storer.(*filesystem.Storage)
 	if !ok {
 		return nil, nil
 	}

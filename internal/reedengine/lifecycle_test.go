@@ -18,7 +18,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
@@ -37,8 +37,8 @@ func guids(strands []Strand) []string {
 
 // TestUp_BootValidation pins the eager boot validation of Up.
 // An over-long socket path and an unresolvable shell each fail with an error naming it before any tmux round trip.
-// So do a segment color outside the palette and an invalid reed.watchdog value.
-// So do an invalid reed.window_split and a negative reed.window_share_max.
+// So do a segment color outside the palette and an invalid watchdog value.
+// So do an invalid window_split and a negative window_share_max.
 // The error comes before any tmux round trip, so the test pins validation order, not only existence.
 // "on" and "off" do not trip the watchdog check.
 // The fixture's tmux binary does not exist, so Up fails past that point;
@@ -72,7 +72,7 @@ func TestUp_BootValidation(t *testing.T) {
 			name:      "ShellUnresolvable",
 			posixOnly: true,
 			configure: func(cfg *Config) { cfg.Shell = "lym-no-such-shell-for-this-test" },
-			wantErr:   "key reed.shell",
+			wantErr:   "key shell",
 		},
 		{
 			name:      "TmuxConfRelative",
@@ -238,9 +238,6 @@ func TestStatus_ReportsSegmentColor(t *testing.T) {
 // A pane the session lacks is looked up once across the server.
 // Found in another session, its row names the placement.
 // Found nowhere, or on a failed lookup, the row names none, and the failure logs one Warn however often it repeats.
-// Each row that is not live names its down cause: a dead pane, a pane elsewhere, an unlisted pane or the start shell.
-// A strand bound to no pane reads as unlisted.
-// On a failed lookup, each pane the session lacks reads its placement as unread.
 func TestStatus_ReportsOwnWindowStrandsFromTheSessionListing(t *testing.T) {
 	tiergate.Require(t, 0)
 	logs := logcapture.Capture(t)
@@ -263,7 +260,6 @@ func TestStatus_ReportsOwnWindowStrandsFromTheSessionListing(t *testing.T) {
 			{GUID: "shellonly", Name: "shellonly", PaneID: "%7", Display: render.Display{Anchor: render.AnchorOwnWindow}},
 			{GUID: "engine", Name: "engine", PaneID: "%8", Display: render.Display{Anchor: render.AnchorOwnWindow}},
 			{GUID: "nowhere", Name: "nowhere", PaneID: "%10", Display: render.Display{Anchor: render.AnchorOwnWindow}},
-			{GUID: "unbound", Name: "unbound", Display: render.Display{Anchor: render.AnchorOwnWindow}},
 		},
 	}
 	if err := SaveState(e.stateDir(), st); err != nil {
@@ -284,8 +280,7 @@ func TestStatus_ReportsOwnWindowStrandsFromTheSessionListing(t *testing.T) {
 		}
 	}
 
-	// A failed lookup names no placement, reads every absent pane's placement as unread, and logs one Warn across repeats.
-	wantFailedDown := map[string]DownCause{"dead": DownPaneDead, "gone": DownPanePlacementUnread, "nowhere": DownPanePlacementUnread, "shellonly": DownStartShell, "unbound": DownPaneUnlisted}
+	// A failed lookup reads every absent pane as found nowhere, and logs one Warn across repeats.
 	fake.answer(serverListVerb, "", errors.New("list-panes -a failed"))
 	for range 2 {
 		failed, err := e.Status()
@@ -295,9 +290,6 @@ func TestStatus_ReportsOwnWindowStrandsFromTheSessionListing(t *testing.T) {
 		for _, s := range failed.Strands {
 			if s.Elsewhere != "" {
 				t.Errorf("Status Elsewhere of strand %q after a failed lookup = %q, want none", s.GUID, s.Elsewhere)
-			}
-			if s.Down != wantFailedDown[s.GUID] {
-				t.Errorf("Status Down of strand %q after a failed lookup = %q, want %q", s.GUID, s.Down, wantFailedDown[s.GUID])
 			}
 		}
 	}
@@ -313,7 +305,6 @@ func TestStatus_ReportsOwnWindowStrandsFromTheSessionListing(t *testing.T) {
 		"gone":  {own: true},
 		// A strand whose pane is in no listing is neither live nor present.
 		"nowhere": {own: true},
-		"unbound": {own: true},
 		// A shell-only pane past the launch grace is present but not live; its engine in the foreground reads live.
 		"shellonly": {present: true, own: true},
 		"engine":    {live: true, present: true, own: true},
@@ -323,13 +314,7 @@ func TestStatus_ReportsOwnWindowStrandsFromTheSessionListing(t *testing.T) {
 			t.Errorf("Status of strand %q = %+v, want %+v", s.GUID, got, want[s.GUID])
 		}
 	}
-	wantDown := map[string]DownCause{"dead": DownPaneDead, "gone": DownPaneElsewhere, "nowhere": DownPaneUnlisted, "shellonly": DownStartShell, "unbound": DownPaneUnlisted}
-	for _, s := range result.Strands {
-		if s.Down != wantDown[s.GUID] {
-			t.Errorf("Status Down of strand %q = %q, want %q", s.GUID, s.Down, wantDown[s.GUID])
-		}
-	}
-	wantPanePID := map[string]int{"w": 4323, "alive": 4325, "dead": 0, "gone": 0, "nowhere": 0, "unbound": 0, "shellonly": 4327, "engine": 4328}
+	wantPanePID := map[string]int{"w": 4323, "alive": 4325, "dead": 0, "gone": 0, "nowhere": 0, "shellonly": 4327, "engine": 4328}
 	for _, s := range result.Strands {
 		if s.PanePID != wantPanePID[s.GUID] {
 			t.Errorf("Status PanePID of strand %q = %d, want %d", s.GUID, s.PanePID, wantPanePID[s.GUID])
@@ -692,7 +677,7 @@ func TestDown_WritesTheDiscoverStopOnlyWhenItEndsTheServer(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			e := newTestEngine(t)
 			logs := logcapture.Capture(t)
-			scratch := fabriclayout.HubScratchDir(e.geom.HubPath)
+			scratch := fabricengine.HubScratchDir(e.geom.HubPath)
 			signalPath := filepath.Join(scratch, DiscoverSignalFileName)
 			if err := os.MkdirAll(scratch, 0o755); err != nil {
 				t.Fatal(err)

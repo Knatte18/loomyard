@@ -16,7 +16,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -24,16 +24,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
-// writeAnchor writes the recorded .lym-anchor marker at the root of the records sibling of the worktree worktreeName.
+// writeAnchor writes the recorded .lym-anchor marker into hub's board directory, creating the board directory if needed.
 // hub here is the lymcwd.Location.HubPath value (the container directory), not a worktree root.
-func writeAnchor(t *testing.T, hub, worktreeName, anchor string) {
+func writeAnchor(t *testing.T, hub, anchor string) {
 	t.Helper()
 
-	recordsDir := weftname.SiblingPath(hub, worktreeName)
-	if err := os.MkdirAll(recordsDir, 0o755); err != nil {
-		t.Fatalf("mkdir records dir: %v", err)
+	boardDir := fabricengine.BoardDir(hub)
+	if err := os.MkdirAll(boardDir, 0o755); err != nil {
+		t.Fatalf("mkdir board dir: %v", err)
 	}
-	anchorPath := filepath.Join(recordsDir, lymcwd.AnchorFileName)
+	anchorPath := filepath.Join(boardDir, lymcwd.AnchorFileName)
 	if err := os.WriteFile(anchorPath, []byte(anchor), 0o644); err != nil {
 		t.Fatalf("write %s: %v", anchorPath, err)
 	}
@@ -65,13 +65,10 @@ func requireAnchorRel(t *testing.T, cwd, want string) {
 	}
 }
 
-// TestResolve_AnchorScenario copies one git checkout and runs each resolution case as a step over it, in the order below.
-// Each step starts from the anchor marker state the step before it left.
-// The steps run serially, because they share the one checkout and its recorded marker.
-// The top-level test calls t.Parallel and no step does.
+// TestResolve_AnchorScenario copies one git checkout and runs each resolution case as a step over it, in the order below; each step starts from the anchor marker state the step before it left.
+// The steps run serially, and the top-level test calls t.Parallel and no step does, because the steps share the one checkout and its recorded marker.
 //
-// Steps: no marker recorded; a root (".") anchor; a subpath ("backend") anchor;
-// symlinked, linked, pruned and nested-repository starts; two worktrees with different own markers.
+// Steps: no marker recorded; a root (".") anchor; a subpath ("backend") anchor; a stale pre-rename marker; symlinked, linked, pruned and nested-repository starts; two worktrees with different own markers.
 func TestResolve_AnchorScenario(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -114,7 +111,7 @@ func TestResolve_AnchorScenario(t *testing.T) {
 			t.Errorf("layout.HubPath = %q; want %q", layout.HubPath, want)
 		}
 		// RepoName is derived by trimming HubSuffix off the container directory's base name; this fixture's container has no "-LYMHUB" suffix, so RepoName is simply its base name unchanged.
-		if want := strings.TrimSuffix(filepath.Base(layout.HubPath), fabriclayout.HubSuffix); layout.RepoName != want {
+		if want := strings.TrimSuffix(filepath.Base(layout.HubPath), fabricengine.HubSuffix); layout.RepoName != want {
 			t.Errorf("layout.RepoName = %q; want %q", layout.RepoName, want)
 		}
 
@@ -125,7 +122,7 @@ func TestResolve_AnchorScenario(t *testing.T) {
 
 	// A root anchor resolves from exactly the worktree root, and the strict gate rejects a subdirectory of it.
 	if !t.Run("root anchor", func(t *testing.T) {
-		writeAnchor(t, base.HubPath, base.WorktreeName, ".")
+		writeAnchor(t, base.HubPath, ".")
 
 		requireAnchorRel(t, root, ".")
 		requireOutsideAnchor(t, subDir)
@@ -136,7 +133,7 @@ func TestResolve_AnchorScenario(t *testing.T) {
 	// A subpath anchor resolves from exactly the anchored directory; a descendant, a sibling and the repo root above it are hard errors wrapping ErrCwdOutsideAnchor.
 	// ResolveWorktree from a worktree root that sits ABOVE the anchor returns the recorded subpath and no ErrCwdOutsideAnchor: this gate-free behavior is what distinguishes it from Resolve, and is the exact geometry fabricengine's layout fallback hits.
 	if !t.Run("subpath anchor", func(t *testing.T) {
-		writeAnchor(t, base.HubPath, base.WorktreeName, "backend")
+		writeAnchor(t, base.HubPath, "backend")
 
 		requireAnchorRel(t, backendDir, "backend")
 		for name, cwd := range map[string]string{
@@ -160,8 +157,49 @@ func TestResolve_AnchorScenario(t *testing.T) {
 		return
 	}
 
-	// Resets the marker to the root anchor for the steps below.
-	writeAnchor(t, base.HubPath, base.WorktreeName, ".")
+	// The read side refuses a hub that recorded its subpath under the pre-rename marker name and never migrated.
+	// Falling back to "." there re-anchors the whole repo at its root, after which fabric's own repair verb wires a second junction set at that root, so both the gated and the gate-free resolver must refuse instead.
+	if !t.Run("stale marker", func(t *testing.T) {
+		boardDir := fabricengine.BoardDir(base.HubPath)
+		if err := os.Remove(filepath.Join(boardDir, lymcwd.AnchorFileName)); err != nil {
+			t.Fatalf("remove %s: %v", lymcwd.AnchorFileName, err)
+		}
+		stalePath := filepath.Join(boardDir, lymcwd.StaleAnchorFileName)
+		if err := os.WriteFile(stalePath, []byte("backend\n"), 0o644); err != nil {
+			t.Fatalf("write %s: %v", stalePath, err)
+		}
+
+		if !t.Run("Resolve refuses", func(t *testing.T) {
+			layout, err := lymcwd.Resolve(root)
+			if layout != nil {
+				t.Errorf("Resolve(%q) returned non-nil layout; want nil", root)
+			}
+			if !errors.Is(err, lymcwd.ErrStaleAnchorMarker) {
+				t.Errorf("Resolve(%q) error = %v; want wrapped ErrStaleAnchorMarker", root, err)
+			}
+		}) {
+			return
+		}
+
+		if !t.Run("ResolveWorktree refuses", func(t *testing.T) {
+			layout, err := lymcwd.ResolveWorktree(root)
+			if layout != nil {
+				t.Errorf("ResolveWorktree(%q) returned non-nil layout; want nil", root)
+			}
+			if !errors.Is(err, lymcwd.ErrStaleAnchorMarker) {
+				t.Errorf("ResolveWorktree(%q) error = %v; want wrapped ErrStaleAnchorMarker", root, err)
+			}
+		}) {
+			return
+		}
+
+		t.Run("renamed marker beside it resolves normally", func(t *testing.T) {
+			writeAnchor(t, base.HubPath, ".")
+			requireAnchorRel(t, root, ".")
+		})
+	}) {
+		return
+	}
 
 	// A start reached through a symlink resolves to the real root's Location, as `git rev-parse --show-toplevel` resolves it, so one hub never gets two hub paths.
 	// A link to a subdirectory has no repository among its lexical parents, so only a walk from the resolved start finds the root.
@@ -368,6 +406,56 @@ func TestResolveWithin(t *testing.T) {
 			}
 			if *got != *want {
 				t.Errorf("ResolveWithin(%q) = %+v; want %+v", tt.cwd, *got, *want)
+			}
+		})
+	}
+}
+
+// TestResolveWithin_OneRepository pins ResolveWithin over a checkout whose root commits the anchor marker.
+// The marker at the root alone names the anchor.
+// A checkout named with the records-sibling suffix beside it resolves as itself.
+func TestResolveWithin_OneRepository(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	fix := gitkit.CopyRepo(t)
+	root := fix.Repo
+	beforeMarker := gitkit.RevParse(t, root, "HEAD")
+	gitkit.CommitFile(t, root, lymcwd.AnchorFileName, "backend\n", "record the anchor")
+	suffixedPath := weftname.SiblingPath(filepath.Dir(root), filepath.Base(root))
+	gitkit.Git(t, root, "worktree", "add", "-b", "suffixed", suffixedPath, beforeMarker)
+
+	backendDir := filepath.Join(root, "backend")
+	if err := os.MkdirAll(backendDir, 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", backendDir, err)
+	}
+
+	wantAnchored, err := lymcwd.ResolveWorktree(root)
+	if err != nil {
+		t.Fatalf("ResolveWorktree(%q) error = %v; want nil", root, err)
+	}
+
+	tests := []struct {
+		name string
+		cwd  string
+		want lymcwd.Location
+	}{
+		{"AnchoredDirectory", backendDir, *wantAnchored},
+		{
+			"SuffixedCheckoutBesideIt", suffixedPath,
+			lymcwd.Location{RepoName: wantAnchored.RepoName, HubPath: wantAnchored.HubPath, WorktreeName: filepath.Base(suffixedPath), AnchorRel: "."},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := lymcwd.ResolveWithin(tt.cwd)
+			if err != nil {
+				t.Fatalf("ResolveWithin(%q) error = %v; want nil", tt.cwd, err)
+			}
+			if *got != tt.want {
+				t.Errorf("ResolveWithin(%q) = %+v; want %+v", tt.cwd, *got, tt.want)
 			}
 		})
 	}

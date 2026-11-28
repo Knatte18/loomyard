@@ -21,7 +21,7 @@ The entry runs the lead and its advisors, when the table has any, on `MultiLLMPr
 The table is told through `Env.DiscussionTable`.
 It carries the row's gates on the lead.
 The recipe file names `DiscussionWrite`,
-and the built row carries that engine whatever `loom.discussion.advisors` and `loom.discussion.lenses` hold.
+and the built row carries that engine whatever `discussion_advisors` and `discussion_lenses` hold.
 `Plan-Write` is the second such row, and it ships as its own `PlanWrite` entry for the same reason.
 Its seat table is resolved from the `plan` role's own model-spec and timeout rather than from recipe strings.
 Building it needs a `*lymcwd.Location` to build the plan paths.
@@ -118,25 +118,9 @@ A `Bouncer` row's optional boolean `escalate_decisions` key defaults to false.
 When true, a judged round whose review holds a `decision`-class finding escalates with cause `decision`.
 The arbiter settles that escalation where the board entry and the decision record answer it,
 and the run's parent settles it otherwise.
-Where `blocking_escalates` is set, a CONTINUE or CIRCLING round in the soft-cap window whose ledger holds an open BLOCKING entry
-of another class escalates with cause `budget` to the parent alone instead.
 A `BurlerFix` row's optional boolean `decisions_escalated` key (default false) says its segment's Bouncer does so:
 the fixer is given no `decision` finding and the row posts no parent notice of its own.
-The shipped recipes set both keys on their Discussion-Review, Code-Review, split and Harden-Review rows.
-A `Bouncer` row's optional boolean `blocking_escalates` key defaults to false.
-When true, a round in the soft-cap window whose ledger holds an open BLOCKING entry, or cannot be read,
-escalates with cause `budget` to the run's parent, which accepts it or orders another round;
-neither the auto-accept nor the soft-cap rule's accept passes such a round.
-Before it escalates, a verifier pass on the judge's model checks the open BLOCKING entries
-whose findings the round's fixer reported fixed against the fix commits;
-each entry it confirms fixed is resolved in the ledger, and only the entries left open reach the parent.
-A round whose review holds a `decision`-class finding is handed over the same way under `escalate_decisions`,
-unless every open BLOCKING entry is of class `decision`.
-The shipped Code-Review rows set it.
-A `Bouncer` row's optional boolean `scope_closed` key defaults to false.
-When true, its decision escalation's brief, notice and reason name the `--in-scope` ruling and a board note
-in place of a decision-record entry.
-The shipped Code-Review rows of `tapestry`, `darn` and `sampler` set it.
+Loom's recipe sets both keys on its Discussion-Review rows and on no other row.
 
 A `MultiLLM` row runs one lead and its advisors as seats.
 Its keys are `role`, `segment` and `seats`, and the optional `gates`, `timeout_min`, `interactive` and `tokens`.

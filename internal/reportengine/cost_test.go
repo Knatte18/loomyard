@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -117,7 +117,7 @@ func TestComputeCost(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	tag := func(slug string) string { return fabriclayout.ArchiveTagPrefix + slug + "/sha-" + slug }
+	tag := func(slug string) string { return fabricengine.ArchiveTagPrefix + slug + "/sha-" + slug }
 	tests := []struct {
 		name         string
 		since        time.Time

@@ -17,7 +17,7 @@ import (
 
 // TestLoadConfig covers the template default, a hub value, and a value below the floor.
 // That value is refused with an error that names the key and the way forward.
-// The template holds no key but slack.remind_after_min,
+// The template holds no key but remind_after_min,
 // so no `lym config slack` write can name a channel, an operator or a token.
 func TestLoadConfig(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -31,7 +31,7 @@ func TestLoadConfig(t *testing.T) {
 	}{
 		{name: "TemplateValue", hub: "", want: slackengine.Config{RemindAfterMin: 30}},
 		{name: "HubValue", hub: "remind_after_min: 45\n", want: slackengine.Config{RemindAfterMin: 45}},
-		{name: "ZeroRefused", hub: "remind_after_min: 0\n", wantErr: `config key "slack.remind_after_min" holds 0`},
+		{name: "ZeroRefused", hub: "remind_after_min: 0\n", wantErr: `slack config key "remind_after_min" holds 0`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

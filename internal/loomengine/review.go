@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
-	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -26,7 +25,7 @@ type ReviewSettings struct {
 	Models burlerengine.RoundModels
 	// Discussion, Plan, Code and Split hold each loom review segment's resolved models.
 	// A segment uses its own list where loom.yaml sets one, else the shared list in Models.
-	// The split perch's fixer falls back to the loom.raddle.model model instead.
+	// The split perch's fixer falls back to the raddle key's model instead.
 	Discussion burlerengine.RoundModels
 	Plan       burlerengine.RoundModels
 	Code       burlerengine.RoundModels
@@ -54,40 +53,40 @@ type AssistModels struct {
 }
 
 // CapAssistTimeout returns the assistant reviewer's run bound, capped to fit the chair's timeout.
-// The uncapped bound is loom.review.assist_reviewer_timeout_min.
+// The uncapped bound is assist_reviewer_timeout_min.
 // The cap keeps the assistant's launch and its start retries, its run and one await cap inside the chair's timeout.
-// The chair's timeout is loom.review.timeout_min, or shuttle.run_timeout_min when that key is 0.
+// The chair's timeout is review_timeout_min, or shuttle's run_timeout_min when that key is 0.
 // startAllowance is what shuttle grants a launch and its start retries; awaitCap is the chair's keep-warm cap.
-// A zero loom.review.assist_reviewer_timeout_min takes the whole room,
+// A zero assist_reviewer_timeout_min takes the whole room,
 // so a zero bound never reaches a seat, where it would read as the chair's own timeout.
-// A capped bound logs one Warn naming both keys.
+// A capped bound logs one Warn naming assist_reviewer_timeout_min and review_timeout_min.
 // A cap that leaves no time returns a zero bound and a non-empty reason naming both keys, and logs a Warn.
 func CapAssistTimeout(cfg Config, runTimeout, startAllowance, awaitCap time.Duration) (time.Duration, string) {
 	chair := chairTimeout(cfg, runTimeout)
 	room := chair - startAllowance - awaitCap
-	want := time.Duration(cfg.Review.AssistReviewerTimeoutMin) * time.Minute
+	want := time.Duration(cfg.AssistReviewerTimeoutMin) * time.Minute
 	if room <= 0 {
-		reason := fmt.Sprintf("%s leaves the assistant no time: the reviewer's timeout of %s (%s) is spent by the assistant's start allowance of %s and one await cap of %s; raise %s", FullKeyName(reviewAssistTimeoutMinKey), chair, FullKeyName(reviewTimeoutMinKey), startAllowance, awaitCap, FullKeyName(reviewTimeoutMinKey))
-		logger.Warn("loom: the assistant reviewer gets no time and does not run", "key", FullKeyName(reviewAssistTimeoutMinKey), "chairKey", FullKeyName(reviewTimeoutMinKey), "chair", chair, "startAllowance", startAllowance, "awaitCap", awaitCap)
+		reason := fmt.Sprintf("assist_reviewer_timeout_min leaves the assistant no time: the reviewer's timeout of %s (review_timeout_min) is spent by the assistant's start allowance of %s and one await cap of %s; raise review_timeout_min", chair, startAllowance, awaitCap)
+		logger.Warn("loom: the assistant reviewer gets no time and does not run", "key", "assist_reviewer_timeout_min", "chairKey", "review_timeout_min", "chair", chair, "startAllowance", startAllowance, "awaitCap", awaitCap)
 		return 0, reason
 	}
 	if want == 0 {
 		return room, ""
 	}
 	if want > room {
-		logger.Warn("loom: "+FullKeyName(reviewAssistTimeoutMinKey)+" is capped to end before the reviewer's own timeout", "key", FullKeyName(reviewAssistTimeoutMinKey), "chairKey", FullKeyName(reviewTimeoutMinKey), "value", want, "capped", room)
+		logger.Warn("loom: assist_reviewer_timeout_min is capped to end before the reviewer's own timeout", "key", "assist_reviewer_timeout_min", "chairKey", "review_timeout_min", "value", want, "capped", room)
 		return room, ""
 	}
 	return want, ""
 }
 
-// chairTimeout returns a review chair's timeout: loom.review.timeout_min, or runTimeout when that key is 0.
-// runTimeout is shuttle.run_timeout_min.
+// chairTimeout returns a review chair's timeout: review_timeout_min, or runTimeout when that key is 0.
+// runTimeout is shuttle's run_timeout_min.
 func chairTimeout(cfg Config, runTimeout time.Duration) time.Duration {
-	if cfg.Review.TimeoutMin == 0 {
+	if cfg.ReviewTimeoutMin == 0 {
 		return runTimeout
 	}
-	return time.Duration(cfg.Review.TimeoutMin) * time.Minute
+	return time.Duration(cfg.ReviewTimeoutMin) * time.Minute
 }
 
 // ParentConsolidationMargin is the time a review chair keeps after its wait for the parent orch ends.
@@ -99,38 +98,38 @@ const ParentConsolidationMargin = 5 * time.Minute
 func parentReviewTimeout(cfg Config, perch Perch) (string, time.Duration) {
 	switch perch {
 	case PerchDiscussion:
-		return discussionReviewParentTimeoutKey, time.Duration(cfg.Discussion.ReviewParentTimeoutMin) * time.Minute
+		return "discussion_review_parent_timeout_min", time.Duration(cfg.DiscussionReviewParentTimeoutMin) * time.Minute
 	case PerchCode:
-		return codeReviewParentTimeoutKey, time.Duration(cfg.Code.ReviewParentTimeoutMin) * time.Minute
+		return "code_review_parent_timeout_min", time.Duration(cfg.CodeReviewParentTimeoutMin) * time.Minute
 	}
 	panic(fmt.Sprintf("loomengine: the %s perch asks no parent", perch))
 }
 
 // CapParentReviewWait returns the time from a parent-review ask of perch's review round to its deadline.
 // The wait is capped so the chair keeps room to consolidate before its own timeout.
-// The uncapped wait is the perch's own, loom.discussion.review_parent_timeout_min or loom.code.review_parent_timeout_min.
+// The uncapped wait is the perch's own key: discussion_review_parent_timeout_min or code_review_parent_timeout_min.
 // The room is the chair's timeout less startAllowance, one awaitCap and ParentConsolidationMargin.
-// The chair's timeout is loom.review.timeout_min, or runTimeout, shuttle.run_timeout_min, when that key is 0.
+// The chair's timeout is review_timeout_min, or runTimeout, shuttle's run_timeout_min, when that key is 0.
 // startAllowance is what shuttle grants a launch and its start retries; awaitCap is the chair's keep-warm cap.
-// A capped wait logs one Warn naming the perch's timeout key and loom.review.timeout_min.
+// A capped wait logs one Warn naming the perch's timeout key and review_timeout_min.
 // A room of zero or less returns a zero wait and a non-empty reason naming both keys, and logs a Warn:
 // the round then sends no ask.
 func CapParentReviewWait(cfg Config, perch Perch, runTimeout, startAllowance, awaitCap time.Duration) (time.Duration, string) {
 	key, want := parentReviewTimeout(cfg, perch)
-	return capParentWait(FullKeyName(key), want, chairTimeout(cfg, runTimeout), "reviewer", FullKeyName(reviewTimeoutMinKey), startAllowance, awaitCap)
+	return capParentWait(key, want, chairTimeout(cfg, runTimeout), "reviewer", "review_timeout_min", startAllowance, awaitCap)
 }
 
 // CapParentJudgeWait returns the time from a parent-review ask made for perch's Bouncer judge to its deadline.
-// The judge waits for the parent inside its own session, which shuttle bounds by runTimeout, shuttle.run_timeout_min.
+// The judge waits for the parent inside its own session, which shuttle bounds by runTimeout, shuttle's run_timeout_min.
 // The wait is capped so the judge keeps room to finish before that timeout.
-// The uncapped wait is the perch's own, loom.discussion.review_parent_timeout_min or loom.code.review_parent_timeout_min.
+// The uncapped wait is the perch's own key: discussion_review_parent_timeout_min or code_review_parent_timeout_min.
 // The room is runTimeout less startAllowance, one awaitCap and ParentConsolidationMargin.
-// A capped wait logs one Warn naming the perch's timeout key and shuttle.run_timeout_min.
+// A capped wait logs one Warn naming the perch's timeout key and run_timeout_min.
 // A room of zero or less returns a zero wait and a non-empty reason naming both keys, and logs a Warn:
 // the round then sends no ask.
 func CapParentJudgeWait(cfg Config, perch Perch, runTimeout, startAllowance, awaitCap time.Duration) (time.Duration, string) {
 	key, want := parentReviewTimeout(cfg, perch)
-	return capParentWait(FullKeyName(key), want, runTimeout, "judge", shuttleRunTimeoutName(), startAllowance, awaitCap)
+	return capParentWait(key, want, runTimeout, "judge", "run_timeout_min", startAllowance, awaitCap)
 }
 
 // capParentWait returns want, the wait the key names, capped to the room a session bound by timeout leaves.
@@ -164,7 +163,7 @@ type segmentModelSource struct {
 }
 
 // loomSegmentModelSource returns the model lists of the review segment named segment.
-// They are held by reviewer_model and fixer_model of the segment's area.
+// They are held by <segment>_reviewer_model and <segment>_fixer_model.
 // The plan segment's keys live in tapestry.yaml; every other segment's live in loom.yaml.
 func loomSegmentModelSource(segment string, review, fix burlerengine.ModelSpecList) segmentModelSource {
 	module := loomModule
@@ -172,8 +171,8 @@ func loomSegmentModelSource(segment string, review, fix burlerengine.ModelSpecLi
 		module = tapestryModule
 	}
 	return segmentModelSource{
-		reviewKey: shuttleengine.ModelKey{Module: module, Key: segmentKey(segment, leafReviewerModel)},
-		fixKey:    shuttleengine.ModelKey{Module: module, Key: segmentKey(segment, leafFixerModel)},
+		reviewKey: shuttleengine.ModelKey{Module: module, Key: segment + "_reviewer_model"},
+		fixKey:    shuttleengine.ModelKey{Module: module, Key: segment + "_fixer_model"},
 		review:    review,
 		fix:       fix,
 	}
@@ -181,8 +180,8 @@ func loomSegmentModelSource(segment string, review, fix burlerengine.ModelSpecLi
 
 // sharedSegmentKeys names loom.yaml's shared reviewer and fixer model keys.
 var sharedSegmentKeys = SegmentKeys{
-	Review: shuttleengine.ModelKey{Module: loomModule, Key: reviewReviewerModelKey},
-	Fix:    shuttleengine.ModelKey{Module: loomModule, Key: reviewFixerModelKey},
+	Review: shuttleengine.ModelKey{Module: loomModule, Key: "reviewer_model"},
+	Fix:    shuttleengine.ModelKey{Module: loomModule, Key: "fixer_model"},
 }
 
 // BouncerModels is one review segment's resolved seed and judge pair.
@@ -204,24 +203,24 @@ type JudgeSettings struct {
 
 // ResolveJudge resolves each review segment's judge and seed models from cfg.
 // The caller threads the returned JudgeSettings onto shedrecipe.Env.
-// A segment's judge is its own judge key when non-empty, else loom.review.judge.
-// A segment's seed is the first non-empty of its own seed key, loom.review.seed and the segment's resolved judge.
+// A segment's judge is its own judge key when non-empty, else judge.
+// A segment's seed is its own seed key when non-empty, else seed when non-empty, else the segment's resolved judge.
 // The split perch has no seed key of its own.
 // An error names the key the failing value came from.
 func ResolveJudge(cfg Config, reg modelspec.Registry) (JudgeSettings, error) {
-	discussion, err := resolveSegmentBouncerModels(areaDiscussion, cfg.Discussion.Judge, cfg.Discussion.Seed, cfg, reg)
+	discussion, err := resolveSegmentBouncerModels("discussion", cfg.DiscussionJudge, cfg.DiscussionSeed, cfg, reg)
 	if err != nil {
 		return JudgeSettings{}, err
 	}
-	plan, err := resolveSegmentBouncerModels(areaPlan, cfg.Plan.Judge, cfg.Plan.Seed, cfg, reg)
+	plan, err := resolveSegmentBouncerModels("plan", cfg.PlanJudge, cfg.PlanSeed, cfg, reg)
 	if err != nil {
 		return JudgeSettings{}, err
 	}
-	code, err := resolveSegmentBouncerModels(areaCode, cfg.Code.Judge, cfg.Code.Seed, cfg, reg)
+	code, err := resolveSegmentBouncerModels("code", cfg.CodeJudge, cfg.CodeSeed, cfg, reg)
 	if err != nil {
 		return JudgeSettings{}, err
 	}
-	split, err := resolveSegmentBouncerModels(string(PerchSplit), cfg.Split.Judge, "", cfg, reg)
+	split, err := resolveSegmentBouncerModels(string(PerchSplit), cfg.SplitJudge, "", cfg, reg)
 	if err != nil {
 		return JudgeSettings{}, err
 	}
@@ -231,25 +230,25 @@ func ResolveJudge(cfg Config, reg modelspec.Registry) (JudgeSettings, error) {
 // resolveSegmentBouncerModels resolves one segment's judge and seed models.
 // The judge falls back to the shared judge key when the segment's is empty.
 // The seed falls back to the segment's resolved judge when neither the segment's seed nor the shared seed is set.
-// segment is the area of the per-segment key names in an error.
+// segment prefixes the per-segment key names in an error.
 func resolveSegmentBouncerModels(segment, segmentJudge, segmentSeed string, cfg Config, reg modelspec.Registry) (BouncerModels, error) {
-	judgeKey, judgeRaw := reviewJudgeKey, cfg.Review.Judge
+	judgeKey, judgeRaw := "judge", cfg.Judge
 	if segmentJudge != "" {
-		judgeKey, judgeRaw = segmentKey(segment, leafJudge), segmentJudge
+		judgeKey, judgeRaw = segment+"_judge", segmentJudge
 	}
 	seedKey, seedRaw := judgeKey, judgeRaw
 	switch {
 	case segmentSeed != "":
-		seedKey, seedRaw = segmentKey(segment, leafSeed), segmentSeed
-	case cfg.Review.Seed != "":
-		seedKey, seedRaw = reviewSeedKey, cfg.Review.Seed
+		seedKey, seedRaw = segment+"_seed", segmentSeed
+	case cfg.Seed != "":
+		seedKey, seedRaw = "seed", cfg.Seed
 	}
 
-	judge, err := resolveKeyedModelChoice(FullKeyName(judgeKey), judgeRaw, reg)
+	judge, err := resolveKeyedModelChoice(judgeKey, judgeRaw, reg)
 	if err != nil {
 		return BouncerModels{}, err
 	}
-	seed, err := resolveKeyedModelChoice(FullKeyName(seedKey), seedRaw, reg)
+	seed, err := resolveKeyedModelChoice(seedKey, seedRaw, reg)
 	if err != nil {
 		return BouncerModels{}, err
 	}
@@ -269,41 +268,41 @@ func resolveKeyedModelChoice(key, raw string, reg modelspec.Registry) (shuttleen
 	return shuttleengine.NewModelChoice(resolved), nil
 }
 
-// splitFixerFallbackKey is the loom.yaml key whose model an empty loom.split.fixer_model takes: the raddle agent's.
-const splitFixerFallbackKey = raddleModelKey
+// splitFixerFallbackKey is the loom.yaml key whose model an empty split_fixer_model takes: the raddle agent's.
+const splitFixerFallbackKey = "raddle"
 
 // ResolveReview resolves every entry of the shared reviewer and fixer model-spec lists through reg.
 // It also resolves the list each loom segment sets, and pairs the result with the review round timeout.
-// The split perch's fixer list, when unset, is the loom.raddle.model model while that key is set.
+// The split perch's fixer list, when unset, is the raddle key's model while that key is set.
 // It returns the ReviewSettings the caller threads onto shedrecipe.Env.
 // Every entry is resolved at run start, so a bad later-round entry fails before round 1.
 func ResolveReview(cfg Config, reg modelspec.Registry) (ReviewSettings, error) {
-	review, err := resolveModelChoices(sharedSegmentKeys.Review, cfg.Review.ReviewerModel, reg)
+	review, err := resolveModelChoices(sharedSegmentKeys.Review, cfg.ReviewerModel, reg)
 	if err != nil {
 		return ReviewSettings{}, err
 	}
-	fix, err := resolveModelChoices(sharedSegmentKeys.Fix, cfg.Review.FixerModel, reg)
+	fix, err := resolveModelChoices(sharedSegmentKeys.Fix, cfg.FixerModel, reg)
 	if err != nil {
 		return ReviewSettings{}, err
 	}
 
 	settings := ReviewSettings{
 		Models:  burlerengine.RoundModels{Review: review, Fix: fix},
-		Timeout: time.Duration(cfg.Review.TimeoutMin) * time.Minute,
+		Timeout: time.Duration(cfg.ReviewTimeoutMin) * time.Minute,
 	}
-	split := loomSegmentModelSource(string(PerchSplit), cfg.Split.ReviewerModel, cfg.Split.FixerModel)
-	if split.fix.Unset() && cfg.Raddle.Model != "" {
+	split := loomSegmentModelSource(string(PerchSplit), cfg.SplitReviewerModel, cfg.SplitFixerModel)
+	if split.fix.Unset() && cfg.Raddle != "" {
 		split.fixKey = shuttleengine.ModelKey{Module: loomModule, Key: splitFixerFallbackKey}
-		split.fix = burlerengine.ModelSpecList{cfg.Raddle.Model}
+		split.fix = burlerengine.ModelSpecList{cfg.Raddle}
 	}
 	for _, segment := range []struct {
 		source segmentModelSource
 		models *burlerengine.RoundModels
 		keys   *SegmentKeys
 	}{
-		{loomSegmentModelSource(areaDiscussion, cfg.Discussion.ReviewerModel, cfg.Discussion.FixerModel), &settings.Discussion, &settings.DiscussionKeys},
-		{loomSegmentModelSource(areaPlan, cfg.Plan.ReviewerModel, cfg.Plan.FixerModel), &settings.Plan, &settings.PlanKeys},
-		{loomSegmentModelSource(areaCode, cfg.Code.ReviewerModel, cfg.Code.FixerModel), &settings.Code, &settings.CodeKeys},
+		{loomSegmentModelSource("discussion", cfg.DiscussionReviewerModel, cfg.DiscussionFixerModel), &settings.Discussion, &settings.DiscussionKeys},
+		{loomSegmentModelSource("plan", cfg.PlanReviewerModel, cfg.PlanFixerModel), &settings.Plan, &settings.PlanKeys},
+		{loomSegmentModelSource("code", cfg.CodeReviewerModel, cfg.CodeFixerModel), &settings.Code, &settings.CodeKeys},
 		{split, &settings.Split, &settings.SplitKeys},
 	} {
 		*segment.models, *segment.keys, err = resolveSegmentModels(segment.source, settings.Models, reg)
@@ -317,9 +316,9 @@ func ResolveReview(cfg Config, reg modelspec.Registry) (ReviewSettings, error) {
 		fans    lenses.FanList
 		into    *AssistModels
 	}{
-		{areaDiscussion, cfg.Discussion.AssistReviewerModel, cfg.Discussion.AssistReviewerFan, &settings.DiscussionAssist},
-		{areaPlan, cfg.Plan.AssistReviewerModel, cfg.Plan.AssistReviewerFan, &settings.PlanAssist},
-		{areaCode, cfg.Code.AssistReviewerModel, cfg.Code.AssistReviewerFan, &settings.CodeAssist},
+		{"discussion", cfg.DiscussionAssistReviewerModel, cfg.DiscussionAssistReviewerFan, &settings.DiscussionAssist},
+		{"plan", cfg.PlanAssistReviewerModel, cfg.PlanAssistReviewerFan, &settings.PlanAssist},
+		{"code", cfg.CodeAssistReviewerModel, cfg.CodeAssistReviewerFan, &settings.CodeAssist},
 	} {
 		*assist.into, err = resolveAssistModels(assist.segment, assist.models, assist.fans, reg)
 		if err != nil {
@@ -337,7 +336,7 @@ func resolveAssistModels(segment string, models burlerengine.ModelSpecList, fans
 	if Perch(segment) == PerchPlan {
 		module = tapestryModule
 	}
-	key := shuttleengine.ModelKey{Module: module, Key: segmentKey(segment, leafAssistReviewerModel)}
+	key := shuttleengine.ModelKey{Module: module, Key: segment + "_assist_reviewer_model"}
 	choices := make([]shuttleengine.ModelChoice, 0, len(models))
 	for i, raw := range models {
 		if raw == "" {
@@ -350,7 +349,7 @@ func resolveAssistModels(segment string, models burlerengine.ModelSpecList, fans
 		}
 		choices = append(choices, choice)
 	}
-	return AssistModels{Models: choices, Fans: fans, ModelKey: key, FanKey: FullKeyName(segmentKey(segment, leafAssistReviewerFan))}, nil
+	return AssistModels{Models: choices, Fans: fans, ModelKey: key, FanKey: segment + "_assist_reviewer_fan"}, nil
 }
 
 // resolveSegmentModels resolves one review segment's reviewer and fixer lists.
@@ -393,11 +392,11 @@ func resolveModelChoices(key shuttleengine.ModelKey, specs burlerengine.ModelSpe
 func resolveModelEntry(key shuttleengine.ModelKey, index int, raw string, reg modelspec.Registry) (shuttleengine.ModelChoice, error) {
 	spec, err := modelspec.Parse(raw)
 	if err != nil {
-		return shuttleengine.ModelChoice{}, fmt.Errorf("loom: ResolveReview: %s entry %d: %w; set that entry in %s.yaml to a model-spec the registry defines", configengine.KeyName(key.Module, key.Key), index+1, err, key.Module)
+		return shuttleengine.ModelChoice{}, fmt.Errorf("loom: ResolveReview: %s entry %d: %w; set that entry in %s.yaml to a model-spec the registry defines", key.Key, index+1, err, key.Module)
 	}
 	resolved, err := reg.Resolve(spec)
 	if err != nil {
-		return shuttleengine.ModelChoice{}, fmt.Errorf("loom: ResolveReview: %s entry %d: %w; set that entry in %s.yaml to a model-spec the registry defines", configengine.KeyName(key.Module, key.Key), index+1, err, key.Module)
+		return shuttleengine.ModelChoice{}, fmt.Errorf("loom: ResolveReview: %s entry %d: %w; set that entry in %s.yaml to a model-spec the registry defines", key.Key, index+1, err, key.Module)
 	}
 	return shuttleengine.NewModelChoice(resolved), nil
 }

@@ -108,7 +108,7 @@ func TestRaddleWrite(t *testing.T) {
 			perch bool
 			auto  bool
 			want  loomengine.RaddleMode
-			// keyReads is how many times the loom.raddle.auto_approve key is read across the calls.
+			// keyReads is how many times the raddle_auto_approve key is read across the calls.
 			keyReads int
 		}{
 			{"KeyOffIsInteractive", false, false, loomengine.RaddleModeInteractive, 1},
@@ -151,7 +151,7 @@ func TestRaddleWrite(t *testing.T) {
 			setup func(f *raddleWriteFixture)
 			want  []string
 		}{
-			{"AutoApproveError", func(f *raddleWriteFixture) { f.autoApproveErr = errors.New("setting unreadable") }, []string{"setting unreadable", "raddle.auto_approve"}},
+			{"AutoApproveError", func(f *raddleWriteFixture) { f.autoApproveErr = errors.New("setting unreadable") }, []string{"setting unreadable", "raddle_auto_approve"}},
 			{"SplitPerchError", func(f *raddleWriteFixture) { f.splitPerchErr = errors.New("recipe unreadable") }, []string{"recipe unreadable", "split perch"}},
 		} {
 			t.Run(tt.name, func(t *testing.T) {

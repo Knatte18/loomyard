@@ -78,10 +78,10 @@ func commitReworkRound(t *testing.T, c *loomCLI, location *lymcwd.Location, n, f
 // It answers false after a round whose generation carries a source card.
 func TestWire_Real_PlanReviewSkipFollowsGenerationClass(t *testing.T) {
 	tiergate.Require(t, 1)
-	t.Parallel()
-
-	hub := hubforge.CopyHub(t, pairHubShape)
-	location, err := lymcwd.ResolveWorktree(hub.PairCodeWorktree(hubforge.TemplatePairSlug))
+	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	const slug = "reworkskip"
+	hubforge.AddPair(t, hub, slug)
+	location, err := lymcwd.ResolveWorktree(hub.PairCodeWorktree(slug))
 	if err != nil {
 		t.Fatalf("ResolveWorktree error = %v; want nil", err)
 	}

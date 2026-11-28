@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -125,8 +125,8 @@ func newRecoverFixtureOver(t *testing.T, worktree string, git websterengine.Git)
 			PaneCwd:      worktree,
 			WebsterDir:   websterDir,
 			ReportsDir:   reportsDir,
-			StencilsDir:  fabriclayout.StencilsDir(hubPath),
-			SpecsDir:     fabriclayout.SpecsDir(hubPath),
+			StencilsDir:  fabricengine.StencilsDir(hubPath),
+			SpecsDir:     fabricengine.SpecsDir(hubPath),
 			// A real (empty) plan directory; the terminal recovery path runs the same post-batch mechanical pass as record-batch.
 			// It re-baselines the plan fingerprint over this directory; no card declares a handle, so nothing is written there.
 			PlanDir: planDir,

@@ -27,7 +27,7 @@ const scopeBuild = "build"
 // runBuild runs the hub's build command in the build's dir, as a tied child of the platform shell.
 // It runs inside the tier holds of run, with env followed by the build's own env, and no word the call gave after `--`.
 // Its output passes to the call's stdout and into its log,
-// and the build is bounded by its own gate.build.timeout_min counted from now.
+// and the build is bounded by its own timeout_min counted from now.
 // It writes the build's run record, scope form build, for the tier it precedes, and prints its summary line.
 // It marks the build started, so no later tier runs it again.
 // ok is false when the tier must not run its command.
@@ -40,7 +40,7 @@ func (e *execution) runBuild(run tierRun, env []string) (result tierResult, ok b
 	timeout := time.Duration(step.TimeoutMin) * e.request.timeoutUnit
 	started := time.Now()
 
-	buildCtx, cancel := withTimeoutMin(e.ctx, timeout, elapsedSinceNow(), time.After)
+	buildCtx, cancel := context.WithTimeout(e.ctx, timeout)
 	defer cancel()
 
 	var logBuffer bytes.Buffer
@@ -58,7 +58,7 @@ func (e *execution) runBuild(run tierRun, env []string) (result tierResult, ok b
 		return tierResult{refusal: fmt.Sprintf("gate test: could not start the shell for the build in %s: %v; way forward: make build.dir an existing directory and put the platform shell on PATH, then re-run the same command", dir, runErr)}, false
 	}
 
-	timedOut := e.ctx.Err() == nil && errors.Is(context.Cause(buildCtx), errTimeoutMinPassed) && exit != 0
+	timedOut := e.ctx.Err() == nil && errors.Is(buildCtx.Err(), context.DeadlineExceeded) && exit != 0
 	if timedOut {
 		exit = 1
 		line := gateslot.BuildTimeoutLine(timeout)

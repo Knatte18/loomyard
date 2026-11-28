@@ -7,11 +7,11 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -54,12 +54,12 @@ func seedOrigin(t *testing.T, origin Store) string {
 
 // applyReplay seeds origin into a fresh directory and replays one commit onto it.
 // It returns the result and the store afterwards.
-func applyReplay(t *testing.T, origin Store, base, parent, commit []byte) (fabriclayout.ReplayResult, Store) {
+func applyReplay(t *testing.T, origin Store, base, parent, commit []byte) (fabricengine.ReplayResult, Store) {
 	t.Helper()
 	dir := seedOrigin(t, origin)
-	result, err := Replayer{}.Apply(fabriclayout.ReplayRequest{
+	result, err := Replayer{}.Apply(fabricengine.ReplayRequest{
 		Dir:   dir,
-		Files: []fabriclayout.ReplayFile{{Path: FileName, Base: base, Before: parent, After: commit}},
+		Files: []fabricengine.ReplayFile{{Path: FileName, Base: base, Before: parent, After: commit}},
 	})
 	if err != nil {
 		t.Fatalf("Apply() = %v", err)
@@ -131,6 +131,37 @@ func TestReplayer(t *testing.T) {
 		}
 	})
 
+	t.Run("UnversionedSidesReadClaudeFileAsAgentsFile", func(t *testing.T) {
+		t.Parallel()
+		unversionedA := []byte(`{"entries": [{"slug": "a", "text": "A", "order": 1, "targets": ["claude-file"]}]}`)
+		unversionedAC := []byte(`{"entries": [` +
+			`{"slug": "a", "text": "A", "order": 1, "targets": ["claude-file"]},` +
+			`{"slug": "c", "text": "C", "order": 3, "targets": ["claude-file"]}]}`)
+		// Origin aims a at a different set, so a parent or commit left unmigrated shows as a lost targets change.
+		origin := entryFor("a", "A", 1, "agents-file", "claude-prompt")
+		result, store := applyReplay(t, Store{Entries: []Entry{origin}}, unversionedA, unversionedA, unversionedAC)
+		added, _ := store.Get("c")
+		if !slices.Equal(added.Targets, []string{"agents-file"}) || len(result.Lost) != 0 || len(result.Refused) != 0 {
+			t.Errorf("added entry = %+v, result = %+v; want c read as agents-file with nothing lost or refused", added, result)
+		}
+		if kept, _ := store.Get("a"); !slices.Equal(kept.Targets, []string{"agents-file", "claude-prompt"}) {
+			t.Errorf("a.Targets = %v; want origin's targets kept", kept.Targets)
+		}
+	})
+
+	t.Run("UnversionedMergeBaseReadsClaudeFileAsAgentsFile", func(t *testing.T) {
+		t.Parallel()
+		base := []byte(`{"entries": [{"slug": "a", "text": "A", "order": 1, "targets": ["claude-file"]}]}`)
+		parent := []byte(`{"entries": [{"slug": "a", "text": "A", "order": 1, "targets": ["claude-prompt", "claude-file"]}]}`)
+		commit := []byte(`{"entries": [{"slug": "a", "text": "A", "order": 1, "targets": ["claude-prompt"]}]}`)
+		// Origin still holds the merge base's targets, so the commit's change applies only when the base reads as agents-file.
+		origin := entryFor("a", "A", 1, "agents-file")
+		result, store := applyReplay(t, Store{Entries: []Entry{origin}}, base, parent, commit)
+		if got, _ := store.Get("a"); !slices.Equal(got.Targets, []string{"claude-prompt"}) || len(result.Lost) != 0 {
+			t.Errorf("a.Targets = %v, result = %+v; want the commit's targets applied with nothing lost", got.Targets, result)
+		}
+	})
+
 	t.Run("InvalidAddedEntryIsRefusedAndTheRestLands", func(t *testing.T) {
 		t.Parallel()
 		empty := replayEntry("c", "  ", 3)
@@ -150,9 +181,9 @@ func TestReplayer(t *testing.T) {
 	t.Run("CommitWithNoEntryChangeWritesNoStoreAndIsEmptyOnceTheOverviewStands", func(t *testing.T) {
 		t.Parallel()
 		dir := t.TempDir()
-		request := fabriclayout.ReplayRequest{
+		request := fabricengine.ReplayRequest{
 			Dir:   dir,
-			Files: []fabriclayout.ReplayFile{{Path: FileName, Base: storeBytes(t, a), Before: storeBytes(t, a), After: storeBytes(t, a)}},
+			Files: []fabricengine.ReplayFile{{Path: FileName, Base: storeBytes(t, a), Before: storeBytes(t, a), After: storeBytes(t, a)}},
 		}
 		for _, wantEmpty := range []bool{false, true} {
 			result, err := Replayer{}.Apply(request)
@@ -169,9 +200,9 @@ func TestReplayer(t *testing.T) {
 		t.Parallel()
 		c := replayEntry("c", "C", 3)
 		dir := seedOrigin(t, Store{Entries: []Entry{a, b}})
-		result, err := Replayer{}.Apply(fabriclayout.ReplayRequest{
+		result, err := Replayer{}.Apply(fabricengine.ReplayRequest{
 			Dir:   dir,
-			Files: []fabriclayout.ReplayFile{{Path: FileName, Base: storeBytes(t, a, b), Before: storeBytes(t, a, b), After: storeBytes(t, a, b, c)}},
+			Files: []fabricengine.ReplayFile{{Path: FileName, Base: storeBytes(t, a, b), Before: storeBytes(t, a, b), After: storeBytes(t, a, b, c)}},
 		})
 		if err != nil || result.Empty {
 			t.Fatalf("Apply() = %+v, %v; want a non-empty result", result, err)
@@ -190,9 +221,9 @@ func TestReplayer(t *testing.T) {
 		c := replayEntry("c", "C", 3)
 		dir := seedOrigin(t, Store{Entries: []Entry{a, b}})
 		stale := []byte("stale overview\n")
-		_, err := Replayer{}.Apply(fabriclayout.ReplayRequest{
+		_, err := Replayer{}.Apply(fabricengine.ReplayRequest{
 			Dir: dir,
-			Files: []fabriclayout.ReplayFile{
+			Files: []fabricengine.ReplayFile{
 				{Path: FileName, Base: storeBytes(t, a, b), Before: storeBytes(t, a, b), After: storeBytes(t, a, b, c)},
 				{Path: OverviewFileName, Base: stale, Before: stale, After: []byte("local overview\n")},
 			},

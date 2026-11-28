@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -60,7 +59,7 @@ func TestMain(m *testing.M) {
 	} else {
 		spawnPairPush = func(l *lymcwd.Location) error {
 			pairPushCounts.record(l.WorktreePath())
-			_, err := fabricengine.PushPairAnchored(l, fabricengine.EnvSyncOptions(), fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded})
+			_, err := fabricengine.PushPairAnchored(l, fabricengine.EnvSyncOptions(), fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded})
 			return err
 		}
 	}

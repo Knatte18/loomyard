@@ -6,9 +6,12 @@ package landingshed
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -18,6 +21,10 @@ import (
 // parentAlignName is the producer name that Parent-Align's log lines and error text carry.
 // It is also the row name its failure record carries.
 const parentAlignName = "Parent-Align"
+
+// retiredMergeInName is the retired row name of Parent-Align.
+// A run parked on that row still holds the name in its status file and attempt record.
+const retiredMergeInName = "Merge-In"
 
 // mergeBefore is what a landing row reads before it merges the parent into the task, which the merge record carries.
 type mergeBefore struct {
@@ -122,7 +129,7 @@ func NewParentAlign(deps Deps) (*ParentAlign, error) {
 // After the merge and the `landing` gate it aligns:
 // it runs the merge fixer when the parent brought in commits or the gate fails,
 // and every halt of that alignment is a Stuck with Halt whose reason opens with LandingStopPrefix.
-// A gate whose result is a runner crash or a memory pressure stop judged no code:
+// A gate whose every failed run crashed its test runner judged no code:
 // it halts the same way before any alignment, with no fixer.
 // A fixer's escalate on a tapestry, darn or sampler run (Deps.EscalateJudgedFirst) opens with EscalateStopPrefix.
 // A failed record write and every infrastructure fault are errors.
@@ -144,7 +151,7 @@ func (m *ParentAlign) Call(ctx context.Context) (shedengine.Outcome, shedengine.
 		return end.result()
 	}
 
-	tip, lockReason, err := parentMergeTip(ctx, m.deps, m.guard, parentAlignName, false, false)
+	tip, lockReason, err := m.mergeTip(ctx)
 	if err != nil {
 		return fail(ctx, parentAlignName, err).result()
 	}
@@ -193,11 +200,11 @@ func (m *ParentAlign) Call(ctx context.Context) (shedengine.Outcome, shedengine.
 	if end := gateEnding(ctx, parentAlignName, reason, err); end != nil {
 		return end.result()
 	}
-	gateReason, unjudged, err := m.gate.check(ctx, parentAlignName, m.deps.ParentBranch)
+	gateReason, crashed, err := m.gate.check(ctx, parentAlignName, m.deps.ParentBranch)
 	if err != nil {
 		return fail(ctx, parentAlignName, err).result()
 	}
-	if unjudged {
+	if crashed {
 		return halt(ctx, parentAlignName, gateReason).result()
 	}
 	if gateReason == "" {
@@ -224,84 +231,53 @@ func (m *ParentAlign) Call(ctx context.Context) (shedengine.Outcome, shedengine.
 	return shedengine.Done, shedengine.OutputPointer{}, nil
 }
 
-// parentMergeTip picks the parent tip producer merges with no parent lock held across the merge.
-// It returns that tip, or a Stuck reason of the parent lock wait.
-// With an upstream and no push skip, it fetches and takes the upstream tip,
-// so a commit on the local parent that origin lacks is not merged in, except the owed landing tips below.
-// With the push skipped (Deps.PushSkipped) or no upstream, it takes the local tip.
-// When takeOwedLocal is set, it also takes the local tip of a parent ahead of its upstream by owed landing tips alone.
-// Deps.ParentAheadByOwed reports that state.
-// A landing lands on top of those tips, so the local tip is the head it compares with.
-// It holds the parent lock through guard only to read the local tip, so the merge itself runs unlocked.
-// Under that lock it asks again about an owed-ahead parent.
-// It takes the upstream tip when a commit that is no owed landing has arrived since.
-// When front is set, the read waits for the lock at the front of the queue.
+// mergeTip picks the parent tip to merge and returns it, or a Stuck reason of the parent lock wait.
+// With an upstream and no push skip, it fetches and takes the upstream tip, never the local tip,
+// so a landing another run made locally and has not pushed is never merged in.
+// With the push skipped (Deps.PushSkipped) or no upstream, it takes the parent lock only to read the local tip.
+// It releases the lock before returning, so the merge itself runs unlocked.
 // A paused lock wait and an unreadable lock record come back as the reason, for a halting Stuck.
-func parentMergeTip(ctx context.Context, deps Deps, guard parentGuard, producer string, front, takeOwedLocal bool) (string, string, error) {
-	branch := deps.ParentBranch
-	readAheadByOwed := func() (bool, error) {
-		owed, err := deps.ParentAheadByOwed()
+func (m *ParentAlign) mergeTip(ctx context.Context) (string, string, error) {
+	branch := m.deps.ParentBranch
+	if !m.deps.PushSkipped {
+		tips, err := m.deps.ReadParentTips(true)
 		if err != nil {
-			return false, fmt.Errorf("landingshed: %s: read whether parent branch %q is ahead by owed landings alone: %w", producer, branch, err)
-		}
-		return owed, nil
-	}
-	// owedUpstream is the upstream tip of a parent first read as ahead by owed landing tips alone, else empty.
-	owedUpstream := ""
-	if !deps.PushSkipped {
-		tips, err := deps.ReadParentTips(true)
-		if err != nil {
-			return "", "", fmt.Errorf("landingshed: %s: read the tips of parent branch %q: %w", producer, branch, err)
+			return "", "", fmt.Errorf("landingshed: %s: read the tips of parent branch %q: %w", parentAlignName, branch, err)
 		}
 		switch tips.Relation {
-		case fabriclayout.ParentNoUpstream:
-		case fabriclayout.ParentAhead:
-			if !takeOwedLocal || deps.ParentAheadByOwed == nil {
-				return tips.Upstream, "", nil
-			}
-			owed, err := readAheadByOwed()
-			if err != nil {
-				return "", "", err
-			}
-			if !owed {
-				return tips.Upstream, "", nil
-			}
-			owedUpstream = tips.Upstream
-		case fabriclayout.ParentEqual, fabriclayout.ParentBehind, fabriclayout.ParentDiverged:
+		case fabricengine.ParentNoUpstream:
+		case fabricengine.ParentEqual, fabricengine.ParentAhead, fabricengine.ParentBehind, fabricengine.ParentDiverged:
 			return tips.Upstream, "", nil
 		default:
-			return "", "", fmt.Errorf("landingshed: %s: unknown relation %q of parent branch %q to its upstream", producer, tips.Relation, branch)
+			return "", "", fmt.Errorf("landingshed: %s: unknown relation %q of parent branch %q to its upstream", parentAlignName, tips.Relation, branch)
 		}
 	}
 
-	reason, err := guard.ensure(ctx, producer, front)
+	reason, err := m.guard.ensure(ctx, parentAlignName, false)
 	if err != nil || reason != "" {
 		return "", reason, err
 	}
-	defer guard.release(producer)
-	tips, err := deps.ReadParentTips(false)
+	defer m.guard.release(parentAlignName)
+	tips, err := m.deps.ReadParentTips(false)
 	if err != nil {
-		return "", "", fmt.Errorf("landingshed: %s: read the tips of parent branch %q: %w", producer, branch, err)
-	}
-	// The first answer was read with no lock, and a commit may have reached the parent before the tip just read.
-	if owedUpstream != "" {
-		owed, err := readAheadByOwed()
-		if err != nil {
-			return "", "", err
-		}
-		if !owed {
-			return owedUpstream, "", nil
-		}
+		return "", "", fmt.Errorf("landingshed: %s: read the tips of parent branch %q: %w", parentAlignName, branch, err)
 	}
 	return tips.Local, "", nil
 }
 
-// removeAttempts removes the row's fixer attempt record.
+// removeAttempts removes the row's fixer attempt record and the one stored under the retired row name `Merge-In`.
 func (m *ParentAlign) removeAttempts() error {
-	return RemoveFixerAttempts(FixerAttemptsPath(m.deps.RecordsDir, parentAlignName))
+	for _, row := range []string{parentAlignName, retiredMergeInName} {
+		if err := RemoveFixerAttempts(FixerAttemptsPath(m.deps.RecordsDir, row)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // readAttempts reads the entry's fixer attempt record into `m.attempts` and fixes the entry's fork point.
+// A run halted under the retired row name `Merge-In` leaves its record there,
+// so the record under that name is read when the row's own is absent.
 // readAttempts writes `AlignFrom` only when the merge record has no aligned tip and the attempt record no fork point.
 // The value is the task's fork point from the parent, read before the merge,
 // so a resumed entry whose merge is already up to date still reads the parent commits the first merge brought in.
@@ -311,8 +287,20 @@ func (m *ParentAlign) readAttempts() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("landingshed: %s: read the row entry: %w", parentAlignName, err)
 	}
+	for _, row := range []string{parentAlignName, retiredMergeInName} {
+		if err := moveScratchAttempts(m.deps.ScratchDir, m.deps.RecordsDir, row); err != nil {
+			return "", err
+		}
+	}
 	ownPath := FixerAttemptsPath(m.deps.RecordsDir, parentAlignName)
-	rec, reason, err := readRowAttempts(parentAlignName, ownPath, entry)
+	path := ownPath
+	if _, statErr := os.Stat(ownPath); errors.Is(statErr, fs.ErrNotExist) {
+		retired := FixerAttemptsPath(m.deps.RecordsDir, retiredMergeInName)
+		if _, retiredErr := os.Stat(retired); retiredErr == nil {
+			path = retired
+		}
+	}
+	rec, reason, err := readRowAttempts(parentAlignName, path, entry)
 	if err != nil || reason != "" {
 		return reason, err
 	}

@@ -140,7 +140,7 @@ type passFake struct {
 	settles         int
 	spawnedAtSettle []int
 
-	// taskHeadroom is beam.task_headroom, and limit and limitFound what the task-limit seam reads.
+	// taskHeadroom is beam.yaml's task_headroom, and limit and limitFound what the task-limit seam reads.
 	taskHeadroom int
 	limit        proc.TaskLimit
 	limitFound   bool
@@ -425,7 +425,7 @@ func TestDrivePasses_ExitHandling(t *testing.T) {
 
 	t.Run("an origin-wait or owned-elsewhere exit owes the catch-up", func(t *testing.T) {
 		t.Parallel()
-		for _, code := range []int{PassExitOriginWait, PassExitCatchUpRefused, PassExitOwnedElsewhere} {
+		for _, code := range []int{PassExitOriginWait, PassExitOwnedElsewhere} {
 			h := newPassHarness(t, runningRun("task"))
 			catchUps := 0
 			h.d.deps.CatchUp = fakeCatchUpDeps(func() error { catchUps++; return nil })

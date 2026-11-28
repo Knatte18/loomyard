@@ -11,7 +11,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -58,8 +57,8 @@ func TestCommitWeftAt_CommitsDirtyWorktree(t *testing.T) {
 	if got := strings.TrimSpace(rawMessage); got != "board sync" {
 		t.Errorf("commit message = %q; want exactly %q", got, "board sync")
 	}
-	if strings.Contains(rawMessage, fabriclayout.WarpSHATrailerKey+":") {
-		t.Errorf("commit message = %q; want no %s trailer (commitWeftAt is warp-untethered)", rawMessage, fabriclayout.WarpSHATrailerKey)
+	if strings.Contains(rawMessage, WarpSHATrailerKey+":") {
+		t.Errorf("commit message = %q; want no %s trailer (commitWeftAt is warp-untethered)", rawMessage, WarpSHATrailerKey)
 	}
 }
 
@@ -129,5 +128,34 @@ func TestCommitWeftAt_SeedFailureFailsBeforeStaging(t *testing.T) {
 	}
 	if status := gitStatusPorcelain(t, dir); status != "?? board-note.md\n" {
 		t.Errorf("git status --porcelain = %q; want only board-note.md, still untracked", status)
+	}
+}
+
+// TestCommitWeftAt_SkipGitReturnsImmediately asserts that opts.SkipGit short circuits before any git is spawned:
+// the return is exactly ("", false, nil), and a dirty untracked file is left untouched.
+//
+//testtiming:keep opts.SkipGit short-circuiting commitWeftAt to ("", false, nil) before git spawns, leaving a dirty file untouched; coverage of its blocks by other tests does not show an assertion of this
+func TestCommitWeftAt_SkipGitReturnsImmediately(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	dir := newPlainWarpRepo(t)
+	if err := os.WriteFile(filepath.Join(dir, "board-note.md"), []byte("a board note"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	sha, committed, err := commitWeftAt(dir, "msg", SyncOptions{SkipGit: true})
+	if err != nil {
+		t.Fatalf("commitWeftAt(SkipGit) error = %v; want nil", err)
+	}
+	if committed {
+		t.Fatalf("commitWeftAt(SkipGit) committed = true; want false")
+	}
+	if sha != "" {
+		t.Errorf("commitWeftAt(SkipGit) sha = %q; want empty", sha)
+	}
+
+	if status := gitStatusPorcelain(t, dir); status == "" {
+		t.Errorf("git status --porcelain = %q; want non-empty (the untracked file must remain uncommitted)", status)
 	}
 }

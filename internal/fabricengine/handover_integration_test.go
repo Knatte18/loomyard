@@ -13,7 +13,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -24,7 +23,7 @@ import (
 func plantTransition(t *testing.T, d *divergedPair, codeTip string) {
 	t.Helper()
 
-	message := "transition\n\n" + fabriclayout.TransitionTrailerKey + ": " + d.slug + "\n" + fabriclayout.WarpSHATrailerKey + ": " + codeTip
+	message := "transition\n\n" + fabricengine.TransitionTrailerKey + ": " + d.slug + "\n" + fabricengine.WarpSHATrailerKey + ": " + codeTip
 	d.originCommit(d.weftBranch, "transition-"+codeTip[:8]+".txt", codeTip, message)
 	gitkit.Git(t, d.weftPath, "fetch")
 }
@@ -111,7 +110,7 @@ func TestHandOverTips(t *testing.T) {
 		if err != nil {
 			t.Fatalf("HandOverTips() error = %v", err)
 		}
-		mergeTag := fabriclayout.OwnerArchiveTagName(slug, merge)
+		mergeTag := fabricengine.OwnerArchiveTagName(slug, merge)
 		if !slices.Contains(res.Tags, mergeTag) {
 			t.Errorf("tags = %v; want the merge's tag %s among them", res.Tags, mergeTag)
 		}
@@ -216,7 +215,7 @@ func TestHandOverTips(t *testing.T) {
 		if got := gitkit.Git(t, d.hub.CodeBare, "for-each-ref", "--format=%(refname)", "refs/heads/"+d.warpBranch); got != "" {
 			t.Errorf("origin code branch refs = %q; want the branch the push created deleted", got)
 		}
-		tag := fabriclayout.OwnerArchiveTagName(slug, localCode)
+		tag := fabricengine.OwnerArchiveTagName(slug, localCode)
 		if got := tagTargetAt(t, d.hub.CodeBare, tag); got != localCode {
 			t.Errorf("origin tag %s points at %q; want the given-up tip %s", tag, got, localCode)
 		}
@@ -230,44 +229,6 @@ func TestHandOverTips(t *testing.T) {
 
 		if !errors.Is(err, fabricengine.ErrArchiveFailed) || !strings.Contains(err.Error(), "origin refuses the tag push") {
 			t.Fatalf("HandOverTips() error = %v; want one wrapping ErrArchiveFailed and naming the refusal", err)
-		}
-		requireHandOverMark(t, d, entry, false)
-	})
-
-	t.Run("ThePrimesLocalRecordsTipIsTaggedForTheRunBeforeTheMarkIsWritten", func(t *testing.T) {
-		d := newDivergedPair(t, slug, entry)
-		primeRecordsTip := gitkit.CommitFile(t, d.hub.PrimeRecords(), "prime.txt", "prime\n", "prime batten commit")
-		hookCalls := 0
-		fabricengine.SetArchiveTagPushHookForTest(t, func(string) error {
-			hookCalls++
-			requireHandOverMark(t, d, entry, false)
-			return nil
-		})
-
-		res, err := fabricengine.HandOverTips(d.hub.Location, fabricengine.HandOverRequest{Slug: slug, PrimeRecords: d.hub.Location, Entry: entry})
-
-		if err != nil {
-			t.Fatalf("HandOverTips() error = %v", err)
-		}
-		tag := fabriclayout.OwnerArchiveTagName(slug, primeRecordsTip)
-		if hookCalls != 1 || !slices.Equal(res.Tags, []string{tag}) {
-			t.Fatalf("HandOverTips() = %+v with %d tag pushes; want the one tag %s", res, hookCalls, tag)
-		}
-		if got := tagTargetAt(t, d.hub.RecordsBare, tag); got != primeRecordsTip {
-			t.Errorf("origin tag %s points at %q; want the prime's local records tip %s", tag, got, primeRecordsTip)
-		}
-		requireHandOverMark(t, d, entry, true)
-	})
-
-	t.Run("ATagPushOriginRefusesForThePrimesRecordsTipLeavesNoMark", func(t *testing.T) {
-		d := newDivergedPair(t, slug, entry)
-		gitkit.CommitFile(t, d.hub.PrimeRecords(), "prime.txt", "prime\n", "prime batten commit")
-		installPreReceive(t, d.hub.RecordsBare, "#!/bin/sh\nwhile read old new ref; do\n  case \"$ref\" in refs/tags/*) echo 'tags are refused' >&2; exit 1;; esac\ndone\nexit 0\n")
-
-		_, err := fabricengine.HandOverTips(d.hub.Location, fabricengine.HandOverRequest{Slug: slug, PrimeRecords: d.hub.Location, Entry: entry})
-
-		if !errors.Is(err, fabricengine.ErrArchiveFailed) {
-			t.Fatalf("HandOverTips() error = %v; want one wrapping ErrArchiveFailed", err)
 		}
 		requireHandOverMark(t, d, entry, false)
 	})

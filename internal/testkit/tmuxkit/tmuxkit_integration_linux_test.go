@@ -99,25 +99,17 @@ func TestAfterRun_LeftoverProcesses(t *testing.T) {
 	}
 	t.Cleanup(func() { os.RemoveAll(dir) })
 
-	// Each process starts no child of its own:
-	// a child forked after afterRun's last scan would outlive the kill of its parent and outlast the test.
-	start := func(cmd *exec.Cmd) *exec.Cmd {
+	start := func(args ...string) *exec.Cmd {
+		cmd := exec.Command("sh", args...)
 		cmd.Dir = dir
 		if err := cmd.Start(); err != nil {
-			t.Fatalf("start %v: %v", cmd.Args, err)
+			t.Fatalf("start %v: %v", args, err)
 		}
 		t.Cleanup(func() { _ = cmd.Process.Kill() })
 		return cmd
 	}
-	stray := start(exec.Command("sleep", "60"))
-	// The watchdog stand-in blocks in the shell's read builtin on a pipe the test holds open.
-	watchdogCmd := exec.Command("sh", "-c", "read -r line", "x", "reed", "watchdog")
-	hold, err := watchdogCmd.StdinPipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = hold.Close() })
-	watchdog := start(watchdogCmd)
+	stray := start("-c", "sleep 60")
+	watchdog := start("-c", "sleep 60", "x", "reed", "watchdog")
 
 	var out strings.Builder
 	code := afterRun(&out, dir, 0, 100*time.Millisecond, func() {}, func() error { return os.RemoveAll(dir) })
@@ -125,7 +117,7 @@ func TestAfterRun_LeftoverProcesses(t *testing.T) {
 	if code != 1 {
 		t.Errorf("afterRun code = %d; want 1 for a stray process", code)
 	}
-	if want := fmt.Sprintf("tmuxkit: process %d left running by the package in %s: %q\n", stray.Process.Pid, dir, []string{"sleep", "60"}); !strings.Contains(out.String(), want) {
+	if want := fmt.Sprintf("tmuxkit: process %d left running by the package in %s: %q\n", stray.Process.Pid, dir, []string{"sh", "-c", "sleep 60"}); !strings.Contains(out.String(), want) {
 		t.Errorf("output %q does not name the stray process by pid, cwd and argv (want %q)", out.String(), want)
 	}
 	if strings.Contains(out.String(), fmt.Sprintf("process %d left running", watchdog.Process.Pid)) {

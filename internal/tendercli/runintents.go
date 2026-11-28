@@ -16,7 +16,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
@@ -55,7 +54,7 @@ func hubRunIntents(location *lymcwd.Location, slug string) (runIntents, error) {
 	}
 	return runIntents{
 		Owner:  func() (string, string, error) { return ownerElsewhere(prime, slug) },
-		Record: func() error { return recordPauseIntent(prime, slug) },
+		Record: func() error { return recordPauseIntent(prime, slug, false) },
 		Verdict: func() (runfsm.Verdict, error) {
 			records, inputs, err := pairteardown.ReadRunPulled(prime, slug)
 			if err != nil {
@@ -65,7 +64,7 @@ func hubRunIntents(location *lymcwd.Location, slug string) (runIntents, error) {
 			return verdict, nil
 		},
 		Clear: func() error {
-			return commitRunIntent(prime, slug, "tender resume: clear the pause intent of "+slug, os.Stderr, func() (bool, error) {
+			return commitRunIntent(prime, slug, "tender resume: clear the pause intent of "+slug, os.Stderr, false, func() (bool, error) {
 				return shedrun.ClearPauseIntent(prime, slug)
 			})
 		},
@@ -87,15 +86,30 @@ func hubPrime(location *lymcwd.Location) (*lymcwd.Location, error) {
 
 // recordPauseIntent records a pause intent on the batten record of slug on the prime.
 // It pushes the record, by the calling strand.
-func recordPauseIntent(prime *lymcwd.Location, slug string) error {
+// returnOwed is commitRunIntent's flag for an owed push.
+func recordPauseIntent(prime *lymcwd.Location, slug string, returnOwed bool) error {
 	by := os.Getenv(agentname.StrandNameEnv)
 	if by == "" {
 		by = agentname.External
 	}
 	intent := shedengine.PauseIntent{By: by, At: time.Now().Format(time.RFC3339)}
-	return commitRunIntent(prime, slug, "tender pause: record the pause intent of "+slug, os.Stderr, func() (bool, error) {
+	return commitRunIntent(prime, slug, "tender pause: record the pause intent of "+slug, os.Stderr, returnOwed, func() (bool, error) {
 		return shedrun.WritePauseIntent(prime, slug, intent)
 	})
+}
+
+// RecordPauseIntent records a pause intent on the batten record of the run of slug, in the hub location belongs to.
+// It pushes the prime's records side synchronously.
+// A run with no batten record records nothing.
+// A push that is owed is an error, so a caller that must not drop an entry whose intent is not on origin sees it.
+// A push that hands the run over returns the push's error wrapping fabricengine.ErrHandedOver.
+// The caller reads that as the run owned elsewhere.
+func RecordPauseIntent(location *lymcwd.Location, slug string) error {
+	prime, err := hubPrime(location)
+	if err != nil {
+		return err
+	}
+	return recordPauseIntent(prime, slug, true)
 }
 
 // PauseIntentEntries writes this machine's pause entries from the pause intents of the runs of slugs.
@@ -155,7 +169,7 @@ func pauseFromIntent(prime *lymcwd.Location, deps tenderengine.Deps, recordPath,
 // Any other failed pull is returned with the way forward of bringing the board level.
 // A hub with no Bolt checkout has no owners.
 func ownerElsewhere(prime *lymcwd.Location, slug string) (owner, subject string, err error) {
-	boltDir := fabriclayout.BoltDir(prime.HubPath)
+	boltDir := fabricengine.BoltDir(prime.HubPath)
 	if _, err := os.Stat(boltDir); errors.Is(err, os.ErrNotExist) {
 		return "", "", nil
 	}
@@ -166,7 +180,7 @@ func ownerElsewhere(prime *lymcwd.Location, slug string) (owner, subject string,
 	if err != nil {
 		return "", "", err
 	}
-	owners, err := boardengine.ReadOwners(fabriclayout.BoardDir(prime.HubPath))
+	owners, err := boardengine.ReadOwners(fabricengine.BoardDir(prime.HubPath))
 	if err != nil {
 		return "", "", err
 	}
@@ -191,14 +205,14 @@ func ownerElsewhere(prime *lymcwd.Location, slug string) (owner, subject string,
 // A hub with no Bolt checkout records no hold.
 // The fix task is the one an adopt-fix hold stands over, and only while no other hold holds it.
 func boltHoldState(hubPath string) (tenderengine.BoltHoldState, error) {
-	boltDir := fabriclayout.BoltDir(hubPath)
+	boltDir := fabricengine.BoltDir(hubPath)
 	if _, err := os.Stat(boltDir); errors.Is(err, os.ErrNotExist) {
 		return tenderengine.BoltHoldState{}, nil
 	}
 	if err := boardengine.PullBolt(boltDir); err != nil && !errors.Is(err, boardengine.ErrOwnerOriginUnreachable) {
 		return tenderengine.BoltHoldState{}, fmt.Errorf("the board could not be pulled: %w", err)
 	}
-	owners, err := boardengine.ReadOwners(fabriclayout.BoardDir(hubPath))
+	owners, err := boardengine.ReadOwners(fabricengine.BoardDir(hubPath))
 	if err != nil {
 		return tenderengine.BoltHoldState{}, err
 	}
@@ -218,7 +232,8 @@ func boltHoldState(hubPath string) (tenderengine.BoltHoldState, error) {
 // It then pushes the prime's records side, held under slug, and waits for the push.
 // A slug with no batten record writes and commits nothing.
 // A push that is owed is answered on stderr and leaves the commit for the next push of the prime's records branch.
-func commitRunIntent(prime *lymcwd.Location, slug, message string, stderr io.Writer, write func() (found bool, err error)) error {
+// When returnOwed is set, an owed push is returned like any other failed push.
+func commitRunIntent(prime *lymcwd.Location, slug, message string, stderr io.Writer, returnOwed bool, write func() (found bool, err error)) error {
 	if _, err := os.Stat(shedrun.StatusFile(prime, slug)); errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
@@ -240,7 +255,10 @@ func commitRunIntent(prime *lymcwd.Location, slug, message string, stderr io.Wri
 	if err != nil || !committed {
 		return err
 	}
-	_, err = pairteardown.PushRun(prime, prime, slug, pairteardown.RunPush{LockWait: fabriclayout.StatusPushLockWait})
+	_, err = pairteardown.PushRun(prime, prime, slug, pairteardown.RunPush{LockWait: fabricengine.StatusPushLockWait})
+	if returnOwed {
+		return err
+	}
 	return owedIntentPush(slug, err, stderr)
 }
 

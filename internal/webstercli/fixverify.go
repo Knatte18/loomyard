@@ -94,7 +94,7 @@ every call then blocks for up to --wait watching it.
 
 A terminal call fabric-commits state.json and returns {"status": "done",
 "reply": "..."} once the fixer wrote its reply; a fixer whose turn ended
-without a reply, whose strand is gone or that outlived ` + recoveryTimeoutName() + `
+without a reply, whose strand is gone or that outlived recovery_timeout_min
 returns {"status": "dead", "dead_reason": "..."} and exits non-zero. Either
 way the gate, not this verb, judges the fix: Master rewrites its contract
 files and ends its turn, and the gate verifies again. If --wait elapses first
@@ -178,7 +178,7 @@ Example:
 			}
 
 			if spawned {
-				if _, syncErr := fabricSync(c.openFabric, c.anchorRel, c.syncOptions, "fix-verify spawn"); syncErr != nil {
+				if _, syncErr := fabricSync(c.openFabric, c.anchorRel, "fix-verify spawn"); syncErr != nil {
 					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: the cold verify-gate fixer spawned but the fabric sync failed: %v; %s", syncErr, fabricSyncWayForward)))
 					return nil
 				}
@@ -201,7 +201,7 @@ Example:
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
-			if _, syncErr := fabricSync(c.openFabric, c.anchorRel, c.syncOptions, "fix-verify "+result.Status); syncErr != nil {
+			if _, syncErr := fabricSync(c.openFabric, c.anchorRel, "fix-verify "+result.Status); syncErr != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: the cold verify-gate fixer ended %s but the fabric sync failed: %v; %s", result.Status, syncErr, fabricSyncWayForward)))
 				return nil
 			}
@@ -218,7 +218,7 @@ Example:
 		},
 	}
 
-	cmd.Flags().DurationVar(&wait, "wait", 0, "operator override of the wait budget; a shorter wait can return a running snapshot; 0 blocks until the fixer ends or "+recoveryTimeoutName())
+	cmd.Flags().DurationVar(&wait, "wait", 0, "operator override of the wait budget; a shorter wait can return a running snapshot; 0 blocks until the fixer ends or recovery_timeout_min")
 
 	return cmd
 }

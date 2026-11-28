@@ -18,7 +18,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -144,7 +143,7 @@ func TestReportVerbs_RefuseOutsideThePrimeThenReportTheSeededRun(t *testing.T) {
 
 	pairRecords := h.PairRecordsSibling(slug)
 	tipSHA := gitkit.Git(t, pairRecords, "rev-parse", "HEAD")
-	gitkit.Git(t, pairRecords, "tag", fabriclayout.ArchiveTagPrefix+slug+"/"+tipSHA[:12], tipSHA)
+	gitkit.Git(t, pairRecords, "tag", fabricengine.ArchiveTagPrefix+slug+"/"+tipSHA[:12], tipSHA)
 	gitkit.Git(t, h.PrimeWorktree(), "merge", "--ff-only", taskCommit)
 
 	before := time.Now().UTC()
@@ -233,7 +232,7 @@ func TestReportVerbs_RefuseOutsideThePrimeThenReportTheSeededRun(t *testing.T) {
 		t.Fatalf("timing runs = %v; want the one landed run", timing.Raw["runs"])
 	}
 	timed, _ := timedRuns[0].(map[string]any)
-	if timed["tag"] != fabriclayout.ArchiveTagPrefix+slug+"/"+tipSHA[:12] || timed["state"] != reportengine.RunStateLanded {
+	if timed["tag"] != fabricengine.ArchiveTagPrefix+slug+"/"+tipSHA[:12] || timed["state"] != reportengine.RunStateLanded {
 		t.Errorf("timing run = %v; want the landed run under the seeded archive tag", timed)
 	}
 	if phases, _ := timed["phases"].(map[string]any); len(phases) == 0 {
@@ -247,7 +246,7 @@ func TestReportVerbs_RefuseOutsideThePrimeThenReportTheSeededRun(t *testing.T) {
 		t.Errorf("timing sleep_note = %q; want a journal reading or the seeded hub pause standing in", note)
 	}
 	for _, finding := range timing.Raw["findings"].([]any) {
-		if text := fmt.Sprint(finding); strings.Contains(text, fabriclayout.RecordsBranchName(slug)) && strings.Contains(text, "abandoned") {
+		if text := fmt.Sprint(finding); strings.Contains(text, fabricengine.RecordsBranchName(slug)) && strings.Contains(text, "abandoned") {
 			t.Errorf("timing finding %v names the live pair's records branch as abandoned", finding)
 		}
 	}

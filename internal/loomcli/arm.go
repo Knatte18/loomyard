@@ -15,9 +15,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/arbiterstop"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/frictionengine"
+	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -26,7 +27,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/parentlock"
-	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedtransient"
@@ -65,8 +65,8 @@ func genericShedVerb(verb string) bool {
 func (c *loomCLI) resolveRunID(location *lymcwd.Location, verb string, args []string) error {
 	runID := shedrun.SelfRunID
 	// insert-card's and remove-card's first positional is a card position.
-	// fmt's arguments are the Go files to format, not a run-id.
-	if len(args) > 0 && verb != "insert-card" && verb != "remove-card" && verb != "fmt" {
+	// fmt's arguments are the Go files to format, and pr-findings' is the findings file; neither is a run-id.
+	if len(args) > 0 && verb != "insert-card" && verb != "remove-card" && verb != "fmt" && verb != "pr-findings" {
 		runID = args[0]
 	}
 	c.runID = runID
@@ -204,6 +204,7 @@ func refuseVerbOffRecipe(verb, recipe string) error {
 // arm is the entry point of loom's own subtree:
 // the `lym loom` pre-run reaches it for every verb it arms, so cwd is resolved once per invocation.
 // It resolves cwd into a *lymcwd.Location and hands it, with the raw positional args, to armAt.
+// For a start or resume verb, it first reconciles the hub's config.
 func (c *loomCLI) arm(cwd string, verb string, args []string) (shedverbs.Spec, error) {
 	location, err := lymcwd.Resolve(cwd)
 	if err != nil {
@@ -211,9 +212,17 @@ func (c *loomCLI) arm(cwd string, verb string, args []string) (shedverbs.Spec, e
 		// pass it through bare rather than doubling that same text on top of it.
 		return shedverbs.Spec{}, err
 	}
-	// Recorded before armAt so a refusal from any later arming stage finds the location set.
+	// Recorded before the reconcile and armAt so a refusal from any later arming stage finds the location set.
 	c.location = location
 	c.loomPath = true
+
+	// A start or resume verb reconciles the hub's config after a binary change before armAt loads any module config.
+	// A strict load of a file still carrying a retired key would refuse the verb before the reconcile removes that key.
+	if verb == "start" || verb == "resume" {
+		if geometry, inHub := hubgeom.ReconcileGeometry(location); inHub {
+			hubreconcile.EnsureOrWarn(geometry, hubreconcile.Options{})
+		}
+	}
 
 	return c.armAt(location, verb, args)
 }
@@ -263,6 +272,10 @@ func (c *loomCLI) armAt(location *lymcwd.Location, verb string, args []string) (
 		return shedverbs.Spec{}, err
 	}
 
+	if err := c.renameRetiredRows(loomrecipe.RetiredRows(c.recipe)); err != nil {
+		return shedverbs.Spec{}, err
+	}
+
 	if err := c.loadRouting(); err != nil {
 		return shedverbs.Spec{}, err
 	}
@@ -297,7 +310,7 @@ func (c *loomCLI) recipeRouting() (shedengine.Routing, error) {
 }
 
 // newShed builds the shed of the run's recipe over c.env and c.shedPaths.
-// The rows loom.notify_parent_on names mail the run's parent when the run reaches them,
+// The rows loom.yaml's notify_parent_on names mail the run's parent when the run reaches them,
 // and a name that is no row of the recipe is refused.
 func (c *loomCLI) newShed() (*shedengine.Shed, error) {
 	shed, err := loomrecipe.New(c.recipe, c.env, c.shedPaths)
@@ -356,7 +369,7 @@ func recipeIsLoom(recipe string) bool {
 func (c *loomCLI) verifySource() verifySource {
 	source, err := loomrecipe.VerifySource(c.recipe)
 	if err == nil && source == treeScopeVerifySource {
-		return darnVerifySource(c.location, recipeTrees(c.location, c.recipe))
+		return darnVerifySource(c.location)
 	}
 
 	return planVerifySource(c.location)
@@ -368,18 +381,8 @@ func (c *loomCLI) verifySource() verifySource {
 // The lightweight wiring loads no config, so this method reads both files itself.
 // An unreadable loom.yaml or tapestry.yaml degrades to the templates' defaults with a warning;
 // the lightweight verbs (status, pause) must not refuse over a config they otherwise never read.
-// A hardener run's map also holds the Harden-Review budget, hardener.max_bounces.
 func (c *loomCLI) reviewBudget() (map[string]int, error) {
-	budgets, err := c.loomReviewBudget()
-	if err != nil || !recipeHasEngine(c.recipe, hardenFixEngine) {
-		return budgets, err
-	}
-	return withHardenBudget(budgets, c.recipe, fabricengine.ConfigDirs(c.location))
-}
-
-// loomReviewBudget returns the loom review segments' bounce budgets, read as reviewBudget describes.
-func (c *loomCLI) loomReviewBudget() (map[string]int, error) {
-	if c.cfg.Review.HardMaxBounces > 0 {
+	if c.cfg.ReviewHardMaxBounces > 0 {
 		return loomSegmentBudgets(c.cfg), nil
 	}
 
@@ -455,7 +458,7 @@ func (c *loomCLI) specFor(verb string) shedverbs.Spec {
 		spec.Loop.OnWatchdogKill = watchdogKillNote(c.stopStepRuns, spec.StepsDir)
 		spec.Loop.OnStepOrphaned = orphanedStepNote(c.stopStepRuns, spec.StepsDir)
 		spec.Loop.ReconcileOrphanedSteps = orphanedStepsNote(c.stopOrphanedStepRuns, spec.StepsDir)
-		locks := &parentlock.Store{Dir: parentlock.Dir(fabriclayout.BoltDir(c.location.HubPath))}
+		locks := &parentlock.Store{Dir: parentlock.Dir(fabricengine.BoltDir(c.location.HubPath))}
 		self := selfLockOwner(c.location, c.runID)
 		spec.Loop.OnExit = loopLockExit(locks, self)
 		covered := pauseCovered(c.location)
@@ -467,7 +470,6 @@ func (c *loomCLI) specFor(verb string) shedverbs.Spec {
 		spec.Hooks.AfterInterrupt = c.loomAfterInterrupt
 		spec.Hooks.ConsumeAttempt = c.loomConsumeAttempt
 		spec.GotoGuard = c.gotoGuardEndingFixers(c.settledGuard())
-		spec.GotoAdmitted = c.gotoAdmitted()
 	}
 	if recipeIsLoom(c.recipe) {
 		// A fixer escalate halt goes to the arbiter first on a loom run, so a driver's build re-launch leaves it alone.
@@ -699,7 +701,6 @@ func (c *loomCLI) loomBarePause(st shedengine.Status) error {
 // loomStatusExtras implements the StatusExtras hook for loom's spec: loom's own status keys
 // (pause_requested, slug, parent), decoded from st.Product only when non-empty, and no others.
 // A run that a live pause covers also carries paused_since and paused_by.
-// A run whose live driver waits out a network failure also carries waiting: the row, the failure class and the start.
 func (c *loomCLI) loomStatusExtras(st shedengine.Status) (map[string]any, error) {
 	var product loomengine.Status
 	if len(st.Product) > 0 {
@@ -715,15 +716,6 @@ func (c *loomCLI) loomStatusExtras(st shedengine.Status) (map[string]any, error)
 	}
 	for key, value := range c.pausedExtras() {
 		extras[key] = value
-	}
-	if c.location != nil {
-		wait, standing, driverGone, err := sheddriver.ReadDriveWait(shedrun.DriveWaitRecord(c.location, c.runID), shedrun.DriverLock(c.location, c.runID))
-		switch {
-		case err != nil:
-			logger.Warn("loomcli: the wait record is unreadable, status omits waiting", "cause", err)
-		case standing && !driverGone:
-			extras["waiting"] = wait
-		}
 	}
 	return extras, nil
 }

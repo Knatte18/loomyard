@@ -84,7 +84,7 @@ func (e *Engine) composeButtonRowLocked() (plain, agent string, spec buttonSpec,
 		logger.Warn("reed: could not read the button context, rendering no buttons", "socket", e.Socket(), "session", e.SessionName(), "err", err)
 		return "", "", buttonSpec{}, ""
 	}
-	shellPath, err := ResolveShellPath(e.cfg.Shell)
+	shellPath, err := resolveShellPath(e.cfg.Shell)
 	if err != nil {
 		logger.Warn("reed: the shell does not resolve, rendering no buttons", "socket", e.Socket(), "session", e.SessionName(), "shell", e.cfg.Shell, "err", err)
 		return "", "", buttonSpec{}, ""

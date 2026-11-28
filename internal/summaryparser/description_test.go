@@ -5,8 +5,6 @@ package summaryparser_test
 import (
 	"os"
 	"path/filepath"
-	"regexp"
-	"slices"
 	"strings"
 	"testing"
 
@@ -81,7 +79,7 @@ func TestValidateDescription_Table(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			got, err := summaryparser.ValidateDescription(path, nil)
+			got, err := summaryparser.ValidateDescription(path)
 			if err != nil {
 				t.Fatalf("error = %v; want nil", err)
 			}
@@ -96,63 +94,11 @@ func TestValidateDescription_Table(t *testing.T) {
 	}
 }
 
-func TestValidateDescription_ForbiddenTerms(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-	const mergeDanger = "\n## Merge danger\n\n**Door:** two-way\n**Blast radius:** docs\n"
-	forbidden := []*regexp.Regexp{regexp.MustCompile(`(?i)\blym\b`), regexp.MustCompile(`\bSketch\b`)}
-	tests := []struct {
-		name      string
-		content   string
-		forbidden []*regexp.Regexp
-		want      []string
-	}{
-		{"no term", "# Title\n\nbody\n" + mergeDanger, forbidden, nil},
-		{
-			"a term in the title and one in the body",
-			"# Make lym faster\n\nThe Sketch asked for it.\n" + mergeDanger,
-			forbidden,
-			[]string{
-				`forbidden-term: line 1 names "lym", a term of the tooling that wrote the change; rewrite the line in the repository's own terms, for a reader who never saw that tooling`,
-				`forbidden-term: line 3 names "Sketch", a term of the tooling that wrote the change; rewrite the line in the repository's own terms, for a reader who never saw that tooling`,
-			},
-		},
-		{
-			"two terms on one line are one finding",
-			"# Title\n\nLYM read the Sketch.\n" + mergeDanger,
-			forbidden,
-			[]string{`forbidden-term: line 3 names "LYM", a term of the tooling that wrote the change; rewrite the line in the repository's own terms, for a reader who never saw that tooling`},
-		},
-		{"a term inside a longer word is no match", "# Title\n\nThe lymph sketch.\n" + mergeDanger, forbidden, nil},
-		{"no patterns check nothing", "# Make lym faster\n\nbody\n" + mergeDanger, nil, nil},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			path := filepath.Join(t.TempDir(), "summary.md")
-			if err := os.WriteFile(path, []byte(tt.content), 0o644); err != nil {
-				t.Fatal(err)
-			}
-			got, err := summaryparser.ValidateDescription(path, tt.forbidden)
-			if err != nil {
-				t.Fatalf("ValidateDescription() error = %v; want nil", err)
-			}
-			var texts []string
-			for _, f := range got {
-				texts = append(texts, f.Error())
-			}
-			if !slices.Equal(texts, tt.want) {
-				t.Errorf("ValidateDescription() findings = %q; want %q", texts, tt.want)
-			}
-		})
-	}
-}
-
 func TestValidateDescription_ReadErrorIsError(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	// A directory at the path is a read failure other than not-exist.
-	if _, err := summaryparser.ValidateDescription(t.TempDir(), nil); err == nil {
+	if _, err := summaryparser.ValidateDescription(t.TempDir()); err == nil {
 		t.Fatal("error = nil; want a read error")
 	}
 }

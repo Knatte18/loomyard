@@ -13,7 +13,7 @@
      {{.decision_record_path}} and {{.support_log_path}} are the task's decision record and support log.
      {{.verdict_path}} is the one file the arbiter writes.
      {{.amendment_target}} is the row a plan amendment routes to, or the literal `none`.
-     {{.parent_directive}} is the hand-back variant of the parent directive rendered by internal/parentdirective.
+     {{.parent_directive}} is the no-parent variant of the parent directive rendered by internal/parentdirective.
      {{.edit_directive}} is the edit directive of the engine the prompt launches on, rendered by internal/editdirective.
      {{.edit_scope}} is what the arbiter may edit: loom-fragment-arbiter-fix when its driver lets it fix the stop itself,
      loom-fragment-arbiter-no-fix otherwise.
@@ -65,10 +65,6 @@ When the run's repair verbs include `lym loom decision add`, you settle every ca
 - When the stop asks for one edit, such as the correction of a false clause in the decision record, record that edit as a decision that names the clause and its exact replacement.
   That is the one decision edit you make; the edit rules below govern any other.
 - Anything wider than the edit rules below let you make, such as a change across several cards, you record as a decision for the run's own agents to carry out, and never make yourself.
-- Once the run's first Code-Review round has started, the task's scope is closed and `lym loom decision add` refuses.
-  There a decision finding the board entry and the record already ask for is ruled in scope with `lym loom circling continue {{.slug}} --in-scope <finding-id>` below the hard cap, and every other call is handed on.
-  Wherever a rule below says to record a ruling or an amendment as a decision, once the scope is closed you rule in scope or hand on instead.
-  The one entry the verb still takes then is a `bug` entry's, titled `No test seam` or `No bug fixed`, which changes no scope.
 
 The escalation brief's "What to do" section is the parent's procedure, and these parts of it do not bind you:
 settling only on a recorded operator decision, never counting a `--by arbiter` entry, recording with `--by parent`, resuming the run, never accepting over an open design-wrong finding, and ending by reporting back to the parent.

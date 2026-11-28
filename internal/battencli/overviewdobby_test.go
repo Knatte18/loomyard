@@ -32,13 +32,13 @@ func TestDobbyLines(t *testing.T) {
 		{
 			name: "AnAliveDobbyShowsItsRunsWithTheirCellsAndWhyEachTaskWaits",
 			view: dobbyengine.View{
-				Alive: true, MaxRuns: 2,
+				Alive: true, MaxRuns: 2, LandNotice: dobbyengine.LandNoticePerTask,
 				Runs: []dobbyengine.ViewRun{
-					{Slug: "flying", PassInFlight: true, LandNotice: true},
+					{Slug: "flying", PassInFlight: true, NotifyOnLand: true},
 					{Slug: "failing", LastPassExit: minutesAgo(12), FullPassOwed: true, FailingPassCount: 2, FailingPassError: "pre-run refused\nmore detail"},
 				},
 				Waiting: []dobbyengine.WaitingTask{
-					{Slug: "ready"},
+					{Slug: "ready", NotifyOnLand: true},
 					{Slug: "deps", Dependencies: []string{"x", "y"}, Paused: true},
 					{Slug: "refused", Refusal: "dirty source", NextTry: overviewNow.Add(4 * time.Minute)},
 					{Slug: "owned", OwnedElsewhere: true},
@@ -53,14 +53,14 @@ func TestDobbyLines(t *testing.T) {
 				"failing": {State: "blocked", Stage: "7. Land", InStage: "1h12m"},
 			},
 			want: []string{
-				"dobby prime: alive, beam.max_runs 2",
-				"  flying   running  6.5 Plan-Write  30m    pass in flight, beam.land_notice",
+				"dobby prime: alive, max_runs 2, land_notice per-task",
+				"  flying   running  6.5 Plan-Write  30m    pass in flight, notify_on_land",
 				"  failing  blocked  7. Land         1h12m  last pass 12m ago, full pass owed, failing 2× in a row: pre-run refused",
-				"  ready    ready to start",
+				"  ready    ready to start, notify_on_land",
 				"  deps     waits on dependencies x, y; a pause",
 				"  refused  waits on a refused start (dirty source), retry in 4m",
 				"  owned    waits on another machine's ownership",
-				"  capped   waits on beam.max_runs 2",
+				"  capped   waits on max_runs 2",
 				"  done     waits on a start batten refuses: already completed",
 				"  retry    ready to start, last refused start: dirty source",
 				"  behind   waits on front task fix runs first",
@@ -77,13 +77,13 @@ func TestDobbyLines(t *testing.T) {
 		},
 		{
 			name: "AnUnreadableRunTakesNoPartInTheColumnWidths",
-			view: dobbyengine.View{Alive: true, MaxRuns: 3, Runs: []dobbyengine.ViewRun{{Slug: "broken"}, {Slug: "ok"}}},
+			view: dobbyengine.View{Alive: true, MaxRuns: 3, LandNotice: dobbyengine.LandNoticeAll, Runs: []dobbyengine.ViewRun{{Slug: "broken"}, {Slug: "ok"}}},
 			cells: map[string]RunCells{
 				"broken": {Unreadable: true},
 				"ok":     {State: "running", Stage: "Plan", InStage: "5m"},
 			},
 			want: []string{
-				"dobby prime: alive, beam.max_runs 3",
+				"dobby prime: alive, max_runs 3, land_notice all",
 				"  broken  status unreadable  no pass yet",
 				"  ok      running  Plan  5m  no pass yet",
 			},
@@ -103,35 +103,35 @@ func TestDobbyLines(t *testing.T) {
 		},
 		{
 			name: "AReadyBeamHoldsAWaitingTaskAndNamesTheCancel",
-			view: dobbyengine.View{Alive: true, MaxRuns: 2, Waiting: []dobbyengine.WaitingTask{{Slug: "held", ReadyHold: true}}},
+			view: dobbyengine.View{Alive: true, MaxRuns: 2, LandNotice: dobbyengine.LandNoticeOff, Waiting: []dobbyengine.WaitingTask{{Slug: "held", ReadyHold: true}}},
 			want: []string{
-				"dobby prime: alive, beam.max_runs 2",
+				"dobby prime: alive, max_runs 2, land_notice off",
 				"  no runs driven",
 				"  held  waits on the beam is flagged ready: lym batten cancel held --remove",
 			},
 		},
 		{
 			name: "AKeptPairShowsWhenItsCancelFinishedAndNamesTheRemoval",
-			view: dobbyengine.View{Alive: true, MaxRuns: 3, Kept: []dobbyengine.KeptPair{{Slug: "k", Since: minutesAgo(12)}}},
+			view: dobbyengine.View{Alive: true, MaxRuns: 3, LandNotice: dobbyengine.LandNoticeOff, Kept: []dobbyengine.KeptPair{{Slug: "k", Since: minutesAgo(12)}}},
 			want: []string{
-				"dobby prime: alive, beam.max_runs 3",
+				"dobby prime: alive, max_runs 3, land_notice off",
 				"  no runs driven",
 				"  k  kept pair, cancelled 12m ago; way forward: lym fabric remove k",
 			},
 		},
 		{
 			name: "AKeptPairWithNoFinishTimeSaysItsAgeIsUnknown",
-			view: dobbyengine.View{Alive: true, MaxRuns: 3, Kept: []dobbyengine.KeptPair{{Slug: "k"}}},
+			view: dobbyengine.View{Alive: true, MaxRuns: 3, LandNotice: dobbyengine.LandNoticeOff, Kept: []dobbyengine.KeptPair{{Slug: "k"}}},
 			want: []string{
-				"dobby prime: alive, beam.max_runs 3",
+				"dobby prime: alive, max_runs 3, land_notice off",
 				"  no runs driven",
 				"  k  kept pair, age unknown; way forward: lym fabric remove k",
 			},
 		},
 		{
 			name: "NoRunsSaysSo",
-			view: dobbyengine.View{Alive: true, MaxRuns: 3},
-			want: []string{"dobby prime: alive, beam.max_runs 3", "  no runs driven"},
+			view: dobbyengine.View{Alive: true, MaxRuns: 3, LandNotice: dobbyengine.LandNoticeOff},
+			want: []string{"dobby prime: alive, max_runs 3, land_notice off", "  no runs driven"},
 		},
 	}
 	for _, tt := range tests {

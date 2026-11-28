@@ -1,7 +1,6 @@
 // hold.go builds the notice an autonomous run sends its parent when a turn ends held.
 // It also holds the optional UsageLimitReader capability and the checks that suppress that notice.
 // The checks cover a usage limit, background work a session wakes from, and a turn the operator typed.
-// A turn the operator typed sends no notice; the agent instead gets one line per run naming its missing output files.
 // A deferred prompt line whose own turn never started is typed in place of the notice.
 // It is typed when a turn ends held, and when Attach reconstructs a run.
 // A typed line that no turn followed within the submit window is typed once more.
@@ -132,7 +131,6 @@ func (run *Run) usageLimited(held *heldTurnEnd) bool {
 // It first gives an API-error stall across a machine sleep its one continue line.
 // It then shows the hold, and sends the parent one notice unless a case below skips it:
 // a deferred prompt typed in its place, a usage limit, a turn the operator started, or background work it wakes from.
-// A turn the operator started has the agent reminded of its missing output files instead.
 // A Spec.HoldDeferral run queues the notice instead.
 func (run *Run) handleHeldTurnEnd(held *heldTurnEnd) {
 	continued := run.continueAPIErrorStall(held)
@@ -148,10 +146,9 @@ func (run *Run) handleHeldTurnEnd(held *heldTurnEnd) {
 		// The parent cannot act while the account is limited,
 		// and a notice sent now lands in its context as stale clutter after the reset.
 		logger.Info("shuttle: held turn end stopped on the usage limit; no hold notice", "strandGUID", run.state.StrandGUID, "offset", held.offset)
-	case !run.spec.Interactive && run.operatorStartedTurn(held):
+	case run.holdNoticePending() && run.operatorStartedTurn(held):
 		// The operator is talking to the agent in its pane, so the turn end is no stall for the parent.
 		logger.Info("shuttle: held turn end of a turn the operator started; no hold notice", "strandGUID", run.state.StrandGUID, "offset", held.offset)
-		run.remindOfMissingOutputs(held)
 	case run.holdNoticePending() && run.wakesOnBackground(held):
 		// The session wakes when its own background work completes, so the parent has nothing to answer.
 		logger.Info("shuttle: held turn end left background work running; no hold notice", "strandGUID", run.state.StrandGUID, "offset", held.offset)
@@ -160,66 +157,6 @@ func (run *Run) handleHeldTurnEnd(held *heldTurnEnd) {
 	case !run.turnStartRead:
 		run.pendingHold, run.pendingHoldAt = held, run.clock.Now()
 	}
-}
-
-// missingOutputsLine is the line an agent gets when a turn the operator started left output files unwritten.
-// It names the missing paths.
-const missingOutputsLine = "[lym] Your turn ended without these output files: %s. If the operator asked you to wait or is still talking with you, do as they say; otherwise carry on with your task and write them."
-
-// remindOfMissingOutputs types missingOutputsLine into the pane for held, a turn end of a turn the operator started,
-// so the hold does not wait in silence until the run's deadline.
-// It types nothing under a covering pause or on a usage-limited turn end.
-// Nor does it when a turn start was read past held or the session wakes on background work.
-// Nor when no output file is missing or the run was reminded before.
-// RunState.OperatorHoldReminded is persisted before typing.
-// A failed send is logged at Info and clears it, so the next such turn end tries again.
-// The turn the line starts is no operator's turn, so its own held end is notified as any other.
-func (run *Run) remindOfMissingOutputs(held *heldTurnEnd) {
-	if run.covered || run.turnStartRead || run.state.OperatorHoldReminded || run.usageLimited(held) || run.wakesOnBackground(held) {
-		return
-	}
-	// An agent whose typed prompt line has started no turn has no task to carry on with yet.
-	if run.typedPromptUnstarted() {
-		return
-	}
-	var missing []string
-	for _, path := range run.spec.OutputFiles {
-		if !allOutputFilesExist([]string{path}) {
-			missing = append(missing, path)
-		}
-	}
-	if len(missing) == 0 {
-		return
-	}
-	if !run.setOperatorHoldReminded(true) {
-		return
-	}
-	if err := run.Send(fmt.Sprintf(missingOutputsLine, strings.Join(missing, ", "))); err != nil {
-		logger.Info("shuttle: missing-outputs reminder not sent", "strandGUID", run.state.StrandGUID, "offset", held.offset, "error", err)
-		run.setOperatorHoldReminded(false)
-	}
-}
-
-// typedPromptUnstarted reports whether the prompt line was typed through this handle and no turn start followed it.
-func (run *Run) typedPromptUnstarted() bool {
-	run.sendMu.Lock()
-	defer run.sendMu.Unlock()
-	return !run.promptSentAt.IsZero() && !turnStartedSince(run.engine, run.state.EventsPath, run.promptSendOffset)
-}
-
-// setOperatorHoldReminded records value as RunState.OperatorHoldReminded and reports whether the record holds it.
-// A failed write leaves the previous value and is logged at Warn.
-func (run *Run) setOperatorHoldReminded(value bool) bool {
-	run.recordMu.Lock()
-	defer run.recordMu.Unlock()
-	previous := run.state.OperatorHoldReminded
-	run.state.OperatorHoldReminded = value
-	if err := run.saveState(); err != nil {
-		run.state.OperatorHoldReminded = previous
-		logger.Warn("shuttle: persist the missing-outputs reminder flag failed", "runDir", run.runDir, "strandGUID", run.state.StrandGUID, "error", err)
-		return false
-	}
-	return true
 }
 
 // operatorStartedTurn reports whether the held turn began with an instruction the operator typed into the pane.

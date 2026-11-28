@@ -152,8 +152,26 @@ func (row *RunRow) readDriveReports(records Reader, tag gitrepo.TagRef) error {
 	return nil
 }
 
+// retiredReviewSubdirs maps the review directories older runs wrote to the segment their rounds count under.
+// An empty segment drops the rounds.
+var retiredReviewSubdirs = map[string]string{
+	"webster": "code",
+	"merge":   "",
+}
+
+// currentReviewSegment returns the segment a review directory counts under.
+// It returns false when the directory counts under none.
+func currentReviewSegment(subdir string) (string, bool) {
+	if segment, retired := retiredReviewSubdirs[subdir]; retired {
+		return segment, segment != ""
+	}
+	return subdir, true
+}
+
 // readSegments counts the review rounds of every review segment, and of the parent review, into Segments.
 // A Bouncer re-seed's archived generation adds its rounds to its segment's and is no segment of its own.
+// A directory retiredReviewSubdirs maps counts under the segment it maps to,
+// and a directory that maps to an empty segment is not counted.
 func (row *RunRow) readSegments(records Reader, tag gitrepo.TagRef) error {
 	reviewsDir := filepath.ToSlash(loomengine.LoomReviewsDirRel())
 	subdirs, err := records.SubdirsAtRevision(tag.Commit, reviewsDir)
@@ -173,14 +191,20 @@ func (row *RunRow) readSegments(records Reader, tag gitrepo.TagRef) error {
 		}
 		summary := shedadapters.ReviewRounds(names)
 		if archivedFrom, archived := shedadapters.ArchivedRunDirSegment(subdir); archived {
-			archivedRounds[archivedFrom] += summary.Rounds
+			if segment, counted := currentReviewSegment(archivedFrom); counted {
+				archivedRounds[segment] += summary.Rounds
+			}
 			continue
 		}
-		if held := row.Segments[subdir]; held != nil {
+		segment, counted := currentReviewSegment(subdir)
+		if !counted {
+			continue
+		}
+		if held := row.Segments[segment]; held != nil {
 			held.Rounds += summary.Rounds
 			continue
 		}
-		row.Segments[subdir] = &SegmentRounds{Rounds: summary.Rounds, Outcome: summary.Outcome}
+		row.Segments[segment] = &SegmentRounds{Rounds: summary.Rounds, Outcome: summary.Outcome}
 	}
 	for segment, rounds := range archivedRounds {
 		if row.Segments[segment] == nil {

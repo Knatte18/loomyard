@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -50,7 +49,7 @@ func resetDepsFor(loc *lymcwd.Location) (weaverengine.ResetDeps, error) {
 	}
 	planRel = filepath.ToSlash(planRel)
 	recordRels := []string{weaverengine.DirRel(), planRel}
-	scoped := fabriclayout.ScopedPathspec(loc.AnchorRel, recordRels)
+	scoped := fabricengine.ScopedPathspec(loc.AnchorRel, recordRels)
 
 	return weaverengine.ResetDeps{
 		Geom:   geom,

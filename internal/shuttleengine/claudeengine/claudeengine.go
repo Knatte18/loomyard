@@ -8,6 +8,7 @@ package claudeengine
 
 import (
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -134,12 +135,9 @@ func validateSessionID(id string) error {
 // A spec that names skills carries the skill-load message on the launch line instead and returns the pointer as Launch.PromptLine, for shuttle to send after the skills load.
 // A spec that sets SkipSkillLoadTurn keeps the pointer on the launch line, whatever skills it names.
 // It returns no Launch.PromptLine.
-// It loads claude.yaml and the hub's gate.refuse_raw list, which the run's shell guard installs.
-// A gate key the launch does not read never refuses it.
-// It then validates spec.Effort, spec.Model, spec.PermissionMode and spec.ResumeSessionID before writing any artifacts.
-// It validates the prompt-cache TTL config, the keep-warm caps and the batching nudge before then too.
+// It loads claude.yaml and the hub's gate config, whose refuse_raw list the run's shell guard installs and whose failure to load refuses the spawn, then validates spec.Effort, spec.Model, spec.PermissionMode, spec.ResumeSessionID, the prompt-cache TTL config, the keep-warm caps and the batching nudge before writing any artifacts.
 // With the batching nudge on it also seeds the nudge's state file beside the settings.
-// The settings carry the session's scope, resolved from claude.session_scope, spec.Skills and spec.Role.
+// The settings carry the session's scope, resolved from claude.yaml's session_scope, spec.Skills and spec.Role.
 // A spec with no effort takes the one cfg.Agents gives spec.ConfigRole on spec.Model.
 // The settings set the effort a subagent of the role falls back to,
 // and the appended system prompt tells the session the effort and skills to give each subagent it spawns.
@@ -159,12 +157,12 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 		return shuttleengine.Launch{}, err
 	}
 
-	// The refuse list lives in the hub's gate config; an absent file means the hub refuses nothing.
-	refuseRaw, err := gateslot.LoadRefuseRaw(c.dirs)
-	if err != nil {
+	// The refuse list lives in the hub's gate config; an absent file means the hub refuses nothing, and any other load failure refuses the spawn.
+	gate, err := gateslot.LoadConfig(c.dirs)
+	if err != nil && !errors.Is(err, gateslot.ErrConfigAbsent) {
 		return shuttleengine.Launch{}, fmt.Errorf("claudeengine: %w", err)
 	}
-	cfg.RefuseRaw = refuseRaw
+	cfg.RefuseRaw = gate.RefuseRaw
 
 	// A spec whose model-spec names no effort takes the one agents.yaml gives its role and model.
 	spec.Effort = effortFor(cfg.Agents, spec.ConfigRole, spec.Effort, spec.Model)
@@ -266,7 +264,7 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 
 	scope := c.sessionScopeFor(claude.SessionScope, spec.Skills, spec.Role, launched.ConfigDir)
 	scope.Env = subagentEffortEnv(cfg.Agents, spec.ConfigRole)
-	settingsJSON, err := buildSettings(eventsPathForHook, spec.Interactive, cfg, claude, spec.ForkSubagents, spec.DenyPublish, spec.AllowRawTmux, spec.ContextAfterCompaction, spec.TurnHookCommand, creelFlagDirForHook, spec.Advisor, lymPath, scope)
+	settingsJSON, err := buildSettings(eventsPathForHook, spec.Interactive, cfg, claude, spec.ForkSubagents, spec.DenyPublish, spec.ContextAfterCompaction, spec.TurnHookCommand, creelFlagDirForHook, spec.Advisor, lymPath, scope)
 	if err != nil {
 		return shuttleengine.Launch{}, fmt.Errorf("build settings: %w", err)
 	}
@@ -300,7 +298,7 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 	if err != nil {
 		return shuttleengine.Launch{}, fmt.Errorf("resolve append system prompt path: %w", err)
 	}
-	notice := buildDenyNotice(spec.Interactive, cfg, claude, spec.ForkSubagents, spec.DenyPublish, spec.AllowRawTmux)
+	notice := buildDenyNotice(spec.Interactive, cfg, claude, spec.ForkSubagents, spec.DenyPublish)
 	// The told Board dir is the hub's Bolt checkout, empty outside a hub.
 	standing := shuttleengine.StandingPassages(c.dirs.Board, "claude", spec.Role)
 	var passages []string

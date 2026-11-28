@@ -18,7 +18,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/desktoplauncher"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubregistry"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -223,7 +222,7 @@ func runStart(out io.Writer, d deps, shortname string) int {
 // A pull that fails or skips is a warning, and the local board's owners are read.
 func (s startSession) startHub(entry hubregistry.Entry) startHub {
 	hub := startHub{Shortname: entry.Shortname, Hub: entry.HubPath, Worktrees: []startWorktree{}}
-	boardDir := fabriclayout.BoardDir(entry.HubPath)
+	boardDir := fabricengine.BoardDir(entry.HubPath)
 	if skip, detail, err := s.d.pull(boardDir); err != nil {
 		hub.Warnings = append(hub.Warnings, fmt.Sprintf("the board did not pull, so the local board's owners are read: %v", err))
 	} else if skip != "" {

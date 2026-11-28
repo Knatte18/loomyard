@@ -9,9 +9,9 @@ package fabricengine
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"sort"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/logger"
 )
@@ -25,9 +25,8 @@ type mergeSources struct {
 
 // resolveMergeSources resolves the SHA each side of f merges, applying the freshness rule independently per side.
 // The warp side resolves source itself.
-// The weft side resolves RecordsBranchName(source), the sole "-weft" composition (branchname.go).
-// It first reads the records store's origin layout, and a layout it cannot read is the returned error:
-// a records store that lost its fetch refspecs fetches no tracking ref, so its weft SHA would come from stale ones.
+// The weft side resolves the records branch of source.
+// That is the paired "-weft" branch, or source itself in a one-repository hub.
 // Both sides run a best-effort Fetch first; a fetch failure is logged via logger.Warn and is never fatal.
 // Each side then resolves its local branch and its origin/<branch> remote-tracking ref via gitrepo.ResolveSHA.
 // A warp source resolvable on neither local nor remote appends mergeReasonSourceNotFound.
@@ -43,12 +42,9 @@ type mergeSources struct {
 // Every reason is collected rather than returned early, so each guard runs regardless of an earlier failure.
 // newMergeGuardError deduplicates, so a source missing on both sides reports one mergeReasonSourceNotFound.
 // It does not disclose that both sides were checked.
-func resolveMergeSources(f *Fabric, source string) (mergeSources, []string, error) {
-	if _, err := originNamespaceAt(f.weftPath); err != nil {
-		return mergeSources{}, nil, err
-	}
+func resolveMergeSources(f *Fabric, source string) (mergeSources, []string) {
 	var reasons []string
-	weftBranch := fabriclayout.RecordsBranchName(source)
+	weftBranch := recordsBranchAt(f.warpPath, source)
 
 	if err := f.code.Fetch(); err != nil {
 		logger.Warn("fabricengine: best-effort fetch before merge source resolution failed", "side", "warp", "error", err)
@@ -67,7 +63,7 @@ func resolveMergeSources(f *Fabric, source string) (mergeSources, []string, erro
 	weftRemoteSHA, weftRemoteErr := f.records.ResolveSHA("origin/" + weftBranch)
 	weftSHA, _ := pickMergeSourceSHA(f.records, weftLocalSHA, weftLocalErr == nil, weftRemoteSHA, weftRemoteErr == nil)
 
-	return mergeSources{warpSHA: warpSHA, weftSHA: weftSHA}, reasons, nil
+	return mergeSources{warpSHA: warpSHA, weftSHA: weftSHA}, reasons
 }
 
 // pickMergeSourceSHA implements the freshness rule for one side.
@@ -105,10 +101,18 @@ func pickMergeSourceSHA(repo *gitrepo.Repo, localSHA string, localFound bool, re
 // It is not a merge participant, so its dirtiness cannot affect a warp-only merge's correctness.
 // Checking it could only refuse a merge that would have been right.
 // The returned paths are the checkout's worktree-relative, sorted tracked dirty paths, so a guard error can carry them.
+// In a one-repository worktree the records paths of HEAD are left out, because the merge commits them first.
 func pairDirtyReason(f *Fabric) ([]string, []string, error) {
 	paths, err := codeDirtyPaths(f)
 	if err != nil {
 		return nil, nil, fmt.Errorf("fabricengine: check checkout dirtiness: %w", err)
+	}
+	if oneRepositoryAt(f.warpPath) {
+		recordsPaths, err := RecordsPathsAt(f.warpPath, "HEAD")
+		if err != nil {
+			return nil, nil, fmt.Errorf("fabricengine: read the records paths of the checkout: %w", err)
+		}
+		paths = slices.DeleteFunc(paths, func(path string) bool { return underRecordsPath(path, recordsPaths) })
 	}
 
 	if len(paths) > 0 {
@@ -206,6 +210,18 @@ func syncedToUpstreamReason(f *Fabric) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	if warpNotSynced && oneRepositoryAt(f.warpPath) {
+		// A diverged one-repository branch whose local commits are all records-only is leveled by the sync step.
+		upstreamSHA, _, err := upstreamSHAAt(f.warpPath)
+		if err != nil {
+			return nil, err
+		}
+		codeCommits, err := unpushedCodeCommits(f.warpPath, upstreamSHA)
+		if err != nil {
+			return nil, err
+		}
+		warpNotSynced = len(codeCommits) > 0
+	}
 	if warpNotSynced {
 		return []string{mergeReasonNotSynced}, nil
 	}
@@ -276,21 +292,25 @@ func concludeLandedReason(f *Fabric, st *mergeState) ([]string, error) {
 	return nil, nil
 }
 
-// recordedMergeGoneReason reports mergeReasonRecordedMergeGone when the warp side has lost its recorded merge.
-// The weft is not a merge participant, so only the warp side is evaluated.
-// Concluding the warp side runs git commit, which commits whatever MERGE_HEAD names.
+// recordedMergeGoneReason reports mergeReasonRecordedMergeGone when either side has lost its recorded merge.
+// Concluding a side runs git commit, which commits whatever MERGE_HEAD names.
 // An operator may legitimately discard the staged merge and start a different one before the continue.
 // Plain git in the warp checkout is allowed to do that.
 // Without this check, that different merge would be committed and recorded as this merge's conclude SHA.
 // It would be reported as a merge_committed mutation, paired in the correspondence index, and erased with the record.
 // The result is a silent false success that leaves the merge source un-merged with nothing left to inspect.
+// Both sides are evaluated first, so the single reason never reveals which side lost its merge.
 func recordedMergeGoneReason(f *Fabric, st *mergeState) ([]string, error) {
 	warpGone, err := sideRecordedMergeGone(f.code, f.warpPath, st.WarpCommitted, st.WarpOutcome, st.WarpSource, st.Squash)
 	if err != nil {
 		return nil, err
 	}
+	weftGone, err := sideRecordedMergeGone(f.records, f.weftPath, st.WeftCommitted, st.WeftOutcome, st.WeftSource, st.Squash)
+	if err != nil {
+		return nil, err
+	}
 
-	if warpGone {
+	if warpGone || weftGone {
 		return []string{mergeReasonRecordedMergeGone}, nil
 	}
 	return nil, nil
@@ -301,8 +321,8 @@ func recordedMergeGoneReason(f *Fabric, st *mergeState) ([]string, error) {
 // Only those get a commit from git commit.
 // A side with a fast-forwarded or up-to-date outcome is never refused, since it gets no commit.
 //
-// A squash merge is never refused.
-// A squash writes no MERGE_HEAD, so there is no evidence to compare.
+// A squash merge and a record with no source SHA are never refused.
+// A squash writes no MERGE_HEAD, and an old record stores no source, so there is no evidence to compare.
 // That residual case is left open rather than refused.
 //
 // The source must be the only entry in MERGE_HEAD, not merely one of its entries.
@@ -326,7 +346,7 @@ func sideRecordedMergeGone(repo *gitrepo.Repo, checkoutPath, committed, outcome,
 	if outcome != mergeOutcomeStaged && outcome != mergeOutcomeConflicted {
 		return false, nil
 	}
-	if squash {
+	if squash || sourceSHA == "" {
 		return false, nil
 	}
 

@@ -27,8 +27,7 @@ var parentReviewNow = time.Date(2026, 11, 11, 12, 0, 0, 0, time.UTC)
 const parentReviewParent = "ly:orch"
 
 // parentReviewFixture records asks into a fresh run's files and returns deps over them.
-// The parent resolves to parentReviewParent, the run's beam chain holds it alone,
-// and the caller is the operator's unnamed shell until the test sets them.
+// The parent resolves to parentReviewParent and the caller is the operator's unnamed shell until the test sets them.
 func parentReviewFixture(t *testing.T, asks ...burlerengine.ParentAsk) parentReviewDeps {
 	t.Helper()
 	files := burlerengine.ParentReviewFilesOf(t.TempDir())
@@ -38,10 +37,9 @@ func parentReviewFixture(t *testing.T, asks ...burlerengine.ParentAsk) parentRev
 		}
 	}
 	return parentReviewDeps{
-		parent:    func() (hubgeom.Parent, error) { return hubgeom.Parent{Name: parentReviewParent}, nil },
-		orchChain: func() ([]hubgeom.Parent, error) { return []hubgeom.Parent{{Name: parentReviewParent}}, nil },
-		files:     files,
-		now:       func() time.Time { return parentReviewNow },
+		parent: func() (hubgeom.Parent, error) { return hubgeom.Parent{Name: parentReviewParent}, nil },
+		files:  files,
+		now:    func() time.Time { return parentReviewNow },
 	}
 }
 
@@ -55,7 +53,7 @@ func openParentAsk(d time.Duration) burlerengine.ParentAsk {
 func TestParentReviewAnswerVerb(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
-	const decisionWay = `"lym loom decision add task-a --by parent", run by the run's parent orch ly:orch; once the task's scope is closed, as from Code-Review on, file it instead as a board note`
+	const decisionWay = `"lym loom decision add task-a --by parent", run by the run's parent orch ly:orch`
 	tests := []struct {
 		name string
 		asks []burlerengine.ParentAsk
@@ -93,18 +91,6 @@ func TestParentReviewAnswerVerb(t *testing.T) {
 			asks:       []burlerengine.ParentAsk{openParentAsk(time.Minute)},
 			input:      parentAnswerInput{ask: 1, satisfied: true},
 			setup:      func(d *parentReviewDeps) { d.strandName = parentReviewParent },
-			wantStates: []burlerengine.ParentAskState{burlerengine.ParentAskDone},
-		},
-		{
-			name:  "a beam's orch on the run's chain answers an ask that went to the prime's orch",
-			asks:  []burlerengine.ParentAsk{openParentAsk(time.Minute)},
-			input: parentAnswerInput{ask: 1, satisfied: true},
-			setup: func(d *parentReviewDeps) {
-				d.strandName = "ly:beam-b:orch"
-				d.orchChain = func() ([]hubgeom.Parent, error) {
-					return []hubgeom.Parent{{Name: "ly:beam-b:orch", Worktree: "beam-b"}, {Name: parentReviewParent}}, nil
-				}
-			},
 			wantStates: []burlerengine.ParentAskState{burlerengine.ParentAskDone},
 		},
 		{
@@ -157,7 +143,7 @@ func TestParentReviewAnswerVerb(t *testing.T) {
 			input: parentAnswerInput{ask: 1, satisfied: true},
 			setup: func(d *parentReviewDeps) {
 				d.strandName = "ly:task-a:darn"
-				d.orchChain = func() ([]hubgeom.Parent, error) { return nil, errors.New("origin record unreadable") }
+				d.parent = func() (hubgeom.Parent, error) { return hubgeom.Parent{}, errors.New("no orch is live") }
 			},
 			want:       []string{`"ly:task-a:darn"`, "could not be resolved", parentReviewWayParentAnswers},
 			wantStates: []burlerengine.ParentAskState{burlerengine.ParentAskOpen},
@@ -204,14 +190,6 @@ func TestParentReviewAnswerVerb(t *testing.T) {
 			input:      parentAnswerInput{ask: 1, satisfied: true},
 			want:       []string{"reached its deadline at 2026-11-11T12:00:00Z", "now timeout", decisionWay},
 			wantStates: []burlerengine.ParentAskState{burlerengine.ParentAskTimeout},
-		},
-		{
-			name:       "an undelivered ask is refused with no exception for an ask the session never reached",
-			asks:       []burlerengine.ParentAsk{{State: burlerengine.ParentAskUndelivered, Strand: "ly:orch-asked", Deadline: parentReviewNow}},
-			input:      parentAnswerInput{ask: 1, satisfied: true},
-			setup:      func(d *parentReviewDeps) { d.strandName = parentReviewParent },
-			want:       []string{"already undelivered", decisionWay},
-			wantStates: []burlerengine.ParentAskState{burlerengine.ParentAskUndelivered},
 		},
 	}
 	for _, tt := range tests {
@@ -276,7 +254,7 @@ func TestParentReviewAnswerVerb(t *testing.T) {
 }
 
 // TestParentReviewAwaitVerb verifies the await answers ready once the latest ask has ended or reaches its deadline.
-// The answer names the state, a not-sent or undelivered ask's reason and a done ask's report.
+// The answer names the state, a not-sent ask's reason and a done ask's report.
 // The await answers not ready once its cap runs out first.
 func TestParentReviewAwaitVerb(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -309,15 +287,9 @@ func TestParentReviewAwaitVerb(t *testing.T) {
 		},
 		{
 			name:     "a not-sent ask answers ready with its reason",
-			asks:     []burlerengine.ParentAsk{{State: burlerengine.ParentAskNotSent, Reason: "raise review.timeout_min"}},
+			asks:     []burlerengine.ParentAsk{{State: burlerengine.ParentAskNotSent, Reason: "raise review_timeout_min"}},
 			awaitCap: time.Minute,
-			want:     map[string]any{"ready": true, "ask": float64(1), "state": "not-sent", "reason": "raise review.timeout_min"},
-		},
-		{
-			name:     "an undelivered ask answers ready with its reason",
-			asks:     []burlerengine.ParentAsk{{State: burlerengine.ParentAskUndelivered, Reason: "the request was not delivered: refused"}},
-			awaitCap: time.Minute,
-			want:     map[string]any{"ready": true, "ask": float64(1), "state": "undelivered", "reason": "the request was not delivered: refused"},
+			want:     map[string]any{"ready": true, "ask": float64(1), "state": "not-sent", "reason": "raise review_timeout_min"},
 		},
 		{
 			name:      "the deadline reached during the wait sets the ask timeout and answers ready",
