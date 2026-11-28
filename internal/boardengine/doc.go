@@ -777,6 +777,12 @@
 // A display status stays on the detached sync.
 // Read methods (Get/List) bypass the lock and load directly from disk, persisting nothing.
 //
+// Board.Expecting gives a copy of the board whose write section checks one entry's revision under the write lock.
+// The check reads the entries as loaded and migrated, before the mutation.
+// It refuses with a *StaleEntryError when the expected entry was removed or changed.
+// It also refuses a write that expects no entry of the slug and finds one.
+// A refused write saves, renders and syncs nothing.
+//
 // The detached sync path talks to git through fabricengine.Bolt, never hand-rolled gitexec calls.
 // It runs under the board write and push locks, which sit in the board checkout's never-tracked lock directory.
 // The swap lock that fences readers of board.json sits there too,

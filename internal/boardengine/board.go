@@ -31,6 +31,8 @@ type Board struct {
 	validateSlug func(slug string) error
 	// strandName is the writing session's agent name, which the write's task-creation check judges.
 	strandName string
+	// expected is the entry state a write requires, nil when it requires none.
+	expected *expectation
 }
 
 // New returns a Board that runs with cfg, and uses the wall clock when cfg.Clock is nil.
@@ -76,6 +78,7 @@ func migrateLoaded(store *Store) {
 // boardCriticalSection runs the locked write scaffolding shared by every mutating Board method.
 // It takes the write lock and loads the store.
 // It migrates a board that has not been marked draft and every task left discussed.
+// It refuses a board that expects another state of an entry than it finds.
 // It then calls fn to mutate the store, and it gives a new task the draft status except a promoted raddle task.
 // It stamps the entry dates and assigns the handles the mutation left missing or of another letter;
 // it refuses a net change to a run-held entry's scope and a run agent's new task.
@@ -121,6 +124,9 @@ func (b *Board) boardCriticalSection(fn func(store *Store) (any, error), afterSa
 
 	// Migrated before fn mutates, so a write that releases a task to an empty status is not re-drafted by the migration.
 	migrateLoaded(store)
+	if err := b.checkExpected(store); err != nil {
+		return nil, err
+	}
 	loaded := cloneTasks(store.Tasks())
 	// Read before fn mutates, so the slug rule judges the raddle store as it stood before the write.
 	raddleStore, raddleStoreErr := ReadRaddleStore(b.boardPath)
