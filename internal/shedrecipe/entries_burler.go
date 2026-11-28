@@ -50,11 +50,13 @@ func burlerRowTimeout(timeoutS int, env Env) time.Duration {
 
 // reviewTargetSnapshot returns the target snapshot a review segment's rows read the review target through.
 // Its scope and paths are unset.
+// Its overlay target paths resolve against the anchor path, the root the round's reviewers and fixer read them under.
+// The id therefore hashes the files those agents edit, on a hub anchored to a subpath too.
 // Its overlay copies live in the anchor's `.lym`, one directory per run_subdir.
 // Its source reads come from the Env tree closures.
 func reviewTargetSnapshot(env Env, runSubdir string) shedadapters.TargetSnapshot {
 	return shedadapters.TargetSnapshot{
-		WorktreeRoot:  env.WorktreeRoot,
+		WorktreeRoot:  env.AnchorPath,
 		CacheDir:      filepath.Join(env.AnchorPath, lymdirs.DotLymDirName, lymdirs.ReviewSnapshotDirName, runSubdir),
 		SourceTreeID:  env.ReviewTreeID,
 		SourceChanges: env.ReviewTreeChanges,

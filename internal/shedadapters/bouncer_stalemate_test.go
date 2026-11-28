@@ -168,6 +168,7 @@ func TestBouncer_Stalemate(t *testing.T) {
 		{name: "ConvergedVerdictOnAnUnchangedRoundConverges", stalemateRounds: 2, earlier: unchanged, lastTarget: "T0", tree: "T0", verdict: "CONVERGED", want: shedengine.Done},
 		{name: "RoundWithNoRecordCountsAsChanged", stalemateRounds: 2, earlier: []stalemateRound{{noRecord: true}}, lastTarget: "T0", tree: "T0", want: shedengine.Stuck},
 		{name: "RoundWithNoPostFixIdCountsAsChanged", stalemateRounds: 2, earlier: []stalemateRound{{target: "T0"}}, lastTarget: "T0", tree: "T0", want: shedengine.Stuck},
+		{name: "RoundWithNoTargetIdCountsAsChanged", stalemateRounds: 2, earlier: []stalemateRound{{target: "", post: ""}}, lastTarget: "T0", tree: "T0", want: shedengine.Stuck},
 		{name: "SkippedFixerCountsAsChanged", stalemateRounds: 2, earlier: []stalemateRound{{target: "T0", post: "T0", report: stalemateEngineReport}}, lastTarget: "T0", tree: "T0", want: shedengine.Stuck},
 		{name: "ReportMissingADispositionCountsAsChanged", stalemateRounds: 2, earlier: []stalemateRound{{target: "T0", post: "T0", report: stalemateIncompleteReport}}, lastTarget: "T0", tree: "T0", want: shedengine.Stuck},
 		{name: "UnparseableReportCountsAsChanged", stalemateRounds: 2, earlier: []stalemateRound{{target: "T0", post: "T0", report: "not a report"}}, lastTarget: "T0", tree: "T0", want: shedengine.Stuck},

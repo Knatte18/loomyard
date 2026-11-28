@@ -242,16 +242,17 @@ func TestBurlerReviewEntry_ProfileMapping(t *testing.T) {
 		}
 	})
 
+	// The target sits under the anchor alone, as on a hub anchored to a subpath of its worktree.
 	t.Run("OverlayTargetRecordsTheRoundSnapshot", func(t *testing.T) {
 		env := newTestEnv(t)
-		if err := os.WriteFile(filepath.Join(env.WorktreeRoot, "target.md"), []byte("one\n"), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(env.AnchorPath, "target.md"), []byte("one\n"), 0o644); err != nil {
 			t.Fatalf("write the target: %v", err)
 		}
 		const entry = "### Added after Discussion (parent, 2026-11-17): First call\n\nDecision: cache per run.\n"
 		if err := os.WriteFile(env.DecisionRecordPath, []byte("# Record\n\n## Decisions\n\n"+entry), 0o644); err != nil {
 			t.Fatalf("write the decision record: %v", err)
 		}
-		overlay := shedadapters.TargetSnapshot{Scope: burlerengine.FixScopeOverlay, WorktreeRoot: env.WorktreeRoot, Paths: []string{"target.md"}}
+		overlay := shedadapters.TargetSnapshot{Scope: burlerengine.FixScopeOverlay, WorktreeRoot: env.AnchorPath, Paths: []string{"target.md"}}
 		wantID, err := overlay.ID()
 		if err != nil {
 			t.Fatalf("ID() error = %v; want nil", err)

@@ -62,7 +62,7 @@ type RoundContext struct {
 	// AddedTexts holds their texts in the same order.
 	AddedTitles []string
 	AddedTexts  []string
-	// HasChanges is true when the round holds a changes file; Changed then lists its worktree-relative paths.
+	// HasChanges is true when the round holds a changes file; Changed then lists its paths.
 	HasChanges bool
 	Changed    []string
 	// AmendingTexts holds the full text, heading included, of every decision record entry pending as a plan amendment.

@@ -29,7 +29,7 @@ type TargetSnapshot struct {
 	Scope burlerengine.FixScope
 	// WorktreeRoot is the absolute root the overlay target paths are relative to.
 	WorktreeRoot string
-	// Paths are the worktree-relative target paths, files or directories.
+	// Paths are the target paths relative to WorktreeRoot, files or directories.
 	Paths []string
 	// CacheDir is the absolute directory holding one overlay copy per id.
 	CacheDir string
@@ -42,6 +42,7 @@ type TargetSnapshot struct {
 // ID returns the id of the target as it stands now.
 // Overlay scope returns the hex SHA-256 over every target file's path and bytes, in path order;
 // a target path that does not exist is skipped.
+// An overlay target with no file at all is an error, since an id over empty input would name every such target alike.
 // Source scope returns the checkout's tree id.
 func (s TargetSnapshot) ID() (string, error) {
 	switch s.Scope {
@@ -109,6 +110,9 @@ func (s TargetSnapshot) overlayID() (string, error) {
 	files, err := listTargetFiles(s.WorktreeRoot, s.Paths)
 	if err != nil {
 		return "", err
+	}
+	if len(files) == 0 {
+		return "", fmt.Errorf("shedadapters: no overlay target file exists under %q for the paths %q", s.WorktreeRoot, s.Paths)
 	}
 	hash := sha256.New()
 	for _, rel := range files {

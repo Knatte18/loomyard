@@ -63,6 +63,8 @@ func TestBouncer_FixVerification(t *testing.T) {
 		onDisk string
 		// unchangedTarget records round 2's target as the same before and after its fix.
 		unchangedTarget bool
+		// noTargetIDs writes round 2's snapshot record with no target id from before or after its fix.
+		noTargetIDs bool
 		// decision adds a decision-class finding to the review and sets EscalateDecisions.
 		decision bool
 		// extra adds findings to the review beside the BLOCKING F1.
@@ -117,6 +119,8 @@ func TestBouncer_FixVerification(t *testing.T) {
 			wantOutcome: shedengine.Awaiting, wantCause: EscalationBudget, wantDetail: "BLOCKING findings open (hard)"},
 		{name: "AFixThatLeftTheTargetUnchangedIsNotVerified", fixerReport: fixedF1Report, verification: closedHard, unchangedTarget: true,
 			wantOutcome: shedengine.Awaiting, wantCause: EscalationBudget, wantDetail: "BLOCKING findings open (hard)"},
+		{name: "ARecordWithNoTargetIdsIsVerified", fixerReport: fixedF1Report, verification: closedHard, noTargetIDs: true,
+			wantOutcome: shedengine.Done, wantVerifierRuns: 1, wantResolved: true},
 		{name: "AConfirmedFixLeavesADecisionFindingToTheDecisionEscalation", fixerReport: fixedF1Report, verification: closedHard, decision: true,
 			wantOutcome: shedengine.Awaiting, wantCause: EscalationDecision, wantVerifierRuns: 1, wantResolved: true},
 	}
@@ -171,6 +175,11 @@ func TestBouncer_FixVerification(t *testing.T) {
 			}
 			if tt.unchangedTarget {
 				if err := updateRoundSnapshot(cfg.RunDir, 2, func(rec *roundSnapshot, _ bool) { rec.TargetID, rec.PostFixTargetID = "tree-1", "tree-1" }); err != nil {
+					t.Fatalf("updateRoundSnapshot() = %v; want nil", err)
+				}
+			}
+			if tt.noTargetIDs {
+				if err := updateRoundSnapshot(cfg.RunDir, 2, func(*roundSnapshot, bool) {}); err != nil {
 					t.Fatalf("updateRoundSnapshot() = %v; want nil", err)
 				}
 			}

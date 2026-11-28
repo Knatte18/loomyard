@@ -84,6 +84,18 @@ func TestTargetSnapshot(t *testing.T) {
 		}
 	})
 
+	t.Run("an overlay target with no file is an error", func(t *testing.T) {
+		t.Parallel()
+		s := newOverlaySnapshot(t, "gone.txt", "missing")
+
+		if id, err := s.ID(); err == nil {
+			t.Errorf("ID() = %q, nil; want an error", id)
+		}
+		if id, err := s.Take(); err == nil {
+			t.Errorf("Take() = %q, nil; want an error", id)
+		}
+	})
+
 	t.Run("an overlay change list holds an edited, an added and a removed file", func(t *testing.T) {
 		t.Parallel()
 		s := newOverlaySnapshot(t)

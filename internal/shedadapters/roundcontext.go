@@ -21,7 +21,7 @@ import (
 )
 
 // roundChangesPath returns the path of round n's changes file inside runDir.
-// The file lists the worktree-relative target paths changed since the round before's snapshot, one per line.
+// The file lists the target paths changed since the round before's snapshot, one per line.
 func roundChangesPath(runDir string, n int) string {
 	return filepath.Join(runDir, fmt.Sprintf("round-%d-changes.md", n))
 }
