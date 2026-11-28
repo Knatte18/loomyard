@@ -300,7 +300,8 @@ func HandOver(prime *lymcwd.Location, slug string, entry shedengine.Takeover, pu
 // It pushes only commits origin lacks, never force-pushes and writes no board.
 // A failed push or hand-over step returns an error naming the run and the step.
 // Nothing is archived before a failed push.
-// Of push it reads only BackoffSleep and Notifier, which serve every push and notice of the hand-over.
+// Of push it reads only BackoffSleep, which serves the pushes of the owed commits,
+// and Notifier, which serves their failed-push notices and the hand-over notice.
 func HandOverOwnedElsewhere(prime *lymcwd.Location, slug, owner string, push RunPush) error {
 	seams := RunPush{BackoffSleep: push.BackoffSleep, Notifier: push.Notifier}
 	origin, _, err := fabricengine.OriginBattenStatus(prime, slug)
