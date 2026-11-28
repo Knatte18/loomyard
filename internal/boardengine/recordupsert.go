@@ -26,7 +26,7 @@ import (
 // The write stamps the entry's record_body_sha256 with the sha256 of the body it leaves.
 // When the write fails after the record file was written, the entry's former record is written back.
 func (b *Board) UpsertTaskWithRecord(fields map[string]any, record []byte, weftLive func(slug string) (bool, error)) (Task, []Sibling, error) {
-	if isRunAgentSession(b.strandName) {
+	if IsRunAgentSession(b.strandName) {
 		return Task{}, nil, fmt.Errorf("the run session %s cannot replace a stored decision record: the run reads its own record, never the board's; "+
 			"way forward: change the record on the run with `lym loom decision replace <slug>`, or ask the operator or an orch to run the upsert", b.strandName)
 	}

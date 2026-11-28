@@ -403,7 +403,7 @@ Example:
 
 	rerenderCmd := &cobra.Command{
 		Use:         "rerender",
-		Short:       "rebuild the README and design docs from board.json",
+		Short:       "rebuild the board's rendered files from board.json",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceInternal},
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if err := b.Rerender(); err != nil {
@@ -488,8 +488,46 @@ Example:
 		}),
 	}
 
+	openCmd := &cobra.Command{
+		Use:         "open",
+		Short:       "open the board page in the default browser, starting the hub's board server when none runs",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
+		Long: `Open the hub's board page, which filters, edits and live-refreshes the board, in the default browser.
+Starts the hub's board server when none runs; a later open reuses it, and it exits by itself when unused.
+The browser is handed a launcher file that carries the server's token, so the token is on no command line.
+Refused for a run's agent session and under --board-path. Takes no payload.
+
+Output:
+  {"ok":true,"address":"http://127.0.0.1:<port>/","launcher":"<path>","started":true}
+
+Example:
+  lym board open`,
+		Args: cobra.NoArgs,
+		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
+			if err := checkViewerVerb("open", location); err != nil {
+				return outputError(out, err.Error())
+			}
+			return openBoardPage(out, location)
+		}),
+	}
+
+	serveCmd := &cobra.Command{
+		Use:         "serve",
+		Short:       "internal: serve the board page on a loopback port, as the hub's one board server",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceInternal},
+		Args:        cobra.NoArgs,
+		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
+			if err := checkViewerVerb("serve", location); err != nil {
+				return outputError(out, err.Error())
+			}
+			return serveBoardPage(out, location, config)
+		}),
+	}
+
 	cmd.AddCommand(storeVerbs(board, profiles, recordsBranchLive)...)
 	cmd.AddCommand(
+		openCmd,
+		serveCmd,
 		labelsCmd,
 		profilesCmd,
 		promoteCmd,

@@ -5,8 +5,15 @@
 //   - From `storeVerbs`:
 //     `upsert`, `upsert-batch`, `set-status`, `remove`, `get`, `list`, `list-full`, `merge` and `set-deps`.
 //   - `promote`, `raddle`, `rename`, `prune`, `find`, `labels`, `profiles` and `retire-legacy` are built in `Command`.
-//     The `rerender` and `sync` maintenance verbs are built there too.
+//     The `rerender` and `sync` maintenance verbs are built there too, as are `open` and `serve`.
 //   - `intake` (list, import, close) comes from `intakeCommand`.
+//
+// `open` and `serve` are the board page's verbs.
+// `serve`, internal, is the hub's one board server; its board carries no strand name, so its writes are the operator's.
+// `open`, the operator's, starts `serve` detached in the prime's anchored directory when none runs.
+// It waits for the server to answer, then hands the browser opener a launcher file.
+// Both refuse a run agent's session, and both refuse `--board-path`, since the server needs the hub's board config.
+// A caller with a strand name waits on the opener no longer than its role's keep-warm cap.
 //
 // `prune` and `retire-legacy` are read-only dry runs without `--apply`.
 // Each prints the fields an applied run prints, filled with what it would change, plus `"applied": false`;

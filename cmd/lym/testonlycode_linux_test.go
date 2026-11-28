@@ -47,10 +47,6 @@ var testSupportPackages = []scankit.Entry{
 // An entry may instead be temporary, for a function whose production caller is not written yet.
 // The reason of a temporary entry names that caller.
 var testOnlyCodeAllowed = []scankit.Entry{
-	{Key: "internal/boardengine.BoardRevision", Why: "temporary: no main reaches it until `lym board serve` is wired to the board server"},
-	{Key: "internal/boardengine.Board.View", Why: "temporary: no main reaches it until `lym board serve` is wired to the board server"},
-	{Key: "internal/boardengine.Board.Expecting", Why: "temporary: no main reaches it until `lym board serve` is wired to the board server"},
-	{Key: "internal/boardengine.ViewerPage", Why: "temporary: no main reaches it until `lym board serve` is wired to the board server"},
 	{Key: "internal/loomrecipe.RecipeEngines", Why: "oracle of internal/shedrecipe's coverage guard test"},
 	{Key: "internal/shedrecipe.Names", Why: "oracle of internal/shedbuild's engine test and internal/shedrecipe's coverage guard test"},
 	{Key: "internal/driftengine.UpdateScope", Why: "writes the scope record driftengine alone writes, for internal/driftcli's and internal/loomcli's tests"},

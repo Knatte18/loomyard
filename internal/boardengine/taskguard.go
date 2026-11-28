@@ -8,10 +8,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/agentname"
 )
 
-// isRunAgentSession reports whether strandName is a session of a run's agent.
-// Such a name carries a task slug under any role but the orch's;
-// an empty name, a slug-free name and an orch thread's name are not.
-func isRunAgentSession(strandName string) bool {
+// IsRunAgentSession reports whether strandName is a session of a run's agent.
+// Such a session is refused what only the operator or an orch may do.
+// Its name carries a task slug under any role but the orch's;
+// an empty name, a slug-free name and an orch thread's name are not a run agent's.
+func IsRunAgentSession(strandName string) bool {
 	name, err := agentname.Parse(strandName)
 	return err == nil && name.Slug != "" && !agentname.MatchesRole(name.Role, agentname.RoleOrch)
 }
@@ -22,7 +23,7 @@ func isRunAgentSession(strandName string) bool {
 // a note write and an edit of an existing task do not.
 // It returns the first refusal in after's order.
 func checkTaskCreation(strandName string, loaded, after []Task) error {
-	if !isRunAgentSession(strandName) {
+	if !IsRunAgentSession(strandName) {
 		return nil
 	}
 	wasTask := make(map[string]bool, len(loaded))
