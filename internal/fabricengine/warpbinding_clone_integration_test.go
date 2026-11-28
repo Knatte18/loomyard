@@ -468,6 +468,25 @@ func TestCloneHub_HubExistsCheckPrecedesProbeInTwoArgForm(t *testing.T) {
 	if !strings.Contains(err.Error(), "hub already exists") {
 		t.Errorf("CloneHub() error = %q; want it to contain %q", err.Error(), "hub already exists")
 	}
+	// The hub stands whole, so replacing it could lose work: the way forward moves it aside and names no --reset.
+	moved := firstRes.HubPath + ".old"
+	wantMove := "`mv " + firstRes.HubPath + " " + moved + " && git -C " + filepath.Join(moved, "precedes-warp-weft") +
+		" worktree repair " + filepath.Join(moved, fabriclayout.BoltDirName) + "`"
+	if strings.Contains(err.Error(), "--reset") || !strings.Contains(err.Error(), wantMove) {
+		t.Errorf("CloneHub() error = %q; want it to name %s and no --reset", err.Error(), wantMove)
+	}
+
+	// Without a committed anchor marker the hub is one a stopped clone left, holding no work.
+	records := filepath.Join(firstRes.HubPath, "precedes-warp-weft")
+	gitkit.Git(t, records, "rm", "-q", lymcwd.AnchorFileName)
+	gitkit.Git(t, records, "commit", "-q", "-m", "drop the anchor marker")
+	_, err = fabricengine.CloneHub(cloneParent, fabriclayout.CloneOptions{
+		WeftURL: filepath.ToSlash(weftBare),
+		WarpURL: warpURL,
+	})
+	if err == nil || !strings.Contains(err.Error(), "way forward: replace it with `lym fabric clone ") || !strings.Contains(err.Error(), "--reset") {
+		t.Errorf("CloneHub() over an unfinished hub error = %v; want the --reset clone named", err)
+	}
 
 	entries, err := os.ReadDir(cloneParent)
 	if err != nil {

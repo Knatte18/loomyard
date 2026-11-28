@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -23,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
+	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
 // The origin refs of a one-repository hub's records namespace.
@@ -284,6 +286,134 @@ func TestCloneOneURL_JoinsTheNamespacedHub(t *testing.T) {
 		}
 	})
 
+	t.Run("ResetOfAHubHoldingWorkOriginLacksIsRefusedAndKeepsTheHub", func(t *testing.T) {
+		t.Parallel()
+
+		tests := []struct {
+			name string
+			// leaveWork gives the hub work origin lacks and returns a text the refusal names it by.
+			leaveWork func(t *testing.T, h *hubforge.Hub) string
+		}{
+			{"Pair", func(t *testing.T, h *hubforge.Hub) string {
+				hubforge.AddPairWith(t, h, "kept", fabricengine.AddOptions{SkipPush: true})
+				return "the pair worktree " + fabricengine.WorktreePath(h.Location, "kept")
+			}},
+			{"UnpushedCodeCommit", func(t *testing.T, h *hubforge.Hub) string {
+				gitkit.CommitFile(t, h.PrimeWorktree(), "local.txt", "local\n", "a commit origin lacks")
+				return "1 commit(s) of " + h.PrimeWorktree() + " that origin lacks"
+			}},
+			{"CommitOnlyALocalTagHolds", func(t *testing.T, h *hubforge.Hub) string {
+				gitkit.CommitFile(t, h.PrimeWorktree(), "tagged.txt", "tagged\n", "a commit only a local tag holds")
+				gitkit.Git(t, h.PrimeWorktree(), "tag", fabriclayout.ArchiveTagPrefix+"old/tip")
+				gitkit.Git(t, h.PrimeWorktree(), "reset", "--hard", "HEAD~1")
+				return "1 commit(s) of " + h.PrimeWorktree() + " that origin lacks"
+			}},
+			{"CommitOnADetachedHead", func(t *testing.T, h *hubforge.Hub) string {
+				gitkit.Git(t, h.PrimeWorktree(), "checkout", "--detach")
+				gitkit.CommitFile(t, h.PrimeWorktree(), "detached.txt", "detached\n", "a commit on a detached HEAD")
+				return "1 commit(s) of " + h.PrimeWorktree() + " that origin lacks"
+			}},
+			{"UncommittedFileInThePrime", func(t *testing.T, h *hubforge.Hub) string {
+				gitkit.Git(t, h.PrimeWorktree(), "config", "status.showUntrackedFiles", "no")
+				if err := os.WriteFile(filepath.Join(h.PrimeWorktree(), "edit.txt"), []byte("edit\n"), 0o644); err != nil {
+					t.Fatalf("write an uncommitted file: %v", err)
+				}
+				return "uncommitted or untracked changes in " + h.PrimeWorktree()
+			}},
+			{"Stash", func(t *testing.T, h *hubforge.Hub) string {
+				if err := os.WriteFile(filepath.Join(h.PrimeWorktree(), "stashed.txt"), []byte("stashed\n"), 0o644); err != nil {
+					t.Fatalf("write a file to stash: %v", err)
+				}
+				gitkit.Git(t, h.PrimeWorktree(), "stash", "push", "--include-untracked")
+				return "a stash in " + h.PrimeWorktree()
+			}},
+			{"PendingTeardown", func(t *testing.T, h *hubforge.Hub) string {
+				record := fabriclayout.PendingTeardown{Slug: "gone", Kind: "remove", Worktree: h.PrimeWorktree(), Rerun: "lym fabric remove gone --remote"}
+				if err := fabricengine.WritePendingTeardownForTest(h.Path, record); err != nil {
+					t.Fatalf("write the pending teardown: %v", err)
+				}
+				return "the unfinished teardown of \"gone\" (run `lym fabric remove gone --remote` again"
+			}},
+			{"TeardownStillRunning", func(t *testing.T, h *hubforge.Hub) string {
+				record := fabriclayout.PendingTeardown{Slug: "running", Kind: "remove", Worktree: h.PrimeWorktree()}
+				if err := fabricengine.WritePendingTeardownForTest(h.Path, record); err != nil {
+					t.Fatalf("write the pending teardown: %v", err)
+				}
+				holdTeardownLock(t, h, "running")
+				return "the unfinished teardown of \"running\""
+			}},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+
+				h := hubforge.NewOneRepoHub(t, hubforge.OneRepoOptions{})
+				wantNamed := tt.leaveWork(t, h)
+
+				_, err := fabricengine.CloneHub(h.Container, fabriclayout.CloneOptions{
+					WeftURL:   filepath.ToSlash(h.CodeBare),
+					Reset:     true,
+					Shortname: hubforge.TestShortname,
+				})
+				if err == nil || !strings.Contains(err.Error(), "it holds work origin lacks: ") || !strings.Contains(err.Error(), wantNamed) {
+					t.Fatalf("CloneHub --reset over a hub holding work error = %v; want a refusal naming %q", err, wantNamed)
+				}
+				if !strings.Contains(err.Error(), "`mv "+h.Path+" "+h.Path+".old && git -C ") {
+					t.Errorf("CloneHub --reset error = %q; want the move that keeps the hub as its way forward", err.Error())
+				}
+				if _, statErr := os.Stat(filepath.Join(h.PrimeRecords(), lymcwd.AnchorFileName)); statErr != nil {
+					t.Errorf("the hub holding work lost its anchor marker: %v", statErr)
+				}
+			})
+		}
+	})
+
+	t.Run("ResetProceedsOverACommitOriginHoldsUnderATagAlone", func(t *testing.T) {
+		t.Parallel()
+
+		h := hubforge.NewOneRepoHub(t, hubforge.OneRepoOptions{})
+		gitkit.CommitFile(t, h.PrimeWorktree(), "released.txt", "released\n", "a commit origin holds under a tag")
+		gitkit.Git(t, h.PrimeWorktree(), "tag", "released")
+		gitkit.Git(t, h.PrimeWorktree(), "push", "origin", "refs/tags/released")
+		gitkit.Git(t, h.PrimeWorktree(), "reset", "--hard", "HEAD~1")
+
+		_, err := fabricengine.CloneHub(h.Container, fabriclayout.CloneOptions{
+			WeftURL:   filepath.ToSlash(h.CodeBare),
+			Reset:     true,
+			Shortname: hubforge.TestShortname,
+		})
+		if err != nil {
+			t.Errorf("CloneHub --reset error = %v; want the hub replaced, since origin holds the tagged commit", err)
+		}
+	})
+
+	t.Run("TheMoveAsideCommandKeepsTheHubsWorktreesWorking", func(t *testing.T) {
+		t.Parallel()
+
+		h := hubforge.NewOneRepoHub(t, hubforge.OneRepoOptions{})
+		hubforge.AddPairWith(t, h, "kept", fabricengine.AddOptions{SkipPush: true})
+
+		_, err := fabricengine.CloneHub(h.Container, fabriclayout.CloneOptions{WeftURL: filepath.ToSlash(h.CodeBare), Reset: true})
+		if err == nil {
+			t.Fatalf("CloneHub --reset over a hub holding a pair = nil error; want a refusal")
+		}
+		_, rest, found := strings.Cut(err.Error(), "move it aside with `")
+		command, _, closed := strings.Cut(rest, "`")
+		if !found || !closed {
+			t.Fatalf("CloneHub --reset error = %q; want a move-aside command", err)
+		}
+		if out, runErr := exec.Command("sh", "-c", command).CombinedOutput(); runErr != nil {
+			t.Fatalf("run %q: %v\n%s", command, runErr, out)
+		}
+
+		moved := h.Path + ".old"
+		// The hub's own teardown looks for it where it was made.
+		t.Cleanup(func() { _ = os.Rename(moved, h.Path) })
+		for _, worktree := range []string{h.PairCodeWorktree("kept"), h.PairRecordsSibling("kept"), fabriclayout.BoltDir(h.Path)} {
+			gitkit.Git(t, moved+strings.TrimPrefix(worktree, h.Path), "status", "--porcelain")
+		}
+	})
+
 	t.Run("ResetWithAMissingSubpathIsRefusedBeforeTheHubIsTouched", func(t *testing.T) {
 		t.Parallel()
 
@@ -505,6 +635,58 @@ func TestCloneSingleRepo_FailedSeedPushLeavesNothing(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("RefusedCredentialRemovesTheHubAndNamesTheCredentials", func(t *testing.T) {
+		tests := []struct {
+			name string
+			// refusedRef is the origin ref whose push meets the refusal.
+			refusedRef string
+		}{
+			{"RecordsPush", recordsRef},
+			{"BoardPushAfterTheRecordsPushLanded", namespaceBoardRef},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				bare := hubforge.CopyCodeBare(t, "")
+				refusal := filepath.Join(t.TempDir(), "refuse.sh")
+				container := t.TempDir()
+				fabricengine.SetSeedPushHookForTest(t, func(ref string) {
+					if ref != tt.refusedRef {
+						return
+					}
+					stores, err := filepath.Glob(filepath.Join(container, "*", "*"+weftname.Suffix))
+					if err != nil || len(stores) != 1 {
+						t.Fatalf("records stores under %s = (%v, %v); want one", container, stores, err)
+					}
+					// GitHub's answer to a push the credentials may not make, in the wording the gitrepo push tests record.
+					// Origin's HTTP front end refuses before any receive-pack runs, so git prints no rejection line.
+					// The refusal is given once: the transport first restores origin's URL for the rollback that follows.
+					script := "#!/bin/sh\n" +
+						"env -u GIT_DIR git -C '" + filepath.ToSlash(stores[0]) + "' config remote.origin.url '" + filepath.ToSlash(bare) + "'\n" +
+						"echo 'remote: Permission to acme/records.git denied to someone.' >&2\n" +
+						"echo \"fatal: unable to access 'https://github.com/acme/records.git/': The requested URL returned error: 403\" >&2\n" +
+						"exit 128\n"
+					if err := os.WriteFile(refusal, []byte(script), 0o755); err != nil {
+						t.Fatalf("write the refusing transport: %v", err)
+					}
+					gitkit.Git(t, stores[0], "config", "protocol.ext.allow", "always")
+					gitkit.Git(t, stores[0], "config", "remote.origin.url", "ext::sh "+filepath.ToSlash(refusal))
+				})
+
+				_, err := cloneSingleRepo(t, container, bare, "")
+				if err == nil || !strings.Contains(err.Error(), "for want of authentication or permission") || !strings.Contains(err.Error(), "give this machine's git credentials push access") {
+					t.Fatalf("clone with a refused credential error = %v; want the refusal and the credentials way forward", err)
+				}
+				if strings.Contains(err.Error(), "may hold") {
+					t.Errorf("clone error = %q; a refused credential took nothing, so no ref origin may hold is named", err.Error())
+				}
+				requireEmptyDirectory(t, container)
+				if got := refLines(t, bare, "%(refname)", fabriclayout.RecordsNamespaceRoot); len(got) != 0 {
+					t.Errorf("origin's records namespace = %v; want it empty", got)
+				}
+			})
+		}
+	})
 
 	t.Run("TransientRefusalIsRetriedByTheSameClone", func(t *testing.T) {
 		bare := hubforge.CopyCodeBare(t, "")

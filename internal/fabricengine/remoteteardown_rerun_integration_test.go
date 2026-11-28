@@ -7,6 +7,7 @@
 package fabricengine_test
 
 import (
+	"os"
 	"slices"
 	"testing"
 
@@ -56,7 +57,7 @@ func TestRemove_RerunAfterItsTeardownChildEndedArchivesTheLocalRecordsTip(t *tes
 		t.Fatalf("origin's %s is at the local records tip %s; the fixture needs a tip origin lacks", recordsBranch, localTip)
 	}
 	requireOnePendingTeardown(t, h, slug, "push the archive tag with `git -C "+h.PrimeRecords()+" push origin refs/tags/"+localTag+":"+namespaceTagsPrefix+localTag+
-		"`, then when origin still holds a branch of the pair, run `lym fabric remove "+slug+" --remote` again")
+		"`, then run `lym fabric remove "+slug+" --remote` again")
 
 	fabricengine.SetTeardownChildEndsForTest(h.Topology, false)
 	if _, err := h.Topology.Remove(h.Location, slug, false, true, ""); err != nil {
@@ -98,16 +99,32 @@ func TestRemove_PendingRecordNamesTheRerunItsCallerGave(t *testing.T) {
 
 	requireOnePendingTeardown(t, h, slug, wayForward)
 
-	if err := h.Topology.SettleGonePairTeardown(h.Location, slug, rerun); err != nil {
-		t.Fatalf("SettleGonePairTeardown(%s) with the pair on origin: %v", slug, err)
+	if _, settled, err := h.Topology.SettleGonePairTeardown(h.Location, slug, rerun); err != nil || settled {
+		t.Fatalf("SettleGonePairTeardown(%s) with the pair on origin = (%v, %v); want (false, nil)", slug, settled, err)
 	}
 	requireOnePendingTeardown(t, h, slug, wayForward)
 
 	for _, ref := range []string{namespaceHeadsPrefix + fabriclayout.RecordsBranchName(branch), "refs/heads/" + branch} {
 		gitkit.MustRun(t, bare, "git", "update-ref", "-d", ref)
 	}
-	if err := h.Topology.SettleGonePairTeardown(h.Location, slug, rerun); err != nil {
-		t.Fatalf("SettleGonePairTeardown(%s) with the pair gone: %v", slug, err)
+	stray := fabricengine.WorktreePath(h.Location, slug)
+	if err := os.MkdirAll(stray, 0o755); err != nil {
+		t.Fatalf("plant a stray directory at %s: %v", stray, err)
+	}
+	res, settled, err := h.Topology.SettleGonePairTeardown(h.Location, slug, rerun)
+	if err != nil || !settled {
+		t.Fatalf("SettleGonePairTeardown(%s) with the pair gone = (%v, %v); want (true, nil)", slug, settled, err)
+	}
+	if !slices.Equal(res.Steps, []string{fabriclayout.RemoveStepPendingTeardown}) || res.StrayPath != stray {
+		t.Errorf("SettleGonePairTeardown(%s) result steps = %v, stray path = %q; want the settling and %q", slug, res.Steps, res.StrayPath, stray)
+	}
+	if !slices.ContainsFunc(res.Mutations.Entries(), func(m fabriclayout.Mutation) bool {
+		return m.Kind == fabriclayout.KindTagPushed && m.Detail == ended.ArchiveTag
+	}) {
+		t.Errorf("SettleGonePairTeardown(%s) mutations = %+v; want the push of %s", slug, res.Mutations.Entries(), ended.ArchiveTag)
+	}
+	if _, settled, err := h.Topology.SettleGonePairTeardown(h.Location, slug, rerun); err != nil || settled {
+		t.Errorf("SettleGonePairTeardown(%s) with no record left = (%v, %v); want (false, nil)", slug, settled, err)
 	}
 
 	if got := refLines(t, bare, "%(objectname)", namespaceTagsPrefix+ended.ArchiveTag); !slices.Equal(got, []string{localTip}) {

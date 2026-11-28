@@ -32,6 +32,11 @@ import (
 // With apply, each candidate goes through the destructive gate, leased to the tip observed at enumeration.
 // It is tried only when two things hold:
 // the slug's teardown lock can be taken on one try, and no hub worktree has it checked out under that lock.
+// The landed check counts a local tag as holding the tip's commits.
+// Before each delete, the sweep therefore pushes the slug's archive tags that origin lacks.
+// A failed tag push fills that entry's Error and keeps the branch.
+// The sweep pushes no branch.
+// A candidate whose tip's work only another local branch then holds is therefore kept with a Reason.
 // A refusal or a lost lease fills that entry's Error, and the sweep continues.
 // A candidate whose lock is held, or that a worktree has checked out under the lock, is kept with a Reason.
 // Any other lock error fills its Error.
@@ -137,6 +142,9 @@ func checkedOutBranches(repoDir string) (map[string]bool, error) {
 // Under the lock it re-reads whether a hub worktree has the branch checked out.
 // The sweep's earlier read may predate an Add of the slug;
 // a checkout found now keeps the candidate with a Reason.
+// It then pushes the slug's local archive tags that origin lacks, since one of them may be all that holds the tip's work;
+// a failed push fills Error and deletes nothing.
+// The landed check then runs with local branches left out, and a tip that fails it keeps its branch with a Reason.
 func (t *Topology) deleteLeftoverUnderLock(rec *Mutations, l *lymcwd.Location, entry *fabriclayout.RemoteWarpBranchEntry, defaultBranch, parent, tip string) {
 	repoDir := l.WorktreePath()
 	slug := slugOfBranch(t.cfg, entry.Branch)
@@ -159,6 +167,27 @@ func (t *Topology) deleteLeftoverUnderLock(rec *Mutations, l *lymcwd.Location, e
 	}
 	if checkedOut[entry.Branch] {
 		entry.Reason = "kept: a hub worktree now has the branch checked out, so its pair is live"
+		return
+	}
+	if err := pushLocalArchiveTags(rec, repoDir, slug, "", t.archiveSleep); err != nil {
+		entry.Error = err.Error()
+		return
+	}
+	// A local branch holds nothing on origin, so the delete below would take origin's only copy of work such a branch holds.
+	if err := checkUnlandedRemoteTip(remoteBranchRequest{
+		what:                   "delete leftover task branch on remote",
+		repoDir:                repoDir,
+		remote:                 originRemoteName,
+		branch:                 entry.Branch,
+		dirtiness:              dirtyUnlandedRemoteTip(parent),
+		leaseSHA:               tip,
+		localBranchesDoNotHold: true,
+	}); err != nil {
+		reason := err.Error()
+		if refusal, ok := RefusalOf(err); ok {
+			reason = refusal.Reason
+		}
+		entry.Reason = "kept: with local branches left out, " + reason
 		return
 	}
 

@@ -6,10 +6,12 @@ package fabriccli
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -160,20 +162,76 @@ func TestRemover(t *testing.T) {
 		fabriclayout.EntryOutcome{Slug: "s", State: fabriclayout.EntryStopped},
 		branch("code", "s", false, fabriclayout.BranchGone, goneWayForward),
 	)
+	nothingLeft := fmt.Errorf("%w: nothing of %q remains", fabricengine.ErrPairNotFound, "s")
 
 	tests := []struct {
-		name         string
-		gone         bool
+		name string
+		gone bool
+		// noRemote runs the removal without --remote.
+		noRemote     bool
 		report       fabriclayout.OriginReport
 		reconcileErr error
 		local        localReading
+		// teardownErr is the teardown's error.
+		teardownErr error
+		// settled and settleErr are what the settling of a pending-teardown record answers.
+		settled   bool
+		settleErr error
 		// wantCalls are the seam calls between the exemption and its restore, in order.
 		wantCalls []string
 		// wantRequest is the request the teardown saw; nil when it was never called.
 		wantRequest  *pairteardown.Request
 		wantErr      string
 		wantRemoteBy string
+		// wantSteps are the removal's steps; nil leaves them unchecked.
+		wantSteps []string
 	}{
+		{
+			name:        "NothingLeftWithAPendingRecordSettlesIt",
+			gone:        true,
+			teardownErr: nothingLeft,
+			settled:     true,
+			wantCalls:   []string{"gone", "local", "teardown", "settle"},
+			wantRequest: &ordinary,
+			wantSteps:   []string{fabriclayout.RemoveStepPendingTeardown},
+		},
+		{
+			name:        "NothingLeftUnderALocalVerdictSettlesThePendingRecordAndDropsNoRemote",
+			gone:        true,
+			local:       localReading{done: true},
+			teardownErr: nothingLeft,
+			settled:     true,
+			wantCalls:   []string{"gone", "local", "teardown", "settle"},
+			wantRequest: &pairteardown.Request{Slug: "s", Force: true, Local: true, Verdict: fabriclayout.EntryEnded, RefuseWhenBusy: true},
+			wantSteps:   []string{fabriclayout.RemoveStepPendingTeardown},
+		},
+		{
+			name:        "NothingLeftWithoutRemoteSettlesNothing",
+			gone:        true,
+			noRemote:    true,
+			teardownErr: nothingLeft,
+			settled:     true,
+			wantCalls:   []string{"gone", "local", "teardown"},
+			wantRequest: &pairteardown.Request{Slug: "s", Force: true, QuietWait: pairteardown.RemoveQuietWait, RefuseWhenBusy: true},
+			wantErr:     "nothing of \"s\" remains",
+		},
+		{
+			name:        "NothingLeftWithNoPendingRecordIsRefusedAsPairNotFound",
+			gone:        true,
+			teardownErr: nothingLeft,
+			wantCalls:   []string{"gone", "local", "teardown", "settle"},
+			wantRequest: &ordinary,
+			wantErr:     "nothing of \"s\" remains",
+		},
+		{
+			name:        "AFailedSettlingNamesTheRerun",
+			gone:        true,
+			teardownErr: nothingLeft,
+			settleErr:   errors.New("tag push refused"),
+			wantCalls:   []string{"gone", "local", "teardown", "settle"},
+			wantRequest: &ordinary,
+			wantErr:     "tag push refused; fix the cause it names, then run lym fabric remove s --remote again",
+		},
 		{
 			name:         "EndedVerdictRunsTheLocalRequestAndNamesTheDroppedRemote",
 			report:       endedReport,
@@ -253,11 +311,22 @@ func TestRemover(t *testing.T) {
 				teardown: func(_ context.Context, req pairteardown.Request) (pairteardown.Result, error) {
 					calls = append(calls, "teardown")
 					seen = &req
-					return pairteardown.Result{}, nil
+					return pairteardown.Result{}, tt.teardownErr
+				},
+				settle: func(_, rerun string) (fabriclayout.RemoveResult, bool, error) {
+					calls = append(calls, "settle")
+					if want := "lym fabric remove s --remote"; rerun != want {
+						t.Errorf("settle re-run = %q, want %q", rerun, want)
+					}
+					var settledResult fabriclayout.RemoveResult
+					if tt.settled {
+						settledResult.Steps = []string{fabriclayout.RemoveStepPendingTeardown}
+					}
+					return settledResult, tt.settled, tt.settleErr
 				},
 			}
 
-			res, err := r.run(context.Background(), "s", true, true)
+			res, err := r.run(context.Background(), "s", true, !tt.noRemote)
 
 			wantCalls := append(append([]string{"exempt"}, tt.wantCalls...), "restore")
 			if strings.Join(calls, ",") != strings.Join(wantCalls, ",") {
@@ -278,6 +347,9 @@ func TestRemover(t *testing.T) {
 			}
 			if got := res.Removal.RemoteSkippedReason; got != tt.wantRemoteBy {
 				t.Errorf("RemoteSkippedReason = %q, want %q", got, tt.wantRemoteBy)
+			}
+			if tt.wantSteps != nil && !reflect.DeepEqual(res.Removal.Steps, tt.wantSteps) {
+				t.Errorf("Steps = %v, want %v", res.Removal.Steps, tt.wantSteps)
 			}
 		})
 	}

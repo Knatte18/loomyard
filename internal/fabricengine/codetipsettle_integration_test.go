@@ -52,6 +52,7 @@ func TestOneRepositoryPairTips_RefuseARecordsStoreThatLostItsFetchRefspecs(t *te
 		read func(pair *lymcwd.Location) error
 	}{
 		{"FetchPairTips", func(pair *lymcwd.Location) error { return fabricengine.FetchPairTips(pair) }},
+		{"FetchRecords", func(pair *lymcwd.Location) error { return fabricengine.FetchRecords(pair) }},
 		{"ReturnToPreviousTransition", func(pair *lymcwd.Location) error {
 			_, err := fabricengine.ReturnToPreviousTransition(pair, slug)
 			return err

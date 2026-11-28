@@ -202,6 +202,9 @@ type remoteBranchRequest struct {
 	// when non-empty the deletion succeeds only while the remote branch still sits there.
 	// Empty keeps the unleased, idempotent path.
 	leaseSHA string
+	// localBranchesDoNotHold makes the unlanded-tip check pass over local branches.
+	// Only remote-tracking refs and tags then count as holding the tip's commits.
+	localBranchesDoNotHold bool
 	// force is reserved: every construction in this package hardcodes it false.
 	// No call site's gate consults it today.
 	// It is kept for a future gate that consults it.
@@ -1060,6 +1063,7 @@ func checkArchivedTip(req branchRequest) error {
 // The tip passes when every commit on it is reachable from another ref;
 // otherwise, with a parent, it passes when merging it into the parent changes nothing.
 // For a remote tip, "another ref" excludes every copy of the same branch, local and remote-tracking.
+// With req.localBranchesDoNotHold it also excludes every local branch.
 // A tracking ref always holds the tip, so without that exclusion every pushed branch would look held.
 // git clears accumulated --exclude patterns after each ref-selecting option,
 // so the exclusion is repeated ahead of each.
@@ -1070,12 +1074,12 @@ func checkUnlandedRemoteTip(req remoteBranchRequest) error {
 	}
 
 	tip := req.leaseSHA
-	out, err := gitexec.Run([]string{
-		"rev-list", "--count", tip, "--not",
-		"--exclude=refs/heads/" + req.branch, "--glob=refs/heads/*",
-		"--exclude=*/" + req.branch, "--remotes",
-		"--tags",
-	}, req.repoDir)
+	args := []string{"rev-list", "--count", tip, "--not"}
+	if !req.localBranchesDoNotHold {
+		args = append(args, "--exclude=refs/heads/"+req.branch, "--glob=refs/heads/*")
+	}
+	args = append(args, "--exclude=*/"+req.branch, "--remotes", "--tags")
+	out, err := gitexec.Run(args, req.repoDir)
 	if err != nil {
 		return refuse(fmt.Sprintf("cannot count commits reachable from no other ref: %v", err))
 	}
@@ -1841,8 +1845,9 @@ func pushCloneSeed(rec *Mutations, seed *cloneSeed) error {
 // A git killed before it exited, or one that exited printing no rejection line, leaves that open:
 // origin's receive-pack can apply the update after its client is gone.
 // A lost lease, a rejection, a stall origin never answered and a git that never ran each leave origin as it was.
+// So does a refused credential, since origin refuses it before it takes any update.
 func seedPushOutcomeUnknown(cause error) bool {
-	if errors.Is(cause, gitrepo.ErrLeaseRejected) {
+	if errors.Is(cause, gitrepo.ErrLeaseRejected) || errors.Is(cause, gitrepo.ErrPushAuthRefused) {
 		return false
 	}
 	var gitErr *gitexec.GitError
@@ -1945,6 +1950,9 @@ func seedPushCause(what string, board bool, cause error) error {
 	case seedRefusedByOrigin(cause):
 		return fmt.Errorf("origin refused the seed push of the %s: %w; way forward: use a host that accepts refs outside refs/heads/ and refs/tags/, "+
 			"or make a two-repository hub with `lym fabric clone <records-url> <code-url>`", what, cause)
+	case errors.Is(cause, gitrepo.ErrPushAuthRefused):
+		return fmt.Errorf("origin refused the seed push of the %s for want of authentication or permission: %w; "+
+			"way forward: give this machine's git credentials push access to origin, then run the same clone again", what, cause)
 	case board && errors.Is(cause, gitrepo.ErrLeaseRejected):
 		return fmt.Errorf("origin now holds another hub's board, so the seed push of the %s lost its lease: %w; "+
 			"way forward: run `lym fabric clone <url>` to join that hub, or use another origin to seed a separate one", what, cause)

@@ -5,6 +5,7 @@ package fabriccli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
@@ -36,12 +37,16 @@ type localReading struct {
 // reconcile runs the run-scope origin reconcile of the slug.
 // local reads what the local board says about the slug.
 // teardown removes the pair.
+// settle drops the slug's pending-teardown record once nothing of its pair remains.
+// It reports whether it dropped one, with the removal result of that settling,
+// and its refusal of a held lock names rerun.
 type remover struct {
 	exemptAll func() (restore func())
 	gone      func(slug string) (bool, error)
 	reconcile func(slug string) (fabriclayout.OriginReport, error)
 	local     func(slug string) (localReading, error)
 	teardown  func(ctx context.Context, req pairteardown.Request) (pairteardown.Result, error)
+	settle    func(slug, rerun string) (fabriclayout.RemoveResult, bool, error)
 }
 
 // run removes the pair of slug.
@@ -52,6 +57,8 @@ type remover struct {
 // A requested --remote is dropped, and the result names it.
 // Any other verdict removes it with the quiet wait, passing force and remote through unchanged.
 // A refusal or a reconcile error returns before the removal starts.
+// With remote, a slug of which nothing remains settles the unfinished teardown a pending record names,
+// and the result's one step is that settling; with no record to settle, the removal's pair-not-found refusal stands.
 func (r remover) run(ctx context.Context, slug string, force, remote bool) (pairteardown.Result, error) {
 	restore := r.exemptAll()
 	defer restore()
@@ -84,27 +91,47 @@ func (r remover) run(ctx context.Context, slug string, force, remote bool) (pair
 		return pairteardown.Result{}, err
 	}
 
+	var res pairteardown.Result
 	if verdict != fabriclayout.EntryEnded && verdict != fabriclayout.EntryOwnedElsewhere {
-		return r.teardown(ctx, pairteardown.Request{
+		res, err = r.teardown(ctx, pairteardown.Request{
 			Slug:           slug,
 			Force:          force,
 			Remote:         remote,
 			QuietWait:      pairteardown.RemoveQuietWait,
 			RefuseWhenBusy: true,
 		})
+	} else {
+		res, err = r.teardown(ctx, pairteardown.Request{
+			Slug:           slug,
+			Force:          force,
+			Local:          true,
+			Verdict:        verdict,
+			RefuseWhenBusy: true,
+		})
+		if remote {
+			res.Removal.RemoteSkippedReason = fmt.Sprintf("the origin reconcile read the entry %s, so the removal was local and --remote was dropped", verdict)
+		}
 	}
-
-	res, err := r.teardown(ctx, pairteardown.Request{
-		Slug:           slug,
-		Force:          force,
-		Local:          true,
-		Verdict:        verdict,
-		RefuseWhenBusy: true,
-	})
-	if remote {
-		res.Removal.RemoteSkippedReason = fmt.Sprintf("the origin reconcile read the entry %s, so the removal was local and --remote was dropped", verdict)
+	if remote && errors.Is(err, fabricengine.ErrPairNotFound) {
+		return r.settleGonePair(slug, err)
 	}
 	return res, err
+}
+
+// settleGonePair settles the unfinished teardown of slug, of whose pair nothing remains.
+// A pending record names this removal as its re-run while nothing is left for the removal itself to do.
+// notFound is the removal's refusal, returned unchanged when no record is settled.
+func (r remover) settleGonePair(slug string, notFound error) (pairteardown.Result, error) {
+	rerun := "lym fabric remove " + slug + " --remote"
+	removal, settled, err := r.settle(slug, rerun)
+	if err != nil {
+		// The result still carries what the failed settling changed.
+		return pairteardown.Result{Removal: removal}, fmt.Errorf("settle the unfinished teardown of %q: %w; fix the cause it names, then run %s again", slug, err, rerun)
+	}
+	if !settled {
+		return pairteardown.Result{}, notFound
+	}
+	return pairteardown.Result{Removal: removal}, nil
 }
 
 // removeVerdict turns a reconcile report into the verdict on the slug's entry.

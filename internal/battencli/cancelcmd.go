@@ -306,7 +306,10 @@ func hubCancelDeps(location *lymcwd.Location, slug string) (cancelDeps, error) {
 				return record.Slug == slug && record.Rerun == cancelCommand(slug, true)
 			}), err
 		},
-		SettleTeardown: func() error { return topology.SettleGonePairTeardown(location, slug, cancelCommand(slug, true)) },
+		SettleTeardown: func() error {
+			_, _, err := topology.SettleGonePairTeardown(location, slug, cancelCommand(slug, true))
+			return err
+		},
 		Verdict: func() (runfsm.Verdict, error) {
 			records, inputs, err := pairteardown.ReadRun(location, slug)
 			if err != nil {

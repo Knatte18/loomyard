@@ -235,11 +235,6 @@ func recordsArchiveWayForward(job remoteTeardownJob, weftRoot string) string {
 	if job.WeftTip == "" {
 		return wayForward
 	}
-	if job.Kind == remoteTeardownRemove && job.Rerun == "" {
-		// A removal whose branches never reached origin leaves `lym fabric remove` nothing to find.
-		// A command the caller names finishes the teardown in that state too, so it gets no condition.
-		wayForward = "when origin still holds a branch of the pair, " + wayForward
-	}
 	if weftRoot == "" {
 		return wayForward
 	}
@@ -467,9 +462,10 @@ func spawnTeardownHold(rec *Mutations, l *lymcwd.Location, slug string, try bool
 // Holding the lock, it reads the job from jobIn until the parent closes it.
 // It runs the job's remote steps, exempt from every pause when the job says its command was, and releases the lock.
 // An empty input means the parent ended its teardown without remote steps; the child then releases the lock at once.
+// Such a parent wrote no pending-teardown record, so a record of the slug on disk is an earlier teardown's and is kept.
 // A failed remote step, or a job it cannot read, is logged and mailed to the hub's orch as one line.
 // The line names the slug, the operation and the way forward.
-// Once the job has run with no failed step, or on an empty input, it removes the slug's pending-teardown record.
+// Once the job has run with no failed step, it removes the slug's pending-teardown record.
 // A failed step keeps the record and writes that step's way forward into it.
 func RunTeardownChild(hubPath, slug string, try bool, wait time.Duration, jobIn io.Reader, signal io.Writer) error {
 	lockPath := fabriclayout.TeardownLockPath(hubPath, slug)
@@ -497,7 +493,6 @@ func RunTeardownChild(hubPath, slug string, try bool, wait time.Duration, jobIn 
 	}
 	if len(bytes.TrimSpace(raw)) == 0 {
 		logger.Info("fabricengine: the teardown ended with no remote steps", "slug", slug)
-		clearPendingTeardown(hubPath, slug)
 		return nil
 	}
 	var job remoteTeardownJob

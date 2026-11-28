@@ -64,7 +64,8 @@ prime (<warp-name>), the weft prime (<warp-name>` + weftname.Suffix + `) and the
 and wires the junctions and configs; no follow-up step is needed.
 
 Reach for it to start working on a repository pair on this machine, or with
---reset to rebuild an existing hub from its remotes.
+--reset to rebuild an existing hub from its remotes. --reset refuses a hub
+that holds a pair, an unfinished teardown, or code work origin lacks.
 
 <weft-url> is the records repository. <warp-url> is the code repository: pass
 it, with --shortname, the first time a weft is bound; afterwards it is read
@@ -1008,9 +1009,11 @@ func runRemoveWithFlag(ctx context.Context, out io.Writer, args []string, force,
 		return output.Err(out, err.Error())
 	}
 
-	if _, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(l)); err != nil {
+	cfg, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(l))
+	if err != nil {
 		return output.Err(out, err.Error())
 	}
+	top := fabricengine.NewTopology(cfg)
 
 	// args[0] is the slug; cobra has already consumed "remove" from the argument list.
 	if len(args) < 1 {
@@ -1028,6 +1031,9 @@ func runRemoveWithFlag(ctx context.Context, out io.Writer, args []string, force,
 		reconcile: func(slug string) (fabriclayout.OriginReport, error) { return reconcileForRemove(l, td, slug) },
 		local:     func(slug string) (localReading, error) { return readLocalReading(l, slug) },
 		teardown:  td.Run,
+		settle: func(slug, rerun string) (fabriclayout.RemoveResult, bool, error) {
+			return top.SettleGonePairTeardown(l, slug, rerun)
+		},
 	}.run(ctx, slug, force, remote)
 	r := res.Removal
 	if err != nil {

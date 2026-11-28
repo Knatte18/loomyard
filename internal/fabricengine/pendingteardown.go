@@ -1,7 +1,7 @@
 // pendingteardown.go holds the pending-teardown record, which names a remote teardown that did not finish.
 // The command writes the record before it hands a remote teardown job to its detached child.
 // The child removes it once the job has run with no failed step, and keeps it with the way forward of a step that failed.
-// PendingTeardowns lists the records no running teardown holds, for `lym fabric status` and `lym fabric prune`.
+// PendingTeardowns lists the records no running teardown holds.
 // SettleGonePairTeardown drops the record of a pair of which nothing remains.
 
 package fabricengine
@@ -77,37 +77,47 @@ func clearPendingTeardown(hubPath, slug string) {
 }
 
 // SettleGonePairTeardown drops the pending-teardown record of slug once its pair is gone, locally and on origin.
+// It reports whether it dropped one.
+// The result of a dropped record names the settling as its one step.
+// Its stray path is a path at the pair's task worktree location that is no worktree.
+// The result records the mutations of the call, a failed one included.
 // It first pushes the slug's archive tags that origin lacks.
 // The unfinished teardown may hold such a tag on this machine alone.
 // A failed push returns an error wrapping ErrArchiveFailed and keeps the record.
 // A slug with no record, or with any part of its pair left, is left as it is.
 // It holds the slug's teardown lock exclusive, and the refusal of a held lock names rerun as the command to run again.
-func (t *Topology) SettleGonePairTeardown(l *lymcwd.Location, slug, rerun string) error {
+func (t *Topology) SettleGonePairTeardown(l *lymcwd.Location, slug, rerun string) (res fabriclayout.RemoveResult, settled bool, err error) {
 	if !pathPresent(pendingTeardownPath(l.HubPath, slug)) {
-		return nil
+		return res, false, nil
 	}
 	rec := NewMutations(l.HubPath)
+	defer func() { res.Mutations = rec.Snapshot() }()
 	release, err := t.lockPairTeardown(rec, l, slug, false, "re-run `"+rerun+"`")
 	if err != nil {
-		return err
+		return res, false, err
 	}
 	defer release()
 
 	pair, err := t.inspectPair(l, slug)
 	if err != nil {
-		return err
+		return res, false, err
 	}
 	// A nil error means a part of the pair is left.
 	if _, err := t.refuseWhenNothingRemains(l, slug, pair); !errors.Is(err, ErrPairNotFound) {
-		return err
+		return res, false, err
 	}
 	// The job reads both stores, since the record does not say which tags its teardown pushed.
 	job := remoteTeardownJob{Kind: remoteTeardownRemove, Slug: slug, DeleteTaskOnOrigin: true}
 	if err := pushOwedArchiveTags(rec, l, job, t.archiveSleep); err != nil {
-		return err
+		return res, false, err
 	}
 	clearPendingTeardown(l.HubPath, slug)
-	return nil
+	res.Slug = slug
+	res.Steps = []string{fabriclayout.RemoveStepPendingTeardown}
+	if pair.strayPath {
+		res.StrayPath = WorktreePath(l, slug)
+	}
+	return res, true, nil
 }
 
 // PendingTeardowns lists the hub's remote teardowns that did not finish, in slug order:
@@ -118,15 +128,38 @@ func (t *Topology) SettleGonePairTeardown(l *lymcwd.Location, slug, rerun string
 // the way forward of its failed step, or else the re-run, behind the hand push of the archive tag of a tip it carries.
 // A hub with no record lists none, as an empty slice.
 func PendingTeardowns(hubPath string) ([]fabriclayout.PendingTeardown, error) {
+	records, err := pendingTeardownRecords(hubPath)
+	if err != nil {
+		return nil, err
+	}
+	pending := []fabriclayout.PendingTeardown{}
+	for _, record := range records {
+		held, acquired, err := lock.TryAcquireReadLock(fabriclayout.TeardownLockPath(hubPath, record.Slug))
+		if err != nil {
+			return nil, fmt.Errorf("probe the teardown lock of %q: %w", record.Slug, err)
+		}
+		if !acquired {
+			continue
+		}
+		_ = held.Release()
+		pending = append(pending, record)
+	}
+	return pending, nil
+}
+
+// pendingTeardownRecords reads every pending-teardown record of the hub at hubPath, in slug order.
+// The record of a teardown still running is included.
+// Each carries what finishes its teardown.
+func pendingTeardownRecords(hubPath string) ([]fabriclayout.PendingTeardown, error) {
 	dir := filepath.Join(fabriclayout.HubScratchDir(hubPath), fabriclayout.TeardownLockDirName)
 	entries, err := os.ReadDir(dir)
 	if errors.Is(err, os.ErrNotExist) {
-		return []fabriclayout.PendingTeardown{}, nil
+		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("list the pending teardowns: %w", err)
 	}
-	pending := []fabriclayout.PendingTeardown{}
+	var records []fabriclayout.PendingTeardown
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), pendingTeardownSuffix) {
 			continue
@@ -139,20 +172,12 @@ func PendingTeardowns(hubPath string) ([]fabriclayout.PendingTeardown, error) {
 		if !found {
 			continue
 		}
-		held, acquired, err := lock.TryAcquireReadLock(fabriclayout.TeardownLockPath(hubPath, record.Slug))
-		if err != nil {
-			return nil, fmt.Errorf("probe the teardown lock of %q: %w", record.Slug, err)
-		}
-		if !acquired {
-			continue
-		}
-		_ = held.Release()
 		if record.WayForward == "" {
 			record.WayForward = pendingTeardownWayForward(record)
 		}
-		pending = append(pending, record)
+		records = append(records, record)
 	}
-	return pending, nil
+	return records, nil
 }
 
 // pendingTeardownWayForward returns what finishes the remote teardown record names.

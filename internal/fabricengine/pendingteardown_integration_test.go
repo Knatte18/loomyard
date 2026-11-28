@@ -19,7 +19,8 @@ import (
 )
 
 // TestRunTeardownChild_SettlesThePendingRecordOnceItEnds covers what the child does with the record its parent wrote.
-// A child that ends with no remote steps, or whose job ran, removes it, so status and prune name nothing.
+// A child whose job ran removes it, so status and prune name nothing.
+// A child that gets no job keeps it, since the record is then an earlier teardown's, listed with its re-run.
 // A child whose remote step failed keeps it and writes the failed step's way forward into it.
 func TestRunTeardownChild_SettlesThePendingRecordOnceItEnds(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -44,7 +45,13 @@ func TestRunTeardownChild_SettlesThePendingRecordOnceItEnds(t *testing.T) {
 		// wantWayForward returns the way forward of the record the child keeps; nil means the child removes the record.
 		wantWayForward func(worktree string) string
 	}{
-		{name: "NoRemoteSteps", input: func(t *testing.T, worktree string) string { return "" }},
+		{
+			name:  "NoRemoteStepsKeepsTheEarlierRecord",
+			input: func(t *testing.T, worktree string) string { return "" },
+			wantWayForward: func(worktree string) string {
+				return "run the command that discarded the task branch again"
+			},
+		},
 		{name: "AJobThatRan", input: func(t *testing.T, worktree string) string {
 			return encode(t, remoteTeardownJob{Kind: remoteTeardownDiscard, Slug: slug, Worktree: worktree, WarpBranch: slug})
 		}},

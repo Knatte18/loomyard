@@ -173,7 +173,11 @@ func TestStartCapture(t *testing.T) {
 				return exited, nil
 			})
 			f.req.FallbackDetach = tt.fallback
-			f.req.RecordWait = 30 * time.Millisecond
+			// A short bound is for the stalled child alone.
+			// An exited child under it would race the bound against its exit on a loaded machine.
+			if !tt.exits {
+				f.req.RecordWait = 30 * time.Millisecond
+			}
 
 			_, err := StartCapture(f.req)
 			if err == nil {

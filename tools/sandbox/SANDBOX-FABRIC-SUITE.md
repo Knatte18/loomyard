@@ -432,7 +432,12 @@ It must be **refused**, naming the path and saying it is not a fabric hub, and `
 The hub name is derived rather than typed.
 In the one-argument form it comes from the binding recorded on the weft.
 The operator never sees the name being deleted.
-Then re-run `--reset` against a real hub and confirm the idempotent re-clone still works.
+Then re-run `--reset` against a real hub that holds no work origin lacks:
+no pair, no unfinished teardown, and a clean prime with no stash and no unpushed commit.
+Confirm the idempotent re-clone still works.
+Then add a pair and run `--reset` over that hub again.
+It must be **refused**, naming the pair worktree and a way forward that moves the hub aside with `mv`,
+and the hub must survive.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 

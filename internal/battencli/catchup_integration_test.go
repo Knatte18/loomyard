@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -125,6 +126,28 @@ func TestHubCatchUp(t *testing.T) {
 		}
 		if errors.Is(err, dobbyengine.ErrOriginUnreachable) {
 			t.Errorf("CatchUp() error = %v; want no ErrOriginUnreachable for a layout the fetch cannot read", err)
+		}
+	})
+
+	t.Run("A_run_with_no_pair_here_over_a_records_store_that_lost_its_fetch_refspecs_returns_its_layout_error", func(t *testing.T) {
+		h := hubforge.NewOneRepoHub(t, hubforge.OneRepoOptions{})
+		gitkit.Git(t, h.PrimeRecords(), "config", "--unset-all", "remote.origin.fetch")
+		// Building the hub read the prime's layout, which the process caches by path,
+		// so the hub is read from a path the process has not read.
+		moved := h.Path + "-unread"
+		if err := os.Rename(h.Path, moved); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.Rename(moved, h.Path) })
+		prime, err := lymcwd.ResolveWorktree(filepath.Join(moved, filepath.Base(h.PrimeWorktree())))
+		if err != nil {
+			t.Fatalf("ResolveWorktree() = %v; want nil", err)
+		}
+
+		err = fetchRunForCatchUp(prime, "ghost")
+
+		if !errors.Is(err, fabricengine.ErrRecordsLayout) {
+			t.Errorf("fetchRunForCatchUp() error = %v; want it to wrap ErrRecordsLayout", err)
 		}
 	})
 

@@ -10,6 +10,7 @@
 package fabricengine_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -166,6 +167,53 @@ func TestCleanupRemoteWarp_ApplyDeletesOnlyTheCandidate(t *testing.T) {
 		}
 	})
 
+	t.Run("PushesTheLocalArchiveTagThatHoldsTheCandidatesWork", func(t *testing.T) {
+		t.Parallel()
+
+		h := sweepFixture(t)
+		const slug = "gone-tagged"
+		pushUnlandedLeftover(t, h, slug, "tagged.txt")
+		markManaged(t, h, slug)
+		tip := gitkit.RevParse(t, h.CodeBare, "refs/heads/"+slug)
+		tag := fabriclayout.ArchiveTagName(slug, tip)
+		gitkit.Git(t, h.PrimeWorktree(), "tag", tag, tip)
+
+		res, err := h.Topology.CleanupRemoteWarp(h.Location, true, map[string]bool{"has-pr": true})
+		if err != nil {
+			t.Fatalf("CleanupRemoteWarp error = %v", err)
+		}
+
+		if e := remoteWarpEntries(res)[slug]; !e.Deleted || e.Error != "" {
+			t.Errorf("%s = %+v; want deleted", slug, e)
+		}
+		if got := gitkit.Git(t, h.CodeBare, "for-each-ref", "--format=%(objectname)", "refs/tags/"+tag); got != tip {
+			t.Errorf("origin's %s = %q; want it pushed at %s before the branch it holds was deleted", tag, got, tip)
+		}
+	})
+
+	t.Run("KeepsTheCandidateOnlyAnotherLocalBranchHolds", func(t *testing.T) {
+		t.Parallel()
+
+		h := sweepFixture(t)
+		const slug = "gone-branched"
+		pushUnlandedLeftover(t, h, slug, "branched.txt")
+		markManaged(t, h, slug)
+		gitkit.Git(t, h.PrimeWorktree(), "branch", "keeper", gitkit.RevParse(t, h.CodeBare, "refs/heads/"+slug))
+
+		res, err := h.Topology.CleanupRemoteWarp(h.Location, true, map[string]bool{"has-pr": true})
+		if err != nil {
+			t.Fatalf("CleanupRemoteWarp error = %v", err)
+		}
+
+		e := remoteWarpEntries(res)[slug]
+		if e.Deleted || e.Error != "" || !strings.Contains(e.Reason, "local branches left out") {
+			t.Errorf("%s = %+v; want kept with a reason and no Error", slug, e)
+		}
+		if !originHasBranch(t, h.CodeBare, slug) {
+			t.Errorf("%s was deleted from origin though only a local branch holds its tip", slug)
+		}
+	})
+
 	t.Run("KeepsTheCandidateWhoseTeardownLockIsHeld", func(t *testing.T) {
 		t.Parallel()
 
@@ -236,6 +284,33 @@ func TestCleanupRemoteWarp_ApplyDeletesOnlyTheCandidate(t *testing.T) {
 			t.Errorf("gone-landed was deleted from origin despite the checked-out worktree")
 		}
 	})
+}
+
+// A refused archive tag push keeps the branch the tag's tip sits on.
+// It is not parallel: the tag push hook is process-wide.
+func TestCleanupRemoteWarp_FailedTagPushKeepsTheCandidate(t *testing.T) {
+	tiergate.Require(t, 1)
+
+	h := sweepFixture(t)
+	const slug = "gone-tagged"
+	pushUnlandedLeftover(t, h, slug, "tagged.txt")
+	markManaged(t, h, slug)
+	tip := gitkit.RevParse(t, h.CodeBare, "refs/heads/"+slug)
+	gitkit.Git(t, h.PrimeWorktree(), "tag", fabriclayout.ArchiveTagName(slug, tip), tip)
+	fabricengine.SetArchiveTagPushHookForTest(t, func(string) error { return errors.New("origin refuses the tag push") })
+
+	res, err := h.Topology.CleanupRemoteWarp(h.Location, true, map[string]bool{"has-pr": true})
+	if err != nil {
+		t.Fatalf("CleanupRemoteWarp error = %v; want the push failure on the entry only", err)
+	}
+
+	e := remoteWarpEntries(res)[slug]
+	if e.Deleted || !strings.Contains(e.Error, "origin refuses the tag push") {
+		t.Errorf("%s = %+v; want kept with an Error carrying the push failure", slug, e)
+	}
+	if got := gitkit.RevParse(t, h.CodeBare, "refs/heads/"+slug); got != tip {
+		t.Errorf("origin's %s = %s; want it still at %s", slug, got, tip)
+	}
 }
 
 // With branch_prefix set, a branch lacking the prefix is read as the bare slug of a pair made earlier.

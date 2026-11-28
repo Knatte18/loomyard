@@ -46,7 +46,8 @@
 //     A caller that reads origin and then judges the tracking refs holds the lock across both.
 //     It passes the process's pause gate before taking the lock, so a pause never holds a lock others wait on.
 //   - UpdateRemoteBranchLeased and DeleteRemoteBranchLeased act only while the remote branch sits at the expected SHA;
-//     a moved branch is ErrLeaseRejected, distinct from any other push failure.
+//     a moved branch is ErrLeaseRejected, distinct from any other push failure,
+//     and an update refused for want of authentication or permission matches ErrPushAuthRefused.
 //   - RefNamespace maps local branch and tag names to the ref names they take on the remote.
 //     Its zero value is the identity namespace; gitrepo holds no other layout and follows the remote's refspecs.
 //   - A push whose recovery rebase failed and was aborted satisfies errors.Is(err, ErrPullRebaseFailed).

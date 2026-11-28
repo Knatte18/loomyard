@@ -10,9 +10,11 @@ package fabriccli_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -83,6 +85,38 @@ func warpEntryOf(t *testing.T, env envelope.Envelope, raw, branch string) map[st
 	}
 	t.Fatalf("no warp_entries element for %q\noutput: %s", branch, raw)
 	return nil
+}
+
+// TestCommand_RemoveRemoteSettlesThePendingRecordOfAGonePair runs the removal of a slug of which only its record remains.
+func TestCommand_RemoveRemoteSettlesThePendingRecordOfAGonePair(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	const slug = "gone-pending"
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	record := filepath.Join(filepath.Dir(fabriclayout.TeardownLockPath(h.Path, slug)), slug+".pending.json")
+	raw, err := json.Marshal(fabriclayout.PendingTeardown{Slug: slug, Kind: "remove", Worktree: h.PrimeWorktree()})
+	if err != nil {
+		t.Fatalf("marshal the record: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(record), 0o755); err != nil {
+		t.Fatalf("mkdir the record's directory: %v", err)
+	}
+	if err := os.WriteFile(record, raw, 0o644); err != nil {
+		t.Fatalf("write the record: %v", err)
+	}
+
+	code, output := runFabric(t, h.PrimeWorktree(), "remove", "--remote", slug)
+
+	if code != 0 {
+		t.Fatalf("Execute(remove --remote %s) = %d; want 0\noutput: %s", slug, code, output)
+	}
+	if steps := envelope.RequireOK(t, output).Raw["steps"]; !reflect.DeepEqual(steps, []any{fabriclayout.RemoveStepPendingTeardown}) {
+		t.Errorf("steps = %v; want [%s]\noutput: %s", steps, fabriclayout.RemoveStepPendingTeardown, output)
+	}
+	if _, err := os.Stat(record); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("stat of the pending record = %v; want it removed", err)
+	}
 }
 
 // TestCommand_CleanupRemoveScenario runs the cleanup, prune and remove checks over one hub.

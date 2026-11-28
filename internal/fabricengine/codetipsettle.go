@@ -1,5 +1,6 @@
-// codetipsettle.go holds the owner's side of a code tip origin lacks:
-// fetching a pair's tips and returning a run to its previous transition when the tip is given up.
+// codetipsettle.go holds the owner's side of a code tip origin lacks.
+// It fetches a pair's tips or a worktree's records.
+// It also returns a run to its previous transition when the tip is given up.
 
 package fabricengine
 
@@ -20,15 +21,25 @@ import (
 // A reader of origin's fetched refs, such as OriginCodeTip, then sees what origin holds now.
 // A records store whose origin layout cannot be read is an error naming the refspecs to restore, with nothing fetched.
 func FetchPairTips(pair *lymcwd.Location) error {
-	recordsDir := RecordsWorktree(pair)
+	if err := FetchRecords(pair); err != nil {
+		return err
+	}
+	if err := gitrepo.New(pair.WorktreePath()).Fetch(); err != nil {
+		return fmt.Errorf("fetch the code branch of the pair at %s: %w", pair.WorktreePath(), err)
+	}
+	return nil
+}
+
+// FetchRecords fetches the records store of the worktree at l from origin, the prime's own when l is the prime.
+// A records store whose origin layout cannot be read is an error naming the refspecs to restore, with nothing fetched;
+// a raw fetch there would fetch nothing and succeed.
+func FetchRecords(l *lymcwd.Location) error {
+	recordsDir := RecordsWorktree(l)
 	if _, err := originNamespaceAt(recordsDir); err != nil {
 		return err
 	}
 	if err := gitrepo.New(recordsDir).Fetch(); err != nil {
-		return fmt.Errorf("fetch the records branch of the pair at %s: %w", pair.WorktreePath(), err)
-	}
-	if err := gitrepo.New(pair.WorktreePath()).Fetch(); err != nil {
-		return fmt.Errorf("fetch the code branch of the pair at %s: %w", pair.WorktreePath(), err)
+		return fmt.Errorf("fetch the records branch of the worktree at %s: %w", l.WorktreePath(), err)
 	}
 	return nil
 }

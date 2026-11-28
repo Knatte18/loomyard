@@ -442,7 +442,8 @@ type RemoteWarpBranchEntry struct {
 	// Deleted reports whether the branch was observably deleted from origin.
 	Deleted bool `json:"deleted"`
 	// Reason names the condition that kept a non-candidate; empty for a candidate.
-	// Under apply a kept candidate's Reason also names a held teardown lock or a hub checkout.
+	// Under apply a kept candidate's Reason also names a held teardown lock, a hub checkout,
+	// or a tip whose work only a local branch holds.
 	Reason string `json:"reason,omitempty"`
 	// Error is set when apply's delete of a candidate was refused, its lease was lost, or its teardown lock failed.
 	Error string `json:"error,omitempty"`
@@ -488,6 +489,9 @@ const (
 	RemoveStepSiblingBranchOnOrigin = "sibling_branch_on_origin"
 	// RemoveStepTaskBranchOnOrigin is the deletion of the task's branch on origin.
 	RemoveStepTaskBranchOnOrigin = "task_branch_on_origin"
+	// RemoveStepPendingTeardown is the settling of an unfinished teardown's record once nothing of the pair remains:
+	// the push of the archive tags origin lacks, then the drop of the record.
+	RemoveStepPendingTeardown = "pending_teardown"
 )
 
 // RemoveResult reports the outcome of removing a worktree pair.

@@ -238,17 +238,22 @@
 // so a re-run deletes no branch on origin while this machine's tag alone holds a tip of it.
 // A child that ends before its job does, killed outright included, leaves a pending-teardown record.
 // So does a child whose remote step failed, and its record holds that step's way forward.
-// `PendingTeardowns` lists each with what finishes it, for `lym fabric status` and `lym fabric prune` to print:
+// `PendingTeardowns` lists each with what finishes it:
 // the hand push of the archive tag of a tip the record carries, then the re-run.
 // A discard's or a removal's job and record carry the command its caller names for that re-run.
 // A removal whose caller names none is re-run by `lym fabric remove <slug> --remote`.
 // `SettleGonePairTeardown` drops the record of a pair of which nothing remains.
+// It reports whether it dropped one, with the step, the stray path and the mutations of that settling.
+// `lym fabric remove <slug> --remote` and the cancel each call it.
+// Either one therefore finishes the teardown of a gone pair whose record names it.
 // A remote branch delete is leased and a branch origin moved since is kept, never a failure.
 // A pair already half removed is finished rather than refused, and `ErrPairNotFound` means nothing is left.
 // `RemoveLocal` is the same removal with no origin step and no waiting.
 // It try-acquires its locks (`ErrPairBusy`) and tags the weft tip `set-aside/<slug>/<sha>`.
 // `SnapshotUncommitted` keeps a force removal's uncommitted paths in one parentless commit under such a tag.
 // `Cleanup` sweeps local leftovers and `CleanupRemoteWarp` sweeps origin, each trying a pair's teardown lock once.
+// `CleanupRemoteWarp` pushes a slug's local archive tags origin lacks before it deletes the slug's branch on origin.
+// It keeps a branch whose tip's work only another local branch holds.
 // The sweep never takes the primary weft branch.
 // `Prune` reports a hub directory no registration covers as `Unowned` and never removes it.
 // `PairTaskBranch` reads a pair's warp branch from the pair itself, so `branch_prefix` can change while pairs are live.
@@ -579,6 +584,8 @@
 // A failed push removes the hub, as `AbandonSeededClone` does for a failure before it.
 // A push of either ref that ended without origin's answer may still land,
 // so the ref on origin is read before any rollback.
+// A push origin refused for want of authentication or permission took nothing.
+// Such a refusal removes the hub at once and names the credentials as the way forward.
 // A ref at the seed's tip is withdrawn first: the board is deleted,
 // and the records branch returns to the tip the clone's check observed.
 // The failure names what origin took and what the seed withdrew.
@@ -588,7 +595,14 @@
 // `RefuseHubWithoutBolt` refuses it naming the `--reset` clone that replaces it.
 // For a one-repository hub it names the join, for an origin holding the board, and the seed, for an origin holding none.
 // A records store whose layout cannot be read is named as one-repository, and the refusal carries that error.
-// `CloneHub` names the same re-clone when the hub already exists; for a one-repository hub that is the join alone.
+// `CloneHub` names the same re-clone for any existing hub a clone did not finish that holds no work origin lacks;
+// for a one-repository hub that is the join alone.
+// A hub that already exists whole is never named for `--reset`: the way forward is working in it or moving it aside.
+// The move aside carries the repair of the moved hub's worktree links.
+// `--reset` refuses a hub holding work origin lacks.
+// Such work is a pair's worktree or an unfinished teardown.
+// It is also uncommitted changes, a stash or a commit of the prime code store.
+// The records store is not read, since a seed stopped before its push leaves commits there for `--reset` to replace.
 //
 // **Platform verification: Linux only.**
 // Fabric is written cross-platform,

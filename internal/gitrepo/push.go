@@ -48,7 +48,7 @@ func (r *Repo) PushLockPath() (string, error) {
 // rebaseRetryTriggers are the git-push stderr substrings that mean the remote has commits this checkout lacks.
 var rebaseRetryTriggers = []string{"non-fast-forward", "rejected", "fetch first"}
 
-// ErrPushAuthRefused is matched with errors.Is against the error PushRebaseFree returns when the remote refuses it.
+// ErrPushAuthRefused is matched with errors.Is against the error a push returns when the remote refuses it.
 // Retrying cannot clear the refusal, which is neither a rejection nor a transport failure.
 // The error also carries git's refusal line.
 var ErrPushAuthRefused = errors.New("gitrepo: push refused for authentication or permission")
@@ -395,6 +395,7 @@ func (r *Repo) DeleteRemoteBranchLeased(remote, branch, expectSHA string, ns Ref
 // An empty expectSHA is a lease on absence: the update succeeds only while the remote branch does not exist.
 // A branch that moved or vanished since expectSHA was read is a failed lease, returned bare as ErrLeaseRejected;
 // every other failure (network, authentication, a hook rejection) returns the wrapped git error and never the sentinel.
+// A refusal for want of authentication or permission also wraps ErrPushAuthRefused with git's refusal line.
 // It is the package's only force-shaped push, and it never takes a lease it did not read itself.
 // The transfer runs outside the remote-refs lock,
 // and the branch's remote-tracking ref moves to sha under it afterwards.
@@ -418,6 +419,11 @@ func (r *Repo) UpdateRemoteBranchLeased(remote, branch, sha, expectSHA string, n
 	var gitErr *gitexec.GitError
 	if errors.As(err, &gitErr) && strings.Contains(gitErr.Stderr, leaseRejectedTrigger) {
 		return ErrLeaseRejected
+	}
+	if gitErr != nil {
+		if line, found := lastLineHolding(gitErr.Stderr, authRefusalTriggers); found {
+			return fmt.Errorf("gitrepo: git push --force-with-lease (leased at %s): %w: %s: %w", expectSHA, ErrPushAuthRefused, line, err)
+		}
 	}
 	return fmt.Errorf("gitrepo: git push --force-with-lease (leased at %s): %w", expectSHA, err)
 }

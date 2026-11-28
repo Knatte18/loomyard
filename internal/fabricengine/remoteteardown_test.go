@@ -67,8 +67,8 @@ func TestNoticeRemoteTeardown(t *testing.T) {
 		wantInLine []string
 		wantAbsent []string
 	}{
-		{"RemoveArchiveFailureWithWeftTip", withWeftTip(removeJob), archiveFailure, "/weft", []string{slug, "the archive of its records", "tag push refused", "git -C /weft " + weftTagPush, "when origin still holds a branch of the pair", removeAgain}, nil},
-		{"RemoveArchiveFailureWithWeftTipAndNoWeftRoot", withWeftTip(removeJob), archiveFailure, "", []string{slug, "the archive of its records", "tag push refused", "when origin still holds a branch of the pair", removeAgain}, []string{"refs/tags/", "git -C"}},
+		{"RemoveArchiveFailureWithWeftTip", withWeftTip(removeJob), archiveFailure, "/weft", []string{slug, "the archive of its records", "tag push refused", "git -C /weft " + weftTagPush, "`, then run " + removeAgain}, []string{"when origin still holds"}},
+		{"RemoveArchiveFailureWithWeftTipAndNoWeftRoot", withWeftTip(removeJob), archiveFailure, "", []string{slug, "the archive of its records", "tag push refused", removeAgain}, []string{"refs/tags/", "git -C", "when origin still holds"}},
 		{"RemoveArchiveFailureWithoutWeftTip", removeJob, archiveFailure, "/weft", []string{slug, "the archive of its records", "tag push refused", removeAgain}, []string{"refs/tags/"}},
 		{"CleanupArchiveFailureWithWeftTip", withWeftTip(cleanupJob), archiveFailure, "/weft", []string{slug, weftTagPush, cleanupAgain}, []string{"lym fabric remove"}},
 		{"RecordsRepositoryLookupFailure", withWeftTip(removeJob), remoteOutcome{err: errors.New("resolve weft repo root: no records repository"), weftRootErr: errors.New("resolve weft repo root: no records repository")}, "", []string{slug, "the lookup of its records repository", "no records repository", removeAgain}, []string{"the archive of its records", "refs/tags/"}},

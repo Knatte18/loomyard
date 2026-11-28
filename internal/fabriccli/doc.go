@@ -13,6 +13,9 @@
 // A failed render of heddle's files never fails the clone: the envelope's `seam_warning` names `lym heddle render`.
 //
 // `--reset` tears down only a real fabric hub; a directory named `<name>-LYMHUB` without hub content is left alone.
+// It refuses a hub holding a pair, an unfinished teardown, or code work origin lacks, naming the move that keeps the hub.
+// A clone into a hub that already stands whole names no `--reset`.
+// A clone into an unfinished hub names `--reset` when the hub holds none of that work, and the move otherwise.
 // `--subpath` must stay inside the warp repo, and a re-clone refuses a value that disagrees with the recorded one.
 // `--force-bootstrap` bypasses the weft-candidate guard.
 // It does so only for a new weft remote that is neither empty nor lym-anchored.
@@ -25,7 +28,7 @@
 //
 // A clone killed before its Bolt checkout leaves a hub `lym fabric reconcile` refuses, before its first pull.
 // The refusal names the `--reset` clone that replaces the hub.
-// A plain re-clone into the same directory names it too.
+// A plain re-clone into the same directory names it too, unless the hub holds work origin lacks.
 // For a one-repository hub that is the join, and the refusal adds the seed.
 //
 // # Add
@@ -62,6 +65,8 @@
 // A path at the task worktree's location that is not a registered linked worktree is reported in `stray_path`.
 // That path is never deleted.
 // A slug of which nothing remains is refused as pair not found.
+// With `--remote`, a pending-teardown record of such a slug is settled instead:
+// the archive tags origin lacks are pushed, the record is dropped, and `steps` is `pending_teardown`.
 // A slug naming hub geometry is refused, as `add` refuses it.
 //
 // With `--remote`, a weft repo with no origin reports `remote_skipped_reason` and still exits 0.

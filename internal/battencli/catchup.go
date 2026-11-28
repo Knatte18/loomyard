@@ -234,7 +234,7 @@ func fetchRunForCatchUp(prime *lymcwd.Location, slug string) error {
 	if stands {
 		err = fabricengine.FetchPairTips(pair)
 	} else {
-		err = gitrepo.New(fabricengine.RecordsWorktree(prime)).Fetch()
+		err = fabricengine.FetchRecords(prime)
 	}
 	if errors.Is(err, fabricengine.ErrRecordsLayout) {
 		return err
