@@ -1,6 +1,6 @@
 // keybindings.go seeds the lym block of key bindings into the user's VS Code keybindings.json.
 // The block makes the integrated terminal forward the Alt keys that reed's tmux bindings listen for.
-// It also adds a key that runs the reed attach task.
+// It also adds keys that run tasks by label: ctrl+alt+a reed attach, alt+shift+9 board open and alt+shift+0 beam start.
 // The file holds only VS Code format knowledge:
 // the user-file path per platform, a comment-aware JSONC merge of the block, and an atomic write.
 
@@ -28,7 +28,8 @@ const (
 )
 
 // keybindingsBlockEntries are the block's entries.
-// They hold a terminal sendSequence per Alt key and the key that runs the reed attach task.
+// They hold a terminal sendSequence per Alt key and a key per task they run:
+// the reed attach, board open and beam start tasks.
 // Each args value is written as in the JSON file: a sendSequence text keeps its escape sequences unexpanded.
 // An empty when adds no when clause.
 var keybindingsBlockEntries = []struct{ key, command, args, when string }{
@@ -37,6 +38,8 @@ var keybindingsBlockEntries = []struct{ key, command, args, when string }{
 	{"alt+right", terminalSendSequenceCommand, `{ "text": "\u001b[1;3C" }`, "terminalFocus"},
 	{"alt+left", terminalSendSequenceCommand, `{ "text": "\u001b[1;3D" }`, "terminalFocus"},
 	{"ctrl+alt+a", "workbench.action.tasks.runTask", strconv.Quote(attachTaskLabel), ""},
+	{"alt+shift+9", "workbench.action.tasks.runTask", strconv.Quote(boardOpenTaskLabel), ""},
+	{"alt+shift+0", "workbench.action.tasks.runTask", strconv.Quote(beamStartTaskLabel), ""},
 }
 
 // KeybindingsOutcome is what a seed did to the user's keybindings file.

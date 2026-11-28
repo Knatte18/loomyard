@@ -13,8 +13,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestKeybindingsBlock pins the block's entries:
-// the Alt-arrow sendSequence keys in the terminal, and ctrl+alt+a running the reed attach task.
+// TestKeybindingsBlock pins the block's entries.
+// They are the Alt-arrow sendSequence keys in the terminal and one key per task.
+// The keys ctrl+alt+a, alt+shift+9 and alt+shift+0 run the reed attach, board open and beam start tasks.
 func TestKeybindingsBlock(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -26,6 +27,8 @@ func TestKeybindingsBlock(t *testing.T) {
 		`  { "key": "alt+right", "command": "workbench.action.terminal.sendSequence", "args": { "text": "\u001b[1;3C" }, "when": "terminalFocus" },`,
 		`  { "key": "alt+left", "command": "workbench.action.terminal.sendSequence", "args": { "text": "\u001b[1;3D" }, "when": "terminalFocus" },`,
 		`  { "key": "ctrl+alt+a", "command": "workbench.action.tasks.runTask", "args": "reed attach" },`,
+		`  { "key": "alt+shift+9", "command": "workbench.action.tasks.runTask", "args": "board open" },`,
+		`  { "key": "alt+shift+0", "command": "workbench.action.tasks.runTask", "args": "beam start" },`,
 		`// lym:end`,
 	}, "\r\n")
 	if got := keybindingsBlock("\r\n"); got != want {
@@ -161,6 +164,11 @@ func TestSeedKeybindings(t *testing.T) {
 		}
 		if got := SeedKeybindings(path); got.Outcome != KeybindingsUnchanged || got.Reason != "" {
 			t.Fatalf("second run = %+v; want unchanged", got)
+		}
+		for _, key := range []string{"alt+shift+0", "alt+shift+9"} {
+			if got := strings.Count(read(t, path), `"key": "`+key+`"`); got != 1 {
+				t.Errorf("entries for %s after a second seed = %d; want 1", key, got)
+			}
 		}
 		assertNoLeftovers(t, dir, "keybindings.json")
 	})
