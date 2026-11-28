@@ -31,6 +31,9 @@ import (
 // verifySite labels the plan-level verify's runs in the running marker.
 const verifySite = "weaver verify"
 
+// VerifyGateName names the plan-level verify in the gate spans a row records for it.
+const VerifyGateName = "verify"
+
 // verifyFixerWayForward opens the findings of a failed plan-level verify.
 const verifyFixerWayForward = "Weaver hands this failure to a verify fixer, which fixes it and commits; Weaver then runs the verify again."
 
@@ -94,6 +97,11 @@ func (d RunDeps) verify() VerifyFunc {
 	}
 }
 
+// attemptTimeout returns the bound of one batch attempt's strand, from `weaver.attempt_timeout_min`.
+func (d RunDeps) attemptTimeout() time.Duration {
+	return time.Duration(d.Config.AttemptTimeoutMin) * time.Minute
+}
+
 // clock returns the told clock, or the wall clock.
 func (d RunDeps) clock() runplan.Clock {
 	if d.Clock != nil {
@@ -125,7 +133,8 @@ type verifyOutcome struct {
 // A failure is rerun once, and a pass on the rerun is a pass whose failing identities are flaky.
 // A timeout, a dirty tree and an unjudged run are not rerun, and an unjudged run starts no fixer.
 // A failure writes the verify-failure record and returns its findings.
-func runVerify(deps RunDeps, st *State, evaluation int) (verifyOutcome, error) {
+// Each run of the verify appends one gate span to spans.
+func runVerify(deps RunDeps, st *State, evaluation int, spans *[]shuttleengine.GateSpan) (verifyOutcome, error) {
 	if deps.Geom.GateConfig == nil {
 		return verifyOutcome{}, errors.New("weaver: the geometry carries no gate config reader; way forward: the CLI layer must set Geometry.GateConfig")
 	}
@@ -138,7 +147,7 @@ func runVerify(deps RunDeps, st *State, evaluation int) (verifyOutcome, error) {
 		return verifyOutcome{}, err
 	}
 
-	verify := deps.verify()
+	verify := timedVerify(deps.verify(), deps.clock(), spans)
 	site := verifytree.Site{Label: verifySite, Attempt: evaluation, Hold: deps.Geom.VerifyHold}
 	res, err := verify(site, call)
 	if err != nil {
@@ -188,6 +197,16 @@ func runVerify(deps RunDeps, st *State, evaluation int) (verifyOutcome, error) {
 		return verifyOutcome{}, err
 	}
 	return verifyOutcome{Findings: runplan.RenderVerifyGateFindings(report, verifyFixerWayForward)}, nil
+}
+
+// timedVerify returns verify wrapped to append one gate span to spans per call, measured on clock.
+func timedVerify(verify VerifyFunc, clock runplan.Clock, spans *[]shuttleengine.GateSpan) VerifyFunc {
+	return func(site verifytree.Site, command string) (verifytree.Result, error) {
+		start := clock.Now()
+		res, err := verify(site, command)
+		*spans = append(*spans, shuttleengine.GateSpan{Kind: shuttleengine.GateSpanGate, Start: start, End: clock.Now()})
+		return res, err
+	}
 }
 
 // cardHint names the cards whose commits touched a failing package, from the batches' card trails.
@@ -329,6 +348,8 @@ func fixerSpec(deps RunDeps, st *State, fixer *FixerState, findings string) (gat
 
 // writeSummary writes summary.md in Weaver's run directory in the shared final-summary format.
 // It opens with a title naming the task, then lists the batches with their outcomes.
+// Under each batch it names the files the batch changed outside its targets and its `Pattern-Departure:` trailers.
+// Either list reads `none` when it is empty.
 // When flaky is non-empty it adds `## Integration suite triage`.
 // When a verify fixer ran it adds `## Verify gate fixes` with each fixer's findings and its `fix:` commits.
 func writeSummary(deps RunDeps, st *State, flaky []string) error {
@@ -351,6 +372,15 @@ func writeSummary(deps RunDeps, st *State, flaky []string) error {
 			}
 		}
 		fmt.Fprintf(&b, "- `%02d-%s`: %s after %d attempt(s)\n", number, bs.Slug, bs.Status, attempts)
+		var deviations, departures []string
+		if bs.Digest != nil {
+			for _, file := range bs.Digest.Deviations {
+				deviations = append(deviations, "`"+file+"`")
+			}
+			departures = bs.Digest.Departures
+		}
+		fmt.Fprintf(&b, "  - Files changed outside its targets: %s\n", textOrNone(strings.Join(deviations, ", ")))
+		fmt.Fprintf(&b, "  - Pattern departures: %s\n", textOrNone(strings.Join(departures, "; ")))
 	}
 
 	if len(flaky) > 0 {

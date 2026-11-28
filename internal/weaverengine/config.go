@@ -21,6 +21,10 @@ var configTemplate string
 type Config struct {
 	// Ladder is the model-specs a batch attempt climbs in order, one rung per failed attempt.
 	Ladder []string `yaml:"ladder"`
+	// AttemptTimeoutMin is the number of minutes at which a batch attempt's strand times out.
+	// The minutes count from the strand's spawn, or from an attach for a strand a crashed call left.
+	// The waits on the attempt's gates and their fixers count against it.
+	AttemptTimeoutMin int `yaml:"attempt_timeout_min"`
 	// FixerTimeoutMin is the number of minutes after spawn at which a plan-level verify fixer strand classifies dead.
 	FixerTimeoutMin int `yaml:"fixer_timeout_min"`
 	// VerifyGate is the gate key of the plan-level verify Weaver's Done rests on.
@@ -45,17 +49,18 @@ func ConfigSpec() configengine.Spec {
 		Name:     "weaver",
 		Template: []byte(ConfigTemplate()),
 		Categories: map[string]configengine.Category{
-			"ladder":            configengine.CategoryNone,
-			"fixer_timeout_min": configengine.CategoryNone,
-			"verify_gate":       configengine.CategoryGuard,
+			"ladder":              configengine.CategoryNone,
+			"attempt_timeout_min": configengine.CategoryNone,
+			"fixer_timeout_min":   configengine.CategoryNone,
+			"verify_gate":         configengine.CategoryGuard,
 		},
 		OpenMaps: ConfigOpenMaps(),
 	}
 }
 
 // LoadConfig loads configuration from the weaver module's layer stack under dirs.
-// It refuses a ladder spec modelspec.Parse rejects.
-// It also refuses a non-positive weaver.fixer_timeout_min and an empty weaver.verify_gate.
+// It refuses a ladder spec modelspec.Parse rejects and an empty `weaver.verify_gate`.
+// It also refuses a non-positive `weaver.attempt_timeout_min` or `weaver.fixer_timeout_min`.
 // Each refusal names the key and is marked configengine.MarkInvalid.
 // module names the config file to read.
 func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
@@ -74,6 +79,9 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 		if _, err := modelspec.Parse(rung); err != nil {
 			return Config{}, configengine.MarkInvalid(fmt.Errorf("config key %q rung %d: %w", keyName(ladderKey), i+1, err))
 		}
+	}
+	if cfg.AttemptTimeoutMin <= 0 {
+		return Config{}, configengine.MarkInvalid(fmt.Errorf("config key %q: must be a positive integer, got %d", keyName(attemptTimeoutMinKey), cfg.AttemptTimeoutMin))
 	}
 	if cfg.FixerTimeoutMin <= 0 {
 		return Config{}, configengine.MarkInvalid(fmt.Errorf("config key %q: must be a positive integer, got %d", keyName(fixerTimeoutMinKey), cfg.FixerTimeoutMin))

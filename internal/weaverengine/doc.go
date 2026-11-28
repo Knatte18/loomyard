@@ -1,8 +1,10 @@
 // Package weaverengine is Weaver, the `weaver` implementer of tapestry's implementer row.
 // Weaver builds a plan's batches as cold strands and climbs a model ladder when an attempt fails.
 //
-// Its `weaver.yaml` keys are `weaver.ladder`, `weaver.fixer_timeout_min` and `weaver.verify_gate`.
+// Its `weaver.yaml` keys follow.
 // `weaver.ladder` holds the model-specs a batch attempt climbs in order.
+// `weaver.attempt_timeout_min` is the minutes one batch attempt's strand may run, its gate waits and fixers included.
+// A strand that a crashed call left gets those minutes again from the attach.
 // `weaver.fixer_timeout_min` is the minutes a plan-level verify fixer may run.
 // `weaver.verify_gate` is the gate key of the plan-level verify its Done rests on.
 // The local override layer cannot change `weaver.verify_gate`, since a narrower key would hollow that guard.
@@ -34,12 +36,14 @@
 // A failure that survives goes to one cold verify fixer on the next ladder rung.
 // Weaver runs the verify again after it.
 // The fixer carries no gates, since the re-run of the verify judges it.
+// Run returns one gate span per run of the verify and one rework span per fixer, which the row records as gate spans.
 //
 // Run is the row's producer body, holding `run.lock` in the scratch directory for its whole call.
 // A failed attempt climbs a rung, and a lost one is retried once on its rung first.
 // A failure on the last rung, a needs-parent report and a verify that no fixer clears each stop the row.
 // Every stop is returned as a stuck result.
 // Only a Done return writes `outcome.yaml` and `summary.md`, and Run removes both on entry.
+// The summary names each batch's files changed outside its targets and its `Pattern-Departure:` trailers.
 //
 // A call of Run settles what an earlier call left before it begins any batch.
 // An attempt recorded in flight is probed by its report path, even when its strand's guid was never recorded.

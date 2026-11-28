@@ -125,8 +125,8 @@ func TestRun_Resume(t *testing.T) {
 		if len(fx.runner.specs) != 1 {
 			t.Errorf("strands started = %d; want only the crashed attempt's, with no second agent", len(fx.runner.specs))
 		}
-		if len(fx.runner.probed) == 0 || fx.runner.probed[0].OutputFiles[0] != attempt.ReportPath {
-			t.Errorf("probed specs = %v; want the probe by the attempt's report path", fx.runner.probed)
+		if len(fx.runner.probed) == 0 || fx.runner.probed[0].OutputFiles[0] != attempt.ReportPath || fx.runner.probed[0].Timeout != 45*time.Minute {
+			t.Errorf("probed specs = %v; want the probe by the attempt's report path, bounded by attempt_timeout_min", fx.runner.probed)
 		}
 		got := fx.loadState().Attempts[0]
 		if got.Outcome != "done" || got.StrandGUID != run.StrandGUID() || !slices.Equal(got.Delivered, []string{"## a decision"}) {
@@ -201,8 +201,12 @@ func TestRun_Resume(t *testing.T) {
 			return []string{"## a decision"}, nil
 		}
 
-		requireDone(t, mustRun(t, fx), 1)
+		result := mustRun(t, fx)
 
+		requireDone(t, result, 1)
+		if got, want := spanKinds(result), []shuttleengine.GateSpanKind{shuttleengine.GateSpanGate}; !slices.Equal(got, want) {
+			t.Errorf("verify spans = %v; want the verify's run alone, with none for the attached fixer: %v", got, want)
+		}
 		if fx.fixer.attached != 1 || len(fx.fixer.specs) != 0 {
 			t.Errorf("fixer attaches = %d, spawns = %d; want one attach and no spawn", fx.fixer.attached, len(fx.fixer.specs))
 		}
@@ -275,6 +279,22 @@ func TestRun_Resume(t *testing.T) {
 				outcome string
 			}{{0, "lost"}, {0, "lost"}},
 			wantModel: "model-b",
+		},
+		{
+			name: "FailedSecondRungAttemptRunsTheThirdRung",
+			attempts: []struct {
+				rung    int
+				outcome string
+			}{{0, "failed"}, {1, "failed"}},
+			wantModel: "model-c",
+		},
+		{
+			name: "LostLastRungAttemptRetriesOnTheLastRung",
+			attempts: []struct {
+				rung    int
+				outcome string
+			}{{2, "lost"}},
+			wantModel: "model-c",
 		},
 		{
 			name: "FaultAttemptRetriesOnItsOwnRung",

@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/gateslot"
@@ -76,12 +77,15 @@ type attemptLaunch struct {
 	Label string
 	// Skills are the hub's language skills, loaded after the implementer role's own.
 	Skills []string
+	// Timeout bounds the attempt's strand from its spawn, or from an attach for a strand a crash left.
+	Timeout time.Duration
 }
 
 // attemptSpec builds the spawn of one batch attempt.
 // The attempt runs autonomously under the implementer role's skills, in a pane with no operator.
 func attemptSpec(in attemptLaunch) shuttleengine.Spec {
 	return shuttleengine.Spec{
+		Timeout:      in.Timeout,
 		Prompt:       string(in.Prompt),
 		PromptEngine: in.Engine,
 		OutputFiles:  []string{in.ReportPath},

@@ -9,9 +9,10 @@ const configModule = "weaver"
 
 // The weaver.yaml key paths that messages cite.
 const (
-	ladderKey          = "ladder"
-	fixerTimeoutMinKey = "fixer_timeout_min"
-	verifyGateKey      = "verify_gate"
+	ladderKey            = "ladder"
+	attemptTimeoutMinKey = "attempt_timeout_min"
+	fixerTimeoutMinKey   = "fixer_timeout_min"
+	verifyGateKey        = "verify_gate"
 )
 
 // keyName returns the full name of the weaver.yaml key at path.

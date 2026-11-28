@@ -160,7 +160,7 @@ func resumeAttempt(deps RunDeps, st *State, plan *planparser.Plan, attempt *Atte
 	if err != nil {
 		return "", err
 	}
-	spec := attemptSpec(attemptLaunch{ReportPath: attempt.ReportPath, Choice: deps.Ladder[attempt.Rung], Label: label, Skills: deps.LanguageSkills})
+	spec := attemptSpec(attemptLaunch{ReportPath: attempt.ReportPath, Choice: deps.Ladder[attempt.Rung], Label: label, Skills: deps.LanguageSkills, Timeout: deps.attemptTimeout()})
 	run, found, err := deps.Runner.ProbeGated(spec, gateSpec)
 	if err != nil {
 		return fmt.Sprintf("probing for the run of attempt %d of batch %s failed: %v; way forward: follow the way forward the probe's error names", attempt.Number, label, err), nil
