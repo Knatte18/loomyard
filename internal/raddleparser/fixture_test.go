@@ -46,13 +46,13 @@ func validProposal() Proposal {
 		BoardChecked: []BoardCheck{{Slug: "other-open", Revised: "2026-11-01T10:00:00Z"}},
 		Parts: []Part{
 			{
-				Slug: "part-a", Title: "Part A", Type: "feature", Labels: []string{"mod-a"}, Recipe: RecipeTapestry, Profile: "standard",
+				Slug: "part-a", Title: "Part A", Type: "feature", Labels: []string{"mod-a"}, Recipe: RecipeJacquard, Profile: "standard",
 				Decisions: []string{"D1"}, Packages: []Package{{Path: "internal/a", Size: 10}},
 				OpenRisks: []string{"Risk one"}, Criteria: []string{"D1: first holds."}, PatternChanges: []string{"PATTERN-a"},
 				CostLine: "one tapestry part",
 			},
 			{
-				Slug: "part-b", Title: "Part B", Type: "feature", Labels: []string{"mod-b"}, Recipe: RecipeTapestry, Profile: "standard",
+				Slug: "part-b", Title: "Part B", Type: "feature", Labels: []string{"mod-b"}, Recipe: RecipeJacquard, Profile: "standard",
 				Decisions: []string{"D2"}, Packages: []Package{{Path: "internal/b", Size: 10}}, DependsOn: []string{"part-a"},
 				OpenRisks: []string{"Risk two"}, Criteria: []string{"D2: second holds."}, PatternChanges: []string{"PATTERN-b"},
 				CostLine: "one tapestry part",
@@ -75,7 +75,7 @@ func validBoard() BoardContext {
 		},
 		TypeLabels:      []string{"feature", "fix", "sketch"},
 		LabelVocabulary: []string{"mod-a", "mod-b", "mod-z"},
-		Profiles:        map[string][]string{RecipeTapestry: {"standard"}, RecipeDarn: {"quick"}},
+		Profiles:        map[string][]string{RecipeJacquard: {"standard"}, RecipeDarn: {"quick"}},
 		LivePattern:     func(id string) bool { return id == "PATTERN-live" },
 		ValidateSlug: func(slug string) error {
 			if slug == refusedSlug {

@@ -380,8 +380,9 @@ func (s *fixerSession) judge() (shuttleengine.GateResult, error) {
 
 // haltReason returns the reason the row halts with when its fixer run did not end fixed.
 // It returns the empty string for a fixed end.
-// Every reason except a tapestry, darn or sampler escalate opens with LandingStopPrefix and ends with a way forward;
-// each is one line.
+// Each reason is one line.
+// Every reason except a tapestry, jacquard, darn or sampler escalate opens with LandingStopPrefix.
+// Each of those reasons also ends with a way forward.
 // With escalateJudgedFirst true, an escalate end opens with EscalateStopPrefix instead;
 // it names `lym loom decision add` as its way forward,
 // and a board note with a fix on the task branch once the task's scope is closed.

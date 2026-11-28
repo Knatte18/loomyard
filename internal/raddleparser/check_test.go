@@ -91,6 +91,11 @@ func TestCheck(t *testing.T) {
 			p.Parts[1].Packages = p.Parts[0].Packages
 		}, []string{CheckPackagesShared}},
 		{"RecipeInvalid", func(p *Proposal, _ *BoardContext) { p.Parts[0].Recipe = "batten" }, []string{CheckRecipeInvalid}},
+		{"TapestryPartIsRecipeInvalid", func(p *Proposal, _ *BoardContext) { p.Parts[0].Recipe = "tapestry" }, []string{CheckRecipeInvalid}},
+		{"DarnPartPasses", func(p *Proposal, _ *BoardContext) {
+			p.Parts[0].Recipe = RecipeDarn
+			p.Parts[0].Profile = "quick"
+		}, nil},
 		{"ProfileUnknown", func(p *Proposal, _ *BoardContext) { p.Parts[0].Profile = "ghost" }, []string{CheckProfileUnknown}},
 		{"PartTypedSketch", func(p *Proposal, _ *BoardContext) { p.Parts[0].Type = TypeSketch }, []string{CheckTypeInvalid}},
 		{"PartWithNoModuleLabel", func(p *Proposal, _ *BoardContext) { p.Parts[0].Labels = nil }, []string{CheckLabelsMissing}},
@@ -108,7 +113,7 @@ func TestCheck(t *testing.T) {
 		}, []string{CheckSlugTaken}},
 		{"SlugEqualToTheSketchs", func(p *Proposal, _ *BoardContext) { p.Parts[1].Slug = "sketch-x" }, []string{CheckSlugSketch}},
 		{"SlugFiledTwice", func(p *Proposal, _ *BoardContext) {
-			p.Parts = append(p.Parts, Part{Slug: "part-b", Type: "feature", Labels: []string{"mod-a"}, Recipe: RecipeTapestry, Profile: "standard", Packages: []Package{{Path: "internal/c", Size: 1}}})
+			p.Parts = append(p.Parts, Part{Slug: "part-b", Type: "feature", Labels: []string{"mod-a"}, Recipe: RecipeJacquard, Profile: "standard", Packages: []Package{{Path: "internal/c", Size: 1}}})
 		}, []string{CheckSlugDuplicate}},
 		{"SlugTheBoardRefuses", func(p *Proposal, _ *BoardContext) { p.Parts[1].Slug = refusedSlug }, []string{CheckSlugInvalid}},
 		{"ProjectSlugTheBoardRefuses", func(p *Proposal, _ *BoardContext) {
@@ -191,6 +196,10 @@ func TestCheck_DetailNamesTheWayForward(t *testing.T) {
 	}{
 		{"SlugInvalid", CheckSlugInvalid, func(p *Proposal, _ *BoardContext) { p.Parts[1].Slug = refusedSlug }, []string{
 			`slug "refused-slug" is refused`, "pick a slug the board admits", "lym loom raddle-propose",
+		}},
+		{"TapestryPartNamesJacquard", CheckRecipeInvalid, func(p *Proposal, _ *BoardContext) { p.Parts[0].Recipe = "tapestry" }, []string{
+			`recipe "tapestry" is neither jacquard nor darn`, "a part filed from a Sketch is filed with its decision record",
+			"jacquard is the recipe that builds from it", "set the part's recipe to jacquard or darn", "lym loom raddle-propose",
 		}},
 	}
 	for _, tt := range tests {

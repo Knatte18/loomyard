@@ -131,10 +131,10 @@ every other field is `Shed`'s, documented in `internal/shedengine`'s own package
 `lym loom status` carries a top-level `hand_back` key, and the loop's stop envelope carries `loop.hand_back`.
 Both are true only when the run is blocked and the recipe's told check answers true.
 The check reads the status's `current_producer` and `error`; with no check told, both are false.
-For tapestry and darn the check is `landingshed.HandsBack`:
+For tapestry, jacquard and darn the check is `landingshed.HandsBack`:
 a blocked stop at Parent-Align or Finalize whose reason opens with the landing-stop prefix.
 A true key marks a halt that goes to the orch, so every driver hands it back instead of routing it.
-A tapestry, darn or sampler fixer's escalate halt opens with the landing-escalate prefix.
+A tapestry, jacquard, darn or sampler fixer's escalate halt opens with the landing-escalate prefix.
 `landingshed.EscalateHalt` answers true for it, and the key stays false: the halt goes to the arbiter first.
 
 ## The `restep_hold` key
@@ -142,7 +142,7 @@ A tapestry, darn or sampler fixer's escalate halt opens with the landing-escalat
 `lym loom status` carries a top-level `restep_hold` key, and the loop's stop envelope carries `loop.restep_hold`.
 Both are true only when the run is blocked and the recipe's told check answers true.
 The check reads the status's `current_producer` and `error`; with no check told, both are false.
-For tapestry and darn the check is `landingshed.EscalateHalt`:
+For tapestry, jacquard and darn the check is `landingshed.EscalateHalt`:
 a blocked stop at Parent-Align or Finalize whose reason opens with the landing-escalate prefix.
 A true key marks a halt the LLM driver's own build re-launch and binary watch leave alone;
 it still goes to the arbiter first, and only the arbiter's `resume` or the orch's `lym loom resume` moves it.

@@ -53,9 +53,10 @@ Put no design question to the operator before the proposal passes the spec's che
   into chained darns wherever a seam holds.
   A saving in fixed cost is no reason to merge parts:
   the operator takes smaller darns and more reviews over one large part.
-- Keep work in one `tapestry` only when it shares one interface or data shape that a single plan must fix,
+- Keep work in one `jacquard` part only when it shares one interface or data shape that a single plan must fix,
   and name that interface in the part's `cost_line`.
-- A split with more than two `tapestry` parts is expensive.
+  A part is filed with its decision record, so a part that needs a plan names `jacquard`, never `tapestry`.
+- A split with more than two `jacquard` parts is expensive.
   For each, say why it needs its own plan and cannot run as darns,
   and put the cheaper split and its price in `next_best`.
 - `darn` is the default recipe.

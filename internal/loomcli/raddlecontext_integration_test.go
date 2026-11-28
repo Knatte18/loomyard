@@ -106,7 +106,7 @@ func TestRaddleBoardContext(t *testing.T) {
 	if want := []string{"mod-a"}; !slices.Equal(got.LabelVocabulary, want) {
 		t.Errorf("LabelVocabulary = %v; want %v, the board config's module labels", got.LabelVocabulary, want)
 	}
-	for _, recipe := range []string{raddleparser.RecipeTapestry, raddleparser.RecipeDarn} {
+	for _, recipe := range []string{raddleparser.RecipeJacquard, raddleparser.RecipeDarn} {
 		if len(got.Profiles[recipe]) == 0 {
 			t.Errorf("Profiles[%s] = none; want the profiles that hold a block for it", recipe)
 		}

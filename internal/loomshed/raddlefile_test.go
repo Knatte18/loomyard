@@ -320,6 +320,9 @@ func TestRaddleFile(t *testing.T) {
 					if want := wantLabels[part.Slug]; !slices.Equal(part.Labels, want) || part.Kind != boardengine.KindTask {
 						t.Errorf("part %s labels/kind = %v/%q; want %v and a task", part.Slug, part.Labels, part.Kind, want)
 					}
+					if part.Recipe != raddleparser.RecipeJacquard {
+						t.Errorf("part %s recipe = %q; want %q, the recipe its proposal names", part.Slug, part.Recipe, raddleparser.RecipeJacquard)
+					}
 					for _, want := range []string{"`sketch-x`", "takes " + part.Slug, "delivers " + part.Slug, "Exports" + part.Slug, "(about 10 changed lines)"} {
 						if !strings.Contains(part.Body, want) {
 							t.Errorf("part %s body = %q; want it to contain %q", part.Slug, part.Body, want)

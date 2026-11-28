@@ -50,7 +50,7 @@ It also gives the kind of lym thing the term would fit and whether lym already h
 | shaft, harness | skaft | sv skaft; da skaft; fr lame, cadre; de Schaft | a frame of heddles raised or lowered together | module, state | – |
 | treadle | tre (pl. trøer) | sv trampa; da trin; fr marche; de Tritt | the foot pedal that moves the shafts on a hand loom | module | – |
 | dobby | skaftmaskin, dobby | sv skaftmaskin; fr ratière; de Schaftmaschine | the machine that drives the shafts from a pattern | agent role, module | Taken: `dobby`, the daemon that drives the batten runs of one beam worktree, one process per beam on its owning machine. |
-| jacquard | jacquard | sv jacquard; fr jacquard; de Jacquard | the machine that controls warp threads singly | module, agent role | – |
+| jacquard | jacquard | sv jacquard; fr jacquard; de Jacquard | the machine that controls warp threads singly | module, agent role | Close: `jacquard`, the recipe described under the jacquard weave below. |
 | cam, eccentric | eksentermaskin | fr came; de Exzenter | the mechanism that moves the shafts of a mechanical loom | module | – |
 | warp beam | bom, renningsbom † | sv varpbom; fr ensouple; de Kettbaum | the roller that carries the warp | module, state | Close: `beam`, a long-lived pair (`lym beam`) that groups board work: its tasks fork from the beam's branch and land back into it. A beam is one unit of a dobby and an orch. |
 | cloth beam | tøystokk | sv tygbom; fr ensouple de devant; de Warenbaum | the roller that takes up the finished cloth | module, artifact | Close: `beam`, as above. |
@@ -67,7 +67,7 @@ It also gives the kind of lym thing the term would fit and whether lym already h
 | selvedge, selvage | jare, jarekant | sv list; da kant; fr lisière; de Webkante | the firm edge that stops the cloth fraying | module, state | Taken: `Selvage`, the always-present console pane of the reed session. It sits outside the strands and carries no strand name or color. |
 | fell | vevnadsfronten | fr chaîne tissée; de Gewebekante | the working edge of the cloth where the weft is beaten in | state | – |
 | lease sticks | kryssstokker † | sv korsstavar; fr croix; de Kreuzstäbe | hold the crossing of warp threads in order | module | Close: the file locks of the `lock` package, which are file-based advisory locks (an exclusive write lock and a shared read lock) that coordinate processes. |
-| tapestry loom, haute lisse, basse lisse | oppstadgogn, flatvevstol | fr haute lisse, basse lisse | the upright and the horizontal loom for pictorial weaving | module | Close: `tapestry`, the full recipe (Discussion, Plan, Webster, Code review, Describe, Finalize) loom drives for a task. |
+| tapestry loom, haute lisse, basse lisse | oppstadgogn, flatvevstol | fr haute lisse, basse lisse | the upright and the horizontal loom for pictorial weaving | module | Close: `tapestry`, the full recipe loom drives for a task, motif followed by jacquard. |
 | tension weights | vevtyngder | sv varpvikter; de Kettgewichte | weights that hold the warp taut | module | – |
 | comb | kam † | sv kam; fr peigne; de Kamm | straightens and aligns fibre or threads | module | – |
 
@@ -126,10 +126,10 @@ Agent nouns name the one who does the work.
 | twill | kypert, kypertbinding | sv kypert; da kipper; fr sergé; de Köper | diagonal ribs from a stepped binding | module, recipe | Taken: `twill`, the directive (rendered by `twilldirective`) that makes a writer which has settled its record review it through lenses, one fork per lens, before it ends. |
 | satin | sateng, satengbinding | sv satäng; fr satin; de Atlas | long floats, smooth surface | recipe, state | – |
 | damask | damask | sv damast; fr damas; de Damast | figured weave with a pattern in contrasting binding | artifact | – |
-| jacquard weave | jacquard | fr jacquard | pictorial weave controlled thread by thread | artifact | – |
+| jacquard weave | jacquard | fr jacquard | pictorial weave controlled thread by thread | artifact, recipe | Taken: `jacquard`, the recipe that builds a task from its stored decision record: tapestry's rows after Discussion, Plan, Webster, Code review, Describe and Finalize, which tapestry runs as its Jacquard block. Raddle files each part it splits from a Sketch under `jacquard` or `darn`. |
 | pile | flor †, polvarp (pile warp) | sv lugg; fr velours; de Flor | raised loops or cut ends on the surface | state | – |
 | terry | frotté | fr éponge; de Frottee | pile of uncut loops | state | – |
-| tapestry | billedvev, gobelenger (pl.) | sv gobelängvävnad; fr tapisserie; de Gobelin | weft-faced pictorial weave | recipe, artifact | Taken: `tapestry`, the full task recipe: Discussion, Plan, Webster, Code review, Describe and Finalize, each review step followed by its own fix step. |
+| tapestry | billedvev, gobelenger (pl.) | sv gobelängvävnad; fr tapisserie; de Gobelin | weft-faced pictorial weave | recipe, artifact | Taken: `tapestry`, the full task recipe: motif followed by jacquard, its Motif block running Discussion and its Jacquard block Plan, Webster, Code review, Describe and Finalize, each review step followed by its own fix step. |
 | arras | – | fr arras | a tapestry hung as a wall covering | recipe | Taken: `arras`, a recipe kept in code but not offered: no board entry may be given it, and no starting run profile covers it; `motif` serves a tapestry-sized note. It discusses the task and splits its decision record into board entries under the split perch's review, and the entry becomes the family's project. |
 | overshot | – † | sv opphämta †; de Überschuss | pattern from long weft floats on a plain ground | state | – |
 | rep, ribbed weave | rips † | fr reps; de Rips | weave with fine crosswise ribs | state | – |
@@ -149,7 +149,7 @@ Agent nouns name the one who does the work.
 | cartoon | kartong | sv kartong; fr carton; de Karton | the full-size drawing placed behind the warp | artifact | Taken: `cartoon`, kept for a later Plan block by the shed-sub-run-block task. |
 | sample, swatch | prøve, vevprøve † | sv provlapp; fr échantillon; de Muster, Probe | a small piece woven to test a design | artifact | Close: `sampler`, the recipe and agent role described above. |
 | motif | motiv | sv motiv; fr motif; de Motiv | a repeated unit of a design | artifact, recipe | Taken: `motif`, a recipe a board task may name, which runs Discussion alone, and which tapestry runs inline as its Motif block, a shed block that runs a whole sub-recipe as one producer. |
-| raddle | renningskam † | sv –; fr râteau; de – | the comb that spaces the warp threads as they are wound onto the beam | artifact, recipe | Taken: `raddle`, a recipe a board task runs on a Sketch, whose agent proposes how the Sketch splits into a tapestry, tasks, a project or a beam, and which files what the operator approves on the board. |
+| raddle | renningskam † | sv –; fr râteau; de – | the comb that spaces the warp threads as they are wound onto the beam | artifact, recipe | Taken: `raddle`, a recipe a board task runs on a Sketch, whose agent proposes how the Sketch splits into a tapestry, tasks, a project or a beam, and which files what the operator approves on the board, each part under `jacquard` or `darn`. |
 | warp chain | renningskjede † | fr chaîne; de Kettfaden-Kette | the warp as a chain of ends after warping | artifact | – |
 | yarn | garn | sv garn; da garn; fr fil; de Garn | spun fibre ready to weave | artifact | – |
 | thread | tråd | sv tråd; fr fil; de Faden | a single strand | artifact | Close: `strand`, as below. |

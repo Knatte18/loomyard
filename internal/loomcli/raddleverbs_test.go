@@ -37,7 +37,7 @@ func raddleTestProposal(t *testing.T, costLine string, checked ...raddleparser.B
 		Shape:        raddleparser.ShapeTapestry,
 		BoardChecked: checked,
 		Parts: []raddleparser.Part{{
-			Slug: "part-a", Title: "Part A", Type: "enhancement", Labels: []string{"mod-a"}, Recipe: raddleparser.RecipeTapestry, Profile: "standard",
+			Slug: "part-a", Title: "Part A", Type: "enhancement", Labels: []string{"mod-a"}, Recipe: raddleparser.RecipeJacquard, Profile: "standard",
 			Decisions: []string{"D1"}, Packages: []raddleparser.Package{{Path: "internal/a", Size: 10}},
 			Criteria: []string{"D1: first holds."}, CostLine: "one tapestry part",
 		}},
@@ -61,7 +61,7 @@ func raddleTestBoard() raddleparser.BoardContext {
 		},
 		TypeLabels:      []string{"bug", "enhancement", "sketch"},
 		LabelVocabulary: []string{"mod-a"},
-		Profiles:        map[string][]string{raddleparser.RecipeTapestry: {"standard"}},
+		Profiles:        map[string][]string{raddleparser.RecipeJacquard: {"standard"}},
 	}
 }
 

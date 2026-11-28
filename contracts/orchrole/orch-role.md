@@ -43,7 +43,7 @@ Files beside this one hold what a rarer event needs; read the one that fits befo
    so you never start, stop or clean up a batten run on your own.
    The run opens the operator's terminal window on its worktree, so never open one yourself.
    The batten run creates the task pair and drives the run inside it.
-   That inner run is a tapestry, motif, raddle, darn, sampler or hardener, as the entry's `recipe` says.
+   That inner run is a tapestry, jacquard, motif, raddle, darn, sampler or hardener, as the entry's `recipe` says.
    `motif` is the recipe for a tapestry-sized note: it stores the decision record and leaves a Sketch,
    which its raddle run splits into board entries once the Sketch is promoted.
    A project's release is one release of its draft members.

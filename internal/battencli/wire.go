@@ -1341,7 +1341,7 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 				}
 				return sheddriver.RestepRecorded(records, status), nil
 			},
-			// HandBack marks a blocked landing halt, decision halt or tapestry, darn or sampler escalate halt,
+			// HandBack marks a blocked landing halt, decision halt or tapestry, jacquard, darn or sampler escalate halt,
 			// so the binary re-step leaves it alone.
 			HandBack: restepSkips,
 			// PauseRequested reads batten's own status file, the one `lym batten pause` writes,
@@ -1844,8 +1844,9 @@ func teardownPushSeams(location *lymcwd.Location, slug string, locateTask func()
 	return push, level
 }
 
-// restepSkips reports whether a child's status is a blocked halt the binary re-step leaves alone:
-// a landing halt or a decision halt for the orch, or a tapestry, darn or sampler fixer's escalate halt for the arbiter.
+// restepSkips reports whether a child's status is a blocked halt the binary re-step leaves alone.
+// A landing halt or a decision halt for the orch is one.
+// So is a tapestry, jacquard, darn or sampler fixer's escalate halt for the arbiter.
 // The halt is read from the status's current producer and error.
 func restepSkips(status shedengine.Status) bool {
 	if status.State != shedengine.StateBlocked {

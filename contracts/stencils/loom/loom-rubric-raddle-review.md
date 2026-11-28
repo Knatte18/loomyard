@@ -48,7 +48,7 @@ Judge the split's judgement, not its format:
 - **Each part is bounded.**
   A `darn` part past about 1,500 changed lines, deleted lines left out, or past about eight packages,
   with a seam that holds, is a finding.
-  So is a `tapestry` part with no shared interface or data shape that needs one plan.
+  So is a `jacquard` part with no shared interface or data shape that needs one plan.
 - **Each part's recipe and profile fit it.**
   `darn` is the default and `light` its profile; `solid` needs a data risk, a wide change or a bundle.
   Each cost line rests on the cells it cites and states the sum of its part's package sizes.

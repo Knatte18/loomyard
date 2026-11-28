@@ -40,7 +40,8 @@ A part holds:
 - `labels` — the module labels of the modules the part's own work changes, at least one, each listed once and each a module label of the board's vocabulary.
   A label the Sketch does not carry is allowed, since a split can find a module the Sketch's labels missed.
   Raddle-File files the part with its `type` and these labels, and the project with its `type` and every label its parts carry.
-- `recipe` — `tapestry` or `darn`.
+- `recipe` — `jacquard` or `darn`.
+  A part is filed with its decision record, so a part that needs a plan names `jacquard`, which builds from that record, and never `tapestry`.
 - `profile` — a profile of `profiles.yaml` that holds a block for that recipe.
 - `decisions` — the Sketch decision ids the part builds, such as `D3`.
 - `packages` — a list of `{path, size}`, `size` the rough number of changed lines.
@@ -60,7 +61,7 @@ A part holds:
 - `line` — one line saying what the figure rests on.
 - `next_best` — `{split, expected_usd, line}`: the next-best split in one line, its expected cost and the line that says what that figure rests on.
 - `cells` — the `lym report cost` cells both figures rest on, each `{recipe, profile, stored_record}`.
-  A tapestry part is filed as discussed, so its cost rests on the jacquard cell with `stored_record` true,
+  A jacquard part is filed as discussed, so its cost rests on the jacquard cell with `stored_record` true,
   where `lym report cost` counts such runs.
 
 Shape `tapestry` has exactly one part, which builds every decision.
@@ -99,7 +100,7 @@ The gate, `raddle-propose` and `raddle-approve` run the checks of the proposal a
 - `depends-cycle` — a cycle in `depends_on`.
 - `depends-unknown` — a `depends_on` that names no part, no board entry and no `board_checked` entry; a `board_checked` entry that is gone from the board passes as landed.
 - `packages-shared` — two parts with no `depends_on` path between them that list a common package.
-- `recipe-invalid` — a recipe that is neither `tapestry` nor `darn`.
+- `recipe-invalid` — a recipe that is neither `jacquard` nor `darn`; for a part naming `tapestry` the finding names `jacquard` as the recipe of a part filed from a Sketch.
 - `profile-unknown` — a profile that `profiles.yaml` does not hold, or holds without a block for the part's recipe.
 - `type-invalid` — a part's or the project's type that is not in the board's vocabulary, or is `sketch`.
 - `labels-missing` — a part with no module label.
@@ -145,7 +146,7 @@ Auto and perch mode file with no approval match, and `raddle-approve` refuses in
       "title": "Usage record writer",
       "type": "feature",
       "labels": ["shed"],
-      "recipe": "tapestry",
+      "recipe": "jacquard",
       "profile": "standard",
       "decisions": ["D1", "D2"],
       "packages": [{"path": "internal/shedrun", "size": 120}],
@@ -160,8 +161,8 @@ Auto and perch mode file with no approval match, and `raddle-approve` refuses in
   ],
   "cost": {
     "expected_usd": null,
-    "line": "one tapestry part; its cell reads too few runs",
-    "next_best": {"split": "two parts", "expected_usd": null, "line": "two tapestry parts; the same cell reads too few runs"},
+    "line": "one jacquard part; its cell reads too few runs",
+    "next_best": {"split": "two parts", "expected_usd": null, "line": "two jacquard parts; the same cell reads too few runs"},
     "cells": [{"recipe": "jacquard", "profile": "standard", "stored_record": true}]
   }
 }

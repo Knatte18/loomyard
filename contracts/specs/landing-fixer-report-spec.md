@@ -28,7 +28,7 @@ An empty section is its heading with no bullet under it.
 - `fixed` — the fixer made every change the failure needed, and the row goes on to re-check.
 - `escalate` — a parent change conflicts with a decision of the record, which the fixer does not settle;
   the row halts with the `## Conflict` text:
-  to the arbiter first on a tapestry, darn or sampler run, and to the orch on a pawl run.
+  to the arbiter first on a tapestry, jacquard, darn or sampler run, and to the orch on a pawl run.
   An `escalate` report with no `## Conflict` section is invalid.
 
 ## Sole parser

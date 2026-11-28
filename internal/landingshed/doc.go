@@ -75,7 +75,7 @@
 //
 // HandsBack is the one predicate that names the halts the orch takes over:
 // a blocked stop at Parent-Align or Finalize whose reason opens with LandingStopPrefix.
-// An escalate report halts under EscalateStopPrefix on a tapestry, darn or sampler run, which is no hand-back.
+// An escalate report halts under EscalateStopPrefix on a tapestry, jacquard, darn or sampler run, which is no hand-back.
 // On a pawl run it halts under LandingStopPrefix.
 //
 // Landing config is hub-wide.

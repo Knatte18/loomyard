@@ -48,7 +48,7 @@ The commands that read and write the board are in the `ly:board` skill.
   promoting the Sketch runs raddle, which splits it into tasks or a project.
   The Sketch waits until it is promoted, so a design decided now can be split later, on code that is still changing.
   A project's release is one release: it releases its draft members at once, and the project keeps the whole record.
-  Raddle chooses each part's recipe, tapestry included, and that choice stands:
+  Raddle chooses each part's recipe, jacquard or darn, and that choice stands:
   never change, on your own judgment, the recipe of a task raddle filed; the operator may still name darn for it.
 - Every task runs through loom, bug fixes included.
   Never set `recipe: darn` on a board entry yourself; a task runs darn only when the operator names darn for that task.

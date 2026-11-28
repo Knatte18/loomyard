@@ -30,7 +30,8 @@ Never answer one with a goto to Plan-Bouncer, since the plan does not change.
   Either accept the change as it stands or have the findings fixed on the task branch by the run's agents.
   Accepting is `lym loom circling accept <slug>`, which writes those findings into the change description.
   Then run `lym loom resume`, which without an acceptance runs the fix reviews afresh.
-- **A fixer that escalated a decision** on a tapestry, darn or sampler run halts with the landing-escalate prefix instead.
+- **A fixer that escalated a decision** halts with the landing-escalate prefix instead.
+  This holds on a tapestry, jacquard, darn or sampler run.
   The arbiter judges it first, so it reaches you only as the arbiter's hand-on.
   Record the deciding decision with `lym loom decision add`, then `lym loom resume`.
   Once the task's scope is closed, as for a Parent-Align stop, file the call as a board note instead,

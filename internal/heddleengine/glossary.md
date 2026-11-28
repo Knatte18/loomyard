@@ -14,6 +14,7 @@ A term settled that this list lacks is added here, in lym's repository at `inter
 - **support log**: Discussion's interview, rejected alternatives and review rounds, beside the decision record.
 - **Sketch**: a decision record kept on the board as a note, for an entry discussed before it runs.
 - **recipe**: the rows a run walks in order, such as tapestry, darn or sampler. Never: profile, profil, pipeline.
+- **jacquard**: the recipe that builds a task from its stored decision record: tapestry's rows after Discussion.
 - **row**: one step of a recipe, run by one producer and checked by its gates. Never: stage.
 - **run**: one recipe walked for one task in the task's worktree. Never: job, build.
 - **plan**: the cards the Plan row writes for Webster to implement.

@@ -52,13 +52,13 @@ func validRaddleProposal() raddleparser.Proposal {
 		BoardChecked: []raddleparser.BoardCheck{{Slug: "other-open", Revised: "2026-11-01T10:00:00Z"}},
 		Parts: []raddleparser.Part{
 			{
-				Slug: "part-a", Title: "Part A", Type: "feature", Labels: []string{"mod-a"}, Recipe: raddleparser.RecipeTapestry, Profile: "standard",
+				Slug: "part-a", Title: "Part A", Type: "feature", Labels: []string{"mod-a"}, Recipe: raddleparser.RecipeJacquard, Profile: "standard",
 				Decisions: []string{"D1"}, Packages: []raddleparser.Package{{Path: "internal/a", Size: 10}},
 				OpenRisks: []string{"Risk one"}, Criteria: []string{"D1: first holds."}, PatternChanges: []string{"PATTERN-a"},
 				CostLine: "one tapestry part",
 			},
 			{
-				Slug: "part-b", Title: "Part B", Type: "feature", Labels: []string{"mod-a", "mod-b"}, Recipe: raddleparser.RecipeTapestry, Profile: "standard",
+				Slug: "part-b", Title: "Part B", Type: "feature", Labels: []string{"mod-a", "mod-b"}, Recipe: raddleparser.RecipeJacquard, Profile: "standard",
 				Decisions: []string{"D2"}, Packages: []raddleparser.Package{{Path: "internal/b", Size: 10}}, DependsOn: []string{"part-a"},
 				OpenRisks: []string{"Risk two"}, Criteria: []string{"D2: second holds."}, PatternChanges: []string{"PATTERN-b"},
 				CostLine: "one tapestry part",
@@ -80,7 +80,7 @@ func validRaddleBoard() raddleparser.BoardContext {
 		},
 		TypeLabels:      []string{"feature", "fix", "sketch"},
 		LabelVocabulary: []string{"mod-a", "mod-b", "mod-z"},
-		Profiles:        map[string][]string{raddleparser.RecipeTapestry: {"standard"}, raddleparser.RecipeDarn: {"quick"}},
+		Profiles:        map[string][]string{raddleparser.RecipeJacquard: {"standard"}, raddleparser.RecipeDarn: {"quick"}},
 	}
 }
 

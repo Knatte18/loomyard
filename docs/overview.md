@@ -1135,7 +1135,7 @@ User-facing modules each get one `lym <module>` namespace:
   A run with no seed gets `tapestry`.
   `lym loom start` never rewrites a recorded recipe.
   The `lym loom` verbs serve loom runs only:
-  a recipe declaring `contract: loom` is served, among them tapestry, motif, raddle, darn, pawl and sampler,
+  a recipe declaring `contract: loom` is served, among them tapestry, jacquard, motif, raddle, darn, pawl and sampler,
   and arras, which is kept in code but not offered.
   A run of any other recipe is refused, naming the `lym shed` verbs;
   a seed naming no recipe this lym knows is refused, naming the re-seed.
@@ -1418,7 +1418,7 @@ User-facing modules each get one `lym <module>` namespace:
   A halt at `Parent-Align` or `Finalize` is handed back to the orch through every driver.
   Its causes are a spent or over-cap fixer and fix reviews out of rounds.
   The status marks the halt `hand_back`.
-  On a loom run, tapestry, darn, pawl or sampler, a fixer's escalate halts with `EscalateStopPrefix` instead.
+  On a loom run, tapestry, jacquard, darn, pawl or sampler, a fixer's escalate halts with `EscalateStopPrefix` instead.
   It is not marked `hand_back`, and it goes to the arbiter first, reaching the orch only as the arbiter's hand-on.
   `Webster` reroutes to `Plan-Burler-Review` after begin-batch leaves a new plan conflict.
   The plan fixer `lym webster fix-plan` could not clear that conflict.
@@ -1711,10 +1711,12 @@ User-facing modules each get one `lym <module>` namespace:
 - **batten** — drives one task worktree's whole lifecycle as a single Shed run from the hub's prime worktree.
   The lifecycle is to create the worktree, seed the child's own inner run from the Board task's own `recipe`,
   run it to a terminal state, land it into the prime, and tear down.
-  The `recipe` is one of `tapestry`, `motif`, `raddle`, `darn` and `sampler`.
+  The `recipe` is one of `tapestry`, `jacquard`, `motif`, `raddle`, `darn` and `sampler`.
   An empty `recipe` means `board.default_recipe`.
+  `tapestry` runs the `Motif` block and then the `Jacquard` block.
+  `jacquard` is for a child whose entry holds a stored decision record, such as a part raddle files: it runs tapestry's rows after Discussion.
   `motif` is for a Discussion-only child that lands no code.
-  `raddle` is for a child that files a Sketch's split on the board.
+  `raddle` is for a child that files a Sketch's split on the board, each part under `jacquard` or `darn`.
   `arras` is no longer offered on the board: a tapestry-sized note runs `motif`.
   `darn` is for a darn child, and `sampler` for a sampler child.
   The code is `internal/battenshed`, `internal/battenrecipe` and `internal/battencli`.
@@ -1791,8 +1793,8 @@ User-facing modules each get one `lym <module>` namespace:
   `lym config batten --layer default --set <key>=<value>` from the prime changes one.
   A different value in the task worktree's own layers is ignored with a warning.
   A failed command only warns, and the row passes on.
-  The Board task's `recipe` must be `tapestry`, `darn` or empty.
-  `Run-Shed` starts `lym loom start` inside the task worktree, which serves both recipes,
+  The Board task's `recipe` must be one that the task worktree's `lym loom start` bootstraps, such as `tapestry`, `jacquard` or `darn`, or empty.
+  `Run-Shed` starts `lym loom start` inside the task worktree,
   so `Seed-Child` refuses any other registered recipe before writing a seed.
   That avoids committing a seed the child's own bootstrap would refuse.
   `Seed-Child` halts `blocked` with a named `stuck_reason`, not a hard failure, for each refusal `WriteSeed` can make.
@@ -1984,7 +1986,7 @@ and the baseline capture is a detached registered process, not a gate tier.
 See [internal/driftengine](../internal/driftengine/doc.go).
 
 The batten Shed nests loom's, as its own recipe.
-Its `Run-Shed` row seeds a task's run, tapestry, motif, raddle, darn, sampler or hardener,
+Its `Run-Shed` row seeds a task's run, tapestry, jacquard, motif, raddle, darn, sampler or hardener,
 or arras, which is kept in code but not offered, and drives it as a child process,
 and it polls that run's own persisted status for the verdict.
 There are two status files by design:

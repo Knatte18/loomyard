@@ -112,7 +112,7 @@ func raddleBoardContext(location *lymcwd.Location, filing bool) (raddleparser.Bo
 		return raddleparser.BoardContext{}, fmt.Errorf("the board holds no entry for the run's Sketch %q; way forward: restore the entry with \"lym board upsert\", then run the check again", sketch)
 	}
 
-	for _, recipe := range []string{raddleparser.RecipeTapestry, raddleparser.RecipeDarn} {
+	for _, recipe := range []string{raddleparser.RecipeJacquard, raddleparser.RecipeDarn} {
 		for _, name := range profiles.Names() {
 			if _, holds := profiles.ByName[name][recipe]; holds {
 				board.Profiles[recipe] = append(board.Profiles[recipe], name)

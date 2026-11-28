@@ -280,7 +280,8 @@ type InnerRunDeps struct {
 	// Restepped reports whether the child's settle records hold a re-step of the stop status names.
 	// A nil Restepped resolves to reporting false in NewInnerRun.
 	Restepped func(status shedengine.Status) (bool, error)
-	// HandBack reports whether the child's blocked status is a landing, decision, tapestry, darn or sampler escalate halt.
+	// HandBack reports whether the child's blocked status is a landing, decision or escalate halt.
+	// An escalate halt here is one from a tapestry, jacquard, darn or sampler run.
 	// The binary re-step leaves such a halt alone; a nil HandBack resolves to marking nothing in NewInnerRun.
 	HandBack func(status shedengine.Status) bool
 }

@@ -413,7 +413,7 @@ func validType(label string, board BoardContext) bool {
 	return label != TypeSketch && slices.Contains(board.TypeLabels, label)
 }
 
-// vocabulary reports a part whose recipe is neither tapestry nor darn.
+// vocabulary reports a part whose recipe is neither jacquard nor darn, a part naming tapestry included.
 // It also reports a part whose profile holds no block for its recipe.
 // It also reports a part or project whose type is not a type label of the board other than the Sketch.
 // It also reports a part that names no module label, and a part label that is no module label of the board;
@@ -423,8 +423,8 @@ func validType(label string, board BoardContext) bool {
 func (c *checker) vocabulary() []Finding {
 	var findings []Finding
 	for _, part := range c.proposal.Parts {
-		if part.Recipe != RecipeTapestry && part.Recipe != RecipeDarn {
-			findings = append(findings, Finding{Check: CheckRecipeInvalid, Part: part.Slug, Detail: fmt.Sprintf("recipe %q is neither %s nor %s", part.Recipe, RecipeTapestry, RecipeDarn)})
+		if part.Recipe != RecipeJacquard && part.Recipe != RecipeDarn {
+			findings = append(findings, Finding{Check: CheckRecipeInvalid, Part: part.Slug, Detail: fmt.Sprintf("recipe %q is neither %s nor %s; a part filed from a Sketch is filed with its decision record, and %s is the recipe that builds from it; way forward: set the part's recipe to %s or %s, then run lym loom raddle-propose again", part.Recipe, RecipeJacquard, RecipeDarn, RecipeJacquard, RecipeJacquard, RecipeDarn)})
 		} else if !slices.Contains(c.board.Profiles[part.Recipe], part.Profile) {
 			findings = append(findings, Finding{Check: CheckProfileUnknown, Part: part.Slug, Detail: fmt.Sprintf("profile %q holds no block for the %s recipe", part.Profile, part.Recipe)})
 		}

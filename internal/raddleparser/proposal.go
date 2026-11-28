@@ -26,8 +26,9 @@ const (
 )
 
 // The recipes a part may name.
+// A filed part carries its decision record, so a part that needs a plan runs jacquard, which builds from that record.
 const (
-	RecipeTapestry = "tapestry"
+	RecipeJacquard = "jacquard"
 	RecipeDarn     = "darn"
 )
 

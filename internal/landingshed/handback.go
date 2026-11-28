@@ -1,6 +1,6 @@
 // handback.go holds the predicates every driver reads to sort a blocked stop: HandsBack and EscalateHalt.
 // HandsBack marks a landing halt that goes to the orch.
-// EscalateHalt marks a tapestry, darn or sampler merge fixer's escalate halt that goes to the arbiter first.
+// EscalateHalt marks a tapestry, jacquard, darn or sampler merge fixer's escalate halt that goes to the arbiter first.
 // Other stops are routed by the recipe itself.
 
 package landingshed
@@ -19,7 +19,7 @@ func HandsBack(producer, reason string) bool {
 }
 
 // EscalateHalt reports whether a blocked stop at producer with the persisted reason is an escalate halt.
-// The tapestry, darn or sampler merge fixer raises such a halt.
+// The tapestry, jacquard, darn or sampler merge fixer raises such a halt.
 // A stop at Parent-Align or Finalize whose reason opens with EscalateStopPrefix is one.
 // An escalate halt is no hand-back: the arbiter judges it first, and batten's binary re-step leaves it alone.
 func EscalateHalt(producer, reason string) bool {

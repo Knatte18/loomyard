@@ -74,7 +74,7 @@ A project that runs as a task run is no beam, and no repair of its worktree make
 so it cannot tell them apart.
 The entry's `kind` does (`lym board get <slug>`, project versus task),
 and so does the inner run's current producer, read with `lym loom status` in the worktree:
-a task run's is a tapestry, motif, darn or sampler row, a beam's is Beam-Up or a later pawl row.
+a task run's is a tapestry, jacquard, motif, darn or sampler row, a beam's is Beam-Up or a later pawl row.
 The way forward is `lym batten cancel <slug> --remove` on the operator's word, then `lym beam create <slug>`.
 Never repair a run with `lym fabric add`, which gives the wrong run a worktree back.
 Never delete a worktree directory by hand.

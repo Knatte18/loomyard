@@ -124,7 +124,8 @@ func NewParentAlign(deps Deps) (*ParentAlign, error) {
 // and every halt of that alignment is a Stuck with Halt whose reason opens with LandingStopPrefix.
 // A gate whose result is a runner crash or a memory pressure stop judged no code:
 // it halts the same way before any alignment, with no fixer.
-// A fixer's escalate on a tapestry, darn or sampler run (Deps.EscalateJudgedFirst) opens with EscalateStopPrefix.
+// A fixer's escalate opens with EscalateStopPrefix on a tapestry, jacquard, darn or sampler run.
+// Deps.EscalateJudgedFirst tells the row it is on such a run.
 // A failed record write and every infrastructure fault are errors.
 func (m *ParentAlign) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, parentAlignName); err != nil {

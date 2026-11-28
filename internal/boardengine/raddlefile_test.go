@@ -59,9 +59,9 @@ func startRaddleRun(t *testing.T, b *Board, slug, project string) Task {
 	return entryForRaddle(t, b, slug)
 }
 
-// raddlePart returns a filed task of recipe darn carrying the bug type label and the board label.
+// raddlePart returns a filed task of recipe jacquard carrying the bug type label and the board label.
 func raddlePart(slug string, dependsOn ...string) RaddleEntry {
-	return RaddleEntry{Slug: slug, Title: slug, Kind: KindTask, Labels: []string{"bug", "board"}, Recipe: "darn", DependsOn: dependsOn, Body: RaddlePartBodyPrefix("plan") + ".\n\nbody of " + slug, Record: []byte("record of " + slug + "\n")}
+	return RaddleEntry{Slug: slug, Title: slug, Kind: KindTask, Labels: []string{"bug", "board"}, Recipe: shedrun.RecipeJacquard, DependsOn: dependsOn, Body: RaddlePartBodyPrefix("plan") + ".\n\nbody of " + slug, Record: []byte("record of " + slug + "\n")}
 }
 
 // raddleProject returns the project a filing of the project or beam shape adds, with the type label enhancement.
@@ -214,6 +214,13 @@ func TestFileRaddle(t *testing.T) {
 				entry := entryForRaddle(t, b, slug)
 				if entry.Project != wantProject || !entry.Discussed {
 					t.Errorf("entry %q project, discussed = %q, %t; want %q, true", slug, entry.Project, entry.Discussed, wantProject)
+				}
+				wantRecipe := shedrun.RecipeJacquard
+				if tt.projectEntry != nil && slug == tt.projectEntry.Slug {
+					wantRecipe = ""
+				}
+				if entry.Recipe != wantRecipe {
+					t.Errorf("entry %q recipe = %q; want %q: a filed part keeps its recipe and a project has none", slug, entry.Recipe, wantRecipe)
 				}
 				if record, held, err := b.DecisionRecord(slug); err != nil || !held || string(record) != "record of "+slug+"\n" {
 					t.Errorf("DecisionRecord(%q) = %q, %t, %v; want the filed record", slug, record, held, err)
