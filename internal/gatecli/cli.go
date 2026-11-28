@@ -74,7 +74,7 @@ func newCommand(goBinary string, samplePeriod, preTierCeiling, timeoutUnit, reru
 A key of scope card needs --card <id> per card, scope all runs every tier whole, and scope diff takes the default diff scope.
 Scope marked runs only the key's //lym:only tests.
 While ` + keyName(scoperKey) + ` is go, a --gate call skips other keys' //lym:only tests.
-Explicit <targets> beside --gate replace the key's scope.
+<targets> beside --gate replace the scope, or narrow scope marked.
 --tier N names a tier and may repeat; the default is tier0 without --upto or --gate.
 --upto N adds every declared tier from 0 through N, bar a manual one, which --tier alone runs.
 Each tier takes the gate slots it asks for, bounded by its ` + tierKeyName("<tier>", tierTimeoutMinLeaf) + `.

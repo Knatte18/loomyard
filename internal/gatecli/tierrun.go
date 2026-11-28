@@ -243,39 +243,46 @@ const timeoutMinPoll = 10 * time.Second
 // errTimeoutMinPassed is the cause of a context its gate.tiers.<tier>.timeout_min bound ended.
 var errTimeoutMinPassed = errors.New("the timeout_min bound passed")
 
-// withTimeoutMin returns a context under ctx that ends with the cause errTimeoutMinPassed once timeout has passed.
-// The time passed counts from the call on the monotonic clock and on the wall clock, whichever has run further.
-// The monotonic clock stands still while the host sleeps,
-// so a bound the host slept through still ends the context within timeoutMinPoll of its waking.
-// elapsed reads the time passed since the call on both clocks, and after waits as time.After does.
+// withTimeoutMin returns a context under ctx that is bounded by timeout of the time the host is awake.
+// The context ends with the cause errTimeoutMinPassed once that much time has passed.
+// A suspended host runs no command, so time it spent suspended never counts toward the bound.
+// The time passed is read on the monotonic clock at least every timeoutMinPoll.
+// Some platforms' monotonic clock goes on counting through a suspend,
+// so a poll whose reading ran more than timeoutMinPoll past the wait it asked for counts only that wait.
+// elapsed reads the monotonic time passed since the call, and after waits as time.After does.
 // The cancel it returns ends the context and the goroutine that watches the bound.
-func withTimeoutMin(ctx context.Context, timeout time.Duration, elapsed func() (monotonic, wall time.Duration), after func(time.Duration) <-chan time.Time) (context.Context, context.CancelFunc) {
+func withTimeoutMin(ctx context.Context, timeout time.Duration, elapsed func() time.Duration, after func(time.Duration) <-chan time.Time) (context.Context, context.CancelFunc) {
 	bounded, cancel := context.WithCancelCause(ctx)
 	go func() {
+		var awake, last, wait time.Duration
 		for {
-			monotonic, wall := elapsed()
-			left := timeout - max(monotonic, wall)
+			now := elapsed()
+			step := now - last
+			last = now
+			if step > wait+timeoutMinPoll {
+				step = wait
+			}
+			awake += step
+			left := timeout - awake
 			if left <= 0 {
 				cancel(errTimeoutMinPassed)
 				return
 			}
+			wait = min(left, timeoutMinPoll)
 			select {
 			case <-bounded.Done():
 				return
-			case <-after(min(left, timeoutMinPoll)):
+			case <-after(wait):
 			}
 		}
 	}()
 	return bounded, func() { cancel(context.Canceled) }
 }
 
-// elapsedSinceNow returns a reading of the time passed since this call, on the monotonic clock and on the wall clock.
-func elapsedSinceNow() func() (monotonic, wall time.Duration) {
+// elapsedSinceNow returns a reading of the monotonic time passed since this call.
+func elapsedSinceNow() func() time.Duration {
 	start := time.Now()
-	return func() (time.Duration, time.Duration) {
-		// Round(0) strips the monotonic reading, so the second difference is the wall clock's.
-		return time.Since(start), time.Now().Round(0).Sub(start.Round(0))
-	}
+	return func() time.Duration { return time.Since(start) }
 }
 
 // envOverrideLine returns the line naming each entry of tierEnv whose variable session sets to another value.
@@ -801,9 +808,18 @@ func emptyTierFailure(run tierRun, root string, ran map[string]int, args []strin
 // isFilterFlag reports whether arg is one of filterFlags.
 // It accepts one or two dashes, with or without the `test.` prefix and with or without an `=` value.
 func isFilterFlag(arg string) bool {
+	return slices.Contains(filterFlags, testFlagName(arg))
+}
+
+// testFlagName returns the name of the flag arg sets, without its dashes, `test.` prefix and `=` value.
+// It returns "" for an arg that is no flag.
+func testFlagName(arg string) string {
+	if !strings.HasPrefix(arg, "-") {
+		return ""
+	}
 	name := strings.TrimPrefix(strings.TrimPrefix(strings.TrimPrefix(arg, "-"), "-"), "test.")
 	name, _, _ = strings.Cut(name, "=")
-	return strings.HasPrefix(arg, "-") && slices.Contains(filterFlags, name)
+	return name
 }
 
 // modulePathOf returns the module path that dir's go.mod declares, or "" when dir holds no readable go.mod.

@@ -589,7 +589,7 @@ func TestGateTest_Scopes(t *testing.T) {
 		f.wantArgs(t, f.gate(t, f.pair, nil, "--tier", "1"), scoped, guardInvocation)
 	})
 
-	t.Run("a --gate call skips a //lym:only test its marker does not name, a marked key runs only its marked tests or is refused, and a marker naming no gate key is refused", func(t *testing.T) {
+	t.Run("a --gate call skips a //lym:only test its marker does not name, a marked key runs only its marked tests in the targets' packages or is refused, and a marker naming no gate key is refused", func(t *testing.T) {
 		t.Parallel()
 		f := newScopesHub(t)
 		plankit.WriteTree(t, f.pair, map[string]string{
@@ -620,7 +620,41 @@ func TestGateTest_Scopes(t *testing.T) {
 		f.wantArgs(t, f.gate(t, f.pair, nil, "--gate", "batch", "--card", "1"),
 			[]string{"./lib", "./user", "-skip", skip}, []string{".", "-skip", skip}, guardInvocation)
 
-		f.wantArgs(t, f.gate(t, f.pair, nil, "--gate", "upkeep", "./heldpkg"), []string{"./heldpkg", "-skip", "^(TestLandingGuard)$"})
+		// Explicit targets narrow a marked key's call to its marked tests in the packages they name.
+		f.wantArgs(t, f.gate(t, f.pair, nil, "--gate", "upkeep", "./heldpkg"), []string{"./heldpkg", "-run", "^(TestHeld)$"})
+		f.wantArgs(t, f.gate(t, f.pair, nil, "--gate", "upkeep", "./..."), []string{"./heldpkg", "-run", "^(TestHeld)$"})
+		f.wantArgs(t, f.gate(t, f.pair, nil, "--gate", "upkeep", "./heldpkg/..."), []string{"./heldpkg", "-run", "^(TestHeld)$"})
+		f.wantArgs(t, f.gate(t, f.pair, nil, "--gate", "upkeep", "./heldpkg/"), []string{"./heldpkg", "-run", "^(TestHeld)$"})
+		oneTest := "lym gate test --tier <its tier> <its package> -- -run '^<its name>$'"
+		f.wantRefusal(t, f.gate(t, f.pair, nil, "--gate", "upkeep", "./lib"), "no package that ./lib names", "way forward",
+			"a target names a package only by its path relative to the module", oneTest)
+		// A name that only prefixes the directory, and a path without ./, name no package.
+		f.wantRefusal(t, f.gate(t, f.pair, nil, "--gate", "upkeep", "./held/..."), "no package that ./held/... names")
+		f.wantRefusal(t, f.gate(t, f.pair, nil, "--gate", "upkeep", "heldpkg"), "no package that heldpkg names")
+
+		// A narrowed call names what it keeps and drops, and says so when it replaces the caller's -run.
+		narrowed := `gate test: --gate "upkeep" has scope marked, so these targets narrow it to TestHeld; no package that ./lib names holds a test marked //lym:only upkeep`
+		skipping := f.gate(t, f.pair, nil, "--gate", "upkeep", "./heldpkg", "./lib", "--", "-skip", "TestOther")
+		f.wantArgs(t, skipping, []string{"./heldpkg", "-skip", "TestOther", "-run", "^(TestHeld)$"})
+		if want := narrowed + "\n"; !strings.Contains(skipping.stdout.String(), want) {
+			t.Errorf("stdout = %q; want the line %q", skipping.stdout.String(), want)
+		}
+		running := f.gate(t, f.pair, nil, "--gate", "upkeep", "./heldpkg", "./lib", "--", "-run", "TestOther")
+		f.wantArgs(t, running, []string{"./heldpkg", "-run", "TestOther", "-run", "^(TestHeld)$"})
+		if want := narrowed + "; the guard step's -run over those names replaces the caller's -run; way forward for any other test: " + oneTest + "\n"; !strings.Contains(running.stdout.String(), want) {
+			t.Errorf("stdout = %q; want the line %q", running.stdout.String(), want)
+		}
+
+		// A pattern names the packages below its directory.
+		plankit.WriteTree(t, f.pair, map[string]string{
+			"deep/inner/i_test.go": "package inner\n\nimport \"testing\"\n\n//lym:only upkeep\nfunc TestInner(t *testing.T) {}\n",
+		})
+		f.wantArgs(t, f.gate(t, f.pair, nil, "--gate", "upkeep", "./deep/..."), []string{"./deep/inner", "-run", "^(TestInner)$"})
+		if err := os.RemoveAll(filepath.Join(f.pair, "deep")); err != nil {
+			t.Fatal(err)
+		}
+
+		f.wantArgs(t, f.gate(t, f.pair, nil, "--gate", "upkeep", "-C", "nested", "."), []string{".", "-run", "^(TestNestedHeld)$"})
 		f.wantArgs(t, f.gate(t, f.pair, nil, "--gate", "finalize", "-C", "nested", "."), []string{".", "-skip", "^(TestNestedHeld)$"})
 
 		f.writeScoper(t, "none")
@@ -640,6 +674,8 @@ func TestGateTest_Scopes(t *testing.T) {
 		if run, _ := guardRunRecordOf(t, upkeep.stdout.String(), 1); !run.GuardStep || run.Tier != 1 || run.Slots != 0 {
 			t.Errorf("tier1 guard run record = %+v; want a guard step of tier1 under its slots: all", run)
 		}
+		// A target naming the package runs its marked tier1 test under tier1 too, not under the key's tier0 alone.
+		f.wantArgs(t, f.gate(t, f.pair, nil, "--gate", "upkeep", "./heldpkg"), bothTiers...)
 
 		// A manual tier1 runs its marked test only for a key that lists it or a tier covering it.
 		writeManualTierOne := func(mutate func(cfg map[string]any)) {
@@ -685,6 +721,7 @@ func TestGateTest_Scopes(t *testing.T) {
 			t.Errorf("stdout = %q; want it to hold %q", unlistable.stdout.String(), want)
 		}
 		f.wantRefusal(t, f.gate(t, f.pair, nil, "--gate", "upkeep"), "cannot list the packages of", "way forward")
+		f.wantRefusal(t, f.gate(t, f.pair, nil, "--gate", "upkeep", "./heldpkg"), "cannot list the packages of", "way forward")
 	})
 
 	t.Run("--card under dotnet runs the project of the test class naming a card's member glyph target", func(t *testing.T) {

@@ -37,7 +37,7 @@
 // A key of scope `card` takes the `--card` ids and is refused without one.
 // A key of scope `all` is the `--all` form, and `diff` is the computed form.
 // A key of scope `marked` runs only the tests marked for it, as Held tests below says.
-// Explicit `<targets>` beside `--gate` replace the key's scope.
+// Explicit `<targets>` beside `--gate` replace the key's scope, bar a key of scope `marked`, whose call they narrow.
 // Each run record carries the key as `gate_key`.
 // `--gate` opens no flag combination the manual flags lack, except the key's lint steps.
 //
@@ -122,6 +122,7 @@
 // `--all` sets `{targets}` to the tier's `all_targets`.
 // A command holding neither `{targets}` nor `{test_targets}` runs once, whole, under any scope, and says so on stderr.
 // Explicit targets that no listed tier's command takes are refused before any slot.
+// Beside a `--gate` key of scope `marked`, explicit targets instead narrow its guard step, as Held tests below says.
 // Flag-shape refusals need no config and run before hub resolution:
 // `--tags`; a negative `--upto`; `-C` without explicit targets; `--gate` beside `--tier`, `--upto`, `--all` or `--base`;
 // more than one scope form; and `--main-packages` without `--card`.
@@ -181,7 +182,8 @@
 // the gates that run whole, such as `parent-align` and `finalize`, catch those.
 //
 // Once the config is loaded, planning refuses these before any slot, naming `lym config gate`:
-// words after `--` for a tier whose command lacks `{args}`; explicit targets no listed tier's command takes;
+// words after `--` for a tier whose command lacks `{args}`;
+// explicit targets no listed tier's command takes, bar beside a `--gate` key of scope `marked`;
 // an undeclared tier; a hub with no `tier0`, naming `gate.tiers.tier0` in full;
 // a `--filter` after `--` for a command that holds a `--filter` of its own and no `{filter}`;
 // a `covers` entry naming an undeclared tier; and a guard group whose tier the hub does not declare.
@@ -288,6 +290,16 @@
 // The key's tiers play no part in that, so no hub sets them to reach its marked tests, except for a manual tier:
 // its marked tests run only when the key lists that tier or one that covers it, and any other call is refused.
 // A marked test of a tier the hub does not declare refuses the call, as a guard test of such a tier does.
+// Explicit targets narrow the call to the marked tests in the packages they name, each still under its file's tier.
+// A target names a package by its path relative to the scanned module.
+// A target ending in `/...` names that package and the packages below it.
+// Targets that name no package holding a test marked for the key refuse the call.
+// The refusal names the call that runs a test the key does not reach:
+// `lym gate test --tier <its tier> <its package> -- -run '^<its name>$'`.
+// A narrowed call names on stderr the tests it keeps and each target that names no package holding one.
+// The guard step's `-run` replaces a `-run` among the words after `--`,
+// and that line then says so and names the same call.
+// `--copies` beside such a key is refused, since the guard step runs no copies.
 // In a hub that declares tiers, a call that would run no test is refused too:
 // no test is marked for the key, or the scanned directory holds no `go.mod`.
 // The scope needs the `go` scoper, and a listing failure refuses the call, since the scope would run nothing.
@@ -376,8 +388,10 @@
 // It counts once the tier's slots are held.
 // A tier that outlives it has its process tree killed, fails with exit code 1 and prints `gateslot.TierTimeoutLine`.
 // The tree is the shell's process group and every process that carries the shell's marker in its environment.
-// The bound counts wall-clock time as well as awake time, whichever has run further,
-// so a tier the host slept through ends within seconds of the host waking;
+// The bound counts only the time the host was awake.
+// A tier the host suspended or hibernated through therefore keeps the time left on it.
+// The time passed is read at short polls,
+// and a reading that ran more than one poll past the wait before it spans a suspend and counts only that wait;
 // the build's `gate.build.timeout_min` counts the same way.
 // The work before the first tier is bounded by a ceiling;
 // a step that outlives it fails naming the step, and the way forward is to run the same command again.

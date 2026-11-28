@@ -144,18 +144,20 @@ func TestRunTierCopies(t *testing.T) {
 	keyTests := []struct {
 		name        string
 		tiers       []int
+		scope       string
 		wantRefusal string
 	}{
-		{name: "KeyNamingTwoTiersIsRefused", tiers: []int{0, 1}, wantRefusal: "set the key to one tier below tier3 with lym config gate --set from the prime"},
-		{name: "KeyNamingTheBilledTierIsRefused", tiers: []int{3}, wantRefusal: "set the key to one tier below tier3 with lym config gate --set from the prime"},
-		{name: "KeyNamingOneLowerTierPasses", tiers: []int{1}},
+		{name: "KeyNamingTwoTiersIsRefused", tiers: []int{0, 1}, scope: "diff", wantRefusal: "set the key to one tier below tier3 with lym config gate --set from the prime"},
+		{name: "KeyNamingTheBilledTierIsRefused", tiers: []int{3}, scope: "diff", wantRefusal: "set the key to one tier below tier3 with lym config gate --set from the prime"},
+		{name: "KeyOfScopeMarkedIsRefused", tiers: []int{1}, scope: gateslot.ScopeMarked, wantRefusal: "drop --copies, or name a key of scope diff or all"},
+		{name: "KeyNamingOneLowerTierPasses", tiers: []int{1}, scope: "diff"},
 	}
 	for _, tt := range keyTests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			cfg := gateslot.Config{
 				Tiers: map[string]gateslot.Tier{"tier0": {}, "tier1": {}, "tier3": {}},
-				Gates: map[string]gateslot.GateKey{"live": {Tiers: tt.tiers, Scope: "diff"}},
+				Gates: map[string]gateslot.GateKey{"live": {Tiers: tt.tiers, Scope: tt.scope}},
 			}
 			got := gateKeyRefusal(cfg, testRequest{gate: "live", copies: 2})
 			if tt.wantRefusal == "" {

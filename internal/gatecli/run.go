@@ -458,6 +458,7 @@ func namesPackage(request testRequest) bool {
 // gateKeyRefusal returns the refusal for a --gate key the config cannot run, or "" for a runnable key or none.
 // An unknown key, an empty tier list and an undeclared tier carry the config's own way forward.
 // A key of scope card with no --card and no explicit targets is refused, and the refusal names the key.
+// So is --copies beside a key of scope marked, whose tests run only in the guard step, which runs no copies.
 func gateKeyRefusal(cfg gateslot.Config, request testRequest) string {
 	if request.gate == "" {
 		return ""
@@ -468,6 +469,9 @@ func gateKeyRefusal(cfg gateslot.Config, request testRequest) string {
 	}
 	if key.Scope == scopeCard && len(request.cards) == 0 && len(request.targets) == 0 {
 		return fmt.Sprintf("gate test: --gate %q has scope card, which runs the packages of the cards named; way forward: pass --card <id> once per card, then re-run the same command", request.gate)
+	}
+	if request.copies > 0 && key.Scope == gateslot.ScopeMarked {
+		return fmt.Sprintf("gate test: --copies runs copies of a listed tier's run, and --gate %q has scope marked, whose tests run only in the guard step, which runs no copies; way forward: drop --copies, or name a key of scope diff or all, then re-run the same command", request.gate)
 	}
 	if request.copies > 0 && (len(key.Tiers) > 1 || slices.Contains(key.Tiers, gateslot.BilledTier)) {
 		return fmt.Sprintf("gate test: --copies runs one tier below tier%d, and --gate %q names tiers %v; way forward: set the key to one tier below tier3 with lym config gate --set from the prime%s", gateslot.BilledTier, request.gate, key.Tiers, roleClause)

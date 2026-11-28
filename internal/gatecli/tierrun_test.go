@@ -148,8 +148,8 @@ func TestRetryTier(t *testing.T) {
 }
 
 // TestWithTimeoutMin pins the timeout_min bound on a fake clock.
-// Either clock's reading past the bound ends the context at the next poll.
-// The wall clock's reading is the one that passes it after the host slept.
+// The clock's reading past the bound ends the context at the next poll.
+// A poll whose reading ran more than timeoutMinPoll past its wait spans a suspend, and counts only its wait.
 // A poll waits at most timeoutMinPoll, and no longer than what is left of the bound.
 //
 //testtiming:keep the poll lengths and the cause of the timeout_min bound on a fake clock
@@ -157,12 +157,11 @@ func TestWithTimeoutMin(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	type reading struct{ monotonic, wall time.Duration }
 	tests := []struct {
 		name    string
 		timeout time.Duration
-		// readings are the time passed on each clock, one per poll in order; the last repeats.
-		readings []reading
+		// readings are the monotonic time passed, one per poll in order; the last repeats.
+		readings []time.Duration
 		// readyPolls is how many polls end at once; every later poll waits until the context ends.
 		readyPolls int
 		// wantPolls are the waits the bound asks for, in order.
@@ -171,20 +170,28 @@ func TestWithTimeoutMin(t *testing.T) {
 		wantCause error
 	}{
 		{
-			name: "AWallClockPastTheBoundEndsTheContextThoughTheMonotonicClockStoodStill", timeout: 35 * time.Minute,
-			readings: []reading{{monotonic: time.Minute, wall: 21 * time.Hour}}, wantCause: errTimeoutMinPassed,
+			name: "ASuspendBetweenTwoPollsKeepsTheTimeLeftOnTheBound", timeout: 25 * time.Second,
+			readings: []time.Duration{0, 21 * time.Hour}, readyPolls: 1, wantPolls: []time.Duration{timeoutMinPoll, timeoutMinPoll},
 		},
 		{
-			name: "AMonotonicClockPastTheBoundEndsTheContextThoughTheWallClockWasSetBack", timeout: 35 * time.Minute,
-			readings: []reading{{monotonic: 36 * time.Minute, wall: -time.Hour}}, wantCause: errTimeoutMinPassed,
+			name: "APollLateByLessThanAPollCountsInFull", timeout: 25 * time.Second,
+			readings: []time.Duration{0, 19 * time.Second}, readyPolls: 1, wantPolls: []time.Duration{timeoutMinPoll, 6 * time.Second},
+		},
+		{
+			name: "AStepOfExactlyOnePollPastItsWaitCountsInFull", timeout: 25 * time.Second,
+			readings: []time.Duration{0, 20 * time.Second}, readyPolls: 1, wantPolls: []time.Duration{timeoutMinPoll, 5 * time.Second},
+		},
+		{
+			name: "AFirstReadingMoreThanAPollInCountsNothing", timeout: 25 * time.Second,
+			readings: []time.Duration{21 * time.Hour}, wantPolls: []time.Duration{timeoutMinPoll},
 		},
 		{
 			name: "ABoundNotYetPassedKeepsTheContextOpen", timeout: 35 * time.Minute,
-			readings: []reading{{time.Minute, time.Minute}}, readyPolls: 1, wantPolls: []time.Duration{timeoutMinPoll, timeoutMinPoll},
+			readings: []time.Duration{time.Second}, readyPolls: 1, wantPolls: []time.Duration{timeoutMinPoll, timeoutMinPoll},
 		},
 		{
 			name: "TheLastPollWaitsOnlyWhatIsLeft", timeout: 3 * time.Second,
-			readings: []reading{{time.Second, time.Second}, {3 * time.Second, 3 * time.Second}}, readyPolls: 1,
+			readings: []time.Duration{time.Second, 3 * time.Second}, readyPolls: 1,
 			wantPolls: []time.Duration{2 * time.Second}, wantCause: errTimeoutMinPassed,
 		},
 	}
@@ -192,9 +199,8 @@ func TestWithTimeoutMin(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			var read atomic.Int32
-			elapsed := func() (time.Duration, time.Duration) {
-				at := tt.readings[min(int(read.Add(1))-1, len(tt.readings)-1)]
-				return at.monotonic, at.wall
+			elapsed := func() time.Duration {
+				return tt.readings[min(int(read.Add(1))-1, len(tt.readings)-1)]
 			}
 			polls := make(chan time.Duration, len(tt.wantPolls)+1)
 			var polled atomic.Int32
@@ -213,7 +219,17 @@ func TestWithTimeoutMin(t *testing.T) {
 
 			var got []time.Duration
 			for range tt.wantPolls {
-				got = append(got, <-polls)
+				select {
+				case wait := <-polls:
+					got = append(got, wait)
+				case <-ctx.Done():
+					// Every poll is sent before the context ends, so one still buffered is taken here.
+					select {
+					case wait := <-polls:
+						got = append(got, wait)
+					default:
+					}
+				}
 			}
 			if tt.wantCause != nil {
 				<-ctx.Done()

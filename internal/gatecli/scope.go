@@ -109,7 +109,7 @@ func (s scope) forTier(number int) scope {
 // withGateScope returns request with the scope form its --gate key names in place of the scope flags.
 // A key of scope all is the --all form, and a key of scope diff is the computed form.
 // A key of scope card keeps the --card ids; the other scopes drop them.
-// Explicit targets replace the key's scope and a call with no key is returned unchanged.
+// Explicit targets replace the key's scope, bar scope marked, and a call with no key is returned unchanged.
 func withGateScope(cfg gateslot.Config, request testRequest) testRequest {
 	if request.gate == "" || len(request.targets) > 0 {
 		return request
@@ -124,9 +124,10 @@ func withGateScope(cfg gateslot.Config, request testRequest) testRequest {
 	return request
 }
 
-// isMarkedCall reports whether request runs a --gate key of scope marked, with no explicit targets to replace it.
+// isMarkedCall reports whether request runs a --gate key of scope marked.
+// Explicit targets do not replace that scope: they narrow it to the marked tests of the packages they name.
 func isMarkedCall(cfg gateslot.Config, request testRequest) bool {
-	return request.gate != "" && len(request.targets) == 0 && cfg.Gates[request.gate].Scope == gateslot.ScopeMarked
+	return request.gate != "" && cfg.Gates[request.gate].Scope == gateslot.ScopeMarked
 }
 
 // skippedInside returns the guard tests of inside whose tier is none of numbers, nor a tier one of them covers.
@@ -181,7 +182,7 @@ func skippedInside(cfg gateslot.Config, numbers []int, inside map[string][]impac
 // A --card scope reads its changed files as the diff from the merge base with the parent branch.
 // With no parent branch or an unreadable diff it skips none.
 // A narrowed share's guard step also takes each guard test inside its set whose tier no tier of its base is or covers.
-// A --gate key of scope marked takes markedScope instead, whatever the scoper.
+// A --gate key of scope marked takes markedScope instead, whatever the scoper and explicit targets included.
 // A guard or watch scan error refuses with its file, line and way forward.
 // ctx bounds the derivation, so a stalled `go list` is killed when it ends.
 func computeScope(ctx context.Context, cfg gateslot.Config, location *lymcwd.Location, root string, request testRequest, green *greenRun) (scope, error) {

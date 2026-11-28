@@ -31,6 +31,9 @@
    with the args by which the tier's runner selects one class.
    The call names one package or project and selects one class, so it never starts a whole tier.
    The args reach every tier the call runs, so they must suit each of them.
+   A test that call does not reach, one of a tier the key does not run or one a `//lym:only` marker holds for another key,
+   runs through `lym gate test --tier <its tier> <its package> -- <the args by which its tier's runner selects that one test>`,
+   with no `--gate`, which holds no test back.
    Never learn how a tool behaves from processes you start in the shell, and never start a background or detached process from it:
    such a process outlives your command and runs outside every memory cap lym sets.
    Never run a raw test command for it: a raw run can exit 0 with no output when no test ran, and only the gate's report says so.
