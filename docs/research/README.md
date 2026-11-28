@@ -234,6 +234,7 @@ A study's script finds the repository root with `git rev-parse --show-toplevel`,
 ## webster — implementation batches
 
 - [parallel-batches-2026-10-17](webster/parallel-batches-2026-10-17/report.md) — how often cards and batches could have run in parallel worktrees.
+- [gate-time-2026-11-28](webster/gate-time-2026-11-28.md) — where Webster and Weaver rows spend their gate time before and after the card gate took in dependent packages, and the cuts ranked.
 
 ### batch-budget — the batcher's budget profiles
 
