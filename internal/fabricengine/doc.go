@@ -1805,6 +1805,10 @@
 // It lists the folders only after taking the lock, so a pair created while the regeneration waits is listed.
 // It reads the folder names before taking the lock, so the namer's own locks never nest inside it.
 // The write goes through an `os.Root` at the hub, so a symlink planted at the file's path that escapes the hub is refused.
+// A file's further top-level members come from the process's installed `WorkspaceContent`, a general seam.
+// Fabric hands it the hub path, the beam's slug (empty for the hub's file) and that worktree's anchor.
+// Fabric names no workspace key but its own mark: it refuses a member of that name and passes the rest on unread.
+// Every file is built before any is written, so a refused member leaves them all as they were.
 //
 // # The retired launchers container
 //

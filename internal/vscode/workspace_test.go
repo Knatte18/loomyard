@@ -1,4 +1,4 @@
-// workspace_test.go covers BuildWorkspace's exact output shape and its settings splicing.
+// workspace_test.go covers BuildWorkspace's exact output shape and its settings and member splicing.
 // It also covers the workspace look WorkspaceSettings sets.
 
 package vscode
@@ -26,23 +26,34 @@ func TestBuildWorkspace(t *testing.T) {
 		name     string
 		folders  []WorkspaceFolder
 		settings []byte
+		members  map[string]json.RawMessage
 		want     string
 		valid    bool
 	}{
-		{"plain json", folders, []byte("{\n  \"a\": 1\n}\n"), head + "{\n  \"a\": 1\n}\n}\n", true},
-		{"jsonc verbatim", folders, []byte("{\n  // c\n  /* b */ \"a\": [1,],\n}"), head + "{\n  // c\n  /* b */ \"a\": [1,],\n}\n}\n", false},
-		{"bom stripped", folders, append([]byte{0xEF, 0xBB, 0xBF}, []byte("{\"a\":1}")...), head + "{\"a\":1}\n}\n", true},
-		{"nil", folders, nil, head + "{}\n}\n", true},
-		{"empty", folders, []byte{}, head + "{}\n}\n", true},
-		{"whitespace only", folders, []byte(" \n\t\r\n"), head + "{}\n}\n", true},
-		{"comments only", folders, []byte("// a\n/* b\n c */\n// d"), head + "{}\n}\n", true},
-		{"ends in line comment", folders, []byte("{\"a\":1} // tail"), head + "{\"a\":1} // tail\n}\n", false},
-		{"folder name and path escaped", escapedFolders, nil, escapedHead + "{}\n}\n", true},
+		{"plain json", folders, []byte("{\n  \"a\": 1\n}\n"), nil, head + "{\n  \"a\": 1\n}\n}\n", true},
+		{"jsonc verbatim", folders, []byte("{\n  // c\n  /* b */ \"a\": [1,],\n}"), nil, head + "{\n  // c\n  /* b */ \"a\": [1,],\n}\n}\n", false},
+		{"bom stripped", folders, append([]byte{0xEF, 0xBB, 0xBF}, []byte("{\"a\":1}")...), nil, head + "{\"a\":1}\n}\n", true},
+		{"nil", folders, nil, nil, head + "{}\n}\n", true},
+		{"empty", folders, []byte{}, nil, head + "{}\n}\n", true},
+		{"whitespace only", folders, []byte(" \n\t\r\n"), nil, head + "{}\n}\n", true},
+		{"comments only", folders, []byte("// a\n/* b\n c */\n// d"), nil, head + "{}\n}\n", true},
+		{"ends in line comment", folders, []byte("{\"a\":1} // tail"), nil, head + "{\"a\":1} // tail\n}\n", false},
+		{"folder name and path escaped", escapedFolders, nil, nil, escapedHead + "{}\n}\n", true},
+		{
+			"members after settings in name order", folders, nil,
+			map[string]json.RawMessage{"zeta": json.RawMessage("{\"z\":1}\n"), "tasks": json.RawMessage("[1] \t\r\n")},
+			head + "{}\n  ,\n  \"tasks\": [1]\n  ,\n  \"zeta\": {\"z\":1}\n}\n", true,
+		},
+		{
+			"member after settings ending in line comment", folders, []byte("{\"a\":1} // tail"),
+			map[string]json.RawMessage{"tasks": json.RawMessage("[1]")},
+			head + "{\"a\":1} // tail\n  ,\n  \"tasks\": [1]\n}\n", false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := BuildWorkspace(tt.folders, tt.settings)
+			got, err := BuildWorkspace(tt.folders, tt.settings, tt.members)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -51,6 +62,17 @@ func TestBuildWorkspace(t *testing.T) {
 			}
 			if tt.valid && !json.Valid(got) {
 				t.Errorf("output is not valid JSON:\n%s", got)
+			}
+		})
+	}
+
+	for _, key := range []string{"folders", "settings"} {
+		t.Run("member named "+key+" is refused", func(t *testing.T) {
+			t.Parallel()
+			got, err := BuildWorkspace(folders, nil, map[string]json.RawMessage{key: json.RawMessage("[]")})
+			want := `workspace member "` + key + `" is a key the workspace builder writes itself`
+			if err == nil || err.Error() != want || got != nil {
+				t.Errorf("BuildWorkspace(member %q) = %q, %v; want no bytes and error %q", key, got, err, want)
 			}
 		})
 	}

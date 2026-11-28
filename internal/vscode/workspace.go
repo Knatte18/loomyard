@@ -8,6 +8,7 @@ package vscode
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"sort"
 	"strings"
 
@@ -22,12 +23,28 @@ type WorkspaceFolder struct {
 
 var utf8BOM = []byte{0xEF, 0xBB, 0xBF}
 
+// The top-level keys of a .code-workspace file that BuildWorkspace writes itself.
+const (
+	workspaceFoldersKey  = "folders"
+	workspaceSettingsKey = "settings"
+)
+
 // BuildWorkspace returns the bytes of a .code-workspace file that lists folders in order.
 // It splices settings verbatim as the value of the "settings" key.
 // A leading BOM is stripped and trailing whitespace trimmed from settings first;
 // settings holding no JSON value (empty, whitespace, or only comments) become {}.
-// The only error is the folder encoding's.
-func BuildWorkspace(folders []WorkspaceFolder, settings []byte) ([]byte, error) {
+// Each of members is spliced verbatim as a top-level key after "settings", in name order.
+// A member's trailing whitespace is trimmed, and nil members add nothing.
+// A member named "folders" or "settings", a key written here, is an error, as is a folder that does not encode.
+func BuildWorkspace(folders []WorkspaceFolder, settings []byte, members map[string]json.RawMessage) ([]byte, error) {
+	names := make([]string, 0, len(members))
+	for name := range members {
+		if name == workspaceFoldersKey || name == workspaceSettingsKey {
+			return nil, fmt.Errorf("workspace member %q is a key the workspace builder writes itself", name)
+		}
+		names = append(names, name)
+	}
+	sort.Strings(names)
 	if folders == nil {
 		folders = []WorkspaceFolder{}
 	}
@@ -44,10 +61,21 @@ func BuildWorkspace(folders []WorkspaceFolder, settings []byte) ([]byte, error) 
 	}
 
 	var out bytes.Buffer
-	out.WriteString("{\n  \"folders\": ")
+	out.WriteString("{\n  \"" + workspaceFoldersKey + "\": ")
 	out.Write(bytes.TrimRight(enc.Bytes(), "\n"))
-	out.WriteString(",\n  \"settings\": ")
+	out.WriteString(",\n  \"" + workspaceSettingsKey + "\": ")
 	out.Write(value)
+	for _, name := range names {
+		key, err := json.Marshal(name)
+		if err != nil {
+			return nil, err
+		}
+		// The comma opens its own line: settings may end in a line comment, which would swallow it.
+		out.WriteString("\n  ,\n  ")
+		out.Write(key)
+		out.WriteString(": ")
+		out.Write(bytes.TrimRight(members[name], " \t\r\n"))
+	}
 	out.WriteString("\n}\n")
 	return out.Bytes(), nil
 }

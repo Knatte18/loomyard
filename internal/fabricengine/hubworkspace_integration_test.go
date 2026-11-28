@@ -1,5 +1,6 @@
 // hubworkspace_integration_test.go drives RegenerateHubWorkspace against hubforge hubs.
-// It covers the folder list and order, the skip exits, the mutation record, the lock, and failures that write no file.
+// It covers the folder list and order, the skip exits, the mutation record, the lock and the extra members.
+// It also covers failures that write no file.
 // It shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
@@ -156,10 +157,10 @@ func recordedFileWrite(rec *fabricengine.Mutations, hubPath, path string) bool {
 	return false
 }
 
-// TestRegenerateHubWorkspace covers the folder list, skip exits, mutation record, lock and failures.
+// TestRegenerateHubWorkspace covers the folder list, skip exits, mutation record, lock, extra members and failures.
 // The top level is not parallel.
-// The lock-ordering, folder-naming and log-capture cases touch process-global state:
-// a test hook, the pair folder namer and the logger output.
+// The lock-ordering, folder-naming, extra-member and log-capture cases touch process-global state:
+// a test hook, the pair folder namer, the workspace content and the logger output.
 // They run before the parallel cases are released, so no regeneration runs beside them.
 func TestRegenerateHubWorkspace(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -182,6 +183,82 @@ func TestRegenerateHubWorkspace(t *testing.T) {
 		prime := primeBranch(t, h)
 		requireFolderNames(t, path, prime, "Bolt", "b", "P1: m", "plain")
 		requireFolderNames(t, fabricengine.BeamWorkspacePath(h.Location, "b"), "b", prime, "Bolt", "m")
+	})
+
+	t.Run("HandsTheWorkspaceContentEachFilesBeamAndAnchor", func(t *testing.T) {
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+		hubforge.AddPairWith(t, h, "b", beamAddOptions)
+		hubforge.ReanchorPair(t, h, "b", "sub")
+		type call struct{ hubPath, beam, anchor string }
+		var calls []call
+		t.Cleanup(fabricengine.InstallWorkspaceContent(func(hubPath, beam, anchor string) map[string]json.RawMessage {
+			calls = append(calls, call{hubPath, beam, anchor})
+			return map[string]json.RawMessage{"extra": json.RawMessage(`"of ` + beam + `"`)}
+		}))
+
+		path, _ := regenerateHub(t, h)
+
+		want := []call{
+			{h.Path, "", filepath.Join(h.PrimeWorktree(), h.Location.AnchorRel)},
+			{h.Path, "b", filepath.Join(h.PairCodeWorktree("b"), "sub")},
+		}
+		if !slices.Equal(calls, want) {
+			t.Errorf("workspace content calls = %v; want %v", calls, want)
+		}
+		for file, member := range map[string]string{path: "of ", fabricengine.BeamWorkspacePath(h.Location, "b"): "of b"} {
+			if got := workspaceTopLevel(t, file)["extra"]; got != member {
+				t.Errorf("%s extra = %v; want %q", filepath.Base(file), got, member)
+			}
+		}
+	})
+
+	for _, key := range []string{"lym.generated", "folders", "settings"} {
+		t.Run("RefusesAWorkspaceMemberNamed_"+key+"_AndWritesNoFile", func(t *testing.T) {
+			h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+			hubforge.AddPairWith(t, h, "b", beamAddOptions)
+			path, _ := regenerateHub(t, h)
+			beamPath := fabricengine.BeamWorkspacePath(h.Location, "b")
+			before := map[string]string{}
+			for _, file := range []string{path, beamPath} {
+				data, err := os.ReadFile(file)
+				if err != nil {
+					t.Fatalf("read %s: %v", file, err)
+				}
+				before[file] = string(data)
+			}
+			// The added worktree changes the hub file a regeneration builds, so a write of it would show.
+			addRawWorktree(t, h, "added")
+			t.Cleanup(fabricengine.InstallWorkspaceContent(func(_, beam, _ string) map[string]json.RawMessage {
+				if beam == "" {
+					return nil
+				}
+				return map[string]json.RawMessage{key: json.RawMessage("true")}
+			}))
+
+			_, err := fabricengine.RegenerateHubWorkspace(fabricengine.NewMutations(h.Path), h.Location)
+
+			if err == nil || !strings.Contains(err.Error(), `"`+key+`"`) {
+				t.Errorf("RegenerateHubWorkspace error = %v; want one naming the member %q", err, key)
+			}
+			for file, want := range before {
+				if got, err := os.ReadFile(file); err != nil || string(got) != want {
+					t.Errorf("%s = %q, %v; want its bytes from before the call", filepath.Base(file), got, err)
+				}
+			}
+		})
+	}
+
+	t.Run("WritesNoTasksKeyWithNoWorkspaceContentInstalled", func(t *testing.T) {
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+		hubforge.AddPairWith(t, h, "b", beamAddOptions)
+
+		path, _ := regenerateHub(t, h)
+
+		for _, file := range []string{path, fabricengine.BeamWorkspacePath(h.Location, "b")} {
+			if tasks, ok := workspaceTopLevel(t, file)["tasks"]; ok {
+				t.Errorf("%s tasks = %v; want no tasks key", filepath.Base(file), tasks)
+			}
+		}
 	})
 
 	t.Run("ListsFolderAddedWhileWaitingForTheLock", func(t *testing.T) {
@@ -705,6 +782,20 @@ func writeSettingsAt(t *testing.T, dir, content string) {
 	if err := os.WriteFile(filepath.Join(dir, ".vscode", "settings.json"), []byte(content), 0o644); err != nil {
 		t.Fatalf("write settings: %v", err)
 	}
+}
+
+// workspaceTopLevel returns the top-level keys of the workspace file at path.
+func workspaceTopLevel(t *testing.T, path string) map[string]any {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	var ws map[string]any
+	if err := json.Unmarshal(data, &ws); err != nil {
+		t.Fatalf("%s is not valid JSON: %v\n%s", path, err, data)
+	}
+	return ws
 }
 
 // workspaceSettings returns the settings the workspace file at path carries.
