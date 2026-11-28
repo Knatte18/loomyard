@@ -138,6 +138,20 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 		if _, err := os.Stat(ghost); !os.IsNotExist(err) {
 			t.Errorf("orphan prop-ghost.md should have been removed")
 		}
+		if _, err := os.Stat(filepath.Join(dir, "board-data.js")); err != nil {
+			t.Errorf("board-data.js not written: %v", err)
+		}
+		manifest, err := os.ReadFile(filepath.Join(dir, ".board-rendered.json"))
+		if err != nil {
+			t.Fatalf("read manifest: %v", err)
+		}
+		var listed []string
+		if err := json.Unmarshal(manifest, &listed); err != nil {
+			t.Fatalf("decode manifest: %v", err)
+		}
+		if !slices.Contains(listed, "board-data.js") {
+			t.Errorf("manifest = %v; want it to list board-data.js", listed)
+		}
 	})
 
 	t.Run("ReadmeRename", func(t *testing.T) {

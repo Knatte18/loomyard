@@ -436,6 +436,13 @@
 // An entry with no handle or not on the board is named by its slug.
 // A pipe in a cell is escaped and a line break becomes a space, so an entry is always one row.
 //
+// Every write also renders board-data.js, the board's view projection: `window.BOARD = <BoardView>;`.
+// The projection places each entry and project as the README does, so a viewer recomputes nothing.
+// Its JSON keeps HTML escaping, so no entry's text can end a script element.
+// Each entry carries a revision, the SHA-256 of the entry as stored.
+// The stored entry is hashed even where the render clears its discussed flag for a missing record file.
+// Board.View gives the same projection of the board as it stands, over entries migrated as a write migrates them.
+//
 // # Intake
 //
 // The board is the one list, and intake reads the hub's own GitHub repository.

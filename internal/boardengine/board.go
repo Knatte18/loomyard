@@ -66,6 +66,13 @@ type noWrite struct{ result any }
 // the write unwraps it, and the promotion keeps the note's dates.
 type promoted struct{ task Task }
 
+// migrateLoaded applies the load migrations to a loaded store in memory,
+// so every reader that compares entries with a write sees them as the write does.
+func migrateLoaded(store *Store) {
+	migrateDraftStatus(store)
+	migrateDiscussedStatus(store)
+}
+
 // boardCriticalSection runs the locked write scaffolding shared by every mutating Board method.
 // It takes the write lock and loads the store.
 // It migrates a board that has not been marked draft and every task left discussed.
@@ -113,8 +120,7 @@ func (b *Board) boardCriticalSection(fn func(store *Store) (any, error), afterSa
 	}
 
 	// Migrated before fn mutates, so a write that releases a task to an empty status is not re-drafted by the migration.
-	migrateDraftStatus(store)
-	migrateDiscussedStatus(store)
+	migrateLoaded(store)
 	loaded := cloneTasks(store.Tasks())
 	// Read before fn mutates, so the slug rule judges the raddle store as it stood before the write.
 	raddleStore, raddleStoreErr := ReadRaddleStore(b.boardPath)
