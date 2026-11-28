@@ -369,8 +369,12 @@
 // A tier's output goes through its counter, `go-json` or `vstest`, which passes the text on and counts its tests.
 // The `vstest` counter reads the summary of every console logger verbosity:
 // the minimal one's `Passed!` or `Failed!` line, and the normal and detailed ones' `Total tests:` block.
-// After each tier the verb prints `gateslot.TierSummaryLine` to stderr
-// and writes the run record and log through `gateslot.WriteRunRecord` under `gateslot.RunLogDir`:
+// After each tier the verb prints `gateslot.TierSummaryLine` to stderr.
+// In that line `wait` is the tier's wait for its gate slots, on the line of a rerun too.
+// Work done inside the held slots before the tier's command, such as the shared build, is no part of it.
+// Its `wall` is the run's own time without that wait.
+// The `lym` prebuild of a `--copies` run is in neither figure, while a run without copies counts it in `wall`.
+// The verb then writes the run record and log through `gateslot.WriteRunRecord` under `gateslot.RunLogDir`:
 // the board's gate directory inside a hub, so the records outlive the worktree;
 // else the worktree's `.lym` gate directory.
 // A write failure is logged and decides nothing.

@@ -901,7 +901,7 @@ func TestGateTest_Scenario(t *testing.T) {
 			if run, _ := runRecordOf(t, second.stdout.String(), tier); !run.Carried || run.ExitCode != 0 || run.Outcome != "passed" || run.GateKey != "finalize" {
 				t.Errorf("tier%d run record = %+v; want a carried pass of gate key finalize", tier, run)
 			}
-			if !strings.Contains(second.stdout.String(), "gate test: tier"+strconv.Itoa(tier)+" all carried discovered 0 passed 0 failed 0 skipped 0") {
+			if !strings.Contains(second.stdout.String(), "gate test: tier"+strconv.Itoa(tier)+" all carried wait 0.0s discovered 0 passed 0 failed 0 skipped 0") {
 				t.Errorf("stdout = %q; want tier%d's summary line marked carried", second.stdout.String(), tier)
 			}
 		}

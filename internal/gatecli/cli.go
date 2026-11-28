@@ -82,11 +82,11 @@ Without --wait, an agent strand's call runs in a detached runner it starts or jo
 run the same command again in a turn that does nothing else, so the prompt cache stays warm; it prints the result once the run ended.
 With --wait, and with no strand, the tiers run in this process.
 The exit code is the first failing run's own, or 0.
+Each tier's stderr summary line shows its slot wait as wait and its run time without that wait as wall.
 Without --gate the scope is the explicit <targets>, --all, --card <id>, --base <rev>, or the diff from the merge base with the pair's parent branch.
 Arguments after "--" fill each tier's {args}.
 A --filter among them is ANDed with the tier's filter where the tier's command holds {filter}.
 --guards, and a narrower scope while ` + keyName(scoperKey) + ` is go, also run the //lym:guard tests outside the scope; --card adds tier-skipped ones.
---copies N, with --gate and explicit targets, runs N copies of the key's one tier side by side.
 
 Examples:
 

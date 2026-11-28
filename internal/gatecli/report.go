@@ -144,9 +144,7 @@ func runReport(out io.Writer, records []gateslot.RunRecord, slug string, since t
 		group := groups[index]
 		if record.Abandoned {
 			group.abandonedRuns++
-			if !record.WaitStart.IsZero() {
-				group.abandonedWaitSeconds += record.Start.Sub(record.WaitStart).Seconds()
-			}
+			group.abandonedWaitSeconds += record.SlotWaitSeconds()
 			group.abandonedWallSeconds += record.WallSec
 			continue
 		}
@@ -160,9 +158,7 @@ func runReport(out io.Writer, records []gateslot.RunRecord, slug string, since t
 		} else {
 			group.runs++
 		}
-		if !record.WaitStart.IsZero() {
-			group.waitSeconds += record.Start.Sub(record.WaitStart).Seconds()
-		}
+		group.waitSeconds += record.SlotWaitSeconds()
 		group.wallSeconds += record.WallSec
 		for _, launch := range record.Launches {
 			group.hasLaunches = true

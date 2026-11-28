@@ -104,7 +104,7 @@ func TestRunTierCopies(t *testing.T) {
 				guardStep:   tt.guardStep,
 			}
 
-			end := exe.runWithSlots(run, false, func(env []string, _ time.Time) tierResult {
+			end := exe.runWithSlots(run, false, func(env []string, _ slotWait) tierResult {
 				return runTier(exe.ctx, io.Discard, run, env, exe.request)
 			})
 

@@ -580,6 +580,20 @@ type execution struct {
 	callID string
 	// failed holds the call's failed runs in plan order, its lint steps last, for the failure report.
 	failed []failedRun
+	// slotClock reads the times that bound a tier's wait for its slots; nil reads time.Now.
+	slotClock func() time.Time
+}
+
+// slotWait is when a tier's wait for its gate slots started, and when it ended with the tier free to run.
+type slotWait struct {
+	start, held time.Time
+}
+
+func (e *execution) slotNow() time.Time {
+	if e.slotClock != nil {
+		return e.slotClock()
+	}
+	return time.Now()
 }
 
 // printReport writes the failure report of the call's failed runs to stderr, and nothing when no run failed.
@@ -603,7 +617,7 @@ func (e *execution) runListed(run tierRun) runEnd {
 	}
 	if len(run.invocations) == 0 && !run.buildOnly {
 		printLine(e.request.stderr, fmt.Sprintf("gate test: the scope is empty, so %s runs no command", tierName(run.number)))
-		return e.runWithSlots(run, true, func(env []string, _ time.Time) tierResult {
+		return e.runWithSlots(run, true, func(env []string, _ slotWait) tierResult {
 			return runTier(e.ctx, e.out, run, env, e.request)
 		})
 	}
@@ -636,7 +650,7 @@ func (e *execution) runGreenAware(run tierRun) runEnd {
 		}
 		run.invocations = plan.invocations
 	}
-	end := e.runWithSlots(run, false, func(env []string, waitStart time.Time) tierResult {
+	end := e.runWithSlots(run, false, func(env []string, wait slotWait) tierResult {
 		if run.tier.SharedBuild && !run.guardStep && !run.vetStep && !e.buildDone {
 			if result, ok := e.runBuild(run, env); !ok {
 				return result
@@ -646,7 +660,7 @@ func (e *execution) runGreenAware(run tierRun) runEnd {
 		return retryTier(e.ctx, e.request.stderr, runLabel(run), e.request.rerunDelay, func() tierResult {
 			return runTierChecked(e.ctx, e.out, run, env, e.request, before, listed)
 		}, func(first tierResult) {
-			first.record.WaitStart = waitStart
+			first.record.WaitStart, first.record.SlotsHeld = wait.start, wait.held
 			e.writeRecord(first.record, first.log, tierName(run.number))
 		})
 	})
@@ -661,18 +675,18 @@ func (e *execution) runGreenAware(run tierRun) runEnd {
 func (e *execution) reportCarried(run tierRun) runEnd {
 	now := time.Now()
 	record := gateslot.RunRecord{Tier: run.number, ScopeForm: run.scopeForm, Slots: run.tier.Slots, GuardStep: run.guardStep, Start: now, End: now, Outcome: "passed", Carried: true}
-	return e.report(run, tierResult{record: record}, now)
+	return e.report(run, tierResult{record: record}, slotWait{start: now, held: now})
 }
 
 // runWithSlots takes the slots of run's tier unless the call is unslotted, inherited or the run empty.
-// It runs body inside them with the environment the slots give and the time the wait for them started.
+// It runs body inside them with the environment the slots give and the times the wait for them started and ended.
 // It releases the slots and reports the tier's outcome.
 // A wait that does not end with the slots held halts the call.
 // A --copies call takes one lease of the copies' slots together and runs the copies the pool holds inside it.
 // A vet-step or guard-step run of a copies call runs once, in the slots of its own tier.
 // It refuses to run inside a slot an enclosing gate run holds, since it needs a lease of its own.
-func (e *execution) runWithSlots(run tierRun, empty bool, body func(env []string, waitStart time.Time) tierResult) runEnd {
-	waitStart := time.Now()
+func (e *execution) runWithSlots(run tierRun, empty bool, body func(env []string, wait slotWait) tierResult) runEnd {
+	wait := slotWait{start: e.slotNow()}
 	env := e.env
 	copying := e.request.copies > 0 && !empty && !run.vetStep && !run.guardStep
 	if copying && e.inherited {
@@ -698,6 +712,7 @@ func (e *execution) runWithSlots(run tierRun, empty bool, body func(env []string
 		defer releaseSlot(lease, e.request.root)
 		env = lease.InheritEnv(env)
 	}
+	wait.held = e.slotNow()
 	if copying && copiesRun < e.request.copies {
 		printLine(e.request.stderr, copiesClampLine(e.request.copies, copiesRun, tierName(run.number)))
 	}
@@ -709,7 +724,7 @@ func (e *execution) runWithSlots(run tierRun, empty bool, body func(env []string
 	if e.request.observer.Started != nil {
 		e.request.observer.Started(run.number)
 	}
-	return e.report(run, body(env, waitStart), waitStart)
+	return e.report(run, body(env, wait), wait)
 }
 
 // report writes the tier's run record and log, and prints its summary line to stderr.
@@ -718,7 +733,7 @@ func (e *execution) runWithSlots(run tierRun, empty bool, body func(env []string
 // A refusal is answered instead, so its stdout stays one JSON envelope, and it halts the call.
 // A run that a terminating signal cancelled halts the call as well.
 // A record that cannot be written is logged and decides nothing.
-func (e *execution) report(run tierRun, result tierResult, waitStart time.Time) runEnd {
+func (e *execution) report(run tierRun, result tierResult, wait slotWait) runEnd {
 	if result.refusal != "" {
 		return runEnd{code: output.Err(e.out, result.refusal), halt: true}
 	}
@@ -726,16 +741,18 @@ func (e *execution) report(run tierRun, result tierResult, waitStart time.Time) 
 		return e.reportBlocked(run)
 	}
 	record := result.record
-	record.WaitStart = waitStart
+	record.WaitStart, record.SlotsHeld = wait.start, wait.held
+	// The summary line shows the wait the call spent on the tier's slots, a rerun's line included.
+	shown := record
 	if record.Rerun {
 		// The slot wait is on the first run's record, so the rerun's own record waited for nothing.
-		record.WaitStart = record.Start
+		record.WaitStart, record.SlotsHeld = record.Start, time.Time{}
 	}
 	logPath := e.writeRecord(record, result.log, tierName(run.number))
 	if result.trimpathNote != "" {
 		printLine(e.request.stderr, result.trimpathNote)
 	}
-	printLine(e.request.stderr, gateslot.TierSummaryLine(record, logPath))
+	printLine(e.request.stderr, gateslot.TierSummaryLine(shown, logPath))
 	e.printStartedLines(run, result)
 	if record.ExitCode != 0 {
 		e.addFailedRuns(run, result, logPath)

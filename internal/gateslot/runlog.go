@@ -42,6 +42,8 @@ func TimeoutKeyName(tier string) string {
 	return keyName("tiers." + tier + ".timeout_min")
 }
 
+// The tier patterns take whatever stands between the tier and `discovered`.
+// A field added to the line goes there, so a log and a reader built from different versions still agree.
 var (
 	tierSummaryPattern  = regexp.MustCompile(`^gate test: tier(\d+) .* discovered \d+ passed \d+ failed \d+ skipped \d+ wall \S+s exit (-?\d+) log .*$`)
 	buildSummaryPattern = regexp.MustCompile(`^gate test: build before tier(\d+) wall \S+s exit (-?\d+) log .*$`)
@@ -64,6 +66,9 @@ type RunRecord struct {
 	ScopeForm string    `json:"scope_form"`
 	Slots     int       `json:"slots"`
 	WaitStart time.Time `json:"wait_start"`
+	// SlotsHeld ends the wait that began at WaitStart: the run held its slots, or was found to need none.
+	// It is zero on a record that marks no such moment, whose wait then ends at Start.
+	SlotsHeld time.Time `json:"slots_held,omitzero"`
 	Start     time.Time `json:"start"`
 	End       time.Time `json:"end"`
 	WallSec   float64   `json:"wall_seconds"`
@@ -110,6 +115,20 @@ type RunRecord struct {
 	// a runner crash, a resource shortage or a stop for a memory limit other load filled.
 	// The first run has its own record.
 	Rerun bool `json:"rerun,omitempty"`
+}
+
+// SlotWaitSeconds returns how long the run waited for its gate slots.
+// Work done inside the held slots before the command starts is no part of it.
+// A record with no wait start waited for none and returns 0.
+func (r RunRecord) SlotWaitSeconds() float64 {
+	if r.WaitStart.IsZero() {
+		return 0
+	}
+	held := r.SlotsHeld
+	if held.IsZero() {
+		held = r.Start
+	}
+	return held.Sub(r.WaitStart).Seconds()
 }
 
 // TestFailure is one failed test of a tier run.
@@ -554,13 +573,15 @@ func reportFailureLine(line string) (string, bool) {
 
 // TierSummaryLine renders the one stderr line the gate prints after each tier run.
 // A carried tier is marked with `carried` after its scope form.
+// The line shows the wait for the tier's gate slots and the run's own wall time as separate values,
+// so a caller reads the run's time without the contention for slots.
 func TierSummaryLine(record RunRecord, logPath string) string {
 	scope := record.ScopeForm
 	if record.Carried {
 		scope += " carried"
 	}
-	return fmt.Sprintf("gate test: tier%d %s discovered %d passed %d failed %d skipped %d wall %.1fs exit %d log %s",
-		record.Tier, scope, record.Discovered, record.Passed, record.Failed, record.Skipped, record.WallSec, record.ExitCode, logPath)
+	return fmt.Sprintf("gate test: tier%d %s wait %.1fs discovered %d passed %d failed %d skipped %d wall %.1fs exit %d log %s",
+		record.Tier, scope, record.SlotWaitSeconds(), record.Discovered, record.Passed, record.Failed, record.Skipped, record.WallSec, record.ExitCode, logPath)
 }
 
 // BuildSummaryLine renders the one stderr line the gate prints after the build step.

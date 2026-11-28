@@ -33,7 +33,7 @@ func TestStartedLines(t *testing.T) {
 		{
 			name: "OtherLinesAreSkipped",
 			output: strings.Join([]string{
-				"gate test: tier0 diff discovered 1 passed 1 failed 0 skipped 0 wall 0.1s exit 0 log x",
+				"gate test: tier0 diff wait 0.0s discovered 1 passed 1 failed 0 skipped 0 wall 0.1s exit 0 log x",
 				gateslot.FormatStartedLine("tier1 copy 1", 3),
 				"gate test: started many test binaries in tier1",
 				gateslot.FormatStartedLine("tier1 copy 2", 2),
