@@ -92,6 +92,7 @@ type DarnInputs struct {
 // They act only on what the verify gate's fixer leaves.
 // The writer asks its parent for the single run of the test a task's reported failure names.
 // Otherwise the step has them run the gate after each commit.
+// Either way the writer asks its parent before the measurement calls of an entry whose deliverable is gate measurements.
 // With cfg.ReportDir set, a passage after the step has the writer commit the task's report under that directory.
 // A friction directive that fails to render is logged and left empty, because the note is optional bookkeeping.
 func DarnTable(in DarnInputs, cfg Config, reg modelspec.Registry) (seatengine.Table, error) {

@@ -52,6 +52,7 @@ var DarnTemplateWrite []byte
 
 // DarnFragmentMakeChange is the darn writer prompt's Step 4 list when the verify gate has no cold fixer.
 // The writer and its subagents run the gate in it.
+// The writer asks its parent before the measurement calls of an entry whose deliverable is gate measurements.
 //
 //go:embed darn/darn-fragment-make-change.md
 var DarnFragmentMakeChange []byte
@@ -59,7 +60,8 @@ var DarnFragmentMakeChange []byte
 // DarnFragmentMakeChangeGated is the darn writer prompt's Step 4 list when the verify gate has a cold fixer.
 // The writer and its subagents run no gate in it, except the writer's single measuring run of one test class.
 // That run's call fills its measure_call marker, rendered from the hub's gate config.
-// The writer asks its parent for the single run of the test a task's reported failure names, before it diagnoses it.
+// The writer asks its parent before diagnosing a task's reported failure, for the single run of the test it names.
+// It also asks before the measurement calls of an entry whose deliverable is gate measurements.
 //
 //go:embed darn/darn-fragment-make-change-gated.md
 var DarnFragmentMakeChangeGated []byte

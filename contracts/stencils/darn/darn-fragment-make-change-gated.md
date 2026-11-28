@@ -1,7 +1,8 @@
 <!-- This is the darn writer's Step 4 list for a run whose verify gate has a cold fixer:
      the writer and its subagents run no gate, except the writer's single measuring run of one test class,
      and the writer acts only on what the fixer leaves.
-     The writer asks its parent for the single run of the test a task's reported failure names, before it diagnoses it.
+     The writer asks its parent for the single run of the test a task's reported failure names, before it diagnoses it,
+     and for the measurement calls of an entry whose deliverable is gate measurements, before it runs any.
      internal/darnengine's DarnTable reads it for the writer's engine,
      fills the {{.subagent_model}} marker its Claude engine block declares from loom.subagent_model,
      fills the {{.measure_call}} marker with the measuring call the hub's gate config can run,
@@ -37,6 +38,20 @@
    When the tier's command holds `{args}`, run the same gate call once more with `-p:<property>=true` among the args after `--`,
    and never the raw command the report's line suggests.
    When that run still runs no test, or the tier's command holds no `{args}`, name the tests to your parent.
+   The measurement calls of an entry whose deliverable is itself gate measurements, such as test times per package,
+   fall outside these rules.
+   Before any of them, ask your parent with `lym creel post --parent --expect-reply "<text>"`,
+   naming every call you plan and their count, then end your turn to wait.
+   Run only the calls your parent's answer allows, within the limits it sets, one at a time in the foreground.
+   The verify gate's test of your committed tree is none of these calls and still runs.
+   With no parent, or when the post is refused and no strand answers,
+   run only the calls an `Added after Discussion` entry of the record allows,
+   within its limits, one at a time in the foreground.
+   With no such entry, run none of them and stop.
+   Write the change description, your one output file, as a stop report in the final-summary spec's form,
+   naming the measurements the entry asks for and their scope, never as gate or tier calls,
+   and as the way forward a decision on the measurement runs and their limits.
+   Then create the stop marker Step 3 names, and end your turn with no further commit.
    Once you end your turn, the row's verify gate tests your committed tree, and a cold fixer clears its failures before you hear of them.
    You are re-prompted only with what the fixer leaves: act on that alone.
 4. Update, in the same commits as the code, the docs the change makes stale: the package doc of each package whose behavior changes, `doc.go` for a Go package;
