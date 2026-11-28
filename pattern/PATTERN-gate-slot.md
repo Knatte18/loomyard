@@ -32,6 +32,9 @@ Code a gate run builds never locates the module root from a `runtime.Caller` pat
 ### Gate carry
 
 A test tier is skipped as already green only on `lym gate test`'s own green record, and only over a clean tree.
+The record never leaves the machine, and only a pass is written to it.
+A skipped tier names the earlier run it reuses.
+`gateslot.BilledTier`, a manual tier and every tier of a gate key whose `gate.gates.<key>.reuse` is false are never skipped so.
 
 ### Self-check parity
 

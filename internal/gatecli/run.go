@@ -99,7 +99,7 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	request.hubEnv = hubEnv
 	request.sessionEnv = os.Environ()
 
-	green := openGreen(gateslot.WaitDir(location.AnchorPath()), request.root, request.goBinary, cfg)
+	green := openGreen(gateslot.WaitDir(location.AnchorPath()), request.root, request.goBinary, cfg, request.gate)
 	if request.checkoutRoot != "" {
 		request.root = request.checkoutRoot
 	}
@@ -381,6 +381,8 @@ type runEnd struct {
 	crash string
 	// pressureStop is set when the memory guard stopped the run and its rerun for a memory limit other load filled.
 	pressureStop bool
+	// log is the log path of the run's record, empty for a run that wrote none.
+	log string
 }
 
 // runLabel names a run in the closing line of failed runs: its tier.
@@ -631,7 +633,8 @@ func (e *execution) printReport(inHub bool) {
 
 // runListed runs one listed tier with its slots held, and returns how it ended.
 // A tier with no invocation takes no slot.
-// A tier the green record holds green for the current tree takes no slot either, and is reported as carried.
+// A tier the green record holds green for the current tree takes no slot either,
+// and is reported as carried, naming the earlier run it reuses.
 // A tier the record holds green in part runs only the rest, and a pass is recorded.
 // A tier with only a build to run takes its slots for the build,
 // and a tier that opts into a build that failed is reported blocked.
@@ -670,7 +673,7 @@ func (e *execution) runGreenAware(run tierRun) runEnd {
 		plan = e.green.subtract(e.ctx, run, e.env)
 		e.green.recordInertCarried(run, plan, time.Now())
 		if len(plan.invocations) == 0 {
-			return e.reportCarried(run)
+			return e.reportCarried(run, plan.reusedFrom)
 		}
 		run.invocations = plan.invocations
 	}
@@ -689,16 +692,21 @@ func (e *execution) runGreenAware(run tierRun) runEnd {
 		})
 	})
 	if end.code == 0 && !end.halt && e.green != nil {
-		e.green.recordPass(e.ctx, run, run.invocations, plan, e.env, time.Now())
+		e.green.recordPass(e.ctx, run, run.invocations, plan, e.env, end.log, time.Now())
 	}
 	return end
 }
 
 // reportCarried writes the run record and summary line of a tier the green record held green.
+// reusedFrom are the log paths of the earlier passes it reuses; the record carries them,
+// and a line naming them precedes the summary line.
 // The tier took no slot and ran no command, and reportCarried returns its pass.
-func (e *execution) reportCarried(run tierRun) runEnd {
+func (e *execution) reportCarried(run tierRun, reusedFrom []string) runEnd {
 	now := time.Now()
-	record := gateslot.RunRecord{Tier: run.number, ScopeForm: run.scopeForm, Slots: run.tier.Slots, GuardStep: run.guardStep, Start: now, End: now, Outcome: "passed", Carried: true}
+	record := gateslot.RunRecord{Tier: run.number, ScopeForm: run.scopeForm, Slots: run.tier.Slots, GuardStep: run.guardStep, Start: now, End: now, Outcome: "passed", Carried: true, ReusedFrom: reusedFrom}
+	if len(reusedFrom) > 0 {
+		printLine(e.request.stderr, reusedLine(runLabel(run), reusedFrom))
+	}
 	return e.report(run, tierResult{record: record}, slotWait{start: now, held: now})
 }
 
@@ -784,7 +792,7 @@ func (e *execution) report(run tierRun, result tierResult, wait slotWait) runEnd
 	if e.request.observer.Ended != nil {
 		e.request.observer.Ended(record)
 	}
-	return runEnd{code: record.ExitCode, halt: e.ctx.Err() != nil, ran: true, shortage: result.shortage, crash: result.crash, pressureStop: result.pressureStop}
+	return runEnd{code: record.ExitCode, halt: e.ctx.Err() != nil, ran: true, shortage: result.shortage, crash: result.crash, pressureStop: result.pressureStop, log: logPath}
 }
 
 // writeRecord adds the call's worktree, slug, tier list, gate key and call id to record.

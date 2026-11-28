@@ -48,7 +48,7 @@ func TestGreenRunRecordPass(t *testing.T) {
 			}
 			tier := gateslot.Tier{Command: "go test {args}", Dir: ".", Counter: "go-json", TimeoutMin: 1, Parallel: 1, Slots: 1, NoCarry: tt.noCarry}
 			run := tierRun{number: 1, tier: tier}
-			green.recordPass(context.Background(), run, []invocation{{dir: "."}}, greenPlan{}, nil, time.Now())
+			green.recordPass(context.Background(), run, []invocation{{dir: "."}}, greenPlan{}, nil, "", time.Now())
 
 			if got := len(readGreen(green.path).Entries); got != tt.wantEntries {
 				t.Errorf("green record entries after recordPass = %d; want %d", got, tt.wantEntries)

@@ -122,8 +122,8 @@ func TestGreenRecord(t *testing.T) {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
 				whole, packages := record.covered(tt.fingerprint, tt.tree, tt.moduleDir, tt.args, tt.held)
-				if whole != tt.wantWhole || !slices.Equal(packages, tt.wantPackages) {
-					t.Errorf("covered(%q, %q, %q, %q, %q) = %v, %q; want %v, %q", tt.fingerprint, tt.tree, tt.moduleDir, tt.args, tt.held, whole, packages, tt.wantWhole, tt.wantPackages)
+				if (whole != nil) != tt.wantWhole || !slices.Equal(packages, tt.wantPackages) {
+					t.Errorf("covered(%q, %q, %q, %q, %q) = %+v, %q; want whole %v, %q", tt.fingerprint, tt.tree, tt.moduleDir, tt.args, tt.held, whole, packages, tt.wantWhole, tt.wantPackages)
 				}
 			})
 		}
@@ -133,36 +133,46 @@ func TestGreenRecord(t *testing.T) {
 		t.Parallel()
 		tier := greenTier()
 		root := t.TempDir()
+		bothTargets := [][]string{{"./a", "./b"}}
+		const passLog = "/runs/pass.log"
 		tests := []struct {
 			name        string
 			entry       greenEntry
 			scoperGo    bool
 			noCarry     bool
+			manual      bool
+			number      int
+			noReuse     bool
 			wantTargets [][]string
 			wantCarried []string
+			wantReused  []string
 		}{
-			{name: "a carry: false tier keeps its invocation despite a whole entry", entry: greenEntry{Whole: true}, noCarry: true, wantTargets: [][]string{{"./a", "./b"}}},
-			{name: "a whole entry carries under the none scoper", entry: greenEntry{Whole: true}},
-			{name: "a package entry carries nothing under the none scoper", entry: greenEntry{Packages: []string{"./a"}}, wantTargets: [][]string{{"./a", "./b"}}},
+			{name: "a carry: false tier keeps its invocation despite a whole entry", entry: greenEntry{Whole: true}, noCarry: true, wantTargets: bothTargets},
+			{name: "a manual tier keeps its invocation despite a whole entry", entry: greenEntry{Whole: true}, manual: true, number: 4, wantTargets: bothTargets},
+			{name: "the billed tier keeps its invocation despite a whole entry", entry: greenEntry{Whole: true}, number: gateslot.BilledTier, wantTargets: bothTargets},
+			{name: "a call whose gate key opts out of reuse keeps its invocation despite a whole entry", entry: greenEntry{Whole: true}, noReuse: true, wantTargets: bothTargets},
+			{name: "a whole entry carries under the none scoper and names its run", entry: greenEntry{Whole: true, Run: passLog}, wantReused: []string{passLog}},
+			{name: "a whole entry that names no run carries with an unnamed run", entry: greenEntry{Whole: true}, wantReused: []string{""}},
+			{name: "a package entry carries nothing under the none scoper", entry: greenEntry{Packages: []string{"./a"}}, wantTargets: bothTargets},
 			{name: "a package entry runs the rest under the go scoper", entry: greenEntry{Packages: []string{"./a"}}, scoperGo: true, wantTargets: [][]string{{"./b"}}, wantCarried: []string{"./a"}},
 			{name: "a package entry naming every target carries under the go scoper", entry: greenEntry{Packages: []string{"./a", "./b"}}, scoperGo: true},
-			{name: "a package entry naming other packages changes nothing", entry: greenEntry{Packages: []string{"./c"}}, scoperGo: true, wantTargets: [][]string{{"./a", "./b"}}},
+			{name: "a package entry naming other packages changes nothing", entry: greenEntry{Packages: []string{"./c"}}, scoperGo: true, wantTargets: bothTargets},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
 				runTier := tier
-				runTier.NoCarry = tt.noCarry
+				runTier.NoCarry, runTier.Manual = tt.noCarry, tt.manual
 				tt.entry.Fingerprint, tt.entry.Tree, tt.entry.ModuleDir = tierFingerprint(runTier, gateslot.BuildStep{}, nil), "t", "."
-				run := tierRun{number: 0, tier: runTier, invocations: []invocation{{dir: ".", targets: []string{"./a", "./b"}}}}
-				green := &greenRun{root: root, tree: "t", record: greenRecord{Entries: []greenEntry{tt.entry}}, scoperGo: tt.scoperGo}
+				run := tierRun{number: tt.number, tier: runTier, invocations: []invocation{{dir: ".", targets: []string{"./a", "./b"}}}}
+				green := &greenRun{root: root, tree: "t", record: greenRecord{Entries: []greenEntry{tt.entry}}, scoperGo: tt.scoperGo, noReuse: tt.noReuse}
 				plan := green.subtract(context.Background(), run, nil)
 				var gotTargets [][]string
 				for _, inv := range plan.invocations {
 					gotTargets = append(gotTargets, inv.targets)
 				}
-				if !reflect.DeepEqual(gotTargets, tt.wantTargets) || !slices.Equal(plan.carried["."], tt.wantCarried) {
-					t.Errorf("subtract() = targets %q, carried %q; want %q, %q", gotTargets, plan.carried["."], tt.wantTargets, tt.wantCarried)
+				if !reflect.DeepEqual(gotTargets, tt.wantTargets) || !slices.Equal(plan.carried["."], tt.wantCarried) || !slices.Equal(plan.reusedFrom, tt.wantReused) {
+					t.Errorf("subtract() = targets %q, carried %q, reused from %q; want %q, %q, %q", gotTargets, plan.carried["."], plan.reusedFrom, tt.wantTargets, tt.wantCarried, tt.wantReused)
 				}
 			})
 		}
@@ -340,8 +350,8 @@ func TestGreenRecord_NewestWholeAncestor(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			got, found := greenRecord{Entries: tt.entries}.newestWholeAncestor(fingerprint, ".", tt.held, tt.isAncestor)
-			if got != tt.want || found != (tt.want != "") {
-				t.Errorf("newestWholeAncestor() = (%q, %v); want (%q, %v)", got, found, tt.want, tt.want != "")
+			if got.Commit != tt.want || found != (tt.want != "") {
+				t.Errorf("newestWholeAncestor() = (%q, %v); want (%q, %v)", got.Commit, found, tt.want, tt.want != "")
 			}
 		})
 	}

@@ -109,7 +109,7 @@ func TestSummaryLineShowsTheSlotWaitAlone(t *testing.T) {
 
 			var end runEnd
 			if tt.carried {
-				end = exe.reportCarried(run)
+				end = exe.reportCarried(run, nil)
 			} else {
 				end = exe.runGreenAware(run)
 			}

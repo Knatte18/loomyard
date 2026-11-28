@@ -80,6 +80,9 @@ type RunRecord struct {
 	// Carried is set for a tier the green record held green over an unchanged tree.
 	// The tier took no slot and ran no command.
 	Carried bool `json:"carried,omitempty"`
+	// ReusedFrom names, by log path, the earlier passes a carried tier reuses; "" stands for a pass that named no log.
+	// It is empty on a record that is not carried, and on a carried record written before the field existed.
+	ReusedFrom []string `json:"reused_from,omitempty"`
 	// Build is set on the record of the build step.
 	// Its Tier is the first opted-in tier the build ran before, and its ScopeForm is build.
 	Build bool `json:"build,omitempty"`

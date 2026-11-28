@@ -901,12 +901,59 @@ func TestGateTest_Scenario(t *testing.T) {
 			if run, _ := runRecordOf(t, second.stdout.String(), tier); !run.Carried || run.ExitCode != 0 || run.Outcome != "passed" || run.GateKey != "finalize" {
 				t.Errorf("tier%d run record = %+v; want a carried pass of gate key finalize", tier, run)
 			}
+			firstLog := summaryLogPath(t, first.stdout.String(), tier)
+			if run, _ := runRecordOf(t, second.stdout.String(), tier); !slices.Equal(run.ReusedFrom, []string{firstLog}) {
+				t.Errorf("tier%d carried record reused_from = %q; want the first call's run %q", tier, run.ReusedFrom, firstLog)
+			}
 			if !strings.Contains(second.stdout.String(), "gate test: tier"+strconv.Itoa(tier)+" all carried wait 0.0s discovered 0 passed 0 failed 0 skipped 0") {
 				t.Errorf("stdout = %q; want tier%d's summary line marked carried", second.stdout.String(), tier)
 			}
 		}
 		_ = firstLease.Release()
 		_ = secondLease.Release()
+	})
+
+	t.Run("the billed tier, a manual tier and a key with reuse false run again over the same clean tree, and the key's pass is still recorded", func(t *testing.T) {
+		t.Parallel()
+		f := newScenarioHub(t)
+		f.clean(t)
+		f.writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
+			tiers := cfg["tiers"].(map[string]any)
+			delete(tiers["tier3"].(map[string]any), "prebuilt_lym")
+			tiers["tier6"].(map[string]any)["manual"] = true
+			cfg["gates"] = map[string]any{
+				"finalize": map[string]any{"tiers": []int{0, gateslot.BilledTier, 6}, "scope": "all"},
+				"fresh":    map[string]any{"tiers": []int{0}, "scope": "all", "reuse": false},
+			}
+		}))
+		gate := func(key string) *runningGate {
+			g := startGate(t, gateRun{cwd: f.prime, args: []string{"test", "--gate", key}})
+			if code := g.wait(t); code != 0 {
+				t.Fatalf("gate %s = exit %d, stdout %q; want 0", key, code, g.stdout.String())
+			}
+			return g
+		}
+
+		if got, want := gate("finalize").tierArgs(t), [][]string{{"./pkg"}, {"./pkg"}, {"./pkg"}}; !reflect.DeepEqual(got, want) {
+			t.Fatalf("first finalize tier invocations = %q; want %q", got, want)
+		}
+		second := gate("finalize")
+		if got, want := second.tierArgs(t), [][]string{{"./pkg"}, {"./pkg"}}; !reflect.DeepEqual(got, want) {
+			t.Errorf("second finalize tier invocations = %q; want tier%d and tier6 run again", got, gateslot.BilledTier)
+		}
+		if run, _ := runRecordOf(t, second.stdout.String(), 0); !run.Carried {
+			t.Errorf("second finalize tier0 record = %+v; want it carried", run)
+		}
+
+		fresh := gate("fresh")
+		if got, want := fresh.tierArgs(t), [][]string{{"./pkg"}}; !reflect.DeepEqual(got, want) {
+			t.Errorf("fresh tier invocations = %q; want tier0 run again despite its green entry", got)
+		}
+		freshLog := summaryLogPath(t, fresh.stdout.String(), 0)
+		named := slices.ContainsFunc(readGreen(f.greenPath).Entries, func(entry greenEntry) bool { return entry.Whole && entry.Run == freshLog })
+		if !named {
+			t.Errorf("green record entries = %+v; want a whole entry naming the fresh call's run %s", readGreen(f.greenPath).Entries, freshLog)
+		}
 	})
 
 	t.Run("a --copies run over a clean tree records no green pass", func(t *testing.T) {

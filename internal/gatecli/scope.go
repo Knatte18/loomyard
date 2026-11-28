@@ -564,7 +564,9 @@ func diffBaseGroups(cfg gateslot.Config, location *lymcwd.Location, root string,
 		var base string
 		ok := false
 		if tier, err := cfg.Tier(number); err == nil && green != nil {
-			base, ok = green.record.newestWholeAncestor(green.fingerprint(tier), moduleKey(root, tier.Dir), request.held, isAncestor)
+			var entry greenEntry
+			entry, ok = green.record.newestWholeAncestor(green.fingerprint(tier), moduleKey(root, tier.Dir), request.held, isAncestor)
+			base = entry.Commit
 		}
 		if !ok {
 			base, ok = parentMerge()

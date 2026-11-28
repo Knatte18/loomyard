@@ -366,7 +366,12 @@
 // An entry records the held tests apart from its args.
 // It covers a request, or serves as its base, only when that request holds back each test the entry held back.
 // A tier with nothing left is carried: it takes no slot, runs no command and writes a run record with `carried` set.
+// Each entry names the log of the run that passed, and a carried record lists those logs as `reused_from`;
+// a line before the tier's summary line names them too.
 // A tier with `carry: false` is never carried and writes no entry.
+// Neither `gateslot.BilledTier` nor a manual tier is carried, since such a tier runs only when a call names it.
+// Nor is any tier of a `--gate` call whose key sets `gate.gates.<key>.reuse` to false;
+// that call still writes its passes, so a later call of another key can carry them.
 //
 // A pass is recorded only when HEAD's tree is unchanged and the worktree still clean at that point.
 // A tier writes a whole entry when its carried part and passed remainder cover every package of its `all_targets`;

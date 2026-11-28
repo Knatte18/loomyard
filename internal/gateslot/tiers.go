@@ -119,6 +119,14 @@ type GateKey struct {
 	// Fixer is the model-spec of the cold fixer that a red agent call of this key hands its verdict to; empty turns it off.
 	// Only the card key may hold one.
 	Fixer string `yaml:"fixer"`
+	// Reuse, when false, keeps the key's call from carrying a tier on an earlier green pass; absent reads as true.
+	// The call still records its own passes.
+	Reuse *bool `yaml:"reuse,omitempty"`
+}
+
+// Reuses reports whether the key's call may carry a tier on an earlier green pass.
+func (k GateKey) Reuses() bool {
+	return k.Reuse == nil || *k.Reuse
 }
 
 // CardGateKey is the name of the gate.yaml key that runs a card's gate, the one key whose agent call may hold a fixer.
