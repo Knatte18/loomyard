@@ -53,6 +53,12 @@ A test that calls only the refusal's error constructor does not reach it.
 A card whose `**Intent:**` covers every instance of one kind across the repository lists every file holding one.
 Its Intent names the repository search that found them, so a reviewer can re-run it to prove the list complete.
 
+Each claim a card makes about the code is one you read in the code:
+who reads or writes a field or value, through every function on the call chain;
+whether a member is exported or otherwise visible from the package that uses it, and whether a test or seam can reach it from there;
+and which input reaches a branch once every check before it passes.
+No card's rule or claim contradicts another card's, or is made false by another card's change.
+
 A field with no content is omitted entirely — never write a `none` sentinel on any field.
 
 **`Uses:` names what the card reads but does not change — never a target.**

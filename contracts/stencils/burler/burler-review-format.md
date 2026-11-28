@@ -30,6 +30,18 @@ Frontmatter rules, all strict:
 - `findings` is a list;
   every entry has a non-empty `id`, `severity`, `class`, `location`, `summary`, and `fix`.
 - `fix` is the exact change to make and where, written so a fixer that has not seen your work can apply it from the review alone.
+- Before you write a `fix`, read in the code each fact it rests on:
+  - for an identifier the fix reuses, the package clause of the file the fix edits, and whether the identifier is exported or otherwise visible from that package;
+  - for a claim that code only reads, every function on the call chain that code runs, since a write deep in a callee disproves the claim;
+  - for test infrastructure the fix names, such as a kit, a recording, a stand-in or a test tier, that it exists in the repository and can run the tests the fix moves onto it.
+- Never write a `fix` that rests on a fact the code disproves.
+  Propose a fix that holds without that fact, and name what is missing in the `fix`;
+  when no such fix exists, raise the finding as class `decision`, with a `fix` that offers the two choices: accept the gap, or build what is missing.
+  A carried finding keeps its class, and its `fix` names both choices instead.
+- A fact the fix rests on that you could not establish is named in the `fix` as unverified, with what you could not read.
+- The one exception is a `fix` that carries another reviewer's change you may not reject, such as a kept parent finding's:
+  it keeps that change and the finding's class,
+  and appends the fact the code disproves, or the fact left unverified, naming the code read.
 - `severity` is exactly one of `BLOCKING`, `MEDIUM`, `LOW`, `NIT`.
 - `class` is exactly one of `design`, `scope`, `decision`, `consistency`, lowercase.
   - `design`: the design itself is wrong, or a decision is missing or rests on a false premise.

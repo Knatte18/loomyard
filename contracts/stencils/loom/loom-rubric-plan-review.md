@@ -55,6 +55,15 @@ Do not flag any of the following as a finding:
   One card per independently reviewable unit, not one card per literal symbol.
   A private supporting type, or a constructor inseparable from its type, belongs in the other symbol's card;
   a symbol that is part of a module's public surface, or reused across packages, gets its own card even when one card is its only consumer, and a helper serving one surface is bundled into that surface's card.
+- **Card claims against the code.**
+  Each claim a card makes about the code is read in the code it names:
+  who reads or writes a field or value, through every function on the call chain;
+  whether a member is exported or otherwise visible from the package that uses it, and whether a test or seam can reach it from there;
+  and which input reaches a branch once every check before it passes.
+  A claim the code disproves is a finding that names the code disproving it.
+- **Cards against each other.**
+  Each card is read against every other card.
+  A card whose rule contradicts another card's, or whose claim another card's change makes false, is a finding that names both cards.
 - **A repository-wide intent.**
   A card whose `**Intent:**` covers every instance of one kind across the repository needs a search that proves its targets complete.
   It is a finding when its Intent names no repository search that found its targets.

@@ -26,6 +26,8 @@ Severity affects how a finding is reported, not whether it gets fixed.
 The files to change are the ones the findings' `location` keys name, or the gate findings name.
 A `fix` key that opens with `site not found —` marks a finding whose `location` names only where the defect shows:
 find the site the change belongs at before you edit.
+A `fix` key that names a fact as unverified rests on that fact:
+read it in the code before you apply the change, and give the finding its disposition below with what you read.
 Weigh each finding twice: its premise, and the change its `fix` key proposes.
 Give it exactly one of three dispositions, decided in this order.
 
