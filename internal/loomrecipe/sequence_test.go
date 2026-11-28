@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/loomshed"
@@ -27,7 +28,7 @@ type wantSequenceEntry struct {
 // wantSequenceOrder is the name and outcome sequence of the rows from 1 through Merge-In.
 // A clean Run over buildSequenceFixture must produce exactly this sequence.
 // It follows the row order of wantProducerTable, which TestNew_ShapeMatchesRecipe pins against New;
-// a reordering of the rows in contracts/recipes/tapestry-recipe.yaml therefore fails the test.
+// a reordering of the rows of the recipes tapestry composes therefore fails the test.
 //
 // Every entry but the three review segments and the trailing Merge-In carries a Done outcome by rule.
 // The segment entries carry no such rule, so they are spelled out explicitly.
@@ -86,7 +87,9 @@ func deriveSequenceOrder() []wantSequenceEntry {
 	return order
 }
 
-// TestSequence_FullRunBlocksAtMergeIn runs the built row list from Preflight through Webster.
+// TestSequence_FullRunBlocksAtMergeIn runs the built row list of an undiscussed entry from Motif through Webster.
+// The run walks Motif, the Discussion rows, Jacquard and Preflight.
+// It then walks Record-Seed, which writes nothing, and Drift-Baseline.
 // It checks that the run blocks on Merge-In's Stuck verdict, never reaching the Code-Review perch.
 // It also checks that the plan is left approved after the run.
 // The fake writer seeds and rewrites the plan unapproved.
@@ -110,11 +113,17 @@ func TestSequence_FullRunBlocksAtMergeIn(t *testing.T) {
 		return nil
 	}
 
+	// The fixture's record exists when the run reaches Record-Seed, so the row seeds nothing.
+	env.RecordSeed.ReadStored = func() ([]byte, bool, error) {
+		t.Error("Record-Seed read the stored record while the run's record exists")
+		return nil, false, nil
+	}
+
 	shed, err := New(shedrun.RecipeTapestry, env, paths)
 	if err != nil {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
-	shed.Producers[0].Producer = fakeAlwaysDoneProducer{}
+	setRowProducer(t, shed, loomshed.NamePreflight, fakeAlwaysDoneProducer{})
 
 	result, err := shed.Run(context.Background())
 	if err != nil {
@@ -227,5 +236,59 @@ func TestSequence_FullRunBlocksAtMergeIn(t *testing.T) {
 	}
 	if !plan.Approved {
 		t.Errorf("ParsePlan().Approved = false; want true after a clean run")
+	}
+}
+
+// TestSequence_DiscussedEntryPassesOverMotif runs the built row list of an entry flagged discussed.
+// The Motif gate seeds the stored record and passes over the block, so no Discussion row runs.
+// Record-Seed then finds the seeded record and writes nothing, and the run goes on as an undiscussed one does.
+func TestSequence_DiscussedEntryPassesOverMotif(t *testing.T) {
+	tiergate.Require(t, 0)
+	_, env, paths := buildSequenceFixture(t)
+
+	seeds := 0
+	env.SeedDiscussedRecord = func() (bool, error) {
+		seeds++
+		return true, nil
+	}
+	env.RecordSeed.ReadStored = func() ([]byte, bool, error) {
+		t.Error("Record-Seed read the stored record while the run's record exists")
+		return nil, false, nil
+	}
+
+	shed, err := New(shedrun.RecipeTapestry, env, paths)
+	if err != nil {
+		t.Fatalf("New() error = %v; want nil", err)
+	}
+	setRowProducer(t, shed, loomshed.NamePreflight, fakeAlwaysDoneProducer{})
+
+	result, err := shed.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run() error = %v; want nil", err)
+	}
+	if result.Outcome != shedengine.RunBlocked || result.HaltedProducer != loomshed.NameParentAlign {
+		t.Fatalf("Run() = %q at %q; want %q at %q (reason: %s)", result.Outcome, result.HaltedProducer, shedengine.RunBlocked, loomshed.NameParentAlign, result.Reason)
+	}
+	if seeds != 1 {
+		t.Errorf("SeedDiscussedRecord calls = %d; want 1", seeds)
+	}
+
+	var want []wantSequenceEntry
+	for _, entry := range wantSequenceOrder {
+		switch {
+		case entry.name == loomshed.NameMotif:
+			want = append(want, wantSequenceEntry{entry.name, shedengine.OutcomeSkipped})
+		case slices.Contains(motifRowNames, entry.name):
+		default:
+			want = append(want, entry)
+		}
+	}
+	if len(result.History) != len(want) {
+		t.Fatalf("Run() History has %d entries; want %d: %+v", len(result.History), len(want), result.History)
+	}
+	for i, entry := range want {
+		if got := result.History[i]; got.Producer != entry.name || got.Outcome != entry.outcome {
+			t.Errorf("History[%d] = %s %q; want %s %q", i, got.Producer, got.Outcome, entry.name, entry.outcome)
+		}
 	}
 }

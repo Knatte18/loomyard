@@ -1,6 +1,7 @@
 # motif-recipe.yaml is the recipe that makes a sketch, the decision record, from a task: Discussion-Write and the Discussion-Review ring.
-# It is the one definition of those rows: the tapestry recipe runs it inline through its Motif block row, and a board task may name it to run alone.
-# Discussion-Write carries no on_stuck, so its Stuck halts the run, for the reason tapestry-recipe.yaml's header gives for its writer rows.
+# It is the one definition of those rows: the tapestry recipe runs it inline through its Motif block row,
+# ahead of its Jacquard block, which runs jacquard-recipe.yaml; a board task may name it to run alone.
+# Discussion-Write carries no on_stuck, so its Stuck halts the run, for the reason jacquard-recipe.yaml's header gives for its writer rows.
 # The ring follows the shared-segment rule that header states: the three rows carry segment: Discussion-Review and role_prefix: discussion,
 # and their budget is loom.discussion.max_bounces, or loom.review.max_bounces when it is absent.
 #

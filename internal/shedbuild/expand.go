@@ -23,13 +23,17 @@ import (
 // when that is empty, it is the exit of the block enclosing it.
 // An inlined row's empty on_done becomes the exit of the innermost block enclosing the row.
 // An inlined block row's empty skip target does too.
+// A block row whose exit is still empty ends the run once its rows do:
+// it is admitted only as the last row of its recipe with block gate shedrecipe.BlockGateAlways,
+// so no skip can fall back to the block's own entry,
+// and the rows it inlines keep an empty on_done where they set none.
 // Each inlined row's BlockPath is the names of the block rows enclosing it, outermost first, joined by "/".
 // A sub-recipe's terminals and top-level keys are not read;
 // the parent's stay the run's, so a recipe that runs alone may also be a block.
 //
 // Every refusal names the block row and a way forward.
 // It covers an unresolvable or cyclic recipe, and a name or segment clash with rows outside the block.
-// An on_done inside the block is refused too, as is an outermost block row with no on_done.
+// An on_done inside the block is refused too, as is a block row with an empty exit that is not last or not always gated.
 func Expand(r Recipe, resolve func(name string) ([]byte, error)) (Recipe, error) {
 	if !slices.ContainsFunc(r.Producers, func(row Row) bool { return row.Block != "" }) {
 		return r, nil
@@ -72,7 +76,7 @@ func (e *expander) register(rows []Row) {
 // path is the block path of rows, and chain the names of the recipes entered to reach them.
 func (e *expander) expandRows(rows []Row, exit, path string, chain []string) ([]Row, error) {
 	out := make([]Row, 0, len(rows))
-	for _, row := range rows {
+	for i, row := range rows {
 		if row.Block == "" {
 			if exit != "" && row.OnDone == "" {
 				row.OnDone = exit
@@ -84,10 +88,12 @@ func (e *expander) expandRows(rows []Row, exit, path string, chain []string) ([]
 
 		blockExit := row.OnDone
 		if blockExit == "" {
-			if exit == "" {
-				return nil, blockError(row, "on_done is empty; way forward: set on_done to the row the run takes after the block")
-			}
 			blockExit = exit
+		}
+		if blockExit == "" {
+			if err := checkRunEndingBlock(row, i == len(rows)-1); err != nil {
+				return nil, err
+			}
 		}
 		inlined, entry, err := e.inline(row, blockExit, path, chain)
 		if err != nil {
@@ -105,6 +111,19 @@ func (e *expander) expandRows(rows []Row, exit, path string, chain []string) ([]
 		out = append(out, inlined...)
 	}
 	return out, nil
+}
+
+// checkRunEndingBlock refuses block, a block row with an empty exit, unless it may end the run.
+// It may when last says it is its recipe's last row and its gate always holds:
+// any other gate's skip would fall back to the block's own entry.
+func checkRunEndingBlock(block Row, last bool) error {
+	if !last {
+		return blockError(block, "on_done is empty; way forward: set on_done to the row the run takes after the block")
+	}
+	if block.BlockGate != shedrecipe.BlockGateAlways {
+		return blockError(block, "on_done is empty on the recipe's last row and block_gate is %q, so a skip would fall back to the block's own entry; way forward: set on_done, or use block_gate %s", block.BlockGate, shedrecipe.BlockGateAlways)
+	}
+	return nil
 }
 
 // inline resolves, parses and expands the recipe that block names.

@@ -164,6 +164,9 @@ var intentionallyNil = map[string]string{
 	"RecordWrite.ReadBody":                "loom-only seam, batten wires no loom record",
 	"RecordWrite.ReadStored":              "loom-only seam, batten wires no loom record",
 	"RecordWrite.Commit":                  "loom-only seam, batten wires no loom record",
+	"RecordSeed.ReadStored":               "loom-only seam, batten wires no loom record",
+	"RecordSeed.Commit":                   "loom-only seam, batten wires no loom record",
+	"RecordSeed.ReadSeed":                 "loom-only seam, batten wires no loom record",
 	"RaddleWrite.Deps.SplitPerch":         "raddle-only seam, batten runs no raddle row",
 	"RaddleWrite.Deps.AutoApprove":        "raddle-only seam, batten runs no raddle row",
 	"RaddleWrite.Deps.FreshEntry":         "raddle-only seam, batten runs no raddle row",
@@ -243,6 +246,7 @@ var intentionallyNil = map[string]string{
 //lym:seam internal/loomshed#RaddleFileDeps
 //lym:seam internal/loomshed#RaddleWriteDeps
 //lym:seam internal/loomshed#RecordWriteDeps
+//lym:seam internal/loomshed#RecordSeedDeps
 //lym:seam internal/loomshed#PRReworkDeps
 //lym:seam internal/loomshed#SamplerDeps
 //lym:seam internal/loomshed#VerifyBudget

@@ -16,7 +16,8 @@
 //
 // # The loom engine sets
 //
-// LoomRecordEngines, LoomBuildEngines and LoomFinalizeEngine name the engines of a loom recipe's rows.
+// LoomRecordEngines, LoomSeedEngine, LoomBuildEngines and LoomFinalizeEngine name the engines of a loom recipe's rows.
+// A seed row writes a missing record from the board entry's stored record, beside or in place of the record row.
 // shedbuild reads them to check a recipe declaring `contract: loom`, so a new loom recipe needs no change to the check.
 //
 // # The Implementer row

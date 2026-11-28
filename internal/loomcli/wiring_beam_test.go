@@ -41,6 +41,7 @@ import (
 //lym:seam internal/loomshed#RaddleFileDeps
 //lym:seam internal/loomshed#RaddleWriteDeps
 //lym:seam internal/loomshed#RecordWriteDeps
+//lym:seam internal/loomshed#RecordSeedDeps
 //lym:seam internal/loomshed#PRReworkDeps
 //lym:seam internal/loomshed#SamplerDeps
 //lym:seam internal/loomshed#VerifyBudget

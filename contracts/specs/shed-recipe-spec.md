@@ -9,7 +9,8 @@
 ## The idea
 
 `internal/loomrecipe.New()` builds tapestry's `[]shedengine.ProducerDef` by parsing and building a declarative recipe.
-The recipe is the data file `contracts/recipes/tapestry-recipe.yaml`, which names, per row, its `Name`, `Engine`, `Config` and routing fields.
+The recipes are the data files under `contracts/recipes/`, which name, per engine row, its `Name`, `Engine`, `Config` and routing fields.
+`tapestry-recipe.yaml` composes `motif-recipe.yaml` and `jacquard-recipe.yaml` through block rows.
 The rows are assembled into the `[]shedengine.ProducerDef` `shedengine.Shed` consumes, with no change to `shedengine`.
 
 Most rows are pure `Engine + Config`, the shape a declarative recipe expresses cleanly; `Discussion-Write` is not.
@@ -204,8 +205,10 @@ It parses each block's recipe through `Parse`.
 It returns a new `Recipe` in which every block row is followed by the rows of its recipe, under their own names.
 The block row becomes an `engine: Block` row.
 Its `on_done` is the sub-recipe's `entry`, and its skip target is the block's exit.
-The exit is the block row's own `on_done`, or, when that is empty, the exit of the block enclosing it,
-and an outermost block row must set `on_done`.
+The exit is the block row's own `on_done`, or, when that is empty, the exit of the block enclosing it.
+A block row whose exit is still empty ends the run once its rows do.
+It is admitted only as the last row of its recipe with `block_gate` `always`,
+and the rows it inlines keep an empty `on_done` where they set none.
 Every inlined row's empty `on_done` becomes the exit of the innermost block enclosing the row.
 So does an inlined block row's empty skip target.
 Each inlined row carries its block path, the enclosing block rows' names joined by `/`, outermost first.
@@ -221,7 +224,10 @@ Every error this package raises after a successful decode names the offending ro
 `Build` refuses one that breaks a clause, naming the clause and its way forward.
 The clauses are checked in this order:
 
-1. The recipe holds exactly one record row, an engine of `shedrecipe.LoomRecordEngines`.
+1. The recipe holds at most one record row (an engine of `shedrecipe.LoomRecordEngines`),
+   at most one seed row (`shedrecipe.LoomSeedEngine`), and at least one of the two.
+   With both, the seed row lies after the record row on the `on_done` path walked from `entry`.
+   With no record row, the seed row stands for the record row in every later clause.
 2. It holds exactly one build row, an engine of `shedrecipe.LoomBuildEngines`;
    the build segment is the rows a variant owns that turn the record into the change,
    and the contract checks the one row of it that is a build engine.

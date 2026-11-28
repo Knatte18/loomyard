@@ -12,7 +12,7 @@
 #
 # The split perch is the Raddle-Review segment over the raddle proposal:
 # Raddle-Bouncer, Raddle-Burler-Review and Raddle-Burler-Fix.
-# Its rows follow the shared-segment ring tapestry-recipe.yaml's header states, with role_prefix split,
+# Its rows follow the shared-segment ring jacquard-recipe.yaml's header states, with role_prefix split,
 # and their budget is loom.split.max_bounces, or loom.review.max_bounces when it is absent.
 # Raddle-Bouncer's artifact_paths name the proposal, which records the raddle run's perch mode:
 # the perch's approval files the proposal in place of the operator's.

@@ -26,6 +26,7 @@ var registry = map[string]Constructor{
 	"DarnWrite":        darnWriteEntry,
 	"SamplerSession":   samplerSessionEntry,
 	"RecordWrite":      recordWriteEntry,
+	LoomSeedEngine:     recordSeedEntry,
 	"Finalize":         finalizeEntry,
 	"FrictionReflect":  frictionReflectEntry,
 	"Implementer":      implementerEntry,
@@ -62,6 +63,10 @@ var registry = map[string]Constructor{
 // LoomRecordEngines are the engines whose row is a loom recipe's record row.
 // That row writes the decision record before the build segment.
 var LoomRecordEngines = []string{"DiscussionWrite", "RecordWrite"}
+
+// LoomSeedEngine is the engine whose row is a loom recipe's seed row.
+// That row writes a missing decision record from the board entry's stored record, beside or in place of the record row.
+const LoomSeedEngine = "RecordSeed"
 
 // LoomBuildEngines are the engines whose row is a loom recipe's build row.
 // That row is the one in the build segment that turns the record into the change.

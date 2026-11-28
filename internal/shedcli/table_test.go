@@ -40,7 +40,7 @@ func TestRecipes_KeySet(t *testing.T) {
 		name string
 		want []string
 	}{
-		{"exactly arras, batten, darn, hardener, motif, pawl, raddle, sampler and tapestry", []string{"arras", "batten", "darn", "hardener", "motif", "pawl", "raddle", "sampler", "tapestry"}},
+		{"exactly arras, batten, darn, hardener, jacquard, motif, pawl, raddle, sampler and tapestry", []string{"arras", "batten", "darn", "hardener", "jacquard", "motif", "pawl", "raddle", "sampler", "tapestry"}},
 		{"matches the shedrun vocabulary", shedrun.RecipeNames()},
 	}
 	for _, tt := range tests {
@@ -67,6 +67,7 @@ func TestRecipes_Entries(t *testing.T) {
 		wantSeedRule      bool
 	}{
 		{"tapestry", loomcli.BootstrapVerb, false},
+		{shedrun.RecipeJacquard, loomcli.BootstrapVerb, false},
 		{"darn", loomcli.BootstrapVerb, false},
 		{"pawl", loomcli.BootstrapVerb, false},
 		{"sampler", loomcli.BootstrapVerb, false},

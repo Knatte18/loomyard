@@ -19,8 +19,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/contracts/recipes"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -84,9 +84,9 @@ func clusterExcludesMismatches(r shedbuild.Recipe) []string {
 //testtiming:keep pins that no shipped Bouncer/BurlerReview pair disagrees on cluster_excludes, a guard that fires on the recipe file, which TestApproveSeam_FailsToBuild never reads
 func TestShippedRecipe_ClusterExcludesAgreesWithPartnerFan(t *testing.T) {
 	tiergate.Require(t, 0)
-	r, err := shedbuild.Parse(recipes.TapestryRecipe)
+	r, err := parseEmbeddedRecipe(shedrun.RecipeTapestry)
 	if err != nil {
-		t.Fatalf("shedbuild.Parse(recipes.TapestryRecipe) error = %v; want nil", err)
+		t.Fatalf("parseEmbeddedRecipe(tapestry) error = %v; want nil", err)
 	}
 	if msgs := clusterExcludesMismatches(r); len(msgs) != 0 {
 		t.Errorf("clusterExcludesMismatches(shipped recipe) = %v; want none", msgs)

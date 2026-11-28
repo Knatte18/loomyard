@@ -189,14 +189,36 @@ func TestBuild_LoomContract(t *testing.T) {
 		wantSubs []string
 	}{
 		{
-			name:     "no record row",
+			name:     "neither a record row nor a seed row",
 			mutate:   setEngine("Record", "Stub"),
-			wantSubs: []string{"shedbuild: ", "0 record rows", "way forward: give the recipe exactly one record row, engine DiscussionWrite or RecordWrite"},
+			wantSubs: []string{"shedbuild: ", "holds no record row and no seed row", "way forward: give the recipe one record row, engine DiscussionWrite or RecordWrite, or one seed row, engine RecordSeed"},
 		},
 		{
 			name:     "two record rows",
 			mutate:   setEngine("Middle", "RecordWrite"),
-			wantSubs: []string{"shedbuild: ", "2 record rows", "way forward: give the recipe exactly one record row, engine DiscussionWrite or RecordWrite"},
+			wantSubs: []string{"shedbuild: ", "2 record rows, more than one", "way forward: keep at most one record row, engine DiscussionWrite or RecordWrite"},
+		},
+		{
+			name: "two seed rows",
+			mutate: func(r *Recipe) {
+				setEngine("Pre", "RecordSeed")(r)
+				setEngine("Middle", "RecordSeed")(r)
+			},
+			wantSubs: []string{"shedbuild: ", "2 seed rows, more than one", "way forward: keep at most one seed row, engine RecordSeed"},
+		},
+		{
+			name:     "a seed row ahead of its record row on the on_done path",
+			mutate:   setEngine("Pre", "RecordSeed"),
+			wantSubs: []string{"shedbuild: ", `the seed row "Pre" does not lie after the record row "Record"`, "way forward: place the seed row after the record row on the on_done path from the entry"},
+		},
+		{
+			name: "a seed row standing for the record row after the build row",
+			mutate: func(r *Recipe) {
+				setEngine("Record", "Stub")(r)
+				setEngine("Land", "RecordSeed")(r)
+				setEngine("Reflect", "Finalize")(r)
+			},
+			wantSubs: []string{"shedbuild: ", `the build row "Build" does not lie after the record row "Land"`},
 		},
 		{
 			name:     "no build row",
@@ -339,6 +361,24 @@ func TestBuild_LoomContract(t *testing.T) {
 			t.Errorf("checkLoomContract(valid recipe) = %v; want nil", err)
 		}
 	})
+
+	seedForms := []struct {
+		name   string
+		mutate func(*Recipe)
+	}{
+		{"a seed row after the record row", setEngine("Middle", "RecordSeed")},
+		{"a seed row in place of the record row", setEngine("Record", "RecordSeed")},
+	}
+	for _, tt := range seedForms {
+		t.Run(tt.name+" passes the check", func(t *testing.T) {
+			t.Parallel()
+			r := validLoom()
+			tt.mutate(&r)
+			if err := checkLoomContract(r); err != nil {
+				t.Errorf("checkLoomContract(%s) = %v; want nil", tt.name, err)
+			}
+		})
+	}
 
 	t.Run("a record-only recipe, with neither a build row nor a Finalize row, passes with no verify_source", func(t *testing.T) {
 		t.Parallel()

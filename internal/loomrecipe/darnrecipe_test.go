@@ -78,11 +78,11 @@ func TestNewDarn_RowsMatchTheDarnTable(t *testing.T) {
 // the decision record alone, whose fasit instructions read it as the task's scope with its added entries as amendments.
 func TestDarnPerch_SharesLoomsPerchBarTheAnswerKey(t *testing.T) {
 	tiergate.Require(t, 0)
-	rowsOf := func(source []byte) map[string]shedbuild.Row {
+	rowsOf := func(name string) map[string]shedbuild.Row {
 		t.Helper()
-		recipe, err := shedbuild.Parse(source)
+		recipe, err := parseEmbeddedRecipe(name)
 		if err != nil {
-			t.Fatalf("shedbuild.Parse() error = %v; want nil", err)
+			t.Fatalf("parseEmbeddedRecipe(%s) error = %v; want nil", name, err)
 		}
 		rows := map[string]shedbuild.Row{}
 		for _, row := range recipe.Producers {
@@ -90,7 +90,7 @@ func TestDarnPerch_SharesLoomsPerchBarTheAnswerKey(t *testing.T) {
 		}
 		return rows
 	}
-	darn, loom := rowsOf(recipes.DarnRecipe), rowsOf(recipes.TapestryRecipe)
+	darn, loom := rowsOf(shedrun.RecipeDarn), rowsOf(shedrun.RecipeTapestry)
 	profileOf := func(row shedbuild.Row) map[string]any {
 		profile, _ := row.Config["profile"].(map[string]any)
 		return profile
@@ -354,9 +354,9 @@ func TestDarnVerifyBudget(t *testing.T) {
 	})
 
 	t.Run("on the tapestry recipe Code-Burler-Fix runs the clean gate before verify", func(t *testing.T) {
-		recipe, err := shedbuild.Parse(recipes.TapestryRecipe)
+		recipe, err := parseEmbeddedRecipe(shedrun.RecipeTapestry)
 		if err != nil {
-			t.Fatalf("shedbuild.Parse() error = %v; want nil", err)
+			t.Fatalf("parseEmbeddedRecipe(tapestry) error = %v; want nil", err)
 		}
 		var names []any
 		for _, row := range recipe.Producers {

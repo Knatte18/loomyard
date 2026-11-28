@@ -636,7 +636,7 @@ func childSeedParams(recipe string, childLocation *lymcwd.Location) (map[string]
 	if !found || origin.ParentBranch == "" {
 		return nil, nil
 	}
-	return map[string]string{"parent": origin.ParentBranch}, nil
+	return map[string]string{loomshed.SeedParentParam: origin.ParentBranch}, nil
 }
 
 // childSeedFor builds the seed written into the task worktree from the given recipe, driver and params.

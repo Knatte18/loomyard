@@ -549,6 +549,28 @@ func recordWriteDeps(l *lymcwd.Location, record runRecord) loomshed.RecordWriteD
 	}
 }
 
+// recordSeedDeps returns the Record-Seed row's deps for the run runID of the worktree at l.
+// They share Record-Write's record paths, stored-record read and commit.
+// discussionRow is the row of the run's recipe that runs Discussion, empty when it holds none.
+// Building it opens nothing: the board and the seed are read on each call.
+func recordSeedDeps(l *lymcwd.Location, record runRecord, runID, discussionRow string) loomshed.RecordSeedDeps {
+	write := recordWriteDeps(l, record)
+	return loomshed.RecordSeedDeps{
+		RecordPath:     write.RecordPath,
+		SupportLogPath: write.SupportLogPath,
+		DiscussionDir:  write.DiscussionDir,
+		ReadStored:     write.ReadStored,
+		Commit:         write.Commit,
+		DiscussionRow:  discussionRow,
+		Slug:           seedSlug(l.WorktreeName),
+		SeedPath:       shedrun.SeedFile(l, runID),
+		ReadSeed: func() (loomshed.ReseedValues, error) {
+			seed, _, err := shedrun.ReadSeed(l, runID)
+			return loomshed.ReseedValues{Recipe: shedrun.RecipeTapestry, Driver: seed.Driver, Parent: seed.Params[loomshed.SeedParentParam]}, err
+		},
+	}
+}
+
 // entryLabels returns a reader of the labels of the run's board entry for the worktree at l.
 // It opens the board on each call, and an entry the board lacks reads as one with no label.
 func entryLabels(l *lymcwd.Location) func() ([]string, error) {
@@ -820,6 +842,10 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 	if err != nil {
 		return err
 	}
+	discussionRow, _, err := loomrecipe.EngineRow(c.recipe, discussionWriteEngine)
+	if err != nil {
+		return err
+	}
 
 	// A pair run's row gates may hand a failure to a cold fixer.
 	// The prime and a run outside a hub have no pair to own one.
@@ -1029,6 +1055,9 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		// RecordWrite is filled for every recipe: only a recipe with a RecordWrite row reads it,
 		// and it opens the board on a call, never at wire time.
 		RecordWrite: recordWriteDeps(location, record),
+		// RecordSeed is filled for every recipe: only a recipe with a RecordSeed row reads it,
+		// and it opens the board and reads the seed on a call, never at wire time.
+		RecordSeed: recordSeedDeps(location, record, c.runID, discussionRow),
 		// RaddleWrite and RaddleFile are filled for every recipe: only a recipe with a raddle row reads them,
 		// and every closure reads the board, the status or the setting on a call, never at wire time.
 		RaddleWrite: raddleWriteEnv(location, loomCfg, websterGeom.StencilsDir, websterGeom.SpecsDir, registry, seedSlug(location.WorktreeName), c.recipe, settingLookup),

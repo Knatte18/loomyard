@@ -102,20 +102,21 @@ func TestRouting_ProgressAt(t *testing.T) {
 		}
 	})
 
-	t.Run("Preflight, Motif, Discussion-Write and Discussion-Review come before Drift-Baseline", func(t *testing.T) {
+	t.Run("Motif, Discussion-Write, Discussion-Review, Jacquard and Preflight come before Drift-Baseline", func(t *testing.T) {
 		t.Parallel()
 		for _, want := range []struct {
 			row  string
 			step int
 			name string
 		}{
-			{loomshed.NamePreflight, 1, loomshed.NamePreflight},
-			{loomshed.NameMotif, 2, loomshed.NameMotif},
-			{loomshed.NameDiscussionWrite, 3, loomshed.NameDiscussionWrite},
-			{loomshed.NameDiscussionBouncer, 4, "Discussion-Review"},
-			{loomshed.NameDiscussionBurlerFix, 4, "Discussion-Review"},
+			{loomshed.NameMotif, 1, loomshed.NameMotif},
+			{loomshed.NameDiscussionWrite, 2, loomshed.NameDiscussionWrite},
+			{loomshed.NameDiscussionBouncer, 3, "Discussion-Review"},
+			{loomshed.NameDiscussionBurlerFix, 3, "Discussion-Review"},
 			// The step a pass-over of Motif moves to.
-			{loomshed.NameDriftBaseline, 5, loomshed.NameDriftBaseline},
+			{loomshed.NameJacquard, 4, loomshed.NameJacquard},
+			{loomshed.NamePreflight, 5, loomshed.NamePreflight},
+			{loomshed.NameDriftBaseline, 7, loomshed.NameDriftBaseline},
 		} {
 			if got := routing.ProgressAt(want.row); got.Step != want.step || got.Name != want.name {
 				t.Errorf("ProgressAt(%q) = step %d %q; want step %d %q", want.row, got.Step, got.Name, want.step, want.name)

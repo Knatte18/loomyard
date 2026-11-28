@@ -80,6 +80,10 @@ const (
 	// RecipeMotif names the motif recipe, the run that makes a sketch, the decision record, from a task and lands no code.
 	// The tapestry recipe also runs it as its Motif block.
 	RecipeMotif = "motif"
+	// RecipeJacquard names the jacquard recipe.
+	// It is the run that plans, builds and lands a task from its approved decision record.
+	// Discussion never runs in it; the tapestry recipe also runs it as its Jacquard block, after Discussion.
+	RecipeJacquard = "jacquard"
 	// RecipeRaddle names the raddle recipe, the run that splits a Sketch into the entries the operator approves and files them on the board.
 	// It is the one recipe whose task may carry a Sketch's decision record and its sketch type label.
 	RecipeRaddle = "raddle"
@@ -96,7 +100,7 @@ const (
 // Callers must not rely on a fixed order beyond "sorted" and must not mutate the vocabulary through
 // the returned slice affecting any other caller, since each call allocates its own.
 func RecipeNames() []string {
-	return []string{RecipeArras, RecipeBatten, RecipeDarn, RecipeHardener, RecipeMotif, RecipePawl, RecipeRaddle, RecipeSampler, RecipeTapestry}
+	return []string{RecipeArras, RecipeBatten, RecipeDarn, RecipeHardener, RecipeJacquard, RecipeMotif, RecipePawl, RecipeRaddle, RecipeSampler, RecipeTapestry}
 }
 
 // OfferedRecipeNames returns the recipe names a message may list to a user, sorted and freshly allocated.

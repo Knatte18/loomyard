@@ -151,20 +151,25 @@ func RowsHoldSplitPerch(rows []shedbuild.Row) bool {
 }
 
 // RecordEngine returns the engine of the named recipe's row that writes the decision record.
-// It is empty when the recipe has no such row.
+// It is the seed row's engine, shedrecipe.LoomSeedEngine, for a recipe whose only record source is a seed row.
+// It is empty when the recipe has neither.
 // An empty recipe name reads as the tapestry recipe, and a name that selects no embedded recipe is refused.
 func RecordEngine(recipe string) (string, error) {
 	parsed, err := parseEmbeddedRecipe(recipe)
 	if err != nil {
 		return "", err
 	}
+	engine := ""
 	for _, row := range parsed.Producers {
 		if slices.Contains(shedrecipe.LoomRecordEngines, row.Engine) {
 			return row.Engine, nil
 		}
+		if row.Engine == shedrecipe.LoomSeedEngine {
+			engine = row.Engine
+		}
 	}
 
-	return "", nil
+	return engine, nil
 }
 
 // VerifySource returns the named recipe's top-level verify_source, empty when it sets none.

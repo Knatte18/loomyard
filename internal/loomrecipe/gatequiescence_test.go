@@ -12,6 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/contracts/recipes"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -86,9 +87,9 @@ func gatedRowFanViolations(r shedbuild.Recipe, fans map[string][]string) []strin
 //testtiming:keep pins that no gated shipped row authorizes fork subagents outside an ungated BurlerReview reviewer, a guard that fires on the recipe file, which TestApproveSeam_FailsToBuild never reads
 func TestNoGatedRowAuthorizesForkSubagents(t *testing.T) {
 	tiergate.Require(t, 0)
-	shipped, err := shedbuild.Parse(recipes.TapestryRecipe)
+	shipped, err := parseEmbeddedRecipe(shedrun.RecipeTapestry)
 	if err != nil {
-		t.Fatalf("shedbuild.Parse(recipes.TapestryRecipe) error = %v; want nil", err)
+		t.Fatalf("parseEmbeddedRecipe(tapestry) error = %v; want nil", err)
 	}
 
 	gatedRowFound := false
@@ -202,9 +203,9 @@ func TestNoGatedRowAuthorizesForkSubagents(t *testing.T) {
 //testtiming:keep pins that the shipped Webster round's gates list is exactly the drift entry, a guard that fires on the recipe file, which TestApproveSeam_FailsToBuild never reads
 func TestWebsterRoundCarriesNoGateKey(t *testing.T) {
 	tiergate.Require(t, 0)
-	r, err := shedbuild.Parse(recipes.TapestryRecipe)
+	r, err := parseEmbeddedRecipe(shedrun.RecipeTapestry)
 	if err != nil {
-		t.Fatalf("shedbuild.Parse(recipes.TapestryRecipe) error = %v; want nil", err)
+		t.Fatalf("parseEmbeddedRecipe(tapestry) error = %v; want nil", err)
 	}
 
 	found := false

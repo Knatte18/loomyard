@@ -15,7 +15,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/contracts/recipes"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -32,9 +31,9 @@ import (
 func TestShippedRecipe_SeamsWiredOnPlanBouncerOnly(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
-	r, err := shedbuild.Parse(recipes.TapestryRecipe)
+	r, err := parseEmbeddedRecipe(shedrun.RecipeTapestry)
 	if err != nil {
-		t.Fatalf("shedbuild.Parse(recipes.TapestryRecipe) error = %v; want nil", err)
+		t.Fatalf("parseEmbeddedRecipe(tapestry) error = %v; want nil", err)
 	}
 
 	for _, row := range r.Producers {

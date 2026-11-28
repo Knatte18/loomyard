@@ -92,7 +92,7 @@ func (c *loomCLI) resolveRunID(location *lymcwd.Location, verb string, args []st
 	// So only run and step on the self run-id get the seed-without-driver remedy.
 	remedy := `run "lym loom start" first to bootstrap this task`
 	if (verb == "run" || verb == "step") && runID == shedrun.SelfRunID {
-		remedy = `run "lym loom start" first to bootstrap this task, or seed it without a driver with "lym shed seed self --recipe tapestry --driver go --param parent=<parent-branch>" (<parent-branch> is the pair's recorded parent branch) and then run "lym loom step"`
+		remedy = `run "lym loom start" first to bootstrap this task, or seed it without a driver with "lym shed seed self --recipe tapestry --driver go --param ` + loomshed.SeedParentParam + `=<parent-branch>" (<parent-branch> is the pair's recorded parent branch) and then run "lym loom step"`
 	}
 	// Rendered through shedrun.MissingSeedMessage, the renderer every seed refusal shares.
 	// This refusal therefore words identically to the others.

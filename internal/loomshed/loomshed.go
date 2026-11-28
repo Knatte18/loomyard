@@ -2,14 +2,14 @@
 
 package loomshed
 
-// The producer names, verbatim per the rows of contracts/recipes/tapestry-recipe.yaml.
+// The producer names, verbatim per the rows of the loom recipes under contracts/recipes.
 // Each name is the durable on-disk identity in current_producer.
 // A later rename breaks resume for any in-flight task.
 // So every row is built from these constants, never a repeated string literal.
 //
 // NameParentAlign and NameFinalize are generic ShedProducers shared with the landing shed, not loom's own producers.
-// They are declared here like every other row, because the tapestry recipe names them too.
-// contracts/recipes/tapestry-recipe.yaml spells the same names as YAML strings; these constants remain the authority.
+// They are declared here like every other row, because the loom recipes name them too.
+// Those recipe files spell the same names as YAML strings; these constants remain the authority.
 // internal/loomrecipe's coverage guard pins the two declarations together.
 // It keys its row table off these constants rather than off string literals.
 //
@@ -30,6 +30,7 @@ const (
 	NameDarnWrite         = "Darn-Write"
 	NameSamplerSession    = "Sampler-Session"
 	NameRecordWrite       = "Record-Write"
+	NameRecordSeed        = "Record-Seed"
 	NameFinalize          = "Finalize"
 	NameFrictionReflect   = "Friction-Reflect"
 
@@ -50,6 +51,8 @@ const (
 
 	// NameMotif is the block row of the tapestry recipe that runs the motif recipe.
 	NameMotif = "Motif"
+	// NameJacquard is the block row of the tapestry recipe that runs the jacquard recipe, its rows after Discussion.
+	NameJacquard = "Jacquard"
 
 	// NameRaddleWrite is the raddle recipe's row of the agent session that proposes the split of a decision record.
 	NameRaddleWrite = "Raddle-Write"

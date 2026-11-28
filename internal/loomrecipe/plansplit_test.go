@@ -110,7 +110,7 @@ func TestSequence_PlanSplitRunsThePartsRows(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
-	shed.Producers[0].Producer = fakeAlwaysDoneProducer{}
+	setRowProducer(t, shed, loomshed.NamePreflight, fakeAlwaysDoneProducer{})
 
 	result, err := shed.Run(context.Background())
 	if err != nil {

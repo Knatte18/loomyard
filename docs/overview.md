@@ -331,12 +331,12 @@ github.com/Knatte18/loomyard/
 ├── internal/shedadapters/        the Shed engine adapters (Webster, Weaver, the Burler review and fix row producers, MultiLLMProducer, and the Bouncer) over shuttle/websterengine/burlerengine/seatengine
 ├── internal/loomcli/             loom's cobra module: the session bootstrap, arming `internal/shedverbs`' generic status and pause verb bodies, and mounting `internal/sheddriver` for `lym loom drive`
 ├── internal/loomshed/            loom's own row-name constants and producer constructors over `shedengine`
-├── internal/loomrecipe/          assembles the `*shedengine.Shed` of the tapestry, darn, pawl, sampler, motif, raddle and arras recipes from their embedded files, arras kept in code but not offered, and expands tapestry's and arras's `Motif` block from motif, the recipe that makes a sketch, the decision record
+├── internal/loomrecipe/          assembles the `*shedengine.Shed` of the tapestry, jacquard, darn, pawl, sampler, motif, raddle and arras recipes from their embedded files, arras kept in code but not offered, and expands tapestry's and arras's `Motif` block from motif, the recipe that makes a sketch, the decision record, and tapestry's `Jacquard` block from jacquard, the rows after Discussion
 ├── internal/shedrecipe/          the engine registry — the name to `ShedProducer`-constructor mapping a recipe loader resolves each row's `Engine` against
 ├── internal/shedbuild/           the recipe file format's loader and builder — decodes a recipe document and assembles the producer-definition list the shed engine already consumes
 ├── internal/shedverbs/           the generic run/step/status/pause/goto cobra verb bodies shared by every module that arms a `*shedengine.Shed` onto a CLI subtree
 ├── internal/sheddriver/          the shed layer's Go driver: its settle loop, rule table and hand-back, the tackler agent call, and the `shed` config module, told its paths and seams by the arming module
-├── internal/shedcli/             the `lym shed` subtree: a named-recipe arming table for the tapestry, motif, raddle, arras (kept in code but not offered), darn, pawl, sampler, hardener and batten recipes plus the three CLI seams that register it under the lym root
+├── internal/shedcli/             the `lym shed` subtree: a named-recipe arming table for the tapestry, jacquard, motif, raddle, arras (kept in code but not offered), darn, pawl, sampler, hardener and batten recipes plus the three CLI seams that register it under the lym root
 ├── internal/runpusher/           the background pusher of one push target: its start conditions, spawn, push loop, parent step and exit protocol
 ├── internal/pushledger/          the machine-local ledger of owed pushes and unpushed landings, one entry per push target
 ├── internal/statuscommit/        the shared per-transition status commit core (skip while mid-merge, commit hard-errors, start the worktree's pusher) that `loomcli` and `battencli` wrap
@@ -1059,7 +1059,8 @@ User-facing modules each get one `lym <module>` namespace:
   A seed commit that conflicts at push is dropped and regenerated.
   ✅ Implemented.
 - **loom** — phased orchestrator: drives its flat, ordered producer list, each row gated by a `Bouncer` review segment.
-  The list is `contracts/recipes/tapestry-recipe.yaml`, assembled by `internal/loomrecipe`.
+  The list is `contracts/recipes/tapestry-recipe.yaml`, assembled by `internal/loomrecipe`:
+  its `Motif` block runs `motif-recipe.yaml`'s Discussion rows and its `Jacquard` block runs `jacquard-recipe.yaml`'s rows after them.
   The packages are `internal/loomcli` + `internal/loomengine` + `internal/loomshed`.
   Two more packages serve it: `internal/loomrecipe` and `internal/shedverbs`.
   The verbs are `lym loom start|resume|run|step|status|pause|commit-records|validate-discussion|validate-plan|validate-parts|join-parts|insert-card|remove-card|restore-renumber|validate-description|lint-comments|lint-pattern|fmt|circling accept|continue|decision add|decision replace|decision store|parent-review answer|parent-review await|peers|peers show|raddle-propose|raddle-approve`.

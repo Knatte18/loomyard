@@ -14,7 +14,9 @@ import (
 const loomContract = "loom"
 
 // checkLoomContract refuses a recipe whose rows, edges or keys break the loom contract.
-// The contract is one record row.
+// The contract is at most one record row and at most one seed row, and at least one of the two.
+// A recipe holding both needs the seed row after the record row on the on_done path from the entry.
+// Every later clause reads the seed row as the record row when the recipe holds no record row.
 // A recipe that lands a change also needs one build row after the record row on the on_done path from the entry.
 // Such a recipe also needs a Finalize row followed only by terminals, and a set verify_source.
 // A recipe with neither a build row nor a Finalize row is the record-only form:
@@ -29,7 +31,7 @@ const loomContract = "loom"
 // Each refusal names the broken clause and its way forward.
 // The first broken clause in that order is the one returned.
 func checkLoomContract(r Recipe) error {
-	recordRow, err := onlyRowOf(r, shedrecipe.LoomRecordEngines, "record", "DiscussionWrite or RecordWrite")
+	recordRow, err := recordSourceRow(r)
 	if err != nil {
 		return err
 	}
@@ -62,6 +64,46 @@ func checkLoomContract(r Recipe) error {
 		return errors.New("the recipe sets no verify_source; way forward: set verify_source to plan or tree_scope")
 	}
 	return nil
+}
+
+// recordSourceRow returns the row that names the source of r's decision record:
+// its record row when it holds one, and its seed row otherwise.
+// It refuses several record rows, several seed rows, neither,
+// and a seed row that does not follow the record row on the on_done path from the entry.
+func recordSourceRow(r Recipe) (Row, error) {
+	records := rowsOf(r, shedrecipe.LoomRecordEngines)
+	seeds := rowsOf(r, []string{shedrecipe.LoomSeedEngine})
+	switch {
+	case len(records) > 1:
+		return Row{}, fmt.Errorf("the recipe holds %d record rows, more than one; way forward: keep at most one record row, engine DiscussionWrite or RecordWrite", len(records))
+	case len(seeds) > 1:
+		return Row{}, fmt.Errorf("the recipe holds %d seed rows, more than one; way forward: keep at most one seed row, engine %s", len(seeds), shedrecipe.LoomSeedEngine)
+	case len(records) == 0 && len(seeds) == 0:
+		return Row{}, fmt.Errorf("the recipe holds no record row and no seed row; way forward: give the recipe one record row, engine DiscussionWrite or RecordWrite, or one seed row, engine %s", shedrecipe.LoomSeedEngine)
+	case len(records) == 0:
+		return seeds[0], nil
+	case len(seeds) == 0:
+		return records[0], nil
+	}
+
+	path := onDonePath(r, r.Entry)
+	recordAt := slices.Index(path, records[0].Name)
+	seedAt := slices.Index(path, seeds[0].Name)
+	if recordAt < 0 || seedAt < recordAt {
+		return Row{}, fmt.Errorf("the seed row %q does not lie after the record row %q on the on_done path from the entry; way forward: place the seed row after the record row on the on_done path from the entry", seeds[0].Name, records[0].Name)
+	}
+	return records[0], nil
+}
+
+// rowsOf returns the rows of r whose engine is in engines, in row order.
+func rowsOf(r Recipe, engines []string) []Row {
+	var found []Row
+	for _, row := range r.Producers {
+		if slices.Contains(engines, row.Engine) {
+			found = append(found, row)
+		}
+	}
+	return found
 }
 
 // segmentBouncerEngine is the engine of the row that gates a segment's review ring.
@@ -121,12 +163,7 @@ func recordOnly(r Recipe) bool {
 // onlyRowOf returns the one row of r whose engine is in engines.
 // It refuses zero or several such rows, and its error names role and the engine choice.
 func onlyRowOf(r Recipe, engines []string, role, engineChoice string) (Row, error) {
-	var found []Row
-	for _, row := range r.Producers {
-		if slices.Contains(engines, row.Engine) {
-			found = append(found, row)
-		}
-	}
+	found := rowsOf(r, engines)
 	if len(found) != 1 {
 		return Row{}, fmt.Errorf("the recipe holds %d %s rows, not exactly one; way forward: give the recipe exactly one %s row, engine %s", len(found), role, role, engineChoice)
 	}

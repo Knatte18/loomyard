@@ -116,6 +116,7 @@ func TestNames(t *testing.T) {
 			"Preflight",
 			"RaddleFile",
 			"RaddleWrite",
+			"RecordSeed",
 			"RecordWrite",
 			"SamplerSession",
 			"SeedChild",

@@ -62,7 +62,7 @@ func newEscalationShed(t *testing.T) (*shedengine.Shed, string, *shedfake.Burler
 	if err != nil {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
-	shed.Producers[0].Producer = fakeAlwaysDoneProducer{}
+	setRowProducer(t, shed, loomshed.NamePreflight, fakeAlwaysDoneProducer{})
 
 	readStatus := func() shedengine.Status {
 		st, found, err := state.ReadJSON[shedengine.Status](env.StatusPath, env.StatusLockPath)
@@ -322,7 +322,7 @@ func TestEscalation_PerchBudgetOneWithAutoAccept(t *testing.T) {
 			if err != nil {
 				t.Fatalf("New() error = %v; want nil", err)
 			}
-			shed.Producers[0].Producer = fakeAlwaysDoneProducer{}
+			setRowProducer(t, shed, loomshed.NamePreflight, fakeAlwaysDoneProducer{})
 			for i := range shed.Producers {
 				switch shed.Producers[i].Name {
 				case loomshed.NameParentAlign:

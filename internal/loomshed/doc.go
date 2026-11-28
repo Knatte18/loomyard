@@ -1,7 +1,8 @@
 // Package loomshed owns loom's producer constructors and its durable row names.
 // It also owns loom's status seeder and its cancellation helpers.
-// Loom's ordered producer list lives in contracts/recipes/tapestry-recipe.yaml.
-// internal/loomrecipe assembles a *shedengine.Shed from it.
+// Loom's producer lists live in the recipe files under contracts/recipes.
+// Tapestry's is composed from the motif and jacquard recipes through block rows.
+// internal/loomrecipe assembles a *shedengine.Shed from a recipe.
 // It takes told absolute paths and has no direct production import of internal/lymcwd -- see PATTERN-cwd-resolution.
 //
 // The stops its gate rows halt on each name a way forward, as contracts/specs/refusal-spec.md defines one.
@@ -120,6 +121,11 @@
 // BoardRecord renders the record with the entry's body verbatim in one fenced block under `## Goal`.
 // A board with no entry for the run is reported as Stuck.
 // So is an entry body holding a CLI error envelope, which a failed verb's captured output leaves there.
+//
+// The Record-Seed row's producer (NewRecordSeed) is Record-Write in a stored-only mode.
+// It writes a missing record only from the entry's stored record, so it never clobbers a record a Discussion approved.
+// A missing record with no stored record is Stuck with nothing written.
+// Its way forward depends on whether the recipe holds a Discussion row.
 //
 // A raddle run's state is RaddleState, the run's `state.json`.
 // It is read and updated through internal/state under one lock, so a key it does not declare survives a rewrite.

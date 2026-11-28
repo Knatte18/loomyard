@@ -343,17 +343,18 @@ func TestEntryNumbers(t *testing.T) {
 		want   map[string]int
 	}{
 		{"loom", shedrun.RecipeTapestry, map[string]int{
-			"Preflight": 1, "Motif": 2, "Discussion-Write": 3,
-			"Discussion-Bouncer": 4, "Discussion-Burler-Review": 4, "Discussion-Burler-Fix": 4,
-			"Drift-Baseline": 5,
-			"Parts-Write":    6, "Parts-Plan-Write": 7,
-			"Plan-Write":   8,
-			"Plan-Bouncer": 9, "Plan-Burler-Review": 9, "Plan-Burler-Fix": 9,
-			"Drift-Await": 10, "Drift-Expect": 11,
-			"Webster": 12, "Parent-Align": 13,
-			"Drift-Verify": 14,
-			"Code-Bouncer": 15, "Code-Burler-Review": 15, "Code-Burler-Fix": 15,
-			"Drift-Recheck": 16, "Describe": 17, "PR-Review": 18, "Finalize": 19, "Friction-Reflect": 20,
+			"Motif": 1, "Discussion-Write": 2,
+			"Discussion-Bouncer": 3, "Discussion-Burler-Review": 3, "Discussion-Burler-Fix": 3,
+			"Jacquard": 4, "Preflight": 5, "Record-Seed": 6,
+			"Drift-Baseline": 7,
+			"Parts-Write":    8, "Parts-Plan-Write": 9,
+			"Plan-Write":   10,
+			"Plan-Bouncer": 11, "Plan-Burler-Review": 11, "Plan-Burler-Fix": 11,
+			"Drift-Await": 12, "Drift-Expect": 13,
+			"Webster": 14, "Parent-Align": 15,
+			"Drift-Verify": 16,
+			"Code-Bouncer": 17, "Code-Burler-Review": 17, "Code-Burler-Fix": 17,
+			"Drift-Recheck": 18, "Describe": 19, "PR-Review": 20, "Finalize": 21, "Friction-Reflect": 22,
 		}},
 		{"motif", shedrun.RecipeMotif, map[string]int{
 			"Discussion-Write": 1, "Discussion-Bouncer": 2, "Discussion-Burler-Review": 2, "Discussion-Burler-Fix": 2,
@@ -467,9 +468,9 @@ func TestRecipe_WebsterReroutesToPlanReview(t *testing.T) {
 		}
 	}
 
-	recipe, err := shedbuild.Parse(recipes.TapestryRecipe)
+	recipe, err := parseEmbeddedRecipe(shedrun.RecipeTapestry)
 	if err != nil {
-		t.Fatalf("shedbuild.Parse() error = %v; want nil", err)
+		t.Fatalf("parseEmbeddedRecipe(tapestry) error = %v; want nil", err)
 	}
 	for _, row := range recipe.Producers {
 		if row.Name != loomshed.NamePlanBurlerReview {

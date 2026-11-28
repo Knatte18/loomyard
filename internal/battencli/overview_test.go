@@ -96,7 +96,7 @@ func TestOverviewRunCells(t *testing.T) {
 				Batten: foundStatus(shedengine.StateRunning, battenrecipe.NameRunShed, shedengine.HistoryEntry{At: stamp(minutesAgo(90))}),
 				Child:  foundStatus(shedengine.StateRunning, "Plan-Write", shedengine.HistoryEntry{At: stamp(minutesAgo(30))}),
 			},
-			want: RunCells{State: "running", Stage: "6.8 Plan-Write", InStage: "30m"},
+			want: RunCells{State: "running", Stage: "6.10 Plan-Write", InStage: "30m"},
 		},
 		{
 			name: "a child row in a review segment takes its segment's number",
@@ -105,7 +105,7 @@ func TestOverviewRunCells(t *testing.T) {
 				Batten: foundStatus(shedengine.StateRunning, battenrecipe.NameRunShed, shedengine.HistoryEntry{At: stamp(minutesAgo(90))}),
 				Child:  foundStatus(shedengine.StateRunning, "Plan-Burler-Review", shedengine.HistoryEntry{At: stamp(minutesAgo(30))}),
 			},
-			want: RunCells{State: "running", Stage: "6.9 Plan-Burler-Review", InStage: "30m"},
+			want: RunCells{State: "running", Stage: "6.11 Plan-Burler-Review", InStage: "30m"},
 		},
 		{
 			name: "a child row shows alone when the child recipe is unknown",
@@ -137,7 +137,7 @@ func TestOverviewRunCells(t *testing.T) {
 				Batten: foundStatus(shedengine.StateRunning, battenrecipe.NameRunShed, shedengine.HistoryEntry{At: stamp(minutesAgo(40))}),
 				Child:  foundStatus(shedengine.StateRunning, "Plan-Write"),
 			},
-			want: RunCells{State: "running", Stage: "6.8 Plan-Write", InStage: "40m"},
+			want: RunCells{State: "running", Stage: "6.10 Plan-Write", InStage: "40m"},
 		},
 		{
 			name: "a run in Run-Shed whose child status is not found shows batten's producer",
@@ -386,7 +386,7 @@ func TestDobbyRunCells_ReadsTheRunsFromDisk(t *testing.T) {
 	}
 
 	want := map[string]RunCells{
-		"run-a":      {State: "running", Stage: "6.8 Plan-Write", InStage: "2h00m", Owes: owesPush},
+		"run-a":      {State: "running", Stage: "6.10 Plan-Write", InStage: "2h00m", Owes: owesPush},
 		"run-b":      {State: "running", Stage: "Plan", InStage: "1h00m", Owes: owesTip},
 		"future-key": {State: "running", Stage: "Plan", InStage: "-"},
 	}
@@ -538,7 +538,7 @@ func TestDobbyRunCells_ResolvesTheChildPairAgainInEachRunShedSpell(t *testing.T)
 	if err := shedrun.WriteSeed(locationkit.Location(hub, slug, "."), shedrun.SelfRunID, shedrun.Seed{Recipe: shedrun.RecipeTapestry, Driver: shedrun.DriverGo}); err != nil {
 		t.Fatal(err)
 	}
-	check("read in the first Run-Shed spell", RunCells{State: "running", Stage: "6.8 Plan-Write", InStage: "2h00m"})
+	check("read in the first Run-Shed spell", RunCells{State: "running", Stage: "6.10 Plan-Write", InStage: "2h00m"})
 
 	// The run leaves Run-Shed, the pair's anchor moves, and a new run enters Run-Shed again.
 	writeOverviewStatus(t, battenStatus, shedengine.Status{State: shedengine.StateRunning, CurrentProducer: "Plan"}, minutesAgo(50))

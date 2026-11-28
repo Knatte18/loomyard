@@ -59,7 +59,7 @@ var (
 	driftVerifyType   = reflect.TypeOf(&driftengine.DriftVerify{})
 )
 
-// blockProducerType returns the concrete type of the Block engine's producer for the Motif row.
+// blockProducerType returns the concrete type of the Block engine's producer for the Motif and Jacquard rows.
 // shedrecipe does not export that type, so the test builds the producer and reads its type.
 func blockProducerType() reflect.Type {
 	construct, err := shedrecipe.Lookup(shedrecipe.EngineBlock)
@@ -83,12 +83,14 @@ func frictionReflectProducerType() reflect.Type {
 }
 
 var wantProducerTable = []wantProducerRow{
-	{loomshed.NamePreflight, "Preflight", reflect.TypeOf(preflightshed.NewPreflightWithChecks("", "", preflightshed.Checks{}))},
 	{loomshed.NameMotif, shedrecipe.EngineBlock, blockProducerType()},
 	{loomshed.NameDiscussionWrite, "DiscussionWrite", reflect.TypeOf(loomshed.NewDiscussionWrite("", nil, nil))},
 	{loomshed.NameDiscussionBouncer, "Bouncer", bouncerType},
 	{loomshed.NameDiscussionBurlerReview, "BurlerReview", burlerReviewType},
 	{loomshed.NameDiscussionBurlerFix, "BurlerFix", burlerFixType},
+	{loomshed.NameJacquard, shedrecipe.EngineBlock, blockProducerType()},
+	{loomshed.NamePreflight, "Preflight", reflect.TypeOf(preflightshed.NewPreflightWithChecks("", "", preflightshed.Checks{}))},
+	{loomshed.NameRecordSeed, shedrecipe.LoomSeedEngine, reflect.TypeOf(loomshed.NewRecordSeed("", loomshed.RecordSeedDeps{}))},
 	{loomshed.NameDriftBaseline, "DriftBaseline", driftBaselineType},
 	{loomshed.NamePartsWrite, "PartsWrite", reflect.TypeOf(loomshed.NewPlanWrite("", nil, nil))},
 	{loomshed.NamePartsPlanWrite, "PartsPlanWrite", reflect.TypeOf(loomshed.NewPlanWrite("", nil, nil))},
@@ -271,7 +273,7 @@ func TestNew_RoutingGraphIsClean(t *testing.T) {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
 
-	findings := shedcheckkit.Check(shed.Producers, loomshed.NamePreflight, []string{loomshed.NameFrictionReflect})
+	findings := shedcheckkit.Check(shed.Producers, loomshed.NameMotif, []string{loomshed.NameFrictionReflect})
 	for _, f := range findings {
 		t.Errorf("%s", f.String())
 	}

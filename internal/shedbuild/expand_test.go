@@ -105,6 +105,32 @@ func TestExpand(t *testing.T) {
 				},
 			},
 			{
+				name:    "a last block row with no on_done and the always gate ends the run, its inlined last row keeping an empty on_done",
+				parent:  recipeYAML("Pre", stubRowYAML("Pre", "on_done: Blk"), blockRowForExpand("Blk", "sub")),
+				sources: map[string]string{"sub": sub},
+				want: []Row{
+					{Name: "Pre", Engine: "Stub", OnDone: "Blk"},
+					{Name: "Blk", Engine: "Block", OnDone: "S1", Block: "sub", BlockGate: "always"},
+					{Name: "S1", Engine: "Stub", OnDone: "S2", Segment: "seg", BlockPath: "Blk"},
+					{Name: "S2", Engine: "Stub", BlockPath: "Blk"},
+				},
+			},
+			{
+				name:   "a last always-gated block ending a run-ending block's recipe is admitted, the innermost last row keeping an empty on_done",
+				parent: recipeYAML("Pre", stubRowYAML("Pre", "on_done: Blk"), blockRowForExpand("Blk", "sub")),
+				sources: map[string]string{
+					"sub":   recipeYAML("O1", stubRowYAML("O1", "on_done: Inner"), blockRowForExpand("Inner", "inner")),
+					"inner": recipeYAML("I1", stubRowYAML("I1")),
+				},
+				want: []Row{
+					{Name: "Pre", Engine: "Stub", OnDone: "Blk"},
+					{Name: "Blk", Engine: "Block", OnDone: "O1", Block: "sub", BlockGate: "always"},
+					{Name: "O1", Engine: "Stub", OnDone: "Inner", BlockPath: "Blk"},
+					{Name: "Inner", Engine: "Block", OnDone: "I1", Block: "inner", BlockGate: "always", BlockPath: "Blk"},
+					{Name: "I1", Engine: "Stub", BlockPath: "Blk/Inner"},
+				},
+			},
+			{
 				name:   "an inner block with an on_done of its own exits there",
 				parent: parentYAML("on_done: Post"),
 				sources: map[string]string{
@@ -255,6 +281,21 @@ func TestExpand(t *testing.T) {
 			parent:  parentYAML(),
 			sources: map[string]string{"sub": sub},
 			want:    `shedbuild: block "Blk": on_done is empty; way forward: set on_done to the row the run takes after the block`,
+		},
+		{
+			name:   "an inner block with an empty on_done that is not last in a run-ending block's recipe",
+			parent: recipeYAML("Pre", stubRowYAML("Pre", "on_done: Blk"), blockRowForExpand("Blk", "sub")),
+			sources: map[string]string{
+				"sub":   recipeYAML("Inner", blockRowForExpand("Inner", "inner"), stubRowYAML("O2")),
+				"inner": recipeYAML("I1", stubRowYAML("I1")),
+			},
+			want: `shedbuild: block "Inner": on_done is empty; way forward: set on_done to the row the run takes after the block`,
+		},
+		{
+			name:    "a last block row with no on_done whose gate is not always",
+			parent:  recipeYAML("Pre", stubRowYAML("Pre", "on_done: Blk"), rowYAML("Blk", []string{"block: sub", "block_gate: undiscussed"})),
+			sources: map[string]string{"sub": sub},
+			want:    `shedbuild: block "Blk": on_done is empty on the recipe's last row and block_gate is "undiscussed", so a skip would fall back to the block's own entry; way forward: set on_done, or use block_gate always`,
 		},
 		{
 			name:    "an on_done naming the block row itself",

@@ -41,6 +41,7 @@ import (
 //lym:seam internal/loomshed#RaddleFileDeps
 //lym:seam internal/loomshed#RaddleWriteDeps
 //lym:seam internal/loomshed#RecordWriteDeps
+//lym:seam internal/loomshed#RecordSeedDeps
 //lym:seam internal/loomshed#PRReworkDeps
 //lym:seam internal/loomshed#SamplerDeps
 //lym:seam internal/loomshed#VerifyBudget
@@ -84,7 +85,7 @@ func TestFullEnv_FillsEverySeam(t *testing.T) {
 
 	t.Run("Segments_HoldEveryReviewSegmentOfTheEmbeddedRecipes", func(t *testing.T) {
 		segments := FullEnv(t).Segments
-		for name, data := range map[string][]byte{"tapestry": recipes.TapestryRecipe, "darn": recipes.DarnRecipe, "hardener": recipes.HardenerRecipe} {
+		for name, data := range map[string][]byte{"motif": recipes.MotifRecipe, "jacquard": recipes.JacquardRecipe, "darn": recipes.DarnRecipe, "hardener": recipes.HardenerRecipe} {
 			recipe, err := shedbuild.Parse(data)
 			if err != nil {
 				t.Fatalf("parse the %s recipe: %v", name, err)
@@ -120,6 +121,7 @@ func TestFullEnv_FillsEverySeam(t *testing.T) {
 //lym:seam internal/loomshed#RaddleFileDeps
 //lym:seam internal/loomshed#RaddleWriteDeps
 //lym:seam internal/loomshed#RecordWriteDeps
+//lym:seam internal/loomshed#RecordSeedDeps
 //lym:seam internal/loomshed#PRReworkDeps
 //lym:seam internal/loomshed#SamplerDeps
 //lym:seam internal/loomshed#VerifyBudget
@@ -172,6 +174,7 @@ func TestNilSeams_ReportsExactPaths(t *testing.T) {
 //lym:seam internal/loomshed#RaddleFileDeps
 //lym:seam internal/loomshed#RaddleWriteDeps
 //lym:seam internal/loomshed#RecordWriteDeps
+//lym:seam internal/loomshed#RecordSeedDeps
 //lym:seam internal/loomshed#PRReworkDeps
 //lym:seam internal/loomshed#SamplerDeps
 //lym:seam internal/loomshed#VerifyBudget

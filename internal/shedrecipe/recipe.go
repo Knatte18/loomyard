@@ -352,6 +352,8 @@ type Env struct {
 	Sampler loomshed.SamplerDeps
 	// RecordWrite is a whole-struct passthrough to loomshed.NewRecordWrite, read by the RecordWrite entry only.
 	RecordWrite loomshed.RecordWriteDeps
+	// RecordSeed is a whole-struct passthrough to loomshed.NewRecordSeed, read by the RecordSeed entry only.
+	RecordSeed loomshed.RecordSeedDeps
 	// RaddleWrite is a whole-struct passthrough to the Raddle-Write producer and its gate.
 	// Only the RaddleWrite entry reads it.
 	RaddleWrite RaddleWriteEnv

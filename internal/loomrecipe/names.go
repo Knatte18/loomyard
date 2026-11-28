@@ -17,7 +17,7 @@ import (
 // RecipeEngines returns the sorted engine set of the loom module's recipes.
 // It parses each recipe, expands its blocks, and collects each row's engine name, without duplicates.
 // The recipes are the loom module's, so the set is their union.
-// It holds the Block engine of the tapestry recipe's Motif block row.
+// It holds the Block engine of the tapestry recipe's Motif and Jacquard block rows.
 // Deriving the set from the recipes, rather than writing it down, keeps every union of consumer engine sets honest.
 // It needs no second hand-maintained table alongside the recipes.
 //
@@ -27,7 +27,7 @@ import (
 func RecipeEngines() []string {
 	seen := map[string]bool{}
 	var engines []string
-	for _, name := range []string{shedrun.RecipeTapestry, shedrun.RecipeDarn, shedrun.RecipePawl, shedrun.RecipeSampler, shedrun.RecipeMotif, shedrun.RecipeRaddle, shedrun.RecipeArras, shedrun.RecipeHardener} {
+	for _, name := range []string{shedrun.RecipeTapestry, shedrun.RecipeJacquard, shedrun.RecipeDarn, shedrun.RecipePawl, shedrun.RecipeSampler, shedrun.RecipeMotif, shedrun.RecipeRaddle, shedrun.RecipeArras, shedrun.RecipeHardener} {
 		recipe, err := parseEmbeddedRecipe(name)
 		if err != nil {
 			panic(fmt.Sprintf("loomrecipe: RecipeEngines: %v", err))
@@ -116,6 +116,7 @@ func AmendmentTarget(recipe string) (string, error) {
 // embeddedRecipes is the one table from recipe name to embedded recipe bytes.
 var embeddedRecipes = map[string][]byte{
 	shedrun.RecipeTapestry: recipes.TapestryRecipe,
+	shedrun.RecipeJacquard: recipes.JacquardRecipe,
 	shedrun.RecipeDarn:     recipes.DarnRecipe,
 	shedrun.RecipeBatten:   recipes.BattenRecipe,
 	shedrun.RecipePawl:     recipes.PawlRecipe,

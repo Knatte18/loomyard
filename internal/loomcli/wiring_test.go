@@ -1397,3 +1397,29 @@ func TestLoomRerouteCapWayForward(t *testing.T) {
 		}
 	}
 }
+
+// TestRecordSeedDeps_ReadsTheRunsSeed pins the values Record-Seed's way forward is filled in with.
+func TestRecordSeedDeps_ReadsTheRunsSeed(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
+	seed := shedrun.Seed{Recipe: shedrun.RecipeJacquard, Driver: shedrun.DriverLLM, Params: map[string]string{"parent": "feature-x"}}
+	if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, seed); err != nil {
+		t.Fatalf("WriteSeed() = %v; want nil", err)
+	}
+
+	deps := recordSeedDeps(loc, runRecord{}, shedrun.SelfRunID, "")
+
+	got, err := deps.ReadSeed()
+	want := loomshed.ReseedValues{Recipe: "tapestry", Driver: "llm", Parent: "feature-x"}
+	if err != nil || got != want {
+		t.Errorf("ReadSeed() = %+v, %v; want %+v, nil", got, err, want)
+	}
+	if deps.Slug != "pair" {
+		t.Errorf("Slug = %q; want %q", deps.Slug, "pair")
+	}
+	if _, err := os.Stat(deps.SeedPath); err != nil {
+		t.Errorf("stat SeedPath %q = %v; want the seed file the run wrote", deps.SeedPath, err)
+	}
+}

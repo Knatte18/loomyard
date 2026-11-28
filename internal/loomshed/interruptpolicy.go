@@ -56,8 +56,10 @@ var InterruptPolicies = map[string]string{
 	NameHardenBurlerReview: shedverbs.InterruptPolicyReinvoke,
 	NameHardenBurlerFix:    shedverbs.InterruptPolicyReinvoke,
 
-	// Record-Write writes its files only when missing and commits the pair; a re-invocation completes what a crash left.
+	// Record-Write and Record-Seed write their files only when missing and commit the pair.
+	// A re-invocation completes what a crash left.
 	NameRecordWrite: shedverbs.InterruptPolicyReinvoke,
+	NameRecordSeed:  shedverbs.InterruptPolicyReinvoke,
 
 	// Agent-spawning Drift rows probe for a live chair and reattach to it; Drift-Await and Drift-Recheck spawn nothing.
 	NameDriftBaseline: shedverbs.InterruptPolicyReinvoke,
@@ -70,8 +72,9 @@ var InterruptPolicies = map[string]string{
 	NamePartsWrite:     shedverbs.InterruptPolicyReinvoke,
 	NamePartsPlanWrite: shedverbs.InterruptPolicyReinvoke,
 
-	// The Motif producer returns Done at once, so re-invoking it repeats nothing.
-	NameMotif: shedverbs.InterruptPolicyReinvoke,
+	// A block row's producer returns Done at once, so re-invoking Motif or Jacquard repeats nothing.
+	NameMotif:    shedverbs.InterruptPolicyReinvoke,
+	NameJacquard: shedverbs.InterruptPolicyReinvoke,
 
 	// Sampler-Session reattaches the live session or resumes the recorded one rather than spawning a second.
 	NameSamplerSession: shedverbs.InterruptPolicyReinvoke,

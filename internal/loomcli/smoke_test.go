@@ -15,7 +15,7 @@
 // TestSmokeBootstrapLifecycle's concurrent-bootstrap step pins it.
 //
 // Driver liveness is timing-dependent.
-// The producer table in contracts/recipes/tapestry-recipe.yaml backs every row with a real producer,
+// Tapestry's expanded producer table backs every row with a real producer,
 // so no row reports Done unconditionally.
 // A freshly bootstrapped driver against a pair with no discussion or plan artifacts bounces at Discussion-Write's gate.
 // It does so a bounded number of times, set by the attempts budget of its "gates" entry.

@@ -7,8 +7,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/Knatte18/loomyard/contracts/recipes"
-	"github.com/Knatte18/loomyard/internal/shedbuild"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -21,30 +20,30 @@ func TestShippedRecipes_LanguageSkillsOnCodeRounds(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		data     []byte
+		recipe   string
 		wantRows []string
 	}{
 		{
 			name:     "loom",
-			data:     recipes.TapestryRecipe,
+			recipe:   shedrun.RecipeTapestry,
 			wantRows: []string{"Code-Burler-Fix", "Code-Burler-Review"},
 		},
 		{
 			name:     "darn",
-			data:     recipes.DarnRecipe,
+			recipe:   shedrun.RecipeDarn,
 			wantRows: []string{"Code-Burler-Fix", "Code-Burler-Review"},
 		},
 		{
-			name: "pawl",
-			data: recipes.PawlRecipe,
+			name:   "pawl",
+			recipe: shedrun.RecipePawl,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			recipe, err := shedbuild.Parse(tt.data)
+			recipe, err := parseEmbeddedRecipe(tt.recipe)
 			if err != nil {
-				t.Fatalf("Parse() error = %v; want nil", err)
+				t.Fatalf("parseEmbeddedRecipe(%s) error = %v; want nil", tt.recipe, err)
 			}
 
 			var gotRows []string

@@ -14,9 +14,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/contracts/recipes"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -161,15 +161,15 @@ func assertCommitSeam(t testing.TB, r shedbuild.Recipe, burlerRow shedbuild.Row,
 	}
 }
 
-// TestShippedRecipe_OverlayBurlersCommitThroughSeam parses the embedded recipes.TapestryRecipe.
+// TestShippedRecipe_OverlayBurlersCommitThroughSeam parses and expands the embedded tapestry recipe.
 // It runs assertOverlayBurlerCommitSeams on the result, a read of the shipped file.
 //
 //testtiming:keep pins that the shipped overlay Burlers commit through their partner Bouncer's seam, which TestOverlayBurlerCommitSeams_RejectsBadShapes only checks on hand-written recipes
 func TestShippedRecipe_OverlayBurlersCommitThroughSeam(t *testing.T) {
 	tiergate.Require(t, 0)
-	r, err := shedbuild.Parse(recipes.TapestryRecipe)
+	r, err := parseEmbeddedRecipe(shedrun.RecipeTapestry)
 	if err != nil {
-		t.Fatalf("shedbuild.Parse(recipes.TapestryRecipe) error = %v; want nil", err)
+		t.Fatalf("parseEmbeddedRecipe(tapestry) error = %v; want nil", err)
 	}
 	assertOverlayBurlerCommitSeams(t, r)
 }

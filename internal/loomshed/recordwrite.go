@@ -31,10 +31,14 @@ type RecordWriteDeps struct {
 	Commit func() error
 }
 
-// recordWrite is the Record-Write producer.
+// recordWrite is the Record-Write producer, and the Record-Seed producer in its stored-only mode.
 type recordWrite struct {
 	name string
 	deps RecordWriteDeps
+	// noStoredReason is set in the stored-only mode.
+	// It renders the Stuck reason of a missing record whose board entry holds no stored record.
+	// This mode never renders that record from the entry's body.
+	noStoredReason func() (string, error)
 }
 
 var _ shedengine.ShedProducer = (*recordWrite)(nil)
@@ -106,25 +110,30 @@ func longestBacktickRun(text string) int {
 	return longest
 }
 
-// boardSupportLog renders the support log of a run whose record was written from the board entry.
-func boardSupportLog() []byte {
+// supportLogWithInterview renders a support log with no review rounds, whose Interview section holds the line interview.
+func supportLogWithInterview(interview string) []byte {
 	return []byte("## Interview\n\n" +
-		"The decision record was written from the board entry, with no interview.\n\n" +
+		interview + "\n\n" +
 		"## Rejected alternatives\n\n" +
 		"## Review rounds\n\n" +
 		"_No rounds yet._\n\n" +
 		"## Question ledger\n")
 }
 
+// boardSupportLog renders the support log of a run whose record was written from the board entry.
+func boardSupportLog() []byte {
+	return supportLogWithInterview("The decision record was written from the board entry, with no interview.")
+}
+
+// keptRecordSupportLog renders the support log of a run whose record was kept as it stood, of unstated source.
+func keptRecordSupportLog() []byte {
+	return supportLogWithInterview("The support log was missing beside an existing record; the record was kept as it stood.")
+}
+
 // StoredRecordSupportLog renders the support log of a run whose decision record is the board entry's stored record.
 // The stored record was approved in an earlier run.
 func StoredRecordSupportLog() []byte {
-	return []byte("## Interview\n\n" +
-		"The decision record is the board entry's stored record, approved in an earlier run, so this run held no Discussion.\n\n" +
-		"## Rejected alternatives\n\n" +
-		"## Review rounds\n\n" +
-		"_No rounds yet._\n\n" +
-		"## Question ledger\n")
+	return supportLogWithInterview("The decision record is the board entry's stored record, approved in an earlier run, so this run held no Discussion.")
 }
 
 // Call implements shedengine.ShedProducer.
@@ -135,9 +144,12 @@ func StoredRecordSupportLog() []byte {
 // otherwise it is rendered from the entry's body.
 // A missing support log is the stored-record log when the entry has a stored record;
 // otherwise it is the board-rendered log, whether or not the record was missing too.
+// In the stored-only mode that otherwise case is a log that makes no claim about the record's source.
 // A file that exists is never overwritten, so a resume keeps every entry added to the record after it was written.
 // The commit runs on every call, so a pair a crash left written but uncommitted is committed on resume.
 // A board with no entry for the run is Stuck, and so is an entry body holding a CLI error envelope, with nothing written.
+// In the stored-only mode the body is never read.
+// There a missing record with no stored record is Stuck with that mode's reason, and nothing is written.
 // A read, write or commit failure is a returned error.
 func (p *recordWrite) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, p.name); err != nil {
@@ -166,11 +178,21 @@ func (p *recordWrite) Call(ctx context.Context) (shedengine.Outcome, shedengine.
 		}
 	}
 	if recordMissing {
-		if storedFound {
+		switch {
+		case storedFound:
 			if err := fsx.AtomicWriteBytes(p.deps.RecordPath, stored); err != nil {
 				return "", shedengine.OutputPointer{}, p.fail(ctx, "write the decision record", err)
 			}
-		} else {
+		case p.noStoredReason != nil:
+			reason, err := p.noStoredReason()
+			if err != nil {
+				return "", shedengine.OutputPointer{}, p.fail(ctx, "read the run's seed", err)
+			}
+			if err := cancelErr(ctx, p.name); err != nil {
+				return "", shedengine.OutputPointer{}, err
+			}
+			return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil
+		default:
 			body, found, err := p.deps.ReadBody()
 			if err != nil {
 				return "", shedengine.OutputPointer{}, p.fail(ctx, "read the board entry", err)
@@ -193,9 +215,14 @@ func (p *recordWrite) Call(ctx context.Context) (shedengine.Outcome, shedengine.
 		}
 	}
 	if logMissing {
-		supportLog := boardSupportLog()
-		if storedFound {
+		var supportLog []byte
+		switch {
+		case storedFound:
 			supportLog = StoredRecordSupportLog()
+		case p.noStoredReason != nil:
+			supportLog = keptRecordSupportLog()
+		default:
+			supportLog = boardSupportLog()
 		}
 		if err := fsx.AtomicWriteBytes(p.deps.SupportLogPath, supportLog); err != nil {
 			return "", shedengine.OutputPointer{}, p.fail(ctx, "write the support log", err)

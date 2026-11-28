@@ -43,7 +43,7 @@ func TestPastDiscussionApproval(t *testing.T) {
 			want    bool
 			wantHas bool
 		}{
-			{"BeforeTheSegment_Preflight", shedrun.RecipeTapestry, "Preflight", false, true},
+			{"AfterTheSegment_Preflight", shedrun.RecipeTapestry, "Preflight", true, true},
 			{"BeforeTheSegment_TheMotifBlockRow", shedrun.RecipeTapestry, "Motif", false, true},
 			{"BeforeTheSegment_DiscussionWrite", shedrun.RecipeTapestry, "Discussion-Write", false, true},
 			{"TheApprovalRow", shedrun.RecipeTapestry, "Discussion-Bouncer", false, true},

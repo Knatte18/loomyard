@@ -9,9 +9,17 @@ import (
 )
 
 // TapestryRecipe is loom's shipped-default producer graph, in internal/shedbuild's recipe format.
+// Its block rows run the motif recipe and then the jacquard recipe inline.
 //
 //go:embed tapestry-recipe.yaml
 var TapestryRecipe []byte
+
+// JacquardRecipe is the jacquard recipe's producer graph, in internal/shedbuild's recipe format.
+// Its rows plan, build and land a task from a decision record approved before the run.
+// A recipe may run it inline as a block, and a task may run it alone.
+//
+//go:embed jacquard-recipe.yaml
+var JacquardRecipe []byte
 
 // DarnRecipe is the darn task recipe's producer graph, in internal/shedbuild's recipe format.
 //

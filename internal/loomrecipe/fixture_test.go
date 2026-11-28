@@ -38,6 +38,19 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
+// setRowProducer replaces the producer of shed's row named name with producer.
+// It fails the test when no row has that name.
+func setRowProducer(t *testing.T, shed *shedengine.Shed, name string, producer shedengine.ShedProducer) {
+	t.Helper()
+	for i := range shed.Producers {
+		if shed.Producers[i].Name == name {
+			shed.Producers[i].Producer = producer
+			return
+		}
+	}
+	t.Fatalf("the built recipe has no row named %q", name)
+}
+
 // fakeAlwaysDoneProducer is a minimal shedengine.ShedProducer fake that always reports Done.
 // It substitutes the built row 1 (Preflight) without spawning git.
 type fakeAlwaysDoneProducer struct{}
@@ -457,8 +470,9 @@ func writeBatcherConfig(t *testing.T, anchorPath, content string) {
 //
 // The status file is seeded through the production loomshed.Seed, never by hand-writing JSON.
 // A regression in Seed therefore shows up here.
-// Row 1 is not injected here: New builds it from env.Cwd via preflightEntry.
-// A caller that drives Run replaces shed.Producers[0].Producer after New.
+// Preflight is not injected here: New builds it from env.Cwd via preflightEntry.
+// A caller that drives Run replaces its producer after New through setRowProducer.
+// Record-Seed reads the fixture's discussion pair, so it finds the record and writes nothing.
 // WebsterRun is a fake run that reports Webster's own done outcome.
 // WebsterDeps keeps the placeholder seams of envkit.FullEnv.
 // LockPath and StatusLockPath get two distinct paths, because shedengine rejects a pair that names one file.
@@ -570,6 +584,9 @@ func buildSequenceFixture(t *testing.T) (anchorPath string, env shedrecipe.Env, 
 	env.StatusLockPath = statusLockPath
 	env.DecisionRecordPath = decisionRecordPath
 	env.SupportLogPath = supportLogPath
+	env.RecordSeed.RecordPath = decisionRecordPath
+	env.RecordSeed.SupportLogPath = supportLogPath
+	env.RecordSeed.DiscussionDir = discussionDir
 	env.WebsterRun = (&fakeWebsterRun{}).run
 	env.ImplementerSeam.AnchorRoot = dir
 	env.Landing = landing

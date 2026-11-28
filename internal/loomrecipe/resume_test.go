@@ -67,7 +67,7 @@ func TestResume_DoesNotRestartAtRowOne(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
-	shed1.Producers[0].Producer = fakeAlwaysDoneProducer{}
+	setRowProducer(t, shed1, loomshed.NamePreflight, fakeAlwaysDoneProducer{})
 	result1, err := shed1.Run(context.Background())
 	if err != nil {
 		t.Fatalf("first Run() error = %v; want nil", err)
@@ -85,7 +85,7 @@ func TestResume_DoesNotRestartAtRowOne(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
-	shed2.Producers[0].Producer = fakeAlwaysDoneProducer{}
+	setRowProducer(t, shed2, loomshed.NamePreflight, fakeAlwaysDoneProducer{})
 	result2, err := shed2.Run(context.Background())
 	if err != nil {
 		t.Fatalf("second Run() error = %v; want nil", err)
@@ -132,7 +132,7 @@ func TestResume_CrashRecoveryRecallsUnconditionally(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
-	shed1.Producers[0].Producer = counting
+	setRowProducer(t, shed1, loomshed.NamePreflight, counting)
 	result1, err := shed1.Run(context.Background())
 	if err != nil {
 		t.Fatalf("first Run() error = %v; want nil", err)
@@ -150,7 +150,7 @@ func TestResume_CrashRecoveryRecallsUnconditionally(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
-	shed2.Producers[0].Producer = counting
+	setRowProducer(t, shed2, loomshed.NamePreflight, counting)
 	result2, err := shed2.Run(context.Background())
 	if err != nil {
 		t.Fatalf("second Run() error = %v; want nil", err)
@@ -176,7 +176,7 @@ func TestResume_PauseStopsAtBoundaryAndClearsFlag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
-	shed1.Producers[0].Producer = fakeAlwaysDoneProducer{}
+	setRowProducer(t, shed1, loomshed.NamePreflight, fakeAlwaysDoneProducer{})
 	result1, err := shed1.Run(context.Background())
 	if err != nil {
 		t.Fatalf("first Run() error = %v; want nil", err)
@@ -212,7 +212,7 @@ func TestResume_PauseStopsAtBoundaryAndClearsFlag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
-	shed2.Producers[0].Producer = fakeAlwaysDoneProducer{}
+	setRowProducer(t, shed2, loomshed.NamePreflight, fakeAlwaysDoneProducer{})
 	result2, err := shed2.Run(context.Background())
 	if err != nil {
 		t.Fatalf("second Run() error = %v; want nil", err)
@@ -245,7 +245,7 @@ func TestBounceRouting_StuckContinuesAtDeclaredTarget(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
-	shed.Producers[0].Producer = fakeAlwaysDoneProducer{}
+	setRowProducer(t, shed, loomshed.NamePreflight, fakeAlwaysDoneProducer{})
 	result, err := shed.Run(context.Background())
 	if err != nil {
 		t.Fatalf("Run() error = %v; want nil", err)
@@ -281,7 +281,7 @@ func TestBounceRouting_EmptyTargetBlocksInstead(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
-	shed.Producers[0].Producer = fakeAlwaysDoneProducer{}
+	setRowProducer(t, shed, loomshed.NamePreflight, fakeAlwaysDoneProducer{})
 	result, err := shed.Run(context.Background())
 	if err != nil {
 		t.Fatalf("Run() error = %v; want nil", err)
@@ -324,7 +324,7 @@ func TestBounceRouting_BudgetExhaustionBlocks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
-	shed.Producers[0].Producer = fakeAlwaysDoneProducer{}
+	setRowProducer(t, shed, loomshed.NamePreflight, fakeAlwaysDoneProducer{})
 	result, err := shed.Run(context.Background())
 	if err != nil {
 		t.Fatalf("Run() error = %v; want nil", err)
@@ -376,7 +376,7 @@ func TestResume_DiscussionWriteRespawnsRatherThanReportDoneOffFileExistence(t *t
 	if err != nil {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
-	shed.Producers[0].Producer = fakeAlwaysDoneProducer{}
+	setRowProducer(t, shed, loomshed.NamePreflight, fakeAlwaysDoneProducer{})
 	result, err := shed.Run(context.Background())
 	if err != nil {
 		t.Fatalf("Run() error = %v; want nil", err)
@@ -438,7 +438,7 @@ func TestResume_LiveMatchingRunAttachesInsteadOfRespawning(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
-	shed.Producers[0].Producer = fakeAlwaysDoneProducer{}
+	setRowProducer(t, shed, loomshed.NamePreflight, fakeAlwaysDoneProducer{})
 	result, err := shed.Run(context.Background())
 	if err != nil {
 		t.Fatalf("Run() error = %v; want nil", err)

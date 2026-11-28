@@ -42,8 +42,8 @@ func TestSpecFor_FillsRunIdentityForSelf(t *testing.T) {
 	if spec.StepsDir != wantSteps {
 		t.Errorf("StepsDir = %q, want %q", spec.StepsDir, wantSteps)
 	}
-	if spec.Routing.Entry != "Preflight" {
-		t.Errorf("Routing.Entry = %q, want %q", spec.Routing.Entry, "Preflight")
+	if spec.Routing.Entry != "Motif" {
+		t.Errorf("Routing.Entry = %q, want %q", spec.Routing.Entry, "Motif")
 	}
 	if spec.Routing.MaxBounces != 3 {
 		t.Errorf("Routing.MaxBounces = %d, want 3", spec.Routing.MaxBounces)

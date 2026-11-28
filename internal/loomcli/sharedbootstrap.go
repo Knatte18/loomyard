@@ -252,8 +252,8 @@ func runUsageRecord(recipe string, entry boardengine.Task, found bool, defaultPr
 // Its way forward clears the one file and re-seeds with the existing recipe, driver and recorded parent.
 // Following it therefore cannot loop on the same refusal.
 func disagreeingSeedRefusal(seedPath string, existing shedrun.Seed, parent string) error {
-	return fmt.Errorf("%w: loom: the seed at %s records recipe %q, driver %q and params %v, which disagree with the recorded parent branch %q; way forward: rm %s, then lym shed seed self --recipe %s --driver %s --param parent=%s",
-		shedrun.ErrDisagreeingSeed, seedPath, existing.Recipe, existing.Driver, existing.Params, parent, seedPath, existing.Recipe, existing.Driver, parent)
+	return fmt.Errorf("%w: loom: the seed at %s records recipe %q, driver %q and params %v, which disagree with the recorded parent branch %q; way forward: rm %s, then lym shed seed self --recipe %s --driver %s --param %s=%s",
+		shedrun.ErrDisagreeingSeed, seedPath, existing.Recipe, existing.Driver, existing.Params, parent, seedPath, existing.Recipe, existing.Driver, loomshed.SeedParentParam, parent)
 }
 
 // resolveSeedDriver returns the driver a run records when it is seeded.
@@ -290,7 +290,7 @@ func loomSeedFor(recipe, parent, driver string) shedrun.Seed {
 	return shedrun.Seed{
 		Recipe: recipe,
 		Driver: driver,
-		Params: map[string]string{"parent": parent},
+		Params: map[string]string{loomshed.SeedParentParam: parent},
 	}
 }
 
