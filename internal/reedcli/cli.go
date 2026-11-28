@@ -1,6 +1,7 @@
 // cli.go builds the cobra command tree for the reed module.
 // The group's pre-run resolves the Engine once per invocation, and the verbs that need it read it from reedCLI.
-// The watchdog, switch, follow, button and window verbs skip that resolution and resolve nothing from the cwd.
+// The watchdog, switch, follow, button, window and place-window verbs skip that resolution.
+// None of them resolves anything from the cwd.
 
 package reedcli
 
@@ -14,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/kwinplace"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -52,8 +54,11 @@ type reedCLI struct {
 	// endProcesses is the test seam for the pre-step `down` runs in a pair; nil means endPairProcesses.
 	endProcesses func(ctx context.Context) ([]runproc.Ended, error)
 
-	// openTerminal is the test seam for the window verb; nil means termwindow.Resolve then Launcher.OpenAttach.
-	openTerminal func(dir, title, lymPath string) error
+	// openTerminal is the test seam for the window verb; nil means openTerminalWindow.
+	openTerminal func(dir, title, lymPath string) (int, bool, error)
+
+	// handPlacement is the test seam for the hand-off of a window to the placement child; nil means handTerminalWindow.
+	handPlacement func(lymPath, dir, title string, pid int) error
 
 	// lymBinary is the test seam for the lookup of this lym binary that the window verb hands the launcher.
 	// nil means selfexec.LymBinary, which refuses a test binary.
@@ -151,13 +156,14 @@ rather than booting substrate it cannot reach.`,
 		// emits a JSON error envelope instead of falling through to cobra's plain-text help.
 		RunE: clihelp.GroupRunE,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			// The group command and the watchdog, switch, follow, button and window verbs skip the resolution.
+			// The group command and the watchdog, switch, follow, button, window and place-window verbs skip the resolution.
+			// place-window is told its hub on a flag and resolves the worktree from it.
 			// The watchdog daemon is told its hub path on its own flags, and it must never use c.eng.
 			// Running the normal pre-run would make it refuse to start outside a worktree and hold a geometry it must not use.
 			// switch, follow and button are told their inputs on flags and resolve no location from the cwd.
 			// They load no config, so a reed.yaml that fails to load cannot abort a click.
 			// window is told a worktree directory that may lie outside the hub's worktrees, so a location lookup would refuse it.
-			if cmd.Name() == "reed" || cmd.Name() == "watchdog" || cmd.Name() == "switch" || cmd.Name() == "follow" || cmd.Name() == "button" || cmd.Name() == "window" {
+			if cmd.Name() == "reed" || cmd.Name() == "watchdog" || cmd.Name() == "switch" || cmd.Name() == "follow" || cmd.Name() == "button" || cmd.Name() == "window" || cmd.Name() == kwinplace.ChildVerbName {
 				return nil
 			}
 
@@ -199,7 +205,7 @@ rather than booting substrate it cannot reach.`,
 		},
 	}
 
-	parent.AddCommand(c.upCmd(), c.downCmd(), c.addCmd(), c.removeCmd(), c.statusCmd(), c.resumeCmd(), c.attachCmd(), c.windowCmd(), c.watchdogCmd(), c.listCmd(), c.switchCmd(), c.followCmd(), c.buttonCmd())
+	parent.AddCommand(c.upCmd(), c.downCmd(), c.addCmd(), c.removeCmd(), c.statusCmd(), c.resumeCmd(), c.attachCmd(), c.windowCmd(), c.watchdogCmd(), c.listCmd(), c.switchCmd(), c.followCmd(), c.buttonCmd(), c.placeWindowCmd())
 
 	return parent
 }

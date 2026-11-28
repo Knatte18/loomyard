@@ -15,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/hubregistry"
+	"github.com/Knatte18/loomyard/internal/kwinplace"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -68,7 +69,10 @@ type deps struct {
 	// openWorkspace opens the VS Code workspace file at path.
 	openWorkspace func(path string) error
 	// terminal returns the opener of a terminal window attached to a worktree's reed session, or why none resolves.
-	terminal func() (func(dir, title, lymPath string) error, error)
+	// The opener returns the window's process id and whether the window is to be placed.
+	terminal func() (func(dir, title, lymPath string) (int, bool, error), error)
+	// handPlacement hands an opened window of the worktree of the hub at hubPath to the placement child.
+	handPlacement func(lymPath, hubPath, worktree, title string, pid int, prime bool) error
 	// desktop returns this machine's desktop for the launchers, or why it has none.
 	desktop func() (desktoplauncher.Desktop, error)
 }
@@ -112,14 +116,17 @@ func productionDeps() deps {
 		lymBinary:     selfexec.LymBinary,
 		beamStart:     runBeamStart,
 		openWorkspace: func(path string) error { return vscode.Launch(path) },
-		terminal: func() (func(dir, title, lymPath string) error, error) {
+		terminal: func() (func(dir, title, lymPath string) (int, bool, error), error) {
 			launcher, err := termwindow.Resolve()
 			if err != nil {
 				return nil, err
 			}
-			return launcher.OpenAttach, nil
+			return func(dir, title, lymPath string) (int, bool, error) {
+				return kwinplace.OpenWindow(launcher, dir, title, lymPath)
+			}, nil
 		},
-		desktop: desktoplauncher.Locate,
+		handPlacement: kwinplace.Spawn,
+		desktop:       desktoplauncher.Locate,
 	}
 }
 

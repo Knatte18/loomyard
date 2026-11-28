@@ -1,5 +1,10 @@
-window_command: ""  # shell command run after lym opens a desktop window (a run's terminal window, lym reed window, lym ide), such as a tiling script that snaps the new window into the active desktop's grid; empty runs nothing; set it per machine with `lym config desktop --layer machine --set window_command=<value>` from the prime
-window_wait_ms: 1500  # milliseconds lym waits after opening a window before it runs desktop.window_command, so the command sees the new window
+window_command: ""  # shell command run after lym opens a desktop window (a run's terminal window, lym reed window, lym ide), such as a tiling script that snaps the new window into the active desktop's grid; empty runs nothing; set it per machine with `lym config desktop --layer machine --set window_command=<value>` from the prime. Under placement, the placement child runs desktop.window_command, with no wait, except when the child is ended by SIGTERM
+window_wait_ms: 1500  # milliseconds lym waits after opening a window before it runs desktop.window_command, so the command sees the new window. Under placement, the placement child runs desktop.window_command, with no wait, except when the child is ended by SIGTERM
+window_placement: "off"  # which desktop a new terminal window lands on: same (its parent orch's desktop), next (the desktops after it) or off (where KWin opens it, recorded only); beam.window_placement overrides it per task; set it per machine with `lym config desktop --layer machine --set window_placement=<value>` from the prime
+
+tiling:  # the smallest tile of a desktop's grid, in logical pixels
+  min_tile_width: 500  # a grid has floor(screen width / this) columns, at most 5; set it per machine with `lym config desktop --layer machine --set tiling.min_tile_width=<value>` from the prime
+  min_tile_height: 600  # a grid has floor(screen height / this) rows, at most 2; set it per machine with `lym config desktop --layer machine --set tiling.min_tile_height=<value>` from the prime
 
 buttons:  # status-bar buttons a machine adds, appended after reed.buttons of the same place, in the groups task, beam and prime; set them in <BoltDir>/.lym/config/desktop.machine.yaml by hand or with `lym config desktop --layer machine --edit`
   task: []

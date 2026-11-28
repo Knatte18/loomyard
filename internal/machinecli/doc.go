@@ -32,6 +32,12 @@
 // It also opens one terminal window per started worktree running `lym reed attach`, through termwindow.
 // A started worktree whose window does not open carries its attach command in the result.
 // So does every started worktree when no launcher resolves.
+// Under window placement it hands each window it opens to the placement child through internal/kwinplace.
+// That child runs desktop.window_command.
+// A failed hand-off is a warning, and the worktree stays started.
+// A window that is not placed, or not handed off, runs no window command.
+// The windows open after every beam start of the hub has returned,
+// so a run's window may open before its orch's, which the placement child's wait for its parent covers.
 // A standing Bolt hold is printed with its machine and subjects.
 // For this machine's own hold it also prints the `lym adopt <subjects>` re-run.
 // It keeps the desktop launchers internal/desktoplauncher writes.

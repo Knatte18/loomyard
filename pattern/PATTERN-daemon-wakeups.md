@@ -105,7 +105,10 @@ An unbounded wait is a loop that lives as long as a run or a session and has no 
   the outbound read in `internal/slackengine/relay.go`, with the binary check and the retried work after it, from five seconds doubling to sixty;
   the bridge poll in `internal/slackengine/bridgepoll.go`, from five seconds doubling to sixty and never within a second of the previous round's start;
   the holder in `internal/slackengine/holder.go`, its lock wait blocking without waking, its 30-second ping spawning nothing and its reconnect from one second doubling to sixty;
-  and the inbox and forwarding-file watch in `internal/slackengine/relay.go`, never within a second of the previous wake's start, with its on-disk fallback from one second to sixty.
+  and the inbox and forwarding-file watch in `internal/slackengine/relay.go`, never within a second of the previous wake's start, with its on-disk fallback from one second to sixty,
+- the window placement's wait for the parent window's place in `internal/kwinplace/parentwait.go`:
+  it re-reads the places file from one second, doubling to eight seconds while the file is unchanged,
+  and returns to one second when it changes.
 
 A bounded wait that ends within a minute is outside the rule.
 

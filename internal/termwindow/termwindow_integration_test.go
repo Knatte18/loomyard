@@ -1,7 +1,7 @@
 //go:build !windows
 
 // termwindow_integration_test.go runs the window's shell line under bash, with a stub executable standing in for lym.
-// It pins when the window ends and when it keeps its shell.
+// It pins when the window ends and when it keeps its shell, and which command line Launcher.Open starts.
 
 package termwindow
 
@@ -15,8 +15,82 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
+
+func TestLauncher_OpenRunsTheChosenCommandLine(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	program, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("sh is not on PATH")
+	}
+	tests := []struct {
+		name     string
+		separate bool
+		want     string
+	}{
+		{name: "TodaysCommandLine", want: "plain"},
+		{name: "ProcessOfItsOwn", separate: true, want: "separate"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			marker := filepath.Join(t.TempDir(), "marker")
+			launcher := Launcher{
+				name:    "sh",
+				program: program,
+				arguments: func(string, string, string) []string {
+					return []string{"-c", fmt.Sprintf("echo plain > %q", marker)}
+				},
+				separate: func(string, string, string) []string {
+					return []string{"-c", fmt.Sprintf("echo separate > %q; exec sleep 60", marker)}
+				},
+			}
+
+			pid, err := launcher.Open(t.TempDir(), "title", "lym", tt.separate)
+			if err != nil {
+				t.Fatalf("Open() error = %v", err)
+			}
+			if tt.separate {
+				if pid <= 0 {
+					t.Fatalf("Open() pid = %d; want a live process id", pid)
+				}
+				t.Cleanup(func() {
+					if err := proc.KillPID(pid); err != nil {
+						t.Errorf("KillPID(%d) = %v", pid, err)
+					}
+				})
+				if parent, ok := proc.ParentPID(pid); !ok || parent != os.Getpid() {
+					t.Errorf("ParentPID(%d) = %d, %v; want %d", pid, parent, ok, os.Getpid())
+				}
+			} else if pid != 0 {
+				t.Errorf("Open() pid = %d; want 0", pid)
+			}
+
+			deadline := time.After(30 * time.Second)
+			tick := time.NewTicker(10 * time.Millisecond)
+			defer tick.Stop()
+			for {
+				data, err := os.ReadFile(marker)
+				if err == nil && strings.HasSuffix(string(data), "\n") {
+					if got := strings.TrimSpace(string(data)); got != tt.want {
+						t.Errorf("marker = %q; want %q", got, tt.want)
+					}
+					return
+				}
+				select {
+				case <-deadline:
+					t.Fatalf("no marker written: %v", err)
+				case <-tick.C:
+				}
+			}
+		})
+	}
+}
 
 func TestAttachLine_EndsOrKeepsTheShellByAttachStatus(t *testing.T) {
 	tiergate.Require(t, 1)

@@ -31,8 +31,8 @@ Two further opt-in tags exist alongside `integration`, each gating a distinct ki
 - **`tier2` — `tmux`** (`lym gate test --tier 2`): tests that start a real tmux server and drive real panes.
   It needs `tmux` on `$PATH` and spends no tokens.
   A test that only probes `tmux has-session` stays in `integration`.
-- **`tier3` — `llm`** (`go vet -tags llm ./...` to compile; `lym gate test --tier 3 <package> -- -run <Test>` by hand to run): tests that spawn a real `claude` session.
-  It needs a logged-in `claude` and costs tokens, wall-clock and RAM.
+- **`tier3` — `llm`** (`go vet -tags llm ./...` to compile; `lym gate test --tier 3 <package> -- -run <Test>` by hand to run): tests that spawn a real `claude` session or drive a real desktop session.
+  An LLM test needs a logged-in `claude` and costs tokens, wall-clock and RAM; a desktop test needs the desktop session it names.
   No gate ever runs `llm`; the plan verify and the card gates only compile it.
 
 The tiers do not nest: `LYM_TEST_TIER=1` does not run `tier0`'s tests and does not include `tier2` or `tier3`, and a run that wants several names a range (`LYM_TEST_TIER=1-2`).
@@ -52,7 +52,7 @@ lym gate test --tier 1 --all
 # tier2 — real tmux servers, no tokens.
 lym gate test --tier 2 --all
 
-# tier3 — real LLM sessions: compile only; run one test by hand, never in a gate.
+# tier3 — real LLM and desktop sessions: compile only; run one test by hand, never in a gate.
 go vet -tags llm ./...
 lym gate test --tier 3 ./internal/<package> -- -run <TestName>
 

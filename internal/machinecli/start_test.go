@@ -101,6 +101,16 @@ type startCalls struct {
 	beamStarts []string
 	workspaces []string
 	terminals  []terminalCall
+	handOffs   []handOff
+}
+
+// handOff is one window a start handed to the placement child.
+type handOff struct {
+	hubPath  string
+	worktree string
+	title    string
+	pid      int
+	prime    bool
 }
 
 // newStartDeps returns deps over fixtures under root, with a terminal launcher, and a freedesktop desktop in root.
@@ -166,11 +176,15 @@ func newStartDeps(t *testing.T, root string, fixtures ...hubFixture) (deps, *sta
 			return entries, nil
 		},
 		openWorkspace: func(path string) error { calls.workspaces = append(calls.workspaces, path); return nil },
-		terminal: func() (func(dir, title, lymPath string) error, error) {
-			return func(dir, title, _ string) error {
+		terminal: func() (func(dir, title, lymPath string) (int, bool, error), error) {
+			return func(dir, title, _ string) (int, bool, error) {
 				calls.terminals = append(calls.terminals, terminalCall{dir: dir, title: title})
-				return nil
+				return 0, false, nil
 			}, nil
+		},
+		handPlacement: func(_, hubPath, worktree, title string, pid int, prime bool) error {
+			calls.handOffs = append(calls.handOffs, handOff{hubPath: hubPath, worktree: worktree, title: title, pid: pid, prime: prime})
+			return nil
 		},
 		desktop: func() (desktoplauncher.Desktop, error) { return desktop, nil },
 	}
@@ -421,8 +435,8 @@ func TestStart_WindowAndHubFailuresLeaveTheRestStarted(t *testing.T) {
 			name: "ATerminalThatDoesNotOpenCarriesTheAttachCommand",
 			hubs: []hubFixture{ownedPrime},
 			mutate: func(d *deps) {
-				d.terminal = func() (func(dir, title, lymPath string) error, error) {
-					return func(string, string, string) error { return errors.New("no display") }, nil
+				d.terminal = func() (func(dir, title, lymPath string) (int, bool, error), error) {
+					return func(string, string, string) (int, bool, error) { return 0, false, errors.New("no display") }, nil
 				}
 			},
 			check: func(t *testing.T, result startResult, calls *startCalls) {
@@ -554,7 +568,7 @@ func TestStart_PrintsAttachCommandsWhereNoTerminalLauncherResolves(t *testing.T)
 	tiergate.Require(t, 0)
 	t.Parallel()
 	d, calls, _ := newStartDeps(t, t.TempDir(), hubFixture{shortname: "ly", primeOwner: startHere, beamOwners: map[string]string{"pay": startHere}})
-	d.terminal = func() (func(dir, title, lymPath string) error, error) {
+	d.terminal = func() (func(dir, title, lymPath string) (int, bool, error), error) {
 		return nil, termwindow.ErrNoLauncher
 	}
 
@@ -579,6 +593,64 @@ func TestStart_PrintsAttachCommandsWhereNoTerminalLauncherResolves(t *testing.T)
 	}
 	if len(calls.terminals) != 0 || len(result.Warnings) == 0 {
 		t.Errorf("terminals %+v, warnings %q; want no window and a warning naming why", calls.terminals, result.Warnings)
+	}
+}
+
+func TestStart_HandsEachPlacedWindowToThePlacementChild(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		placing bool
+		handErr error
+	}{
+		{name: "EachPlacedWindowIsHandedOff", placing: true},
+		{name: "AFailedHandOffWarnsAndTheWorktreeStaysStarted", placing: true, handErr: errors.New("no child")},
+		{name: "AnUnplacedWindowIsNotHandedOff"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			root := t.TempDir()
+			d, calls, _ := newStartDeps(t, root, hubFixture{shortname: "ly", primeOwner: startHere, beamOwners: map[string]string{"pay": startHere}})
+			opened := 0
+			d.terminal = func() (func(dir, title, lymPath string) (int, bool, error), error) {
+				return func(string, string, string) (int, bool, error) {
+					opened++
+					return 100 + opened, tt.placing, nil
+				}, nil
+			}
+			record := d.handPlacement
+			d.handPlacement = func(lymPath, hubPath, worktree, title string, pid int, prime bool) error {
+				return errors.Join(record(lymPath, hubPath, worktree, title, pid, prime), tt.handErr)
+			}
+
+			code, result, _ := runStartVerb(t, d)
+
+			wantOutcomes := map[string]string{"prime": startStarted, "pay": startStarted}
+			if got := outcomes(worktreesOf(result, "ly")); code != 0 || !maps.Equal(got, wantOutcomes) {
+				t.Errorf("start = exit %d, outcomes %v; want ok and %v", code, got, wantOutcomes)
+			}
+			var want []handOff
+			if tt.placing {
+				hub := filepath.Join(root, "ly-LYMHUB")
+				want = []handOff{
+					{hubPath: hub, worktree: startPrimeName, title: wantTerminal(t, root, "ly", startPrimeName).title, pid: 101, prime: true},
+					{hubPath: hub, worktree: "pay", title: wantTerminal(t, root, "ly", "pay").title, pid: 102},
+				}
+			}
+			if !slices.Equal(calls.handOffs, want) {
+				t.Errorf("hand-offs = %+v; want %+v", calls.handOffs, want)
+			}
+			wantWarnings := 0
+			if tt.handErr != nil {
+				wantWarnings = len(want)
+			}
+			if got := result.Hubs[0].Warnings; len(got) != wantWarnings {
+				t.Errorf("warnings = %q; want %d, one per failed hand-off", got, wantWarnings)
+			}
+		})
 	}
 }
 

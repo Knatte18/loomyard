@@ -1,0 +1,5 @@
+command: "query.js (run id ddb78d6734d7, tilingOutput NOPE-1) via qdbus6; journalctl --user -u plasma-kwin_wayland.service --since @1795854248 -o cat"
+date: 2026-11-28
+machine: Neve
+plasma: "6.6.6"
+kwin: "6.6.6"

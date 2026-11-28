@@ -1,0 +1,5 @@
+command: "qdbus6 org.kde.KWin /Scripting loadScript <query.js> lym-kwinplace-2c8df70b245e (load.txt, twice: load-taken.txt), isScriptLoaded (loaded-true.txt), Script<id> run, unloadScript, isScriptLoaded (loaded-false.txt)"
+date: 2026-11-28
+machine: Neve
+plasma: "6.6.6"
+kwin: "6.6.6"

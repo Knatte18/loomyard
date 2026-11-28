@@ -73,6 +73,7 @@ func TestLoadConfig(t *testing.T) {
 		{name: "a worktree layer's run_watch of rows loads", worktree: "run_watch: rows\n", want: defaultsWith(func(*Config) {})},
 		{name: "a local layer's run_watch of off loads", local: "run_watch: \"off\"\n", want: defaultsWith(func(*Config) {})},
 		{name: "an unknown run_watch is refused naming the key, the values and the way forward", worktree: "run_watch: all\n", wantErr: []string{"run_watch", "all", "[stops rows off]", "lym config beam --set run_watch="}},
+		{name: "an unknown window_placement is refused naming the key, the value and the way forward", worktree: "window_placement: sideways\n", wantErr: []string{"window_placement", "sideways", "lym config beam --set window_placement="}},
 		{name: "a gate_hold_factor of 0 resolves as set", worktree: "gate_hold_factor: 0\n", want: defaultsWith(func(c *Config) { c.GateHoldFactor = 0 })},
 		{name: "a gate_hold_min of 30 resolves as set", worktree: "gate_hold_min: 30\n", want: defaultsWith(func(c *Config) { c.GateHoldMin = 30 })},
 		{name: "a negative gate_hold_factor is refused naming the key", worktree: "gate_hold_factor: -0.5\n", wantErr: []string{"gate_hold_factor", "must be a finite number that is not negative", "lym config beam --set"}},

@@ -14,8 +14,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestLoadConfig covers the template defaults and a machine override that sets both keys.
-// It also covers a refused negative wait and a local override refused for a machine key.
+// configWith returns the resolved config holding the given window command, wait, placement mode and smallest tile.
+func configWith(command string, waitMs int, placement string, tileWidth, tileHeight int) desktophook.Config {
+	cfg := desktophook.Config{WindowCommand: command, WindowWaitMs: waitMs, WindowPlacement: placement}
+	cfg.Tiling.MinTileWidth = tileWidth
+	cfg.Tiling.MinTileHeight = tileHeight
+	return cfg
+}
+
+// TestLoadConfig covers the template defaults and machine overrides of the window and placement keys.
+// It also covers the refused values and a local override refused for a machine key.
 func TestLoadConfig(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -31,18 +39,41 @@ func TestLoadConfig(t *testing.T) {
 		// wantErrDetail is a second substring the error must hold: the reason beside the key `wantErr` names.
 		wantErrDetail string
 	}{
-		{name: "TemplateDefaults", machine: "", want: desktophook.Config{WindowWaitMs: 1500}},
+		{name: "TemplateDefaults", machine: "", want: configWith("", 1500, "off", 500, 600)},
 		{
 			name:    "MachineOverrideSetsBothKeys",
 			machine: "window_command: \"~/.local/bin/arrange-to-tiles.sh\"\nwindow_wait_ms: 200\n",
-			want:    desktophook.Config{WindowCommand: "~/.local/bin/arrange-to-tiles.sh", WindowWaitMs: 200},
+			want:    configWith("~/.local/bin/arrange-to-tiles.sh", 200, "off", 500, 600),
+		},
+		{
+			name:    "MachineOverrideSetsPlacement",
+			machine: "window_placement: same\ntiling: {min_tile_width: 400, min_tile_height: 300}\n",
+			want:    configWith("", 1500, "same", 400, 300),
+		},
+		{
+			name:          "UnknownPlacementRefused",
+			machine:       "window_placement: sideways\n",
+			wantErr:       `"desktop.window_placement" holds "sideways"`,
+			wantErrDetail: "lym config desktop --layer machine --set window_placement=",
+		},
+		{
+			name:          "ZeroTileWidthRefused",
+			machine:       "tiling: {min_tile_width: 0}\n",
+			wantErr:       `"desktop.tiling.min_tile_width" holds 0`,
+			wantErrDetail: "lym config desktop --layer machine --set tiling.min_tile_width=",
+		},
+		{
+			name:          "ZeroTileHeightRefused",
+			machine:       "tiling: {min_tile_height: 0}\n",
+			wantErr:       `"desktop.tiling.min_tile_height" holds 0`,
+			wantErrDetail: "lym config desktop --layer machine --set tiling.min_tile_height=",
 		},
 		{name: "NegativeWaitRefused", machine: "window_wait_ms: -1\n", wantErr: `config key "desktop.window_wait_ms" holds -1`},
 		{name: "LocalOverrideRefused", local: "window_command: \"true\"\n", wantErr: "window_command"},
 		{
 			name:         "MachineOverrideAddsButtons",
 			machine:      "buttons: {task: [{label: x, run: y}]}\n",
-			want:         desktophook.Config{WindowWaitMs: 1500},
+			want:         configWith("", 1500, "off", 500, 600),
 			wantTaskRuns: []string{"y"},
 		},
 		{name: "MachineGroupAsEmptyMappingRefused", machine: "buttons: {task: {}}\n", wantErr: "buttons.task", wantErrDetail: "different shape"},
@@ -77,6 +108,9 @@ func TestLoadConfig(t *testing.T) {
 			}
 			if got.WindowCommand != tt.want.WindowCommand || got.WindowWaitMs != tt.want.WindowWaitMs {
 				t.Errorf("LoadConfig() = {WindowCommand: %q, WindowWaitMs: %d}; want {WindowCommand: %q, WindowWaitMs: %d}", got.WindowCommand, got.WindowWaitMs, tt.want.WindowCommand, tt.want.WindowWaitMs)
+			}
+			if got.WindowPlacement != tt.want.WindowPlacement || got.Tiling != tt.want.Tiling {
+				t.Errorf("LoadConfig() placement = %q, tiling %+v; want %q, %+v", got.WindowPlacement, got.Tiling, tt.want.WindowPlacement, tt.want.Tiling)
 			}
 			var buttons struct {
 				Task []struct {

@@ -1,4 +1,5 @@
-// tasksetting_test.go pins the per-task lookup of beam.pull_request, beam.land_notice, beam.autonomy and beam.run_watch.
+// tasksetting_test.go pins the lookup of the per-task beam settings.
+// They are beam.pull_request, beam.land_notice, beam.autonomy, beam.run_watch and beam.window_placement.
 // It pins which of a task's own files, its parents' files, the hub default and the template decides.
 // It also pins the refusal of a bad value.
 
@@ -48,6 +49,9 @@ func lookupAsText(key string, chain TaskSettingChain) (string, error) {
 	}
 	if key == RunWatchKey {
 		return LookupRunWatch(chain)
+	}
+	if key == WindowPlacementKey {
+		return LookupWindowPlacement(chain)
 	}
 	got, err := LookupPullRequest(chain)
 	if got == PullRequestReview {
@@ -168,6 +172,41 @@ func TestLookupTaskSettings(t *testing.T) {
 		}
 	})
 
+	t.Run("window_placement takes the nearest value that sets it, else the template's", func(t *testing.T) {
+		t.Parallel()
+		rows := []struct {
+			name                          string
+			taskLocal, beam, prime, board string
+			want                          string
+		}{
+			{name: "the task's local file wins over its parent beam's worktree file", taskLocal: "same", beam: "next", want: "same"},
+			{name: "a task that sets nothing takes its beam's value over the prime's", beam: "same", prime: "next", want: "same"},
+			{name: "the hub default applies when no anchor sets the key", board: "next", want: "next"},
+			{name: `nothing set anywhere takes the template's ""`, want: ""},
+		}
+		for _, row := range rows {
+			t.Run(row.name, func(t *testing.T) {
+				t.Parallel()
+				taskDir, beamDir, primeDir, board := t.TempDir(), t.TempDir(), t.TempDir(), t.TempDir()
+				for dir, value := range map[string]string{beamDir: row.beam, primeDir: row.prime, board: row.board} {
+					if value != "" {
+						writeBeamLayer(t, dir, settingDocument(WindowPlacementKey, value))
+					}
+				}
+				if row.taskLocal != "" {
+					// The task's anchor gets a _lym/, since a worktree with none stacks no local layer.
+					writeBeamLayer(t, taskDir, "")
+					writeBeamLocalLayer(t, taskDir, settingDocument(WindowPlacementKey, row.taskLocal))
+				}
+
+				got, err := LookupWindowPlacement(TaskSettingChain{Anchors: []string{taskDir, beamDir, primeDir}, Board: board})
+				if err != nil || got != row.want {
+					t.Errorf("LookupWindowPlacement() = %q, %v; want %q", got, err, row.want)
+				}
+			})
+		}
+	})
+
 	t.Run("pull_request merge-in and trail pass through as set", func(t *testing.T) {
 		t.Parallel()
 		for _, value := range []string{PullRequestMergeIn, PullRequestTrail} {
@@ -258,6 +297,7 @@ func TestLookupTaskSettings_RefusesAValueTheKeyDoesNotTake(t *testing.T) {
 		wantValues string
 	}{
 		{name: "run_watch all in a worktree file", key: RunWatchKey, value: "all", place: "worktree", wantValues: "[stops rows off]"},
+		{name: "window_placement left in a worktree file", key: WindowPlacementKey, value: "left", place: "worktree", wantValues: "[ off same next]"},
 		{name: "pull_request required in a worktree file", key: PullRequestKey, value: "required", place: "worktree"},
 		{name: "land_notice all in a worktree file", key: LandNoticeKey, value: "all", place: "worktree"},
 		{name: "land_notice per-task in a worktree file", key: LandNoticeKey, value: "per-task", place: "worktree"},

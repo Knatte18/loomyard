@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -26,6 +27,14 @@ func TestWindowCmd_OpensATerminalAttachedToTheToldWorktree(t *testing.T) {
 	const standInLym = "/stand-in/lym"
 	const formedTitle = "T7 [ly:P3] task"
 	existing := t.TempDir()
+	cwd, err := lymcwd.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	relative, err := filepath.Rel(cwd, existing)
+	if err != nil {
+		t.Fatal(err)
+	}
 	tests := []struct {
 		name string
 		args []string
@@ -33,6 +42,9 @@ func TestWindowCmd_OpensATerminalAttachedToTheToldWorktree(t *testing.T) {
 		openErr error
 		// placeErr is what the window-command seam returns.
 		placeErr error
+		// placing is whether the launcher seam reports the window as one to place, with handErr from the hand-off.
+		placing bool
+		handErr error
 		// defaultLookup leaves lymBinary nil, so the production lookup runs and refuses the test binary.
 		defaultLookup bool
 		wantCode      int
@@ -47,16 +59,32 @@ func TestWindowCmd_OpensATerminalAttachedToTheToldWorktree(t *testing.T) {
 		{name: "LauncherErrorIsCarried", args: []string{existing}, openErr: errors.New("no terminal window launcher known here"), wantCode: 1, wantTitle: formedTitle, wantCalls: 1, wantErr: "no terminal window launcher"},
 		{name: "DefaultLookupRefusesTheTestBinaryAndRunsNoLauncher", args: []string{existing}, defaultLookup: true, wantCode: 1, wantErr: "window: resolve the running lym"},
 		{name: "WindowCommandFailureOnlyWarns", args: []string{existing}, placeErr: errors.New("window command failed"), wantTitle: formedTitle, wantCalls: 1},
+		{name: "PlacementHandsTheWindowToTheChild", args: []string{existing}, placing: true, wantTitle: formedTitle, wantCalls: 1},
+		{name: "HandOffFailureRunsTheWindowCommand", args: []string{existing}, placing: true, handErr: errors.New("no child"), wantTitle: formedTitle, wantCalls: 1},
+		// Every seam is told the absolute path, which the checks below compare against.
+		{name: "ARelativeDirectoryIsToldOnAsAbsolute", args: []string{relative}, placing: true, handErr: errors.New("no child"), wantTitle: formedTitle, wantCalls: 1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			var calls []windowCall
 			var placed []string
+			type handOff struct {
+				lymPath, dir, title string
+				pid                 int
+			}
+			var handed []handOff
 			c := &reedCLI{
-				openTerminal: func(dir, title, lymPath string) error {
+				openTerminal: func(dir, title, lymPath string) (int, bool, error) {
 					calls = append(calls, windowCall{dir, title, lymPath})
-					return tt.openErr
+					if !tt.placing {
+						return 0, false, tt.openErr
+					}
+					return 4242, true, tt.openErr
+				},
+				handPlacement: func(lymPath, dir, title string, pid int) error {
+					handed = append(handed, handOff{lymPath, dir, title, pid})
+					return tt.handErr
 				},
 				placeWindow: func(dir string) error {
 					placed = append(placed, dir)
@@ -88,8 +116,15 @@ func TestWindowCmd_OpensATerminalAttachedToTheToldWorktree(t *testing.T) {
 				t.Fatalf("launcher calls = %v; want %d", calls, tt.wantCalls)
 			}
 			wantPlaced := []string{}
-			if tt.wantCalls == 1 && tt.openErr == nil {
+			if tt.wantCalls == 1 && tt.openErr == nil && (!tt.placing || tt.handErr != nil) {
 				wantPlaced = []string{existing}
+			}
+			var wantHanded []handOff
+			if tt.placing {
+				wantHanded = []handOff{{standInLym, existing, formedTitle, 4242}}
+			}
+			if !slices.Equal(handed, wantHanded) {
+				t.Errorf("hand-offs = %v; want %v", handed, wantHanded)
 			}
 			if !slices.Equal(placed, wantPlaced) {
 				t.Errorf("window command runs = %v; want %v, one after each window opened", placed, wantPlaced)

@@ -1,4 +1,5 @@
-// tasksetting.go alone reads beam.pull_request, beam.land_notice, beam.autonomy and beam.run_watch per task.
+// tasksetting.go alone reads the per-task beam settings.
+// They are beam.pull_request, beam.land_notice, beam.autonomy, beam.run_watch and beam.window_placement.
 // A task's value is the one its own worktree's files set.
 // Failing that, it is the value of the nearest worktree above it that sets one, up to the prime.
 // Failing all of those, it is the hub's default layer's, else the template's.
@@ -62,6 +63,13 @@ func LookupAutonomy(chain TaskSettingChain) (AutonomyLevel, error) {
 // A value the key does not take is refused, naming the file that set it.
 func LookupRunWatch(chain TaskSettingChain) (string, error) {
 	return lookupTaskSetting(chain, RunWatchKey)
+}
+
+// LookupWindowPlacement returns the beam.window_placement of the task at the chain's head: "", off, same or next.
+// It is the only reader of the key, and "" hands the decision over to the machine's desktop.window_placement.
+// A value the key does not take is refused, naming the file that set it.
+func LookupWindowPlacement(chain TaskSettingChain) (string, error) {
+	return lookupTaskSetting(chain, WindowPlacementKey)
 }
 
 // ownTaskSetting returns the value the files of the one place dirs names set for the per-task key.

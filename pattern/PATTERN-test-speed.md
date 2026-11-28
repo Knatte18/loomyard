@@ -12,7 +12,7 @@ The hub declares its tiers in `gate.yaml`, numbered `tier0` through `tier3`, and
 | `tier0` | nothing: offline, no spawn | seconds, runs on every card gate |
 | `tier1` | git, a built `lym`, subprocesses; no tmux server and no LLM, which `tmuxkit.Main` checks at the end of the package | tens of seconds, runs in the keys that list it |
 | `tier2` | a real tmux server, no LLM | slower, runs in the keys that list it and by hand |
-| `tier3` | a real LLM session | billed, compiled by every gate and run by hand only |
+| `tier3` | a real LLM session or a real desktop session | billed for an LLM, compiled by every gate and run by hand only |
 
 - A package builds one test binary that holds every tier's tests, and the tier is chosen at run time.
   `internal/testkit/tiergate` reads `LYM_TEST_TIER`, one tier (`1`) or a range up to a tier (`0-2`),
@@ -63,7 +63,8 @@ No site spells a tier list, a scope or a test command.
 ### No gate runs `tier3`
 
 Every gate compiles the `tier3` tests, since every test binary holds them, and no gate runs them.
-Running it is the operator's call, because a `tier3` run is billed, nondeterministic and needs a live session.
+Running it is the operator's call, because a `tier3` run needs a live LLM or desktop session,
+and an LLM run is billed and nondeterministic.
 
 ### Every gate run takes a slot
 

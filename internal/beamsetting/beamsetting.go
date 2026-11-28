@@ -1,5 +1,5 @@
 // Package beamsetting names the module, keys and values of beam.yaml's per-task settings.
-// Those settings are beam.pull_request, beam.land_notice, beam.autonomy and beam.run_watch.
+// Those settings are beam.pull_request, beam.land_notice, beam.autonomy, beam.run_watch and beam.window_placement.
 // Every package that reads, writes or refuses one of them takes its name from here, so each is declared once.
 package beamsetting
 
@@ -17,6 +17,21 @@ const (
 	AutonomyKey = "autonomy"
 	// RunWatchKey decides which changes of a task's run dobby mails the orch as a watch line.
 	RunWatchKey = "run_watch"
+	// WindowPlacementKey decides which desktop a task's terminal window is placed on.
+	WindowPlacementKey = "window_placement"
+)
+
+// The values of beam.window_placement.
+// All but WindowPlacementInherit are also the modes of the machine's desktop.window_placement.
+const (
+	// WindowPlacementInherit hands the decision over to the machine's desktop.window_placement.
+	WindowPlacementInherit = ""
+	// WindowPlacementOff leaves the window where the window manager opens it.
+	WindowPlacementOff = "off"
+	// WindowPlacementSame places the window from the desktop of its parent orch's window.
+	WindowPlacementSame = "same"
+	// WindowPlacementNext places the window from the desktop after its parent orch's window.
+	WindowPlacementNext = "next"
 )
 
 // The values of beam.run_watch.
@@ -83,4 +98,15 @@ func LandNoticeValues() []string {
 // RunWatchValues returns every value beam.run_watch takes.
 func RunWatchValues() []string {
 	return []string{RunWatchStops, RunWatchRows, RunWatchOff}
+}
+
+// WindowPlacementValues returns every value beam.window_placement takes.
+func WindowPlacementValues() []string {
+	return append([]string{WindowPlacementInherit}, WindowPlacementModes()...)
+}
+
+// WindowPlacementModes returns the values that name a way of placing a window.
+// They are the ones the machine's desktop.window_placement takes.
+func WindowPlacementModes() []string {
+	return []string{WindowPlacementOff, WindowPlacementSame, WindowPlacementNext}
 }

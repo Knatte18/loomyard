@@ -348,7 +348,7 @@ so a plan names no gate, tier list or target list.
   A tier that runs whole is not narrowed.
   It then runs the `//lym:guard` tests its listed runs leave out.
 - **Per plan.** The `webster` gate runs once, a must-pass gate on Merriam that sends a failure back to Merriam.
-- Tier 3 tests drive a real LLM; no gate runs them.
+- Tier 3 tests drive a real LLM or a real desktop session; no gate runs them.
 
 Parent-Align and Finalize run their own gate keys whenever the tree differs from the last verified tree.
 `internal/verifytree` records that tree.

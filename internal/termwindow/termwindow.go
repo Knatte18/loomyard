@@ -39,6 +39,9 @@ type Launcher struct {
 	program string
 	// arguments returns the program's arguments for a window titled title, in dir, that runs "<lymPath> reed attach".
 	arguments func(dir, title, lymPath string) []string
+	// separate returns the program's arguments for the same window run in a process of its own;
+	// it is nil for a program that offers none.
+	separate func(dir, title, lymPath string) []string
 }
 
 // probe carries the machine facts Resolve reads, so the choice is testable without the machine.
@@ -87,13 +90,46 @@ func resolve(p probe) (Launcher, error) {
 	if err != nil {
 		return Launcher{}, fmt.Errorf("%w: konsole is not on PATH: %v", ErrNoLauncher, err)
 	}
-	return Launcher{name: "konsole", program: program, arguments: konsoleArguments}, nil
+	return Launcher{name: "konsole", program: program, arguments: konsoleArguments, separate: separateKonsoleArguments}, nil
+}
+
+// IsKonsole reports whether the launcher is Konsole, the one program that can run a window in a process of its own.
+func (l Launcher) IsKonsole() bool {
+	return l.separate != nil
+}
+
+// Open opens one window titled title that runs "<lymPath> reed attach" in dir, and returns once it has started.
+// With separate false it opens the window as OpenAttach does and returns pid 0.
+// With separate true the window runs in a process of its own and the returned pid is that process's.
+// It is an error to ask for separate on a launcher IsKonsole reports false for.
+func (l Launcher) Open(dir, title, lymPath string, separate bool) (int, error) {
+	if !separate {
+		return 0, l.OpenAttach(dir, title, lymPath)
+	}
+	if l.separate == nil {
+		return 0, fmt.Errorf("termwindow: launcher %s cannot open a window in a process of its own; the caller must check IsKonsole first", l.name)
+	}
+	cmd := exec.Command(l.program, l.separate(dir, title, lymPath)...)
+	proc.Detach(cmd)
+	if err := cmd.Start(); err != nil {
+		return 0, fmt.Errorf("termwindow: start %s: %w", l.name, err)
+	}
+	pid := cmd.Process.Pid
+	logger.Info("termwindow: spawned terminal window", "launcher", l.name, "dir", dir, "title", title, "pid", pid)
+	proc.Reap(cmd)
+	return pid, nil
 }
 
 // konsoleArguments opens a new Konsole window, never a tab, with its tab titled title.
 // Its login shell runs the attach line.
 func konsoleArguments(dir, title, lymPath string) []string {
 	return []string{"--workdir", dir, "-p", "tabtitle=" + title, "-e", "bash", "-lc", attachLine(lymPath, dir)}
+}
+
+// separateKonsoleArguments opens a new titled window running the attach line in a Konsole process of its own.
+// The operator's single-process setting does not change that.
+func separateKonsoleArguments(dir, title, lymPath string) []string {
+	return append([]string{"--separate"}, konsoleArguments(dir, title, lymPath)...)
 }
 
 // windowsTerminalArguments opens a new Windows Terminal window running wsl.exe in dir.

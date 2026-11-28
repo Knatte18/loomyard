@@ -1,13 +1,15 @@
 // window.go implements the `window` reed verb.
 // It opens one desktop terminal window attached to a told worktree's reed session through internal/termwindow.
-// It then runs the machine's window command through internal/desktophook.
-// It runs that command with the config of the worktree holding the told directory.
+// Under window placement it hands the window to the placement child, which runs the machine's window command.
+// Otherwise it runs that command itself through internal/desktophook.
+// The command runs with the config of the worktree holding the told directory.
 // It needs no acting location or engine, so the root pre-run skips it.
 // With no told title it titles the window from the told directory's worktree and the hub's board.
 
 package reedcli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/desktophook"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/kwinplace"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -26,12 +29,38 @@ import (
 
 // openTerminalWindow opens a terminal window titled title in dir, through the launcher this machine resolves.
 // Its shell runs `lymPath reed attach`.
-func openTerminalWindow(dir, title, lymPath string) error {
+// It returns the window's process id and whether the window is to be placed; an unplaced window has pid 0.
+func openTerminalWindow(dir, title, lymPath string) (int, bool, error) {
 	launcher, err := termwindow.Resolve()
 	if err != nil {
-		return err
+		return 0, false, err
 	}
-	return launcher.OpenAttach(dir, title, lymPath)
+	return kwinplace.OpenWindow(launcher, dir, title, lymPath)
+}
+
+// errNoHub reports a window on a checkout that belongs to no hub, which no placement child is started for.
+var errNoHub = errors.New("the window's directory belongs to no hub")
+
+// handTerminalWindow hands a just-opened window to the placement child.
+// The window is that of process pid, titled title and opened on the absolute dir.
+// A dir in no worktree has no hub to place a window for and no config naming a window command, so nothing is handed.
+// A checkout that belongs to no hub is not handed either and returns errNoHub.
+// Its own config may still name a window command.
+func handTerminalWindow(lymPath, dir, title string, pid int) error {
+	l, err := lymcwd.ResolveWorktree(dir)
+	if err != nil {
+		logger.Debug("reed window: the window's directory is in no worktree, placing no window", "dir", dir, "cause", err)
+		return nil
+	}
+	if fabricengine.ConfigDirs(l).Board == "" {
+		logger.Debug("reed window: the window's directory is in no worktree of a hub, placing no window", "dir", dir)
+		return errNoHub
+	}
+	prime, err := fabricengine.IsPrimeWorktree(l)
+	if err != nil {
+		return fmt.Errorf("resolve the prime: %w", err)
+	}
+	return kwinplace.Spawn(lymPath, l.HubPath, l.WorktreeName, title, pid, prime)
 }
 
 // placeTerminalWindow runs the machine's window command for a just-opened window on dir.
@@ -76,7 +105,11 @@ func (c *reedCLI) windowCmd() *cobra.Command {
 "lym reed attach" in the told worktree directory, and returns once the
 launcher process has started, so the window outlives this command. When
 the machine names a window command in desktop.yaml, it runs it next, after
-the configured wait, and a failure of that command only warns. The
+the configured wait, and a failure of that command only warns. Under
+placement, the placement child runs desktop.window_command, with no wait,
+except when the child is ended by SIGTERM. A
+checkout that belongs to no hub is not placed, and its window command runs
+as without placement. The
 title defaults to the console title of the worktree holding the
 directory, read from the hub's board: "<T#> [<hub shortname>:<P#>] <slug>"
 for a task, and "ORCH [<hub shortname>:<P#>] <slug>" for a beam, whose
@@ -98,6 +131,13 @@ Example:
 			dir := args[0]
 			if info, err := os.Stat(dir); err != nil || !info.IsDir() {
 				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("window: %s is not an existing directory", dir)))
+				return nil
+			}
+			// A relative path would name its worktree or hub by "." or "..".
+			// It would also name another place to the placement child, which starts in the hub.
+			dir, err := filepath.Abs(dir)
+			if err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("window: make the directory absolute: %v", err)))
 				return nil
 			}
 			windowTitle := title
@@ -122,16 +162,32 @@ Example:
 			if open == nil {
 				open = openTerminalWindow
 			}
-			if err := open(dir, windowTitle, lymPath); err != nil {
+			pid, placing, err := open(dir, windowTitle, lymPath)
+			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("window: %v", err)))
 				return nil
 			}
-			place := c.placeWindow
-			if place == nil {
-				place = placeTerminalWindow
+			if placing {
+				hand := c.handPlacement
+				if hand == nil {
+					hand = handTerminalWindow
+				}
+				if err := hand(lymPath, dir, windowTitle, pid); err != nil {
+					if !errors.Is(err, errNoHub) {
+						logger.Warn("reed window: the window was not handed to the placement child; the window is open", "dir", dir, "cause", err)
+					}
+					// No child exists to run the window command.
+					placing = false
+				}
 			}
-			if err := place(dir); err != nil {
-				logger.Warn("reed window: the window command failed; the window is open", "dir", dir, "cause", err)
+			if !placing {
+				place := c.placeWindow
+				if place == nil {
+					place = placeTerminalWindow
+				}
+				if err := place(dir); err != nil {
+					logger.Warn("reed window: the window command failed; the window is open", "dir", dir, "cause", err)
+				}
 			}
 			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{"dir": dir, "title": windowTitle}))
 			return nil

@@ -117,6 +117,18 @@ func TestPrepareRunSettings(t *testing.T) {
 			wantInvalid: true,
 		},
 		{
+			name:     "a beam window_placement of next is admitted into a beam local document",
+			settings: map[string]any{"beam": map[string]any{"window_placement": "next"}},
+			wantDocs: map[string]string{"beam": "window_placement: next\n"},
+		},
+		{
+			name:        "a beam window_placement the lookup refuses is refused at the run settings",
+			settings:    map[string]any{"beam": map[string]any{"window_placement": "sideways"}},
+			wantRefusal: "window_placement",
+			wantModule:  "beam",
+			wantInvalid: true,
+		},
+		{
 			name:     "hardener packages and llm_driving pass",
 			settings: map[string]any{"hardener": map[string]any{"packages": []any{"internal/foo"}, "llm_driving": true}},
 			wantDocs: map[string]string{"hardener": "llm_driving: true\npackages:\n    - internal/foo\n"},

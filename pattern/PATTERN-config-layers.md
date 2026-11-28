@@ -122,7 +122,7 @@ a caller adopts exactly one, except `runprofile` and the per-task lookup.
 
 ## Per-task beam settings
 
-Rule: Reading a per-task beam setting, `beam.pull_request`, `beam.land_notice`, `beam.autonomy` or `beam.run_watch`: only `dobbyengine`'s one lookup, at call time, over the chain `hubgeom.TaskSettingChain` tells it.
+Rule: Reading a per-task beam setting, `beam.pull_request`, `beam.land_notice`, `beam.autonomy`, `beam.run_watch` or `beam.window_placement`: only `dobbyengine`'s one lookup, at call time, over the chain `hubgeom.TaskSettingChain` tells it.
 
 - The value the task's own worktree sets applies.
   A task sets it through its board `run_settings`, which batten copies into the worktree's local layer.

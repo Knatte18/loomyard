@@ -239,7 +239,7 @@ func TestModules_EveryTemplateKeyClassified(t *testing.T) {
 				wantMachineKeys = []string{"slots", "tier_parallel"}
 			}
 			if m.Name == "desktop" {
-				wantMachineKeys = []string{"buttons", "window_command", "window_wait_ms"}
+				wantMachineKeys = []string{"buttons", "tiling.min_tile_height", "tiling.min_tile_width", "window_command", "window_placement", "window_wait_ms"}
 			}
 			if m.Name == "env" {
 				wantMachineKeys = []string{"vars"}

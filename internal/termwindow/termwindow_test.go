@@ -59,6 +59,9 @@ func TestResolve_ChoosesLauncherPerPlatform(t *testing.T) {
 			if err != nil || launcher.name != tt.want {
 				t.Errorf("resolve() = %q, %v; want %q", launcher.name, err, tt.want)
 			}
+			if got, want := launcher.IsKonsole(), tt.want == "konsole"; got != want {
+				t.Errorf("IsKonsole() = %v; want %v", got, want)
+			}
 		})
 	}
 }
@@ -85,6 +88,12 @@ func TestLauncher_ArgumentsOpenTitledWindowRunningAttach(t *testing.T) {
 			arguments: konsoleArguments,
 			lymPath:   "/opt/lym dev/lym",
 			want:      []string{"--workdir", "/hub/my slug", "-p", "tabtitle=slug", "-e", "bash", "-lc", wantLine},
+		},
+		{
+			name:      "SeparateKonsole",
+			arguments: separateKonsoleArguments,
+			lymPath:   "/opt/lym dev/lym",
+			want:      []string{"--separate", "--workdir", "/hub/my slug", "-p", "tabtitle=slug", "-e", "bash", "-lc", wantLine},
 		},
 		{
 			name:      "WindowsTerminal",

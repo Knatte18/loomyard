@@ -143,8 +143,9 @@
 //
 // The landing notice:
 //
-//   - `beam.pull_request`, `beam.land_notice`, `beam.autonomy` and `beam.run_watch` are per-task settings,
-//     read only through LookupPullRequest, LookupLandNotice, LookupAutonomy, LookupRunWatch and LookupWithSource.
+//   - `beam.pull_request`, `beam.land_notice`, `beam.autonomy`, `beam.run_watch` and `beam.window_placement`
+//     are per-task settings, read only through LookupPullRequest, LookupLandNotice, LookupAutonomy,
+//     LookupRunWatch, LookupWindowPlacement and LookupWithSource.
 //     LookupWithSource also names the worktree of the chain whose own files set the value, or the hub-wide default.
 //     A task's value is the one its own worktree's files set, else each parent worktree's own value up to the prime,
 //     else the hub's default layer's, else the template's.

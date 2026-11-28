@@ -1,0 +1,1271 @@
+{
+    "features": 255,
+    "outputs": [
+        {
+            "brightness": 0.4,
+            "clones": [
+            ],
+            "connected": true,
+            "currentModeId": "1",
+            "edrPolicy": 1,
+            "enabled": false,
+            "followPreferredMode": false,
+            "iccProfilePath": "",
+            "icon": "",
+            "id": 1,
+            "maxBpc": 0,
+            "modes": [
+                {
+                    "id": "1",
+                    "name": "1920x1200@60",
+                    "refreshRate": 60,
+                    "size": {
+                        "height": 1200,
+                        "width": 1920
+                    }
+                },
+                {
+                    "id": "10",
+                    "name": "1024x768@60",
+                    "refreshRate": 60,
+                    "size": {
+                        "height": 768,
+                        "width": 1024
+                    }
+                },
+                {
+                    "id": "11",
+                    "name": "800x600@60",
+                    "refreshRate": 60,
+                    "size": {
+                        "height": 600,
+                        "width": 800
+                    }
+                },
+                {
+                    "id": "12",
+                    "name": "640x480@60",
+                    "refreshRate": 60,
+                    "size": {
+                        "height": 480,
+                        "width": 640
+                    }
+                },
+                {
+                    "id": "13",
+                    "name": "1600x900@60",
+                    "refreshRate": 59.94599914550781,
+                    "size": {
+                        "height": 900,
+                        "width": 1600
+                    }
+                },
+                {
+                    "id": "14",
+                    "name": "1368x768@60",
+                    "refreshRate": 59.88199996948242,
+                    "size": {
+                        "height": 768,
+                        "width": 1368
+                    }
+                },
+                {
+                    "id": "2",
+                    "name": "1920x1200@60",
+                    "refreshRate": 60,
+                    "size": {
+                        "height": 1200,
+                        "width": 1920
+                    }
+                },
+                {
+                    "id": "3",
+                    "name": "1920x1080@60",
+                    "refreshRate": 60,
+                    "size": {
+                        "height": 1080,
+                        "width": 1920
+                    }
+                },
+                {
+                    "id": "4",
+                    "name": "1600x1200@60",
+                    "refreshRate": 60,
+                    "size": {
+                        "height": 1200,
+                        "width": 1600
+                    }
+                },
+                {
+                    "id": "5",
+                    "name": "1680x1050@60",
+                    "refreshRate": 60,
+                    "size": {
+                        "height": 1050,
+                        "width": 1680
+                    }
+                },
+                {
+                    "id": "6",
+                    "name": "1280x1024@60",
+                    "refreshRate": 60,
+                    "size": {
+                        "height": 1024,
+                        "width": 1280
+                    }
+                },
+                {
+                    "id": "7",
+                    "name": "1440x900@60",
+                    "refreshRate": 60,
+                    "size": {
+                        "height": 900,
+                        "width": 1440
+                    }
+                },
+                {
+                    "id": "8",
+                    "name": "1280x800@60",
+                    "refreshRate": 60,
+                    "size": {
+                        "height": 800,
+                        "width": 1280
+                    }
+                },
+                {
+                    "id": "9",
+                    "name": "1280x720@60",
+                    "refreshRate": 60,
+                    "size": {
+                        "height": 720,
+                        "width": 1280
+                    }
+                }
+            ],
+            "name": "eDP-1",
+            "overscan": 0,
+            "pos": {
+                "x": 2560,
+                "y": 0
+            },
+            "preferredModes": [
+                "1",
+                "2"
+            ],
+            "priority": 1,
+            "replicationSource": 0,
+            "rotation": 1,
+            "scale": 1.25,
+            "size": {
+                "height": 1200,
+                "width": 1920
+            },
+            "sizeMM": {
+                "height": 189,
+                "width": 302
+            },
+            "type": 7
+        },
+        {
+            "brightness": 1,
+            "clones": [
+            ],
+            "connected": true,
+            "currentModeId": "16",
+            "enabled": true,
+            "followPreferredMode": false,
+            "hdr": false,
+            "iccProfilePath": "",
+            "icon": "",
+            "id": 2,
+            "maxBpc": 0,
+            "modes": [
+                {
+                    "id": "15",
+                    "name": "3840x2160@60",
+                    "refreshRate": 60,
+                    "size": {
+                        "height": 2160,
+                        "width": 3840
+                    }
+                },
+                {
+                    "id": "16",
+                    "name": "3840x2160@160",
+                    "refreshRate": 160,
+                    "size": {
+                        "height": 2160,
+                        "width": 3840
+                    }
+                },
+                {
+                    "id": "17",
+                    "name": "3840x2160@144",
+                    "refreshRate": 144,
+                    "size": {
+                        "height": 2160,
+                        "width": 3840
+                    }
+                },
+                {
+                    "id": "18",
+                    "name": "3840x2160@120",
+                    "refreshRate": 120.00599670410156,
+                    "size": {
+                        "height": 2160,
+                        "width": 3840
+                    }
+                },
+                {
+                    "id": "19",
+                    "name": "3840x2160@100",
+                    "refreshRate": 100.0009994506836,
+                    "size": {
+                        "height": 2160,
+                        "width": 3840
+                    }
+                },
+                {
+                    "id": "20",
+                    "name": "3840x2160@75",
+                    "refreshRate": 75.0009994506836,
+                    "size": {
+                        "height": 2160,
+                        "width": 3840
+                    }
+                },
+                {
+                    "id": "21",
+                    "name": "3840x2160@30",
+                    "refreshRate": 29.981000900268555,
+                    "size": {
+                        "height": 2160,
+                        "width": 3840
+                    }
+                },
+                {
+                    "id": "22",
+                    "name": "2560x1440@144",
+                    "refreshRate": 144.00100708007812,
+                    "size": {
+                        "height": 1440,
+                        "width": 2560
+                    }
+                },
+                {
+                    "id": "23",
+                    "name": "2560x1440@120",
+                    "refreshRate": 120,
+                    "size": {
+                        "height": 1440,
+                        "width": 2560
+                    }
+                },
+                {
+                    "id": "24",
+                    "name": "1920x1080@120",
+                    "refreshRate": 120,
+                    "size": {
+                        "height": 1080,
+                        "width": 1920
+                    }
+                },
+                {
+                    "id": "25",
+                    "name": "1920x1080@120",
+                    "refreshRate": 119.87999725341797,
+                    "size": {
+                        "height": 1080,
+                        "width": 1920
+                    }
+                },
+                {
+                    "id": "26",
+                    "name": "1920x1080@60",
+                    "refreshRate": 60,
+                    "size": {
+                        "height": 1080,
+                        "width": 1920
+                    }
+                },
+                {
+                    "id": "27",
+                    "name": "1920x1080@60",
+                    "refreshRate": 60,
+                    "size": {
+                        "height": 1080,
+                        "width": 1920
+                    }
+                },
+                {
+                    "id": "28",
+                    "name": "1920x1080@60",
+                    "refreshRate": 59.939998626708984,
+                    "size": {
+                        "height": 1080,
+                        "width": 1920
+                    }
+                },
+                {
+                    "id": "29",
+                    "name": "1920x1080@50",
+                    "refreshRate": 50,
+                    "size": {
+                        "height": 1080,
+                        "width": 1920
+                    }
+                },
+                {
+                    "id": "30",
+                    "name": "1280x1024@75",
+                    "refreshRate": 75.0250015258789,
+                    "size": {
+                        "height": 1024,
+                        "width": 1280
+                    }
+                },
+                {
+                    "id": "31",
+                    "name": "1280x1024@60",
+                    "refreshRate": 60.02000045776367,
+                    "size": {
+                        "height": 1024,
+                        "width": 1280
+                    }
+                },
+                {
+                    "id": "32",
+                    "name": "1280x720@60",
+                    "refreshRate": 60,
+                    "size": {
+                        "height": 720,
+                        "width": 1280
+                    }
+                },
+                {
+                    "id": "33",
+                    "name": "1280x720@60",
+                    "refreshRate": 59.939998626708984,
+                    "size": {
+                        "height": 720,
+                        "width": 1280
+                    }
+                },
+                {
+                    "id": "34",
+                    "name": "1280x720@50",
+                    "refreshRate": 50,
+                    "size": {
+                        "height": 720,
+                        "width": 1280
+                    }
+                },
+                {
+                    "id": "35",
+                    "name": "1024x768@120",
+                    "refreshRate": 119.9260025024414,
+                    "size": {
+                        "height": 768,
+                        "width": 1024
+                    }
+                },
+                {
+                    "id": "36",
+                    "name": "1024x768@100",
+                    "refreshRate": 99.99099731445312,
+                    "size": {
+                        "height": 768,
+                        "width": 1024
+                    }
+                },
+                {
+                    "id": "37",
+                    "name": "1024x768@75",
+                    "refreshRate": 75.02899932861328,
+                    "size": {
+                        "height": 768,
+                        "width": 1024
+                    }
+                },
+                {
+                    "id": "38",
+                    "name": "1024x768@70",
+                    "refreshRate": 70.06900024414062,
+                    "size": {
+                        "height": 768,
+                        "width": 1024
+                    }
+                },
+                {
+                    "id": "39",
+                    "name": "1024x768@60",
+                    "refreshRate": 60.00400161743164,
+                    "size": {
+                        "height": 768,
+                        "width": 1024
+                    }
+                },
+                {
+                    "id": "40",
+                    "name": "832x624@75",
+                    "refreshRate": 74.5510025024414,
+                    "size": {
+                        "height": 624,
+                        "width": 832
+                    }
+                },
+                {
+                    "id": "41",
+                    "name": "800x600@120",
+                    "refreshRate": 119.93299865722656,
+                    "size": {
+                        "height": 600,
+                        "width": 800
+                    }
+                },
+                {
+                    "id": "42",
+                    "name": "800x600@100",
+                    "refreshRate": 99.86199951171875,
+                    "size": {
+                        "height": 600,
+                        "width": 800
+                    }
+                },
+                {
+                    "id": "43",
+                    "name": "800x600@75",
+                    "refreshRate": 75,
+                    "size": {
+                        "height": 600,
+                        "width": 800
+                    }
+                },
+                {
+                    "id": "44",
+                    "name": "800x600@72",
+                    "refreshRate": 72.18800354003906,
+                    "size": {
+                        "height": 600,
+                        "width": 800
+                    }
+                },
+                {
+                    "id": "45",
+                    "name": "800x600@60",
+                    "refreshRate": 60.31700134277344,
+                    "size": {
+                        "height": 600,
+                        "width": 800
+                    }
+                },
+                {
+                    "id": "46",
+                    "name": "800x600@56",
+                    "refreshRate": 56.25,
+                    "size": {
+                        "height": 600,
+                        "width": 800
+                    }
+                },
+                {
+                    "id": "47",
+                    "name": "720x576@50",
+                    "refreshRate": 50,
+                    "size": {
+                        "height": 576,
+                        "width": 720
+                    }
+                },
+                {
+                    "id": "48",
+                    "name": "720x576@50",
+                    "refreshRate": 50,
+                    "size": {
+                        "height": 576,
+                        "width": 720
+                    }
+                },
+                {
+                    "id": "49",
+                    "name": "720x480@60",
+                    "refreshRate": 60,
+                    "size": {
+                        "height": 480,
+                        "width": 720
+                    }
+                },
+                {
+                    "id": "50",
+                    "name": "720x480@60",
+                    "refreshRate": 60,
+                    "size": {
+                        "height": 480,
+                        "width": 720
+                    }
+                },
+                {
+                    "id": "51",
+                    "name": "720x480@60",
+                    "refreshRate": 59.939998626708984,
+                    "size": {
+                        "height": 480,
+                        "width": 720
+                    }
+                },
+                {
+                    "id": "52",
+                    "name": "720x480@60",
+                    "refreshRate": 59.939998626708984,
+                    "size": {
+                        "height": 480,
+                        "width": 720
+                    }
+                },
+                {
+                    "id": "53",
+                    "name": "640x480@120",
+                    "refreshRate": 119.8030014038086,
+                    "size": {
+                        "height": 480,
+                        "width": 640
+                    }
+                },
+                {
+                    "id": "54",
+                    "name": "640x480@100",
+                    "refreshRate": 99.82499694824219,
+                    "size": {
+                        "height": 480,
+                        "width": 640
+                    }
+                },
+                {
+                    "id": "55",
+                    "name": "640x480@75",
+                    "refreshRate": 75,
+                    "size": {
+                        "height": 480,
+                        "width": 640
+                    }
+                },
+                {
+                    "id": "56",
+                    "name": "640x480@73",
+                    "refreshRate": 72.80899810791016,
+                    "size": {
+                        "height": 480,
+                        "width": 640
+                    }
+                },
+                {
+                    "id": "57",
+                    "name": "640x480@67",
+                    "refreshRate": 66.66699981689453,
+                    "size": {
+                        "height": 480,
+                        "width": 640
+                    }
+                },
+                {
+                    "id": "58",
+                    "name": "640x480@60",
+                    "refreshRate": 60,
+                    "size": {
+                        "height": 480,
+                        "width": 640
+                    }
+                },
+                {
+                    "id": "59",
+                    "name": "640x480@60",
+                    "refreshRate": 59.939998626708984,
+                    "size": {
+                        "height": 480,
+                        "width": 640
+                    }
+                },
+                {
+                    "id": "60",
+                    "name": "640x480@60",
+                    "refreshRate": 59.939998626708984,
+                    "size": {
+                        "height": 480,
+                        "width": 640
+                    }
+                },
+                {
+                    "id": "61",
+                    "name": "720x400@70",
+                    "refreshRate": 70.08200073242188,
+                    "size": {
+                        "height": 400,
+                        "width": 720
+                    }
+                },
+                {
+                    "id": "62",
+                    "name": "1600x1200@60",
+                    "refreshRate": 59.86899948120117,
+                    "size": {
+                        "height": 1200,
+                        "width": 1600
+                    }
+                },
+                {
+                    "id": "63",
+                    "name": "1600x1200@160",
+                    "refreshRate": 159.88600158691406,
+                    "size": {
+                        "height": 1200,
+                        "width": 1600
+                    }
+                },
+                {
+                    "id": "64",
+                    "name": "1280x1024@160",
+                    "refreshRate": 159.75100708007812,
+                    "size": {
+                        "height": 1024,
+                        "width": 1280
+                    }
+                },
+                {
+                    "id": "65",
+                    "name": "1024x768@160",
+                    "refreshRate": 159.7169952392578,
+                    "size": {
+                        "height": 768,
+                        "width": 1024
+                    }
+                },
+                {
+                    "id": "66",
+                    "name": "2560x1600@60",
+                    "refreshRate": 59.98699951171875,
+                    "size": {
+                        "height": 1600,
+                        "width": 2560
+                    }
+                },
+                {
+                    "id": "67",
+                    "name": "2560x1600@160",
+                    "refreshRate": 159.9429931640625,
+                    "size": {
+                        "height": 1600,
+                        "width": 2560
+                    }
+                },
+                {
+                    "id": "68",
+                    "name": "1920x1200@60",
+                    "refreshRate": 59.8849983215332,
+                    "size": {
+                        "height": 1200,
+                        "width": 1920
+                    }
+                },
+                {
+                    "id": "69",
+                    "name": "1920x1200@160",
+                    "refreshRate": 159.8719940185547,
+                    "size": {
+                        "height": 1200,
+                        "width": 1920
+                    }
+                },
+                {
+                    "id": "70",
+                    "name": "1280x800@60",
+                    "refreshRate": 59.810001373291016,
+                    "size": {
+                        "height": 800,
+                        "width": 1280
+                    }
+                },
+                {
+                    "id": "71",
+                    "name": "1280x800@160",
+                    "refreshRate": 159.781005859375,
+                    "size": {
+                        "height": 800,
+                        "width": 1280
+                    }
+                },
+                {
+                    "id": "72",
+                    "name": "3200x1800@60",
+                    "refreshRate": 59.95600128173828,
+                    "size": {
+                        "height": 1800,
+                        "width": 3200
+                    }
+                },
+                {
+                    "id": "73",
+                    "name": "3200x1800@160",
+                    "refreshRate": 159.97999572753906,
+                    "size": {
+                        "height": 1800,
+                        "width": 3200
+                    }
+                },
+                {
+                    "id": "74",
+                    "name": "2880x1620@60",
+                    "refreshRate": 59.959999084472656,
+                    "size": {
+                        "height": 1620,
+                        "width": 2880
+                    }
+                },
+                {
+                    "id": "75",
+                    "name": "2880x1620@160",
+                    "refreshRate": 159.94900512695312,
+                    "size": {
+                        "height": 1620,
+                        "width": 2880
+                    }
+                },
+                {
+                    "id": "76",
+                    "name": "2560x1440@60",
+                    "refreshRate": 59.96099853515625,
+                    "size": {
+                        "height": 1440,
+                        "width": 2560
+                    }
+                },
+                {
+                    "id": "77",
+                    "name": "2560x1440@160",
+                    "refreshRate": 159.91099548339844,
+                    "size": {
+                        "height": 1440,
+                        "width": 2560
+                    }
+                },
+                {
+                    "id": "78",
+                    "name": "1920x1080@160",
+                    "refreshRate": 159.87600708007812,
+                    "size": {
+                        "height": 1080,
+                        "width": 1920
+                    }
+                },
+                {
+                    "id": "79",
+                    "name": "1600x900@60",
+                    "refreshRate": 59.94599914550781,
+                    "size": {
+                        "height": 900,
+                        "width": 1600
+                    }
+                },
+                {
+                    "id": "80",
+                    "name": "1600x900@160",
+                    "refreshRate": 159.82400512695312,
+                    "size": {
+                        "height": 900,
+                        "width": 1600
+                    }
+                },
+                {
+                    "id": "81",
+                    "name": "1368x768@60",
+                    "refreshRate": 59.88199996948242,
+                    "size": {
+                        "height": 768,
+                        "width": 1368
+                    }
+                },
+                {
+                    "id": "82",
+                    "name": "1368x768@160",
+                    "refreshRate": 159.85699462890625,
+                    "size": {
+                        "height": 768,
+                        "width": 1368
+                    }
+                },
+                {
+                    "id": "83",
+                    "name": "1280x720@160",
+                    "refreshRate": 159.7790069580078,
+                    "size": {
+                        "height": 720,
+                        "width": 1280
+                    }
+                }
+            ],
+            "name": "DP-2",
+            "overscan": 0,
+            "pos": {
+                "x": 2048,
+                "y": 0
+            },
+            "preferredModes": [
+                "15"
+            ],
+            "priority": 1,
+            "replicationSource": 0,
+            "rgbRange": 0,
+            "rotation": 1,
+            "scale": 1.5,
+            "sdr-brightness": 200,
+            "size": {
+                "height": 2160,
+                "width": 3840
+            },
+            "sizeMM": {
+                "height": 334,
+                "width": 797
+            },
+            "type": 14,
+            "vrrPolicy": 0,
+            "wcg": false
+        },
+        {
+            "brightness": 1,
+            "clones": [
+            ],
+            "connected": true,
+            "currentModeId": "85",
+            "enabled": true,
+            "followPreferredMode": false,
+            "hdr": false,
+            "iccProfilePath": "",
+            "icon": "",
+            "id": 3,
+            "maxBpc": 0,
+            "modes": [
+                {
+                    "id": "100",
+                    "name": "1024x768@70",
+                    "refreshRate": 70.06900024414062,
+                    "size": {
+                        "height": 768,
+                        "width": 1024
+                    }
+                },
+                {
+                    "id": "101",
+                    "name": "1024x768@60",
+                    "refreshRate": 60.00400161743164,
+                    "size": {
+                        "height": 768,
+                        "width": 1024
+                    }
+                },
+                {
+                    "id": "102",
+                    "name": "800x600@75",
+                    "refreshRate": 75,
+                    "size": {
+                        "height": 600,
+                        "width": 800
+                    }
+                },
+                {
+                    "id": "103",
+                    "name": "800x600@72",
+                    "refreshRate": 72.18800354003906,
+                    "size": {
+                        "height": 600,
+                        "width": 800
+                    }
+                },
+                {
+                    "id": "104",
+                    "name": "800x600@60",
+                    "refreshRate": 60.31700134277344,
+                    "size": {
+                        "height": 600,
+                        "width": 800
+                    }
+                },
+                {
+                    "id": "105",
+                    "name": "800x600@56",
+                    "refreshRate": 56.25,
+                    "size": {
+                        "height": 600,
+                        "width": 800
+                    }
+                },
+                {
+                    "id": "106",
+                    "name": "720x576@50",
+                    "refreshRate": 50,
+                    "size": {
+                        "height": 576,
+                        "width": 720
+                    }
+                },
+                {
+                    "id": "107",
+                    "name": "720x480@60",
+                    "refreshRate": 60,
+                    "size": {
+                        "height": 480,
+                        "width": 720
+                    }
+                },
+                {
+                    "id": "108",
+                    "name": "720x480@60",
+                    "refreshRate": 59.939998626708984,
+                    "size": {
+                        "height": 480,
+                        "width": 720
+                    }
+                },
+                {
+                    "id": "109",
+                    "name": "640x480@75",
+                    "refreshRate": 75,
+                    "size": {
+                        "height": 480,
+                        "width": 640
+                    }
+                },
+                {
+                    "id": "110",
+                    "name": "640x480@73",
+                    "refreshRate": 72.80899810791016,
+                    "size": {
+                        "height": 480,
+                        "width": 640
+                    }
+                },
+                {
+                    "id": "111",
+                    "name": "640x480@67",
+                    "refreshRate": 66.66699981689453,
+                    "size": {
+                        "height": 480,
+                        "width": 640
+                    }
+                },
+                {
+                    "id": "112",
+                    "name": "640x480@60",
+                    "refreshRate": 60,
+                    "size": {
+                        "height": 480,
+                        "width": 640
+                    }
+                },
+                {
+                    "id": "113",
+                    "name": "640x480@60",
+                    "refreshRate": 59.939998626708984,
+                    "size": {
+                        "height": 480,
+                        "width": 640
+                    }
+                },
+                {
+                    "id": "114",
+                    "name": "1600x1200@60",
+                    "refreshRate": 59.86899948120117,
+                    "size": {
+                        "height": 1200,
+                        "width": 1600
+                    }
+                },
+                {
+                    "id": "115",
+                    "name": "1600x1200@120",
+                    "refreshRate": 119.822998046875,
+                    "size": {
+                        "height": 1200,
+                        "width": 1600
+                    }
+                },
+                {
+                    "id": "116",
+                    "name": "1280x1024@120",
+                    "refreshRate": 119.83499908447266,
+                    "size": {
+                        "height": 1024,
+                        "width": 1280
+                    }
+                },
+                {
+                    "id": "117",
+                    "name": "1024x768@120",
+                    "refreshRate": 119.80400085449219,
+                    "size": {
+                        "height": 768,
+                        "width": 1024
+                    }
+                },
+                {
+                    "id": "118",
+                    "name": "1920x1200@60",
+                    "refreshRate": 59.8849983215332,
+                    "size": {
+                        "height": 1200,
+                        "width": 1920
+                    }
+                },
+                {
+                    "id": "119",
+                    "name": "1920x1200@120",
+                    "refreshRate": 119.90399932861328,
+                    "size": {
+                        "height": 1200,
+                        "width": 1920
+                    }
+                },
+                {
+                    "id": "120",
+                    "name": "1280x800@60",
+                    "refreshRate": 59.810001373291016,
+                    "size": {
+                        "height": 800,
+                        "width": 1280
+                    }
+                },
+                {
+                    "id": "121",
+                    "name": "1280x800@120",
+                    "refreshRate": 119.84600067138672,
+                    "size": {
+                        "height": 800,
+                        "width": 1280
+                    }
+                },
+                {
+                    "id": "122",
+                    "name": "1600x900@60",
+                    "refreshRate": 59.94599914550781,
+                    "size": {
+                        "height": 900,
+                        "width": 1600
+                    }
+                },
+                {
+                    "id": "123",
+                    "name": "1600x900@120",
+                    "refreshRate": 119.947998046875,
+                    "size": {
+                        "height": 900,
+                        "width": 1600
+                    }
+                },
+                {
+                    "id": "124",
+                    "name": "1368x768@60",
+                    "refreshRate": 59.88199996948242,
+                    "size": {
+                        "height": 768,
+                        "width": 1368
+                    }
+                },
+                {
+                    "id": "125",
+                    "name": "1368x768@120",
+                    "refreshRate": 119.83100128173828,
+                    "size": {
+                        "height": 768,
+                        "width": 1368
+                    }
+                },
+                {
+                    "id": "84",
+                    "name": "2560x1440@60",
+                    "refreshRate": 59.95100021362305,
+                    "size": {
+                        "height": 1440,
+                        "width": 2560
+                    }
+                },
+                {
+                    "id": "85",
+                    "name": "2560x1440@120",
+                    "refreshRate": 119.99800109863281,
+                    "size": {
+                        "height": 1440,
+                        "width": 2560
+                    }
+                },
+                {
+                    "id": "86",
+                    "name": "1920x1080@120",
+                    "refreshRate": 120,
+                    "size": {
+                        "height": 1080,
+                        "width": 1920
+                    }
+                },
+                {
+                    "id": "87",
+                    "name": "1920x1080@120",
+                    "refreshRate": 119.87999725341797,
+                    "size": {
+                        "height": 1080,
+                        "width": 1920
+                    }
+                },
+                {
+                    "id": "88",
+                    "name": "1920x1080@60",
+                    "refreshRate": 60,
+                    "size": {
+                        "height": 1080,
+                        "width": 1920
+                    }
+                },
+                {
+                    "id": "89",
+                    "name": "1920x1080@60",
+                    "refreshRate": 59.939998626708984,
+                    "size": {
+                        "height": 1080,
+                        "width": 1920
+                    }
+                },
+                {
+                    "id": "90",
+                    "name": "1680x1050@60",
+                    "refreshRate": 59.882999420166016,
+                    "size": {
+                        "height": 1050,
+                        "width": 1680
+                    }
+                },
+                {
+                    "id": "91",
+                    "name": "1280x1024@75",
+                    "refreshRate": 75.0250015258789,
+                    "size": {
+                        "height": 1024,
+                        "width": 1280
+                    }
+                },
+                {
+                    "id": "92",
+                    "name": "1280x1024@60",
+                    "refreshRate": 60.02000045776367,
+                    "size": {
+                        "height": 1024,
+                        "width": 1280
+                    }
+                },
+                {
+                    "id": "93",
+                    "name": "1440x900@60",
+                    "refreshRate": 59.9010009765625,
+                    "size": {
+                        "height": 900,
+                        "width": 1440
+                    }
+                },
+                {
+                    "id": "94",
+                    "name": "1280x720@120",
+                    "refreshRate": 120,
+                    "size": {
+                        "height": 720,
+                        "width": 1280
+                    }
+                },
+                {
+                    "id": "95",
+                    "name": "1280x720@120",
+                    "refreshRate": 119.87999725341797,
+                    "size": {
+                        "height": 720,
+                        "width": 1280
+                    }
+                },
+                {
+                    "id": "96",
+                    "name": "1280x720@60",
+                    "refreshRate": 60,
+                    "size": {
+                        "height": 720,
+                        "width": 1280
+                    }
+                },
+                {
+                    "id": "97",
+                    "name": "1280x720@60",
+                    "refreshRate": 59.939998626708984,
+                    "size": {
+                        "height": 720,
+                        "width": 1280
+                    }
+                },
+                {
+                    "id": "98",
+                    "name": "1280x720@50",
+                    "refreshRate": 50,
+                    "size": {
+                        "height": 720,
+                        "width": 1280
+                    }
+                },
+                {
+                    "id": "99",
+                    "name": "1024x768@75",
+                    "refreshRate": 75.02899932861328,
+                    "size": {
+                        "height": 768,
+                        "width": 1024
+                    }
+                }
+            ],
+            "name": "HDMI-A-1",
+            "overscan": 0,
+            "pos": {
+                "x": 0,
+                "y": 470
+            },
+            "preferredModes": [
+                "84"
+            ],
+            "priority": 2,
+            "replicationSource": 0,
+            "rgbRange": 1,
+            "rotation": 1,
+            "scale": 1.25,
+            "sdr-brightness": 455,
+            "size": {
+                "height": 1440,
+                "width": 2560
+            },
+            "sizeMM": {
+                "height": 344,
+                "width": 606
+            },
+            "type": 6,
+            "vrrPolicy": 0,
+            "wcg": false
+        }
+    ],
+    "screen": {
+        "currentSize": {
+            "height": 1622,
+            "width": 4608
+        },
+        "id": 0,
+        "maxActiveOutputsCount": 3,
+        "maxSize": {
+            "height": 64000,
+            "width": 64000
+        },
+        "minSize": {
+            "height": 0,
+            "width": 0
+        }
+    },
+    "tabletModeAvailable": false,
+    "tabletModeEngaged": false
+}

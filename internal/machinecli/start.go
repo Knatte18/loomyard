@@ -143,7 +143,7 @@ type startSession struct {
 	d       deps
 	lymPath string
 	// openTerminal opens a terminal window attached to a worktree's reed session; nil when no launcher resolves.
-	openTerminal func(dir, title, lymPath string) error
+	openTerminal func(dir, title, lymPath string) (int, bool, error)
 	// desktop holds the launchers; nil when this machine has none.
 	desktop *desktoplauncher.Desktop
 }
@@ -341,6 +341,7 @@ func (s startSession) runBeamStarts(hub *startHub, prime *lymcwd.Location, plan 
 // A hub that started nothing opens nothing.
 // A worktree whose window does not open carries its attach command instead.
 // So does every one when no terminal launcher resolves.
+// A window that is to be placed is handed to the placement child; a failed hand-off is a warning.
 func (s startSession) openWindows(hub *startHub, prime *lymcwd.Location) {
 	if !slices.ContainsFunc(hub.Worktrees, func(w startWorktree) bool { return w.Outcome == startStarted }) {
 		return
@@ -367,8 +368,14 @@ func (s startSession) openWindows(hub *startHub, prime *lymcwd.Location) {
 		}
 		dir := location.AnchorPath()
 		if s.openTerminal != nil {
-			err := s.openTerminal(dir, boardengine.ConsoleWindowTitle(prime.HubPath, prime.WorktreeName, name), s.lymPath)
+			title := boardengine.ConsoleWindowTitle(prime.HubPath, prime.WorktreeName, name)
+			pid, placing, err := s.openTerminal(dir, title, s.lymPath)
 			if err == nil {
+				if placing {
+					if err := s.d.handPlacement(s.lymPath, prime.HubPath, name, title, pid, name == prime.WorktreeName); err != nil {
+						hub.Warnings = append(hub.Warnings, fmt.Sprintf("the terminal window of %s was not handed to be placed: %v", worktree.Worktree, err))
+					}
+				}
 				continue
 			}
 			hub.Warnings = append(hub.Warnings, fmt.Sprintf("the terminal window of %s did not open: %v", worktree.Worktree, err))

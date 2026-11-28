@@ -22,7 +22,8 @@
 // Every other verb still runs there.
 // `attach` execs tmux over the lym process on Unix, so a shortcut that runs it runs it as its last argv.
 //
-// `window`, `follow` and `button` are run by launchers and tmux bindings, not by hand.
+// `window`, `follow` and `button` are run by launchers and tmux bindings, not by hand,
+// and the hidden `place-window` is run by the verbs that open a window, to place it in a process of its own.
 // `follow` and `button` read no working directory, config or state and skip the root pre-run's stencil-seed pass.
 // A failed `button` exits 0 and shows its message on the clicking client.
 package reedcli

@@ -574,7 +574,7 @@ Optional fields:
   "title"      string — display title
   "brief"      string — one-line summary
   "body"       string — markdown body
-  "depends_on" array  — slugs this task or note waits on
+  "depends_on" array  — slugs the entry waits on
   "isolated"   bool   — no dependencies by design
   "status"     string — lifecycle status
   "kind"       string — "task", "note" or "project", default "note"
@@ -586,10 +586,11 @@ Optional fields:
   "created"    string — RFC 3339 creation
   "revised"    string — RFC 3339 scope change
   "run_settings" object — module name to config keys; {} clears it;
-                  beam.pull_request, beam.land_notice, beam.autonomy and beam.run_watch are per task
+                  beam.pull_request, beam.land_notice, beam.autonomy, beam.run_watch and
+                  beam.window_placement are per task
   "profile"    string — a "lym board profiles" name; "" clears it
   "owner_machine" string — the effective owner only; "lym adopt" moves it
-  "project"    string — slug of the open project holding the entry; "" leaves none
+  "project"    string — slug of its open project; "" leaves none
   "order"      array  — a project's member slugs, in order
   "beam"       bool   — a project's beam flag; only the "lym beam" verbs set it
   "front", "on_land", "discussed" — marks only lym writes: a front task, its land action, an approved Discussion

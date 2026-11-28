@@ -90,9 +90,13 @@ const (
 	RunWatchOff = beamsetting.RunWatchOff
 )
 
+// WindowPlacementKey is the per-task key deciding which desktop a task's terminal window is placed on.
+const WindowPlacementKey = beamsetting.WindowPlacementKey
+
 // Config is the resolved beam.yaml's worktree-wide keys.
-// The per-task keys are beam.pull_request, beam.land_notice, beam.autonomy and beam.run_watch.
-// They are read through LookupPullRequest, LookupLandNotice, LookupAutonomy, LookupRunWatch and LookupWithSource alone.
+// The per-task keys are beam.pull_request, beam.land_notice, beam.autonomy, beam.run_watch and beam.window_placement.
+// LookupPullRequest, LookupLandNotice, LookupAutonomy, LookupRunWatch and LookupWindowPlacement each read one of them.
+// The only other reader of them is LookupWithSource.
 type Config struct {
 	// MaxRuns is the most runs dobby drives at once; 0 starts none.
 	MaxRuns int `yaml:"max_runs"`
@@ -129,6 +133,7 @@ func ConfigSpec() configengine.Spec {
 			LandNoticeKey:            configengine.CategoryNone,
 			AutonomyKey:              configengine.CategoryNone,
 			RunWatchKey:              configengine.CategoryNone,
+			WindowPlacementKey:       configengine.CategoryNone,
 			"adopt_fix_tries":        configengine.CategoryNone,
 			gateHoldFactorKey:        configengine.CategoryNone,
 			gateHoldMinKey:           configengine.CategoryNone,
@@ -147,6 +152,7 @@ func ConfigSpec() configengine.Spec {
 // A resolved per-task key holding a value it does not take is refused too.
 // beam.pull_request takes review, off, trail or merge-in, and beam.land_notice takes on or off.
 // beam.run_watch takes stops, rows or off, and beam.autonomy takes false, true or unattended.
+// beam.window_placement takes "", off, same or next.
 // A write the per-task lookup would refuse is therefore refused when it is made.
 func LoadConfig(dirs configengine.Dirs) (Config, error) {
 	resolved, err := configengine.Load(dirs, ConfigSpec())
@@ -182,7 +188,7 @@ func LoadConfig(dirs configengine.Dirs) (Config, error) {
 	if err := yaml.Unmarshal(resolved, &perTask); err != nil {
 		return Config{}, configengine.MarkInvalid(fmt.Errorf("unmarshal beam config: %w", err))
 	}
-	for _, key := range []string{PullRequestKey, LandNoticeKey, AutonomyKey, RunWatchKey} {
+	for _, key := range []string{PullRequestKey, LandNoticeKey, AutonomyKey, RunWatchKey, WindowPlacementKey} {
 		if _, err := checkTaskSetting(key, perTask[key], "the resolved beam.yaml"); err != nil {
 			return Config{}, err
 		}
@@ -191,14 +197,14 @@ func LoadConfig(dirs configengine.Dirs) (Config, error) {
 }
 
 // CheckLocalValues refuses a local-layer beam document holding a value its key does not take.
-// It checks only beam.pull_request, beam.land_notice, beam.autonomy and beam.run_watch.
+// It checks only beam.pull_request, beam.land_notice, beam.autonomy, beam.run_watch and beam.window_placement.
 // The refusal is marked [configengine.ErrInvalid] and names the key, the values it takes and the way forward.
 func CheckLocalValues(document []byte) error {
 	var keys map[string]any
 	if err := yaml.Unmarshal(document, &keys); err != nil {
 		return configengine.MarkInvalid(fmt.Errorf("unmarshal beam run settings: %w", err))
 	}
-	for _, key := range []string{PullRequestKey, LandNoticeKey, AutonomyKey, RunWatchKey} {
+	for _, key := range []string{PullRequestKey, LandNoticeKey, AutonomyKey, RunWatchKey, WindowPlacementKey} {
 		value, set := keys[key]
 		if !set {
 			continue
@@ -231,6 +237,8 @@ func checkTaskSetting(key string, value any, where string) (string, error) {
 		allowed = beamsetting.PullRequestValues()
 	case RunWatchKey:
 		allowed = beamsetting.RunWatchValues()
+	case WindowPlacementKey:
+		allowed = beamsetting.WindowPlacementValues()
 	}
 	text, isText := value.(string)
 	if isText {

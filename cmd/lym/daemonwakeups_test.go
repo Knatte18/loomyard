@@ -62,6 +62,7 @@ var unboundedWaitFiles = []string{
 	"internal/slackengine/relay.go",
 	"internal/slackengine/bridgepoll.go",
 	"internal/slackengine/holder.go",
+	"internal/kwinplace/parentwait.go",
 }
 
 // oneShotMarker opens the comment that lets a sub-second literal through on its own line, followed by the reason.

@@ -345,7 +345,8 @@ github.com/Knatte18/loomyard/
 ├── internal/pawlengine/          the pawl recipe's own producers, Beam-Up, Beam-Await and Beam-Down, the land request Beam-Await consumes and the beam's ready record, told their geometry and seams by their caller
 ├── internal/failuretrace/        traces a failed Parent-Align or Finalize verify log to the plan cards, batch commit ranges and untraced locations the landing failure record carries
 ├── internal/darnengine/          the darn recipe's hub-wide `darn.yaml` config and the verify command every darn verify reads
-├── internal/desktophook/         the hub-wide `desktop.yaml` config and the machine's window command, run after `lym reed window` and `lym ide` open a window, and the machine's added status-bar buttons
+├── internal/desktophook/         the hub-wide `desktop.yaml` config with its window placement keys, the machine's window command, run after `lym reed window` and `lym ide` open a window and cancellable by its caller, and the machine's added status-bar buttons
+├── internal/kwinplace/           the KWin and kscreen boundary and the flow that places a terminal window on a KDE Plasma desktop
 ├── internal/desktoplauncher/     the desktop launchers that run `lym machine start`, one per hub and one for every hub: a `.desktop` file on Linux, a `.cmd` file on the Windows desktop, through `wsl.exe` under WSL, and the sole namer of where they live
 ├── internal/samplerengine/       the sampler recipe's hub-wide `sampler.yaml` config
 ├── internal/heddleengine/        heddle's instruction layers, the one lym ships in its binary and the repository's `heddle.json`, their rendering into a worktree's CLAUDE and AGENTS files, its `.claude/settings.local.json` and a session's system prompt, the Bolt checkout's `HEDDLE.md` overview of every entry, and the hub-wide `heddle.yaml` that turns the hub's overrides of shipped entries on
@@ -918,6 +919,7 @@ User-facing modules each get one `lym <module>` namespace:
   `lym machine start [<shortname>]` brings back what this machine owns in every live hub, or the one named, from any directory:
   it starts the owned prime and beams through `lym beam start` in each hub's prime, skipping and naming what another machine owns or no owner claims,
   then opens the hub's workspace file and a terminal per started worktree, and prints a standing adopt hold.
+  Under placement those terminal windows run `desktop.window_command` through the placement child; otherwise they run none.
   The desktop launchers that run it, one per hub and one for every hub, are written by `internal/desktoplauncher`:
   a dobby start adds a hub's launcher for a worktree this machine owns, and the verb or a catch-up removes it once this machine owns nothing there.
   ✅ Implemented. See the `internal/machinecli` package documentation.
@@ -1781,6 +1783,7 @@ User-facing modules each get one `lym <module>` namespace:
   `Open-IDE` (`batten.open_ide`, off, command `batten.open_ide_command`) runs `lym ide open`, which opens VS Code on it.
   After the window opens, `lym reed window`, `lym ide spawn` and `lym ide open` each wait `desktop.window_wait_ms`.
   They then run the machine's `desktop.window_command`.
+  Under placement, the placement child runs `desktop.window_command`, with no wait, except when the child is ended by SIGTERM.
   An example is a script that snaps the new window into the desktop's tiling.
   Both are machine keys, set per machine with `lym config desktop --layer machine --set <key>=<value>` from the prime.
   With the command empty, the default, nothing runs.

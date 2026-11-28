@@ -1,20 +1,124 @@
 //go:build !windows
 
-// window_test.go covers desktophook.AfterWindow running a real sh command; the commands are POSIX shell, so Windows is left out.
+// window_test.go covers desktophook.AfterWindow and AfterPlacement running a real sh command.
+// The commands are POSIX shell, so Windows is left out.
 
 package desktophook_test
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/desktophook"
+	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
+
+// TestAfterPlacement covers these behaviors of the call.
+// An unset command runs nothing.
+// A config that fails to load is an error.
+// A set command runs with no wait.
+// A cancel ends the command with its whole process group.
+func TestAfterPlacement(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	t.Run("UnsetCommandRunsNothing", func(t *testing.T) {
+		t.Parallel()
+		dirs := newDirsWithMachineConfig(t, "window_wait_ms: 600000\n")
+		if err := desktophook.AfterPlacement(context.Background(), dirs, t.TempDir()); err != nil {
+			t.Errorf("AfterPlacement() = %v; want nil", err)
+		}
+	})
+
+	t.Run("ConfigThatFailsToLoadIsAnError", func(t *testing.T) {
+		t.Parallel()
+		dirs := newDirsWithMachineConfig(t, "window_wait_ms: -1\n")
+		err := desktophook.AfterPlacement(context.Background(), dirs, t.TempDir())
+		if err == nil || !strings.Contains(err.Error(), "desktop.window_wait_ms") {
+			t.Errorf("AfterPlacement() = %v; want an error naming desktop.window_wait_ms", err)
+		}
+	})
+
+	t.Run("SetCommandRunsAtOnce", func(t *testing.T) {
+		t.Parallel()
+		dirs := newDirsWithMachineConfig(t, "window_command: \"pwd > marker\"\nwindow_wait_ms: 600000\n")
+		windowDir := t.TempDir()
+
+		done := make(chan error, 1)
+		go func() { done <- desktophook.AfterPlacement(context.Background(), dirs, windowDir) }()
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Fatalf("AfterPlacement() = %v; want nil", err)
+			}
+		case <-time.After(time.Minute):
+			t.Fatalf("AfterPlacement() has not returned after a minute; want it to run the command with no wait")
+		}
+
+		marker, err := os.ReadFile(filepath.Join(windowDir, "marker"))
+		if err != nil {
+			t.Fatalf("read marker: %v; want the command to have written it", err)
+		}
+		if got := strings.TrimSpace(string(marker)); got != windowDir {
+			t.Errorf("command ran in %q; want %q", got, windowDir)
+		}
+	})
+
+	t.Run("CancelEndsTheCommandAndItsGroup", func(t *testing.T) {
+		t.Parallel()
+		dirs := newDirsWithMachineConfig(t, "window_command: \"sleep 300 & echo $! > child; wait\"\n")
+		windowDir := t.TempDir()
+		ctx, cancel := context.WithCancel(context.Background())
+		t.Cleanup(cancel)
+
+		done := make(chan error, 1)
+		go func() {
+			done <- desktophook.AfterPlacementWithTiming(ctx, dirs, windowDir, time.Hour, time.Second, time.Second)
+		}()
+
+		deadline := time.Now().Add(time.Minute)
+		var childPid int
+		for childPid == 0 {
+			// The newline marks the pid as written whole.
+			content, err := os.ReadFile(filepath.Join(windowDir, "child"))
+			if err == nil && strings.HasSuffix(string(content), "\n") {
+				childPid, err = strconv.Atoi(strings.TrimSpace(string(content)))
+				if err != nil {
+					t.Fatalf("parse child pid %q: %v", content, err)
+				}
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("the command wrote no child pid within a minute")
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		cancel()
+
+		select {
+		case err := <-done:
+			if !errors.Is(err, context.Canceled) {
+				t.Errorf("AfterPlacement() = %v; want an error wrapping context.Canceled", err)
+			}
+		case <-time.After(time.Minute):
+			t.Fatalf("AfterPlacement() has not returned a minute after the cancel")
+		}
+		for proc.IsAlive(childPid) {
+			if time.Now().After(deadline) {
+				t.Fatalf("the command's child %d is still alive after the cancel", childPid)
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	})
+}
 
 // TestAfterWindow covers four behaviors.
 // A command that is unset or blank runs nothing and waits for nothing.

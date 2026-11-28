@@ -56,6 +56,8 @@ const (
 	// RoleBoardServer is the hub's board server, registered under HubOwner.
 	// A subject's process end ends it with the hub's other processes.
 	RoleBoardServer = "board-server"
+	// RolePlacement is the detached child that places a terminal window opened from inside a task's run.
+	RolePlacement = "placement"
 )
 
 // Record is one registered process of a run.

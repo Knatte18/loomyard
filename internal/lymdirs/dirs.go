@@ -123,6 +123,11 @@ const RaddleDirName = "raddle"
 // the durable state, reports, journal and outcome under `_lym`, and the prompts and locks under `.lym`.
 const WeaverDirName = "weaver"
 
+// WindowPlacesDirName is the directory under the hub's board-level `.lym` for the remembered window places.
+// It holds the places and their lock.
+// It is a never-tracked cache, and an absent one reads as empty.
+const WindowPlacesDirName = "window-places"
+
 // LocksDirName is the directory under a checkout's `.lym` that holds the lock files for the checkout's tracked files.
 const LocksDirName = "locks"
 
