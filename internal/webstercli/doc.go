@@ -32,6 +32,7 @@
 // In hub mode the reset's records commit carries a `Run-Transition` trailer naming the worktree's run,
 // so the run's last transition names the code tip the reset moved to, not the tip it dropped.
 // The verb then pushes the pair's records before it returns, waiting for a push already running.
+// A sync that fails after the records commit landed still pushes it before the verb refuses.
 // A push that fails is reported in `push_error` and leaves a failed-push record, which holds the run.
 // A push that finds the run taken over by another machine fails the verb, with the reset already made.
 //

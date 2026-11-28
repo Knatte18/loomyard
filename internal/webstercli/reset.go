@@ -3,7 +3,8 @@
 // It plans the reset with websterengine.PlanReset and performs it through fabricengine's pair-checkout reset.
 // In standalone mode it performs it through gitrepo's keep-reset instead.
 // It then clears the persisted pre-fix head and fabric-syncs state.json.
-// That records commit marks the run's transition at the new tip, and the verb pushes it before it returns.
+// That records commit marks the run's transition at the new tip.
+// The verb pushes it before it returns, even when the sync fails after the commit landed.
 // A reset to start ends by archiving the run record, or archives alone when the start cannot be moved to.
 // The verb runs no git of its own, so an agent that is denied `git reset --hard` still has a way to recover.
 package webstercli
@@ -61,8 +62,9 @@ leaves the remote task branch alone. A refusal names its way forward.
 
 The envelope carries target, sha, mutations and partial; --to start and a
 standalone reset add uncommitted and warnings, and --to start adds moved.
-The reset pushes the run's records before it returns. A push that fails is
-reported in push_error and recorded as a failed push, which holds the run.
+The reset pushes the run's records before it returns, a refusal whose records
+commit landed included. A push that fails is reported in push_error and
+recorded as a failed push, which holds the run.
 
 Example:
   lym webster reset --to start
@@ -189,8 +191,22 @@ Example:
 			if c.runID != "" {
 				transition = append(transition, fabriclayout.Trailer{Key: fabriclayout.TransitionTrailerKey, Value: c.runID})
 			}
-			if _, syncErr := fabricSync(c.openFabric, c.anchorRel, c.syncOptions, "reset", transition...); syncErr != nil {
-				return fail(fmt.Sprintf("webster: the branch was reset but the fabric sync failed: %v; %s", syncErr, fabricSyncWayForward))
+			if committed, syncErr := fabricSync(c.openFabric, c.anchorRel, c.syncOptions, "reset", transition...); syncErr != nil {
+				msg := fmt.Sprintf("webster: the branch was reset but the fabric sync failed: %v; %s", syncErr, fabricSyncWayForward)
+				if !committed {
+					return fail(msg)
+				}
+				// The records commit landed before the sync failed, so it is pushed as on success.
+				pushErr := c.pushResetRecords()
+				if pushErr == nil {
+					return fail(msg)
+				}
+				// Nothing more is pushed for a handed-over run, so the sync's way forward would mislead.
+				if errors.Is(pushErr, fabricengine.ErrHandedOver) {
+					msg = fmt.Sprintf("webster: the branch was reset, and the run was handed over: %v; the fabric sync also failed: %v; way forward: leave the run to that machine; a session reports status: FAILED to the orch", pushErr, syncErr)
+				}
+				clihelp.SetExit(cmd.Context(), output.ErrFields(out, msg, map[string]any{"push_error": pushErr.Error()}))
+				return nil
 			}
 
 			fields := map[string]any{
@@ -198,15 +214,11 @@ Example:
 				"mutations": rec.Entries(),
 				"partial":   false,
 			}
-			// Synchronous, unlike the pusher's quiet retry, so an owed failure writes the record that holds the run.
-			if c.pushRecords != nil && !c.syncOptions.SkipGit && !c.syncOptions.SkipPush {
-				switch pushErr := c.pushRecords(); {
-				case errors.Is(pushErr, fabricengine.ErrHandedOver):
-					return fail(fmt.Sprintf("webster: the branch was reset, and the run was handed over: %v", pushErr))
-				case pushErr != nil:
-					logger.Warn("webstercli: the reset's records push failed", "error", pushErr)
-					fields["push_error"] = pushErr.Error()
-				}
+			switch pushErr := c.pushResetRecords(); {
+			case errors.Is(pushErr, fabricengine.ErrHandedOver):
+				return fail(fmt.Sprintf("webster: the branch was reset, and the run was handed over: %v", pushErr))
+			case pushErr != nil:
+				fields["push_error"] = pushErr.Error()
 			}
 			if !plan.ArchiveOnly {
 				fields["sha"] = plan.SHA
@@ -234,6 +246,21 @@ Example:
 	cmd.Flags().StringVar(&to, "to", "", "the recorded commit to reset to: start, pre-fix, report-head, last-batch-head or batch-start (required); report-head and batch-start take --batch")
 	cmd.Flags().IntVar(&batch, "batch", 0, "the batch number report-head and batch-start resolve against (refused for the other targets)")
 	return cmd
+}
+
+// pushResetRecords pushes the run's records once and returns the push's failure.
+// It returns nil when the push succeeded, or when the CLI's sync options or wiring skip it.
+// It is synchronous, unlike the pusher's quiet retry, so an owed failure writes the record that holds the run.
+// A failure other than a hand-over is logged as a warning.
+func (c *websterCLI) pushResetRecords() error {
+	if c.pushRecords == nil || c.syncOptions.SkipGit || c.syncOptions.SkipPush {
+		return nil
+	}
+	err := c.pushRecords()
+	if err != nil && !errors.Is(err, fabricengine.ErrHandedOver) {
+		logger.Warn("webstercli: the reset's records push failed", "error", err)
+	}
+	return err
 }
 
 // pushPairRecords returns the synchronous push of the records of the pair at loc for the run runID.

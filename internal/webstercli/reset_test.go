@@ -1,6 +1,6 @@
 // reset_test.go covers the reset verb through its cobra.Command, each case over its own copied hub and task pair.
 // Each success path checks the branch, the files and the mutation record;
-// each refusal checks its way forward and that nothing moved.
+// each refusal raised before the reset checks its way forward and that nothing moved.
 // TestResetCmd builds every fixture with the CLI's SkipGit option set,
 // so the closing fabric sync commits nothing and needs no records sibling beyond the pair's own.
 // The reset's remote update ignores SkipGit, so the remote-branch steps run it under that setting.
@@ -10,6 +10,7 @@ package webstercli
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -165,6 +166,7 @@ func (fx *resetFixture) wantRefusal(t *testing.T, args []string, parts ...string
 // TestResetCmd_RecordsTheRunTransitionAtTheNewTip pins the run transition a reset's records commit marks.
 // The commit names the tip the reset moved to, so the run's last transition no longer names the dropped tip.
 // The verb pushes that commit itself, and an unreachable records origin leaves an owed push of the run.
+// A sync that fails after the commit landed refuses, and still pushes the commit first.
 //
 // The run record is committed to the records side before the reset, with no recovery and no pre-fix head to clear,
 // so the reset leaves its bytes as they were and only an empty records commit can carry the transition.
@@ -178,10 +180,14 @@ func TestResetCmd_RecordsTheRunTransitionAtTheNewTip(t *testing.T) {
 		wantEmptyCommit bool
 		// unreachable points the records origin at a closed port.
 		unreachable bool
+		// syncFailsAfterCommit squats a directory on the correspondence index path,
+		// so the records commit lands and recording it fails.
+		syncFailsAfterCommit bool
 	}{
-		{"BatchStartWithNothingToClear", []string{"--to", "batch-start", "--batch", "1"}, true, false},
-		{"Start", []string{"--to", "start"}, false, false},
-		{"UnreachableRecordsOriginLeavesAnOwedRecord", []string{"--to", "start"}, false, true},
+		{"BatchStartWithNothingToClear", []string{"--to", "batch-start", "--batch", "1"}, true, false, false},
+		{"Start", []string{"--to", "start"}, false, false, false},
+		{"UnreachableRecordsOriginLeavesAnOwedRecord", []string{"--to", "start"}, false, true, false},
+		{"SyncFailingAfterTheCommitLeavesAnOwedRecord", []string{"--to", "start"}, false, true, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -202,9 +208,16 @@ func TestResetCmd_RecordsTheRunTransitionAtTheNewTip(t *testing.T) {
 			if tt.unreachable {
 				gitkit.Git(t, records, "remote", "set-url", "origin", "http://127.0.0.1:1/x")
 			}
+			if tt.syncFailsAfterCommit {
+				squatCorrespondenceIndex(t, records)
+			}
 
 			code, envelope := fx.reset(t, tt.args...)
-			if code != 0 || envelope["ok"] != true {
+			if tt.syncFailsAfterCommit {
+				if msg, _ := envelope["error"].(string); code == 0 || envelope["ok"] != false || !strings.Contains(msg, "the fabric sync failed") {
+					t.Fatalf("reset %v = %d, %v; want the fabric sync refusal", tt.args, code, envelope)
+				}
+			} else if code != 0 || envelope["ok"] != true {
 				t.Fatalf("reset %v = %d, %v; want ok", tt.args, code, envelope)
 			}
 			owed, err := fabricengine.FailedPushesOwedBy(loc.HubPath, loc.WorktreeName)
@@ -236,6 +249,81 @@ func TestResetCmd_RecordsTheRunTransitionAtTheNewTip(t *testing.T) {
 			}
 		})
 	}
+}
+
+// squatCorrespondenceIndex puts a directory on the correspondence index path of the records worktree,
+// so a records commit lands and recording it fails.
+func squatCorrespondenceIndex(t *testing.T, records string) {
+	t.Helper()
+	corrIndex := filepath.Join(gitkit.Git(t, records, "rev-parse", "--absolute-git-dir"), "fabric-corrindex.json")
+	if err := os.RemoveAll(corrIndex); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(corrIndex, 0o755); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestResetCmd_SyncFailureAndTheRecordsPush pins when a refusal over a failed sync pushes, and what a hand-over says.
+func TestResetCmd_SyncFailureAndTheRecordsPush(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	t.Run("BeforeTheCommitLandsPushesNothing", func(t *testing.T) {
+		t.Parallel()
+		fx := newResetFixture(t, fabricengine.SyncOptions{})
+		fx.saveState(t, startedAt(fx.base))
+		// The verb opens the fabric once to plan the reset and once more to sync.
+		open, opens := fx.cli.openFabric, 0
+		fx.cli.openFabric = func() (*fabricengine.Fabric, error) {
+			if opens++; opens > 1 {
+				return nil, errors.New("the open failed")
+			}
+			return open()
+		}
+		// A push that ran would show its error in push_error.
+		fx.cli.pushRecords = func() error { return errors.New("the push ran") }
+
+		code, envelope := fx.reset(t, "--to", "start")
+		msg, _ := envelope["error"].(string)
+		if code == 0 || envelope["ok"] != false || !strings.Contains(msg, "the fabric sync failed: the open failed") {
+			t.Fatalf("reset --to start = %d, %v; want the fabric sync refusal", code, envelope)
+		}
+		if got, has := envelope["push_error"]; has {
+			t.Errorf("push_error = %v; want no push", got)
+		}
+	})
+
+	t.Run("AfterTheCommitLandsAHandOverReplacesTheWayForward", func(t *testing.T) {
+		t.Parallel()
+		fx := newResetFixture(t, fabricengine.SyncOptions{})
+		fx.saveState(t, startedAt(fx.base))
+		loc, err := lymcwd.ResolveWorktree(fx.checkout)
+		if err != nil {
+			t.Fatalf("ResolveWorktree(%s): %v", fx.checkout, err)
+		}
+		squatCorrespondenceIndex(t, fabricengine.RecordsWorktree(loc))
+		fx.cli.pushRecords = func() error {
+			return fmt.Errorf("%w: machine %q holds the run now", fabricengine.ErrHandedOver, "oslo")
+		}
+
+		code, envelope := fx.reset(t, "--to", "start")
+		msg, _ := envelope["error"].(string)
+		if code == 0 || envelope["ok"] != false {
+			t.Fatalf("reset --to start = %d, %v; want a refusal", code, envelope)
+		}
+		for _, want := range []string{"webster: the branch was reset, and the run was handed over", "the fabric sync also failed", "way forward: leave the run to that machine"} {
+			if !strings.Contains(msg, want) {
+				t.Errorf("error = %q; want it to contain %q", msg, want)
+			}
+		}
+		if strings.Contains(msg, fabricSyncWayForward) {
+			t.Errorf("error = %q; want no sync way forward on a handed-over run", msg)
+		}
+		if pushErr, _ := envelope["push_error"].(string); !strings.Contains(pushErr, `machine "oslo" holds the run now`) {
+			t.Errorf("push_error = %q; want it to name the hand-over", pushErr)
+		}
+	})
 }
 
 // TestResetCmd runs every reset case as a parallel subtest.
