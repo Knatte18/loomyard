@@ -64,21 +64,73 @@ func TestPusherLock_ExcludesASecondPusherUntilReleased(t *testing.T) {
 	third()
 }
 
-func TestWorktreeGone_ReadsWhetherTheDirectoryStands(t *testing.T) {
+// removals change a pair's worktree so that it no longer stands.
+var removals = []struct {
+	name   string
+	remove func(path string) error
+}{
+	{"TheDirectoryIsGone", os.RemoveAll},
+	{"TheDirectoryStandsWithoutItsGitEntry", func(path string) error { return os.Remove(filepath.Join(path, ".git")) }},
+	{"ThePathIsARegularFile", func(path string) error {
+		if err := os.RemoveAll(path); err != nil {
+			return err
+		}
+		return os.WriteFile(path, nil, 0o644)
+	}},
+}
+
+func TestWorktreeGone_ReadsWhetherTheWorktreeStands(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	target := pairTargetIn(t)
-	if gone, err := worktreeGone(target); err != nil || gone {
+	path := pairTargetIn(t).Location.WorktreePath()
+	if gone, err := worktreeGone(path); err != nil || gone {
 		t.Errorf("worktreeGone() of a standing worktree = %v, %v; want false, nil", gone, err)
 	}
+	for _, tt := range removals {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	if err := os.RemoveAll(target.Location.WorktreePath()); err != nil {
-		t.Fatalf("remove the worktree: %v", err)
+			path := pairTargetIn(t).Location.WorktreePath()
+			if err := tt.remove(path); err != nil {
+				t.Fatalf("remove the worktree: %v", err)
+			}
+
+			if gone, err := worktreeGone(path); err != nil || !gone {
+				t.Errorf("worktreeGone() = %v, %v; want true, nil", gone, err)
+			}
+		})
 	}
+}
 
-	if gone, err := worktreeGone(target); err != nil || !gone {
-		t.Errorf("worktreeGone() of a removed worktree = %v, %v; want true, nil", gone, err)
+// TestTargetOf_AWorktreeNoLongerStandingIsAPairThatStartsNoPusher covers a run whose pair no longer stands:
+// its target reads as the pair with no error, and its start and refusal reads answer false with no error.
+func TestTargetOf_AWorktreeNoLongerStandingIsAPairThatStartsNoPusher(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	for _, tt := range removals {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			location := pairTargetIn(t).Location
+			if err := tt.remove(location.WorktreePath()); err != nil {
+				t.Fatalf("remove the worktree: %v", err)
+			}
+
+			target, err := TargetOf(location, "task")
+
+			want := Target{Location: location, Slug: "task", Pair: true}
+			if err != nil || target != want {
+				t.Fatalf("TargetOf() = %+v, %v; want %+v, nil", target, err, want)
+			}
+			if started, err := StartIfAhead(target); err != nil || started {
+				t.Errorf("StartIfAhead() = %v, %v; want false, nil", started, err)
+			}
+			if refused, err := TargetRefused(target); err != nil || refused {
+				t.Errorf("TargetRefused() = %v, %v; want false, nil", refused, err)
+			}
+		})
 	}
 }
 

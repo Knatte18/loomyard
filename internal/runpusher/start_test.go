@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -20,12 +21,13 @@ import (
 // startFake holds what the fake reads answer and records what the starter read and spawned.
 type startFake struct {
 	skipped  bool
+	gone     bool
 	lockFree bool
 	stands   bool
 	paused   bool
 	marked   bool
 	ahead    bool
-	// failing names the read that fails: lock, stands, paused, marked, ahead or spawn.
+	// failing names the read that fails: gone, lock, stands, paused, marked, ahead or spawn.
 	failing string
 	reads   []string
 	spawned []spawnRequest
@@ -43,7 +45,13 @@ func (f *startFake) starter() starter {
 		return answer, nil
 	}
 	return starter{
-		skipped:           func() bool { return f.skipped },
+		skipped: func() bool { return f.skipped },
+		pairGone: func(Target) (bool, error) {
+			if f.failing == "gone" {
+				return false, errFakeRead
+			}
+			return f.gone, nil
+		},
 		lockFree:          func(string) (bool, error) { return read("lock", f.lockFree) },
 		refusedPushStands: func(Target) (bool, error) { return read("stands", f.stands) },
 		pauseCovers:       func(Target) (bool, error) { return read("paused", f.paused) },
@@ -127,6 +135,13 @@ func TestStart(t *testing.T) {
 		{name: "PauseAndMarkDoNotApplyToTheBoard", target: "board", wantSpawn: true, setup: func(f *startFake) { f.paused, f.marked = true, true }},
 		{name: "PauseAndMarkDoNotApplyToTheLandingTarget", target: "landing", wantSpawn: true, setup: func(f *startFake) { f.paused, f.marked = true, true }},
 		{name: "GitOrPushesOffReadsNothing", target: "pair", setup: func(f *startFake) { f.skipped = true }, wantNoReads: true},
+		{name: "AGonePairReadsNothingElse", target: "pair", setup: func(f *startFake) { f.gone = true }, wantNoReads: true},
+		{
+			name: "IfAheadWithAGonePairWritesNothing", target: "pair", ifAhead: true,
+			setup: func(f *startFake) { f.gone = true }, wantNoReads: true,
+		},
+		{name: "AGoneReadDoesNotApplyToThePrime", target: "prime", wantSpawn: true, setup: func(f *startFake) { f.gone = true }},
+		{name: "GoneReadFails", target: "pair", setup: func(f *startFake) { f.failing = "gone" }, wantErr: true},
 		{name: "IfAheadWithTheWorktreeLevel", target: "pair", ifAhead: true, setup: func(f *startFake) { f.ahead = false }},
 		{
 			name: "IfAheadWithTheWorktreeLevelDropsItsEntry", target: "pair", ifAhead: true,
@@ -205,7 +220,8 @@ func seedEntry(t *testing.T, hub string, key pushledger.Key, entry pushledger.En
 	}
 }
 
-// TestPruneLedger covers which entries the pruning drops: only that of a gone worktree holding no landing.
+// TestPruneLedger covers which entries the pruning drops: only that of a worktree no longer standing, with no landing.
+// An entry whose worktree cannot be read is kept and its failure returned.
 func TestPruneLedger(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -215,10 +231,21 @@ func TestPruneLedger(t *testing.T) {
 	if err := os.Mkdir(standing, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(standing, ".git"), []byte("gitdir: elsewhere\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	leftover := filepath.Join(hub, "leftover")
+	if err := os.Mkdir(leftover, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	gone := filepath.Join(hub, "gone")
+	// A name past the file system's length limit fails the read for every user, root included.
+	unreadable := filepath.Join(hub, strings.Repeat("u", 300))
 	entries := map[pushledger.Key]pushledger.Entry{
+		"unreadable":          {Worktree: unreadable, Slug: "unreadable"},
 		"standing":            {Worktree: standing, Slug: "standing"},
 		"gone":                {Worktree: gone, Slug: "gone"},
+		"leftover":            {Worktree: leftover, Slug: "leftover"},
 		"gone-with-a-landing": {Worktree: gone, Slug: "landed", Landings: []pushledger.Landing{{Run: "landed"}}},
 		pushledger.BoardKey:   {},
 		pushledger.LandingKey: {},
@@ -227,8 +254,8 @@ func TestPruneLedger(t *testing.T) {
 		seedEntry(t, hub, key, entry)
 	}
 
-	if err := PruneLedger(hub, time.Unix(3, 0)); err != nil {
-		t.Fatalf("PruneLedger() = %v; want nil", err)
+	if err := PruneLedger(hub, time.Unix(3, 0)); err == nil || !strings.Contains(err.Error(), unreadable) {
+		t.Fatalf("PruneLedger() = %v; want the failed read of %s", err, unreadable)
 	}
 
 	left, err := pushledger.List(hub)
@@ -237,7 +264,7 @@ func TestPruneLedger(t *testing.T) {
 	}
 	for key := range entries {
 		_, found := left[key]
-		if want := key != "gone"; found != want {
+		if want := key != "gone" && key != "leftover"; found != want {
 			t.Errorf("entry %s found = %v; want %v", key, found, want)
 		}
 	}

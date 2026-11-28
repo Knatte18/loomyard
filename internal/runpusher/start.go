@@ -42,6 +42,8 @@ type spawnRequest struct {
 type starter struct {
 	// skipped reports whether git or pushes are off for this process.
 	skipped func() bool
+	// pairGone reports whether the pair t names no longer stands.
+	pairGone func(t Target) (bool, error)
 	// lockFree reports whether nobody holds the pusher lock at path.
 	lockFree func(path string) (bool, error)
 	// refusedPushStands reports whether a refused-push record stands for the target's branches.
@@ -60,6 +62,8 @@ type starter struct {
 // The conditions are a free pusher lock and no refused push of the target's branch.
 // A pair also needs no pause covering its run and no hand-over mark naming it.
 // A process with FABRIC_SKIP_GIT or FABRIC_SKIP_PUSH set starts none.
+// A pair whose worktree no longer stands starts none and reads no other condition.
+// A worktree stands while it holds its `.git` entry.
 // Two racing starts may both spawn: the loser exits at the lock.
 // A failed read returns its error and starts none.
 func Start(t Target) (bool, error) {
@@ -90,6 +94,7 @@ func newStarter() starter {
 			options := fabricengine.EnvSyncOptions()
 			return options.SkipGit || options.SkipPush
 		},
+		pairGone: func(t Target) (bool, error) { return worktreeGone(t.Location.WorktreePath()) },
 		lockFree: func(path string) (bool, error) {
 			release, acquired, err := tryLock(path)
 			if acquired {
@@ -110,6 +115,12 @@ func newStarter() starter {
 func (s starter) start(t Target, ifAhead bool) (bool, error) {
 	if s.skipped() {
 		return false, nil
+	}
+	if t.Pair {
+		gone, err := s.pairGone(t)
+		if err != nil || gone {
+			return false, err
+		}
 	}
 	ledger := Deps{HubPath: t.Location.HubPath, Now: time.Now}
 	if ifAhead {

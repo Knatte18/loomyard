@@ -15,11 +15,14 @@
 // Start and StartIfAhead spawn the pusher verb, `lym loom pusher`, when every start condition holds:
 // the lock is free, and no refused push of the target's branch stands, as TargetRefused reads it.
 // For a pair, no pause may cover the run, and no hand-over mark may name it.
+// A pair whose worktree no longer stands starts none and logs nothing.
+// A worktree stands while it holds its `.git` entry.
+// TargetOf reads it as a pair, and TargetRefused reads it as not refused.
 // StartIfAhead also requires something origin lacks, and writes or drops the target's ledger entry as it reads.
 // The board is ahead while it holds an uncommitted file or an unpushed commit,
 // and every target is ahead while its entry holds a landing.
 // The landing target is also ahead while the prime's code branch carries an unsettled landing commit.
-// PruneLedger drops the entries of worktrees that are gone.
+// PruneLedger drops the entries of worktrees that no longer stand.
 // A process with FABRIC_SKIP_GIT or FABRIC_SKIP_PUSH set starts none.
 // The spawn is detached and runs in the hub's Bolt directory.
 // It is registered under the hub's owner with the push role, so a run's teardown, cancel or hand-over never ends it.

@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
@@ -77,9 +79,33 @@ func boardAhead(hubPath string) (bool, error) {
 	return bolt.HasUnpushed()
 }
 
+// gitEntryName is the `.git` entry every worktree of a repository holds at its root.
+const gitEntryName = ".git"
+
+// worktreeGone reports whether no worktree stands at path, which holds when no `.git` entry is under it.
+// So a missing path, a file at the path and a directory without the entry all read as gone.
+func worktreeGone(path string) (bool, error) {
+	_, err := os.Lstat(filepath.Join(path, gitEntryName))
+	switch {
+	case err == nil:
+		return false, nil
+	// ENOTDIR is what a file at the path answers.
+	case errors.Is(err, fs.ErrNotExist), errors.Is(err, syscall.ENOTDIR):
+		return true, nil
+	}
+	return false, fmt.Errorf("runpusher: read the worktree %s: %w", path, err)
+}
+
 // TargetRefused reports whether a refused push of t's branch stands, which no retry clears.
 // The landing target reads the refusals of the prime's code branch, which count against no other target.
+// A pair whose worktree no longer stands reads as not refused, since nothing pushes it again.
 func TargetRefused(t Target) (bool, error) {
+	if t.Pair {
+		gone, err := worktreeGone(t.Location.WorktreePath())
+		if err != nil || gone {
+			return false, err
+		}
+	}
 	switch t.Kind {
 	case KindLanding:
 		return fabricengine.PrimeCodeRefusalStands(t.Location)
@@ -109,7 +135,7 @@ func boardRefused(hubPath string) (bool, error) {
 	return false, nil
 }
 
-// PruneLedger removes each ledger entry whose worktree no longer stands.
+// PruneLedger removes each ledger entry whose worktree no longer stands, holding no `.git` entry.
 // An entry holding landings is kept, since its pending writes wait for the push.
 // The board and landing entries name no worktree of their own and are kept.
 // A failed worktree read keeps its entry and is returned with every other failure.
@@ -123,15 +149,14 @@ func PruneLedger(hubPath string, now time.Time) error {
 		if key == pushledger.BoardKey || key == pushledger.LandingKey || entry.Worktree == "" || len(entry.Landings) > 0 {
 			continue
 		}
-		_, err := os.Stat(entry.Worktree)
+		gone, err := worktreeGone(entry.Worktree)
 		switch {
-		case err == nil:
-		case errors.Is(err, fs.ErrNotExist):
+		case err != nil:
+			failures = append(failures, err)
+		case gone:
 			failures = append(failures, pushledger.Update(hubPath, key, now, func(current pushledger.Entry, found bool) (pushledger.Entry, bool, error) {
 				return current, found && len(current.Landings) > 0, nil
 			}))
-		default:
-			failures = append(failures, fmt.Errorf("runpusher: read the worktree %s: %w", entry.Worktree, err))
 		}
 	}
 	return errors.Join(failures...)

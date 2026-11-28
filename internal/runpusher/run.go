@@ -6,7 +6,6 @@ package runpusher
 import (
 	"context"
 	"errors"
-	"os"
 	"path/filepath"
 	"slices"
 	"time"
@@ -56,7 +55,7 @@ type Deps struct {
 	Guard func() error
 	// Push pushes the worktree once.
 	Push func() error
-	// WorktreeGone reports whether the worktree no longer exists.
+	// WorktreeGone reports whether the worktree no longer stands, holding no `.git` entry.
 	WorktreeGone func() (bool, error)
 	// Owed reports whether a failed push is owed, so the pusher retries it.
 	Owed func(err error) bool
@@ -96,7 +95,7 @@ func NewDeps(t Target, timing fabricengine.PushTiming) Deps {
 			marked, err := handedOver(t)
 			return !marked, err
 		},
-		WorktreeGone: func() (bool, error) { return worktreeGone(t) },
+		WorktreeGone: func() (bool, error) { return worktreeGone(t.Location.WorktreePath()) },
 		Owed:         func(err error) bool { return errors.Is(err, errParentOwed) || fabricengine.IsPushOwed(err) },
 		Timing:       timing,
 		HubPath:      hubPath,
@@ -420,7 +419,7 @@ func workRemains(deps Deps) (bool, error) {
 	return deps.Ahead()
 }
 
-// canPush reports whether the worktree exists and the start conditions but the lock hold.
+// canPush reports whether the worktree stands and the start conditions but the lock hold.
 func canPush(deps Deps) (bool, error) {
 	gone, err := deps.WorktreeGone()
 	if err != nil || gone {
@@ -459,13 +458,4 @@ func attemptPush(ctx context.Context, t Target, deps Deps) error {
 		}
 	}
 	return deps.Push()
-}
-
-// worktreeGone reports whether the worktree of t no longer exists.
-func worktreeGone(t Target) (bool, error) {
-	_, err := os.Stat(t.Location.WorktreePath())
-	if os.IsNotExist(err) {
-		return true, nil
-	}
-	return false, err
 }

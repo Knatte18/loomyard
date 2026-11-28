@@ -69,7 +69,15 @@ func ledgerKey(t Target) pushledger.Key {
 // TargetOf builds the target of the worktree l for the run slug.
 // The prime's target carries an empty slug whatever slug is passed:
 // its pusher carries every batten run's commits and names no one run.
+// A worktree that no longer stands reads as a pair, since the prime stands while its hub does.
+// A worktree stands while it holds its `.git` entry.
+// A pair read this way starts no pusher.
 func TargetOf(l *lymcwd.Location, slug string) (Target, error) {
+	pair := Target{Location: l, Slug: slug, Pair: true}
+	gone, err := worktreeGone(l.WorktreePath())
+	if err != nil || gone {
+		return pair, err
+	}
 	prime, err := fabricengine.IsPrimeWorktree(l)
 	if err != nil {
 		return Target{}, fmt.Errorf("runpusher: tell whether %s is the prime: %w", l.WorktreePath(), err)
@@ -77,7 +85,7 @@ func TargetOf(l *lymcwd.Location, slug string) (Target, error) {
 	if prime {
 		return Target{Location: l}, nil
 	}
-	return Target{Location: l, Slug: slug, Pair: true}, nil
+	return pair, nil
 }
 
 // LockPath returns the lock file of the pusher of t.

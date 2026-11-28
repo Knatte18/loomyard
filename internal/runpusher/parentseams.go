@@ -4,10 +4,7 @@
 package runpusher
 
 import (
-	"errors"
 	"fmt"
-	"io/fs"
-	"os"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
@@ -56,17 +53,15 @@ func beamPair(t Target) bool {
 	return false
 }
 
-// pairOf returns the location of the run's pair, standing reporting false when its code worktree is gone.
+// pairOf returns the location of the run's pair.
+// standing reports whether the pair stands, which it does while its code worktree holds its `.git` entry.
 func pairOf(hubPath, run string) (pair *lymcwd.Location, standing bool, err error) {
 	pair, err = lymcwd.NamedWorktree(hubPath, run)
 	if err != nil {
 		return nil, false, err
 	}
-	_, err = os.Stat(pair.WorktreePath())
-	if errors.Is(err, fs.ErrNotExist) {
-		return pair, false, nil
-	}
-	return pair, err == nil, err
+	gone, err := worktreeGone(pair.WorktreePath())
+	return pair, err == nil && !gone, err
 }
 
 // parentSeams fills every parent seam of t but PushTip and HandOver, which the caller adds.
