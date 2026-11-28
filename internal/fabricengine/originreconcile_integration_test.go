@@ -344,15 +344,17 @@ func TestReconcileOrigin_Judge(t *testing.T) {
 			Sleep:         func(time.Duration) {},
 		}
 		for _, row := range []struct {
-			name      string
-			breakURL  string
-			scope     fabriclayout.ReconcileScope
-			options   fabricengine.ReconcileOptions
-			wantError bool
+			name            string
+			breakURL        string
+			scope           fabriclayout.ReconcileScope
+			options         fabricengine.ReconcileOptions
+			wantError       bool
+			wantUnreachable bool
 		}{
-			{"a judge-only reconcile", "", fabriclayout.ReconcileScope{JudgeOnly: true}, fabricengine.ReconcileOptions{}, false},
-			{"an unreachable origin", "http://127.0.0.1:1/x", fabriclayout.ReconcileScope{}, unreachableOptions, false},
-			{"an origin that is no repository", filepath.Join(t.TempDir(), "no-repository"), fabriclayout.ReconcileScope{}, unreachableOptions, true},
+			{"a judge-only reconcile", "", fabriclayout.ReconcileScope{JudgeOnly: true}, fabricengine.ReconcileOptions{}, false, false},
+			{"an unreachable origin", "http://127.0.0.1:1/x", fabriclayout.ReconcileScope{}, unreachableOptions, false, true},
+			{"an origin missing on disk", filepath.Join(t.TempDir(), "removed.git"), fabriclayout.ReconcileScope{}, unreachableOptions, false, true},
+			{"an origin that is no repository", t.TempDir(), fabriclayout.ReconcileScope{}, unreachableOptions, true, false},
 		} {
 			hub := newOriginHub(t)
 			if row.breakURL != "" {
@@ -360,10 +362,13 @@ func TestReconcileOrigin_Judge(t *testing.T) {
 			}
 			lockPaths := remoteRefsLockPaths(t, hub)
 
-			_, err := fabricengine.ReconcileOrigin(hub.Location, row.scope, fabricengine.OriginSeams{}, row.options)
+			report, err := fabricengine.ReconcileOrigin(hub.Location, row.scope, fabricengine.OriginSeams{}, row.options)
 
 			if (err != nil) != row.wantError {
 				t.Errorf("%s: ReconcileOrigin() error = %v; want error %v", row.name, err, row.wantError)
+			}
+			if report.Unreachable != row.wantUnreachable {
+				t.Errorf("%s: ReconcileOrigin() Unreachable = %v; want %v", row.name, report.Unreachable, row.wantUnreachable)
 			}
 			if free := freeRemoteRefsLocks(t, lockPaths); len(free) != len(lockPaths) {
 				t.Errorf("%s: remote-refs locks free after the reconcile = %v; want all of %v", row.name, free, lockPaths)
@@ -593,7 +598,7 @@ func TestReconcileOrigin_Judge(t *testing.T) {
 
 	t.Run("An origin that is no repository is an error with no retry", func(t *testing.T) {
 		hub := newOriginHub(t)
-		gitkit.Git(t, hub.PrimeRecords(), "remote", "set-url", "origin", filepath.Join(t.TempDir(), "no-repository"))
+		gitkit.Git(t, hub.PrimeRecords(), "remote", "set-url", "origin", t.TempDir())
 		var calls callLog
 		sleeps := 0
 

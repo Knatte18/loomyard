@@ -20,6 +20,9 @@
 // At the deadline the call kills the whole process group on Unix and git alone on Windows.
 // It returns a *GitError whose Timeout is the deadline and whose exit code is -1.
 // IsTransportFailure reports such a timeout, and a transfer the low-speed limit stopped, as a transport failure.
+// It reports a remote whose repository path is gone from this machine as one too.
+// A removed origin directory, or one below an unmounted mount point, then reads as a refused connection does.
+// Bound: a mount point left as an empty directory reads as a refusal.
 // A local subcommand runs unbounded.
 // A remote subcommand first waits through the process's network gate while a pause is on.
 // That wait counts against no deadline.

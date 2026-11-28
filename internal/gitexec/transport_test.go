@@ -1,10 +1,13 @@
 // transport_test.go covers IsTransportFailure on hand-built *GitError values; it spawns no git.
+// Its local-path rows use a temporary directory.
 
 package gitexec_test
 
 import (
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -51,11 +54,32 @@ func TestIsTransportFailure(t *testing.T) {
 		}
 	}
 
+	existing := t.TempDir()
+	missing := filepath.Join(existing, "removed.git")
+	dangling := filepath.Join(existing, "dangling.git")
+	if err := os.Symlink(missing, dangling); err != nil {
+		t.Fatal(err)
+	}
+	apostrophe := filepath.Join(existing, "it's", "plain.git")
+	if err := os.MkdirAll(apostrophe, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	cases := []struct {
 		name string
 		err  error
 		want bool
 	}{
+		{"push to a missing local path", &gitexec.GitError{Args: []string{"push", "origin"}, Stderr: "fatal: '" + missing + "' does not appear to be a git repository\nfatal: Could not read from remote repository."}, true},
+		{"ls-remote of a missing file URL", &gitexec.GitError{Args: []string{"ls-remote", "origin"}, Stderr: "fatal: 'file://" + missing + "' does not appear to be a git repository"}, true},
+		{"fetch of a missing relative path", &gitexec.GitError{Args: []string{"fetch", "origin"}, Dir: existing, Stderr: "fatal: './removed.git' does not appear to be a git repository"}, true},
+		{"push to a link whose target is missing", &gitexec.GitError{Args: []string{"push", "origin"}, Stderr: "fatal: '" + dangling + "' does not appear to be a git repository"}, true},
+		{"push to an unconfigured remote", &gitexec.GitError{Args: []string{"push", "origin"}, Stderr: "fatal: 'origin' does not appear to be a git repository"}, false},
+		{"ls-remote of a file URL that holds no repository", &gitexec.GitError{Args: []string{"ls-remote", "origin"}, Stderr: "fatal: 'file://" + existing + "' does not appear to be a git repository"}, false},
+		{"fetch of an existing relative path", &gitexec.GitError{Args: []string{"fetch", "origin"}, Dir: filepath.Dir(existing), Stderr: "fatal: './" + filepath.Base(existing) + "' does not appear to be a git repository"}, false},
+		{"push to a path holding an apostrophe", &gitexec.GitError{Args: []string{"push", "origin"}, Stderr: "fatal: '" + apostrophe + "' does not appear to be a git repository"}, false},
+		{"clone of a missing local path", &gitexec.GitError{Args: []string{"clone", missing}, Stderr: "fatal: repository '" + missing + "' does not exist"}, true},
+		{"push to a directory that holds no repository", &gitexec.GitError{Args: []string{"push", "origin"}, Stderr: "fatal: '" + existing + "' does not appear to be a git repository"}, false},
+		{"local command naming a missing path", &gitexec.GitError{Args: []string{"status"}, Stderr: "fatal: '" + missing + "' does not appear to be a git repository"}, false},
 		{"autoSetupRemote push", &gitexec.GitError{Args: []string{"-c", "push.autoSetupRemote=true", "push", "origin", "HEAD"}, Stderr: "fatal: Failed to connect to h"}, true},
 		{"-C fetch", &gitexec.GitError{Args: []string{"-C", "/some/dir", "fetch"}, Stderr: "fatal: Could not resolve host: h"}, true},
 		{"ls-remote", &gitexec.GitError{Args: []string{"ls-remote", "origin"}, Stderr: "Connection refused"}, true},

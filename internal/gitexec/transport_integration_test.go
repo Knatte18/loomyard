@@ -1,4 +1,6 @@
-// transport_integration_test.go pins the real stderr git prints for an unreachable remote and for a rejected push.
+// transport_integration_test.go pins the real stderr git prints for failed remote operations.
+// Its cases are an unreachable remote, a removed local origin and a directory holding no repository.
+// They also cover an unconfigured remote name and a rejected push.
 
 package gitexec_test
 
@@ -11,7 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-//testtiming:keep pins the real stderr git prints for an unreachable remote and a hook-rejected push, which TestIsTransportFailure's hand-built stderr rows do not
+//testtiming:keep pins the real stderr git prints for an unreachable remote, a removed local origin, an unconfigured remote name and a hook-rejected push, which TestIsTransportFailure's hand-built stderr rows do not
 func TestIsTransportFailure_RealGit(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -54,5 +56,42 @@ func TestIsTransportFailure_RealGit(t *testing.T) {
 	}
 	if gitexec.IsTransportFailure(err) {
 		t.Errorf("rejected push classified as transport failure: %v", err)
+	}
+
+	if err := os.RemoveAll(bare); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{
+		{"push", "origin", "HEAD:refs/heads/x"},
+		{"fetch", "origin"},
+		{"ls-remote", "origin"},
+		{"clone", bare, filepath.Join(t.TempDir(), "clone")},
+	} {
+		_, err := gitexec.Run(args, dir)
+		if err == nil {
+			t.Fatalf("git %v against a removed origin succeeded", args)
+		}
+		if !gitexec.IsTransportFailure(err) {
+			t.Errorf("git %v against a removed origin not classified as transport failure: %v", args, err)
+		}
+	}
+
+	if err := os.Mkdir(bare, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_, err = gitexec.Run([]string{"push", "origin", "HEAD:refs/heads/x"}, dir)
+	if err == nil {
+		t.Fatal("push to a directory holding no repository succeeded")
+	}
+	if gitexec.IsTransportFailure(err) {
+		t.Errorf("push to a directory holding no repository classified as transport failure: %v", err)
+	}
+
+	_, err = gitexec.Run([]string{"ls-remote", "unconfigured"}, dir)
+	if err == nil {
+		t.Fatal("ls-remote of an unconfigured remote succeeded")
+	}
+	if gitexec.IsTransportFailure(err) {
+		t.Errorf("ls-remote of an unconfigured remote classified as transport failure: %v", err)
 	}
 }

@@ -5,6 +5,9 @@ package gitexec
 
 import (
 	"errors"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -65,9 +68,44 @@ func holdsHTTPClientRefusal(stderr string) bool {
 	return false
 }
 
+// missingRepositoryPattern matches the stderr line git prints when the repository a remote names cannot be opened.
+// Its first group is the path git names, kept in its own case.
+// Push, fetch, pull and ls-remote print the first form, and clone prints the second.
+var missingRepositoryPattern = regexp.MustCompile(`(?i)'(.+)' does not appear to be a git repository|repository '(.+)' does not exist`)
+
+// namesMissingLocalPath reports whether stderr names a repository path that does not exist on this machine.
+// A relative path is read against dir, the directory git ran in.
+// A name with no path separator is never read as a path, since git names an unconfigured remote that way.
+// A path that exists but holds no repository is not missing, while a link whose target is gone is.
+func namesMissingLocalPath(stderr, dir string) bool {
+	match := missingRepositoryPattern.FindStringSubmatch(stderr)
+	if match == nil {
+		return false
+	}
+	named := match[1] + match[2]
+	if filepath.Base(named) == named {
+		return false
+	}
+	path := strings.TrimPrefix(named, "file://")
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(dir, path)
+	}
+	_, err := os.Stat(path)
+	return errors.Is(err, fs.ErrNotExist)
+}
+
 // IsTransportFailure reports whether err holds a *GitError for a remote operation that failed to reach the remote.
 // Remote operations are push, fetch, pull, ls-remote and clone.
 // A *GitError with a non-zero Timeout counts too, since git was killed for outliving its deadline or stalling twice.
+// A remote whose repository path is gone counts too, since the path may come back, as a refused connection may.
+// A removed directory is gone, and so is one below an unmounted mount point.
+// A path that exists but holds no repository is a refusal.
+// So is an unconfigured remote name that holds no path separator.
+// Bound: a mount point left as an empty directory reads as a refusal.
+// Bound: a relative remote path with no path separator reads as a refusal too.
+// Bound: a relative remote path is read against the directory git ran in.
+// For push, fetch, pull and ls-remote that matches git only when the directory is the worktree top.
+// Bound: an ssh remote naming a server path that is also absent on this machine reads as unreachable.
 // A rejected push, an authentication failure, a missing ref or a local command is not a transport failure.
 // A stderr holding an HTTP 4xx status is a refusal, whatever disconnect phrase follows it.
 // The exceptions are 408 and 429, which name a moment rather than a refusal.
@@ -93,7 +131,7 @@ func IsTransportFailure(err error) bool {
 			return true
 		}
 	}
-	return false
+	return namesMissingLocalPath(gitErr.Stderr, gitErr.Dir)
 }
 
 // subcommand returns the first argument after git's global options.

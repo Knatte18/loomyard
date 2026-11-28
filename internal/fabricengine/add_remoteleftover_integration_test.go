@@ -93,7 +93,7 @@ func TestAdd_RetriesOriginProbesThatFailInTransit(t *testing.T) {
 	const refused = "http://127.0.0.1:1/x"
 	tests := []struct {
 		name string
-		// brokenURL is both stores' origin when the Add starts; empty names a local path that does not exist.
+		// brokenURL is both stores' origin when the Add starts; empty names a directory that holds no repository.
 		brokenURL     string
 		originReturns bool
 		wantTransport bool
@@ -113,7 +113,7 @@ func TestAdd_RetriesOriginProbesThatFailInTransit(t *testing.T) {
 			stores := []string{h.PrimeWorktree(), h.PrimeRecords()}
 			brokenURL := tt.brokenURL
 			if brokenURL == "" {
-				brokenURL = filepath.Join(t.TempDir(), "missing.git")
+				brokenURL = t.TempDir()
 			}
 			urls := map[string]string{}
 			for _, store := range stores {

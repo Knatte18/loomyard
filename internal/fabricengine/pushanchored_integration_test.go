@@ -278,7 +278,7 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 	}
 
 	// A rejection whose fetch then keeps failing is never pushed again:
-	// the code side pushes to its real bare but fetches from a missing path,
+	// the code side pushes to its real bare but fetches from a directory holding no repository,
 	// and a remote that declines once would accept a retry.
 	noSleep := fabricengine.SyncOptions{BackoffSleep: func(time.Duration) {}}
 	warpBareBeforeFetchFailure := fabricengine.BareBranchSHAForTest(t, p.hub.CodeBare, p.warpBranch)
@@ -288,7 +288,7 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 	gitkit.CommitFile(t, p.warpPath, "warp-file.txt", "warp change fetch failure", "warp change fetch failure")
 	warpFetchURL := gitkit.Git(t, p.warpPath, "config", "--get", "remote.origin.url")
 	gitkit.MustRun(t, p.warpPath, "git", "config", "remote.origin.pushurl", warpFetchURL)
-	gitkit.MustRun(t, p.warpPath, "git", "config", "remote.origin.url", filepath.Join(t.TempDir(), "missing"))
+	gitkit.MustRun(t, p.warpPath, "git", "config", "remote.origin.url", t.TempDir())
 	_, err = fabricengine.PushPairAnchored(p.location, noSleep, fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded})
 	if !fabricengine.IsPushRejected(err) {
 		t.Errorf("PushPairAnchored() with a rejected push and a failing fetch error = %v; want the bare rejection", err)

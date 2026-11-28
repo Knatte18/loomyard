@@ -644,18 +644,29 @@ func TestPushFailureClasses(t *testing.T) {
 
 	t.Run("APushToAnUnreachableOriginWritesATransportRecord", func(t *testing.T) {
 		t.Run("OfABranchNeverPushed", func(t *testing.T) {
-			f, fake := newFailureFixture(t)
-			weft := f.hub.PrimeRecords()
-			gitkit.CommitFile(t, weft, "local.txt", "local\n", "local")
-			gitkit.Git(t, weft, "remote", "set-url", "origin", refusedOriginURL)
-
-			if _, err := fabricengine.CoalescePushRequest(fabriclayout.PushSpawn{WeftPath: weft}, fake.options(func(time.Duration) {}), fabriclayout.MachineNames{}); err != nil {
-				t.Fatalf("CoalescePushRequest() error = %v; want nil", err)
+			tests := []struct {
+				name      string
+				originURL string
+			}{
+				{"ARefusedConnection", refusedOriginURL},
+				{"ARemovedLocalOrigin", filepath.Join(t.TempDir(), "removed.git")},
 			}
+			for _, tt := range tests {
+				t.Run(tt.name, func(t *testing.T) {
+					f, fake := newFailureFixture(t)
+					weft := f.hub.PrimeRecords()
+					gitkit.CommitFile(t, weft, "local.txt", "local\n", "local")
+					gitkit.Git(t, weft, "remote", "set-url", "origin", tt.originURL)
 
-			requireOneFailedPush(t, f.hub.Location.HubPath, "records", fabriclayout.PushFailureTransport)
-			if len(fake.lines) != 1 {
-				t.Errorf("mails = %q; want one", fake.lines)
+					if _, err := fabricengine.CoalescePushRequest(fabriclayout.PushSpawn{WeftPath: weft}, fake.options(func(time.Duration) {}), fabriclayout.MachineNames{}); err != nil {
+						t.Fatalf("CoalescePushRequest() error = %v; want nil", err)
+					}
+
+					requireOneFailedPush(t, f.hub.Location.HubPath, "records", fabriclayout.PushFailureTransport)
+					if len(fake.lines) != 1 {
+						t.Errorf("mails = %q; want one", fake.lines)
+					}
+				})
 			}
 		})
 
@@ -747,7 +758,7 @@ func TestPushFailureClasses(t *testing.T) {
 		f, fake := newFailureFixture(t)
 		weft := f.hub.PrimeRecords()
 		gitkit.CommitFile(t, weft, "local.txt", "local\n", "local")
-		gitkit.Git(t, weft, "remote", "set-url", "origin", filepath.Join(t.TempDir(), "no-such-repository"))
+		gitkit.Git(t, weft, "remote", "set-url", "origin", t.TempDir())
 
 		if _, err := fabricengine.CoalescePushRequest(fabriclayout.PushSpawn{WeftPath: weft}, fake.options(nil), fabriclayout.MachineNames{}); err != nil {
 			t.Fatalf("CoalescePushRequest() error = %v; want nil", err)

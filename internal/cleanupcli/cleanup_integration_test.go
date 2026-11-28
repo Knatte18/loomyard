@@ -268,7 +268,11 @@ func TestCleanupVerb_RefusesOutsideThePrimeThenListsAndThenRemovesEverySeededLef
 	if err != nil {
 		t.Fatalf("records repository root: %v", err)
 	}
-	restoreOrigin := setOrigin(t, recordsRepo, filepath.Join(t.TempDir(), "no-repository"))
+	noRepository := filepath.Join(t.TempDir(), "no-repository")
+	if err := os.Mkdir(noRepository, 0o755); err != nil {
+		t.Fatalf("make a directory holding no repository: %v", err)
+	}
+	restoreOrigin := setOrigin(t, recordsRepo, noRepository)
 	broken, code := run(h.PrimeWorktree(), "--apply")
 	if broken.OK || code == 0 || broken.Raw["segments"] != nil || !strings.Contains(broken.Error, "origin reconcile failed") || !strings.Contains(broken.Error, "no-repository") {
 		t.Errorf("--apply over a broken origin: ok=%v code=%d error=%q segments=%v; want a refusal naming the error and no segment", broken.OK, code, broken.Error, broken.Raw["segments"])
