@@ -144,11 +144,13 @@ func TestStore_MachineOutbound(t *testing.T) {
 			}
 		}},
 		{"WithTheSchedulerStartedAndNoTakeAMessageIsReturnedAtItsHourWithItsLastReportedReasonOrBridgeUnsettled", func(t *testing.T, e *env) {
-			e.start(t)
+			// Both posts come before the start, so the loop's first pass sees both and arms the one hour wait the test advances past.
+			// A post after the start wakes another pass, which can straddle the advance and arm its floor wait past the hour.
 			held, waiter, err := e.store.PostWait(strand(orch), remoteOrch, "first")
 			must(t, err)
 			must(t, e.store.ReportMachineHold(relay, held, "peer-unapproved"))
 			bare := e.post(t, strand(orch), remoteOrch, "second")
+			e.start(t)
 			e.clock.AwaitWaitsWhere(1, isHourWait)
 			e.clock.Advance(time.Hour)
 			if outcome := awaitOutcome(t, waiter); outcome.Kind != creelengine.OutcomeReturned {
