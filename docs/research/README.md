@@ -104,6 +104,10 @@ A study's script finds the repository root with `git rev-parse --show-toplevel`,
 
 - [gemini-antigravity-engine-study-2026-11-17.md](engines/gemini-antigravity-engine-study-2026-11-17.md) — the work to support Gemini CLI or Antigravity CLI as a third agent engine, measured against Codex.
 
+## gate — where gate runs execute
+
+- [septim-farm-study](gate/septim-farm-study.md) — how much work and how realistic it is to run tier runs in WSL2 on a second machine, with the code stored there or only held in RAM.
+
 ## glyph — what Webster forks read
 
 - [glyph-audit-2026-10-12](glyph/glyph-audit-2026-10-12/report.md) — the Webster kick-start pack.
