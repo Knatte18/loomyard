@@ -21,7 +21,7 @@ func TestApplyScript_AddressesWindowsByInternalID(t *testing.T) {
 		Rows:         2,
 		Cols:         2,
 		Zones:        []string{"{a}", "{b}", "{c}", ""},
-		Placed:       "{c}",
+		Moved:        []string{"{c}", "{a}"},
 	})
 
 	_, rest, found := strings.Cut(script, "const input = ")
@@ -40,7 +40,7 @@ func TestApplyScript_AddressesWindowsByInternalID(t *testing.T) {
 		"rows":         2.0,
 		"cols":         2.0,
 		"zones":        []any{"{a}", "{b}", "{c}", ""},
-		"placed":       "{c}",
+		"moved":        []any{"{c}", "{a}"},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("input = %v; want %v", got, want)

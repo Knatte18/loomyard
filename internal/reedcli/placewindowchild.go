@@ -152,20 +152,14 @@ func placementRequest(location *lymcwd.Location, dirs configengine.Dirs, window 
 		}
 	}
 
-	perTaskKey := configengine.KeyName(dobbyengine.ConfigSpec().Name, dobbyengine.WindowPlacementKey)
-	chain, err := hubgeom.TaskSettingChain(prime, slug)
-	if err != nil {
-		return kwinplace.Request{}, fmt.Errorf("resolve the chain %s is read over; way forward: repair what the error names, then open the window again: %w", perTaskKey, err)
-	}
-	perTask, err := dobbyengine.LookupWindowPlacement(chain)
-	if err != nil {
-		return kwinplace.Request{}, fmt.Errorf("read %s; way forward: run `lym config beam --set %s=<value>` in that worktree, or set it in the task's run_settings: %w",
-			perTaskKey, dobbyengine.WindowPlacementKey, err)
-	}
 	// The load's refusals of a desktop key name the command that sets it.
 	desktop, err := desktophook.LoadConfig(dirs)
 	if err != nil {
 		return kwinplace.Request{}, fmt.Errorf("load the desktop config: %w", err)
+	}
+	mode, err := windowPlacementMode(prime, slug, desktop.WindowPlacement)
+	if err != nil {
+		return kwinplace.Request{}, err
 	}
 
 	return kwinplace.Request{
@@ -175,11 +169,27 @@ func placementRequest(location *lymcwd.Location, dirs configengine.Dirs, window 
 		PID:           window.pid,
 		Prime:         window.prime,
 		Parent:        parent,
-		Mode:          kwinplace.Mode(perTask, desktop.WindowPlacement),
+		Mode:          mode,
 		MinTileWidth:  desktop.Tiling.MinTileWidth,
 		MinTileHeight: desktop.Tiling.MinTileHeight,
 		Worktrees:     func() ([]string, error) { return hubWorktreeNames(location.AnchorPath()) },
 	}, nil
+}
+
+// windowPlacementMode returns the window placement mode in force for the window of the worktree slug names.
+// An empty slug names the prime, and machineMode is the machine's own mode.
+func windowPlacementMode(prime *lymcwd.Location, slug, machineMode string) (string, error) {
+	perTaskKey := configengine.KeyName(dobbyengine.ConfigSpec().Name, dobbyengine.WindowPlacementKey)
+	chain, err := hubgeom.TaskSettingChain(prime, slug)
+	if err != nil {
+		return "", fmt.Errorf("resolve the chain %s is read over; way forward: repair what the error names: %w", perTaskKey, err)
+	}
+	perTask, err := dobbyengine.LookupWindowPlacement(chain)
+	if err != nil {
+		return "", fmt.Errorf("read %s; way forward: run `lym config beam --set %s=<value>` in that worktree, or set it in the task's run_settings: %w",
+			perTaskKey, dobbyengine.WindowPlacementKey, err)
+	}
+	return kwinplace.Mode(perTask, machineMode), nil
 }
 
 // hubWorktreeNames returns the name of every worktree of the repository holding dir.

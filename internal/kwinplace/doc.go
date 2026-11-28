@@ -1,7 +1,7 @@
 // doc.go carries the package-level doc comment for internal/kwinplace.
 
-// Package kwinplace places a terminal window on a KDE Plasma desktop.
-// It owns the KWin and kscreen boundary and the placement flow.
+// Package kwinplace places a terminal window on a KDE Plasma desktop, and puts a hub's windows back in their places.
+// It owns the KWin and kscreen boundary, the placement flow and the retile.
 //
 // It reaches KWin only by loading a generated script through qdbus6.
 // A script returns nothing to its caller, so each script logs marker lines carrying a run id, ending with an end marker,
@@ -38,4 +38,13 @@
 //
 // A placement runs in a detached process of its own, which Spawn starts,
 // so the verb that opened the window returns at once.
+//
+// A retile, run by hand, puts the hub's open windows back on their home desktops under the same placement lock.
+// It rebuilds each home desktop's grid with the hub's windows homed there first, in order-key order.
+// That desktop's other windows follow as they stand, and a desktop whose grid already stands so is left untouched.
+// It leaves a window where it is while its placement runs or when its worktree's mode is off or cannot be read.
+// It also leaves a window that is minimized, has no home that is still a desktop, or whose home has no zone left for it.
+// A window that did not get to its home may still sit on a desktop whose grid was built.
+// It is put back into that grid while the grid has a zone for it.
+// It changes no home and no order key, so a window moved by hand that a later placement rehomed stays where it was moved.
 package kwinplace

@@ -280,7 +280,7 @@ func (f Flow) placeLocked(ctx context.Context, run *flowRun, needsAnchor *bool, 
 		Rows:         plan.Grid.Rows,
 		Cols:         plan.Grid.Cols,
 		Zones:        plan.Zones,
-		Placed:       plan.Placed,
+		Moved:        []string{plan.Placed},
 	})
 	if err != nil {
 		return false, err

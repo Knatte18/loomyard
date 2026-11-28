@@ -1,13 +1,16 @@
 //go:build !windows
 
 // placewindowchild_integration_test.go runs the detached placement child of a built binary against real hubs.
-// It also resolves a placement request over a real hub.
+// It also resolves a placement request and the retile's mode lookup over a real hub.
+// One test runs the retile verb outside a hub.
 // The child's PATH holds no program reaching a desktop.
 // The window command is POSIX shell, so Windows is left out.
 
 package reedcli
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -19,11 +22,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/desktophook"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/kwinplace"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -157,6 +162,55 @@ func TestPlacementRequest(t *testing.T) {
 				t.Errorf("Worktrees() = %q, %v; want %q", worktrees, err, wantWorktrees)
 			}
 		})
+	}
+}
+
+// TestRetileWindowMode reads the prime's mode and a task's over one hub.
+// The prime records the task as its parent, so a prime read under its own name would take the task's mode.
+func TestRetileWindowMode(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	hubforge.AddPair(t, h, "task")
+	taskDirs := configengine.Dirs{Board: fabriclayout.BoltDir(h.Location.HubPath), Anchor: h.PairCodeWorktree("task")}
+	if _, err := configengine.Set(taskDirs, dobbyengine.ConfigSpec(), configengine.LayerWorktree,
+		[]yamlengine.KV{{Key: dobbyengine.WindowPlacementKey, Value: "next"}}); err != nil {
+		t.Fatalf("set the task's beam key: %v", err)
+	}
+	primeName := h.Location.WorktreeName
+	if err := fabricengine.WriteOrigin(nil, h.Location, primeName, fabriclayout.Origin{ParentWorktree: "task", ParentBranch: "task"}); err != nil {
+		t.Fatalf("WriteOrigin(%q): %v", primeName, err)
+	}
+	mode := retileWindowMode(h.Location, primeName, "same")
+
+	for worktree, want := range map[string]string{primeName: "same", "task": "next"} {
+		if got, err := mode(worktree); err != nil || got != want {
+			t.Errorf("mode(%q) = %q, %v; want %q", worktree, got, err, want)
+		}
+	}
+}
+
+func TestRetileVerb_RefusesOutsideAHub(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	dir := t.TempDir()
+	gitkit.MustRun(t, dir, "git", "init")
+	var out bytes.Buffer
+
+	code := clihelp.ExecuteIn(Command(), dir, &out, []string{"retile"})
+
+	var envelope struct {
+		OK    bool   `json:"ok"`
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode %q: %v", out.String(), err)
+	}
+	want := "retile: the working directory belongs to no hub; way forward: run it from a worktree of the hub whose windows are to be retiled"
+	if code != 1 || envelope.OK || envelope.Error != want {
+		t.Errorf("retile = exit %d, %q; want exit 1 and error %q", code, out.String(), want)
 	}
 }
 

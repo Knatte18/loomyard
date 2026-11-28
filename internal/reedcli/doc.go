@@ -26,4 +26,8 @@
 // and the hidden `place-window` is run by the verbs that open a window, to place it in a process of its own.
 // `follow` and `button` read no working directory, config or state and skip the root pre-run's stencil-seed pass.
 // A failed `button` exits 0 and shows its message on the clicking client.
+//
+// `retile`, run by hand, puts the hub's open terminal windows back on their home desktops and tiling zones.
+// It reads each window's placement mode as `place-window` does.
+// A window whose mode is off or cannot be read stays where it is.
 package reedcli

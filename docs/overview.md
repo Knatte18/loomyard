@@ -346,7 +346,7 @@ github.com/Knatte18/loomyard/
 ├── internal/failuretrace/        traces a failed Parent-Align or Finalize verify log to the plan cards, batch commit ranges and untraced locations the landing failure record carries
 ├── internal/darnengine/          the darn recipe's hub-wide `darn.yaml` config and the verify command every darn verify reads
 ├── internal/desktophook/         the hub-wide `desktop.yaml` config with its window placement keys, the machine's window command, run after `lym reed window` and `lym ide` open a window and cancellable by its caller, and the machine's added status-bar buttons
-├── internal/kwinplace/           the KWin and kscreen boundary and the flow that places a terminal window on a KDE Plasma desktop
+├── internal/kwinplace/           the KWin and kscreen boundary, the flow that places a terminal window on a KDE Plasma desktop, and the retile that puts a hub's windows back in their places
 ├── internal/desktoplauncher/     the desktop launchers that run `lym machine start`, one per hub and one for every hub: a `.desktop` file on Linux, a `.cmd` file on the Windows desktop, through `wsl.exe` under WSL, and the sole namer of where they live
 ├── internal/samplerengine/       the sampler recipe's hub-wide `sampler.yaml` config
 ├── internal/heddleengine/        heddle's instruction layers, the one lym ships in its binary and the repository's `heddle.json`, their rendering into a worktree's CLAUDE and AGENTS files, its `.claude/settings.local.json` and a session's system prompt, the Bolt checkout's `HEDDLE.md` overview of every entry, and the hub-wide `heddle.yaml` that turns the hub's overrides of shipped entries on

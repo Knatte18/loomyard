@@ -1,4 +1,4 @@
-// apply.js moves one window to a desktop of the tiling output, builds that desktop's grid,
+// apply.js moves the told windows to a desktop of the tiling output, builds that desktop's grid,
 // snaps the told windows into its zones and reports the result to the journal.
 // Each line is the marker, the run id, a kind and one JSON object; the "end" line is the last.
 
@@ -129,11 +129,13 @@ const input = __LYM_KWINPLACE_INPUT__;
         byId[String(w.internalId)] = w;
     });
 
-    const placed = byId[input.placed];
-    if (placed) {
-        placed.desktops = [target];
-        workspace.sendClientToScreen(placed, output);
-    }
+    input.moved.forEach(function (id) {
+        const w = byId[id];
+        if (w) {
+            w.desktops = [target];
+            workspace.sendClientToScreen(w, output);
+        }
+    });
 
     const root = workspace.rootTile(output, target);
     buildGrid(root, input.rows, input.cols);

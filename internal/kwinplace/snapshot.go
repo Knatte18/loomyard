@@ -83,14 +83,14 @@ func zoneHolding(tiles []Tile, windowID string) (int, bool) {
 
 // ApplyOrder tells an apply what to build: a Rows by Cols grid on the target Desktop of TilingOutput.
 // Zones names the window of each zone in reading order, "" for an empty one.
-// Placed names the window to move onto that desktop and output.
+// Moved names the windows to move onto that desktop alone and onto that output.
 type ApplyOrder struct {
 	TilingOutput string   `json:"tilingOutput"`
 	Desktop      string   `json:"desktop"`
 	Rows         int      `json:"rows"`
 	Cols         int      `json:"cols"`
 	Zones        []string `json:"zones"`
-	Placed       string   `json:"placed"`
+	Moved        []string `json:"moved"`
 }
 
 // AppliedWindow is one window as an apply reports it after building the grid.

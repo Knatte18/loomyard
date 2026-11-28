@@ -185,7 +185,7 @@ func TestContract_TheRealKWinAnswersAsRecorded(t *testing.T) {
 	}
 }
 
-// TestContract_TheRealKWinAppliesAsRecorded moves a throwaway window onto a desktop that is not current.
+// TestContract_TheRealKWinAppliesAsRecorded moves two throwaway windows onto a desktop that is not current.
 // It builds a grid there, replacing that desktop's grid, so run it only on purpose:
 //
 //	lym gate test --tier 3 ./internal/kwinplace -- -run TestContract_TheRealKWinAppliesAsRecorded
@@ -203,34 +203,37 @@ func TestContract_TheRealKWinAppliesAsRecorded(t *testing.T) {
 		t.Fatalf("ReadTilingOutput() error = %v", err)
 	}
 
-	title := "kwinplace-contract-" + randomRunID()
-	window := exec.Command("konsole", "--separate", "-p", "tabtitle="+title, "-e", "sleep", "120")
-	if err := window.Start(); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		proc.KillPID(window.Process.Pid)
-		window.Wait()
-	})
-
 	var snapshot Snapshot
-	var placed Window
-	deadline := time.Now().Add(30 * time.Second)
-	for placed.InternalID == "" {
-		if time.Now().After(deadline) {
-			t.Fatal("the throwaway window never appeared in KWin")
+	openThrowaway := func() Window {
+		t.Helper()
+		title := "kwinplace-contract-" + randomRunID()
+		window := exec.Command("konsole", "--separate", "-p", "tabtitle="+title, "-e", "sleep", "120")
+		if err := window.Start(); err != nil {
+			t.Fatal(err)
 		}
-		time.Sleep(time.Second)
-		snapshot, _, err = runner.Query(ctx, tilingOutput, time.Now(), time.Minute)
-		if err != nil {
-			t.Fatalf("Query() error = %v", err)
-		}
-		for _, w := range snapshot.Windows {
-			if w.Matches(window.Process.Pid, title) {
-				placed = w
+		t.Cleanup(func() {
+			proc.KillPID(window.Process.Pid)
+			window.Wait()
+		})
+		deadline := time.Now().Add(30 * time.Second)
+		for {
+			if time.Now().After(deadline) {
+				t.Fatal("the throwaway window never appeared in KWin")
+			}
+			time.Sleep(time.Second)
+			snapshot, _, err = runner.Query(ctx, tilingOutput, time.Now(), time.Minute)
+			if err != nil {
+				t.Fatalf("Query() error = %v", err)
+			}
+			for _, w := range snapshot.Windows {
+				if w.Matches(window.Process.Pid, title) {
+					return w
+				}
 			}
 		}
 	}
+	placed := []Window{openThrowaway(), openThrowaway()}
+	ids := []string{placed[0].InternalID, placed[1].InternalID}
 
 	target := ""
 	for _, desktop := range snapshot.Desktops {
@@ -244,8 +247,8 @@ func TestContract_TheRealKWinAppliesAsRecorded(t *testing.T) {
 		Desktop:      target,
 		Rows:         1,
 		Cols:         2,
-		Zones:        []string{placed.InternalID, ""},
-		Placed:       placed.InternalID,
+		Zones:        ids,
+		Moved:        ids,
 	}
 	lines, err := runner.runScript(ctx, func(runID string) string { return ApplyScript(runID, order) }, time.Minute)
 	if err != nil {
@@ -277,12 +280,14 @@ func TestContract_TheRealKWinAppliesAsRecorded(t *testing.T) {
 	}) {
 		t.Errorf("no tiles line carries a padding: %q", lines)
 	}
-	i := slices.IndexFunc(report.Windows, func(w AppliedWindow) bool { return w.InternalID == placed.InternalID })
-	if i < 0 {
-		t.Fatalf("the placed window is not reported")
-	}
-	got := report.Windows[i]
-	if !slices.Equal(got.Desktops, []string{target}) || got.Frame == (Rect{}) || got.Zone != 0 || !got.Tiled {
-		t.Errorf("placed window = %+v; want it on %s alone with a frame, tiled in zone 0", got, target)
+	for zone, id := range ids {
+		i := slices.IndexFunc(report.Windows, func(w AppliedWindow) bool { return w.InternalID == id })
+		if i < 0 {
+			t.Fatalf("moved window %d is not reported", zone)
+		}
+		got := report.Windows[i]
+		if !slices.Equal(got.Desktops, []string{target}) || got.Frame == (Rect{}) || got.Zone != zone || !got.Tiled {
+			t.Errorf("moved window %d = %+v; want it on %s alone with a frame, tiled in zone %d", zone, got, target, zone)
+		}
 	}
 }

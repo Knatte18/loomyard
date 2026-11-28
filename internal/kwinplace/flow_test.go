@@ -132,7 +132,7 @@ func newFlowHarness(t *testing.T) *flowHarness {
 			if h.report != nil {
 				return h.report(order)
 			}
-			return ApplyReport{Windows: []AppliedWindow{{InternalID: order.Placed, Desktops: []string{order.Desktop}}}}, nil
+			return movedReport(order)
 		},
 		ReadTilingOutput: func(context.Context) (string, error) { return "DP", nil },
 		afterPlace: func(ctx context.Context) error {
@@ -158,6 +158,15 @@ func newFlowHarness(t *testing.T) *flowHarness {
 		lockWait:    defaultLockWait,
 	}
 	return h
+}
+
+// movedReport answers an apply with every moved window on the order's desktop.
+func movedReport(order ApplyOrder) (ApplyReport, error) {
+	var report ApplyReport
+	for _, id := range order.Moved {
+		report.Windows = append(report.Windows, AppliedWindow{InternalID: id, Desktops: []string{order.Desktop}})
+	}
+	return report, nil
 }
 
 // seed writes one entry to the places file.
@@ -266,7 +275,7 @@ func TestFlow_Place(t *testing.T) {
 			t.Fatalf("Place() error = %v", err)
 		}
 		h.wantEnded(1)
-		want := ApplyOrder{TilingOutput: "DP", Desktop: "d2", Rows: 1, Cols: 1, Zones: []string{"w1"}, Placed: "w1"}
+		want := ApplyOrder{TilingOutput: "DP", Desktop: "d2", Rows: 1, Cols: 1, Zones: []string{"w1"}, Moved: []string{"w1"}}
 		if got := h.applies[0]; fmt.Sprint(got) != fmt.Sprint(want) {
 			t.Errorf("apply order = %+v; want %+v", got, want)
 		}

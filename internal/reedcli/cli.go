@@ -1,7 +1,7 @@
 // cli.go builds the cobra command tree for the reed module.
 // The group's pre-run resolves the Engine once per invocation, and the verbs that need it read it from reedCLI.
-// The watchdog, switch, follow, button, window and place-window verbs skip that resolution.
-// None of them resolves anything from the cwd.
+// The watchdog, switch, follow, button, window, place-window and retile verbs skip that resolution.
+// None of them but retile resolves anything from the cwd.
 
 package reedcli
 
@@ -156,14 +156,15 @@ rather than booting substrate it cannot reach.`,
 		// emits a JSON error envelope instead of falling through to cobra's plain-text help.
 		RunE: clihelp.GroupRunE,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			// The group command and the watchdog, switch, follow, button, window and place-window verbs skip the resolution.
+			// The group command and the watchdog, switch, follow, button, window, place-window and retile verbs skip the resolution.
 			// place-window is told its hub on a flag and resolves the worktree from it.
 			// The watchdog daemon is told its hub path on its own flags, and it must never use c.eng.
 			// Running the normal pre-run would make it refuse to start outside a worktree and hold a geometry it must not use.
 			// switch, follow and button are told their inputs on flags and resolve no location from the cwd.
 			// They load no config, so a reed.yaml that fails to load cannot abort a click.
 			// window is told a worktree directory that may lie outside the hub's worktrees, so a location lookup would refuse it.
-			if cmd.Name() == "reed" || cmd.Name() == "watchdog" || cmd.Name() == "switch" || cmd.Name() == "follow" || cmd.Name() == "button" || cmd.Name() == "window" || cmd.Name() == kwinplace.ChildVerbName {
+			// retile resolves its own location and moves windows only, so a reed.yaml that fails to load cannot stop it.
+			if cmd.Name() == "reed" || cmd.Name() == "watchdog" || cmd.Name() == "switch" || cmd.Name() == "follow" || cmd.Name() == "button" || cmd.Name() == "window" || cmd.Name() == kwinplace.ChildVerbName || cmd.Name() == retileVerbName {
 				return nil
 			}
 
@@ -205,7 +206,7 @@ rather than booting substrate it cannot reach.`,
 		},
 	}
 
-	parent.AddCommand(c.upCmd(), c.downCmd(), c.addCmd(), c.removeCmd(), c.statusCmd(), c.resumeCmd(), c.attachCmd(), c.windowCmd(), c.watchdogCmd(), c.listCmd(), c.switchCmd(), c.followCmd(), c.buttonCmd(), c.placeWindowCmd())
+	parent.AddCommand(c.upCmd(), c.downCmd(), c.addCmd(), c.removeCmd(), c.statusCmd(), c.resumeCmd(), c.attachCmd(), c.windowCmd(), c.watchdogCmd(), c.listCmd(), c.switchCmd(), c.followCmd(), c.buttonCmd(), c.placeWindowCmd(), c.retileCmd())
 
 	return parent
 }
