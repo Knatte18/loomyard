@@ -43,7 +43,7 @@ When the landing failure record holds `build: true`, the gate failed in its buil
 ## Rules
 
 - Fix and commit on the task branch `{{.task_branch}}`, one commit per fix.
-- Never push.
+- Never push, whatever the editing passage above permits: lym pushes the task branch's commits for you.
 - Leave the working tree clean when you end your turn.
 
 {{template "loom-fragment-loosened-check"}}

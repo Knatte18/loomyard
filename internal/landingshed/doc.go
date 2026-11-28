@@ -77,7 +77,8 @@
 // A failing gate spawns the merge fixer, whose whole change is judged against the size and kind caps.
 // A change over the caps lands only behind the fix review's approval or the operator's acceptance.
 // A move of the task branch's remote ref during a fixer session can halt the row.
-// It does so only when the new tip holds commits that the task head the session started from lacks.
+// It does so only when the new tip holds commits that the task head after the session lacks,
+// so the fixer's own commits, pushed by the task branch's pusher while the session runs, pass.
 // The halt says the ref moved, since the writer is unknown.
 // A fixer or fix review halt names the session by its engine session id.
 // That id outlives the run directory removed after a done session.

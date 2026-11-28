@@ -123,7 +123,7 @@ func (f *fakeFixerSeats) Run(table seatengine.Table) (seatengine.Result, error) 
 // fixerRunFixture wires one fixer run to a gate fixture, a fake seat runner, a fake clock and a fake remote tip.
 // head is the task head a turn may move by committing.
 // ancestors holds each "sha..ref" pair the ancestry seam answers true for; any other pair answers false.
-// ancestorErr, when set, is the error the ancestry seam fails with.
+// ancestorErr and headErr, when set, are the errors the ancestry seam and the task head seam fail with.
 type fixerRunFixture struct {
 	run         fixerRun
 	gate        *gateFixture
@@ -134,6 +134,7 @@ type fixerRunFixture struct {
 	head        string
 	ancestors   map[string]bool
 	ancestorErr error
+	headErr     error
 }
 
 const (
@@ -178,7 +179,7 @@ func newFixerRunFixture(t *testing.T) *fixerRunFixture {
 		Registry:           modelspec.Registry{},
 		FixerSeats:         fx.seats,
 		TaskRemoteTip:      func() (string, error) { return fx.remoteTip, nil },
-		TaskHead:           func() (string, error) { return fx.head, nil },
+		TaskHead:           func() (string, error) { return fx.head, fx.headErr },
 		IsAncestor:         func(sha, ref string) (bool, error) { return fx.ancestors[sha+".."+ref], fx.ancestorErr },
 	}
 	fx.run = newFixerRun(fx.deps, fixerTestRow, fx.gate.gate)
@@ -366,10 +367,11 @@ func TestFixerRun_Outcomes(t *testing.T) {
 			wantReason: []string{LandingStopPrefix, "test runner crashed", "tier1 (exit 134, SIGABRT)", "`lym loom resume`"},
 		},
 		{
-			name: "a remote tip that moved during the session to a commit the start head lacks is the pushed end",
+			name: "a remote tip that moved during the session to a commit the task head lacks is the pushed end",
 			setup: func(t *testing.T, fx *fixerRunFixture) {
 				fx.seats.turns = []func(){func() {
 					fx.writeReport(t, fixedReport)
+					fx.head = "f1"
 					fx.remoteTip = "remote-2"
 				}}
 			},
@@ -377,17 +379,29 @@ func TestFixerRun_Outcomes(t *testing.T) {
 			wantReason: []string{
 				LandingStopPrefix,
 				"the remote ref origin/task-branch moved during the fixer session of Parent-Align to remote-2",
-				"the task head head-1 the session started from lacks",
+				"the task head f1 lacks after the session",
 				fakeFixerSession,
-				"check the commits head-1..remote-2 are the task's",
+				"check the commits f1..remote-2 are the task's",
 				"`lym loom resume`",
 			},
 			avoidReason: []string{"pushed"},
 		},
 		{
-			name: "a remote tip that moved during the session to a commit the start head holds is no push",
+			name: "a remote tip that moved during the session to the fixer's own commit is no push",
 			setup: func(t *testing.T, fx *fixerRunFixture) {
-				fx.ancestors = map[string]bool{"head-1..head-1": true}
+				fx.ancestors = map[string]bool{"f1..f1": true}
+				fx.seats.turns = []func(){func() {
+					fx.writeReport(t, fixedReport)
+					fx.head = "f1"
+					fx.remoteTip = "f1"
+				}}
+			},
+			wantEnd: fixerEndFixed, wantSpent: 1, wantTurns: 1,
+		},
+		{
+			name: "a remote tip that moved during the session to the start head under the fixer's commit is no push",
+			setup: func(t *testing.T, fx *fixerRunFixture) {
+				fx.ancestors = map[string]bool{"head-1..f1": true}
 				fx.seats.turns = []func(){func() {
 					fx.writeReport(t, fixedReport)
 					fx.head = "f1"
@@ -531,8 +545,30 @@ func TestFixerRun_Outcomes(t *testing.T) {
 		}}
 
 		_, _, err := fx.execute(t, FixerAttempts{Entry: 1})
-		if !errors.Is(err, fx.ancestorErr) || !strings.Contains(err.Error(), "predates the fixer session") {
+		if !errors.Is(err, fx.ancestorErr) || !strings.Contains(err.Error(), "whether the task head holds") {
 			t.Errorf("run() error = %v; want it to wrap %v and say what the query tested", err, fx.ancestorErr)
+		}
+	})
+
+	t.Run("a failing task head read over a moved remote tip is returned as an error", func(t *testing.T) {
+		t.Parallel()
+		fx := newFixerRunFixture(t)
+		fx.headErr = errors.New("head read broke")
+		fx.seats.turns = []func(){func() {
+			fx.writeReport(t, fixedReport)
+			fx.remoteTip = "remote-2"
+		}}
+
+		_, rec, err := fx.execute(t, FixerAttempts{Entry: 1})
+		if !errors.Is(err, fx.headErr) || !strings.Contains(err.Error(), "read the task head") {
+			t.Errorf("run() error = %v; want it to wrap %v and say the task head read failed", err, fx.headErr)
+		}
+		if rec.Spent != 1 {
+			t.Errorf("run() record Spent = %d; want the turn kept spent", rec.Spent)
+		}
+		onDisk, readErr := ReadFixerAttempts(FixerAttemptsPath(fx.deps.RecordsDir, fixerTestRow), 1)
+		if readErr != nil || !reflect.DeepEqual(onDisk, rec) {
+			t.Errorf("attempt record on disk = %+v, %v; want the returned %+v", onDisk, readErr, rec)
 		}
 	})
 

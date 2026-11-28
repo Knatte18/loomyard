@@ -58,7 +58,7 @@ const (
 	// fixerEndDirty is a turn that left the working tree dirty with no turn left to clean it.
 	fixerEndDirty fixerEnd = "dirty"
 	// fixerEndPushed is a session during which the task branch's remote ref was deleted or moved.
-	// A move counts only when the new tip holds commits that the task head the session started from lacks.
+	// A move counts only when the new tip holds commits that the task head after the session lacks.
 	fixerEndPushed fixerEnd = "pushed"
 	// fixerEndUnjudged is a landing gate after a turn whose result judged no code:
 	// a runner crash or a memory pressure stop.
@@ -80,8 +80,8 @@ type fixerOutcome struct {
 	remoteRef string
 	// remoteTip is remoteRef's tip after the session, "" for a deleted ref; set for a pushed end.
 	remoteTip string
-	// startHead is the task head the session started from; set for a pushed end.
-	startHead string
+	// taskHead is the task head after the session; set for a pushed end whose ref still has a tip.
+	taskHead string
 	// dirty lists the uncommitted or untracked paths the last turn left; set for a dirty end.
 	dirty []string
 	// unjudged is the landing gate's halt reason naming the runs that judged no code; set for an unjudged end.
@@ -109,8 +109,10 @@ func newFixerRun(deps Deps, row string, gate verifyGate) fixerRun {
 // The first turn's charge is taken back when the session fails to start with an error marked transient.
 // An escalate report takes its own turn back.
 // A deletion of the task branch's remote ref during the session ends the run pushed.
-// A move of that ref does too, except to a commit the task head held when the session started.
-// The session cannot have added such a commit.
+// A move of that ref does too, except to a commit the task head holds after the session.
+// Such a commit is in the task worktree: on a fixed end the landing gate passed over it,
+// and any other end halts the row on its own reason.
+// That holds for a commit older than the session and for one the session made and the branch's pusher sent.
 func (f fixerRun) run(ctx context.Context, mode FixerMode, rec FixerAttempts, cap int, tips [2]string) (fixerOutcome, FixerAttempts, error) {
 	reportPath := filepath.Join(f.deps.ScratchDir, f.row+"-fixer-report.md")
 	attemptsPath := FixerAttemptsPath(f.deps.RecordsDir, f.row)
@@ -142,10 +144,6 @@ func (f fixerRun) run(ctx context.Context, mode FixerMode, rec FixerAttempts, ca
 	remoteBefore, err := f.deps.TaskRemoteTip()
 	if err != nil {
 		return fixerOutcome{}, rec, fmt.Errorf("landingshed: %s: read the task branch's remote tip: %w", f.row, err)
-	}
-	startHead, err := f.deps.TaskHead()
-	if err != nil {
-		return fixerOutcome{}, rec, fmt.Errorf("landingshed: %s: read the task head: %w", f.row, err)
 	}
 
 	original := rec
@@ -189,17 +187,21 @@ func (f fixerRun) run(ctx context.Context, mode FixerMode, rec FixerAttempts, ca
 	}
 	if remoteAfter != remoteBefore {
 		remoteRef := "origin/" + f.deps.TaskBranch
-		predates := false
+		var taskHead string
+		held := false
 		if remoteAfter != "" {
-			if predates, err = f.deps.IsAncestor(remoteAfter, startHead); err != nil {
-				return fixerOutcome{}, session.rec, fmt.Errorf("landingshed: %s: test whether %s at %s predates the fixer session: %w", f.row, remoteRef, remoteAfter, err)
+			if taskHead, err = f.deps.TaskHead(); err != nil {
+				return fixerOutcome{}, session.rec, fmt.Errorf("landingshed: %s: read the task head: %w", f.row, err)
+			}
+			if held, err = f.deps.IsAncestor(remoteAfter, taskHead); err != nil {
+				return fixerOutcome{}, session.rec, fmt.Errorf("landingshed: %s: test whether the task head holds %s at %s: %w", f.row, remoteRef, remoteAfter, err)
 			}
 		}
-		if predates {
-			logger.Info("landingshed: the task branch's remote ref moved during the fixer session to a commit the session started from", "row", f.row, "ref", remoteRef, "tip", remoteAfter, "startHead", startHead)
+		if held {
+			logger.Info("landingshed: the task branch's remote ref moved during the fixer session to a commit the task head holds", "row", f.row, "ref", remoteRef, "tip", remoteAfter, "taskHead", taskHead)
 		} else {
 			outcome.end = fixerEndPushed
-			outcome.remoteRef, outcome.remoteTip, outcome.startHead = remoteRef, remoteAfter, startHead
+			outcome.remoteRef, outcome.remoteTip, outcome.taskHead = remoteRef, remoteAfter, taskHead
 		}
 	}
 	logger.Info("landingshed: fixer run ended", "row", f.row, "mode", string(mode), "end", string(outcome.end), "spent", session.rec.Spent, "cap", cap)
@@ -419,8 +421,8 @@ func (o fixerOutcome) haltReason(row string, escalateJudgedFirst bool) string {
 			wayForward = "check why the task branch is gone from origin, then `lym loom resume`"
 			break
 		}
-		cause = fmt.Sprintf("the remote ref %s moved during the fixer session of %s to %s, which holds commits the task head %s the session started from lacks; session: %s", o.remoteRef, row, o.remoteTip, o.startHead, o.session)
-		wayForward = fmt.Sprintf("check the commits %s..%s are the task's, then `lym loom resume`", o.startHead, o.remoteTip)
+		cause = fmt.Sprintf("the remote ref %s moved during the fixer session of %s to %s, which holds commits the task head %s lacks after the session; session: %s", o.remoteRef, row, o.remoteTip, o.taskHead, o.session)
+		wayForward = fmt.Sprintf("check the commits %s..%s are the task's, then `lym loom resume`", o.taskHead, o.remoteTip)
 	default:
 		return ""
 	}
