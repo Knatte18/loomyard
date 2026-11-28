@@ -172,6 +172,12 @@ Imports only the standard library.
 It holds the secret-file patterns lym ships and the matcher fabric and webster share, and reads no config:
 each caller hands it the patterns a hub adds.
 
+## `internal/stopclass`
+
+Imports only the standard library and does no I/O.
+It holds the stop classes and the one settlement table that decides who settles each;
+no other package decides who settles a stop class.
+
 ## `internal/runfsm`
 
 Imports only the standard library and `internal/shedengine`, for the record type.
