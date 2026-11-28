@@ -1,5 +1,6 @@
 // cli_test.go drives `lym tender pause`, `status`, `resume` and `revive` through the cobra commands.
-// The commands run over a hubforge hub with one pair and no agents running.
+// The commands run over a hubforge hub with one pair and no agents running;
+// the caller-rules test adds a beam and a member forked from it.
 // The network gate installer runs over the same hub.
 // No test but TestNewShuttlePair_TellsTheHubsPauseGeometry calls t.Parallel:
 // each sets the strand-name variable or reads the process-wide network gate.
@@ -415,6 +416,45 @@ func TestPauseAndResume_ApplyTheCallerRules(t *testing.T) {
 	}
 	if lifted, _ := verb(t, Command(), prime, "resume", pairSlug); !lifted.OK {
 		t.Errorf("agent resume of its own pair: %q", lifted.Error)
+	}
+
+	const beamSlug, memberSlug = "cr-beam", "cr-member"
+	hubforge.AddPairWith(t, h, beamSlug, fabricengine.AddOptions{SkipPush: true, Beam: true})
+	hubforge.AddPairWith(t, h, memberSlug, fabricengine.AddOptions{SkipPush: true, Parent: beamSlug})
+	beamOrch, err := agentname.Format(hubforge.TestShortname, beamSlug, agentname.RoleOrch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(agentname.StrandNameEnv, beamOrch)
+	for _, tc := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"a hub-wide pause", []string{"pause"}, "ask your parent session"},
+		{"a pause of a pair outside its beam", []string{"pause", pairSlug}, "ask your parent session"},
+		{"a pause of a slug with no worktree here", []string{"pause", "cr-ghost"}, "ask your parent session"},
+		{"a hub-wide revive", []string{"revive"}, "ask your parent session"},
+		{"a reap", []string{"reap"}, "only the hub's orch ends orphaned processes"},
+	} {
+		env, code := verb(t, Command(), prime, tc.args...)
+		if env.OK || code == 0 || !strings.Contains(env.Error, tc.want) {
+			t.Errorf("beam orch %s: ok=%v error=%q; want a refusal holding %q", tc.name, env.OK, env.Error, tc.want)
+		}
+	}
+	for _, slug := range []string{memberSlug, beamSlug} {
+		if paused, code := verb(t, Command(), prime, "pause", slug); !paused.OK || code != 0 {
+			t.Errorf("beam orch pause of %s: ok=%v error=%q; want it to succeed", slug, paused.OK, paused.Error)
+		}
+		if revived, code := verb(t, Command(), prime, "revive", slug); !revived.OK || code != 0 {
+			t.Errorf("beam orch revive of %s: ok=%v error=%q; want it to succeed", slug, revived.OK, revived.Error)
+		}
+		if lifted, code := verb(t, Command(), prime, "resume", slug); !lifted.OK || code != 0 {
+			t.Errorf("beam orch resume of %s: ok=%v error=%q; want it to succeed", slug, lifted.OK, lifted.Error)
+		}
+	}
+	if live, _ := liveEntries(t, h); len(live) != 0 {
+		t.Fatalf("live entries after the beam orch's resumes = %+v; want none", live)
 	}
 
 	t.Setenv(agentname.StrandNameEnv, orch)

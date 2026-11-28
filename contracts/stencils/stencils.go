@@ -599,6 +599,12 @@ var ParentDirectiveOperatorBan []byte
 //go:embed parent/parent-directive-none.md
 var ParentDirectiveNone []byte
 
+// ParentDirectiveHandBack is the shared parent directive's shipped-default hand-back variant.
+// It serves a role whose verdict is its only channel, and names the run's parent orch.
+//
+//go:embed parent/parent-directive-handback.md
+var ParentDirectiveHandBack []byte
+
 // TwillDirective is the twill directive's shipped default:
 // the host-neutral procedure that has a writer review its finished record through fork lenses.
 //
@@ -1050,6 +1056,7 @@ var entries = []registryEntry{
 	{"parent-directive-parent", &ParentDirectiveParent},
 	{"parent-directive-operator-ban", &ParentDirectiveOperatorBan},
 	{"parent-directive-none", &ParentDirectiveNone},
+	{"parent-directive-handback", &ParentDirectiveHandBack},
 	{"twill-directive", &TwillDirective},
 	{"twill-writer-fork", &TwillWriterFork},
 	{"twill-writer-fork-gated", &TwillWriterForkGated},

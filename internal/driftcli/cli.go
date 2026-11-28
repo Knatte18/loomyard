@@ -338,8 +338,8 @@ Drift-Baseline capture halt, and a halt of Drift-Expect, the writer,
 Drift-Verify or Drift-Recheck whose reason names it or whose baseline check
 fails. It is refused while a capture or a lym drift check holds the capture
 lock. After the writer it skips the regression check for the rest of the run,
-and the verdict states it, so only the run's parent or the operator's own
-shell runs it.
+and the verdict states it, so only an orch on the run's beam chain above the
+pair, or the operator's own shell, runs it.
 
 With a slug it acts on that task's worktree, so the parent need not stand in
 the run's worktree.

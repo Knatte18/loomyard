@@ -1,5 +1,6 @@
 // notify_integration_test.go proves PrimeOrchStrand over a real hub: from a task worktree it names the prime's orch strand, and answers not recorded when the prime records none.
-// It also proves the destination of a run's notice up a beam chain: a live beam orch, a stopped one, a pair forked from the prime and a destination with no strand recorded.
+// It also proves the destination of a run's notice up a beam chain, for a beam orch that is live or read as down.
+// A pair forked from the prime and a destination with no strand recorded are covered too.
 
 package orchcli
 
@@ -98,6 +99,10 @@ func TestParentOrchStrand(t *testing.T) {
 		return func(worktree *lymcwd.Location) (bool, error) { return live && worktree.WorktreeName == "b", nil }
 	}
 	beamOrch := hubforge.TestShortname + ":b:orch"
+	beamReed := &reedengine.ReedState{Strands: []reedengine.Strand{{GUID: "beam-guid", Name: beamOrch}}}
+	if err := reedengine.SaveState(filepath.Join(beam.AnchorPath(), lymdirs.DotLymDirName), beamReed); err != nil {
+		t.Fatalf("reedengine.SaveState: %v", err)
+	}
 	primeOrch := hubforge.TestShortname + ":orch"
 
 	t.Run("a live beam orch is the member's destination", func(t *testing.T) {
@@ -112,7 +117,15 @@ func TestParentOrchStrand(t *testing.T) {
 			t.Errorf("askerOrchStrand(b) = (%q, %v, %v); want (%q, true, nil)", name, recorded, err, beamOrch)
 		}
 	})
-	t.Run("a stopped beam orch leaves the prime's", func(t *testing.T) {
+	t.Run("a beam orch the probe reads as down still takes the member's notice", func(t *testing.T) {
+		name, recorded, err := parentOrchStrand(member, beamLive(false))
+		if err != nil || !recorded || name != beamOrch {
+			t.Errorf("parentOrchStrand(m) = (%q, %v, %v); want (%q, true, nil)", name, recorded, err, beamOrch)
+		}
+	})
+	t.Run("a beam whose orch state records no strand leaves the prime's", func(t *testing.T) {
+		seed(beam, "")
+		defer seed(beam, "beam-guid")
 		name, recorded, err := parentOrchStrand(member, beamLive(false))
 		if err != nil || !recorded || name != primeOrch {
 			t.Errorf("parentOrchStrand(m) = (%q, %v, %v); want (%q, true, nil)", name, recorded, err, primeOrch)
@@ -130,9 +143,9 @@ func TestParentOrchStrand(t *testing.T) {
 			t.Errorf("nearestLiveParent(m) = (%+v, %v); want (%+v, nil)", parent, err, want)
 		}
 	})
-	t.Run("a stopped beam orch leaves the prime's as the member's parent orch name", func(t *testing.T) {
+	t.Run("a beam orch the probe reads as down is still the member's parent orch name", func(t *testing.T) {
 		parent, err := nearestLiveParent(member, beamLive(false))
-		if want := (hubgeom.Parent{Name: primeOrch}); err != nil || parent != want {
+		if want := (hubgeom.Parent{Name: beamOrch, Worktree: "b"}); err != nil || parent != want {
 			t.Errorf("nearestLiveParent(m) = (%+v, %v); want (%+v, nil)", parent, err, want)
 		}
 	})

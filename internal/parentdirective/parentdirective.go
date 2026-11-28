@@ -18,7 +18,27 @@ const (
 	parentStencil      = "parent-directive-parent"
 	operatorBanStencil = "parent-directive-operator-ban"
 	noneStencil        = "parent-directive-none"
+	handBackStencil    = "parent-directive-handback"
 )
+
+// HandBack returns the parent directive of a role whose verdict file is its only channel, read from stencilsDir.
+// A non-empty parentName renders the hand-back variant, which names the run's parent orch;
+// an empty one renders the no-parent variant.
+// It returns ("", err) when a stencil read or fill fails; the error names the stencil.
+func HandBack(stencilsDir, parentName string) (string, error) {
+	if parentName == "" {
+		return readStripped(stencilsDir, noneStencil)
+	}
+	template, err := stencilstore.Read(stencilsDir, handBackStencil)
+	if err != nil {
+		return "", fmt.Errorf("parentdirective: %w", err)
+	}
+	filled, err := stencil.Fill(template, map[string]string{"parent_name": parentName})
+	if err != nil {
+		return "", fmt.Errorf("parentdirective: fill stencil %q: %w", handBackStencil, err)
+	}
+	return trimTrailingNewlines(string(filled)), nil
+}
 
 // Directive returns the parent directive text read from stencilsDir.
 // An empty parentName renders the no-parent variant.

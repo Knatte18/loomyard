@@ -391,8 +391,8 @@ recorded it unanswered after chasing its holder.
 --wait-reply marks it too.
 
 With --parent the text goes to your parent orch, so no receiver is given: from a
-pair the nearest live orch up from its recorded parent, else the prime's; from a
-beam or the prime that worktree's own orch when live.
+pair its recorded parent's, from a beam or the prime its own, even when down.
+A stopped or unstarted one passes it to a live orch above, else the prime's.
 
 --interrupt stops the receiver's running turn first; it needs a receiver
 shuttle launched with creel's hooks, and the answer says whether a turn was

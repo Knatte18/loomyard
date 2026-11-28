@@ -18,6 +18,12 @@
 // An interactive role does not, since its interview questions go to the operator.
 // An empty parent name renders the no-parent variant: a blocked role writes its report and stops.
 //
+// HandBack serves a role whose verdict file is its only channel, as a tackler or an arbiter.
+// A non-empty parent name renders the hand-back variant.
+// That variant names the run's parent orch.
+// It still sends a blocked role to its report.
+// An empty one renders the no-parent variant.
+//
 // # Who renders it
 //
 // Each spawning module calls Directive once per prompt.

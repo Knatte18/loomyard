@@ -27,7 +27,8 @@ var parentReviewNow = time.Date(2026, 11, 11, 12, 0, 0, 0, time.UTC)
 const parentReviewParent = "ly:orch"
 
 // parentReviewFixture records asks into a fresh run's files and returns deps over them.
-// The parent resolves to parentReviewParent and the caller is the operator's unnamed shell until the test sets them.
+// The parent resolves to parentReviewParent, the run's beam chain holds it alone,
+// and the caller is the operator's unnamed shell until the test sets them.
 func parentReviewFixture(t *testing.T, asks ...burlerengine.ParentAsk) parentReviewDeps {
 	t.Helper()
 	files := burlerengine.ParentReviewFilesOf(t.TempDir())
@@ -37,9 +38,10 @@ func parentReviewFixture(t *testing.T, asks ...burlerengine.ParentAsk) parentRev
 		}
 	}
 	return parentReviewDeps{
-		parent: func() (hubgeom.Parent, error) { return hubgeom.Parent{Name: parentReviewParent}, nil },
-		files:  files,
-		now:    func() time.Time { return parentReviewNow },
+		parent:    func() (hubgeom.Parent, error) { return hubgeom.Parent{Name: parentReviewParent}, nil },
+		orchChain: func() ([]hubgeom.Parent, error) { return []hubgeom.Parent{{Name: parentReviewParent}}, nil },
+		files:     files,
+		now:       func() time.Time { return parentReviewNow },
 	}
 }
 
@@ -94,6 +96,18 @@ func TestParentReviewAnswerVerb(t *testing.T) {
 			wantStates: []burlerengine.ParentAskState{burlerengine.ParentAskDone},
 		},
 		{
+			name:  "a beam's orch on the run's chain answers an ask that went to the prime's orch",
+			asks:  []burlerengine.ParentAsk{openParentAsk(time.Minute)},
+			input: parentAnswerInput{ask: 1, satisfied: true},
+			setup: func(d *parentReviewDeps) {
+				d.strandName = "ly:beam-b:orch"
+				d.orchChain = func() ([]hubgeom.Parent, error) {
+					return []hubgeom.Parent{{Name: "ly:beam-b:orch", Worktree: "beam-b"}, {Name: parentReviewParent}}, nil
+				}
+			},
+			wantStates: []burlerengine.ParentAskState{burlerengine.ParentAskDone},
+		},
+		{
 			name:       "the strand the ask went to answers a pending-post ask after the parent resolves to another orch",
 			asks:       []burlerengine.ParentAsk{{State: burlerengine.ParentAskPendingPost, Strand: "ly:orch-asked", Deadline: parentReviewNow.Add(time.Minute)}},
 			input:      parentAnswerInput{ask: 1, satisfied: true},
@@ -143,7 +157,7 @@ func TestParentReviewAnswerVerb(t *testing.T) {
 			input: parentAnswerInput{ask: 1, satisfied: true},
 			setup: func(d *parentReviewDeps) {
 				d.strandName = "ly:task-a:darn"
-				d.parent = func() (hubgeom.Parent, error) { return hubgeom.Parent{}, errors.New("no orch is live") }
+				d.orchChain = func() ([]hubgeom.Parent, error) { return nil, errors.New("origin record unreadable") }
 			},
 			want:       []string{`"ly:task-a:darn"`, "could not be resolved", parentReviewWayParentAnswers},
 			wantStates: []burlerengine.ParentAskState{burlerengine.ParentAskOpen},

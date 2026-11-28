@@ -419,10 +419,11 @@ func (c *battenCLI) withTaskWorktree(deps shedarbiter.Deps) (shedarbiter.Deps, e
 	return deps, nil
 }
 
-// tacklerDepsFor fills the tackler call's seams and fixed values over settings and shuttle.
+// tacklerDepsFor fills the tackler call's seams and fixed values over settings, shuttle and parentName.
+// parentName is the run's parent orch.
 // A batten tackler has no worktree snapshot, since the prime has other writers,
 // and a resume names the halted row only.
-func (c *battenCLI) tacklerDepsFor(settings sheddriver.TacklerSettings, shuttle sheddriver.AgentShuttle) sheddriver.TacklerDeps {
+func (c *battenCLI) tacklerDepsFor(settings sheddriver.TacklerSettings, shuttle sheddriver.AgentShuttle, parentName string) sheddriver.TacklerDeps {
 	location, slug := c.location, c.slug
 	settlePath := shedrun.SettleRecords(location, slug)
 	return sheddriver.TacklerDeps{
@@ -458,10 +459,11 @@ func (c *battenCLI) tacklerDepsFor(settings sheddriver.TacklerSettings, shuttle 
 		Recipe:         battenTacklerRecipe,
 		GotoRoutedFrom: false,
 		Prompt: sheddriver.TacklerPromptInput{
-			Slug:      slug,
-			Worktree:  location.WorktreePath(),
-			TraceDir:  logger.TraceDir(),
-			DriverLog: logger.TraceFile(),
+			Slug:       slug,
+			ParentName: parentName,
+			Worktree:   location.WorktreePath(),
+			TraceDir:   logger.TraceDir(),
+			DriverLog:  logger.TraceFile(),
 		},
 		StencilsDir: fabriclayout.StencilsDir(location.HubPath),
 		Shuttle:     shuttle,
@@ -495,7 +497,18 @@ func (c *battenCLI) loadedTacklerDeps() (sheddriver.TacklerDeps, error) {
 	if err != nil {
 		return sheddriver.TacklerDeps{}, err
 	}
-	return c.tacklerDepsFor(settings, shuttle), nil
+	return c.tacklerDepsFor(settings, shuttle, c.promptParentName()), nil
+}
+
+// promptParentName returns the run's parent orch name for the parent line of its tackler and arbiter prompts.
+// A failed read answers "" with a warning: the line is optional, and the stop is still judged without it.
+func (c *battenCLI) promptParentName() string {
+	name, err := hubgeom.ParentOrchName(c.location, c.slug)
+	if err != nil {
+		logger.Warn("battencli: read the run's parent orch failed; its prompts name no parent", "slug", c.slug, "error", err)
+		return ""
+	}
+	return name
 }
 
 // primeShuttle builds the prime's shuttle runner, shared by the tackler and the arbiter.
@@ -582,9 +595,10 @@ func (c *battenCLI) loadedArbiterDeps() (shedarbiter.Deps, error) {
 		GotoGuard:  c.haltedRowGuard(),
 		Stop:       arbiterstop.NewBattenReaders(),
 		Prompt: shedarbiter.PromptInput{
-			Recipe:   battenArbiterRecipe,
-			Slug:     slug,
-			Worktree: location.WorktreePath(),
+			Recipe:     battenArbiterRecipe,
+			ParentName: c.promptParentName(),
+			Slug:       slug,
+			Worktree:   location.WorktreePath(),
 		},
 		StencilsDir:        fabriclayout.StencilsDir(location.HubPath),
 		AmendmentTarget:    func() string { return "" },

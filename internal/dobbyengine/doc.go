@@ -5,6 +5,10 @@
 // The prime is the root beam:
 // its dobby has an empty slug in Geometry, and the dobby of any other beam carries that beam's slug.
 //
+// "The nearest live orch" names where the hub wiring sends the dobby's lines.
+// That is the orch of the dobby's own worktree while its strand stands, even when it reads as down.
+// Otherwise it is the nearest live orch up the beam chain, else the prime's.
+//
 // The package holds:
 //
 //   - Geometry is the absolute paths and names the hub wiring tells the engine.

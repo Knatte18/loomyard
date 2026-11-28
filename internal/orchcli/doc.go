@@ -107,7 +107,8 @@
 // A module sends the orch a notice as creel mail and never types into the orch session itself.
 // `PrimePaths` is the one accessor for the orch's told paths.
 // `NotifyPrime` posts a line to the prime's orch strand and posts nothing, with no error, when none is recorded.
-// `NotifyParent` and `NotifyFrom` route a run's notice to the nearest live orch up its beam chain.
+// `NotifyParent` and `NotifyFrom` route a run's notice up its beam chain:
+// the orch the walk starts at while reed holds its strand, else the nearest live orch above.
 // They route to the prime's orch when none is live.
 // `NotifyAsker` routes a hold notice to the orch the held agent's own question reached.
 // `PostAsProgram` signs a post as a lym program alone.

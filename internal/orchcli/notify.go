@@ -1,6 +1,8 @@
 // notify.go sends a notice to an orch as creel mail.
 // Each Notify function differs in which orch it reaches from a location,
 // and the lookups here resolve the orch strand that mail addresses.
+// A walk up a beam chain keeps a notice at the worktree it starts at while reed holds that orch's strand, live or not.
+// Otherwise, as for a stopped orch, it passes the notice to the nearest live orch above, else the prime's.
 
 package orchcli
 
@@ -41,10 +43,11 @@ func NotifyPrime(location *lymcwd.Location, program, line string) (posted bool, 
 	return postNotice(location, "", program, line, creelengine.PostTags{}, func() (string, bool, error) { return PrimeOrchStrand(location) })
 }
 
-// NotifyParent sends line as creel mail to the nearest live orch up the beam chain of the pair's parent.
+// NotifyParent sends line as creel mail to the orch a walk from the pair's parent reaches.
 // It is signed as program, and it reports whether the notice was posted.
 // The mail is tagged with the pair's slug as its run, so the pair's teardown drops it while it is unread.
-// The destination is resolved at each call; the prime's orch is the answer when no orch above the pair is live.
+// The destination is resolved at each call.
+// It is the parent's orch while reed holds its strand, else the nearest live orch above, else the prime's.
 // A destination with no orch strand recorded is not an error: the notice is logged and nothing is posted.
 // A refusal or failure comes back as an error carrying the full line, and the notice is not retried.
 func NotifyParent(pair *lymcwd.Location, program, line string) (posted bool, err error) {
@@ -52,20 +55,20 @@ func NotifyParent(pair *lymcwd.Location, program, line string) (posted bool, err
 	return postNotice(pair, "", program, line, tags, func() (string, bool, error) { return parentOrchStrand(pair, OrchLive) })
 }
 
-// NotifyFrom sends line as creel mail to the nearest live orch on the beam chain at or above from.
+// NotifyFrom sends line as creel mail to the orch a walk up the beam chain from the worktree from reaches.
 // It is signed as program, and it reports whether the notice was posted.
 // It serves a notice of a run whose pair is absent, which the run's beam worktree stands in for.
 func NotifyFrom(from *lymcwd.Location, program, line string) (posted bool, err error) {
 	return postNotice(from, "", program, line, creelengine.PostTags{}, func() (string, bool, error) { return nearestOrchStrand(from, OrchLive) })
 }
 
-// NotifyFromScoped sends line as creel mail to the nearest live orch on the beam chain at or above from.
+// NotifyFromScoped sends line as creel mail to the orch a walk up the beam chain from the worktree from reaches.
 // It is signed as program scoped to slug, as "<shortname>:<slug>:<NAME>", and it reports whether the notice was posted.
 func NotifyFromScoped(from *lymcwd.Location, slug, program, line string) (posted bool, err error) {
 	return postNotice(from, slug, program, line, creelengine.PostTags{}, func() (string, bool, error) { return nearestOrchStrand(from, OrchLive) })
 }
 
-// NotifyRunFrom sends line as creel mail carrying tags to the nearest live orch on the beam chain at or above from.
+// NotifyRunFrom sends line as creel mail carrying tags to the orch a walk from the worktree from reaches.
 // It is signed as program scoped to slug, the unscoped program for an empty slug,
 // and it reports whether the notice was posted.
 // It serves a notice about one run: its run tag lets the run's teardown drop it unread,
@@ -75,7 +78,7 @@ func NotifyRunFrom(from *lymcwd.Location, slug, program string, tags creelengine
 }
 
 // NotifyParentHalt sends line, stamped with the pair's autonomy, as creel mail.
-// It goes to the nearest live orch up the pair's beam chain.
+// It goes to the orch a walk from the pair's parent reaches.
 // It serves a run's halt notices, and routes, tags and signs as NotifyParent does.
 // The stamp is the autonomy the pair reads when the notice is built,
 // so the orch the notice reaches handles it under the run's value, never its own worktree's.
@@ -84,7 +87,7 @@ func NotifyParentHalt(pair *lymcwd.Location, program, line string) (posted bool,
 }
 
 // NotifyRunFromHalt sends line, stamped with the autonomy of the run slug, as creel mail carrying tags.
-// It goes to the nearest live orch on the beam chain at or above from.
+// It goes to the orch a walk up the beam chain from the worktree from reaches.
 // It serves a run's halt notices for a run whose pair is absent, and routes and tags as NotifyRunFrom does.
 // It is signed as the unscoped program: slug names the run whose autonomy stamps the line, never a scope of the signer.
 func NotifyRunFromHalt(from *lymcwd.Location, slug, program string, tags creelengine.PostTags, line string) (posted bool, err error) {
@@ -101,7 +104,7 @@ func WithRunAutonomy(location *lymcwd.Location, slug, line string) string {
 // NotifyAsker sends line as creel mail to the orch the agents of location reach as their parent.
 // It is signed as program, and it reports whether the notice was posted.
 // It serves a hold notice.
-// The walk to the nearest live orch starts at the pair's recorded parent when location is a pair.
+// The walk up the beam chain starts at the pair's recorded parent when location is a pair.
 // Otherwise, for a beam or the prime, it starts at location itself.
 // A destination with no orch strand recorded is not an error: the notice is logged and nothing is posted.
 // A refusal or failure comes back as an error carrying the full line, and the notice is not retried.
@@ -120,7 +123,6 @@ func NotifyOrchAt(worktree *lymcwd.Location, program, line string) (posted bool,
 
 // ParentStrand answers the orch strand a notice of pair goes to, by NotifyParent's routing.
 // It also reports whether that orch's state records one.
-// The answer is the nearest worktree up from the pair's parent whose orch is live, else the prime's.
 func ParentStrand(pair *lymcwd.Location) (name string, recorded bool, err error) {
 	return parentOrchStrand(pair, OrchLive)
 }
@@ -173,10 +175,19 @@ func notifyClientsOf(location *lymcwd.Location, slug, program string) notifyClie
 }
 
 // NearestLiveParent answers the orch a notice of pair goes to, as the orch's agent name and worktree.
-// It is the nearest worktree up from the pair's parent whose orch is live, else the prime's.
+// It is the orch of the pair's parent while reed holds its strand, live or not.
+// Otherwise it is the nearest live orch above, else the prime's.
 // The answer's Worktree is empty for the prime.
 func NearestLiveParent(pair *lymcwd.Location) (hubgeom.Parent, error) {
 	return nearestLiveParent(pair, OrchLive)
+}
+
+// NoticeDestination answers the orch a notice starting at the worktree from goes to, as its agent name and worktree.
+// It is the orch of from while reed holds its strand, live or not.
+// Otherwise it is the nearest live orch above, else the prime's.
+// The answer's Worktree is empty for the prime.
+func NoticeDestination(from *lymcwd.Location) (hubgeom.Parent, error) {
+	return orchroute.Destination(from, OrchLive)
 }
 
 // nearestLiveParent answers the orch a notice of pair goes to, deciding each candidate orch's liveness with live.
@@ -189,7 +200,7 @@ func nearestLiveParent(pair *lymcwd.Location, live func(worktree *lymcwd.Locatio
 	if err != nil {
 		return hubgeom.Parent{}, err
 	}
-	return hubgeom.NearestLiveOrch(start, live)
+	return orchroute.Destination(start, live)
 }
 
 // askerOrchStrand answers the orch strand a hold notice of location goes to, and whether that orch's state records one.
@@ -197,15 +208,12 @@ func askerOrchStrand(location *lymcwd.Location, live func(worktree *lymcwd.Locat
 	return orchroute.Asker(location, live)
 }
 
-// parentOrchStrand answers the orch strand a notice of pair goes to.
-// It is the nearest worktree up from the pair's parent whose orch live reports live, else the prime's.
+// parentOrchStrand answers the orch strand a notice of pair goes to, deciding liveness with live.
 func parentOrchStrand(pair *lymcwd.Location, live func(worktree *lymcwd.Location) (bool, error)) (name string, recorded bool, err error) {
 	return orchroute.FromPair(pair, live)
 }
 
-// nearestOrchStrand answers the orch strand of the nearest worktree on the beam chain at or above start.
-// It is the nearest one whose orch live reports live.
-// It falls back to the prime's orch strand when none is live.
+// nearestOrchStrand answers the orch strand a notice starting at start goes to, deciding liveness with live.
 func nearestOrchStrand(start *lymcwd.Location, live func(worktree *lymcwd.Location) (bool, error)) (name string, recorded bool, err error) {
 	return orchroute.From(start, live)
 }

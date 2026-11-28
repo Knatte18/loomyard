@@ -45,9 +45,9 @@
 // `defer` without a slug acts on the cwd's own worktree.
 // Both run a parent-caller check first, as `lym loom decision add` runs its own caller check:
 // the caller's strand name, from agentname.StrandNameEnv, passes when it is empty, as in the operator's own shell;
-// it passes when it equals the run's parent orch;
+// it passes when it is an orch on the run's beam chain above the pair, or the orch the pair's notices go to;
 // it is refused, naming the parent and the operator's shell, when it is another session;
-// a parent that cannot be resolved refuses a named caller, naming the error.
+// a chain or parent that cannot be resolved refuses a caller neither one admits, naming the error.
 // Bound: the check rests on the strand name and on the shell guard that refuses setting lym's strand variables.
 // `amend` takes exactly one of `--entries <file>`, `--restore` or `--discard`, and calls driftengine.Amend.
 // It refuses a file it cannot read, naming its path.

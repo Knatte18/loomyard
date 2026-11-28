@@ -40,12 +40,11 @@
 // It reads as the prime when the record names the prime's checked-out branch or the prime's worktree.
 // It is never derived by matching the recorded branch against the pairs present here.
 // So a member whose beam pair is absent on this machine still reads the beam as its parent.
+// ParentOrchName names the orch of that parent, for a run driven from the prime, whose own worktree tells no parent.
 // ResolveParent answers the parent pair's orch name for a reader that needs the pair itself:
 // the parent names the driver's prompts carry.
-// The `lym loom decision add --by parent` guard admits the destination of notices instead,
-// so the orch that receives them can record the call.
 //
-// NearestLiveOrch is the destination of a notice to an orch.
+// NearestLiveOrch is the walk behind the destination of a notice to an orch.
 // It tries the worktree it is told, then walks upward through the origin records' parent worktrees.
 // It answers the nearest worktree whose orch a told predicate reports live.
 // When none is live it answers the prime, whatever its state.
@@ -53,6 +52,10 @@
 // A worktree with no origin record ends the walk at the prime.
 // So does an empty parent worktree, a parent worktree that is gone, and a cycle.
 // An error from the predicate is returned.
+//
+// OrchChain lists every orch on that walk, nearest first and the prime's last, and asks none whether it is live.
+// An orch keeps its place on the chain whether or not it reads as live.
+// OrchChainAbove is that list without the told worktree's own orch.
 //
 // Autonomy is the reader of beam.yaml's `autonomy` for runs and orchs.
 // It answers for the worktree it is named, through TaskSettingChain and the per-task lookup, at the moment of the call.

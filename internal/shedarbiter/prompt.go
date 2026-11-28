@@ -40,14 +40,17 @@ const (
 const editScopeMarker = "edit_scope"
 
 // PromptInput carries what the arbiter stencil's markers are filled from.
-// Recipe, ReportPath, BriefPath, CaseBriefPath, DecisionRecordPath, SupportLogPath and AmendmentTarget may be empty.
+// Recipe, ParentName, ReportPath, BriefPath and CaseBriefPath may be empty.
+// DecisionRecordPath, SupportLogPath and AmendmentTarget may be empty too.
 // Every other field is required.
 // Recipe is the description of the run's recipe, including the repair verbs the arbiter may run.
 // AmendmentTarget is the row a plan amendment routes to.
 // MayEdit lets the arbiter make one fix of its own and commit it in Worktree; false keeps it to a verdict.
 type PromptInput struct {
-	MayEdit            bool
-	Recipe             string
+	MayEdit bool
+	Recipe  string
+	// ParentName is the run's parent orch, empty for a run with no parent.
+	ParentName         string
 	RunID              string
 	Slug               string
 	Worktree           string
@@ -63,13 +66,13 @@ type PromptInput struct {
 
 // Prompt composes the arbiter session's launch prompt for the engine named engine.
 // It reads the arbiter stencil in stencilsDir and fills it with in.
-// It renders the no-parent directive, since the verdict file is the arbiter's only channel.
+// It renders the hand-back parent directive naming in.ParentName, since the verdict file is the arbiter's only channel.
 // It also renders the edit directive of engine.
 // Its edit rules are the one-shot fix fragment when in.MayEdit is set, and the no-fix fragment otherwise.
 // An empty recipe description, report, brief, case brief, decision record, support log or amendment target is filled as the literal "none".
 // It returns the read or fill error wrapped with the stencil's name.
 func Prompt(stencilsDir, engine string, in PromptInput) (string, error) {
-	directive, err := parentdirective.Directive(stencilsDir, "", false)
+	directive, err := parentdirective.HandBack(stencilsDir, in.ParentName)
 	if err != nil {
 		return "", err
 	}

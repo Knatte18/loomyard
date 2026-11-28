@@ -162,6 +162,17 @@ func handBackNotify(location *lymcwd.Location) func(_ sheddriver.Stop, line stri
 	}
 }
 
+// tacklerPrompt returns what the tackler's prompt is told about the run the pre-run armed.
+func (c *loomCLI) tacklerPrompt() sheddriver.TacklerPromptInput {
+	return sheddriver.TacklerPromptInput{
+		Slug:       seedSlug(c.location.WorktreeName),
+		ParentName: c.parentName,
+		Worktree:   c.location.WorktreePath(),
+		TraceDir:   logger.TraceDir(),
+		DriverLog:  loomengine.LoomDriverLog(c.location),
+	}
+}
+
 // goDriverDepsFor assembles the Go driver's seams for the run the pre-run armed.
 // release is the driver lock's early release, which the hand-over calls before it spawns its successor.
 // Every closure reads on demand, and the on-disk lym path is resolved once, here.
@@ -230,15 +241,10 @@ func (c *loomCLI) goDriverDepsFor(release func() error) (sheddriver.Deps, error)
 		Recipe:         tacklerRecipe,
 		GotoRoutedFrom: true,
 		GotoGuard:      gotoGuard,
-		Prompt: sheddriver.TacklerPromptInput{
-			Slug:      seedSlug(location.WorktreeName),
-			Worktree:  location.WorktreePath(),
-			TraceDir:  logger.TraceDir(),
-			DriverLog: loomengine.LoomDriverLog(location),
-		},
-		StencilsDir: c.runDeps.Geom.StencilsDir,
-		Shuttle:     sheddriver.RunnerShuttle{Runner: c.runner},
-		Now:         time.Now,
+		Prompt:         c.tacklerPrompt(),
+		StencilsDir:    c.runDeps.Geom.StencilsDir,
+		Shuttle:        sheddriver.RunnerShuttle{Runner: c.runner},
+		Now:            time.Now,
 	}
 
 	deps := sheddriver.Deps{

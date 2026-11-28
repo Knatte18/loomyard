@@ -110,9 +110,12 @@ func TestBattenDriverDeps(t *testing.T) {
 		t.Errorf("NewReportPath() directory = %q; want %q", filepath.Dir(deps.NewReportPath()), want)
 	}
 
-	tackler := c.tacklerDepsFor(sheddriver.TacklerSettings{}, nil)
+	tackler := c.tacklerDepsFor(sheddriver.TacklerSettings{}, nil, "tst:orch")
 	if tackler.Recipe != battenTacklerRecipe || tackler.GotoRoutedFrom {
 		t.Errorf("tackler Recipe = %q, GotoRoutedFrom = %v; want %q and false", tackler.Recipe, tackler.GotoRoutedFrom, battenTacklerRecipe)
+	}
+	if tackler.Prompt.ParentName != "tst:orch" {
+		t.Errorf("tackler Prompt.ParentName = %q; want tst:orch", tackler.Prompt.ParentName)
 	}
 	if want := shedrun.TacklerDir(c.location, c.slug); tackler.TacklerDir != want {
 		t.Errorf("tackler TacklerDir = %q; want %q", tackler.TacklerDir, want)

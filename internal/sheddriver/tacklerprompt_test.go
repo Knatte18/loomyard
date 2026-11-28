@@ -17,7 +17,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestTacklerPrompt asserts the shipped stencil renders every marker value, the no-parent and edit directives, the literal none for an absent report, the recipe line under its heading, and no unfilled marker; it refuses an empty recipe or goto rows naming the marker.
+// TestTacklerPrompt asserts the shipped stencil renders every marker value and the edit directive.
+// It renders the hand-back directive naming the run's parent, or the no-parent one without a parent.
+// An absent report renders as the literal none, and the recipe line renders under its heading.
+// No marker stays unfilled.
+// An empty recipe or empty goto rows are refused, naming the marker.
 func TestTacklerPrompt(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -25,6 +29,7 @@ func TestTacklerPrompt(t *testing.T) {
 	in := TacklerPromptInput{
 		RunID:         "operator-surface",
 		Slug:          "operator-surface-task",
+		ParentName:    "tst:beam-b:orch",
 		Recipe:        "loom: a phased task run (discussion, plan, webster's coded batches, reviews, landing)",
 		GotoRows:      "`Plan-Bouncer`",
 		Worktree:      "/hub/wt",
@@ -45,6 +50,8 @@ func TestTacklerPrompt(t *testing.T) {
 	noRecipe.Recipe = ""
 	noGotoRows := in
 	noGotoRows.GotoRows = ""
+	noParent := in
+	noParent.ParentName = ""
 	cases := []struct {
 		name string
 		in   TacklerPromptInput
@@ -60,6 +67,17 @@ func TestTacklerPrompt(t *testing.T) {
 			name: "every marker value",
 			in:   in,
 			want: []string{in.RunID, in.Slug, in.Recipe, in.GotoRows, in.Worktree, in.EnvelopePath, in.ReportPath, in.TraceCopy, in.StderrPath, in.TraceDir, in.DriverLog, in.VerdictPath, in.CaseBriefPath},
+		},
+		{
+			name:       "the run's parent is named as the orch the run hands its stops back to",
+			in:         in,
+			want:       []string{"Your run's parent is `tst:beam-b:orch`"},
+			wantAbsent: []string{"No parent is recorded"},
+		},
+		{
+			name: "a run with no parent reads the no-parent directive",
+			in:   noParent,
+			want: []string{"No parent is recorded for this run."},
 		},
 		{
 			name: "absent report reads none",
@@ -115,12 +133,12 @@ func TestTacklerPrompt(t *testing.T) {
 					t.Errorf("RenderTacklerPrompt() carries %q; want it absent", absent)
 				}
 			}
-			directive, err := parentdirective.Directive(dir, "", false)
+			directive, err := parentdirective.HandBack(dir, tc.in.ParentName)
 			if err != nil {
-				t.Fatalf("parentdirective.Directive: %v", err)
+				t.Fatalf("parentdirective.HandBack: %v", err)
 			}
 			if !strings.Contains(got, directive) {
-				t.Errorf("RenderTacklerPrompt() does not carry the no-parent directive %q", directive)
+				t.Errorf("RenderTacklerPrompt() does not carry the parent directive %q", directive)
 			}
 			stencilkit.RequireEditDirectiveOf(t, dir, got, engine, otherEngine)
 			if strings.Contains(got, "{{.") {

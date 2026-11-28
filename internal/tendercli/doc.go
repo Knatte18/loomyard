@@ -10,11 +10,15 @@
 // # Callers
 //
 // The caller is read from the strand-name variable reed injects:
-// empty is an external caller, the orch's name is the orch, and any other name is an agent of the slug it carries.
+// empty is an external caller, the prime's orch name is the orch, a beam's orch name is that beam's orch,
+// and any other name is an agent of the slug it carries.
 // The orch and an external caller may run `pause`, `resume` and `revive` with or without a slug.
 // An agent may pause, resume or revive only its own pair.
+// A beam's orch may pause, resume or revive its beam and every pair whose beam chain holds the beam.
+// That reach exists because the beam's orch settles those runs' halts.
+// The chain is read from the origin records with no regard to which orch is live.
 // A hub-wide call, or one naming another slug, is refused with the way forward of asking its parent session.
-// `status` takes no caller check, since it writes nothing; `reap` takes it with no slug.
+// `status` takes no caller check, since it writes nothing; `reap` takes it with no slug, and refuses a beam's orch.
 // The check guards against a mistaken call:
 // the agents' settings deny any command naming the variable, so an agent cannot clear it to read as external.
 //

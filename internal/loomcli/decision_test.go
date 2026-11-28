@@ -53,7 +53,13 @@ type decisionFake struct {
 	// strandName is the caller's exported strand name, empty for an unnamed shell.
 	strandName string
 	parent     hubgeom.Parent
-	parentErr  error
+	// parentErr is returned by both the parent and the orch chain resolvers.
+	parentErr error
+	// chainErr, when set, fails the orch chain resolver alone.
+	chainErr error
+	// orchChain, when set, is the run's beam chain.
+	// Otherwise the chain holds the parent alone, or nothing for a nameless one.
+	orchChain []hubgeom.Parent
 	// arbiterName is the one strand name the run's arbiter check accepts.
 	arbiterName string
 	// samplerName is the one strand name the sampler session check accepts; samplerErr is returned instead of its answer.
@@ -274,9 +280,18 @@ func newDarnDecisionFake(t *testing.T) *decisionFake {
 
 func (f *decisionFake) deps() decisionDeps {
 	return decisionDeps{
-		strandName:     f.strandName,
-		programName:    func() (string, error) { return "hub:LOOM", f.programNameErr },
-		parent:         func() (hubgeom.Parent, error) { return f.parent, f.parentErr },
+		strandName:  f.strandName,
+		programName: func() (string, error) { return "hub:LOOM", f.programNameErr },
+		parent:      func() (hubgeom.Parent, error) { return f.parent, f.parentErr },
+		orchChain: func() ([]hubgeom.Parent, error) {
+			if f.chainErr != nil {
+				return nil, f.chainErr
+			}
+			if f.orchChain != nil || f.parent.Name == "" {
+				return f.orchChain, f.parentErr
+			}
+			return []hubgeom.Parent{f.parent}, f.parentErr
+		},
 		arbiterStrand:  func(name string) bool { return name == f.arbiterName },
 		samplerStrand:  func(name string) (bool, error) { return f.samplerName != "" && name == f.samplerName, f.samplerErr },
 		readStatus:     func() (shedengine.Status, bool, error) { return f.status, f.found, f.statusErr },
@@ -544,8 +559,12 @@ func TestDecisionVerb_AppendsAndCommits(t *testing.T) {
 		parentName  string
 		arbiterName string
 		samplerName string
+		// beamOrch, when set, puts that orch on the run's beam chain below the parent.
+		beamOrch string
 		// samplerErr makes the read of the run's sampler record fail.
 		samplerErr error
+		// chainErr makes the read of the run's beam chain fail while the parent still resolves.
+		chainErr error
 		// recordRow runs the case on a Record-Write record that is committed and unchanged.
 		recordRow bool
 		// pattern sets the three PATTERN-change flags.
@@ -583,6 +602,8 @@ func TestDecisionVerb_AppendsAndCommits(t *testing.T) {
 		{name: "program name unresolvable", by: "parent", programNameFails: true},
 		{name: "recorded parent's own name", by: "parent", strandName: "hub:orch", parentName: "hub:orch"},
 		{name: "slug-bearing recorded parent's own name", by: "parent", strandName: "hub:other:orch", parentName: "hub:other:orch"},
+		{name: "a beam's orch on the run's chain while the prime's orch resolves as the parent", by: "parent", strandName: "hub:beam-b:orch", parentName: "hub:orch", beamOrch: "hub:beam-b:orch"},
+		{name: "the resolved parent while the beam chain cannot be read", by: "parent", strandName: "hub:orch", parentName: "hub:orch", chainErr: errors.New("origin record unreadable")},
 		{name: "the run's arbiter strand with the arbiter label", by: "arbiter", strandName: "hub:slug:arbiter", parentName: "hub:orch", arbiterName: "hub:slug:arbiter"},
 		{name: "the run's sampler session with the operator label on a Record-Write record", by: "operator", strandName: "hub:slug:sampler", parentName: "hub:orch", samplerName: "hub:slug:sampler", recordRow: true},
 		{name: "the recorded parent with an unreadable sampler record", by: "parent", strandName: "hub:orch", parentName: "hub:orch", samplerErr: errors.New("record boom")},
@@ -598,6 +619,7 @@ func TestDecisionVerb_AppendsAndCommits(t *testing.T) {
 			f.arbiterName = tc.arbiterName
 			f.samplerName = tc.samplerName
 			f.samplerErr = tc.samplerErr
+			f.chainErr = tc.chainErr
 			f.judgeOpen = tc.judgeOpen
 			if tc.programNameFails {
 				f.programNameErr = errors.New("geometry boom")
@@ -612,6 +634,9 @@ func TestDecisionVerb_AppendsAndCommits(t *testing.T) {
 				f.raddlePerch = true
 			}
 			f.parent = hubgeom.Parent{Name: tc.parentName}
+			if tc.beamOrch != "" {
+				f.orchChain = []hubgeom.Parent{{Name: tc.beamOrch, Worktree: "beam-b"}, f.parent}
+			}
 			input := goodDecisionInput()
 			input.by = by
 			input.dropsCreate = tc.dropsCreate
@@ -1817,6 +1842,13 @@ func TestDecisionStoreVerb(t *testing.T) {
 			name: "ParentOrch_Stores",
 			setup: func(f *decisionFake) {
 				reachStore(f).strandName, f.parent = "hub:orch", hubgeom.Parent{Name: "hub:orch"}
+			},
+		},
+		{
+			name: "BeamOrchOnTheChain_StoresWhileThePrimeResolvesAsTheParent",
+			setup: func(f *decisionFake) {
+				reachStore(f).strandName, f.parent = "hub:beam-b:orch", hubgeom.Parent{Name: "hub:orch"}
+				f.orchChain = []hubgeom.Parent{{Name: "hub:beam-b:orch", Worktree: "beam-b"}, f.parent}
 			},
 		},
 	}

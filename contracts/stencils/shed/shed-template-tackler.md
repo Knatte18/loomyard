@@ -12,7 +12,7 @@
      {{.trace_copy}} the copy of the stop step's trace, {{.stderr_path}} the stop step's captured stderr,
      {{.trace_dir}} the directory of the child traces, {{.driver_log}} the shed driver's own log,
      {{.verdict_path}} the file the tackler always writes, {{.case_brief_path}} the file it writes on an escalate,
-     {{.parent_directive}} the no-parent variant of the shared parent directive rendered by internal/parentdirective,
+     {{.parent_directive}} the hand-back variant of the shared parent directive rendered by internal/parentdirective,
      and {{.edit_directive}} the edit directive of the engine the prompt launches on, rendered by internal/editdirective.
      The body is recipe-blind:
      the recipe and the rows a `goto` may name arrive only through {{.recipe}} and {{.goto_rows}},

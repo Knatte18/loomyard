@@ -50,8 +50,10 @@ const (
 type parentReviewDeps struct {
 	// strandName is the full name reed exported to the calling session, empty for a shell reed did not spawn.
 	strandName string
-	// parent resolves the run's parent orch at call time.
+	// parent resolves the run's parent orch at call time, the one up the beam chain its notices go to.
 	parent func() (hubgeom.Parent, error)
+	// orchChain resolves every orch on the run's beam chain at call time, asking none whether it is live.
+	orchChain func() ([]hubgeom.Parent, error)
 	// files locates the run's ask record and the parent's reports.
 	files burlerengine.ParentReviewFiles
 	// now is the clock every deadline is judged against.
@@ -128,16 +130,16 @@ func containsWord[T comparable](words []T, word T) bool {
 }
 
 // parentAnswerCallerRefusal returns the refusal text for a caller that may not answer asked, or empty when it may.
-// The operator's own unnamed shell always may, and so does the run's parent orch as resolved at call time.
+// The operator's own unnamed shell always may, and so does every orch on chain, the run's beam chain read at call time.
 // So does the orch strand asked went to, which keeps an orch that came up or went down since the ask from refusing it.
-func parentAnswerCallerRefusal(caller string, parent hubgeom.Parent, parentErr error, asked burlerengine.ParentAsk) string {
+func parentAnswerCallerRefusal(caller string, chain []hubgeom.Parent, chainErr error, asked burlerengine.ParentAsk) string {
 	if caller == "" || (asked.Strand != "" && caller == asked.Strand) {
 		return ""
 	}
-	if parentErr != nil {
-		return fmt.Sprintf("the caller %q is not the strand the ask went to, and the run's parent orch could not be resolved (%s); %s", caller, parentErr, parentReviewWayParentAnswers)
+	if chainErr != nil {
+		return fmt.Sprintf("the caller %q is not the strand the ask went to, and the run's parent orch could not be resolved (%s); %s", caller, chainErr, parentReviewWayParentAnswers)
 	}
-	if parent.Name != "" && caller == parent.Name {
+	if onChain(chain, caller) {
 		return ""
 	}
 	return fmt.Sprintf("the caller %q is neither the run's parent orch nor the strand the ask went to; %s", caller, parentReviewWayParentAnswers)
@@ -201,10 +203,11 @@ func parentReviewAnswerVerb(out io.Writer, slug string, deps parentReviewDeps, i
 		return refuse("read the run's parent-review asks: %s; %s", err, parentReviewWayRetry)
 	}
 	asked, _ := record.Ask(input.ask)
-	parent, parentErr := deps.parent()
-	if refusal := parentAnswerCallerRefusal(deps.strandName, parent, parentErr, asked); refusal != "" {
+	chain, chainErr := admissibleOrchs(deps.strandName, deps.orchChain, deps.parent)
+	if refusal := parentAnswerCallerRefusal(deps.strandName, chain, chainErr, asked); refusal != "" {
 		return refuse("%s", refusal)
 	}
+	parent, parentErr := deps.parent()
 
 	ask, err := burlerengine.AnswerParentAsk(deps.files, input.ask, deps.now(), findings)
 	var refusal *burlerengine.ParentAnswerRefusal
@@ -315,6 +318,7 @@ func (s *parentReviewState) preRun(cmd *cobra.Command, args []string) error {
 	s.deps = parentReviewDeps{
 		strandName: strand,
 		parent:     func() (hubgeom.Parent, error) { return decisionParent(target, record, orchcli.OrchLive) },
+		orchChain:  func() ([]hubgeom.Parent, error) { return decisionOrchChain(target, record) },
 		files:      burlerengine.ParentReviewFilesOf(target.AnchorPath()),
 		now:        time.Now,
 		awaitCap:   shuttleengines.KeepWarm(fabricengine.ConfigDirs(target), strand).Cap,
@@ -364,9 +368,9 @@ answer refused. A call the parent still wants made after a refusal goes in with
 "lym loom decision add <slug> --by parent"; once the task's scope is closed, as
 from Code-Review on, it is filed as a board note for a new task instead.
 
-The callers are the run's parent orch, resolved at call time, the orch strand
-the ask went to, and the operator's own unnamed shell; the strand name is not
-verified. It edits no tracked file and never the decision record.
+The callers are every orch on the run's beam chain, read at call time, the
+orch strand the ask went to, and the operator's own unnamed shell; the strand
+name is not verified. It edits no tracked file and never the decision record.
 
 Example:
   lym loom parent-review answer <slug> --ask 2 --findings-file findings.yaml`,

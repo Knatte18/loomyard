@@ -26,7 +26,8 @@ func seededStencils(t *testing.T) string {
 	return dir
 }
 
-// TestPrompt asserts the shipped stencil renders every marker value, the no-parent and edit directives.
+// TestPrompt asserts the shipped stencil renders every marker value and the edit directive.
+// It renders the hand-back directive naming the run's parent, or the no-parent one without a parent.
 // The recipe description renders too, and absent inputs render as the literal none.
 // No marker stays unfilled, and the verdict example is one the verdict reader accepts.
 //
@@ -38,6 +39,7 @@ func TestPrompt(t *testing.T) {
 	const battenRecipe = "This is a batten run; it has no repair verb."
 	in := PromptInput{
 		Recipe:             "This is a tapestry run. Its repair verbs: `lym loom decision add <slug>`.",
+		ParentName:         "tst:beam-b:orch",
 		RunID:              "operator-surface",
 		Slug:               "operator-surface-task",
 		Worktree:           "/hub/wt",
@@ -73,8 +75,9 @@ func TestPrompt(t *testing.T) {
 			want: []string{
 				in.Recipe, in.RunID, in.Slug, in.Worktree, in.EnvelopePath, in.ReportPath, in.BriefPath, in.CaseBriefPath, in.DecisionRecordPath, in.SupportLogPath, in.VerdictPath,
 				"amendment target `" + in.AmendmentTarget + "`", fixHeading, "committed in `" + in.Worktree + "`", "`Arbiter-Attempt: " + in.RunID + "`",
+				"Your run's parent is `" + in.ParentName + "`",
 			},
-			wantNot: []string{noFixHeading},
+			wantNot: []string{noFixHeading, "No parent is recorded"},
 		},
 		{
 			name:    "a batten description fills the recipe marker, and an arbiter that may not edit gets the no-fix rules",
@@ -83,9 +86,9 @@ func TestPrompt(t *testing.T) {
 			wantNot: []string{fixHeading},
 		},
 		{
-			name: "absent recipe, report, brief, case brief, amendment target, decision record and support log read none",
+			name: "absent recipe, report, brief, case brief, amendment target, decision record and support log read none, and no parent reads the no-parent directive",
 			in:   absent,
-			want: []string{"## The run\n\nnone\n"},
+			want: []string{"## The run\n\nnone\n", "No parent is recorded for this run."},
 			absent: []string{
 				"driver's stop or fork report `none`", "escalation brief `none`", "case brief `none`", "amendment target `none`",
 				"decision record `none`", "support log `none`",
@@ -120,12 +123,12 @@ func TestPrompt(t *testing.T) {
 					t.Errorf("Prompt() carries %q; want it absent", unwanted)
 				}
 			}
-			directive, err := parentdirective.Directive(dir, "", false)
+			directive, err := parentdirective.HandBack(dir, tc.in.ParentName)
 			if err != nil {
-				t.Fatalf("parentdirective.Directive: %v", err)
+				t.Fatalf("parentdirective.HandBack: %v", err)
 			}
 			if !strings.Contains(got, directive) {
-				t.Errorf("Prompt() does not carry the no-parent directive %q", directive)
+				t.Errorf("Prompt() does not carry the parent directive %q", directive)
 			}
 			stencilkit.RequireEditDirectiveOf(t, dir, got, engine, otherEngine)
 			if strings.Contains(got, "{{") {

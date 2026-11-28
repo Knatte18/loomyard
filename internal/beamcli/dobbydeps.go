@@ -451,7 +451,7 @@ func hubDobbyDepsStarting(prime *lymcwd.Location, geom dobbyengine.Geometry, sta
 		},
 		StencilsDir: fabriclayout.StencilsDir(prime.HubPath),
 		NearestOrch: func() (string, error) {
-			parent, err := hubgeom.NearestLiveOrch(worktree, orchcli.OrchLive)
+			parent, err := orchcli.NoticeDestination(worktree)
 			return parent.Name, err
 		},
 	}

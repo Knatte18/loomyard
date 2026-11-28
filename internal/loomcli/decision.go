@@ -49,6 +49,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/orchcli"
+	"github.com/Knatte18/loomyard/internal/orchroute"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/raddleparser"
@@ -280,8 +281,10 @@ type decisionDeps struct {
 	strandName string
 	// programName resolves the hub's full LOOM program name, '<shortname>:LOOM', which sends notices as the program.
 	programName func() (string, error)
-	// parent resolves the nearest live orch up the beam chain, which receives the run's notices, for a named caller only.
+	// parent resolves the orch up the beam chain that receives the run's notices, for a named caller only.
 	parent func() (hubgeom.Parent, error)
+	// orchChain resolves every orch that may record on the run, asking none whether it is live, for a named caller only.
+	orchChain func() ([]hubgeom.Parent, error)
 	// arbiterStrand reports whether name is the target run's own arbiter strand, called only for a named caller.
 	arbiterStrand func(name string) bool
 	// samplerStrand reports whether name is the strand the Sampler-Session row recorded, while the run stands at that row.
@@ -758,7 +761,7 @@ func holdDecisionLock(recordPath string) (release func() error, err error) {
 // The operator's own unnamed shell always may.
 // The arbiter label is the run's own arbiter strand's alone.
 // The run's sampler strand passes only with the operator label.
-// Any other named caller must be the run's parent orch.
+// Any other named caller must be an orch on the run's beam chain; the refusal names the one the run's notices go to.
 func decisionCallerRefusal(deps decisionDeps, by string) string {
 	if by == decisionByArbiter {
 		if deps.strandName == "" || !deps.arbiterStrand(deps.strandName) {
@@ -776,24 +779,35 @@ func decisionCallerRefusal(deps decisionDeps, by string) string {
 		}
 		return ""
 	}
-	// An unreadable sampler record refuses only a caller that is not the run's parent, whose call never depended on it.
+	// An unreadable sampler record refuses only a caller that is no orch on the run's chain, whose call never depended on it.
 	samplerRead := fmt.Sprintf("read the run's sampler session: %s; %s", samplerErr, decisionWayRetry)
-	parent, err := deps.parent()
+	chain, err := admissibleOrchs(deps.strandName, deps.orchChain, deps.parent)
 	if err != nil {
 		if samplerErr != nil {
 			return samplerRead
 		}
-		return fmt.Sprintf("the caller %q is a named session; way forward: the run's parent could not be resolved (%s); the operator's own unnamed shell may still run the verb", deps.strandName, err)
+		return decisionParentUnresolved(deps.strandName, err)
 	}
-	switch {
-	case deps.strandName == parent.Name:
+	if onChain(chain, deps.strandName) {
 		return ""
-	case samplerErr != nil:
+	}
+	if samplerErr != nil {
 		return samplerRead
+	}
+	parent, err := deps.parent()
+	switch {
+	case err != nil:
+		return decisionParentUnresolved(deps.strandName, err)
 	case parent.Name == "":
 		return fmt.Sprintf("the caller %q is a task session; way forward: a design call after the Discussion is the operator's to record; the operator's own unnamed shell may always run it", deps.strandName)
 	}
 	return fmt.Sprintf("the caller %q is a task session; way forward: a design call after the Discussion is the parent's to record; ask %s to run the verb; the operator's own unnamed shell may always run it", deps.strandName, parent.Name)
+}
+
+// decisionParentUnresolved returns the refusal text for the named caller.
+// It covers the case where the orchs that may record on the run could not be resolved.
+func decisionParentUnresolved(caller string, err error) string {
+	return fmt.Sprintf("the caller %q is a named session; way forward: the run's parent could not be resolved (%s); the operator's own unnamed shell may still run the verb", caller, err)
 }
 
 // amendmentCall holds what a `--amends-plan` call must put back when its append or commit fails:
@@ -1286,7 +1300,7 @@ func addedDecisionHeading(d discussionparser.AddedDecision) string {
 const decisionStoreRetry = `way forward: re-run "lym loom decision store"`
 
 // decisionStoreVerb copies the committed decision record onto the run's board entry, or refuses with a way forward.
-// It admits the operator's own unnamed shell, the run's own arbiter strand and the run's parent orch.
+// It admits the operator's own unnamed shell, the run's own arbiter strand and every orch on the run's beam chain.
 // It is admitted on the runs whose decision calls refresh the board copy:
 // a run past its Discussion approval, or one whose recipe has no approval row and whose entry carries a stored record.
 // It refuses a raddle run whose filing is done.
@@ -1297,13 +1311,18 @@ func decisionStoreVerb(out io.Writer, slug string, deps decisionDeps) int {
 	}
 
 	if deps.strandName != "" && !deps.arbiterStrand(deps.strandName) {
-		parent, err := deps.parent()
-		switch {
-		case err != nil:
-			return refuse("the caller %q is a named session; way forward: the run's parent could not be resolved (%s); the operator's own unnamed shell may still run the verb", deps.strandName, err)
-		case deps.strandName != parent.Name && parent.Name == "":
-			return refuse(`the caller %q is a task session; way forward: the operator's own unnamed shell may always run "lym loom decision store"`, deps.strandName)
-		case deps.strandName != parent.Name:
+		chain, err := admissibleOrchs(deps.strandName, deps.orchChain, deps.parent)
+		if err != nil {
+			return refuse("%s", decisionParentUnresolved(deps.strandName, err))
+		}
+		if !onChain(chain, deps.strandName) {
+			parent, err := deps.parent()
+			switch {
+			case err != nil:
+				return refuse("%s", decisionParentUnresolved(deps.strandName, err))
+			case parent.Name == "":
+				return refuse(`the caller %q is a task session; way forward: the operator's own unnamed shell may always run "lym loom decision store"`, deps.strandName)
+			}
 			return refuse(`the caller %q is a task session; way forward: ask %s to run "lym loom decision store"; the operator's own unnamed shell may always run it`, deps.strandName, parent.Name)
 		}
 	}
@@ -1640,6 +1659,7 @@ func (s *decisionState) preRun(cmd *cobra.Command, args []string) error {
 		strandName:  os.Getenv(agentname.StrandNameEnv),
 		programName: loomProgramName(target),
 		parent:      func() (hubgeom.Parent, error) { return decisionParent(target, record, orchcli.OrchLive) },
+		orchChain:   func() ([]hubgeom.Parent, error) { return decisionOrchChain(target, record) },
 		arbiterStrand: func(name string) bool {
 			geometry, err := hubgeom.ReedGeometry(target)
 			if err != nil {
@@ -1851,12 +1871,12 @@ func seedRecipe(target *lymcwd.Location) (string, error) {
 }
 
 // decisionParent resolves the orch that may record a decision on target's run.
-// A beam's project record is the beam's own orch's to change: the nearest live orch from the beam itself.
-// Any other record is the run's parent orch's: the nearest live one up from the run's parent.
+// A beam's project record is the beam's own orch's to change: the walk starts at the beam itself.
+// Any other record is the run's parent orch's: the walk starts at the run's parent.
 // orchLive reports whether a worktree's orch is live.
 func decisionParent(target *lymcwd.Location, record runRecord, orchLive func(*lymcwd.Location) (bool, error)) (hubgeom.Parent, error) {
 	if record.project {
-		parent, err := hubgeom.NearestLiveOrch(target, orchLive)
+		parent, err := orchroute.Destination(target, orchLive)
 		if err != nil {
 			return hubgeom.Parent{}, err
 		}
@@ -1866,6 +1886,35 @@ func decisionParent(target *lymcwd.Location, record runRecord, orchLive func(*ly
 		return parent, nil
 	}
 	return orchcli.NearestLiveParent(target)
+}
+
+// decisionOrchChain resolves every orch that may record a decision on target's run, nearest first and the prime's last.
+// A beam's project record takes the orchs at and above the beam; any other record takes the orchs above the run's pair.
+// No orch is asked whether it is live, so a parent orch that reads as down is still admitted for its own runs.
+func decisionOrchChain(target *lymcwd.Location, record runRecord) ([]hubgeom.Parent, error) {
+	if record.project {
+		return hubgeom.OrchChain(target)
+	}
+	return hubgeom.OrchChainAbove(target)
+}
+
+// admissibleOrchs returns the orchs whose name admits the named caller: the run's beam chain, read by orchChain.
+// A chain that cannot be read still admits a caller that parent resolves to, as a chain holding that orch alone.
+// Any other caller gets the chain's read error.
+func admissibleOrchs(caller string, orchChain func() ([]hubgeom.Parent, error), parent func() (hubgeom.Parent, error)) ([]hubgeom.Parent, error) {
+	chain, err := orchChain()
+	if err == nil {
+		return chain, nil
+	}
+	if resolved, parentErr := parent(); parentErr == nil && resolved.Name == caller {
+		return []hubgeom.Parent{resolved}, nil
+	}
+	return nil, err
+}
+
+// onChain reports whether name is the agent name of an orch on chain.
+func onChain(chain []hubgeom.Parent, name string) bool {
+	return slices.ContainsFunc(chain, func(orch hubgeom.Parent) bool { return orch.Name == name })
 }
 
 // decisionReceivers returns the strand names of the live shuttle runs a decision on target's record reaches.
@@ -2039,8 +2088,8 @@ addresses itself; from the prime the slug is required. On a beam,
 of the project's scope in the beam's project record; the beam's own orch runs
 it, and its notice reaches
 the live agents of every member run under the beam. It refuses a task
-session's label: a caller whose reed strand name differs from the run's
-parent orch is refused, and the operator's own unnamed shell always passes.
+session's label: a named caller that is no orch on the run's beam chain is
+refused, and the operator's own unnamed shell always passes.
 The one other caller is the run's own arbiter strand, which passes --by arbiter.
 On a sampler run the strand its Sampler-Session row recorded as its session is
 also admitted while the run stands at that row, and only with --by operator.
@@ -2066,9 +2115,9 @@ It then notifies the run's other live agents.
 
 --by is parent, operator or arbiter (the last only from the run's arbiter
 strand). --title, --decision and --rationale are required without --from.
-Callers other than the parent orch, arbiter or sampler session (--by operator
-only) are refused, as is any call while Discussion-Write runs or before a
-Record-Write recipe has committed the record.
+Callers other than an orch on the run's beam chain, the arbiter or the sampler
+session (--by operator only) are refused, as is any call while Discussion-Write
+runs or before a Record-Write recipe has committed the record.
 
 From the first Code-Review round until Finalize only a bug's "No test seam" or
 "No bug fixed" entry that changes nothing else is taken: file any other call
@@ -2127,7 +2176,7 @@ no Discussion approval, when the run's entry carries a stored record. It
 refuses a run still inside Discussion-Review, a record HEAD does not hold,
 an entry that has landed, which keeps the record it last stored, and a raddle
 run whose filing is done. The operator's own unnamed shell, the run's own
-arbiter strand and the run's parent orch may run it.
+arbiter strand and every orch on the run's beam chain may run it.
 
 Example:
   lym loom decision store <slug>`,

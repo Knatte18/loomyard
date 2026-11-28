@@ -316,7 +316,7 @@ github.com/Knatte18/loomyard/
 ├── internal/retroengine/         the retro domain kernel (the last retro's stamp, the landed runs a retro covers under its cap, and the retro task's body and board fields)
 ├── internal/orchcli/             the orch CLI command
 ├── internal/orchengine/          the orch domain kernel (config, stencil renders, persisted state, cycle state machine)
-├── internal/orchroute/           the orch lookups below `orchcli`: the orch paths, the liveness of a worktree's orch, its strand name and the walk to the nearest live orch (`Asker`)
+├── internal/orchroute/           the orch lookups below `orchcli`: the orch paths, the liveness of a worktree's orch, its strand name and the walk to the orch a notice goes to (`Destination`, `Asker`)
 ├── internal/ghissuescli/         the ghissues CLI command
 ├── internal/ghissuesengine/      the ghissues domain kernel
 ├── internal/selfreportcli/       the selfreport CLI command
@@ -855,7 +855,7 @@ User-facing modules each get one `lym <module>` namespace:
   Stop takes a beam's orch and dobby down.
   Status prints, once, the dobby section a beam's window draws, for the prime and for each local beam:
   alive or not, the runs it drives with their state, stage, time in stage and last pass, and each released task it has not started with what the task waits on, and the beam's orch: strand live, watcher live and the recorded session, then one adopt check item per subject, shown only when the hub holds a record of it: the subject, its state, the tier in flight, the tiers done and the paths of its log and output.
-  Dobby starts the beam's released tasks from an empty status, drives their batten runs in short passes, sends the nearest live orch its own notices, the `[dobby notice]` lines of a running child (a dead driver, an API-error stall, a usage limit, idle agents) and the `[run watch]` lines of every run it drives, one per stop or, under `beam.run_watch: rows`, one per change, and a `[dobby notice]` for a gate slot a driven run holds past its bound, spawns the board-tidy agent every few landings, and, while a beam's pull request is recorded, spawns a describer agent after each member landing to rewrite the beam's change description.
+  Dobby starts the beam's released tasks from an empty status, drives their batten runs in short passes, sends its beam's orch, or while that orch is not started or is stopped the nearest live orch above, its own notices, the `[dobby notice]` lines of a running child (a dead driver, an API-error stall, a usage limit, idle agents) and the `[run watch]` lines of every run it drives, one per stop or, under `beam.run_watch: rows`, one per change, and a `[dobby notice]` for a gate slot a driven run holds past its bound, spawns the board-tidy agent every few landings, and, while a beam's pull request is recorded, spawns a describer agent after each member landing to rewrite the beam's change description.
   It logs to its `dobby.log` the changes it sees, such as a task start, a run changing state and a failing pass episode, plus a heartbeat line every ten minutes.
   A front task, filed through `internal/fronttask`, is the one open task of its worktree that dobby starts first, past `beam.max_runs`, while no other task of that worktree starts.
   Its `on_land` action runs once it lands or its entry is removed by hand with `lym board remove`, from a closed action table and on the subject's owner machine only.
@@ -891,9 +891,10 @@ User-facing modules each get one `lym <module>` namespace:
   `lym tender status` lists the live entries, the network operations in flight and the parent locks held, every live session in the hub with its state, cause and whether an entry covers it, each pair with no reed session under `skipped`, the lym processes running a replaced binary, the processes registered to runs with their orphans, and each pair's owner machine with the run-held entries owned by another machine;
   it changes nothing, and any caller may run it.
   `lym tender reap` ends the orphans of one fresh reading of that processes part, which are the processes of a slug with no pair and no running batten and the unregistered lym processes in a deleted hub directory, never a hub-owner process or one working inside a registered worktree;
-  the orch and an external caller may run it,
+  the prime's orch and an external caller may run it,
   and a survivor makes it exit non-zero naming the pid and role.
   An agent may pause, resume or revive only its own pair; the orchestrator and an external caller may do each for the hub or any pair.
+  A beam's orch may pause, resume or revive its beam and every pair under it, but not the whole hub or another pair, and it may not reap.
   Every lym process in a hub runs its network git and GitHub calls under a gate that waits while a pause covers it,
   and every reader that reacts to an unexpected stop or to idle time consults the record (`internal/pauserecord`).
   ✅ Implemented. See the `internal/tenderengine` and `internal/tendercli` package documentation.
@@ -1252,7 +1253,8 @@ User-facing modules each get one `lym <module>` namespace:
   The call also appends the title of each entry to the plan amendment record, committed with the entries.
   It is refused on a recipe with no Plan-Write row and for a plan that is not approved.
   It is refused while Discussion-Write is running.
-  It refuses a named session other than the run's parent orch, the nearest live orch up its beam chain.
+  It refuses a named session that is not an orch on the run's beam chain:
+  the orchs above the run's pair, or for a beam's project record the beam's own orch and those above it.
   The operator's own unnamed shell always passes.
   It resumes nothing.
   After the commit it sends one creel line to each live shuttle run of the worktree.

@@ -25,6 +25,7 @@ import (
 // A record naming the prime's branch under another worktree name does the same.
 // A slug with no pair reads the beam its board entry's project chain reaches,
 // and a pair forked from the prime reads the prime though its board entry is a member of a beam.
+// ParentOrchName names the orch of each of those parents.
 func TestParentOf(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -84,15 +85,17 @@ func TestParentOf(t *testing.T) {
 		name string
 		slug string
 		want string
+		// wantOrch is the parent orch's agent name ParentOrchName answers for the slug.
+		wantOrch string
 	}{
-		{"PairForkedFromThePrime", fromPrime, ""},
-		{"PairForkedFromAnotherPair", fromBeam, beamPair},
-		{"RecordNamingARemovedParentPair", goneParent, "po-removed"},
-		{"RecordWithNoParentWorktree", noParent, ""},
-		{"RecordNamingThePrimesBranchUnderAnotherWorktreeName", otherName, ""},
-		{"SlugWithNoPairReadsTheBoardsBeam", unspawned, "po-beam"},
-		{"PairForkedFromThePrimeReadsTheRecordOverTheBoard", member, ""},
-		{"SlugWithNoPairAndNoEntry", "po-ghost", ""},
+		{"PairForkedFromThePrime", fromPrime, "", "tst:orch"},
+		{"PairForkedFromAnotherPair", fromBeam, beamPair, "tst:po-b:orch"},
+		{"RecordNamingARemovedParentPair", goneParent, "po-removed", "tst:po-removed:orch"},
+		{"RecordWithNoParentWorktree", noParent, "", "tst:orch"},
+		{"RecordNamingThePrimesBranchUnderAnotherWorktreeName", otherName, "", "tst:orch"},
+		{"SlugWithNoPairReadsTheBoardsBeam", unspawned, "po-beam", "tst:po-beam:orch"},
+		{"PairForkedFromThePrimeReadsTheRecordOverTheBoard", member, "", "tst:orch"},
+		{"SlugWithNoPairAndNoEntry", "po-ghost", "", "tst:orch"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -103,6 +106,10 @@ func TestParentOf(t *testing.T) {
 			}
 			if got != tt.want {
 				t.Errorf("ParentOf(%q) = %q; want %q", tt.slug, got, tt.want)
+			}
+			orch, err := hubgeom.ParentOrchName(l, tt.slug)
+			if err != nil || orch != tt.wantOrch {
+				t.Errorf("ParentOrchName(%q) = %q, %v; want %q, nil", tt.slug, orch, err, tt.wantOrch)
 			}
 		})
 	}

@@ -3,8 +3,10 @@
 package driftcli
 
 import (
+	"cmp"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -40,8 +42,9 @@ neither failed. --discard sets the whole expectation aside, so the run is
 checked against its amendments alone.
 
 It is admitted at a blocked Darn-Write, Webster, Drift-Verify or Drift-Recheck,
-and at a blocked Drift-Expect for --restore alone, and run lym loom resume after it. Only the run's parent or the operator's own
-shell runs it, from any worktree of the hub: <slug> names the task.
+and at a blocked Drift-Expect for --restore alone, and run lym loom resume after
+it. Only an orch on the run's beam chain above the pair, or the operator's own
+shell, runs it, from any worktree of the hub: <slug> names the task.
 
 Example:
   lym drift amend my-task --entries amended.yaml`,
@@ -101,8 +104,9 @@ func readEntriesFile(path string) (string, error) {
 // It returns the operator for an unnamed shell and the run's parent otherwise.
 func (w *worktree) callerBy(verb string) (string, error) {
 	strand := os.Getenv(agentname.StrandNameEnv)
+	orchsAbove := func() ([]hubgeom.Parent, error) { return hubgeom.OrchChainAbove(w.location) }
 	parent := func() (hubgeom.Parent, error) { return orchcli.NearestLiveParent(w.location) }
-	if err := checkParentCaller(verb, strand, parent); err != nil {
+	if err := checkParentCaller(verb, strand, orchsAbove, parent); err != nil {
 		return "", err
 	}
 	if strand == "" {
@@ -112,21 +116,26 @@ func (w *worktree) callerBy(verb string) (string, error) {
 }
 
 // checkParentCaller is the caller check that `drift amend` and `drift defer` run.
-// The caller's strand name must equal the run's parent's name; an empty name, the operator's unnamed shell, passes.
-// An empty name passes without resolving the parent.
+// An empty name, the operator's unnamed shell, passes without resolving any orch.
+// A named caller passes when it is an orch that orchsAbove lists or the one parent resolves.
 // Any other name is refused, and the refusal names the parent and the operator's shell.
-// A parent that cannot be resolved refuses a named caller naming the error and the operator's shell.
+// A caller neither one admits is refused when either cannot be resolved.
+// That refusal names the error and the operator's shell.
 // Bound: the check rests on the strand name and on the shell guard that refuses setting lym's strand variables.
-func checkParentCaller(verb, strand string, parent func() (hubgeom.Parent, error)) error {
+func checkParentCaller(verb, strand string, orchsAbove func() ([]hubgeom.Parent, error), parent func() (hubgeom.Parent, error)) error {
 	if strand == "" {
 		return nil
 	}
-	resolved, err := parent()
-	if err != nil {
-		return fmt.Errorf("drift %s refused: the caller %q is a named session and the run's parent could not be resolved (%w); way forward: the operator's own unnamed shell may run it", verb, strand, err)
-	}
-	if strand == resolved.Name {
+	chain, chainErr := orchsAbove()
+	if slices.ContainsFunc(chain, func(orch hubgeom.Parent) bool { return orch.Name == strand }) {
 		return nil
+	}
+	resolved, parentErr := parent()
+	if parentErr == nil && strand == resolved.Name {
+		return nil
+	}
+	if err := cmp.Or(chainErr, parentErr); err != nil {
+		return fmt.Errorf("drift %s refused: the caller %q is a named session and the run's parent could not be resolved (%w); way forward: the operator's own unnamed shell may run it", verb, strand, err)
 	}
 	way := "the operator's own unnamed shell may always run it"
 	if resolved.Name != "" {

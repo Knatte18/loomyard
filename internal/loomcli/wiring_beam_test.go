@@ -88,9 +88,13 @@ func TestWire_BeamRecipe(t *testing.T) {
 		if got := c.env.RecordWrite; got.RecordPath != wantRecord || got.SupportLogPath != loomengine.ProjectSupportLog(loc, "pair") || got.DiscussionDir != loomengine.ProjectDir(loc, "pair") {
 			t.Errorf("c.env.RecordWrite = %q, %q, %q; want the project record, its support log and the project directory", got.RecordPath, got.SupportLogPath, got.DiscussionDir)
 		}
+		c.parentName = "tst:b:orch"
 		arbiter, err := c.arbiterDepsFor()
 		if err != nil {
 			t.Fatalf("arbiterDepsFor() = %v; want nil", err)
+		}
+		if got, tackler := arbiter.Prompt.ParentName, c.tacklerPrompt().ParentName; got != "tst:b:orch" || tackler != "tst:b:orch" {
+			t.Errorf("arbiter and tackler prompt ParentName = %q, %q; want the run's parent orch tst:b:orch", got, tackler)
 		}
 		if arbiter.Prompt.DecisionRecordPath != wantRecord || arbiter.Prompt.SupportLogPath != loomengine.ProjectSupportLog(loc, "pair") {
 			t.Errorf("arbiter prompt record = %q, support log = %q; want the project record %q and its support log", arbiter.Prompt.DecisionRecordPath, arbiter.Prompt.SupportLogPath, wantRecord)

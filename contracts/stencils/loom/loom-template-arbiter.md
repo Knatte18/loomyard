@@ -13,7 +13,7 @@
      {{.decision_record_path}} and {{.support_log_path}} are the task's decision record and support log.
      {{.verdict_path}} is the one file the arbiter writes.
      {{.amendment_target}} is the row a plan amendment routes to, or the literal `none`.
-     {{.parent_directive}} is the no-parent variant of the parent directive rendered by internal/parentdirective.
+     {{.parent_directive}} is the hand-back variant of the parent directive rendered by internal/parentdirective.
      {{.edit_directive}} is the edit directive of the engine the prompt launches on, rendered by internal/editdirective.
      {{.edit_scope}} is what the arbiter may edit: loom-fragment-arbiter-fix when its driver lets it fix the stop itself,
      loom-fragment-arbiter-no-fix otherwise.

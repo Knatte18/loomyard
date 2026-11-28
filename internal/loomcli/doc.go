@@ -46,8 +46,12 @@
 // `decision add`, `replace` and `store` copy the committed record onto the board entry, never a beam's project record.
 // A failed copy is reported as `record_store_error` and never fails the verb.
 // `decisionCallerRefusal` is the caller rule of `decision add` and `decision replace`:
-// the run's parent orch, the run's own arbiter with `--by arbiter`,
+// an orch on the run's beam chain, the run's own arbiter with `--by arbiter`,
 // and a sampler run's recorded session strand with `--by operator` only while its Sampler-Session row is current.
+// The beam chain is read from the origin records with no regard to which orch is live:
+// the orchs above the run's pair, or for a beam's project record the beam's own orch and the orchs above it.
+// `decision store` admits the same orchs.
+// A chain that cannot be read still admits the orch the run's notices go to, here and at `parent-review answer`.
 // `decision add`, `replace` and `store` refuse a raddle run, naming the goto or the filed parts.
 // `decision add` with `--amends-plan` or a PATTERN change is refused while the run's drift judge session is open.
 // `decision add` and `replace` refuse every caller once the task's scope is closed:
@@ -58,7 +62,8 @@
 // `decision replace` commits a whole record with a `Lym-Record-Replaced` trailer under the run's decision lock.
 //
 // `parent-review answer` records the parent orch's answer to the run's latest ask.
-// It admits the operator's unnamed shell, the run's parent orch and the strand the ask went to.
+// It admits the operator's unnamed shell and the strand the ask went to.
+// It also admits an orch on the run's beam chain, as the decision verbs read that chain.
 // `parent-review await` is the asking agent's capped wait on the same ask, and it writes nothing but a timeout.
 // The Discussion-Review parent seat reads `loom.discussion.review_ask_parent`.
 // The Code-Review parent seat reads `loom.code.review_ask_parent`.
