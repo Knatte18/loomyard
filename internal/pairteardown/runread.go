@@ -126,8 +126,21 @@ func hubRunReader(prime *lymcwd.Location) runReader {
 			}
 			return readStatus(shedrun.StatusFile(task, shedrun.SelfRunID), shedrun.StatusLock(task, shedrun.SelfRunID))
 		},
-		childOnOrigin: func(slug string) (shedengine.Status, bool, error) { return fabricengine.OriginRunStatus(prime, slug) },
-		owners:        func() (boardengine.Owners, error) { return boardengine.ReadOwners(boardDir) },
+		childOnOrigin: func(slug string) (shedengine.Status, bool, error) {
+			data, found, err := fabricengine.OriginRunStatus(prime, slug)
+			if err != nil || !found {
+				return shedengine.Status{}, false, err
+			}
+			status, err := shedengine.ParseStatusTolerant(data)
+			if err != nil {
+				// The read above accepted the slug as a run id, so building the path does not fail.
+				// The path lacks the anchor of origin's records branch, which only the read knows.
+				_, statusRel, _ := shedrun.TreeRunFileRels(slug)
+				return shedengine.Status{}, false, fmt.Errorf("parse the child run record of %s on origin, %s under the records branch's anchor: %w", slug, statusRel, err)
+			}
+			return status, true, nil
+		},
+		owners: func() (boardengine.Owners, error) { return boardengine.ReadOwners(boardDir) },
 		identity: func() (machinename.Identity, error) {
 			identity, err := machinename.ReadIdentity()
 			if err != nil {

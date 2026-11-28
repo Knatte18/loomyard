@@ -1,6 +1,6 @@
 // originreconcileended.go applies the origin reconcile's removal of ended runs.
-// It tears down each ended run's local pair through the injected teardown seam,
-// and it clears the failed-push records of branches that are no longer local.
+// It reads which runs have a record and runs the teardown rule over the ended ones, through the injected seam.
+// It also clears the failed-push records of branches that are no longer local.
 
 package fabricengine
 
@@ -9,12 +9,11 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"sort"
 
+	"github.com/Knatte18/loomyard/internal/fabriccore"
 	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
-	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 // resolvePrime returns the location of the hub's prime worktree.
@@ -35,7 +34,8 @@ func recordedRuns(l *lymcwd.Location, scope fabriclayout.ReconcileScope) ([]stri
 	}
 	candidates := []string{scope.Run}
 	if scope.Run == "" {
-		dirs, err := os.ReadDir(shedrun.RunsRoot(prime))
+		paths := installedRunRecordPaths.Load()
+		dirs, err := os.ReadDir(paths.RunsRoot(prime))
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
@@ -44,7 +44,7 @@ func recordedRuns(l *lymcwd.Location, scope fabriclayout.ReconcileScope) ([]stri
 		}
 		candidates = candidates[:0]
 		for _, dir := range dirs {
-			if dir.IsDir() && !shedrun.IsReserved(dir.Name()) {
+			if dir.IsDir() && !paths.Reserved(dir.Name()) {
 				candidates = append(candidates, dir.Name())
 			}
 		}
@@ -52,7 +52,7 @@ func recordedRuns(l *lymcwd.Location, scope fabriclayout.ReconcileScope) ([]stri
 
 	var runs []string
 	for _, slug := range candidates {
-		_, found, err := readRunStatusRows(shedrun.StatusFile(prime, slug))
+		found, err := runRecorded(prime, slug)
 		if err != nil {
 			return nil, err
 		}
@@ -61,6 +61,24 @@ func recordedRuns(l *lymcwd.Location, scope fabriclayout.ReconcileScope) ([]stri
 		}
 	}
 	return runs, nil
+}
+
+// runRecorded reports whether the prime holds a run status record of slug.
+// An absent file is not recorded, and a record the status codec does not read is an error.
+func runRecorded(prime *lymcwd.Location, slug string) (bool, error) {
+	path := installedRunRecordPaths.Load().StatusFile(prime, slug)
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	recorded, err := installedStatusCodec.Load().Recorded(data)
+	if err != nil {
+		return false, fmt.Errorf("decode %s: %w", path, err)
+	}
+	return recorded, nil
 }
 
 // onlyRuns returns the part of ended whose slugs are among runs.
@@ -89,59 +107,72 @@ func pairHasLocalPart(l *lymcwd.Location, slug string) (bool, error) {
 	return taskBranch || weftBranchExists(l, fabriclayout.RecordsBranchName(slug)), nil
 }
 
-// busyWayForward names what lets a removal that found its pair busy go through at the next run.
-func busyWayForward(busyOn string) string {
-	if busyOn == fabriclayout.BusyOnDriver {
-		return "wait for the pair's driver to end, which the run's next Parent-Align or Finalize makes certain by stopping it with Halt, then re-run `lym cleanup --apply`"
-	}
-	return "wait for the holder of the pair's teardown or weft write lock to release it, then re-run `lym cleanup --apply`"
-}
-
-// reconcileEnded applies the removal of an ended run to each entry of ended, in slug order;
-// it reports each one in res.Entries as ended.
+// reconcileEnded runs the teardown rule over the runs of ended and appends each one's entry to res.Entries.
 // ended holds only runs with a batten run record and none this machine's own landing has reached.
-// An entry with a local part of its pair is handed to seams.Teardown with the slug;
-// it also carries whether an earlier run left a snapshot tag.
-// One with none is reported with no teardown and no network call.
-// A busy teardown leaves the pair, and the entry is ended with the busy flag;
-// any other teardown error is on the entry, and no other entry is stopped by it.
-// A judge-only scope tears nothing down, and neither does the scope's own run, whose driver is the caller.
-// A nil Teardown seam tears nothing down either.
 // Each teardown's mutations are appended to res's record.
 func reconcileEnded(l *lymcwd.Location, scope fabriclayout.ReconcileScope, seams OriginSeams, ended EndedSet, res *fabriclayout.OriginReport) error {
+	earlier := map[string]bool{}
+	reports := map[string]*fabriclayout.TeardownReport{}
+	read := func(_ fabriccore.Phase, fields []fabriccore.Field, snapshot *fabriccore.Snapshot) error {
+		for _, field := range fields {
+			switch field {
+			case fabriccore.FieldEndedRuns:
+				facts, err := readEndedFacts(l, scope, seams, ended)
+				if err != nil {
+					return err
+				}
+				snapshot.Ended = facts
+				for _, run := range facts.Runs {
+					earlier[run.Slug] = run.EarlierSnapshot
+				}
+			case fabriccore.FieldTeardownReports:
+				for i := range snapshot.Ended.Runs {
+					snapshot.Ended.Runs[i].Report = reports[snapshot.Ended.Runs[i].Slug]
+				}
+			}
+		}
+		return nil
+	}
+	runners := map[fabriccore.ActionKind]actionRunner{
+		fabriccore.ActionSeamCall: func(action fabriccore.Action) error {
+			report, err := seams.Teardown(fabriclayout.EndedTeardown{Slug: action.Ref, EarlierSnapshot: earlier[action.Ref]})
+			res.Mutations = fabriclayout.MutationsOf(append(res.Mutations.Entries(), report.Mutations.Entries()...))
+			if err != nil {
+				report.Error = err
+			}
+			reports[action.Ref] = &report
+			return report.Error
+		},
+	}
+
+	start := fabriccore.Answer{Phase: fabriccore.PhasePreLock, Read: []fabriccore.Field{fabriccore.FieldEndedRuns}}
+	snapshot, err := runRule(fabriccore.EndedTeardowns, start, read, nil, runners, nil)
+	if err != nil {
+		return err
+	}
+	res.Entries = append(res.Entries, fabriccore.EndedEntries(snapshot)...)
+	return nil
+}
+
+// readEndedFacts reads, for each run of ended in slug order, what the teardown rule decides on.
+// The snapshot tags are read only of a pair that is torn down.
+func readEndedFacts(l *lymcwd.Location, scope fabriclayout.ReconcileScope, seams OriginSeams, ended EndedSet) (fabriccore.EndedFacts, error) {
+	facts := fabriccore.EndedFacts{Scope: scope, Seam: seams.Teardown != nil}
 	for _, slug := range sortedSlugs(ended) {
-		entry := fabriclayout.EntryOutcome{Slug: slug, State: fabriclayout.EntryEnded, How: ended[slug]}
+		run := fabriccore.EndedRun{Slug: slug, How: ended[slug]}
 		local, err := pairHasLocalPart(l, slug)
 		if err != nil {
-			return fmt.Errorf("fabricengine: read whether this machine holds the pair %s: %w", slug, err)
+			return facts, fmt.Errorf("fabricengine: read whether this machine holds the pair %s: %w", slug, err)
 		}
-		entry.Local = local
-
-		if local && !scope.JudgeOnly && scope.Run != slug && seams.Teardown != nil {
-			earlier, err := SnapshotTagged(l, slug)
-			if err != nil {
-				return fmt.Errorf("fabricengine: read whether pair %s holds a snapshot tag: %w", slug, err)
-			}
-			report, err := seams.Teardown(fabriclayout.EndedTeardown{Slug: slug, EarlierSnapshot: earlier})
-			res.Mutations = fabriclayout.MutationsOf(append(res.Mutations.Entries(), report.Mutations.Entries()...))
-			entry.Tags = report.Tags
-			entry.Kept = report.Kept
-			if err == nil {
-				err = report.Error
-			}
-			switch {
-			case report.Busy:
-				entry.Busy = true
-				entry.WayForward = busyWayForward(report.BusyOn)
-			case err != nil:
-				entry.Error = err.Error()
-			default:
-				entry.Removed = true
+		run.Local = local
+		if facts.TearsDown(run) {
+			if run.EarlierSnapshot, err = SnapshotTagged(l, slug); err != nil {
+				return facts, fmt.Errorf("fabricengine: read whether pair %s holds a snapshot tag: %w", slug, err)
 			}
 		}
-		res.Entries = append(res.Entries, entry)
+		facts.Runs = append(facts.Runs, run)
 	}
-	return nil
+	return facts, nil
 }
 
 // endedLocalSlugs returns the slugs of the entries a teardown was applied to, other than run's own.
@@ -155,58 +186,26 @@ func endedLocalSlugs(entries []fabriclayout.EntryOutcome, run string) map[string
 	return slugs
 }
 
-// withoutRemovedPairs returns branches without those of a pair an ended entry shows removed.
-func withoutRemovedPairs(branches []fabriclayout.BranchOutcome, entries []fabriclayout.EntryOutcome) []fabriclayout.BranchOutcome {
-	removed := map[string]bool{}
-	for _, entry := range entries {
-		if entry.Removed {
-			removed[entry.Slug] = true
-		}
-	}
-	if len(removed) == 0 {
-		return branches
-	}
-	kept := make([]fabriclayout.BranchOutcome, 0, len(branches))
-	for _, branch := range branches {
-		if !removed[branch.Slug] {
-			kept = append(kept, branch)
-		}
-	}
-	return kept
-}
-
-// mergeEndedEntries returns classified with each slug an ended entry covers taken from ended;
-// it appends the ended entries of no classified slug after them.
-// The result is sorted by slug.
-func mergeEndedEntries(classified, ended []fabriclayout.EntryOutcome) []fabriclayout.EntryOutcome {
-	merged := slices.Clone(classified)
-	for _, entry := range ended {
-		if i := slices.IndexFunc(merged, func(candidate fabriclayout.EntryOutcome) bool { return candidate.Slug == entry.Slug }); i >= 0 {
-			merged[i] = entry
-			continue
-		}
-		merged = append(merged, entry)
-	}
-	sort.SliceStable(merged, func(i, j int) bool { return merged[i].Slug < merged[j].Slug })
-	return merged
-}
-
 // clearStalePushFailures removes every failed-push record of the hub whose branch is no longer local.
 func clearStalePushFailures(hubPath string) error {
 	failures, err := ListFailedPushes(hubPath)
 	if err != nil {
 		return err
 	}
+	local := map[string]bool{}
 	for _, failure := range failures {
-		local := false
-		if _, statErr := os.Stat(failure.RepoPath); statErr == nil {
-			if local, err = gitrepo.New(failure.RepoPath).BranchExists(failure.Branch); err != nil {
-				return err
-			}
-		}
-		if local {
+		if _, statErr := os.Stat(failure.RepoPath); statErr != nil {
 			continue
 		}
+		exists, err := gitrepo.New(failure.RepoPath).BranchExists(failure.Branch)
+		if err != nil {
+			return err
+		}
+		if exists {
+			local[fabriccore.LocalBranchKey(failure.RepoPath, failure.Branch)] = true
+		}
+	}
+	for _, failure := range fabriccore.StalePushFailures(failures, local) {
 		if err := ClearPushFailure(hubPath, failure.Repo, failure.Branch); err != nil {
 			return err
 		}

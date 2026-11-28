@@ -70,6 +70,14 @@
 // A transport failure is `fabriclayout.OriginReport.Unreachable` with a nil error, nothing judged and nothing moved.
 // Any other failure is the returned error.
 //
+// The judging is the core rule `fabriccore.OriginJudge`, run by `runRule`.
+// It refuses an uninstalled required seam before any lock or remote call.
+// Its origin phase is the one that takes the remote-refs locks,
+// and the verdicts on branches and entries are the core's, over what that run read.
+//
+// The order of the moves and each branch's verdict are the core's, `fabriccore.MoveOrder` and `fabriccore.MoveVerdict`.
+// The engine takes the locks and asks the live-pair seam just before the move it guards.
+//
 // A moving scope fast-forwards only.
 // A code branch is never rebased, so one both sides moved stays diverged.
 // A branch it cannot move is reported as dirty, busy, live or anchor_stopped with a `WayForward` line.
@@ -79,6 +87,8 @@
 // It moves fast-forward only and is never handed to the teardown seam;
 // its way forward names `lym adopt <subject>`.
 // An ended entry goes to `OriginSeams.Teardown` when it has a local part.
+// The core rule `fabriccore.EndedTeardowns` picks each teardown, one seam call at a time.
+// It decides over what the engine reads of the local parts and the snapshot tags.
 // A teardown that reports busy leaves the pair, and its way forward names the wait and `lym cleanup --apply`.
 // A run scope refuses an unregistered task worktree unless `fabriclayout.ReconcileScope.PairMayBeAbsent` is set.
 // Only a batten resume sets it.
@@ -288,6 +298,15 @@
 // "Took in commits" fires when a warp pull or reconcile fast-forwards a code branch;
 // weft and Bolt moves fire nothing.
 // A seam failure never fails a verb; it is returned as warning text such as `fabriclayout.PullResult.SeamWarning`.
+//
+// # Required seams
+//
+// Seams installed once per process supply the run-records paths, the prime run lock and the status codec.
+// Their setters are `SetRunRecordPaths`, `SetRunLocks` and `SetStatusCodec`.
+// Each setter returns a restore that puts back the value before it, and a nil argument unsets its seam.
+// A phase that names `fabriccore.FieldSeams` reads which of them are installed.
+// Some reads still use `internal/shedrun` or `internal/shedengine` directly.
+// They are the takeover read, the parent and batten status reads and a replay's Finalize check.
 //
 // # The one-repo illusion at the public API boundary
 //
@@ -664,8 +683,11 @@
 // A read that fails only as transport failures enters the snapshot as read failures,
 // so the rule decides what an unreachable origin means; any other read error is returned.
 //
-// The engine's one rule of its own is `outcomeClassOf`, which maps an error to the class a rule decides on:
-// done, anchor stop, auth refused, rejected, destructive refusal, transport failure or failed.
+// The engine's one rule of its own is `outcomeClassOf`, which maps an error to the class a rule decides on.
+// A success is done.
+// A named failure is anchor stop, auth refused, takeover, protected, protected unrejected or rejected.
+// It can also be replay conflict, destructive refusal, retries exhausted, transport failure or origin ahead.
+// A retry left to the next push is deferred, and any other error is failed.
 // A runner is registered with the rule that emits its kind; a list naming an unregistered kind runs nothing.
 //
 // `snapshotReader` is the loop's read.
@@ -678,7 +700,8 @@
 //   - each store's origin heads;
 //   - each records worktree's committed anchor;
 //   - the records store's presence and layout;
-//   - the pending teardowns.
+//   - the pending teardowns;
+//   - which required seams are installed.
 //
 // Each store's ref storage is probed in process before its local refs are read:
 // a `files` store is read in process, and any other through `git for-each-ref`.

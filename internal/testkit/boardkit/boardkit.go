@@ -48,6 +48,11 @@ func HubWithBoardConfig(t *testing.T) string {
 	return hub
 }
 
+// BoardFile returns the content of a board file holding entries, each one entry's JSON object.
+func BoardFile(entries ...string) string {
+	return `{"version":1,"entries":[` + strings.Join(entries, ",") + `]}`
+}
+
 // WriteBoard writes the board file under boardDir holding entries, each one entry's JSON object.
 // It creates boardDir when it is absent and replaces any board file there.
 // It fails the test on a setup error.
@@ -57,8 +62,7 @@ func WriteBoard(t *testing.T, boardDir string, entries ...string) {
 		t.Fatalf("MkdirAll(%q) = %v; want nil", boardDir, err)
 	}
 	path := filepath.Join(boardDir, boardengine.BoardFileRel())
-	content := `{"version":1,"entries":[` + strings.Join(entries, ",") + `]}`
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(BoardFile(entries...)), 0o644); err != nil {
 		t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
 	}
 }

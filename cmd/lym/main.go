@@ -166,6 +166,8 @@ Shortcuts, declared in internal/shortcutcli's embedded file, are listed under th
 				logger.MintOrAdoptAndExport()
 				logger.Arm()
 				installPauseGate(cmd)
+				// Fabric takes the run records' paths, the run locks and the status codec only through these seams.
+				fabriccli.InstallRequiredSeams()
 				// A push that the origin refuses reaches the prime orch as creel mail from FABRIC, whichever process pushed.
 				orchcli.InstallPushNotifier(cmd.Context())
 				// A reconcile that rewrites or flags a reinterpreted hub config value reaches the prime orch as creel mail from RECONCILE.

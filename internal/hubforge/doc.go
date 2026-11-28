@@ -22,6 +22,9 @@
 // So a build makes none of them, and review holds that line.
 // A test that installs a process-global seam takes its copies first.
 //
+// Every hub this package builds or copies first installs fabric's required seams, once per test binary.
+// InstallRequiredSeams does the same for a test whose hub comes from a clone call of its own.
+//
 // SharedHub returns a shape's template's own Hub for a test that only reads it.
 // A write is anything that may change a file under the hub:
 // a fabric mutating verb, SeedConfig, AddPair, any run of the lym binary or any in-process CLI verb.

@@ -6,6 +6,7 @@ package fabricengine
 
 import (
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -15,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -56,14 +58,29 @@ func pushLockFree(t *testing.T, weftPath string) bool {
 	return acquired
 }
 
+// installRunRecordPaths supplies run-records paths under root until the test ends, since these repos sit in no hub.
+// The seam is the process's, so a caller is not parallel.
+func installRunRecordPaths(t *testing.T, root string) {
+	t.Helper()
+	restore := SetRunRecordPaths(&RunRecordPaths{
+		RunsRoot:      func(*lymcwd.Location) string { return root },
+		Reserved:      func(string) bool { return false },
+		StatusFile:    func(_ *lymcwd.Location, runID string) string { return filepath.Join(root, runID, "status.json") },
+		TreeStatusRel: func(runID string) (string, error) { return path.Join(runID, "status.json"), nil },
+	})
+	t.Cleanup(restore)
+}
+
 // TestCoalescePushRequest_CoveredCallDefers covers a detached child over a code and a records repo with bare origins.
 // A covered child defers at the pause gate, before it takes the push lock, with the lock free.
 // The exit runs once, and both pending flags are back on disk.
 // Origin holds neither commit, and no failed push is recorded.
 // An uncovered child pushes the records side before the code side.
-// Serial: the covered row installs the process's network gate and swaps the deferral's exit.
+// Serial: it installs the process's run-records paths,
+// and the covered row installs the process's network gate and swaps the deferral's exit.
 func TestCoalescePushRequest_CoveredCallDefers(t *testing.T) {
 	tiergate.Require(t, 1)
+	installRunRecordPaths(t, t.TempDir())
 
 	t.Run("CoveredCallDefersBeforeThePushLock", func(t *testing.T) {
 		warpPath, warpBare, weftPath, weftBare := newChangedPair(t)
@@ -161,9 +178,10 @@ func TestCoalescePushRequest_CoveredCallDefers(t *testing.T) {
 // It runs over a code and a records repo with bare origins.
 // While the pause holds the call, the push lock is free, so another pair's push takes it meanwhile.
 // Once the pause lifts, the call takes the lock and pushes both sides.
-// Serial: it installs the process's network gate.
+// Serial: it installs the process's network gate and run-records paths.
 func TestCoalescePushBothAt_HeldByAPauseWithoutThePushLock(t *testing.T) {
 	tiergate.Require(t, 1)
+	installRunRecordPaths(t, t.TempDir())
 	warpPath, warpBare, weftPath, weftBare := newChangedPair(t)
 	cover, waits := PauseGateForTest(t, func() {
 		if !pushLockFree(t, weftPath) {

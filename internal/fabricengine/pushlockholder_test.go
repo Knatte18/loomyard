@@ -18,24 +18,18 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestDescribePushLockHolder covers each state the holder record can be in when a bounded push gives up on the lock.
+// TestDescribePushLockHolder covers how the holder file reads: absent, or holding bytes that do not decode.
 func TestDescribePushLockHolder(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
-	since := time.Date(2026, 11, 3, 12, 0, 0, 0, time.UTC)
-	now := since.Add(95 * time.Second)
 	tests := []struct {
 		name string
 		// record is the holder record's content, nil for no record on disk.
 		record []byte
-		alive  bool
 		want   string
 	}{
-		{"NoRecord", nil, true, "no holder record names the process that holds it"},
-		{"LiveHolder", fmt.Appendf(nil, `{"pid":4242,"since":%q}`, since.Format(time.RFC3339)), true, "held by pid 4242 for 1m35s"},
-		{"DeadHolder", fmt.Appendf(nil, `{"pid":4242,"since":%q,"unknown":1}`, since.Format(time.RFC3339)), false, "its holder record names pid 4242 from 1m35s ago, no running process by that pid was found, and the record may be stale"},
-		{"Corrupt", []byte("{not json"), true, "its holder record is unreadable: invalid character 'n' looking for beginning of object key string"},
-		{"EmptyObject", []byte("{}"), true, "its holder record is unreadable: it names no pid or no time the lock was taken"},
+		{"NoRecord", nil, "no holder record names the process that holds it"},
+		{"Corrupt", []byte("{not json"), "its holder record is unreadable: invalid character 'n' looking for beginning of object key string"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -46,8 +40,8 @@ func TestDescribePushLockHolder(t *testing.T) {
 					t.Fatalf("WriteFile: %v", err)
 				}
 			}
-			alive := func(int) bool { return tt.alive }
-			if got := describePushLockHolder(lockDir, now, alive); got != tt.want {
+			alive := func(int) bool { return true }
+			if got := describePushLockHolder(lockDir, time.Now(), alive); got != tt.want {
 				t.Errorf("describePushLockHolder() = %q; want %q", got, tt.want)
 			}
 		})

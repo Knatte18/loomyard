@@ -115,6 +115,22 @@ func TestSnapshotReader_ReadsAHub(t *testing.T) {
 		}
 	})
 
+	// The hub builder installs the seams once for the test binary.
+	t.Run("RequiredSeamsReadSupplied", func(t *testing.T) {
+		got, err := fabricengine.ReadSnapshotForTest(h.Path, nil, fabriccore.PhasePreLock, []fabriccore.Field{fabriccore.FieldSeams})
+		if err != nil {
+			t.Fatalf("ReadSnapshotForTest() error = %v", err)
+		}
+		want := map[fabriccore.RequiredSeam]bool{
+			fabriccore.SeamRunRecordPaths: true,
+			fabriccore.SeamRunLocks:       true,
+			fabriccore.SeamStatusCodec:    true,
+		}
+		if diff := cmp.Diff(want, got.Seams); diff != "" {
+			t.Errorf("Seams mismatch (-want +got):\n%s", diff)
+		}
+	})
+
 	t.Run("LocalRefsOfTheCodeStoreAlone", func(t *testing.T) {
 		stores := map[fabriccore.Store]string{fabriccore.StoreCode: h.PrimeWorktree()}
 		got, err := fabricengine.ReadSnapshotForTest(h.Path, stores, fabriccore.PhaseUnderLock, []fabriccore.Field{fabriccore.FieldLocalRefs})

@@ -1,6 +1,6 @@
 // failedpush.go holds the failed-push record, one machine-local file per repository side and branch.
 // It also holds the once-per-episode notice to the orch, sent through the push's notifier or the installed one.
-// The way-forward line for each side and class is built there too.
+// It reads the directory each way-forward line runs its verbs in.
 
 package fabricengine
 
@@ -9,12 +9,12 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"slices"
 	"sort"
 	"strings"
 	"sync/atomic"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/fabriccore"
 	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -84,45 +84,19 @@ func RecordPushFailure(hubPath string, f fabriclayout.FailedPush, now time.Time)
 func recordPushFailure(hubPath string, f fabriclayout.FailedPush, now time.Time, notify PushNotifier) error {
 	path := failedPushPath(hubPath, f.Repo, f.Branch)
 	return state.UpdateJSON(path, failedPushLockPath(path), func(cur fabriclayout.FailedPush, found bool) (fabriclayout.FailedPush, error) {
-		f.FirstSeen = now
-		f.Count = 1
-		if found {
-			f.FirstSeen = cur.FirstSeen
-			f.Count = cur.Count + 1
-			f.Notified = cur.Notified
-			f.Runs = unionRuns(cur.Runs, f.Runs)
+		merged, due := fabriccore.MergeFailedPush(cur, found, f, now)
+		if !due || notify == nil {
+			return merged, nil
 		}
-		f.LastSeen = now
-		if f.Notified || f.Class == fabriclayout.PushFailureDeferred {
-			return f, nil
-		}
-		if notify == nil {
-			return f, nil
-		}
-		notice := fabriclayout.PushNotice{
-			Line:  fmt.Sprintf("a push of %s branch %s failed (%s): %s; way forward: %s", f.Repo, f.Branch, f.Class, f.Error, FailedPushWayForward(f)),
-			Topic: "push/" + f.Repo + "/" + f.Branch,
-			Run:   f.PairSlug(),
-		}
+		notice := fabriccore.FailedPushNotice(merged, verbDirsOf(merged.RepoPath, merged.CodeWorktree))
 		posted, err := notify(hubPath, notice)
 		if err != nil {
-			logger.Warn("fabricengine: failed-push notice not posted", "repo", f.Repo, "branch", f.Branch, "error", err)
-			return f, nil
+			logger.Warn("fabricengine: failed-push notice not posted", "repo", merged.Repo, "branch", merged.Branch, "error", err)
+			return merged, nil
 		}
-		f.Notified = posted
-		return f, nil
+		merged.Notified = posted
+		return merged, nil
 	})
-}
-
-// unionRuns returns the runs of existing followed by those of added it lacks, in order.
-func unionRuns(existing, added []string) []string {
-	union := slices.Clone(existing)
-	for _, run := range added {
-		if !slices.Contains(union, run) {
-			union = append(union, run)
-		}
-	}
-	return union
 }
 
 // readFailedPush returns the failed-push record of a repository side and branch, and whether one exists.
@@ -187,17 +161,7 @@ func FailedPushesOwedBy(hubPath, slug string) ([]fabriclayout.FailedPush, error)
 	if err != nil {
 		return nil, err
 	}
-	var owed []fabriclayout.FailedPush
-	for _, record := range records {
-		switch record.Class {
-		case fabriclayout.PushFailureTransport, fabriclayout.PushFailureDeferred, fabriclayout.PushFailureTeardownLock:
-			if slices.Contains(record.Runs, slug) {
-				owed = append(owed, record)
-			}
-		}
-	}
-	sort.SliceStable(owed, func(i, j int) bool { return owed[i].LastSeen.After(owed[j].LastSeen) })
-	return owed, nil
+	return fabriccore.OwedBy(records, slug), nil
 }
 
 // FailedPushFields renders the hub's failed-push records as the envelope rows a verb prints.
@@ -245,109 +209,42 @@ func lymVerbDir(worktreeRoot string) string {
 	return l.AnchorPath()
 }
 
-// pushStep names the push that retries f, with the directory it runs in.
-// A bolt record is pushed by the board sync, since the pair push never reaches Bolt.
-// A prime's code branch is pushed by a plain git push, since the prime's pair push is records-only.
-// Every other code branch, a beam parent's included, is pushed by the pair push.
-func pushStep(f fabriclayout.FailedPush) string {
-	switch {
-	case f.Repo == fabriclayout.RepoBolt:
-		return "`lym board sync` from the prime worktree"
-	case f.Repo == fabriclayout.RepoCode && f.Prime:
-		return fmt.Sprintf("`git push` in %s", f.RepoPath)
-	case f.Repo == fabriclayout.RepoRecords:
-		return fmt.Sprintf("`lym fabric push` in %s", lymVerbDir(f.CodeWorktree))
-	default:
-		return fmt.Sprintf("`lym fabric push` in %s", lymVerbDir(f.RepoPath))
+// verbDirsOf returns the directory a lym verb of each non-empty code worktree runs in,
+// so a way forward is built from directories already read.
+func verbDirsOf(worktrees ...string) fabriccore.VerbDirs {
+	dirs := fabriccore.VerbDirs{}
+	for _, worktree := range worktrees {
+		if worktree != "" {
+			dirs[worktree] = lymVerbDir(worktree)
+		}
 	}
+	return dirs
+}
+
+// pushStep names the push that retries f, with the directory it runs in.
+func pushStep(f fabriclayout.FailedPush) string {
+	return fabriccore.PushStep(f, verbDirsOf(f.RepoPath, f.CodeWorktree))
 }
 
 // FailedPushWayForward returns the runnable way forward for a failed push, by repository side and class.
 func FailedPushWayForward(f fabriclayout.FailedPush) string {
-	switch f.Class {
-	case fabriclayout.PushFailureAuth:
-		return fmt.Sprintf("fix this machine's permission to push %s on origin, then run %s", f.Branch, pushStep(f))
-	case fabriclayout.PushFailureNotFastForward:
-		if f.Repo == fabriclayout.RepoCode {
-			// A refused landing push carries its own line, which names the landing commits too.
-			if f.WayForward != "" {
-				return f.WayForward
-			}
-			// Only a refused reset records origin's head on a diverged code branch; its commits are then origin's.
-			var unmade []string
-			if f.OriginHead != "" {
-				unmade = f.Commits
-			}
-			return codeDivergedWayForward(f.RepoPath, f.Branch, f.Prime, unmade...)
-		}
-		return recordsConflictWayForward(f.RepoPath, f.Branch, f.Paths, f.Commits, pushStep(f))
-	case fabriclayout.PushFailureRewound:
-		return rewoundWayForward(f.RepoPath, f.Branch, f.OriginHead, f.Commits)
-	case fabriclayout.PushFailureAnchorChange, fabriclayout.PushFailureHeldBack:
-		return f.WayForward
-	case fabriclayout.PushFailureTeardownLock:
-		return fmt.Sprintf("the push retries once the removal or push holding the pair's teardown lock lets go, so run %s again then, "+
-			"or end the stuck child whose pid `lym tender status` lists", pushStep(f))
-	case fabriclayout.PushFailureGone:
-		pairWorktree := f.RepoPath
-		if f.Repo == fabriclayout.RepoRecords {
-			pairWorktree = f.CodeWorktree
-		}
-		return fmt.Sprintf("origin no longer has branch %s, and its board entry is neither done nor removed on origin, since an ended entry writes no record; "+
-			"decide whether the run ends: `lym fabric remove` of the pair at %s, run from the prime, removes the pair and clears this record; "+
-			"once origin's board shows the entry done or removed, `lym cleanup --apply` tears it down instead",
-			f.Branch, pairWorktree)
-	default:
-		// A refusal of the other class that a retry cannot clear carries its own line.
-		if f.Class == fabriclayout.PushFailureOther && f.WayForward != "" {
-			return f.WayForward
-		}
-		return fmt.Sprintf("run %s to retry the push", pushStep(f))
-	}
+	return fabriccore.FailedPushWayForward(f, verbDirsOf(f.RepoPath, f.CodeWorktree))
 }
 
-// recordsConflictWayForward names a records branch origin moved past.
-// It names the conflicting paths when a replay stopped on some, the local commits, and the two ways to settle it.
-// The two ways run in worktree, and the second ends with pushVerb, the push step with its directory.
-// It names no machine, since no commit names the machine that wrote it.
+// recordsConflictWayForward names a records branch origin moved past and the two ways to settle it in worktree.
 func recordsConflictWayForward(worktree, branch string, paths, commits []string, pushVerb string) string {
-	found := fmt.Sprintf("origin/%s holds commits this branch lacks (local commits: %s)", branch, joinOrNone(commits))
-	settle := "settle any conflict"
-	if len(paths) > 0 {
-		found = fmt.Sprintf("origin/%s holds commits that change the same paths as this branch's (paths: %s; local commits: %s)", branch, strings.Join(paths, " "), joinOrNone(commits))
-		settle = "settle the named paths"
-	}
-	return fmt.Sprintf("%s; "+
-		"to keep origin's side, run `git reset --keep origin/%s` in %s, which drops the local commits; "+
-		"to keep this machine's, run `git merge origin/%s` in %s, %s and commit, then run %s, whose push is then a fast-forward and meets no replay",
-		found, branch, worktree, branch, worktree, settle, pushVerb)
+	return fabriccore.RecordsConflictWayForward(worktree, branch, paths, commits, pushVerb)
 }
 
 // codeDivergedWayForward names the merge that settles a code branch origin moved past.
-// The merge runs at the worktree root and the push in its anchored directory.
-// A prime's branch is pushed by a plain git push, since the pair push leaves the prime's code branch unpushed.
-// unmade names the commits on origin's branch that this machine did not make, so the branch was not reset past them.
+// unmade names the commits on origin's branch that this machine did not make.
 func codeDivergedWayForward(worktree, branch string, prime bool, unmade ...string) string {
-	push := fmt.Sprintf("`lym fabric push` in %s", lymVerbDir(worktree))
-	if prime {
-		push = fmt.Sprintf("`git push` in %s", worktree)
-	}
-	found := fmt.Sprintf("origin/%s holds commits this branch lacks", branch)
-	if len(unmade) > 0 {
-		found = fmt.Sprintf("origin/%s holds commits this machine did not make (%s), so it was not reset", branch, strings.Join(unmade, " "))
-	}
-	return fmt.Sprintf("%s; run `git merge origin/%s` in %s, settle any conflict and commit, then run %s",
-		found, branch, worktree, push)
+	return fabriccore.CodeDivergedWayForward(worktree, branch, prime, verbDirsOf(worktree), unmade...)
 }
 
 // rewoundWayForward names the two ways to settle a task branch origin rewound to originHead.
-// dropped holds the commits the rewind removed from origin.
-// The git steps run at the worktree root and the push in its anchored directory.
 func rewoundWayForward(worktree, branch, originHead string, dropped []string) string {
-	return fmt.Sprintf("origin rewound %s to %s, dropping %s; "+
-		"to accept the rewind, run `git reset --keep %s` in %s, which drops the local commits past origin's head, then `lym fabric push` in %s; "+
-		"to restore the dropped commits, run `git push origin %s` in %s, a plain fast-forward",
-		branch, originHead, joinOrNone(dropped), originHead, worktree, lymVerbDir(worktree), branch, worktree)
+	return fabriccore.RewoundWayForward(worktree, branch, originHead, dropped, verbDirsOf(worktree))
 }
 
 func joinOrNone(items []string) string {

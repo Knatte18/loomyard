@@ -25,6 +25,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 )
 
+// PushClassifiedSnapshotForTest runs the push of one side at path and returns the snapshot its phases read.
+func PushClassifiedSnapshotForTest(hubPath, side, path string, opts SyncOptions) (fabriccore.Snapshot, error) {
+	job := &pushJob{rec: NewMutations(hubPath), hubPath: hubPath, side: side, path: path, opts: opts, repo: gitrepo.New(path)}
+	return job.run(nil)
+}
+
 // SetGCAutoThresholdForTest sets the loose-object estimate above which t's removal gc packs a store.
 // It sets the threshold on the one Topology, so parallel tests inject per instance.
 func SetGCAutoThresholdForTest(t *Topology, threshold int) {
@@ -76,6 +82,11 @@ func SetScratchPathTrackedForTest(t *testing.T, fn func(worktreeDir, relPath str
 
 	scratchPathTracked = fn
 	t.Cleanup(func() { scratchPathTracked = PathTracked })
+}
+
+// RunStatusFileForTest returns the path of slug's status record at prime, as the installed run-records seam names it.
+func RunStatusFileForTest(prime *lymcwd.Location, slug string) string {
+	return installedRunRecordPaths.Load().StatusFile(prime, slug)
 }
 
 // ReadSnapshotForTest reads one phase of a fresh snapshot with a reader over hub and stores.
@@ -942,15 +953,6 @@ var PushStepForTest = pushStep
 // That function produces the way-forward line a rewound task branch names, so a test can assert its exact text.
 var RewoundWayForwardForTest = rewoundWayForward
 
-// CodeDivergedWayForwardForTest is codeDivergedWayForward.
-// That function produces the way-forward line a diverged code branch names, so a test can assert its exact text.
-var CodeDivergedWayForwardForTest = codeDivergedWayForward
-
-// StopWayForwardForTest is branchStopWayForward, the repair step a stopped branch names.
-func StopWayForwardForTest(b fabriclayout.BranchOutcome) string {
-	return branchStopWayForward(b)
-}
-
 // WeftDirtyStopForTest is weftDirtyStop for a Fabric holding only warpPath and weftPath.
 func WeftDirtyStopForTest(warpPath, weftPath, branch string, paths []string) *WeftStopError {
 	return (&Fabric{warpPath: warpPath, weftPath: weftPath}).weftDirtyStop(branch, paths, errors.New("dirty"))
@@ -961,12 +963,11 @@ func WeftConflictStopForTest(warpPath, weftPath, branch string, paths, ahead []s
 	return (&Fabric{warpPath: warpPath, weftPath: weftPath}).weftConflictStop(branch, paths, ahead, ErrReplayConflict)
 }
 
-// EntryFactsForTest is entryFacts, the facts an entry is classified from, including OwnedElsewhere.
-type EntryFactsForTest = entryFacts
-
-// ClassifyEntryForTest is classifyEntry, which judges an entry from its facts.
-// A test drives its precedence as table rows.
-var ClassifyEntryForTest = classifyEntry
+// ReconcileJudgeSnapshotForTest judges the scope's branches against origin and returns the snapshot its phases read.
+func ReconcileJudgeSnapshotForTest(l *lymcwd.Location, scope fabriclayout.ReconcileScope, opts ReconcileOptions) (fabriccore.Snapshot, error) {
+	_, snapshot, err := judgeAgainstOrigin(l, scope, opts)
+	return snapshot, err
+}
 
 // RecordPushFailureNotifyingForTest exposes recordPushFailure.
 // It writes a failed-push record and mails it through the notifier the test passes, never the installed one.

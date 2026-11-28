@@ -23,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 	"github.com/Knatte18/loomyard/internal/testkit/takeoverkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -230,6 +231,7 @@ func (p *primeRunsAhead) requireTakeoversError(t *testing.T, err error, slug str
 func TestRejectedRecordsPush_ReadsTheTakeover(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
+	boardkit.InstallReplay(t)
 
 	const slug = "takeover-read"
 	entry := shedengine.Takeover{Machine: "oslo", Subject: "sub", At: "2026-11-16T10:00:00Z"}

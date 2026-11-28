@@ -11,8 +11,69 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
+
+func TestStatusCodec(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// history is written into the record through the status writers' own write.
+		history []HistoryEntry
+		// rewrite changes the written bytes; nil keeps them.
+		rewrite     func(data []byte) []byte
+		wantMachine string
+		wantErr     bool
+	}{
+		{
+			name:        "TwoEntriesNameTheSecondsMachine",
+			history:     []HistoryEntry{{Producer: "A", Machine: "first"}, {Producer: "B", Machine: "second"}},
+			wantMachine: "second",
+		},
+		{name: "NoHistory"},
+		{
+			name:    "UnknownKeyIsTolerated",
+			history: []HistoryEntry{{Producer: "A", Machine: "first"}},
+			rewrite: func(data []byte) []byte {
+				return bytes.Replace(data, []byte("{"), []byte(`{"from_a_newer_binary": 1,`), 1)
+			},
+			wantMachine: "first",
+		},
+		{name: "NoJSON", rewrite: func([]byte) []byte { return []byte("not json") }, wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			path := filepath.Join(t.TempDir(), "status.json")
+			err := state.UpdateJSON(path, path+".lock", func(Status, bool) (Status, error) {
+				return Status{State: StateRunning, History: tt.history}, nil
+			})
+			if err != nil {
+				t.Fatalf("UpdateJSON() error = %v", err)
+			}
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("read the status record: %v", err)
+			}
+			if tt.rewrite != nil {
+				data = tt.rewrite(data)
+			}
+
+			machine, machineErr := StatusLastMachine(data)
+			recorded, recordedErr := StatusRecorded(data)
+
+			if (machineErr != nil) != tt.wantErr || machine != tt.wantMachine {
+				t.Errorf("StatusLastMachine() = %q, %v; want %q, error %v", machine, machineErr, tt.wantMachine, tt.wantErr)
+			}
+			if (recordedErr != nil) != tt.wantErr || recorded == tt.wantErr {
+				t.Errorf("StatusRecorded() = %v, %v; want %v, error %v", recorded, recordedErr, !tt.wantErr, tt.wantErr)
+			}
+		})
+	}
+}
 
 // semanticJSONEqual compares two json.RawMessage payloads by semantic equality: unmarshal both
 // sides into any and reflect.DeepEqual the result, never a raw byte compare.

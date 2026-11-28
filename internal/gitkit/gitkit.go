@@ -86,6 +86,19 @@ func gitExit(dir string, args ...string) (stdout string, code int, err error) {
 	return "", -1, runErr
 }
 
+// CommitOnBare commits content at rel on branch of the bare repository bare from a second clone and pushes it.
+// It stands for another machine working on the same remote.
+// It returns the branch's new tip and calls tb.Fatalf on failure.
+func CommitOnBare(tb testing.TB, bare, branch, rel, content, message string) string {
+	tb.Helper()
+
+	other := filepath.Join(tb.TempDir(), "other")
+	Git(tb, filepath.Dir(other), "clone", "--branch", branch, bare, other)
+	sha := CommitFile(tb, other, rel, content, message)
+	Git(tb, other, "push", "origin", branch)
+	return sha
+}
+
 // SeedConfig seeds real configuration into a git repository.
 // It creates the config directory, writes each module's YAML file, and commits them.
 // configByModule pairs each module name with its YAML content.

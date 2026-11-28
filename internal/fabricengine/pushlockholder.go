@@ -7,11 +7,11 @@ package fabricengine
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/fabriccore"
 	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -19,14 +19,6 @@ import (
 
 // pushLockHolderFile is the name of the holder record kept beside fabric.push.lock in the lock directory.
 const pushLockHolderFile = "fabric.push.holder"
-
-// pushLockHolder is the record a process writes beside fabric.push.lock while it holds the lock.
-type pushLockHolder struct {
-	// PID is the holding process's id.
-	PID int `json:"pid"`
-	// Since is when the process took the lock.
-	Since time.Time `json:"since"`
-}
 
 // pushLockHolderPath returns the path of the holder record in lockDir, the lock directory that holds fabric.push.lock.
 func pushLockHolderPath(lockDir string) string {
@@ -41,7 +33,7 @@ func pushLockHolderPath(lockDir string) string {
 // and the lock is still held and released, since the record only feeds a busy report.
 func holdPushLock(held *lock.FileLock, lockDir string, now time.Time) func() error {
 	path := pushLockHolderPath(lockDir)
-	content, err := json.Marshal(pushLockHolder{PID: os.Getpid(), Since: now.UTC()})
+	content, err := json.Marshal(fabriccore.PushLockHolder{PID: os.Getpid(), Since: now.UTC()})
 	if err == nil {
 		err = fsx.AtomicWriteBytes(path, content)
 	}
@@ -59,27 +51,15 @@ func holdPushLock(held *lock.FileLock, lockDir string, now time.Time) func() err
 // describePushLockHolder returns the clause of a busy report that names the push lock holder in lockDir.
 // It reads the holder record and judges its age against now.
 // alive reports whether a pid names a running process.
-// A record that decodes with no pid or no time it was taken is reported as unreadable.
-// The push lock is an OS lock its holder's exit frees,
-// so a record naming a pid for which no running process is found may be stale.
 func describePushLockHolder(lockDir string, now time.Time, alive func(pid int) bool) string {
+	var holder fabriccore.PushLockHolder
 	content, err := os.ReadFile(pushLockHolderPath(lockDir))
 	if errors.Is(err, os.ErrNotExist) {
-		return "no holder record names the process that holds it"
+		return fabriccore.DescribePushLockHolder(holder, false, nil, now, false)
 	}
-	var holder pushLockHolder
 	if err == nil {
 		err = json.Unmarshal(content, &holder)
 	}
-	if err == nil && (holder.PID <= 0 || holder.Since.IsZero()) {
-		err = errors.New("it names no pid or no time the lock was taken")
-	}
-	if err != nil {
-		return fmt.Sprintf("its holder record is unreadable: %v", err)
-	}
-	age := now.Sub(holder.Since).Round(time.Second)
-	if !alive(holder.PID) {
-		return fmt.Sprintf("its holder record names pid %d from %s ago, no running process by that pid was found, and the record may be stale", holder.PID, age)
-	}
-	return fmt.Sprintf("held by pid %d for %s", holder.PID, age)
+	running := err == nil && holder.PID > 0 && alive(holder.PID)
+	return fabriccore.DescribePushLockHolder(holder, true, err, now, running)
 }

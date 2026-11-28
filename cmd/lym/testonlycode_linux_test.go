@@ -63,13 +63,6 @@ var testOnlyCodeAllowed = []scankit.Entry{
 	{Key: "internal/fabricengine.IsPushRejected", Why: "classifies a rejected push for internal/fabricengine's push tests, its last production caller having left with commit-records' push"},
 	{Key: "internal/proc.MemoryCapCoversTree", Why: "reads the package's memory scope probe for the scope-only tests of internal/proc, internal/gatecli and internal/reedengine"},
 	{Key: "internal/proc.memoryCapCoversTreePlatform", Why: "the per-platform half of internal/proc.MemoryCapCoversTree, for the same tests"},
-	{Key: "internal/fabriccore.Refusal.Error", Why: "run by TestRefusal_Error; fabric-core-push-origin adds its first production caller and removes this entry"},
-	{Key: "internal/fabricengine.runRule", Why: "run by TestRunRule; fabric-core-push-origin adds its first production caller and removes this entry"},
-	{Key: "internal/fabricengine.outcomeClassOf", Why: "run by TestOutcomeClassOf; fabric-core-push-origin adds its first production caller and removes this entry"},
-	{Key: "internal/fabricengine.fieldReadError.Error", Why: "run by TestRunRule; fabric-core-push-origin adds its first production caller and removes this entry"},
-	{Key: "internal/fabricengine.fieldReadError.Unwrap", Why: "run by TestRunRule; fabric-core-push-origin adds its first production caller and removes this entry"},
-	{Key: "internal/fabricengine.snapshotReader.read", Why: "run by TestSnapshotReader_ReadsAHub and TestSnapshotReader_RefStorage; fabric-core-push-origin adds its first production caller and removes this entry"},
-	{Key: "internal/fabricengine.readLocalRefs", Why: "run by TestSnapshotReader_ReadsAHub and TestSnapshotReader_RefStorage; fabric-core-push-origin adds its first production caller and removes this entry"},
 }
 
 // testOnlyCodeMinFunctions is the vacuous-scan floor for the functions of production files the guard examines.

@@ -1,6 +1,6 @@
-// originreconcile.go declares the types a reconcile call returns and judges the reconcile's branches and entries.
-// It runs the two network reads that bring this machine's view of origin up to date.
-// It judges each local branch against origin's head, and it classifies an entry from its branches' states.
+// originreconcile.go declares the options and seams a reconcile call takes and holds the reconcile itself.
+// It runs the network calls that bring this machine's view of origin up to date.
+// It also reads what a branch's verdict against origin's head needs.
 
 package fabricengine
 
@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/fabriccore"
 	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
@@ -91,11 +92,6 @@ func (o ReconcileOptions) deadline() time.Duration {
 	return o.AttemptDeadline
 }
 
-// sleep waits out one retry interval.
-func (o ReconcileOptions) sleep() {
-	o.sleepFor(o.RetryInterval)
-}
-
 // sleepFor waits out d through Sleep, or for real when Sleep is nil.
 func (o ReconcileOptions) sleepFor(d time.Duration) {
 	if o.Sleep != nil {
@@ -126,118 +122,19 @@ type OriginSeams struct {
 type OwnerReader func(hubPath string, ledger []byte, slug string) (owner, subject string, elsewhere bool, err error)
 
 // branchStopWayForward returns the repair step for a stopped branch.
-// The step is built through the failed-push helpers where one applies.
+// It reads from disk the directories the step names, and a blank anchor marker for an anchor stop with no anchor.
 // A state that does not stop returns the empty string.
 func branchStopWayForward(b fabriclayout.BranchOutcome) string {
-	if b.MoveWayForward != "" {
+	if !b.State.Stops() {
 		return b.MoveWayForward
 	}
-	record := fabriclayout.FailedPush{Repo: b.Repo, RepoPath: b.Worktree, CodeWorktree: b.CodeWorktree, Branch: b.Branch, Prime: b.Prime}
-	switch b.State {
-	case fabriclayout.BranchRewound:
-		return rewoundWayForward(b.Worktree, b.Branch, b.OriginHead, b.Commits)
-	case fabriclayout.BranchRewritten:
-		return fmt.Sprintf("`lym fabric pull` in %s", lymVerbDir(b.CodeWorktree))
-	case fabriclayout.BranchDiverged:
-		if b.Repo == fabriclayout.RepoCode {
-			return codeDivergedWayForward(b.Worktree, b.Branch, b.Prime)
-		}
-		return recordsConflictWayForward(b.Worktree, b.Branch, b.Paths, b.Commits, pushStep(record))
-	case fabriclayout.BranchGone:
-		if b.Slug != "" {
-			record.Class = fabriclayout.PushFailureGone
-			return FailedPushWayForward(record)
-		}
-		return fmt.Sprintf("origin no longer has branch %s; run %s to publish it again", b.Branch, pushStep(record))
-	case fabriclayout.BranchDirty:
-		return branchDirtyWayForward(b)
-	case fabriclayout.BranchBusy:
-		if b.PushLockHeld && b.Slug != "" {
-			return fmt.Sprintf("`lym tender resume %s`", b.Slug)
-		}
-		return fmt.Sprintf("wait for the holder of the %s lock to end", b.BusyLock)
-	case fabriclayout.BranchLive:
-		return "no step now: the run's own Parent-Align judges and moves its pair, and `lym cleanup --apply` re-judges it once the run has ended"
-	case fabriclayout.BranchAnchorStopped:
-		return branchAnchorStopWayForward(b)
-	}
-	return ""
-}
-
-// branchAnchorStopWayForward names the step that settles an anchor_stopped weft.
-// An empty own marker names the marker file and its repair.
-// A pair's weft names the `--set` to run in its code worktree.
-// The prime's weft names the steps in order.
-// First, end every reed session of the hub and wait out every live batten run, since the `--set` refuses both.
-// Then run the `--set`, then start the orch again.
-func branchAnchorStopWayForward(b fabriclayout.BranchOutcome) string {
-	if b.Anchor == "" {
+	emptyMarkerRefusal := ""
+	if b.State == fabriclayout.BranchAnchorStopped && b.Anchor == "" {
 		if err := refuseEmptyOwnMarker(b.Worktree); err != nil {
-			return err.Error()
+			emptyMarkerRefusal = err.Error()
 		}
-		return fmt.Sprintf("restore the anchor marker of %s", b.Worktree)
 	}
-	if b.Slug != "" {
-		return fmt.Sprintf("run `lym fabric anchor %s --set %s` in %s", b.Slug, b.Anchor, lymVerbDir(b.CodeWorktree))
-	}
-	return fmt.Sprintf("end every reed session of the hub, the orch's included, with `lym reed down` in each, and wait until no batten run of the hub is live; then run `lym fabric anchor --set %s` in %s; then run `lym beam start` again", b.Anchor, lymVerbDir(b.CodeWorktree))
-}
-
-// branchDirtyWayForward names where each uncommitted path of a dirty branch is committed or restored.
-// A records path under the record pathspec is committed by `lym fabric commit` in the pair's code worktree.
-// The records sibling refuses every fabric verb, so that commit runs in the pair's code worktree.
-// Any path, including one outside that pathspec, is committed or restored by git in the branch's worktree.
-func branchDirtyWayForward(b fabriclayout.BranchOutcome) string {
-	paths := joinOrNone(b.Paths)
-	git := fmt.Sprintf("`git commit` or `git checkout -- <path>` in %s", b.Worktree)
-	if b.Repo == fabriclayout.RepoRecords {
-		return fmt.Sprintf("commit the uncommitted paths (%s) with `lym fabric commit` in %s, or any of them with %s", paths, lymVerbDir(b.CodeWorktree), git)
-	}
-	return fmt.Sprintf("commit or restore the uncommitted paths (%s) with %s", paths, git)
-}
-
-// entryFacts are the facts classifyEntry judges an entry from.
-// Ended is whether origin's board shows the entry done or removed.
-// Branches are the verdicts on the entry's judged branches.
-// D3Stop is whether the records replay stopped on the prime's records branch or Bolt for this entry's sake.
-// OwnedElsewhere is whether origin's board records another machine as the entry's owner.
-type entryFacts struct {
-	Ended          bool
-	OwnedElsewhere bool
-	Branches       []fabriclayout.BranchState
-	D3Stop         bool
-}
-
-// classifyEntry is the one switch that turns an entry's facts into its verdict.
-// An ended entry is ended whatever its branches say.
-// Otherwise an entry owned elsewhere is owned_elsewhere whatever its branches say.
-// Otherwise a D3 stop, or a branch that stops, makes it stopped; every other entry is active.
-func classifyEntry(f entryFacts) fabriclayout.EntryState {
-	if f.Ended {
-		return fabriclayout.EntryEnded
-	}
-	if f.OwnedElsewhere {
-		return fabriclayout.EntryOwnedElsewhere
-	}
-	if f.D3Stop || slices.ContainsFunc(f.Branches, fabriclayout.BranchState.Stops) {
-		return fabriclayout.EntryStopped
-	}
-	return fabriclayout.EntryActive
-}
-
-// lsRemotePair returns each repository's branch heads by branch name.
-// It runs `git ls-remote origin` for both repositories in parallel, each under the attempt deadline.
-// A transport failure in either call retries the pair together after one interval, while attempts remain.
-// A failure that is not a transport failure is never retried.
-// It is returned as soon as it is seen, naming the repository and git's error line.
-func lsRemotePair(warpDir, recordsDir string, opts ReconcileOptions) (warp, records map[string]string, err error) {
-	for attempt := 1; ; attempt++ {
-		warp, records, err = lsRemoteOnce(warpDir, recordsDir, opts)
-		if err == nil || !gitexec.IsTransportFailure(err) || attempt >= opts.attempts() {
-			return warp, records, err
-		}
-		opts.sleep()
-	}
+	return fabriccore.BranchStopWayForward(b, verbDirsOf(b.Worktree, b.CodeWorktree), emptyMarkerRefusal)
 }
 
 // lsRemoteOnce runs the two ls-remote calls once, in parallel.
@@ -342,71 +239,53 @@ func trackingRefOf(branch string) string {
 	return "refs/remotes/" + originRemote + "/" + branch
 }
 
-// judgeBranch judges the local branch of repoDir against originHead.
-// originHead is the head origin holds for the branch, empty when origin has no such branch.
+// judgeBranch reads into facts what the verdict on a branch of repoDir against origin's head needs.
+// It stops at the first read that settles the verdict, and reads nothing of a branch origin does not hold.
 // A code branch is read through the reflog of its tracking ref.
-// An origin that reset the branch past commits this machine holds reads rewound, taking precedence over ahead.
-// An origin that replaced its history with commits this machine never held reads rewritten.
-// A records branch neither side contains reads needs_replay.
-// A moving reconcile replaces it with the result of its replay.
-func judgeBranch(repoDir, branch, originHead string, records bool) (fabriclayout.BranchOutcome, error) {
-	outcome := fabriclayout.BranchOutcome{Branch: branch, OriginHead: originHead}
-	if originHead == "" {
-		outcome.State = fabriclayout.BranchGone
-		return outcome, nil
+func judgeBranch(repoDir string, facts *fabriccore.BranchFacts) error {
+	if facts.OriginHead == "" {
+		return nil
+	}
+	fail := func(err error) error {
+		return fmt.Errorf("judge branch %s in %s: %w", facts.Branch, repoDir, err)
 	}
 
 	repo := gitrepo.New(repoDir)
-	localTip, err := repo.RefSHA("refs/heads/" + branch)
+	localTip, err := repo.RefSHA("refs/heads/" + facts.Branch)
 	if err != nil {
-		return fabriclayout.BranchOutcome{}, fmt.Errorf("judge branch %s in %s: %w", branch, repoDir, err)
+		return fail(err)
 	}
-	if localTip == originHead {
-		outcome.State = fabriclayout.BranchLevel
-		return outcome, nil
+	facts.LocalTip = localTip
+	if localTip == facts.OriginHead {
+		return nil
 	}
 
-	kind := rewriteNone
-	if !records {
-		earlier, err := trackingReflog(repoDir, trackingRefOf(branch))
+	if facts.Repo == fabriclayout.RepoCode {
+		earlier, err := trackingReflog(repoDir, trackingRefOf(facts.Branch))
 		if err != nil {
-			return fabriclayout.BranchOutcome{}, fmt.Errorf("judge branch %s in %s: %w", branch, repoDir, err)
+			return fail(err)
 		}
-		var dropped []string
-		kind, dropped, err = classifyRewrite(repo, localTip, originHead, earlier)
+		kind, dropped, err := classifyRewrite(repo, localTip, facts.OriginHead, earlier)
 		if err != nil {
-			return fabriclayout.BranchOutcome{}, fmt.Errorf("judge branch %s in %s: %w", branch, repoDir, err)
+			return fail(err)
 		}
 		if kind == rewriteRewound {
-			outcome.State = fabriclayout.BranchRewound
-			outcome.Commits = dropped
-			return outcome, nil
+			facts.Rewound, facts.Dropped = true, dropped
+			return nil
 		}
+		facts.Rewritten = kind == rewriteRewritten
 	}
 
-	behind, err := repo.IsAncestor(localTip, originHead)
-	if err != nil {
-		return fabriclayout.BranchOutcome{}, fmt.Errorf("judge branch %s in %s: %w", branch, repoDir, err)
+	if facts.Behind, err = repo.IsAncestor(localTip, facts.OriginHead); err != nil {
+		return fail(err)
 	}
-	if behind {
-		outcome.State = fabriclayout.BranchFastForward
-		return outcome, nil
+	if facts.Behind {
+		return nil
 	}
-	ahead, err := repo.IsAncestor(originHead, localTip)
-	if err != nil {
-		return fabriclayout.BranchOutcome{}, fmt.Errorf("judge branch %s in %s: %w", branch, repoDir, err)
+	if facts.Ahead, err = repo.IsAncestor(facts.OriginHead, localTip); err != nil {
+		return fail(err)
 	}
-	switch {
-	case ahead:
-		outcome.State = fabriclayout.BranchAhead
-	case records:
-		outcome.State = fabriclayout.BranchNeedsReplay
-	case kind == rewriteRewritten:
-		outcome.State = fabriclayout.BranchRewritten
-	default:
-		outcome.State = fabriclayout.BranchDiverged
-	}
-	return outcome, nil
+	return nil
 }
 
 // originTarget is one local branch a reconcile judges, with where it lives.
@@ -544,21 +423,27 @@ func samePath(porcelain, built string) bool {
 // Any other failure of ls-remote, or a failed fetch after both ls-remote calls answered, is returned as the error.
 // Nothing is judged or moved in that case.
 // seams is what the moves and the teardowns reach by injection.
+// It refuses before it reads origin when a required seam it would use is not installed.
 func ReconcileOrigin(l *lymcwd.Location, scope fabriclayout.ReconcileScope, seams OriginSeams, opts ReconcileOptions) (res fabriclayout.OriginReport, err error) {
 	rec := NewMutations(l.HubPath)
 	defer func() {
 		res.Mutations = fabriclayout.MutationsOf(append(res.Mutations.Entries(), rec.Snapshot().Entries()...))
 	}()
 
-	targets, pairs, warpDir, recordsDir, pairAbsent, err := originTargets(l, scope)
+	reader, snapshot, err := judgeAgainstOrigin(l, scope, opts)
 	if err != nil {
 		return res, err
 	}
-
-	res.Branches, res.Unreachable, err = judgeAgainstOrigin(targets, warpDir, recordsDir, scope.JudgeOnly, opts)
-	if err != nil || res.Unreachable {
-		return res, err
+	if !snapshot.Stores[fabriccore.StoreCode].OriginRead {
+		res.Unreachable = true
+		return res, nil
 	}
+	for _, facts := range snapshot.Reconcile.Targets {
+		outcome := fabriccore.JudgeBranch(facts)
+		outcome.WayForward = branchStopWayForward(outcome)
+		res.Branches = append(res.Branches, outcome)
+	}
+	targets, pairs, pairAbsent := reader.targets, snapshot.Reconcile.Pairs, snapshot.Reconcile.PairAbsent
 
 	recorded, err := recordedPairs(l, pairs)
 	if err != nil {
@@ -587,13 +472,13 @@ func ReconcileOrigin(l *lymcwd.Location, scope fabriclayout.ReconcileScope, seam
 		if err := mover.moveAll(pairs); err != nil {
 			return res, err
 		}
-		res.Branches = withoutRemovedPairs(res.Branches, endedEntries)
+		res.Branches = fabriccore.WithoutRemovedPairs(res.Branches, endedEntries)
 		if err := clearStalePushFailures(l.HubPath); err != nil {
 			return res, err
 		}
 	}
 
-	res.Entries = mergeEndedEntries(classifyEntries(scope, recorded, res.Branches, owners, subjects), endedEntries)
+	res.Entries = fabriccore.MergeEndedEntries(fabriccore.ClassifyEntries(scope, recorded, res.Branches, owners, subjects), endedEntries)
 	if pairAbsent {
 		for i := range res.Entries {
 			if res.Entries[i].Slug == scope.Run {
@@ -604,117 +489,47 @@ func ReconcileOrigin(l *lymcwd.Location, scope fabriclayout.ReconcileScope, seam
 	return res, nil
 }
 
-// judgeAgainstOrigin reads the heads origin has in both repositories.
-// It fetches the heads origin moved past their tracking refs, and returns the verdict on each target.
-// It holds the remote-refs lock of the code repository and then of the records repository throughout,
-// so a fetch of either repository finishes before origin is read or starts after every verdict.
+// judgeAgainstOrigin runs the rule that judges the scope's branches against origin.
+// It returns the reader, holding the targets, and the snapshot the rule's phases read;
+// a snapshot whose origin was never read is of an unreachable origin.
+// It holds both repositories' remote-refs locks, the code repository's first, from the read of origin until it returns.
+// A fetch of either repository therefore finishes before origin is read, or starts after every branch's reads.
 // The same holds for the tracking-ref write that follows a push's transfer.
-// The locks are held through the ls-remote retries and their sleeps, bounded by opts' RetryBound,
-// so an unreachable origin blocks every fetch and every push's tracking-ref write of both repositories for that bound.
-// A transport failure that outlasts the retry bound returns unreachable true with no verdict and a nil error.
-func judgeAgainstOrigin(targets []originTarget, warpDir, recordsDir string, judgeOnly bool, opts ReconcileOptions) (branches []fabriclayout.BranchOutcome, unreachable bool, err error) {
-	for _, dir := range []string{warpDir, recordsDir} {
-		release, err := gitrepo.New(dir).HoldRemoteRefs()
-		if err != nil {
-			return nil, false, err
+// The locks are held through the retries of an unreachable origin, bounded by opts' RetryBound,
+// so it blocks every fetch and every push's tracking-ref write of both repositories for that bound.
+func judgeAgainstOrigin(l *lymcwd.Location, scope fabriclayout.ReconcileScope, opts ReconcileOptions) (*reconcileReader, fabriccore.Snapshot, error) {
+	reader := &reconcileReader{l: l, scope: scope, opts: opts}
+	var releases []func() error
+	releaseAll := func() {
+		for _, release := range slices.Backward(releases) {
+			_ = release()
 		}
-		defer func() { _ = release() }()
+		releases = nil
 	}
-
-	warpHeads, recordsHeads, err := lsRemotePair(warpDir, recordsDir, opts)
-	if gitexec.IsTransportFailure(err) {
-		return nil, true, nil
+	// The directories to lock are the ones the pre-lock read found.
+	var codeDir, recordsDir string
+	read := func(phase fabriccore.Phase, fields []fabriccore.Field, snapshot *fabriccore.Snapshot) error {
+		err := reader.read(phase, fields, snapshot)
+		codeDir, recordsDir = snapshot.Reconcile.CodeDir, snapshot.Reconcile.RecordsDir
+		return err
 	}
-	if err != nil {
-		return nil, false, err
-	}
-
-	moved := map[string]map[string]string{warpDir: {}, recordsDir: {}}
-	for _, target := range targets {
-		heads := recordsHeads
-		if target.side == fabriclayout.RepoCode {
-			heads = warpHeads
+	lock := func(phase fabriccore.Phase) (func(), error) {
+		if phase != fabriccore.PhaseOrigin {
+			return func() {}, nil
 		}
-		if head, found := heads[target.branch]; found && head != target.tracking {
-			moved[target.repoDir][target.branch] = head
-		}
-	}
-	for _, dir := range []string{warpDir, recordsDir} {
-		if err := fetchMovedHeads(dir, moved[dir], judgeOnly, opts); err != nil {
-			return nil, false, err
-		}
-	}
-
-	for _, target := range targets {
-		heads := recordsHeads
-		if target.side == fabriclayout.RepoCode {
-			heads = warpHeads
-		}
-		opts.verdictHook()
-		outcome, err := judgeBranch(target.repoDir, target.branch, heads[target.branch], target.side != fabriclayout.RepoCode)
-		if err != nil {
-			return nil, false, err
-		}
-		outcome.Repo = target.side
-		outcome.Slug = target.slug
-		outcome.Prime = target.prime
-		outcome.Worktree = target.worktree
-		outcome.CodeWorktree = target.codeWorktree
-		outcome.WayForward = branchStopWayForward(outcome)
-		branches = append(branches, outcome)
-	}
-	return branches, false, nil
-}
-
-// classifyEntries returns the verdict on each of the recorded pairs, from the verdicts on its branches.
-// A stop on Bolt or on the prime's records branch stops every entry, a busy one excepted.
-// A busy records branch of the run scope's own pair stops nothing, since the run's own driver holds it.
-// A stopped entry carries the way forward of the branch that stopped it.
-// owners maps the slug of each entry another machine owns to that owner.
-// subjects maps the same slug to what `lym adopt` takes to move it.
-// Such an entry reads owned_elsewhere and carries the way forward that takes it over.
-// That way forward names its subject, or its slug when the owner reader left none.
-func classifyEntries(scope fabriclayout.ReconcileScope, recorded []string, branches []fabriclayout.BranchOutcome, owners, subjects map[string]string) []fabriclayout.EntryOutcome {
-	d3Stop := false
-	d3WayForward := ""
-	for _, branch := range branches {
-		shared := branch.Repo == fabriclayout.RepoBolt || (branch.Repo == fabriclayout.RepoRecords && branch.Prime)
-		if shared && branch.State.Stops() && branch.State != fabriclayout.BranchBusy && !d3Stop {
-			d3Stop = true
-			d3WayForward = branch.WayForward
-		}
-	}
-
-	var entries []fabriclayout.EntryOutcome
-	for _, slug := range recorded {
-		owner, ownedElsewhere := owners[slug]
-		facts := entryFacts{D3Stop: d3Stop, OwnedElsewhere: ownedElsewhere}
-		wayForward := ""
-		for _, branch := range branches {
-			if branch.Slug != slug || (scope.Run == slug && branch.Repo == fabriclayout.RepoRecords && branch.State == fabriclayout.BranchBusy) {
-				continue
+		for _, dir := range []string{codeDir, recordsDir} {
+			release, err := gitrepo.New(dir).HoldRemoteRefs()
+			if err != nil {
+				releaseAll()
+				return nil, err
 			}
-			facts.Branches = append(facts.Branches, branch.State)
-			if wayForward == "" && branch.State.Stops() {
-				wayForward = branch.WayForward
-			}
+			releases = append(releases, release)
 		}
-		state := classifyEntry(facts)
-		entry := fabriclayout.EntryOutcome{Slug: slug, State: state}
-		switch {
-		case state == fabriclayout.EntryOwnedElsewhere:
-			entry.Owner = owner
-			entry.AdoptSubject = subjects[slug]
-			wayForward = fmt.Sprintf("`lym adopt %s` from this machine's prime takes it over", entry.AdoptTarget())
-		case state != fabriclayout.EntryStopped:
-			wayForward = ""
-		case wayForward == "":
-			wayForward = d3WayForward
-		}
-		entry.WayForward = wayForward
-		entries = append(entries, entry)
+		return releaseAll, nil
 	}
-	return entries
+	start := fabriccore.Answer{Phase: fabriccore.PhasePreLock, Read: []fabriccore.Field{fabriccore.FieldSeams, fabriccore.FieldReconcileTargets}}
+	snapshot, err := runRule(fabriccore.OriginJudge, start, read, lock, nil, opts.sleepFor)
+	return reader, snapshot, err
 }
 
 // readOriginOwners asks seams.OwnerOf, once per slug, whether another machine owns the entry.

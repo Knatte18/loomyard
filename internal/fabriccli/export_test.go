@@ -1,5 +1,5 @@
 // export_test.go exposes test seams and helpers to this package's external tests.
-// They cover the add verb's pair-push seam and the open-PR lookup seam.
+// They cover the add verb's pair-push seam, the open-PR lookup seam and the run-records paths adapter.
 // They also cover the hub pull runner and the hibernate request reader.
 
 package fabriccli
@@ -12,6 +12,9 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
+
+// RunRecordPathsForTest returns the run-records paths the seam installer installs.
+var RunRecordPathsForTest = runRecordPaths
 
 // LiveUnsparedChildForTest exposes the anchor verb's scan of a dobby's children for a pass in flight.
 func LiveUnsparedChildForTest(runProcDir string, parents []int) (int, bool, error) {

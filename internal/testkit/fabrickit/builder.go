@@ -82,6 +82,15 @@ func (b *Builder) PendingTeardown(record fabriclayout.PendingTeardown) *Builder 
 	return b
 }
 
+// Seam sets whether one required seam is supplied.
+func (b *Builder) Seam(seam fabriccore.RequiredSeam, supplied bool) *Builder {
+	if b.snapshot.Seams == nil {
+		b.snapshot.Seams = map[fabriccore.RequiredSeam]bool{}
+	}
+	b.snapshot.Seams[seam] = supplied
+	return b
+}
+
 // Outcome appends one action outcome.
 func (b *Builder) Outcome(outcome fabriccore.Outcome) *Builder {
 	b.snapshot.Outcomes = append(b.snapshot.Outcomes, outcome)
@@ -108,6 +117,7 @@ func (b *Builder) Build() fabriccore.Snapshot {
 	built.Worktrees = slices.Clone(built.Worktrees)
 	built.Anchors = maps.Clone(built.Anchors)
 	built.PendingTeardowns = slices.Clone(built.PendingTeardowns)
+	built.Seams = maps.Clone(built.Seams)
 	built.Outcomes = slices.Clone(built.Outcomes)
 	for i := range built.Outcomes {
 		built.Outcomes[i].Action.Paths = slices.Clone(built.Outcomes[i].Action.Paths)

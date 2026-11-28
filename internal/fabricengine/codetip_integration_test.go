@@ -1,44 +1,17 @@
 // codetip_integration_test.go covers OriginCodeTip over pair fixtures whose records origin holds planted transitions.
-// It also holds the helper that plants one, which the owner-guard rows of the pair push share.
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
 
 import (
-	"encoding/json"
 	"testing"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
-	"github.com/Knatte18/loomyard/internal/shedengine"
-	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
-
-// plantRunTransition commits a transition of the run slug on origin's records branch from a second clone.
-// The commit names codeTip and carries a child record whose last history entry names machine.
-// The pair's own records worktree then fast-forwards to it, so its next push of that branch is no rejection.
-func plantRunTransition(t *testing.T, p *pairFixture, slug, codeTip, machine string) {
-	t.Helper()
-
-	_, statusRel, err := shedrun.TreeRunFileRels(slug)
-	if err != nil {
-		t.Fatalf("TreeRunFileRels(%q): %v", slug, err)
-	}
-	record, err := json.Marshal(shedengine.Status{
-		State:   shedengine.StateRunning,
-		History: []shedengine.HistoryEntry{{Producer: "Code-Burler", Outcome: shedengine.Done, Machine: machine}},
-	})
-	if err != nil {
-		t.Fatalf("marshal the child record: %v", err)
-	}
-	message := "transition\n\n" + fabriclayout.TransitionTrailerKey + ": " + slug + "\n" + fabriclayout.WarpSHATrailerKey + ": " + codeTip
-	p.originCommit(p.weftBranch, statusRel, string(record), message)
-	gitkit.Git(t, p.weftPath, "fetch")
-	gitkit.Git(t, p.weftPath, "merge", "--ff-only", "origin/"+p.weftBranch)
-}
 
 // TestOriginCodeTip reads the code tip the last transition on origin names, from the refs a fetch left.
 func TestOriginCodeTip(t *testing.T) {
@@ -57,16 +30,16 @@ func TestOriginCodeTip(t *testing.T) {
 			func(t *testing.T, p *pairFixture) fabriclayout.CodeTipReading {
 				held := bareBranchTip(t, p.hub.CodeBare, p.warpBranch)
 				plantRunTransition(t, p, slug, held, "oslo")
-				return fabriclayout.CodeTipReading{Tip: held, Machine: "oslo"}
+				return fabriclayout.CodeTipReading{Tip: held}
 			},
 			slug,
 		},
 		{
-			"ATipOriginsCodeBranchLacksIsMissingWithItsMachine",
+			"ATipOriginsCodeBranchLacksIsMissing",
 			func(t *testing.T, p *pairFixture) fabriclayout.CodeTipReading {
 				lacked := gitkit.CommitFile(t, p.warpPath, "warp-file.txt", "warp\n", "unpushed code")
 				plantRunTransition(t, p, slug, lacked, "oslo")
-				return fabriclayout.CodeTipReading{Tip: lacked, Missing: true, Machine: "oslo"}
+				return fabriclayout.CodeTipReading{Tip: lacked, Missing: true}
 			},
 			slug,
 		},
@@ -77,7 +50,7 @@ func TestOriginCodeTip(t *testing.T) {
 				plantRunTransition(t, p, slug, lacked, "oslo")
 				held := bareBranchTip(t, p.hub.CodeBare, p.warpBranch)
 				p.originCommit(p.weftBranch, "fabric-note.txt", "note\n", "fabric commit\n\n"+fabriclayout.WarpSHATrailerKey+": "+held)
-				return fabriclayout.CodeTipReading{Tip: lacked, Missing: true, Machine: "oslo"}
+				return fabriclayout.CodeTipReading{Tip: lacked, Missing: true}
 			},
 			slug,
 		},
@@ -106,6 +79,8 @@ func TestOriginCodeTip(t *testing.T) {
 				t.Errorf("OriginCodeTip(%q) time = %v; want a commit time exactly when a tip is named", tt.slug, got.At)
 			}
 			got.At = time.Time{}
+			// The machine is the status codec's verdict, which this test takes as given.
+			got.Machine = ""
 			if got != want {
 				t.Errorf("OriginCodeTip(%q) = %+v; want %+v", tt.slug, got, want)
 			}

@@ -3,6 +3,11 @@
 // Every weft branch is its warp branch's name plus the uniform suffix (`fabriclayout.RecordsBranchName`).
 // The clone-time primary is included.
 //
+// # Required seams
+//
+// `InstallRequiredSeams` installs the run-records paths, the run locks and the status codec the engine requires.
+// The lym binary calls it at start, and a test binary through the hub fixture builder.
+//
 // # Clone
 //
 // `lym fabric clone` wires the whole hub in one command, with no follow-up activation step.

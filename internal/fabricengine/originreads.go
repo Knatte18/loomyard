@@ -9,11 +9,10 @@ import (
 	"path"
 	"path/filepath"
 
+	"github.com/Knatte18/loomyard/internal/fabriccore"
 	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
-	"github.com/Knatte18/loomyard/internal/shedengine"
-	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 // OriginParentHoldsTaskWork reports whether origin's parent branch holds the pair's task work.
@@ -27,16 +26,21 @@ func OriginParentHoldsTaskWork(l, pairLocation *lymcwd.Location, slug string) (b
 
 // OriginRunStatus reads the child run record of slug from the tree of its records branch's remote-tracking ref.
 // It serves a machine that holds no pair for the run.
+// status is the record's bytes, which the caller decodes.
 // found is false when the ref or the record is absent.
 // The record is read under the anchor the branch records, from the slug's run directory.
-func OriginRunStatus(prime *lymcwd.Location, slug string) (status shedengine.Status, found bool, err error) {
+// It refuses a process with no run-records paths installed.
+func OriginRunStatus(prime *lymcwd.Location, slug string) (status []byte, found bool, err error) {
+	if err := refuseUnsuppliedSeams(fabriccore.SeamRunRecordPaths); err != nil {
+		return nil, false, err
+	}
 	cfg, err := LoadConfig(ConfigDirs(prime))
 	if err != nil {
-		return shedengine.Status{}, false, err
+		return nil, false, err
 	}
 	recordsRoot, err := RecordsRepoRoot(prime)
 	if err != nil {
-		return shedengine.Status{}, false, fmt.Errorf("resolve the records repository: %w", err)
+		return nil, false, fmt.Errorf("resolve the records repository: %w", err)
 	}
 	repo := gitrepo.New(recordsRoot)
 	for _, name := range pairBranchNames(cfg, slug) {
@@ -45,40 +49,43 @@ func OriginRunStatus(prime *lymcwd.Location, slug string) (status shedengine.Sta
 			continue
 		}
 		if err != nil {
-			return shedengine.Status{}, false, err
+			return nil, false, err
 		}
-		return originStatusAtTip(prime, recordsRoot, tip, slug)
+		status, _, found, err = originStatusBytesAtTip(prime, recordsRoot, tip, slug)
+		return status, found, err
 	}
-	return shedengine.Status{}, false, nil
+	return nil, false, nil
 }
 
-// originStatusAtTip reads the child run record of slug at the commit tip of the records repository at recordsRoot.
-func originStatusAtTip(prime *lymcwd.Location, recordsRoot, tip, slug string) (shedengine.Status, bool, error) {
+// originStatusBytesAtTip reads the bytes of slug's child run record in the records repository at recordsRoot.
+// It reads them from the tree of the commit tip, and returns the record's path in that tree with them.
+// found is false when the tip holds no record.
+// It refuses a process with no run-records paths installed.
+func originStatusBytesAtTip(prime *lymcwd.Location, recordsRoot, tip, slug string) (data []byte, statusPath string, found bool, err error) {
+	if err := refuseUnsuppliedSeams(fabriccore.SeamRunRecordPaths); err != nil {
+		return nil, "", false, err
+	}
 	names, err := RepoWiredNames(prime)
 	if err != nil {
-		return shedengine.Status{}, false, fmt.Errorf("load the fabric config: %w", err)
+		return nil, "", false, fmt.Errorf("load the fabric config: %w", err)
 	}
 	anchor, err := treeAnchor(recordsRoot, tip, names, prime.AnchorRel)
 	if err != nil {
-		return shedengine.Status{}, false, err
+		return nil, "", false, err
 	}
-	_, statusRel, err := shedrun.TreeRunFileRels(slug)
+	statusRel, err := installedRunRecordPaths.Load().TreeStatusRel(slug)
 	if err != nil {
-		return shedengine.Status{}, false, err
+		return nil, "", false, err
 	}
-	statusPath := path.Join(filepath.ToSlash(anchor), statusRel)
-	data, err := showFile(recordsRoot, tip, statusPath)
+	statusPath = path.Join(filepath.ToSlash(anchor), statusRel)
+	data, err = showFile(recordsRoot, tip, statusPath)
 	if err != nil {
-		return shedengine.Status{}, false, fmt.Errorf("read %s at %s in %s: %w", statusPath, tip, recordsRoot, err)
+		return nil, "", false, fmt.Errorf("read %s at %s in %s: %w", statusPath, tip, recordsRoot, err)
 	}
 	if data == nil {
-		return shedengine.Status{}, false, nil
+		return nil, statusPath, false, nil
 	}
-	status, err := shedengine.ParseStatusTolerant(data)
-	if err != nil {
-		return shedengine.Status{}, false, fmt.Errorf("parse %s at %s in %s: %w", statusPath, tip, recordsRoot, err)
-	}
-	return status, true, nil
+	return data, statusPath, true, nil
 }
 
 // OriginCodeTip reads the code tip the last transition of slug on origin names, with no network call.
@@ -86,7 +93,11 @@ func originStatusAtTip(prime *lymcwd.Location, recordsRoot, tip, slug string) (s
 // It reads origin's fetched code branch for whether that branch holds the tip.
 // A tip this repository lacks counts as missing from origin, and so does an absent code branch.
 // A slug with no records branch on origin reads the zero CodeTipReading, not missing.
+// It refuses a process with no run-records paths or no status codec installed.
 func OriginCodeTip(prime *lymcwd.Location, slug string) (fabriclayout.CodeTipReading, error) {
+	if err := refuseUnsuppliedSeams(fabriccore.SeamRunRecordPaths, fabriccore.SeamStatusCodec); err != nil {
+		return fabriclayout.CodeTipReading{}, err
+	}
 	cfg, err := LoadConfig(ConfigDirs(prime))
 	if err != nil {
 		return fabriclayout.CodeTipReading{}, err
@@ -121,12 +132,15 @@ func readCodeTipAt(prime *lymcwd.Location, recordsRoot, recordsTip, branch, slug
 	}
 	reading := fabriclayout.CodeTipReading{Tip: tip, At: commit.Committed}
 
-	status, statusFound, err := originStatusAtTip(prime, recordsRoot, commit.SHA, slug)
+	status, statusPath, statusFound, err := originStatusBytesAtTip(prime, recordsRoot, commit.SHA, slug)
 	if err != nil {
 		return fabriclayout.CodeTipReading{}, err
 	}
-	if statusFound && len(status.History) > 0 {
-		reading.Machine = status.History[len(status.History)-1].Machine
+	if statusFound {
+		reading.Machine, err = installedStatusCodec.Load().LastMachine(status)
+		if err != nil {
+			return fabriclayout.CodeTipReading{}, fmt.Errorf("parse %s at %s in %s: %w", statusPath, commit.SHA, recordsRoot, err)
+		}
 	}
 
 	codeDir := prime.WorktreePath()

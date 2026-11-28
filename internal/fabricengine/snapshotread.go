@@ -151,6 +151,9 @@ func (r snapshotReader) read(phase fabriccore.Phase, fields []fabriccore.Field, 
 				continue
 			}
 			snapshot.PendingTeardowns = pending
+
+		case fabriccore.FieldSeams:
+			snapshot.Seams = suppliedSeams()
 		}
 	}
 	return errors.Join(failures...)

@@ -7,96 +7,73 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/fabriccore"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
-// upstreamState is how a branch's upstream stands in the local repository.
-type upstreamState int
+// branchQuestion is the ancestry answer a caller needs of a branch against its tracking ref.
+type branchQuestion int
 
 const (
-	// upstreamUnset means the branch has no upstream configured.
-	upstreamUnset upstreamState = iota
-	// upstreamPruned means the upstream is set but its tracking ref is absent, as after a fetch pruned it.
-	upstreamPruned
-	// upstreamTracked means the upstream is set and its tracking ref holds upstreamTip.
-	upstreamTracked
+	// askAhead asks whether the tracking ref lacks a commit of the tip.
+	askAhead branchQuestion = iota
+	// askHeld asks whether the tracking ref holds the tip.
+	askHeld
+	// askCeiling asks whether the tracking ref lacks a given commit.
+	askCeiling
 )
 
 // localBranch is the checked-out branch of one worktree against its tracking ref, as last fetched.
-// tip is empty for a branch with no commits.
 type localBranch struct {
+	fabriccore.BranchReading
 	repo        *gitrepo.Repo
-	tip         string
-	state       upstreamState
 	upstreamTip string
 }
 
 // readLocalBranch reads the checked-out branch of the worktree at path against its tracking ref.
-func readLocalBranch(path string) (localBranch, error) {
-	repo := gitrepo.New(path)
-	tip, err := repo.CurrentSHA()
+// It also reads the one ancestry answer question asks for.
+// ceiling is the commit askCeiling asks about, and empty for the other questions.
+// The ancestry is read only of a tracked upstream.
+func readLocalBranch(path string, question branchQuestion, ceiling string) (localBranch, error) {
+	branch := localBranch{repo: gitrepo.New(path)}
+	branch.Upstream, branch.Ceiling = fabriccore.PushUpstreamNone, ceiling
+	tip, err := branch.repo.CurrentSHA()
 	if errors.Is(err, gitrepo.ErrNoCommits) {
-		return localBranch{repo: repo}, nil
+		return branch, nil
 	}
 	if err != nil {
 		return localBranch{}, fmt.Errorf("fabricengine: read the tip of %s: %w", path, err)
 	}
-	branch := localBranch{repo: repo, tip: tip}
-	upstreamTip, err := repo.UpstreamSHA()
+	branch.Tip = tip
+	upstreamTip, err := branch.repo.UpstreamSHA()
 	switch {
 	case errors.Is(err, gitrepo.ErrNoUpstream):
-		branch.state = upstreamUnset
+		return branch, nil
 	case errors.Is(err, gitrepo.ErrRefNotFound):
-		branch.state = upstreamPruned
+		branch.Upstream = fabriccore.PushUpstreamPruned
+		return branch, nil
 	case err != nil:
 		return localBranch{}, fmt.Errorf("fabricengine: read the upstream of %s: %w", path, err)
-	default:
-		branch.state = upstreamTracked
-		branch.upstreamTip = upstreamTip
+	}
+	branch.Upstream, branch.upstreamTip = fabriccore.PushUpstreamTracked, upstreamTip
+
+	switch question {
+	case askAhead:
+		var notOnOrigin []string
+		notOnOrigin, err = branch.repo.CommitsNotIn(branch.Tip, branch.upstreamTip)
+		branch.LacksCommit = len(notOnOrigin) > 0
+	case askHeld:
+		branch.HoldsTip, err = branch.repo.IsAncestor(branch.Tip, branch.upstreamTip)
+	case askCeiling:
+		var onOrigin bool
+		onOrigin, err = branch.repo.IsAncestor(ceiling, branch.upstreamTip)
+		branch.LacksCeiling = !onOrigin
+	}
+	if err != nil {
+		return localBranch{}, err
 	}
 	return branch, nil
-}
-
-// ahead reports whether the branch holds a commit its tracking ref lacks.
-// A branch with an upstream unset and a commit is ahead; one whose tracking ref is pruned reads level.
-func (b localBranch) ahead() (bool, error) {
-	switch {
-	case b.tip == "":
-		return false, nil
-	case b.state == upstreamUnset:
-		return true, nil
-	case b.state == upstreamPruned:
-		return false, nil
-	}
-	notOnOrigin, err := b.repo.CommitsNotIn(b.tip, b.upstreamTip)
-	return len(notOnOrigin) > 0, err
-}
-
-// lacks reports whether the branch's tracking ref lacks the commit sha.
-// An upstream unset lacks every commit; a pruned tracking ref reads level, so it lacks none.
-func (b localBranch) lacks(sha string) (bool, error) {
-	switch b.state {
-	case upstreamUnset:
-		return true, nil
-	case upstreamPruned:
-		return false, nil
-	}
-	onOrigin, err := b.repo.IsAncestor(sha, b.upstreamTip)
-	return !onOrigin, err
-}
-
-// heldOnOrigin reports whether the branch's tracking ref is the local tip or a descendant of it.
-// A branch with no commits is held, and so is one whose tracking ref is pruned: origin ended it.
-func (b localBranch) heldOnOrigin() (bool, error) {
-	switch {
-	case b.tip == "", b.state == upstreamPruned:
-		return true, nil
-	case b.state == upstreamUnset:
-		return false, nil
-	}
-	return b.repo.IsAncestor(b.tip, b.upstreamTip)
 }
 
 // heldCeiling returns the first parent of the held commit hold in the repository at path.
@@ -121,42 +98,37 @@ func heldCeiling(path, hold string) (string, error) {
 // A records commit of the pair's run may be held back from every push.
 // The records branch then counts only up to that commit's first parent.
 func RunCommitsAhead(l *lymcwd.Location) (bool, error) {
-	records, err := readLocalBranch(RecordsWorktree(l))
-	if err != nil {
-		return false, err
-	}
 	prime, err := IsPrimeWorktree(l)
 	if err != nil {
 		return false, err
 	}
-	if prime {
-		return records.ahead()
-	}
-	hold, held, err := recordsPushCeiling(l.HubPath, l.WorktreeName)
-	if err != nil {
-		return false, err
-	}
-	var ahead bool
-	if held {
-		ceiling, err := heldCeiling(RecordsWorktree(l), hold)
+	question, ceiling := askAhead, ""
+	if !prime {
+		hold, held, err := recordsPushCeiling(l.HubPath, l.WorktreeName)
 		if err != nil {
 			return false, err
 		}
-		ahead, err = records.lacks(ceiling)
-		if err != nil {
-			return false, err
+		if held {
+			question = askCeiling
+			if ceiling, err = heldCeiling(RecordsWorktree(l), hold); err != nil {
+				return false, err
+			}
 		}
-	} else if ahead, err = records.ahead(); err != nil {
-		return false, err
 	}
-	if ahead {
-		return true, nil
-	}
-	code, err := readLocalBranch(l.WorktreePath())
+	records, err := readLocalBranch(RecordsWorktree(l), question, ceiling)
 	if err != nil {
 		return false, err
 	}
-	return code.ahead()
+	// The code branch is read only when the records branch alone does not answer.
+	ahead := fabriccore.RunAhead(prime, records.BranchReading, fabriccore.BranchReading{})
+	if ahead || prime {
+		return ahead, nil
+	}
+	code, err := readLocalBranch(l.WorktreePath(), askAhead, "")
+	if err != nil {
+		return false, err
+	}
+	return fabriccore.RunAhead(prime, records.BranchReading, code.BranchReading), nil
 }
 
 // RefusedPushStands reports whether a refused-push record stands for a branch of l.
@@ -184,16 +156,7 @@ func RefusedPushStands(l *lymcwd.Location) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	for _, record := range records {
-		if isOwedClass(record.Class) {
-			continue
-		}
-		if (record.Repo == fabriclayout.RepoRecords && record.Branch == recordsBranch) ||
-			(codeBranch != "" && record.Repo == fabriclayout.RepoCode && record.Branch == codeBranch) {
-			return true, nil
-		}
-	}
-	return false, nil
+	return fabriccore.RefusedPushStands(records, recordsBranch, codeBranch), nil
 }
 
 // TipsOnOrigin reports whether origin's tracking refs hold the local records tip of l.
@@ -202,21 +165,17 @@ func RefusedPushStands(l *lymcwd.Location) (bool, error) {
 // A branch with no upstream fails it.
 // A branch whose upstream is set and whose tracking ref is absent reads held: origin ended it, so it has nothing to push.
 func TipsOnOrigin(l *lymcwd.Location) (bool, error) {
-	records, err := readLocalBranch(RecordsWorktree(l))
-	if err != nil {
-		return false, err
-	}
-	held, err := records.heldOnOrigin()
-	if err != nil || !held {
+	records, err := readLocalBranch(RecordsWorktree(l), askHeld, "")
+	if err != nil || !fabriccore.BranchHeldOnOrigin(records.BranchReading) {
 		return false, err
 	}
 	prime, err := IsPrimeWorktree(l)
 	if err != nil || prime {
 		return true, err
 	}
-	code, err := readLocalBranch(l.WorktreePath())
+	code, err := readLocalBranch(l.WorktreePath(), askHeld, "")
 	if err != nil {
 		return false, err
 	}
-	return code.heldOnOrigin()
+	return fabriccore.TipsHeldOnOrigin(prime, records.BranchReading, code.BranchReading), nil
 }

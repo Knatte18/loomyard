@@ -100,6 +100,12 @@
 // the status file durable, both locks never-tracked transients.
 // The package imports only the standard library, internal/state and internal/lock.
 //
+// # The status codec
+//
+// StatusLastMachine and StatusRecorded read a status record from its bytes.
+// They supply the status codec that fabric's required seam takes,
+// so the fabric reads that take the codec hold only the record's bytes.
+//
 // # The transient mark
 //
 // The transient mark is declared only in transient.go, and its class set is closed there (PATTERN-shed-driver).

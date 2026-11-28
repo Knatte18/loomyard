@@ -69,6 +69,15 @@ func TestBuilder(t *testing.T) {
 				t.Errorf("Build() = %+v; want %+v", got, wantOne)
 			}
 		}},
+		{"SeamIsSetAndABuiltSnapshotKeepsIt", func(t *testing.T) {
+			b := fabrickit.NewSnapshot().Seam(fabriccore.SeamRunLocks, true)
+			built := b.Build()
+			b.Seam(fabriccore.SeamRunLocks, false).Seam(fabriccore.SeamStatusCodec, true)
+			want := map[fabriccore.RequiredSeam]bool{fabriccore.SeamRunLocks: true}
+			if !reflect.DeepEqual(built.Seams, want) {
+				t.Errorf("Seams after later setters = %v; want %v", built.Seams, want)
+			}
+		}},
 		{"BuiltSnapshotSharesNothing", func(t *testing.T) {
 			b := everySetter(fabrickit.NewSnapshot(), "one")
 			built := b.Build()

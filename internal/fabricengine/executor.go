@@ -164,7 +164,12 @@ func runRule(
 	}
 }
 
+// errRetryDeferred is the error of a retry that left the commits to the branch's next push.
+var errRetryDeferred = errors.New("fabricengine: the retry deferred the push")
+
 // outcomeClassOf returns the class of the error an action or a read ended in; nil is done.
+// A takeover stop and a protected-branch refusal rank ahead of the rejection an error of theirs may wrap,
+// and an exhausted push ranks ahead of the transport failure its last attempt may hold.
 func outcomeClassOf(err error) fabriccore.OutcomeClass {
 	var anchorStop *AnchorStopError
 	var destructive *destructiveRefusal
@@ -175,12 +180,26 @@ func outcomeClassOf(err error) fabriccore.OutcomeClass {
 		return fabriccore.OutcomeAnchorStop
 	case errors.Is(err, gitrepo.ErrPushAuthRefused):
 		return fabriccore.OutcomeAuthRefused
+	case isTakeoverStop(err):
+		return fabriccore.OutcomeTakeover
+	case ProtectedBranchRefusal(err) && errors.Is(err, gitrepo.ErrPushRejected):
+		return fabriccore.OutcomeProtected
+	case ProtectedBranchRefusal(err):
+		return fabriccore.OutcomeProtectedUnrejected
 	case errors.Is(err, gitrepo.ErrPushRejected):
 		return fabriccore.OutcomeRejected
+	case errors.Is(err, ErrReplayConflict):
+		return fabriccore.OutcomeReplayConflict
 	case errors.As(err, &destructive):
 		return fabriccore.OutcomeDestructiveRefusal
+	case errors.Is(err, gitrepo.ErrPushRetriesExhausted):
+		return fabriccore.OutcomeRetriesExhausted
 	case gitexec.IsTransportFailure(err):
 		return fabriccore.OutcomeTransportFailure
+	case errors.Is(err, errOriginAhead):
+		return fabriccore.OutcomeOriginAhead
+	case errors.Is(err, errRetryDeferred):
+		return fabriccore.OutcomeDeferred
 	default:
 		return fabriccore.OutcomeFailed
 	}

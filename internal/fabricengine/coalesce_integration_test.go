@@ -8,6 +8,8 @@
 package fabricengine_test
 
 import (
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -68,8 +70,20 @@ func TestCoalescePushBothAt_AdvancesBothSidesAndLeavesNoWarpRootLock(t *testing.
 	weftFixture := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	weftSHA := gitkit.CommitFile(t, weftFixture.PrimeRecords(), "weft-file.txt", "weft change", "weft change")
 
-	if _, err := fabricengine.CoalescePushBothAt(warpPath, weftFixture.PrimeRecords(), fabricengine.SyncOptions{}); err != nil {
+	res, err := fabricengine.CoalescePushBothAt(warpPath, weftFixture.PrimeRecords(), fabricengine.SyncOptions{})
+	if err != nil {
 		t.Fatalf("fabricengine.CoalescePushBothAt() error = %v; want nil", err)
+	}
+
+	printed, err := json.Marshal(res.Mutations)
+	if err != nil {
+		t.Fatalf("marshal the mutations: %v", err)
+	}
+	wantPrinted := fmt.Sprintf(`[{"kind":"branch_pushed","target":%q,"detail":"side=records repo=%s remote=origin"},`+
+		`{"kind":"branch_pushed","target":"main","detail":"side=code repo=%s remote=origin"}]`,
+		fabriclayout.RecordsBranchName("main"), filepath.ToSlash(weftFixture.PrimeRecords()), filepath.ToSlash(warpPath))
+	if string(printed) != wantPrinted {
+		t.Errorf("mutations = %s; want %s", printed, wantPrinted)
 	}
 
 	if got := fabricengine.BareBranchSHAForTest(t, warpBare, "main"); got != warpSHA {

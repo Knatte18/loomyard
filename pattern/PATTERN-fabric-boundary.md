@@ -112,7 +112,8 @@ The entry binds lym's own code only.
   and `--force` and dirtiness do not apply.
 - `--force` answers dirtiness only, never containment or ownership.
 - A gate refusal is never silently discarded.
-- The `rec *Mutations` recorder is threaded into `destroy.go` only.
+- The executor records in `fabricengine.Mutations` the entries today's code records for the same effect, kind for kind,
+  and destructive primitives stay in `destroy.go`.
 
 ### Write containment
 

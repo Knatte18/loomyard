@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/Knatte18/loomyard/internal/fabriccore"
 	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -130,6 +131,8 @@ func CoalescePushRequest(req fabriclayout.PushSpawn, opts SyncOptions, here fabr
 // caller names the public entry point in the error for a missing weft path.
 // The code side goes out with SyncOptions.AfterRecords set, after the records side landed.
 // A records commit held back for the pair's run caps the records side at that commit's first parent.
+// A process that supplied no run-records paths is refused before the lock, with nothing recorded.
+// The refusal is there because a rejected records push reads a run's record.
 // For the duration of the call it installs a gate deferral.
 // A pause triggers it at the gate before an acquire of the lock:
 // the flags of the owed sides go back, and the process exits.
@@ -142,6 +145,9 @@ func coalescePushSides(req fabriclayout.PushSpawn, opts SyncOptions, here fabric
 	rec := NewMutations(hubRoot)
 	defer func() { res.Mutations = rec.Snapshot() }()
 
+	if err := refuseUnsuppliedSeams(fabriccore.SeamRunRecordPaths); err != nil {
+		return fabriclayout.PushResult{}, err
+	}
 	if opts.SkipGit || opts.SkipPush {
 		return fabriclayout.PushResult{}, nil
 	}
@@ -168,12 +174,20 @@ func coalescePushSides(req fabriclayout.PushSpawn, opts SyncOptions, here fabric
 	codeOpts.AfterRecords = true
 	defer pauserecord.SetGateDeferral(pushDeferral(lockDir, owed, exitDeferred))()
 
-	step := func() (progressed bool, err error) {
-		beforeWarp, err := headOrEmpty(warpPath)
+	readHeads := func() (map[string]string, error) {
+		warp, err := headOrEmpty(warpPath)
 		if err != nil {
-			return false, err
+			return nil, err
 		}
-		beforeWeft, err := headOrEmpty(weftPath)
+		weft, err := headOrEmpty(weftPath)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]string{pushSideCode: warp, pushSideRecords: weft}, nil
+	}
+
+	step := func() (progressed bool, err error) {
+		before, err := readHeads()
 		if err != nil {
 			return false, err
 		}
@@ -182,7 +196,7 @@ func coalescePushSides(req fabriclayout.PushSpawn, opts SyncOptions, here fabric
 		// it still takes part in the before/after HEAD comparison below, where its empty HEAD is trivially stable.
 		// The records side goes first, and the code side only once the records side landed.
 		recordsLanded := true
-		if beforeWeft != "" {
+		if before[pushSideRecords] != "" {
 			recordsOpts := opts
 			// The records worktree's name carries the slug of the pair whose run may hold a commit.
 			heldSlug, _ := fabriclayout.WeftWarpSlug(filepath.Base(weftPath))
@@ -197,22 +211,17 @@ func coalescePushSides(req fabriclayout.PushSpawn, opts SyncOptions, here fabric
 				return false, err
 			}
 		}
-		if recordsLanded && warpPath != "" && beforeWarp != "" {
+		if recordsLanded && warpPath != "" && before[pushSideCode] != "" {
 			if _, err := pushSideDetached(rec, hubPath, fabriclayout.RepoCode, warpPath, codeOpts, nil); err != nil {
 				return false, err
 			}
 		}
 
-		afterWarp, err := headOrEmpty(warpPath)
+		after, err := readHeads()
 		if err != nil {
 			return false, err
 		}
-		afterWeft, err := headOrEmpty(weftPath)
-		if err != nil {
-			return false, err
-		}
-
-		return afterWarp != beforeWarp || afterWeft != beforeWeft, nil
+		return fabriccore.SidesProgressed(before, after), nil
 	}
 
 	_, err = coalesceFlagged(lockDir, owed, acquire, step)

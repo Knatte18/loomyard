@@ -2,7 +2,11 @@
 
 package fabriccore
 
-import "github.com/Knatte18/loomyard/internal/fabriclayout"
+import (
+	"time"
+
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
+)
 
 // Phase names when a part of a snapshot is read.
 type Phase string
@@ -44,6 +48,8 @@ const (
 	FieldRecordsStore Field = "records_store"
 	// FieldPendingTeardowns is the records of remote teardowns that have not finished.
 	FieldPendingTeardowns Field = "pending_teardowns"
+	// FieldSeams is which required seams the process has supplied.
+	FieldSeams Field = "seams"
 )
 
 // Refs maps a full ref name to its commit.
@@ -78,6 +84,18 @@ type Snapshot struct {
 	Anchors          map[string]string
 	RecordsStore     RecordsStore
 	PendingTeardowns []fabriclayout.PendingTeardown
+	// Seams maps each required seam to whether it is supplied.
+	Seams map[RequiredSeam]bool
+	// Push is what the push of one side reads.
+	Push PushSideFacts
+	// RecordsLanding is what is read of the records side of a pair push after a push of it.
+	RecordsLanding RecordsLandingFacts
+	// Reconcile is what is read for judging branches against origin.
+	Reconcile ReconcileFacts
+	// Ended is what is read for removing the pairs of ended runs.
+	Ended EndedFacts
+	// Backoff holds the delays between the attempts of a retried step, in order.
+	Backoff []time.Duration
 	// Outcomes are the outcomes of every action run so far.
 	Outcomes []Outcome
 	// ReadFailures are the reads that could not complete for a class a rule decides on.

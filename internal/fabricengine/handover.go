@@ -215,6 +215,19 @@ func OriginBattenStatus(prime *lymcwd.Location, slug string) (status shedengine.
 	return originStatusAtTip(prime, recordsWorktree, upstream, slug)
 }
 
+// originStatusAtTip reads the child run record of slug at the commit tip of the records repository at recordsRoot.
+func originStatusAtTip(prime *lymcwd.Location, recordsRoot, tip, slug string) (shedengine.Status, bool, error) {
+	data, statusPath, found, err := originStatusBytesAtTip(prime, recordsRoot, tip, slug)
+	if err != nil || !found {
+		return shedengine.Status{}, false, err
+	}
+	status, err := shedengine.ParseStatusTolerant(data)
+	if err != nil {
+		return shedengine.Status{}, false, fmt.Errorf("parse %s at %s in %s: %w", statusPath, tip, recordsRoot, err)
+	}
+	return status, true, nil
+}
+
 // pushOwedCodeTip pushes the code tip the pair's last transition on origin names, when origin's code branch lags it.
 // The tip is read from the records worktree's fetched upstream, and the push is leased at the origin tip read with it.
 // It pushes nothing for a tip this repository lacks or a tip origin holds.

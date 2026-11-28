@@ -15,6 +15,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/beamsetting"
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/fabriccore"
 	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
@@ -97,6 +98,15 @@ type pushJob struct {
 	// unmadeAt is origin's tip at that read. Both are empty when no reset was refused.
 	unmade   string
 	unmadeAt string
+	// actionErrs holds the error of each action run, in the order of the outcomes that are no wait.
+	actionErrs []error
+	// pushes and retries count the pushes and the rejection retries run so far, for the log of a wait.
+	pushes  int
+	retries int
+	// originErr is the error of the last lookup on origin that failed in transit.
+	originErr error
+	// boardErr is the failed read an unseeded board's refusal names.
+	boardErr error
 }
 
 // pushClassified pushes the side at path rebase-free and classifies a failure.
@@ -129,59 +139,169 @@ type pushJob struct {
 // A push that lands removes the record of its side and branch.
 func pushClassified(rec *Mutations, hubPath, side, path string, opts SyncOptions, retryRecords func() (deferred bool, err error)) error {
 	job := &pushJob{rec: rec, hubPath: hubPath, side: side, path: path, opts: opts, repo: gitrepo.New(path)}
-	branch, err := job.repo.CurrentBranch()
+	snapshot, err := job.run(retryRecords)
 	if err != nil {
-		return job.push()
-	}
-	job.branch = branch
-	if side == fabriclayout.RepoCode {
-		job.prime = job.isPrimeWorktree()
-	}
-	if side == fabriclayout.RepoBolt {
-		if err := job.refuseUnseededBoard(); err != nil {
-			return err
+		var refusal *fabriccore.Refusal
+		if errors.As(err, &refusal) && job.boardErr != nil {
+			return &refusalOverRead{refusal: refusal, read: job.boardErr}
 		}
+		return err
 	}
 
-	if side != fabriclayout.RepoBolt {
-		if _, err := originNamespaceAt(path); err != nil {
-			return job.fail(fabriclayout.PushFailureOther, err, nil, nil, "")
+	switch verdict := fabriccore.JudgePush(snapshot); verdict.Kind {
+	case fabriccore.PushVerdictDone:
+		return nil
+	case fabriccore.PushVerdictReturn:
+		if verdict.Outcome >= 0 {
+			return job.errOf(snapshot, verdict.Outcome)
 		}
-		proceed, err := job.checkOrigin()
-		if !proceed {
-			return err
-		}
-	}
-
-	hadUnpushed, hadUnpushedErr := job.repo.HasUnpushed()
-	if side == fabriclayout.RepoBolt && hadUnpushedErr == nil && !hadUnpushed {
+		return verdict.Err
+	case fabriccore.PushVerdictLanded:
+		return job.landed(snapshot.Push.Unpushed, snapshot.Push.UnpushedErr)
+	case fabriccore.PushVerdictCleared:
 		return job.clear()
+	case fabriccore.PushVerdictDeferred:
+		return job.deferral()
+	default:
+		return job.classifyFailure(snapshot, verdict)
 	}
-	pushErr := job.retryTransportPush(job.push())
-	if pushErr == nil {
-		return job.landed(hadUnpushed, hadUnpushedErr)
+}
+
+// refusalOverRead is a refusal that names a failed read, which errors.Is and errors.As still reach.
+type refusalOverRead struct {
+	refusal *fabriccore.Refusal
+	read    error
+}
+
+// Error returns the refusal's text.
+func (e *refusalOverRead) Error() string { return e.refusal.Error() }
+
+// Unwrap returns the refusal and the failed read.
+func (e *refusalOverRead) Unwrap() []error { return []error{e.refusal, e.read} }
+
+// run drives the push's rule and returns the snapshot it read.
+// retryRecords retries a rejected push; a nil one retries the code side's way.
+func (j *pushJob) run(retryRecords func() (deferred bool, err error)) (fabriccore.Snapshot, error) {
+	retry := retryRecords
+	if retry == nil {
+		retry = j.repushOverOriginContained
 	}
-	if errors.Is(pushErr, gitrepo.ErrPushRejected) {
-		retry := retryRecords
-		if retry == nil {
-			retry = job.repushOverOriginContained
+	return runRule(fabriccore.PushSide, fabriccore.PushSide(fabriccore.Snapshot{}), j.read, nil, j.runners(retry), j.sleep)
+}
+
+// sleep waits one delay of the push backoff through the job's BackoffSleep.
+func (j *pushJob) sleep(delay time.Duration) {
+	// A wait before the first push is one for origin, and is not logged.
+	switch {
+	case j.retries > 0:
+		logger.Warn("fabricengine: rejected push retried", "side", j.side, "branch", j.branch, "attempt", j.retries, "error", j.actionErrs[len(j.actionErrs)-1])
+	case j.pushes > 0:
+		logger.Warn("fabricengine: push failed in transit, retrying", "side", j.side, "branch", j.branch, "attempt", j.pushes, "error", j.actionErrs[len(j.actionErrs)-1])
+	}
+	if j.opts.BackoffSleep != nil {
+		j.opts.BackoffSleep(delay)
+		return
+	}
+	time.Sleep(delay)
+}
+
+// runners returns the runners of the actions the push's rule lists; retry runs the retry of a rejection.
+func (j *pushJob) runners(retry func() (deferred bool, err error)) map[fabriccore.ActionKind]actionRunner {
+	keep := func(err error) error {
+		j.actionErrs = append(j.actionErrs, err)
+		return err
+	}
+	return map[fabriccore.ActionKind]actionRunner{
+		fabriccore.ActionPush: func(fabriccore.Action) error {
+			j.pushes++
+			return keep(j.push())
+		},
+		fabriccore.ActionSeamCall: func(fabriccore.Action) error {
+			j.retries++
+			deferred, err := retry()
+			if deferred {
+				err = errRetryDeferred
+			}
+			return keep(err)
+		},
+		fabriccore.ActionRefDelete: func(fabriccore.Action) error {
+			return keep(j.dropTrackingRefOfEndedBranch())
+		},
+	}
+}
+
+// errOf returns the error of the action whose outcome is at index in snapshot.
+func (j *pushJob) errOf(snapshot fabriccore.Snapshot, index int) error {
+	ran := 0
+	for _, outcome := range snapshot.Outcomes[:index] {
+		if outcome.Action.Kind != fabriccore.ActionWait {
+			ran++
 		}
-		deferred, retryErr := job.settleRejection(pushErr, retry)
-		switch {
-		case deferred:
-			return job.deferral()
-		case retryErr == nil:
-			return job.landed(hadUnpushed, hadUnpushedErr)
-		}
-		pushErr = retryErr
-		if isTakeoverStop(pushErr) {
-			return pushErr
+	}
+	return j.actionErrs[ran]
+}
+
+// read fills what the push's rule asks for.
+func (j *pushJob) read(phase fabriccore.Phase, fields []fabriccore.Field, snapshot *fabriccore.Snapshot) error {
+	for _, field := range fields {
+		switch field {
+		case fabriccore.FieldPushSide:
+			switch {
+			case !snapshot.Push.Read:
+				j.readSide(snapshot)
+			case phase == fabriccore.PhaseOrigin:
+				if err := j.checkOrigin(snapshot); err != nil {
+					return err
+				}
+			default:
+				snapshot.Push.Unpushed, snapshot.Push.UnpushedErr = j.repo.HasUnpushed()
+				snapshot.Push.UnpushedRead = true
+			}
+		case fabriccore.FieldPushJudgment:
+			snapshot.Push.Judgment = j.failRejection()
 		}
 	}
-	if failed, classified := job.classifyFailure(pushErr); classified {
-		return failed
+	return nil
+}
+
+// readSide reads the push's single-attempt option, branch and repository.
+// A branch that cannot be read ends the reading, since the push then goes out unchecked.
+func (j *pushJob) readSide(snapshot *fabriccore.Snapshot) {
+	snapshot.Backoff = gitrepo.PushBackoffDelays()
+	facts := fabriccore.PushSideFacts{
+		Read:          true,
+		Side:          j.side,
+		SingleAttempt: j.opts.SingleAttempt,
 	}
-	return job.fail(fabriclayout.PushFailureOther, pushErr, nil, nil, "")
+	defer func() { snapshot.Push = facts }()
+
+	branch, err := j.repo.CurrentBranch()
+	if err != nil {
+		return
+	}
+	j.branch, facts.Branch = branch, branch
+	if j.side == fabriclayout.RepoCode {
+		j.prime = j.isPrimeWorktree()
+		facts.Prime = j.prime
+	}
+	if j.side == fabriclayout.RepoBolt {
+		facts.Board, facts.NamespaceErr = j.refuseUnseededBoard()
+		return
+	}
+	if _, facts.NamespaceErr = originNamespaceAt(j.path); facts.NamespaceErr != nil {
+		return
+	}
+	_, err = j.repo.UpstreamSHA()
+	switch {
+	case err == nil:
+		facts.Upstream = fabriccore.PushUpstreamTracked
+	case errors.Is(err, gitrepo.ErrNoUpstream):
+		facts.Upstream = fabriccore.PushUpstreamNone
+	case errors.Is(err, gitrepo.ErrRefNotFound):
+		facts.Upstream = fabriccore.PushUpstreamPruned
+	default:
+		facts.UpstreamErr = err
+	}
 }
 
 // push runs the side's rebase-free push, under the namespace of the repository it pushes from.
@@ -198,102 +318,63 @@ func (j *pushJob) push() error {
 	return j.repo.PushRebaseFree(ns)
 }
 
-// retryTransportPush pushes again after each delay of the push backoff while pushErr is a transport failure.
-// It returns the first push that did not fail in transit, or the last transport failure once the backoff is spent.
-// A connection that drops mid-push leaves no refusal to classify, so only another push of the branch settles it.
-// With the job's SingleAttempt it pushes nothing again.
-func (j *pushJob) retryTransportPush(pushErr error) error {
-	if j.opts.SingleAttempt {
-		return pushErr
-	}
-	sleep := j.opts.BackoffSleep
-	if sleep == nil {
-		sleep = time.Sleep
-	}
-	for attempt, delay := range gitrepo.PushBackoffDelays() {
-		if !gitexec.IsTransportFailure(pushErr) {
-			return pushErr
-		}
-		logger.Warn("fabricengine: push failed in transit, retrying", "side", j.side, "branch", j.branch, "attempt", attempt+1, "error", pushErr)
-		sleep(delay)
-		pushErr = j.push()
-	}
-	return pushErr
-}
-
-// refuseUnseededBoard refuses a board push for a board with no upstream in a one-repository records store.
-// Such a board is a --single-repo seed whose clone stopped before it set the upstreams.
+// refuseUnseededBoard reads what the refusal of an unseeded board rests on:
+// a board with no upstream in a one-repository records store.
 // A seeded board takes its upstream at the seed push, and a joined board adopts origin's board branch.
-// A clone killed mid-seed can leave origin holding the whole seed,
-// so the refusal reads origin's board to pick its way forward.
-// It fetches origin's board first, so the comparison holds even for a commit another clone pushed after the seed.
-// Origin holding no board names a --reset clone that discards the unpushed seed.
-// Origin holding a board that shares history with this board is this hub's own seed,
-// and it names the upstream settings the clone never wrote.
-// Origin holding a board with no history in common with this one names a join of the hub that seeded it.
-// So does origin holding a board while this one holds no commits.
-// The refusal is returned as it is, with no failed-push record, so no later push or reconcile retries it;
-// a push here would put an unseeded board onto origin unleased.
-func (j *pushJob) refuseUnseededBoard() error {
+// A clone killed mid-seed can leave origin holding the whole seed, so origin's board is read too.
+// It is fetched first, so the comparison holds even for a commit another clone pushed after the seed.
+// The reading stops at the first fact that decides the refusal.
+// nsErr is a failed read of the records store's layout.
+func (j *pushJob) refuseUnseededBoard() (board fabriccore.PushBoardFacts, nsErr error) {
 	ns, err := originNamespaceAt(j.path)
 	if err != nil {
-		return err
+		return board, err
 	}
 	if ns == (gitrepo.RefNamespace{}) {
-		return nil
+		return board, nil
 	}
 	if _, upstreamErr := j.repo.UpstreamSHA(); !errors.Is(upstreamErr, gitrepo.ErrNoUpstream) {
-		return nil
+		return board, nil
 	}
-	refused := fmt.Sprintf("fabricengine: the board at %s has no upstream in a one-repository hub, so it is not pushed", j.path)
-	originTip, found, err := originBranchHead(j.path, j.branch)
-	if err != nil {
-		return fmt.Errorf("%s, and origin's board could not be read to tell whether its seed landed: %w; "+
-			"way forward: run the same command again once origin answers", refused, err)
+	board = fabriccore.PushBoardFacts{Unseeded: true, Path: j.path, HubPath: j.hubPath, Remote: originRemoteName, DiscardWorkFlag: DiscardWorkFlag}
+	board.OriginTip, board.OriginFound, board.OriginReadErr = originBranchHead(j.path, j.branch)
+	if board.OriginReadErr != nil {
+		j.boardErr = board.OriginReadErr
+		return board, nil
 	}
-	if !found {
-		return fmt.Errorf("%s, and origin holds no board under %s, so it was never seeded onto origin; "+
-			"way forward: run the same `lym fabric clone --single-repo` again with `--reset --%s`", refused, fabriclayout.RecordsNamespaceRoot, DiscardWorkFlag)
+	if !board.OriginFound {
+		return board, nil
 	}
-	cannotCompare := func(err error) error {
-		return fmt.Errorf("%s, and origin's board could not be compared with this board: %w; "+
-			"way forward: run the same command again once the records store at %s reads", refused, err, j.path)
+	if board.FetchErr = j.repo.Fetch(); board.FetchErr != nil {
+		j.boardErr = board.FetchErr
+		return board, nil
 	}
-	if err := j.repo.Fetch(); err != nil {
-		return fmt.Errorf("%s, and origin's board could not be fetched to compare it with this board: %w; "+
-			"way forward: run the same command again once origin answers", refused, err)
-	}
-	join := fmt.Sprintf("way forward: remove the hub at %s and run `lym fabric clone <url>` without `--single-repo` to join that hub", j.hubPath)
-	localTip, err := j.repo.CurrentSHA()
+	board.LocalTip, err = j.repo.CurrentSHA()
 	switch {
 	case errors.Is(err, gitrepo.ErrNoCommits):
-		return fmt.Errorf("%s, and origin holds another board at %s while this board holds no commits, so another clone seeded origin; %s",
-			refused, originTip, join)
+		board.NoCommits = true
+		return board, nil
 	case err != nil:
-		return cannotCompare(err)
+		board.CompareErr, j.boardErr = err, err
+		return board, nil
 	}
-	shared, err := sharesHistory(j.path, originTip, localTip)
-	if err != nil {
-		return cannotCompare(err)
+	board.Shared, board.CompareErr = sharesHistory(j.path, board.OriginTip, board.LocalTip)
+	if board.CompareErr != nil {
+		j.boardErr = board.CompareErr
+		return board, nil
 	}
-	if !shared {
-		return fmt.Errorf("%s, and origin holds another board at %s, which shares no history with this board at %s, so another clone seeded origin; %s",
-			refused, originTip, localTip, join)
+	if !board.Shared {
+		return board, nil
 	}
 	recordsBranch, err := gitexec.Run([]string{"config", "--get", fabriclayout.PrimeRecordsBranchKey}, j.path)
 	if err != nil {
-		return fmt.Errorf("%s, and %s could not be read from the records store at %s to name the upstream settings: %w; "+
-			"way forward: set %s there to the prime's records branch, then run the same command again",
-			refused, fabriclayout.PrimeRecordsBranchKey, j.path, err, fabriclayout.PrimeRecordsBranchKey)
+		board.RecordsBranchErr, j.boardErr = err, err
+		return board, nil
 	}
-	var settings []string
 	for _, branch := range []string{j.branch, strings.TrimSpace(recordsBranch)} {
-		settings = append(settings,
-			fmt.Sprintf("`git -C %s config branch.%s.remote %s`", j.path, branch, originRemoteName),
-			fmt.Sprintf("`git -C %s config branch.%s.merge %s`", j.path, branch, ns.Branch(branch)))
+		board.Upstreams = append(board.Upstreams, fabriccore.PushUpstreamSetting{Branch: branch, MergeRef: ns.Branch(branch)})
 	}
-	return fmt.Errorf("%s, but origin holds this hub's board at %s, so the seed landed and its clone stopped before it set the upstreams; "+
-		"way forward: set them with %s, then run the same command again", refused, originTip, strings.Join(settings, ", "))
+	return board, nil
 }
 
 // sharesHistory reports whether the commits a and b have a common ancestor in the repository at dir.
@@ -313,63 +394,6 @@ func sharesHistory(dir, a, b string) (bool, error) {
 
 // errOriginAhead is returned by a code-side retry that found origin holding commits the local branch lacks, a divergence no retry settles.
 var errOriginAhead = errors.New("fabricengine: origin holds commits the local branch lacks")
-
-// settleRejection retries a rejected push before it is reported.
-// It runs retry until the push lands, defers, or fails for a reason no retry clears.
-// Two pushes of one branch can race, and the loser's rejection names a divergence the winner's landing already removed.
-// A fetch its retry made while the winner held the tracking ref can name one too.
-// A retry runs again only while it fails with a bare rejection or an error no class names, such as a failed fetch.
-// Each retry waits one delay of the push backoff, slept through the job's BackoffSleep,
-// and the retries are bounded by the backoff's length.
-// It returns the deferral or nil of a retry that deferred or landed, and otherwise the error to classify:
-// rejected when a code-side retry finds origin ahead, the retry's own error when a class names it,
-// and an unnamed error joined to rejected so the record still reads as a rejection and names the retry's error.
-func (j *pushJob) settleRejection(rejected error, retry func() (deferred bool, err error)) (deferred bool, err error) {
-	delays := gitrepo.PushBackoffDelays()
-	sleep := j.opts.BackoffSleep
-	if sleep == nil {
-		sleep = time.Sleep
-	}
-	for attempt := 0; ; attempt++ {
-		deferred, retryErr := retry()
-		if deferred || retryErr == nil {
-			return deferred, nil
-		}
-		if errors.Is(retryErr, errOriginAhead) {
-			return false, rejected
-		}
-		named, retryable := rejectionRetryKind(retryErr)
-		if !named {
-			retryErr = errors.Join(rejected, retryErr)
-		}
-		if !retryable || attempt == len(delays) {
-			return false, retryErr
-		}
-		logger.Warn("fabricengine: rejected push retried", "side", j.side, "branch", j.branch, "attempt", attempt+1, "error", retryErr)
-		sleep(delays[attempt])
-	}
-}
-
-// rejectionRetryKind sorts the failure of a retried rejected push.
-// named reports whether a failure class names err.
-// retryable reports whether another attempt may still land the push: true for a bare rejection and for an error no class names, such as a failed fetch.
-// A refusal as a protected branch is not retryable, since no retry lifts the protection.
-func rejectionRetryKind(err error) (named, retryable bool) {
-	var anchorStop *AnchorStopError
-	var refusal *destructiveRefusal
-	switch {
-	case errors.As(err, &anchorStop), errors.Is(err, gitrepo.ErrPushAuthRefused), isTakeoverStop(err), ProtectedBranchRefusal(err):
-		return true, false
-	case errors.Is(err, gitrepo.ErrPushRejected):
-		return true, true
-	case errors.Is(err, ErrReplayConflict), errors.As(err, &refusal):
-		return true, false
-	case errors.Is(err, gitrepo.ErrPushRetriesExhausted), gitexec.IsTransportFailure(err):
-		return true, false
-	default:
-		return false, true
-	}
-}
 
 // repushOverOriginContained is the code side's retry of a rejected push.
 // It fetches and pushes again while origin's tip is contained in the local tip;
@@ -623,71 +647,76 @@ func (j *pushJob) hasUncommittedChanges() bool {
 	return err == nil && strings.TrimSpace(out) != ""
 }
 
-// classifyFailure records the failure of a push that was run and returns it as a *PushFailedError.
-// An *AnchorStopError is recorded under its own class ahead of the rejection classes, with the way forward it names.
-// That keeps the record from pointing at a merge that would carry the other marker in by hand.
-// An error that matches no named class is returned unchanged and unrecorded, with classified false.
-func (j *pushJob) classifyFailure(err error) (failed error, classified bool) {
-	var conflict *replayConflict
-	var refusal *destructiveRefusal
-	var anchorStop *AnchorStopError
+// classifyFailure records the failed push verdict names and returns it as a *PushFailedError.
+// The record's error is built from the error the verdict rests on.
+func (j *pushJob) classifyFailure(snapshot fabriccore.Snapshot, verdict fabriccore.PushVerdict) error {
+	var cause error
+	var paths []string
+	commits := verdict.Commits
 	switch {
-	case errors.As(err, &anchorStop):
-		return j.fail(fabriclayout.PushFailureAnchorChange, err, nil, nil, ""), true
-	case errors.Is(err, gitrepo.ErrPushAuthRefused):
-		return j.fail(fabriclayout.PushFailureAuth, err, nil, nil, ""), true
-	case errors.Is(err, gitrepo.ErrPushRejected):
-		return j.failRejection(err), true
-	case errors.Is(err, ErrReplayConflict), errors.As(err, &refusal):
-		var paths []string
-		if errors.As(err, &conflict) {
-			paths = conflict.paths
+	case verdict.Outcome >= 0:
+		cause = j.errOf(snapshot, verdict.Outcome)
+		if verdict.Rejection >= 0 {
+			cause = errors.Join(j.errOf(snapshot, verdict.Rejection), cause)
 		}
-		return j.fail(fabriclayout.PushFailureNotFastForward, fmt.Errorf("%w: %w", gitrepo.ErrPushRejected, err), paths, j.unpushedCommits(), ""), true
-	case errors.Is(err, gitrepo.ErrPushRetriesExhausted), gitexec.IsTransportFailure(err):
-		return j.fail(fabriclayout.PushFailureTransport, err, nil, nil, ""), true
+		switch snapshot.Outcomes[verdict.Outcome].Class {
+		case fabriccore.OutcomeReplayConflict, fabriccore.OutcomeDestructiveRefusal:
+			var conflict *replayConflict
+			if errors.As(cause, &conflict) {
+				paths = conflict.paths
+			}
+			cause = fmt.Errorf("%w: %w", gitrepo.ErrPushRejected, cause)
+		}
+		switch {
+		case verdict.Err != nil:
+			cause = errors.Join(cause, verdict.Err)
+		case verdict.NothingLacking:
+			cause = fmt.Errorf("%w; a fetch found origin holding nothing this branch lacks", cause)
+		}
+	case verdict.Class == fabriclayout.PushFailureGone:
+		cause = fmt.Errorf("%w: %s", ErrBranchGone, j.branch)
+	case verdict.Class == fabriclayout.PushFailureRewound:
+		cause = fmt.Errorf("%w: origin rewound %s to %s, dropping %s", errPushHeldBack, j.branch, verdict.OriginHead, joinOrNone(commits))
+	case verdict.Class == fabriclayout.PushFailureTransport:
+		cause = j.originErr
 	default:
-		return err, false
+		cause = verdict.Err
 	}
+	if verdict.LocalCommits {
+		commits = j.unpushedCommits()
+	}
+	return j.fail(verdict.Class, cause, paths, commits, verdict.OriginHead)
 }
 
-// failRejection records a rejection the retry did not settle, classed by what a fresh fetch shows origin holding.
-// Only origin holding commits the branch lacks is a divergence, recorded as not_fast_forward with the local commits.
-// Origin holding nothing the branch lacks is recorded as other.
-// That is the case after a push that overlapped another, or under a declining hook.
-// Its notice then names a retry and no merge.
+// failRejection reads what a rejection the retries did not settle is judged by: what a fresh fetch shows origin holding.
 // Origin's tip is the branch's upstream, or origin's branch of the same name for a branch never given one.
 // A failed fetch, or a tip that cannot be read because origin has no such branch, leaves origin unknown.
-// The failure is recorded as other with that error joined.
-// A reset refused over a commit this machine did not make records as not_fast_forward.
-// That record names the commit and origin's tip.
-func (j *pushJob) failRejection(rejected error) error {
+// A reset refused over a commit this machine did not make already names what origin holds, and fetches nothing.
+func (j *pushJob) failRejection() fabriccore.PushJudgmentFacts {
+	judgment := fabriccore.PushJudgmentFacts{Read: true, Unmade: j.unmade, UnmadeAt: j.unmadeAt}
 	if j.unmade != "" {
-		return j.fail(fabriclayout.PushFailureNotFastForward, rejected, nil, []string{j.unmade}, j.unmadeAt)
+		return judgment
 	}
-	if err := j.repo.Fetch(); err != nil {
-		return j.fail(fabriclayout.PushFailureOther, errors.Join(rejected, err), nil, nil, "")
+	if judgment.Err = j.repo.Fetch(); judgment.Err != nil {
+		return judgment
 	}
 	originTip, err := j.repo.UpstreamSHA()
 	if errors.Is(err, gitrepo.ErrNoUpstream) {
 		originTip, err = j.repo.ResolveSHA("refs/remotes/" + originRemoteName + "/" + j.branch)
 	}
 	if err != nil {
-		return j.fail(fabriclayout.PushFailureOther, errors.Join(rejected, err), nil, nil, "")
+		judgment.Err = err
+		return judgment
 	}
 	head, err := j.repo.CurrentSHA()
 	if err != nil {
-		return j.fail(fabriclayout.PushFailureOther, errors.Join(rejected, err), nil, nil, "")
+		judgment.Err = err
+		return judgment
 	}
 	originOnly, err := j.repo.CommitsNotIn(originTip, head)
-	switch {
-	case err != nil:
-		return j.fail(fabriclayout.PushFailureOther, errors.Join(rejected, err), nil, nil, "")
-	case len(originOnly) > 0:
-		return j.fail(fabriclayout.PushFailureNotFastForward, rejected, nil, j.unpushedCommits(), "")
-	default:
-		return j.fail(fabriclayout.PushFailureOther, fmt.Errorf("%w; a fetch found origin holding nothing this branch lacks", rejected), nil, nil, "")
-	}
+	judgment.Err = err
+	judgment.OriginHoldsMore = len(originOnly) > 0
+	return judgment
 }
 
 // unpushedCommits returns the local commits origin's tip, as last fetched, lacks, newest first.
@@ -733,46 +762,39 @@ type originView struct {
 	unchecked bool
 }
 
-// checkOrigin judges the job's branch against origin before it is pushed, for a branch with an upstream.
-// proceed is false when the push is not to run.
-// err then holds the *PushFailedError of a push held back and recorded, or the error of a judgment that failed.
-// It is nil for a branch whose entry origin has ended.
-// That branch's local tracking ref is deleted first, with its upstream setting kept,
-// so a local read of the branch sees an upstream with no ref and never a stale ref that lacks the local tip.
-// A branch without an upstream was never pushed and has nothing to compare with.
-// An upstream whose tracking ref is absent, as after a fetch pruned it, is looked up on origin like any other.
-// A branch origin still holds is then pushed; the rewind check, which reads the ref's history, is skipped.
-func (j *pushJob) checkOrigin() (proceed bool, err error) {
-	refPruned := false
-	if _, upstreamErr := j.repo.UpstreamSHA(); upstreamErr != nil {
-		switch {
-		case errors.Is(upstreamErr, gitrepo.ErrNoUpstream):
-			return true, nil
-		case errors.Is(upstreamErr, gitrepo.ErrRefNotFound):
-			refPruned = true
-		default:
-			return false, upstreamErr
+// checkOrigin looks the job's branch up on origin and fills snapshot's view of it.
+// A gone branch's entry is judged ended or not, and a task branch origin still holds is checked for a rewind.
+// That check reads the history of the tracking ref, so a pruned ref skips it.
+// A lookup that fails for no reason of reaching origin says nothing of the branch, so the view reads unchecked.
+// A lookup or judgment that fails in transit leaves the view unread and returns a *fieldReadError.
+func (j *pushJob) checkOrigin(snapshot *fabriccore.Snapshot) error {
+	snapshot.Push.Origin = fabriccore.PushOriginView{}
+	view, err := j.observeOrigin()
+	if err != nil && !gitexec.IsTransportFailure(err) {
+		logger.Warn("fabricengine: origin's branch not looked up, the push goes on unchecked", "path", j.path, "branch", j.branch, "error", err)
+		view, err = originView{unchecked: true}, nil
+	}
+	if err == nil && view.gone {
+		view.ended, err = goneEntryEnded(j.hubPath, j.branch)
+		if err != nil && !gitexec.IsTransportFailure(err) {
+			snapshot.Push.Origin = fabriccore.PushOriginView{Read: true, Gone: true, JudgeErr: err}
+			return nil
 		}
 	}
-
-	view, err := j.awaitOrigin()
-	switch {
-	case err != nil && gitexec.IsTransportFailure(err):
-		return false, j.fail(fabriclayout.PushFailureTransport, err, nil, nil, "")
-	case err != nil:
-		return false, err
-	case view.unchecked:
-		return true, nil
-	case view.ended:
-		return false, j.dropTrackingRefOfEndedBranch()
-	case view.gone:
-		return false, j.fail(fabriclayout.PushFailureGone, fmt.Errorf("%w: %s", ErrBranchGone, j.branch), nil, nil, "")
+	if err != nil {
+		j.originErr = err
+		return &fieldReadError{Field: fabriccore.FieldPushSide, Store: fabriccore.Store(j.side), Err: err}
 	}
 
-	if j.side == fabriclayout.RepoCode && !j.prime && !refPruned {
-		return j.holdBackRewound(view.head)
+	found := fabriccore.PushOriginView{Read: true, Head: view.head, Gone: view.gone, Ended: view.ended, Unchecked: view.unchecked}
+	if j.side == fabriclayout.RepoCode && !j.prime && snapshot.Push.Upstream != fabriccore.PushUpstreamPruned && !view.gone && !view.unchecked {
+		found.Rewound, found.Dropped, err = j.holdBackRewound(view.head)
+		if err != nil {
+			return err
+		}
 	}
-	return true, nil
+	snapshot.Push.Origin = found
+	return nil
 }
 
 // dropTrackingRefOfEndedBranch deletes the local tracking ref of the job's branch, which origin no longer has.
@@ -788,42 +810,6 @@ func (j *pushJob) dropTrackingRefOfEndedBranch() error {
 	return nil
 }
 
-// awaitOrigin looks the branch up on origin.
-// It retries a gone branch whose entry is not ended, and an unreachable origin, once per backoff delay.
-// Each retry re-runs the lookup, the fetch of origin's Bolt branch and the judgment.
-// The error is a transport failure still standing after the last backoff delay.
-// Otherwise it is a failed judgment of a gone branch's entry.
-// A lookup that fails for no reason of reaching origin says nothing of the branch,
-// so it returns an unchecked view and the push itself is left to judge.
-// With the job's SingleAttempt an unreachable origin is returned without a retry.
-func (j *pushJob) awaitOrigin() (originView, error) {
-	delays := gitrepo.PushBackoffDelays()
-	sleep := j.opts.BackoffSleep
-	if sleep == nil {
-		sleep = time.Sleep
-	}
-	for attempt := 0; ; attempt++ {
-		view, err := j.observeOrigin()
-		if err != nil && !gitexec.IsTransportFailure(err) {
-			logger.Warn("fabricengine: origin's branch not looked up, the push goes on unchecked", "path", j.path, "branch", j.branch, "error", err)
-			return originView{unchecked: true}, nil
-		}
-		if err == nil && view.gone {
-			view.ended, err = goneEntryEnded(j.hubPath, j.branch)
-			if err != nil && !gitexec.IsTransportFailure(err) {
-				return originView{}, err
-			}
-		}
-		if err == nil && (!view.gone || view.ended) {
-			return view, nil
-		}
-		if attempt == len(delays) || (err != nil && j.opts.SingleAttempt) {
-			return view, err
-		}
-		sleep(delays[attempt])
-	}
-}
-
 // observeOrigin asks origin for the job's branch.
 // A code side keeps origin's head, which the rewind check reads.
 func (j *pushJob) observeOrigin() (originView, error) {
@@ -835,33 +821,29 @@ func (j *pushJob) observeOrigin() (originView, error) {
 	return originView{gone: gone}, err
 }
 
-// holdBackRewound holds a task branch's push back when origin rewound it to originHead, and writes the rewound record.
-// It proceeds when the branch is not rewound, including when origin's head is a commit this machine lacks.
-func (j *pushJob) holdBackRewound(originHead string) (proceed bool, err error) {
+// holdBackRewound reports whether origin rewound a task branch to originHead, and the commits the rewind dropped.
+// A branch whose origin head is a commit this machine lacks is not rewound.
+func (j *pushJob) holdBackRewound(originHead string) (rewound bool, dropped []string, err error) {
 	if _, resolveErr := j.repo.ResolveSHA(originHead + "^{commit}"); resolveErr != nil {
-		return true, nil
+		return false, nil, nil
 	}
 	localTip, err := j.repo.CurrentSHA()
 	if err != nil {
-		return false, err
+		return false, nil, err
 	}
 	trackingRef, err := gitexec.Run([]string{"rev-parse", "--symbolic-full-name", "@{u}"}, j.path)
 	if err != nil {
-		return false, err
+		return false, nil, err
 	}
 	earlier, err := trackingReflog(j.path, strings.TrimSpace(trackingRef))
 	if err != nil {
-		return false, err
+		return false, nil, err
 	}
 	kind, dropped, err := classifyRewrite(j.repo, localTip, originHead, earlier)
-	if err != nil {
-		return false, err
+	if err != nil || kind != rewriteRewound {
+		return false, nil, err
 	}
-	if kind != rewriteRewound {
-		return true, nil
-	}
-	cause := fmt.Errorf("%w: origin rewound %s to %s, dropping %s", errPushHeldBack, j.branch, originHead, joinOrNone(dropped))
-	return false, j.fail(fabriclayout.PushFailureRewound, cause, nil, dropped, originHead)
+	return true, dropped, nil
 }
 
 // originBranchHead returns the commit origin holds for branch, and whether origin has the branch.

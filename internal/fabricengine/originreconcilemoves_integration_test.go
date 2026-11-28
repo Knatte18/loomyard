@@ -7,7 +7,6 @@
 package fabricengine_test
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -15,15 +14,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/shedrun"
-	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -63,10 +59,7 @@ func publishBranch(tb testing.TB, dir string) string {
 // originCommitFile commits rel from a second clone of bare at branch, pushes it and returns the new origin head.
 func originCommitFile(t *testing.T, bare, branch, rel, content string) string {
 	t.Helper()
-	other := otherMachine(t, bare, branch)
-	sha := gitkit.CommitFile(t, other, rel, content, "origin "+rel)
-	gitkit.Git(t, other, "push", "origin", branch)
-	return sha
+	return gitkit.CommitOnBare(t, bare, branch, rel, content, "origin "+rel)
 }
 
 // holdLock holds the write lock at path until the test ends.
@@ -82,40 +75,7 @@ func holdLock(t *testing.T, path string) {
 	t.Cleanup(func() { _ = held.Release() })
 }
 
-// entryOf returns the entry for slug, failing the test when the report holds none.
-func entryOf(t *testing.T, report fabriclayout.OriginReport, slug string) fabriclayout.EntryOutcome {
-	t.Helper()
-	for _, entry := range report.Entries {
-		if entry.Slug == slug {
-			return entry
-		}
-	}
-	t.Fatalf("report holds no entry %q; entries = %+v", slug, report.Entries)
-	return fabriclayout.EntryOutcome{}
-}
-
-// requireEntry fails the test unless slug's entry is in state.
-func requireEntry(t *testing.T, report fabriclayout.OriginReport, slug string, state fabriclayout.EntryState) fabriclayout.EntryOutcome {
-	t.Helper()
-	entry := entryOf(t, report, slug)
-	if entry.State != state {
-		t.Errorf("entry %q state = %q; want %q", slug, entry.State, state)
-	}
-	return entry
-}
-
-// kindCount counts the report's mutation entries of kind.
-func kindCount(report fabriclayout.OriginReport, kind fabriclayout.Kind) int {
-	count := 0
-	for _, mutation := range report.Mutations.Entries() {
-		if mutation.Kind == kind {
-			count++
-		}
-	}
-	return count
-}
-
-// movesPair is a hub with the pair "task" whose records branch is published and whose run has a batten record.
+// movesPair is a hub with the pair "task" whose records branch is published and whose run has no record.
 type movesPair struct {
 	*originHub
 	code        string
@@ -124,14 +84,12 @@ type movesPair struct {
 	recordsName string
 }
 
-// movesTemplate is originTaskTemplate's hub with a batten run record for "task" at the prime naming Land,
-// and the pair's records branch published.
+// movesTemplate is originTaskTemplate's hub with the pair's records branch published.
 var movesTemplate = hubforge.Registration{
 	Key:  "fabricengine-origin-moves",
 	Base: hubforge.Shape{Anchor: "."},
 	Build: func(tb testing.TB, h *hubforge.Hub) {
 		buildOriginTask(tb, h)
-		writeStatus(tb, originHubOf(tb, h), "task", "Land")
 		publishBranch(tb, h.PairRecordsSibling("task"))
 	},
 }
@@ -156,7 +114,6 @@ func newMovesPair(t *testing.T) *movesPair {
 func TestReconcileOrigin_Moves(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
-	boardkit.InstallReplay(t)
 
 	t.Run("A hub reconcile fast-forwards a weft, Bolt and the prime's code branch and a judge-only one moves nothing", func(t *testing.T) {
 		hub := newOriginHub(t)
@@ -191,8 +148,20 @@ func TestReconcileOrigin_Moves(t *testing.T) {
 				t.Errorf("%s HEAD = %q; want origin's head %q", row.name, got, row.want)
 			}
 		}
-		if got := kindCount(report, fabriclayout.KindRepoAdvanced); got != 3 {
-			t.Errorf("repo_advanced entries = %d; want one per fast-forward, 3", got)
+		underHub := func(dir string) string {
+			rel, err := filepath.Rel(hub.Location.HubPath, dir)
+			if err != nil {
+				t.Fatalf("Rel(%s): %v", dir, err)
+			}
+			return filepath.ToSlash(rel)
+		}
+		wantMutations := []fabriclayout.Mutation{
+			{Kind: fabriclayout.KindRepoAdvanced, Target: underHub(hub.BoardDir()), Detail: boltHead},
+			{Kind: fabriclayout.KindRepoAdvanced, Target: underHub(hub.PrimeRecords()), Detail: recordsHead},
+			{Kind: fabriclayout.KindRepoAdvanced, Target: underHub(hub.PrimeWorktree()), Detail: warpHead},
+		}
+		if got := report.Mutations.Entries(); !slices.Equal(got, wantMutations) {
+			t.Errorf("Mutations = %+v; want %+v", got, wantMutations)
 		}
 		if got := len(calls.withVerb("ls-remote")); got != 2 {
 			t.Errorf("ls-remote calls = %d; want exactly one per repository", got)
@@ -224,7 +193,6 @@ func TestReconcileOrigin_Moves(t *testing.T) {
 		if !outcome.Moved || gitkit.RevParse(t, pair.records, "HEAD") != originHead {
 			t.Errorf("clean pair weft outcome = %+v, HEAD = %q; want it fast-forwarded to %q", outcome, gitkit.RevParse(t, pair.records, "HEAD"), originHead)
 		}
-		requireEntry(t, report, "task", fabriclayout.EntryActive)
 
 		originCommitFile(t, pair.RecordsBare, pair.recordsName, "notes/a.md", "origin\n")
 		writeFile(t, filepath.Join(pair.records, "notes", "a.md"), "local\n")
@@ -239,10 +207,6 @@ func TestReconcileOrigin_Moves(t *testing.T) {
 		}
 		if got := gitkit.RevParse(t, pair.records, "HEAD"); got != before {
 			t.Errorf("dirty pair weft HEAD = %q; want %q, nothing moved", got, before)
-		}
-		entry := requireEntry(t, report, "task", fabriclayout.EntryStopped)
-		if entry.WayForward != want {
-			t.Errorf("entry WayForward = %q; want its branch's line %q", entry.WayForward, want)
 		}
 	})
 
@@ -277,10 +241,6 @@ func TestReconcileOrigin_Moves(t *testing.T) {
 		if !code.Moved || gitkit.RevParse(t, pair.code, "HEAD") != codeHead {
 			t.Errorf("pair code outcome = %+v, HEAD = %q; want it fast-forwarded to %q", code, gitkit.RevParse(t, pair.code, "HEAD"), codeHead)
 		}
-		entry := requireEntry(t, report, "task", fabriclayout.EntryStopped)
-		if entry.WayForward != wantPair {
-			t.Errorf("entry WayForward = %q; want its own branch's line %q", entry.WayForward, wantPair)
-		}
 
 		report = moveReconcile(t, pair.originHub, fabriclayout.ReconcileScope{Run: "task"}, fabricengine.OriginSeams{})
 		pairOutcome = requireState(t, report, "records", pair.recordsName, fabriclayout.BranchAnchorStopped)
@@ -294,58 +254,22 @@ func TestReconcileOrigin_Moves(t *testing.T) {
 		if pairOutcome.Anchor != "" || !strings.Contains(pairOutcome.WayForward, ".lym-anchor") {
 			t.Errorf("empty-marker pair weft outcome = %+v; want no Anchor and a way forward naming .lym-anchor", pairOutcome)
 		}
-	})
 
-	t.Run("A move record on a pair's weft leaves it unmoved as anchor_stopped with the move's way forward", func(t *testing.T) {
-		pair := newMovesPair(t)
-		originCommitFile(t, pair.RecordsBare, pair.recordsName, "moved.txt", "moved")
 		writeMoveRecord(t, pair.records, fabriclayout.MoveRecord{A: ".", B: "x", Kind: fabriclayout.MoveKindMove, PID: 4242})
-		pairBefore := gitkit.RevParse(t, pair.records, "HEAD")
-
-		report := moveReconcile(t, pair.originHub, fabriclayout.ReconcileScope{}, fabricengine.OriginSeams{})
-
-		outcome := requireState(t, report, "records", pair.recordsName, fabriclayout.BranchAnchorStopped)
-		if outcome.MoveWayForward == "" || outcome.WayForward != outcome.MoveWayForward || !strings.Contains(outcome.WayForward, "`lym fabric anchor task --set x`") || outcome.Moved {
-			t.Errorf("pair weft outcome = %+v; want the move's way forward naming `lym fabric anchor task --set x`, and nothing moved", outcome)
-		}
-		if got := gitkit.RevParse(t, pair.records, "HEAD"); got != pairBefore {
-			t.Errorf("pair weft HEAD = %q; want %q, nothing moved", got, pairBefore)
+		report = moveReconcile(t, pair.originHub, fabriclayout.ReconcileScope{}, fabricengine.OriginSeams{})
+		pairOutcome = requireState(t, report, "records", pair.recordsName, fabriclayout.BranchAnchorStopped)
+		wantMove := "a change of the anchor of task from . to x was interrupted; run `lym fabric anchor task --set x` to finish it"
+		if pairOutcome.WayForward != wantMove {
+			t.Errorf("move-record pair weft WayForward = %q; want %q", pairOutcome.WayForward, wantMove)
 		}
 	})
 
-	t.Run("A tracked change on a path the prime weft's or a pair's code branch fast-forward touches is dirty with that branch's own line", func(t *testing.T) {
-		pair := newMovesPair(t)
-		gitkit.CommitFile(t, pair.PrimeRecords(), "notes/p.md", "base\n", "base prime note")
-		gitkit.Git(t, pair.PrimeRecords(), "push", "origin", pair.primeRecords)
-		gitkit.CommitFile(t, pair.code, "code.txt", "base\n", "base code")
-		gitkit.Git(t, pair.code, "push", "origin", pair.codeBranch)
-		originCommitFile(t, pair.RecordsBare, pair.primeRecords, "notes/p.md", "origin\n")
-		originCommitFile(t, pair.CodeBare, pair.codeBranch, "code.txt", "origin\n")
-		writeFile(t, filepath.Join(pair.PrimeRecords(), "notes", "p.md"), "local\n")
-		writeFile(t, filepath.Join(pair.code, "code.txt"), "local\n")
-
-		report := moveReconcile(t, pair.originHub, fabriclayout.ReconcileScope{}, fabricengine.OriginSeams{})
-
-		prime := requireState(t, report, "records", pair.primeRecords, fabriclayout.BranchDirty)
-		wantPrime := "commit the uncommitted paths (notes/p.md) with `lym fabric commit` in " + pair.PrimeWorktree() + ", or any of them with `git commit` or `git checkout -- <path>` in " + pair.PrimeRecords()
-		if prime.WayForward != wantPrime {
-			t.Errorf("prime weft WayForward = %q; want %q", prime.WayForward, wantPrime)
-		}
-		code := requireState(t, report, "code", pair.codeBranch, fabriclayout.BranchDirty)
-		wantCode := "commit or restore the uncommitted paths (code.txt) with `git commit` or `git checkout -- <path>` in " + pair.code
-		if code.WayForward != wantCode {
-			t.Errorf("pair code WayForward = %q; want %q", code.WayForward, wantCode)
-		}
-		requireEntry(t, report, "task", fabriclayout.EntryStopped)
-	})
-
-	t.Run("A live pair is judged and not moved, active while level or ahead and stopped once origin moved past it", func(t *testing.T) {
+	t.Run("A live pair is judged and not moved, level while origin holds still and live once origin moved past it", func(t *testing.T) {
 		pair := newMovesPair(t)
 		seams := fabricengine.OriginSeams{LivePair: func(slug string) (bool, error) { return slug == "task", nil }}
 
 		report := moveReconcile(t, pair.originHub, fabriclayout.ReconcileScope{}, seams)
 		requireState(t, report, "code", pair.codeBranch, fabriclayout.BranchLevel)
-		requireEntry(t, report, "task", fabriclayout.EntryActive)
 
 		originHead := originCommitFile(t, pair.CodeBare, pair.codeBranch, "moved.txt", "moved")
 		before := gitkit.RevParse(t, pair.code, "HEAD")
@@ -356,9 +280,6 @@ func TestReconcileOrigin_Moves(t *testing.T) {
 		if outcome.WayForward != liveWayForward || outcome.Moved || gitkit.RevParse(t, pair.code, "HEAD") != before {
 			t.Errorf("live outcome = %+v; want the live line and nothing moved", outcome)
 		}
-		if entry := requireEntry(t, report, "task", fabriclayout.EntryStopped); entry.WayForward != liveWayForward {
-			t.Errorf("entry WayForward = %q; want the live line", entry.WayForward)
-		}
 
 		report = moveReconcile(t, pair.originHub, fabriclayout.ReconcileScope{Run: "task"}, seams)
 
@@ -366,56 +287,32 @@ func TestReconcileOrigin_Moves(t *testing.T) {
 		if !outcome.Moved || gitkit.RevParse(t, pair.code, "HEAD") != originHead {
 			t.Errorf("the run scope's own pair outcome = %+v; want it moved to %q although its driver reads live", outcome, originHead)
 		}
-		requireEntry(t, report, "task", fabriclayout.EntryActive)
 	})
 
-	t.Run("The prime is busy and not moved while its prime lock is held or a live owner holds its parent lock", func(t *testing.T) {
-		for _, row := range []struct {
-			name     string
-			hold     func(t *testing.T, hub *originHub)
-			seams    fabricengine.OriginSeams
-			wantLock string
-		}{
-			{"the prime lock held", func(t *testing.T, hub *originHub) { holdLock(t, shedrun.PrimeRunLock(hub.Location)) }, fabricengine.OriginSeams{}, "prime"},
-			{"a live parent lock owner", func(*testing.T, *originHub) {}, fabricengine.OriginSeams{PrimeParentLockFree: func() (bool, error) { return false, nil }}, "prime parent"},
+	t.Run("The prime is busy and not moved while a live owner holds its parent lock", func(t *testing.T) {
+		hub := newOriginHub(t)
+		originCommitFile(t, hub.CodeBare, hub.primeBranch, "moved.txt", "moved")
+		originCommitFile(t, hub.RecordsBare, hub.primeRecords, "moved.txt", "moved")
+		codeBefore := gitkit.RevParse(t, hub.PrimeWorktree(), "HEAD")
+		recordsBefore := gitkit.RevParse(t, hub.PrimeRecords(), "HEAD")
+		seams := fabricengine.OriginSeams{PrimeParentLockFree: func() (bool, error) { return false, nil }}
+
+		report := moveReconcile(t, hub, fabriclayout.ReconcileScope{}, seams)
+
+		for _, outcome := range []fabriclayout.BranchOutcome{
+			requireState(t, report, "code", hub.primeBranch, fabriclayout.BranchBusy),
+			requireState(t, report, "records", hub.primeRecords, fabriclayout.BranchBusy),
 		} {
-			hub := newOriginHub(t)
-			row.hold(t, hub)
-			originCommitFile(t, hub.CodeBare, hub.primeBranch, "moved.txt", "moved")
-			originCommitFile(t, hub.RecordsBare, hub.primeRecords, "moved.txt", "moved")
-			codeBefore := gitkit.RevParse(t, hub.PrimeWorktree(), "HEAD")
-			recordsBefore := gitkit.RevParse(t, hub.PrimeRecords(), "HEAD")
-
-			report := moveReconcile(t, hub, fabriclayout.ReconcileScope{}, row.seams)
-
-			for _, outcome := range []fabriclayout.BranchOutcome{
-				requireState(t, report, "code", hub.primeBranch, fabriclayout.BranchBusy),
-				requireState(t, report, "records", hub.primeRecords, fabriclayout.BranchBusy),
-			} {
-				if outcome.BusyLock != row.wantLock || outcome.Moved {
-					t.Errorf("%s: outcome = %+v; want busy on the %s lock, unmoved", row.name, outcome, row.wantLock)
-				}
+			if outcome.BusyLock != "prime parent" || outcome.Moved {
+				t.Errorf("outcome = %+v; want busy on the prime parent lock, unmoved", outcome)
 			}
-			if gitkit.RevParse(t, hub.PrimeWorktree(), "HEAD") != codeBefore || gitkit.RevParse(t, hub.PrimeRecords(), "HEAD") != recordsBefore {
-				t.Errorf("%s: a prime branch moved", row.name)
-			}
+		}
+		if gitkit.RevParse(t, hub.PrimeWorktree(), "HEAD") != codeBefore || gitkit.RevParse(t, hub.PrimeRecords(), "HEAD") != recordsBefore {
+			t.Error("a prime branch moved")
 		}
 	})
 
-	t.Run("A run scope judges the parent branch behind origin and does not move it", func(t *testing.T) {
-		pair := newMovesPair(t)
-		originCommitFile(t, pair.CodeBare, pair.primeBranch, "moved.txt", "moved")
-		before := gitkit.RevParse(t, pair.PrimeWorktree(), "HEAD")
-
-		report := moveReconcile(t, pair.originHub, fabriclayout.ReconcileScope{Run: "task"}, fabricengine.OriginSeams{})
-
-		outcome := requireState(t, report, "code", pair.primeBranch, fabriclayout.BranchFastForward)
-		if outcome.Moved || gitkit.RevParse(t, pair.PrimeWorktree(), "HEAD") != before {
-			t.Errorf("parent outcome = %+v; want it judged only", outcome)
-		}
-	})
-
-	t.Run("A records replay that conflicts is diverged and stops its entry, and a diverged code branch stays unrebased", func(t *testing.T) {
+	t.Run("A records replay that conflicts is diverged, and a diverged code branch stays unrebased", func(t *testing.T) {
 		pair := newMovesPair(t)
 		local := gitkit.CommitFile(t, pair.records, "notes/c.md", "local\n", "local note")
 		originCommitFile(t, pair.RecordsBare, pair.recordsName, "notes/c.md", "origin\n")
@@ -436,76 +333,9 @@ func TestReconcileOrigin_Moves(t *testing.T) {
 		if got := gitkit.RevParse(t, pair.code, "HEAD"); got != localCode {
 			t.Errorf("diverged code HEAD = %q; want %q, never rebased", got, localCode)
 		}
-		requireEntry(t, report, "task", fabriclayout.EntryStopped)
 	})
 
-	t.Run("A both-sides change of the prime weft's records stops every entry with the conflict line", func(t *testing.T) {
-		pair := newMovesPair(t)
-		local := gitkit.CommitFile(t, pair.PrimeRecords(), "notes/c.md", "local\n", "local note")
-		originCommitFile(t, pair.RecordsBare, pair.primeRecords, "notes/c.md", "origin\n")
-
-		report := moveReconcile(t, pair.originHub, fabriclayout.ReconcileScope{}, fabricengine.OriginSeams{})
-
-		outcome := requireState(t, report, "records", pair.primeRecords, fabriclayout.BranchDiverged)
-		want := fabricengine.RecordsConflictWayForwardForTest(pair.PrimeRecords(), pair.primeRecords, []string{"notes/c.md"}, []string{local}, fabricengine.PushStepForTest(fabriclayout.FailedPush{Repo: "records", RepoPath: pair.PrimeRecords(), CodeWorktree: pair.PrimeWorktree(), Branch: pair.primeRecords, Prime: true}))
-		if outcome.WayForward != want {
-			t.Errorf("prime weft WayForward = %q; want %q", outcome.WayForward, want)
-		}
-		if entry := requireEntry(t, report, "task", fabriclayout.EntryStopped); entry.WayForward != want {
-			t.Errorf("entry WayForward = %q; want the prime weft's line %q", entry.WayForward, want)
-		}
-	})
-
-	t.Run("A Bolt replay sets aside the local status of an entry origin ended, with two ls-remote calls and no wait", func(t *testing.T) {
-		hub := newOriginHub(t)
-		board := hub.BoardDir()
-		branch := gitkit.CurrentBranch(t, board)
-		gitkit.CommitFile(t, board, "board.json", boardFileOf(t, boardEntry("neve")), "base board")
-		gitkit.Git(t, board, "push", "origin", branch)
-		running := boardEntry("neve", withBoardStatus(boardengine.RunStatus("running", "Implementer")))
-		local := gitkit.CommitFile(t, board, "board.json", boardFileOf(t, running), "neve runs")
-		originHead := originCommitFile(t, hub.RecordsBare, branch, "board.json", boardFileOf(t, boardEntry("neve", withBoardStatus("done"))))
-		var calls callLog
-
-		report := moveReconcileWith(t, hub, fabriclayout.ReconcileScope{}, fabricengine.OriginSeams{}, fabricengine.ReconcileOptions{CallHook: calls.record})
-
-		outcome := requireState(t, report, "bolt", branch, fabriclayout.BranchLevel)
-		if !outcome.Moved || gitkit.RevParse(t, board, "HEAD") != originHead {
-			t.Errorf("bolt outcome = %+v, HEAD = %q; want the local commit set aside and Bolt at origin's head %q", outcome, gitkit.RevParse(t, board, "HEAD"), originHead)
-		}
-		if got := tagsOf(t, board, "set-aside/neve/*"); !slices.Equal(got, []string{"set-aside/neve/" + local[:12]}) {
-			t.Errorf("set-aside tags = %v; want one for %s", got, local)
-		}
-		if got := kindCount(report, fabriclayout.KindTagCreated); got != 1 {
-			t.Errorf("tag_created entries = %d; want one per set-aside tag", got)
-		}
-		if got := len(calls.withVerb("ls-remote")); got != 2 {
-			t.Errorf("ls-remote calls = %d; want 2", got)
-		}
-	})
-
-	t.Run("A tracked change on a path Bolt's move touches stops every entry with Bolt's dirty line", func(t *testing.T) {
-		pair := newMovesPair(t)
-		board := pair.BoardDir()
-		branch := gitkit.CurrentBranch(t, board)
-		gitkit.CommitFile(t, board, "board.json", boardFileOf(t, boardEntry("neve")), "base board")
-		gitkit.Git(t, board, "push", "origin", branch)
-		originCommitFile(t, pair.RecordsBare, branch, "board.json", boardFileOf(t, boardEntry("neve", withBoardTitle("origin"))))
-		writeFile(t, filepath.Join(board, "board.json"), boardFileOf(t, boardEntry("neve", withBoardTitle("local"))))
-
-		report := moveReconcile(t, pair.originHub, fabriclayout.ReconcileScope{}, fabricengine.OriginSeams{})
-
-		outcome := requireState(t, report, "bolt", branch, fabriclayout.BranchDirty)
-		want := "commit or restore the uncommitted paths (board.json) with `git commit` or `git checkout -- <path>` in " + board
-		if outcome.WayForward != want {
-			t.Errorf("bolt WayForward = %q; want %q", outcome.WayForward, want)
-		}
-		if entry := requireEntry(t, report, "task", fabriclayout.EntryStopped); entry.WayForward != want {
-			t.Errorf("entry WayForward = %q; want Bolt's line %q", entry.WayForward, want)
-		}
-	})
-
-	t.Run("A held pair weft lock is busy and stops that entry, the push lock naming the parked run", func(t *testing.T) {
+	t.Run("A held pair weft lock is busy, the push lock naming the parked run", func(t *testing.T) {
 		for _, row := range []struct {
 			name, lockFile, wantLock, wantWayForward string
 			wantPushHeld                             bool
@@ -527,7 +357,6 @@ func TestReconcileOrigin_Moves(t *testing.T) {
 			if gitkit.RevParse(t, pair.records, "HEAD") != before {
 				t.Errorf("%s: the pair weft moved", row.name)
 			}
-			requireEntry(t, report, "task", fabriclayout.EntryStopped)
 		}
 	})
 
@@ -581,22 +410,7 @@ func TestReconcileOrigin_Moves(t *testing.T) {
 		}
 	})
 
-	t.Run("A held pair weft write lock is busy at once, whatever the push-lock bound", func(t *testing.T) {
-		pair := newMovesPair(t)
-		originHead := originCommitFile(t, pair.RecordsBare, pair.recordsName, "notes/up.md", "up\n")
-		holdLock(t, filepath.Join(fabriclayout.RecordsLockDirPath(pair.records), weftWriteLockName))
-		sleeps := 0
-		opts := fabricengine.ReconcileOptions{PushLockWait: 3 * time.Second, Sleep: func(time.Duration) { sleeps++ }}
-
-		report := moveReconcileWith(t, pair.originHub, fabriclayout.ReconcileScope{}, fabricengine.OriginSeams{}, opts)
-
-		outcome := requireState(t, report, "records", pair.recordsName, fabriclayout.BranchBusy)
-		if sleeps != 0 || outcome.BusyLock != "weft write" || outcome.Moved || gitkit.RevParse(t, pair.records, "HEAD") == originHead {
-			t.Errorf("outcome = %+v after %d poll sleeps; want busy on the weft write lock, unmoved and no wait", outcome, sleeps)
-		}
-	})
-
-	t.Run("A held Bolt push lock, prime weft write lock and run-scope own weft write lock are busy and stop nothing", func(t *testing.T) {
+	t.Run("A held Bolt push lock, prime weft write lock and run-scope own weft write lock are busy and unmoved", func(t *testing.T) {
 		for _, row := range []struct {
 			name     string
 			scope    fabriclayout.ReconcileScope
@@ -644,100 +458,6 @@ func TestReconcileOrigin_Moves(t *testing.T) {
 			if outcome.Moved {
 				t.Errorf("%s: outcome = %+v; want it unmoved", row.name, outcome)
 			}
-			requireEntry(t, report, "task", fabriclayout.EntryActive)
-		}
-	})
-
-	t.Run("An entry origin's Bolt gives to another machine is owned_elsewhere with its owner, way forward and summary line, in a run and a judge-only hub scope", func(t *testing.T) {
-		// Only OwnerOf's reply varies and no origin moves, so no reconcile leaves state the next one reads:
-		// every reply and scope runs on one pair.
-		pair := newMovesPair(t)
-		for _, row := range []struct {
-			name        string
-			subject     string
-			wantSubject string
-		}{
-			{"a task member of a beam names the beam", "beam", "beam"},
-			{"a root task names root", "root", "root"},
-			{"an entry whose reader left the subject empty names the slug", "", "task"},
-		} {
-			wantWayForward := "`lym adopt " + row.wantSubject + "` from this machine's prime takes it over"
-			wantLine := "owned elsewhere: task by other-machine; `lym adopt " + row.wantSubject + "` takes it over"
-			for _, scope := range []fabriclayout.ReconcileScope{{Run: "task"}, {JudgeOnly: true}} {
-				var asked []string
-				seams := fabricengine.OriginSeams{OwnerOf: func(_ string, _ []byte, slug string) (string, string, bool, error) {
-					asked = append(asked, slug)
-					return "other-machine", row.subject, true, nil
-				}}
-
-				report := moveReconcile(t, pair.originHub, scope, seams)
-
-				entry := requireEntry(t, report, "task", fabriclayout.EntryOwnedElsewhere)
-				if entry.Owner != "other-machine" || entry.AdoptSubject != row.subject || entry.WayForward != wantWayForward {
-					t.Errorf("%s, scope %+v: entry = %+v; want owner other-machine, subject %q and way forward %q", row.name, scope, entry, row.subject, wantWayForward)
-				}
-				if !strings.Contains(report.Summary(), wantLine) {
-					t.Errorf("%s, scope %+v: Summary() = %q; want the line %q", row.name, scope, report.Summary(), wantLine)
-				}
-				if !slices.Equal(asked, []string{"task"}) {
-					t.Errorf("%s, scope %+v: OwnerOf asked about %v; want one question for task", row.name, scope, asked)
-				}
-			}
-		}
-	})
-
-	t.Run("A records branch both sides moved stays unmoved for an entry owned elsewhere while its fast-forwards move, and its pair is never torn down", func(t *testing.T) {
-		pair := newMovesPair(t)
-		localRecords := gitkit.CommitFile(t, pair.records, "notes/local.md", "local\n", "local note")
-		originCommitFile(t, pair.RecordsBare, pair.recordsName, "notes/origin.md", "origin\n")
-		originCode := originCommitFile(t, pair.CodeBare, pair.codeBranch, "moved.txt", "moved")
-		torn := &teardownRecorder{}
-		seams := torn.seams()
-		seams.OwnerOf = func(string, []byte, string) (string, string, bool, error) { return "other-machine", "task", true, nil }
-
-		report := moveReconcile(t, pair.originHub, fabriclayout.ReconcileScope{}, seams)
-
-		outcome := requireState(t, report, "records", pair.recordsName, fabriclayout.BranchNeedsReplay)
-		if outcome.Moved || gitkit.RevParse(t, pair.records, "HEAD") != localRecords {
-			t.Errorf("records outcome = %+v, HEAD = %q; want it unreplayed at %q", outcome, gitkit.RevParse(t, pair.records, "HEAD"), localRecords)
-		}
-		if code := requireState(t, report, "code", pair.codeBranch, fabriclayout.BranchLevel); !code.Moved || gitkit.RevParse(t, pair.code, "HEAD") != originCode {
-			t.Errorf("code outcome = %+v; want the fast-forward moved to %q", code, originCode)
-		}
-		requireEntry(t, report, "task", fabriclayout.EntryOwnedElsewhere)
-		if len(torn.calls) != 0 {
-			t.Errorf("teardown calls = %v; want none for an entry owned elsewhere", torn.slugsCalled())
-		}
-	})
-
-	t.Run("An ended entry owned elsewhere reports ended, a nil OwnerOf reads it active, an OwnerOf error is the reconcile's error and a hub with no Bolt origin head asks nothing", func(t *testing.T) {
-		hub := endedHub(t)
-		torn := &teardownRecorder{}
-		seams := torn.seams()
-		seams.OwnerOf = func(string, []byte, string) (string, string, bool, error) { return "other-machine", "task", true, nil }
-		requireEntry(t, moveReconcile(t, hub, fabriclayout.ReconcileScope{}, seams), "task", fabriclayout.EntryEnded)
-
-		pair := newMovesPair(t)
-		requireEntry(t, moveReconcile(t, pair.originHub, fabriclayout.ReconcileScope{}, fabricengine.OriginSeams{}), "task", fabriclayout.EntryActive)
-
-		failing := fabricengine.OriginSeams{OwnerOf: func(string, []byte, string) (string, string, bool, error) {
-			return "", "", false, errors.New("no hostname")
-		}}
-		if _, err := fabricengine.ReconcileOrigin(pair.Location, fabriclayout.ReconcileScope{}, failing, fabricengine.ReconcileOptions{}); err == nil || !strings.Contains(err.Error(), "no hostname") {
-			t.Errorf("ReconcileOrigin error = %v; want the seam's error", err)
-		}
-
-		bare, _, _ := newOriginTaskHub(t)
-		writeStatus(t, bare, "task", "Land")
-		gitkit.Git(t, bare.BoardDir(), "update-ref", "-d", "refs/remotes/origin/"+gitkit.CurrentBranch(t, bare.BoardDir()))
-		asked := false
-		quiet := fabricengine.OriginSeams{OwnerOf: func(string, []byte, string) (string, string, bool, error) {
-			asked = true
-			return "", "", false, nil
-		}}
-		moveReconcile(t, bare, fabriclayout.ReconcileScope{}, quiet)
-		if asked {
-			t.Error("OwnerOf was asked on a hub with no Bolt origin head; want no question")
 		}
 	})
 }

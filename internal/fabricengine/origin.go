@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/Knatte18/loomyard/internal/fabriccore"
 	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -71,18 +72,31 @@ func ReadOriginFor(l *lymcwd.Location, slug string) (fabriclayout.Origin, bool, 
 	}
 	weftPath := RecordsWorktreePath(pair, slug)
 	path := OriginRecordPathFor(pair, slug)
+	recordPresent := true
 	if _, err := os.Stat(path); err != nil {
-		if os.IsNotExist(err) {
-			return fabriclayout.Origin{}, false, nil
+		if !os.IsNotExist(err) {
+			return fabriclayout.Origin{}, false, err
 		}
-		return fabriclayout.Origin{}, false, err
+		recordPresent = false
 	}
 	lockDir := filepath.Join(weftPath, fabriclayout.RecordsLockDirName)
-	if _, err := os.Stat(lockDir); err != nil {
-		if os.IsNotExist(err) {
-			return fabriclayout.Origin{}, false, fmt.Errorf("weft worktree %s has an origin record but its %s lock directory is missing; run `lym fabric reconcile` to restore it; a session lym refuses the verb from reports status: FAILED and the orch runs it", weftPath, fabriclayout.RecordsLockDirName)
+	lockDirPresent := false
+	// The lock directory is looked at only for a record that is there.
+	if recordPresent {
+		lockDirPresent = true
+		if _, err := os.Stat(lockDir); err != nil {
+			if !os.IsNotExist(err) {
+				return fabriclayout.Origin{}, false, err
+			}
+			lockDirPresent = false
 		}
-		return fabriclayout.Origin{}, false, err
+	}
+	read, missingLockDir := fabriccore.ReadOriginForVerdict(recordPresent, lockDirPresent)
+	if missingLockDir {
+		return fabriclayout.Origin{}, false, fmt.Errorf("weft worktree %s has an origin record but its %s lock directory is missing; run `lym fabric reconcile` to restore it; a session lym refuses the verb from reports status: FAILED and the orch runs it", weftPath, fabriclayout.RecordsLockDirName)
+	}
+	if !read {
+		return fabriclayout.Origin{}, false, nil
 	}
 	return state.ReadJSON[fabriclayout.Origin](path, filepath.Join(lockDir, originRecordLockFileName))
 }
@@ -129,10 +143,17 @@ func MarkBeam(rec *Mutations, l *lymcwd.Location, slug string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	worktreePresent := true
+	// Only an absent record asks whether its worktree stands.
 	if !found {
+		_, statErr := os.Stat(weftPath)
+		worktreePresent = statErr == nil
+	}
+	mark, missingWorktree, missingRecord := fabriccore.MarkBeamVerdict(found, origin.Beam, worktreePresent)
+	if missingWorktree || missingRecord {
 		return false, missingOriginRecordError(pair, slug, weftPath)
 	}
-	if origin.Beam {
+	if !mark {
 		return false, nil
 	}
 	origin.Beam = true

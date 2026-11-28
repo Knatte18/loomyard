@@ -70,7 +70,9 @@ var uncontainedWriteAllowlist = []scankit.Entry{
 	{Key: "internal/fabricengine/junctionnames.go", Why: "BoltLockPath's os.MkdirAll creates the never-tracked lock directory under the Bolt checkout " +
 		"root the caller passes, a directory fabric created via containedWorktreeAdd; race-only, not statically pre-plantable"},
 	{Key: "internal/fabricengine/originreconcilemoves.go", Why: "tryPrimeLock's os.MkdirAll creates the hub-scoped ephemeral run-lock directory under the prime's .lym, " +
-		"the same directory batten's own prime lock creates, so the try-acquire has a file to lock; the path is shedrun's, never caller-derived"},
+		"the same directory batten's own prime lock creates, so the try-acquire has a file to lock; " +
+		"the path is the installed run-lock seam's, shed's prime run-lock path in every lym process and test binary, " +
+		"and only the installer and SetRunLocks set that seam"},
 	{Key: "internal/fabricengine/junction.go", Why: "seedLymJunction's os.MkdirAll(target) materialises a junction's records-side target inside the " +
 		"records worktree fabric created via containedWorktreeAdd, and the code-side junction LINKS route through fslink; race-only " +
 		"(add.go refuses a pre-existing worktree path), not statically pre-plantable"},

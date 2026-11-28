@@ -11,7 +11,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
-	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -56,15 +55,16 @@ func TestOriginRunReads(t *testing.T) {
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		hubforge.AddPair(t, h, slug)
 		weft := h.PairRecordsSibling(slug)
-		gitkit.CommitFile(t, weft, "_lym/shed/"+slug+"/status.json", `{"state":"paused","future_key":1}`, "child run status")
+		const record = `{"state":"paused"}`
+		gitkit.CommitFile(t, weft, "_lym/shed/"+slug+"/status.json", record, "child run status")
 		gitkit.MustRun(t, weft, "git", "push", "origin", gitkit.CurrentBranch(t, weft))
 		if _, err := h.Topology.Remove(h.Location, slug, false, false, ""); err != nil {
 			t.Fatalf("Remove(%q): %v", slug, err)
 		}
 
 		status, found, err := fabricengine.OriginRunStatus(h.Location, slug)
-		if err != nil || !found || status.State != shedengine.StatePaused {
-			t.Errorf("OriginRunStatus(%q) = state %q, found %v, %v; want paused, true, nil", slug, status.State, found, err)
+		if err != nil || !found || string(status) != record {
+			t.Errorf("OriginRunStatus(%q) = %q, found %v, %v; want %q, true, nil", slug, status, found, err, record)
 		}
 		if _, found, err := fabricengine.OriginRunStatus(h.Location, "or-never-pushed"); err != nil || found {
 			t.Errorf("OriginRunStatus(never pushed) = found %v, %v; want false, nil", found, err)

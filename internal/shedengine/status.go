@@ -4,7 +4,10 @@
 
 package shedengine
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 // State is the status file's lifecycle field.
 // It is a superset of RunOutcome, adding running and failed, which Run never returns.
@@ -244,4 +247,27 @@ func ParseStatusTolerant(data []byte) (Status, error) {
 		return Status{}, err
 	}
 	return st, nil
+}
+
+// StatusLastMachine returns the Machine of the last history entry of the status record in data.
+// It returns "" when the history is empty.
+// It decodes as tolerantly as ParseStatusTolerant, and errors when data does not parse.
+func StatusLastMachine(data []byte) (string, error) {
+	st, err := ParseStatusTolerant(data)
+	if err != nil {
+		return "", fmt.Errorf("parse the status record: %w", err)
+	}
+	if len(st.History) == 0 {
+		return "", nil
+	}
+	return st.History[len(st.History)-1].Machine, nil
+}
+
+// StatusRecorded reports whether data parses as a status record.
+// It decodes as tolerantly as ParseStatusTolerant, and errors when data does not parse.
+func StatusRecorded(data []byte) (bool, error) {
+	if _, err := ParseStatusTolerant(data); err != nil {
+		return false, fmt.Errorf("parse the status record: %w", err)
+	}
+	return true, nil
 }

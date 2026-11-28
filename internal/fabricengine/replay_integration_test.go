@@ -95,11 +95,7 @@ func (f *recordsFixture) primeWeft() (worktree, branch string) {
 func (f *recordsFixture) originCommit(branch, rel, content, message string) string {
 	f.t.Helper()
 
-	other := filepath.Join(f.t.TempDir(), "other")
-	gitkit.Git(f.t, filepath.Dir(other), "clone", "--branch", branch, f.hub.RecordsBare, other)
-	sha := gitkit.CommitFile(f.t, other, rel, content, message)
-	gitkit.Git(f.t, other, "push", "origin", branch)
-	return sha
+	return gitkit.CommitOnBare(f.t, f.hub.RecordsBare, branch, rel, content, message)
 }
 
 // originHeddleCommit commits a heddle.json of texts and the overview rendered from it on branch, from a second clone.

@@ -448,6 +448,7 @@ func CopyRegistered(tb testing.TB, registration *Registration) *Hub {
 // It fails tb, naming the fixture, when the template is poisoned.
 func copyTemplate(tb testing.TB, template *hubTemplate) *Hub {
 	tb.Helper()
+	InstallRequiredSeams()
 
 	template.requireUnpoisoned(tb)
 

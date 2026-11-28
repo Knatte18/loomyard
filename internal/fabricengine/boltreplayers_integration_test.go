@@ -102,6 +102,7 @@ func TestBoltReplayers(t *testing.T) {
 		board := f.hub.BoardDir()
 		branch := gitkit.CurrentBranch(t, board)
 		pair := newMovesPair(t)
+		writeStatus(t, pair.originHub, "task", "Land")
 		defer fabricengine.WithoutBoltReplayersForTest()()
 
 		if _, err := fabricengine.ReadEndedSetForTest(board, "refs/remotes/origin/"+branch, []string{"a"}, nil); !errors.Is(err, fabricengine.ErrReplayerMissing) {

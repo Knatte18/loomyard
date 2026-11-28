@@ -19,7 +19,7 @@ import (
 // An entry is an internal/fabricengine file, or "<file>:<function>" for one function.
 var remoteRefsLockFetchAllowlist = []scankit.Entry{
 	{Key: "internal/fabricengine/recordsprobe.go", Why: "the file only fetches into a private probe clone, whose tracking refs no other lym call shares"},
-	{Key: "internal/fabricengine/originreconcile.go:fetchMovedHeads", Why: "runs inside judgeAgainstOrigin, whose caller holds the repository's remote-refs lock"},
+	{Key: "internal/fabricengine/originreconcile.go:fetchMovedHeads", Why: "runs inside the reconcile's moved-heads read, under the remote-refs locks its phase lock holds"},
 }
 
 // remoteRefsLockMinScannedFiles is the vacuous-scan floor for the walk of internal/fabricengine.

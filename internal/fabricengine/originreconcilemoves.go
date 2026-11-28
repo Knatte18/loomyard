@@ -1,5 +1,6 @@
 // originreconcilemoves.go holds the origin reconcile's moving half.
 // It fast-forwards or replays the local branches a judging pass found behind origin.
+// The order and each branch's verdict are fabric's core rules; the locks, the probes and the git are here.
 // The prime lock and a records branch's write lock are try-acquired, and a held one reads busy at once.
 // A records branch's push lock is try-acquired too, and retried for the bound the reconcile's options set.
 // The live-pair seam is asked once per pair.
@@ -17,12 +18,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/fabriccore"
 	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
-	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 // The locks a busy branch names in fabriclayout.BranchOutcome.BusyLock.
@@ -42,7 +43,7 @@ const pushLockPoll = time.Second
 // held reports whether this call holds it; a lock another holder has returns held false with no error.
 // The caller calls release once the prime's branches are moved.
 func tryPrimeLock(l *lymcwd.Location) (release func(), held bool, err error) {
-	path := shedrun.PrimeRunLock(l)
+	path := installedRunLocks.Load().PrimeRunLock(l)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, false, fmt.Errorf("fabricengine: create the prime lock directory: %w", err)
 	}
@@ -209,15 +210,14 @@ func ffWorktree(rec *Mutations, worktree, originHead string) (state fabriclayout
 // A moved branch returns BranchLevel, or BranchAhead when replayed commits sit on origin's head, with Moved set.
 func reconcileRecordsBranch(rec *Mutations, l *lymcwd.Location, worktree, originHead string, ended EndedSet, bolt bool, opts ReconcileOptions) (fabriclayout.BranchOutcome, error) {
 	var outcome fabriclayout.BranchOutcome
+	var facts fabriccore.RecordsMoveFacts
 	release, busy, pushHeld, err := waitRecordsLocks(worktree, bolt, opts)
 	if err != nil {
 		return outcome, err
 	}
 	if busy != "" {
-		outcome.State = fabriclayout.BranchBusy
-		outcome.BusyLock = busy
-		outcome.PushLockHeld = pushHeld
-		return outcome, nil
+		facts.BusyLock, facts.PushLockHeld = busy, pushHeld
+		return fabriccore.RecordsMoveState(facts), nil
 	}
 	defer release()
 
@@ -226,15 +226,19 @@ func reconcileRecordsBranch(rec *Mutations, l *lymcwd.Location, worktree, origin
 	if err != nil {
 		return outcome, err
 	}
-	if head == originHead {
-		outcome.State = fabriclayout.BranchLevel
-		return outcome, nil
+	facts.Level = head == originHead
+	if !facts.Level {
+		if facts.Behind, err = repo.IsAncestor(head, originHead); err != nil {
+			return outcome, err
+		}
 	}
-	behind, err := repo.IsAncestor(head, originHead)
-	if err != nil {
-		return outcome, err
+	if !facts.Level && !facts.Behind {
+		if facts.Ahead, err = repo.IsAncestor(originHead, head); err != nil {
+			return outcome, err
+		}
 	}
-	if behind {
+	switch verdict := fabriccore.RecordsMoveState(facts); verdict.State {
+	case fabriclayout.BranchFastForward:
 		state, dirty, err := ffWorktree(rec, worktree, originHead)
 		if err != nil {
 			return outcome, err
@@ -243,14 +247,9 @@ func reconcileRecordsBranch(rec *Mutations, l *lymcwd.Location, worktree, origin
 		outcome.Paths = dirty
 		outcome.Moved = state == fabriclayout.BranchLevel
 		return outcome, nil
-	}
-	ahead, err := repo.IsAncestor(originHead, head)
-	if err != nil {
-		return outcome, err
-	}
-	if ahead {
-		outcome.State = fabriclayout.BranchAhead
-		return outcome, nil
+	case fabriclayout.BranchNeedsReplay:
+	default:
+		return verdict, nil
 	}
 
 	var replay ReplayOutcome
@@ -266,23 +265,21 @@ func reconcileRecordsBranch(rec *Mutations, l *lymcwd.Location, worktree, origin
 		if err != nil {
 			return outcome, err
 		}
-		outcome.State = fabriclayout.BranchAhead
-		if moved == originHead {
-			outcome.State = fabriclayout.BranchLevel
-		}
-		outcome.Moved = true
-		return outcome, nil
+		facts.Replayed, facts.Level = true, moved == originHead
 	case errors.Is(err, ErrReplayDirty):
-		outcome.State = fabriclayout.BranchDirty
-		outcome.Paths, err = dirtyTrackedPaths(worktree)
-		return outcome, err
+		facts.ReplayDirty = true
+		if facts.Paths, err = dirtyTrackedPaths(worktree); err != nil {
+			return outcome, err
+		}
 	case errors.Is(err, ErrReplayConflict), errors.As(err, &refusal):
-		outcome.State = fabriclayout.BranchDiverged
-		outcome.Paths = replay.Conflicts
-		outcome.Commits, err = repo.CommitsNotIn(head, originHead)
+		facts.ReplayConflict, facts.Paths = true, replay.Conflicts
+		if facts.Commits, err = repo.CommitsNotIn(head, originHead); err != nil {
+			return outcome, err
+		}
+	default:
 		return outcome, err
 	}
-	return outcome, err
+	return fabriccore.RecordsMoveState(facts), nil
 }
 
 // originMover moves the branches one reconcile judged, in the order its work is done.
@@ -308,28 +305,11 @@ type originMover struct {
 // The prime's branches move only under the prime lock and a free parent lock.
 // A run scope moves Bolt and its own pair, and judges the parent branch only.
 func (m *originMover) moveAll(pairs []string) error {
-	var bolt, prime, pair []int
+	targets := make([]fabriccore.MoveTarget, len(m.targets))
 	for i, target := range m.targets {
-		if target.side == fabriclayout.RepoBolt {
-			bolt = append(bolt, i)
-		}
+		targets[i] = fabriccore.MoveTarget{Repo: target.side, Slug: target.slug, Prime: target.prime}
 	}
-	ofRepo := func(side string, pick func(originTarget) bool) []int {
-		var found []int
-		for i, target := range m.targets {
-			if target.side == side && pick(target) {
-				found = append(found, i)
-			}
-		}
-		return found
-	}
-	isPrime := func(target originTarget) bool { return target.prime }
-	prime = append(ofRepo(fabriclayout.RepoRecords, isPrime), ofRepo(fabriclayout.RepoCode, isPrime)...)
-	for _, slug := range pairs {
-		inPair := func(target originTarget) bool { return target.slug == slug && !target.prime }
-		pair = append(pair, ofRepo(fabriclayout.RepoRecords, inPair)...)
-		pair = append(pair, ofRepo(fabriclayout.RepoCode, inPair)...)
-	}
+	bolt, prime, pair := fabriccore.MoveOrder(targets, pairs)
 
 	for _, i := range bolt {
 		if err := m.move(i, ""); err != nil {
@@ -347,22 +327,28 @@ func (m *originMover) moveAll(pairs []string) error {
 	return nil
 }
 
-// needsMove reports whether the judged branch at index i is one a moving reconcile moves.
-func (m *originMover) needsMove(i int) bool {
-	state := m.outcomes[i].State
-	return state == fabriclayout.BranchFastForward || state == fabriclayout.BranchNeedsReplay
+// moveFacts returns what is known of the judged branch at index i before any probe, with busy the held lock's name.
+func (m *originMover) moveFacts(i int, busy string) fabriccore.MoveFacts {
+	target := m.targets[i]
+	_, elsewhere := m.owners[target.slug]
+	return fabriccore.MoveFacts{
+		State:          m.outcomes[i].State,
+		Run:            m.scope.Run,
+		Repo:           target.side,
+		Slug:           target.slug,
+		OwnedByEnded:   m.ownedByEnded[target.slug],
+		OwnedElsewhere: elsewhere,
+		BusyLock:       busy,
+	}
 }
 
 // movePrime moves the prime's branches under the prime lock, taking it only when one of them needs a move.
 // A held prime lock, or a prime branch's parent lock a live owner holds, leaves each branch needing a move busy.
 func (m *originMover) movePrime(indexes []int) error {
-	pending := slices.ContainsFunc(indexes, m.needsMove)
-	if !pending || m.scope.Run != "" {
-		for _, i := range indexes {
-			if err := m.move(i, ""); err != nil {
-				return err
-			}
-		}
+	pending := slices.ContainsFunc(indexes, func(i int) bool {
+		return fabriccore.MoveVerdict(m.moveFacts(i, "")) != fabriccore.MoveNone
+	})
+	if !pending {
 		return nil
 	}
 
@@ -395,46 +381,53 @@ func (m *originMover) movePrime(indexes []int) error {
 	return nil
 }
 
-// move moves the judged branch at index i when it needs a move and nothing stops it.
-// It records the result on the outcome.
-// A busy lock name stops the move and marks the branch busy.
-// A records branch needing a replay, of an entry another machine owns, is left in place.
-// Only a fast-forward moves such an entry's branches.
+// move does with the judged branch at index i what the move verdict says, and records the result on the outcome.
+// A busy lock name is the held lock that keeps the branch from moving.
+// The live-pair seam, the move record and the anchor marker are read just before the move they guard.
 func (m *originMover) move(i int, busy string) error {
 	outcome := &m.outcomes[i]
 	target := m.targets[i]
-	if !m.needsMove(i) {
-		return nil
-	}
-	if m.scope.Run != "" && target.side != fabriclayout.RepoBolt && target.slug != m.scope.Run {
-		return nil
-	}
-	if m.ownedByEnded[target.slug] {
-		return nil
-	}
-	if _, elsewhere := m.owners[target.slug]; elsewhere && outcome.State == fabriclayout.BranchNeedsReplay {
-		return nil
-	}
-
-	if busy != "" {
-		outcome.State = fabriclayout.BranchBusy
-		outcome.BusyLock = busy
-		outcome.WayForward = branchStopWayForward(*outcome)
-		return nil
-	}
-	if target.slug != "" && target.slug != m.scope.Run {
+	facts := m.moveFacts(i, busy)
+	step := fabriccore.MoveVerdict(facts)
+	if step == fabriccore.MoveProbeLive {
 		live, err := m.pairLive(target.slug)
 		if err != nil {
 			return err
 		}
-		if live {
-			outcome.State = fabriclayout.BranchLive
-			outcome.WayForward = branchStopWayForward(*outcome)
-			return nil
+		facts.LiveProbed, facts.Live = true, live
+		step = fabriccore.MoveVerdict(facts)
+	}
+	var moveWayForward, anchor string
+	if step == fabriccore.MoveRecords && target.side == fabriclayout.RepoRecords {
+		var err error
+		moveWayForward, facts.MoveStanding, err = MoveInProgress(filepath.Base(target.codeWorktree), target.worktree)
+		if err != nil {
+			return err
 		}
+		if !facts.MoveStanding {
+			if facts.AnchorStopped, anchor, err = m.weftAnchorStopped(target, outcome.OriginHead); err != nil {
+				return err
+			}
+		}
+		step = fabriccore.MoveVerdict(facts)
 	}
 
-	if target.side == fabriclayout.RepoCode {
+	switch step {
+	case fabriccore.MoveNone:
+		return nil
+	case fabriccore.MoveBusy:
+		outcome.State = fabriclayout.BranchBusy
+		outcome.BusyLock = busy
+	case fabriccore.MoveLive:
+		outcome.State = fabriclayout.BranchLive
+	case fabriccore.MoveAnchorStopped:
+		outcome.State = fabriclayout.BranchAnchorStopped
+		if facts.MoveStanding {
+			outcome.MoveWayForward = moveWayForward
+		} else {
+			outcome.Anchor = anchor
+		}
+	case fabriccore.MoveFastForward:
 		headBefore, err := gitrepo.New(target.worktree).CurrentSHA()
 		if err != nil {
 			return err
@@ -451,48 +444,25 @@ func (m *originMover) move(i int, busy string) error {
 			outcome.Warning = fireTookInAt(target.worktree, headBefore, outcome.OriginHead)
 		}
 		return nil
-	}
-
-	if target.side == fabriclayout.RepoRecords {
-		moveWayForward, standing, err := MoveInProgress(filepath.Base(target.codeWorktree), target.worktree)
+	case fabriccore.MoveRecords:
+		location := m.l
+		if target.slug != "" && target.slug != m.scope.Run {
+			var err error
+			if location, err = lymcwd.ResolveWorktree(target.codeWorktree); err != nil {
+				return err
+			}
+		}
+		moved, err := reconcileRecordsBranch(m.rec, location, target.worktree, outcome.OriginHead, m.ended, target.side == fabriclayout.RepoBolt, m.opts)
 		if err != nil {
 			return err
 		}
-		if standing {
-			outcome.State = fabriclayout.BranchAnchorStopped
-			outcome.MoveWayForward = moveWayForward
-			outcome.WayForward = branchStopWayForward(*outcome)
-			return nil
-		}
-		stopped, anchor, err := m.weftAnchorStopped(target, outcome.OriginHead)
-		if err != nil {
-			return err
-		}
-		if stopped {
-			outcome.State = fabriclayout.BranchAnchorStopped
-			outcome.Anchor = anchor
-			outcome.WayForward = branchStopWayForward(*outcome)
-			return nil
-		}
+		outcome.State = moved.State
+		outcome.Paths = moved.Paths
+		outcome.Commits = moved.Commits
+		outcome.BusyLock = moved.BusyLock
+		outcome.PushLockHeld = moved.PushLockHeld
+		outcome.Moved = moved.Moved
 	}
-
-	location := m.l
-	if target.slug != "" && target.slug != m.scope.Run {
-		var err error
-		if location, err = lymcwd.ResolveWorktree(target.codeWorktree); err != nil {
-			return err
-		}
-	}
-	moved, err := reconcileRecordsBranch(m.rec, location, target.worktree, outcome.OriginHead, m.ended, target.side == fabriclayout.RepoBolt, m.opts)
-	if err != nil {
-		return err
-	}
-	outcome.State = moved.State
-	outcome.Paths = moved.Paths
-	outcome.Commits = moved.Commits
-	outcome.BusyLock = moved.BusyLock
-	outcome.PushLockHeld = moved.PushLockHeld
-	outcome.Moved = moved.Moved
 	outcome.WayForward = branchStopWayForward(*outcome)
 	return nil
 }
@@ -546,7 +516,7 @@ func recordedPairs(l *lymcwd.Location, pairs []string) ([]string, error) {
 	}
 	var recorded []string
 	for _, slug := range pairs {
-		_, found, err := readRunStatusRows(shedrun.StatusFile(prime, slug))
+		found, err := runRecorded(prime, slug)
 		if err != nil {
 			return nil, err
 		}

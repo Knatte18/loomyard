@@ -1,5 +1,7 @@
 // Package gitkit is the below-fabric leaf holding test git plumbing.
 // It provides the spawn, query and commit helpers, config seeding, and the hermetic git environment.
+// Among the commit helpers, CommitOnBare pushes a commit to a bare repository from a second clone.
+// The commit arrives as one another machine makes.
 // It also provides the primitive repo fixture CopyRepo.
 // It never imports fabric.
 // Many packages call HermeticGitEnv from TestMain, and some sit inside internal/fabriccli's dependency set,

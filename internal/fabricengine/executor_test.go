@@ -337,6 +337,13 @@ func TestOutcomeClassOf(t *testing.T) {
 		{"AuthRefused", authRefused, fabriccore.OutcomeAuthRefused},
 		{"AnchorStop", &AnchorStopError{Reason: "anchors differ"}, fabriccore.OutcomeAnchorStop},
 		{"DestructiveRefusal", &destructiveRefusal{Check: CheckDirtiness}, fabriccore.OutcomeDestructiveRefusal},
+		{"TakeoverAheadOfRejected", errors.Join(gitrepo.ErrPushRejected, ErrHandedOver), fabriccore.OutcomeTakeover},
+		{"ProtectedAheadOfRejected", fmt.Errorf("%w: GH006: Protected branch update failed", gitrepo.ErrPushRejected), fabriccore.OutcomeProtected},
+		{"ProtectedRefusalThatIsNoRejection", errors.New("git push: GH006: Protected branch update failed"), fabriccore.OutcomeProtectedUnrejected},
+		{"ReplayConflict", &replayConflict{}, fabriccore.OutcomeReplayConflict},
+		{"ExhaustedAheadOfTransport", fmt.Errorf("%w: %w", gitrepo.ErrPushRetriesExhausted, provokedTransportError(t)), fabriccore.OutcomeRetriesExhausted},
+		{"OriginAhead", errOriginAhead, fabriccore.OutcomeOriginAhead},
+		{"RetryDeferred", errRetryDeferred, fabriccore.OutcomeDeferred},
 		{"Other", errors.New("other"), fabriccore.OutcomeFailed},
 	}
 	for _, tt := range tests {

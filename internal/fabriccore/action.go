@@ -14,6 +14,7 @@ const (
 	// ActionRefMove moves a ref: Store, Origin, Ref, SHA and Expect.
 	ActionRefMove ActionKind = "ref_move"
 	// ActionRefDelete deletes a ref: Store, Origin, Ref and Expect.
+	// A side's push deletes its own branch's tracking ref with Store alone.
 	ActionRefDelete ActionKind = "ref_delete"
 	// ActionTag tags a commit: Store, Origin, Ref and SHA.
 	ActionTag ActionKind = "tag"

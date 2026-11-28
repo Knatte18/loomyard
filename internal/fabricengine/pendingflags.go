@@ -15,6 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/fabriccore"
 	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -142,19 +143,20 @@ func coalesceFlagged(lockDir string, owed map[string]fabriclayout.PushSpawn, acq
 		held, ok, err := acquire(lockPath)
 		if err != nil || !ok {
 			leaveGate()
-			return acquired, err
+			_, reportAcquired := fabriccore.FlaggedLoopNext(acquired, false, false)
+			return reportAcquired, err
 		}
-		acquired = true
 		err = runHeld(holdPushLock(held, lockDir, time.Now()), lockDir, owed, step)
 		leaveGate()
 		if err != nil {
 			return true, err
 		}
 
-		if ownedFlagSet(lockDir, owed) {
-			continue
+		var again bool
+		again, acquired = fabriccore.FlaggedLoopNext(acquired, true, ownedFlagSet(lockDir, owed))
+		if !again {
+			return acquired, nil
 		}
-		return true, nil
 	}
 }
 

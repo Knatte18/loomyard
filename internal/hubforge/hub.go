@@ -67,6 +67,16 @@ func markFixtureBuild() func() {
 	}
 }
 
+// requiredSeamsOnce guards the one install of fabric's required seams in a test binary.
+var requiredSeamsOnce sync.Once
+
+// InstallRequiredSeams installs fabric's required seams once per test binary and never restores them.
+// Every hub this package builds installs them.
+// Only a test whose hub comes from a clone call of its own needs to call it, before its first verb.
+func InstallRequiredSeams() {
+	requiredSeamsOnce.Do(fabriccli.InstallRequiredSeams)
+}
+
 // TestShortname is the repo shortname every hub built by this package is cloned with.
 // The clone records it in .lym-shortname.
 const TestShortname = "tst"
@@ -344,6 +354,7 @@ func CloneSecond(tb testing.TB, h *Hub) *Hub {
 // It calls tb.Fatalf on any error.
 func cloneHub(tb testing.TB, anchor, warpBare, weftBare, container string, singleRepo bool) (*Hub, string) {
 	tb.Helper()
+	InstallRequiredSeams()
 
 	subpath := ""
 	if anchor != "." {

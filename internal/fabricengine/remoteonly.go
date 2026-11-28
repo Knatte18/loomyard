@@ -3,7 +3,11 @@
 
 package fabricengine
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/Knatte18/loomyard/internal/fabriccore"
+)
 
 // RemoteOnlyCommits fetches the warp origin.
 // It returns the tip of the remote branch named like the warp checkout's current branch,
@@ -13,7 +17,9 @@ import "fmt"
 // A failed fetch or branch read returns the error, and the caller decides whether it refuses or degrades.
 // It mutates no ref other than the remote-tracking refs the fetch refreshes.
 func (f *Fabric) RemoteOnlyCommits() (tip string, commits []string, err error) {
-	if _, urlErr := f.code.RemoteURL(originRemoteName); urlErr != nil {
+	_, urlErr := f.code.RemoteURL(originRemoteName)
+	hasOrigin := urlErr == nil
+	if _, read := fabriccore.RemoteOnly(hasOrigin, nil, ""); !read {
 		return "", nil, nil
 	}
 
@@ -32,8 +38,8 @@ func (f *Fabric) RemoteOnlyCommits() (tip string, commits []string, err error) {
 	if err != nil {
 		return "", nil, err
 	}
-	tip, ok := tips[branch]
-	if !ok {
+	tip, read := fabriccore.RemoteOnly(hasOrigin, tips, branch)
+	if !read {
 		return "", nil, nil
 	}
 

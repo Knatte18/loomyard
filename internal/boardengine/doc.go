@@ -388,4 +388,6 @@
 // A change a check refuses is reported refused, and so is a later change depending on an entry a refused change added.
 // A commit whose holds differ from its parent's is refused whole when origin gained a hold of another machine.
 // The replay takes neither the board lock nor the push lock, spawns no sync, and writes nothing when no change survives.
+//
+// The package's tests hold fabric's flows that rest on the board's replay.
 package boardengine

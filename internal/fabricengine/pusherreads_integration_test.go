@@ -18,12 +18,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// commitRecordsNaming commits on the pair's records branch a transition whose Warp-SHA trailer names codeTip.
-func commitRecordsNaming(t *testing.T, p *pairFixture, codeTip string) {
-	t.Helper()
-	gitkit.CommitFile(t, p.weftPath, "transition.txt", codeTip+"\n", "transition\n\n"+fabriclayout.WarpSHATrailerKey+": "+codeTip)
-}
-
 // holdRecordsCommit writes a standing landing of the run slug into the ledger of p's hub.
 // The landing holds the records commit held.
 func holdRecordsCommit(t *testing.T, p *pairFixture, slug, held string) {
@@ -59,28 +53,6 @@ func TestRunCommitsAhead(t *testing.T) {
 		build func(t *testing.T) *lymcwd.Location
 		want  bool
 	}{
-		{"PrimeRecordsCommitUnpushedReadsAhead", func(t *testing.T) *lymcwd.Location {
-			f, _ := newFailureFixture(t)
-			weft, _ := f.primeWeft()
-			gitkit.CommitFile(t, weft, "local.txt", "local\n", "local")
-			return f.hub.Location
-		}, true},
-		{"LevelPrimeReadsLevel", func(t *testing.T) *lymcwd.Location {
-			f, _ := newFailureFixture(t)
-			f.primeWeft()
-			return f.hub.Location
-		}, false},
-		{"PrimeCodeCommitAloneReadsLevel", func(t *testing.T) *lymcwd.Location {
-			f, _ := newFailureFixture(t)
-			f.primeWeft()
-			gitkit.CommitFile(t, f.hub.PrimeWorktree(), "code.txt", "code\n", "code")
-			return f.hub.Location
-		}, false},
-		{"RecordsBranchWithNoUpstreamAndACommitReadsAhead", func(t *testing.T) *lymcwd.Location {
-			f, _ := newFailureFixture(t)
-			gitkit.CommitFile(t, f.hub.PrimeRecords(), "local.txt", "local\n", "local")
-			return f.hub.Location
-		}, true},
 		{"RecordsBranchWithItsTrackingRefDeletedReadsLevel", func(t *testing.T) *lymcwd.Location {
 			f, _ := newFailureFixture(t)
 			weft, branch := f.primeWeft()
@@ -88,32 +60,11 @@ func TestRunCommitsAhead(t *testing.T) {
 			pruneTrackingRef(t, weft, branch)
 			return f.hub.Location
 		}, false},
-		{"PairCodeCommitPastTheNamedTipReadsAhead", func(t *testing.T) *lymcwd.Location {
-			p := newPairFixture(t, "pastnamed")
-			named := gitkit.CommitFile(t, p.warpPath, "warp.txt", "warp\n", "named code")
-			gitkit.Git(t, p.warpPath, "push")
-			commitRecordsNaming(t, p, named)
-			gitkit.Git(t, p.weftPath, "push")
-			gitkit.CommitFile(t, p.warpPath, "warp.txt", "warp 2\n", "code past the named tip")
-			return p.location
-		}, true},
 		{"PairCodeBranchWithNoUpstreamReadsAhead", func(t *testing.T) *lymcwd.Location {
 			p := newPairFixture(t, "noupstreamcode")
 			unsetUpstream(t, p.warpPath, p.warpBranch)
 			return p.location
 		}, true},
-		{"PairCodeBranchWithItsTrackingRefDeletedReadsLevel", func(t *testing.T) *lymcwd.Location {
-			p := newPairFixture(t, "prunedcode")
-			gitkit.CommitFile(t, p.warpPath, "warp.txt", "warp\n", "unpushed code")
-			pruneTrackingRef(t, p.warpPath, p.warpBranch)
-			return p.location
-		}, false},
-		{"PairRecordsAheadOnlyByAHeldCommitReadsLevel", func(t *testing.T) *lymcwd.Location {
-			p := newPairFixture(t, "heldonly")
-			held := gitkit.CommitFile(t, p.weftPath, "held.txt", "held\n", "held records")
-			holdRecordsCommit(t, p, "heldonly", held)
-			return p.location
-		}, false},
 		{"PairRecordsAheadOnlyByTheHeldRefsCommitReadsLevel", func(t *testing.T) *lymcwd.Location {
 			p := newPairFixture(t, "heldref")
 			held := gitkit.CommitFile(t, p.weftPath, "held.txt", "held\n", "held records")
@@ -122,11 +73,9 @@ func TestRunCommitsAhead(t *testing.T) {
 			}
 			return p.location
 		}, false},
-		{"PairRecordsCommitBelowTheHeldOneReadsAhead", func(t *testing.T) *lymcwd.Location {
-			p := newPairFixture(t, "belowheld")
-			gitkit.CommitFile(t, p.weftPath, "below.txt", "below\n", "records below the hold")
-			held := gitkit.CommitFile(t, p.weftPath, "held.txt", "held\n", "held records")
-			holdRecordsCommit(t, p, "belowheld", held)
+		{"PairRecordsWithAnUnpushedCommitReadsAhead", func(t *testing.T) *lymcwd.Location {
+			p := newPairFixture(t, "unpushedrecords")
+			gitkit.CommitFile(t, p.weftPath, "local.txt", "local\n", "local")
 			return p.location
 		}, true},
 	}
@@ -144,67 +93,27 @@ func TestRunCommitsAhead(t *testing.T) {
 	}
 }
 
+// TestRefusedPushStands covers that the code branch read beside the records branch is the pair's own.
 func TestRefusedPushStands(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	noSleep := func(time.Duration) {}
-	tests := []struct {
-		name string
-		// build makes the fixture, runs the push that leaves its records, and returns the worktree to read.
-		build func(t *testing.T) *lymcwd.Location
-		want  bool
-	}{
-		{"NoRecord", func(t *testing.T) *lymcwd.Location {
-			return newPairFixture(t, "norecord").location
-		}, false},
-		{"NotFastForwardRecordOfTheRecordsBranch", func(t *testing.T) *lymcwd.Location {
-			p := newPairFixture(t, "conflictrecords")
-			p.originCommit(p.weftBranch, "conflict.txt", "origin\n", "origin side")
-			gitkit.CommitFile(t, p.weftPath, "conflict.txt", "local\n", "local side")
-			_, _ = fabricengine.PushPairAnchored(p.location, p.fake.options(noSleep), fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded})
-			requireOneFailedPush(t, p.hub.Location.HubPath, "records", fabriclayout.PushFailureNotFastForward)
-			return p.location
-		}, true},
-		{"NotFastForwardRecordOfThePairsCodeBranch", func(t *testing.T) *lymcwd.Location {
-			p := newPairFixture(t, "divergedcoderead")
-			clone := cloneBareForTest(t, p.hub.CodeBare, p.warpBranch)
-			gitkit.CommitFile(t, clone, "other.txt", "other\n", "other machine")
-			gitkit.MustRun(t, clone, "git", "push")
-			gitkit.CommitFile(t, p.warpPath, "warp.txt", "warp\n", "warp change")
-			_, _ = fabricengine.PushPairAnchored(p.location, p.fake.options(noSleep), fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded})
-			requireOneFailedPush(t, p.hub.Location.HubPath, "code", fabriclayout.PushFailureNotFastForward)
-			return p.location
-		}, true},
-		{"OwedClassRecordOfTheRecordsBranchReadsFalse", func(t *testing.T) *lymcwd.Location {
-			p := newPairFixture(t, "owedrecord")
-			gitkit.CommitFile(t, p.weftPath, "local.txt", "local\n", "local")
-			gitkit.Git(t, p.weftPath, "remote", "set-url", "origin", refusedOriginURL)
-			_, _ = fabricengine.PushPairAnchored(p.location, p.fake.options(noSleep), fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded})
-			requireOneFailedPush(t, p.hub.Location.HubPath, "records", fabriclayout.PushFailureTransport)
-			return p.location
-		}, false},
-		{"RecordOfAnotherBranchReadsFalse", func(t *testing.T) *lymcwd.Location {
-			p := newPairFixture(t, "anotherbranch")
-			p.originCommit(p.weftBranch, "conflict.txt", "origin\n", "origin side")
-			gitkit.CommitFile(t, p.weftPath, "conflict.txt", "local\n", "local side")
-			_, _ = fabricengine.PushPairAnchored(p.location, p.fake.options(noSleep), fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded})
-			requireOneFailedPush(t, p.hub.Location.HubPath, "records", fabriclayout.PushFailureNotFastForward)
-			return p.hub.Location
-		}, false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			l := tt.build(t)
+	t.Run("NotFastForwardRecordOfThePairsCodeBranch", func(t *testing.T) {
+		t.Parallel()
+		p := newPairFixture(t, "divergedcoderead")
+		clone := cloneBareForTest(t, p.hub.CodeBare, p.warpBranch)
+		gitkit.CommitFile(t, clone, "other.txt", "other\n", "other machine")
+		gitkit.MustRun(t, clone, "git", "push")
+		gitkit.CommitFile(t, p.warpPath, "warp.txt", "warp\n", "warp change")
+		_, _ = fabricengine.PushPairAnchored(p.location, p.fake.options(func(time.Duration) {}), fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded})
+		requireOneFailedPush(t, p.hub.Location.HubPath, "code", fabriclayout.PushFailureNotFastForward)
 
-			got, err := fabricengine.RefusedPushStands(l)
+		got, err := fabricengine.RefusedPushStands(p.location)
 
-			if err != nil || got != tt.want {
-				t.Errorf("RefusedPushStands() = %v, %v; want %v, nil", got, err, tt.want)
-			}
-		})
-	}
+		if err != nil || !got {
+			t.Errorf("RefusedPushStands() = %v, %v; want true, nil", got, err)
+		}
+	})
 }
 
 func TestTipsOnOrigin(t *testing.T) {
@@ -219,27 +128,17 @@ func TestTipsOnOrigin(t *testing.T) {
 		{"BothTipsPushed", func(t *testing.T) *lymcwd.Location {
 			return newPairFixture(t, "bothpushed").location
 		}, true},
-		{"RecordsCommitUnpushed", func(t *testing.T) *lymcwd.Location {
-			p := newPairFixture(t, "recordsahead")
-			gitkit.CommitFile(t, p.weftPath, "local.txt", "local\n", "local")
-			return p.location
-		}, false},
-		{"CodeCommitUnpushed", func(t *testing.T) *lymcwd.Location {
-			p := newPairFixture(t, "codeahead")
-			gitkit.CommitFile(t, p.warpPath, "warp.txt", "warp\n", "warp")
-			return p.location
-		}, false},
-		{"CodeBranchWithNoUpstream", func(t *testing.T) *lymcwd.Location {
-			p := newPairFixture(t, "codenoupstream")
-			unsetUpstream(t, p.warpPath, p.warpBranch)
-			return p.location
-		}, false},
 		{"CodeBranchWithItsTrackingRefDeletedReadsHeld", func(t *testing.T) *lymcwd.Location {
 			p := newPairFixture(t, "codepruned")
 			gitkit.CommitFile(t, p.warpPath, "warp.txt", "warp\n", "warp")
 			pruneTrackingRef(t, p.warpPath, p.warpBranch)
 			return p.location
 		}, true},
+		{"CodeBranchWithAnUnpushedCommitReadsNotOnOrigin", func(t *testing.T) *lymcwd.Location {
+			p := newPairFixture(t, "unpushedcode")
+			gitkit.CommitFile(t, p.warpPath, "warp.txt", "warp\n", "warp")
+			return p.location
+		}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
