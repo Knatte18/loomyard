@@ -43,14 +43,23 @@
    Before any of them, ask your parent with `lym creel post --parent --expect-reply "<text>"`,
    naming every call you plan and their count, then end your turn to wait.
    Run only the calls your parent's answer allows, within the limits it sets, one at a time in the foreground.
+   Run them in this session: no subagent runs them.
    The verify gate's test of your committed tree is none of these calls and still runs.
    With no parent, or when the post is refused and no strand answers,
    run only the calls an `Added after Discussion` entry of the record allows,
    within its limits, one at a time in the foreground.
-   With no such entry, run none of them and stop.
+   With no such entry, on a task a Code-Review round has run on,
+   a `Decision for <slug>:` board note, `<slug>` being this task's, that says the scope is closed
+   and files the measurements for a new task settles the point:
+   run none of them, do not stop, make what the record asks without them,
+   and name the note in the change description's design decisions.
+   With no such entry or note, run none of them and stop.
    Write the change description, your one output file, as a stop report in the final-summary spec's form,
    naming the measurements the entry asks for and their scope, never as gate or tier calls,
-   and as the way forward a decision on the measurement runs and their limits.
+   and as the way forward `lym loom decision add` with an entry naming the calls it allows and their limits,
+   then `lym loom resume`, after which the resumed writer runs them under that entry;
+   on a task a Code-Review round has run on, name instead a board note titled `Decision for <slug>: <call>`
+   that says the scope is closed and files the measurements for a new task, then `lym loom resume`.
    Then create the stop marker Step 3 names, and end your turn with no further commit.
    Once you end your turn, the row's verify gate tests your committed tree, and a cold fixer clears its failures before you hear of them.
    You are re-prompted only with what the fixer leaves: act on that alone.

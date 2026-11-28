@@ -82,6 +82,14 @@ const (
 	gatedNoGateStep     = "3. Run no `lym gate test` yourself."
 )
 
+// The Step 4 lines of the rule for an entry whose deliverable is gate measurements, which both gate rules carry.
+// One keeps the calls out of every subagent;
+// the other names how a stopped run with no parent gets them allowed and resumes.
+const (
+	measureNoSubagent         = "Run them in this session: no subagent runs them."
+	measureNoParentWayForward = "as the way forward `lym loom decision add` with an entry naming the calls it allows and their limits"
+)
+
 // The values the report passage fills for a darn.report_dir of reportDir,
 // and the heading of the step the passage follows.
 const (
@@ -116,7 +124,7 @@ func TestDarnSpec(t *testing.T) {
 			name:      "first spawn renders the prior-work token as none",
 			configure: func(in *DarnInputs) {},
 			wantInPrompt: func(in DarnInputs) []string {
-				return []string{"fix-the-thing", in.DescriptionPath, filepath.ToSlash(in.SpecsDir), in.DecisionRecordPath, in.StopMarkerPath, in.ConditionStopMarkerPath, `model: "haiku"`, ungatedTestStep, ungatedSubagentGate}
+				return []string{"fix-the-thing", in.DescriptionPath, filepath.ToSlash(in.SpecsDir), in.DecisionRecordPath, in.StopMarkerPath, in.ConditionStopMarkerPath, `model: "haiku"`, ungatedTestStep, ungatedSubagentGate, measureNoSubagent, measureNoParentWayForward}
 			},
 			wantNotInPrompt: []string{gatedNoGateStep, reportPath, measureCall},
 			wantNone:        1,
@@ -144,7 +152,7 @@ func TestDarnSpec(t *testing.T) {
 			name:      "a cold fixer on the verify gate has the writer and its subagents run no gate",
 			configure: func(in *DarnInputs) { in.GateFixed = true },
 			wantInPrompt: func(in DarnInputs) []string {
-				return []string{`model: "haiku"`, gatedNoGateStep, "run that one test class once through `" + measureCall + "`"}
+				return []string{`model: "haiku"`, gatedNoGateStep, "run that one test class once through `" + measureCall + "`", measureNoSubagent, measureNoParentWayForward}
 			},
 			wantNotInPrompt: []string{ungatedTestStep, ungatedSubagentGate, "--gate darn-write"},
 			wantNone:        1,
