@@ -53,6 +53,8 @@ const (
 	// RoleOrch is the provider process of a worktree's orch session.
 	// The orch's start registers it under the beam's slug, or HubOwner for the prime.
 	RoleOrch = "orch"
+	// RoleBoardServer is the hub's board viewer server, registered under HubOwner.
+	RoleBoardServer = "board-server"
 )
 
 // Record is one registered process of a run.

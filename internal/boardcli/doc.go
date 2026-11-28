@@ -197,6 +197,17 @@
 // A slug the raddle store does not hold is an error naming `lym report raddle` as the way forward.
 // It works after the run's landing pruned the Sketch, since the store outlives prune.
 //
+// `open` opens the viewer page in the default browser, and `serve` is the server behind it, which `open` starts detached.
+// Both refuse a run agent's session first.
+// A server an agent started would carry its session into the operator's page.
+// Both then refuse `--board-path`, as they need the hub's board config.
+// `serve` writes the board with an empty strand name, so the page's writes are the operator's.
+// At most one server runs per hub; a second `serve` answers `"running":true`.
+// `open` starts a server in the prime's anchored directory when no process holds the server's lock.
+// It waits for a server whose recorded process answers its recorded token.
+// It then hands the opener a launcher file, so the token appears on no command line and in no output.
+// With a strand name it waits for the opener only up to its keep-warm cap.
+//
 // `labels` takes no payload and prints `{"ok":true,"types":[{"label":…,"description":…}],"labels":[…]}`.
 // Each list is in `board.yaml` file order,
 // an empty list is `[]`,

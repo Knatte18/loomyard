@@ -2,7 +2,7 @@
 //
 // Command() returns the root "board" command over one store, board.json, whose entries carry a kind and labels.
 // The verbs upsert, upsert-batch, set-status, remove, get, list, list-full, merge and set-deps come from storeVerbs.
-// Command itself builds the remaining verbs, such as promote, rename, raddle and sync.
+// Command itself builds the remaining verbs, such as promote, rename, raddle, sync, open and serve.
 // The intake group (list, import, close) comes from intakeCommand in intake.go, over the hub repository the hubRepo closure opens from the resolved location.
 // list and find take --text to print the compact listing from text.go instead of JSON.
 // Configuration resolution happens once in a PersistentPreRunE.
@@ -14,6 +14,7 @@
 package boardcli
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -25,16 +26,22 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/boardserve"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fswatch"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/hubissues"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
+	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/runprofile"
+	"github.com/Knatte18/loomyard/internal/selfexec"
+	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/spf13/cobra"
 )
 
@@ -403,7 +410,7 @@ Example:
 
 	rerenderCmd := &cobra.Command{
 		Use:         "rerender",
-		Short:       "rebuild the README and design docs from board.json",
+		Short:       "rebuild the board's rendered files from board.json",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceInternal},
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if err := b.Rerender(); err != nil {
@@ -488,8 +495,109 @@ Example:
 		}),
 	}
 
+	serveCmd := &cobra.Command{
+		Use:         "serve",
+		Short:       "serve the board viewer page on a loopback port until it has been idle",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceInternal},
+		Long: `Serve the board viewer page on a loopback port and take its writes, which are the operator's.
+One server runs per hub: a second answers {"ok":true,"running":true} and serves nothing.
+It ends once its binary is replaced or the page has asked nothing for a while. "lym board open" starts it.`,
+		Args: cobra.NoArgs,
+		RunE: clihelp.WrapRunCtx(func(ctx context.Context, out io.Writer, args []string) int {
+			if err := refuseRunAgent("serve", strandNameFromEnv()); err != nil {
+				return outputError(out, err.Error())
+			}
+			if location == nil {
+				return outputError(out, fmt.Sprintf(needsHubConfig, "serve"))
+			}
+			// Every write of the page is the operator's, whoever started the server.
+			serving := config
+			serving.StrandName = ""
+			hub := location.HubPath
+			err := boardserve.Run(ctx, boardserve.Options{
+				Paths:     boardserve.Paths(fabricengine.HubScratchDir(hub)),
+				Board:     boardengine.New(serving),
+				BoardPath: serving.Path,
+				LockWait:  serverLockWait,
+				IdleBound: serverIdleBound,
+				PollBound: serverPollBound,
+				Log:       os.Stderr,
+				Register: func() error {
+					return runproc.Register(fabricengine.RunProcDir(hub), runproc.HubOwner, runproc.SelfRecord(runproc.RoleBoardServer))
+				},
+				Replaced: selfexec.New().Replaced,
+				Watch:    fswatch.Watch,
+				Now:      time.Now,
+				After:    time.After,
+			})
+			if errors.Is(err, boardserve.ErrRunning) {
+				return output.Ok(out, map[string]any{"running": true})
+			}
+			if err != nil {
+				return outputError(out, err.Error())
+			}
+			return outputSuccess(out)
+		}),
+	}
+
+	openCmd := &cobra.Command{
+		Use:         "open",
+		Short:       "open the board viewer page in the browser, starting its server when none runs",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
+		Long: `Open the board viewer page in the default browser, from any worktree of the hub.
+The page shows the board, follows its changes and takes edits. A server is started when none runs.
+Takes no payload.
+
+Output:
+  {"ok":true,"address":"http://127.0.0.1:40000/","launcher":"/path/launcher.html","started":true}
+
+Example:
+  lym board open`,
+		Args: cobra.NoArgs,
+		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
+			strand := strandNameFromEnv()
+			if err := refuseRunAgent("open", strand); err != nil {
+				return outputError(out, err.Error())
+			}
+			if location == nil {
+				return outputError(out, fmt.Sprintf(needsHubConfig, "open"))
+			}
+			deps := openDeps{
+				Paths: boardserve.Paths(fabricengine.HubScratchDir(location.HubPath)),
+				Prime: func() (string, error) {
+					name, err := fabricengine.PrimeName(location)
+					if err != nil {
+						return "", err
+					}
+					prime, err := lymcwd.NamedWorktree(location.HubPath, name)
+					if err != nil {
+						return "", err
+					}
+					return prime.AnchorPath(), nil
+				},
+				Spawn:       spawnServer,
+				Probe:       boardserve.Probe,
+				Running:     proc.IsRunning,
+				StartOpener: startOpener,
+				StartBound:  openStartBound,
+				Poll:        openPoll,
+			}
+			// An agent's call must return within its keep-warm cap; the operator's waits for the opener.
+			if strand != "" {
+				deps.OpenerCap = shuttleengines.KeepWarm(fabricengine.ConfigDirs(location), strand).Cap
+			}
+			result, err := runOpen(deps)
+			if err != nil {
+				return outputError(out, err.Error())
+			}
+			return output.Ok(out, map[string]any{"address": result.Address, "launcher": result.Launcher, "started": result.Started})
+		}),
+	}
+
 	cmd.AddCommand(storeVerbs(board, profiles, recordsBranchLive)...)
 	cmd.AddCommand(
+		serveCmd,
+		openCmd,
 		labelsCmd,
 		profilesCmd,
 		promoteCmd,
