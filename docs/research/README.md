@@ -235,6 +235,7 @@ A study's script finds the repository root with `git rev-parse --show-toplevel`,
 ## weaver — the cold-start implementer
 
 - [bench-2026-11-27](weaver/bench-2026-11-27/report.md) — Weaver against Webster on three landed plans: time, cost and quality, and what Weaver needs before it replaces Webster.
+- [bench-2026-11-28](weaver/bench-2026-11-28/report.md) — the same comparison again on one of those plans, with Weaver's cache reads per batch against Webster's per fork.
 
 ## webster — implementation batches
 
