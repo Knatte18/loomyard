@@ -36,10 +36,10 @@ func assertLook(t *testing.T, settings map[string]any) {
 }
 
 // TestWriteVSCodeConfigCreatesFilesWhenAbsent pins the full generated config:
-// the settings.json keys, and the one on-demand reed attach task with its command, args and presentation.
+// the settings.json keys, and the on-demand reed attach and board open tasks with their command, args and presentation.
 // The config has no folder-open trigger.
 //
-//testtiming:keep pins the whole settings.json and the attach task's shape, which no covering test asserts
+//testtiming:keep pins the whole settings.json and the tasks' shape, which no covering test asserts
 func TestWriteVSCodeConfigCreatesFilesWhenAbsent(t *testing.T) {
 	tiergate.Require(t, 0)
 	dir := t.TempDir()
@@ -69,35 +69,31 @@ func TestWriteVSCodeConfigCreatesFilesWhenAbsent(t *testing.T) {
 		t.Fatalf("files.watcherExclude[**/_lym/**] = %v; want true", excludeLym)
 	}
 
-	tasks := readTasksFile(t, dir).Tasks
-	if len(tasks) != 1 {
-		t.Fatalf("got %d tasks, want exactly 1: %v", len(tasks), tasks)
+	assertWorktreeTaskShapes(t, readTasksFile(t, dir).Tasks, lymPath)
+}
+
+// assertWorktreeTaskShapes asserts tasks are exactly the reed attach and board open shell tasks running lymPath.
+// Each is compared whole, so a folder-open trigger or any other added key fails.
+func assertWorktreeTaskShapes(t *testing.T, tasks []map[string]any, lymPath string) {
+	t.Helper()
+	want := []map[string]any{
+		{
+			"label":        "reed attach",
+			"type":         "shell",
+			"command":      lymPath,
+			"args":         []any{"reed", "attach"},
+			"presentation": map[string]any{"reveal": "always", "panel": "new", "echo": true, "focus": true},
+		},
+		{
+			"label":        "board open",
+			"type":         "shell",
+			"command":      lymPath,
+			"args":         []any{"board", "open"},
+			"presentation": map[string]any{"reveal": "always", "panel": "shared", "echo": true, "focus": false},
+		},
 	}
-	task := tasks[0]
-	if task["label"] != "reed attach" {
-		t.Errorf("label = %v; want reed attach", task["label"])
-	}
-	if task["command"] != lymPath {
-		t.Errorf("command = %v; want %q", task["command"], lymPath)
-	}
-	args, _ := task["args"].([]any)
-	if len(args) != 2 || args[0] != "reed" || args[1] != "attach" {
-		t.Errorf("args = %v; want [reed attach]", task["args"])
-	}
-	for _, key := range []string{"runOptions", "dependsOn"} {
-		if _, ok := task[key]; ok {
-			t.Errorf("task carries %s = %v; want none, so opening the folder runs nothing", key, task[key])
-		}
-	}
-	presentation, ok := task["presentation"].(map[string]any)
-	if !ok {
-		t.Fatalf("task missing presentation")
-	}
-	wantPresentation := map[string]any{"reveal": "always", "panel": "new", "echo": true, "focus": true}
-	for key, want := range wantPresentation {
-		if presentation[key] != want {
-			t.Errorf("presentation.%s = %v; want %v", key, presentation[key], want)
-		}
+	if !reflect.DeepEqual(tasks, want) {
+		t.Errorf("tasks = %v; want %v", tasks, want)
 	}
 }
 
@@ -121,7 +117,7 @@ func readTasksFile(t *testing.T, dir string) tasksFile {
 	return tasks
 }
 
-// TestWriteConfigFallsBackToBareName pins that an empty lym path degrades to the bare binary name in the generated task.
+// TestWriteConfigFallsBackToBareName pins that an empty lym path degrades to the bare binary name in the generated tasks.
 func TestWriteConfigFallsBackToBareName(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -131,13 +127,7 @@ func TestWriteConfigFallsBackToBareName(t *testing.T) {
 		t.Fatalf("WriteConfig failed: %v", err)
 	}
 
-	tasks := readTasksFile(t, dir).Tasks
-	if len(tasks) != 1 {
-		t.Fatalf("got %d tasks, want exactly 1: %v", len(tasks), tasks)
-	}
-	if tasks[0]["command"] != "lym" {
-		t.Errorf("command = %v; want lym", tasks[0]["command"])
-	}
+	assertWorktreeTaskShapes(t, readTasksFile(t, dir).Tasks, "lym")
 }
 
 // TestWriteConfigRewritesOwnSettingsKeysAndOverwritesTasks pins a rerun over existing files.
@@ -190,9 +180,7 @@ func TestWriteConfigRewritesOwnSettingsKeysAndOverwritesTasks(t *testing.T) {
 	if tasks.Version != "2.0.0" {
 		t.Errorf("tasks.json was not overwritten: version = %v", tasks.Version)
 	}
-	if len(tasks.Tasks) != 1 || tasks.Tasks[0]["label"] != "reed attach" {
-		t.Errorf("tasks = %v; want the single reed attach task", tasks.Tasks)
-	}
+	assertWorktreeTaskShapes(t, tasks.Tasks, "/opt/lym/bin/lym")
 }
 
 // TestWriteConfigOwnsMarkdownPreviewEntry pins the "*.md" editor association.
@@ -303,9 +291,7 @@ func TestWriteConfigLeavesUndecodableSettingsAlone(t *testing.T) {
 		if got, _ := os.ReadFile(settingsPath); string(got) != content {
 			t.Errorf("settings.json = %q; want %q untouched", got, content)
 		}
-		if tasks := readTasksFile(t, dir); len(tasks.Tasks) != 1 {
-			t.Errorf("tasks = %v; want the single reed attach task", tasks.Tasks)
-		}
+		assertWorktreeTaskShapes(t, readTasksFile(t, dir).Tasks, "/opt/lym/bin/lym")
 	}
 }
 

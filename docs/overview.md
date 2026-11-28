@@ -580,9 +580,9 @@ User-facing modules each get one `lym <module>` namespace:
   With it on, a seed points the `*.md` entry of `workbench.editorAssociations` at the markdown preview,
   so a markdown file opens rendered.
   The entry lives in the worktree's `settings.json`, and a setting the operator holds in its array form is left as it is.
-  The generated `tasks.json` holds one on-demand `reed attach` task.
-  The `lym` path in it is stamped absolute at generation time.
-  The task is reached through "Tasks: Run Task" or the seeded `ctrl+alt+a` key binding;
+  The generated `tasks.json` holds the on-demand `reed attach` and `board open` tasks.
+  The `lym` path in them is stamped absolute at generation time.
+  Each is reached through "Tasks: Run Task" or its seeded key binding;
   no task runs on folder open, so opening a worktree in VS Code starts no session and no `claude`.
   `lym ide spawn` and batten's Seed-IDE row write this config through one shared path.
   `lym ide spawn` regenerates `tasks.json` on every spawn, overwriting an untracked one.
@@ -606,7 +606,8 @@ User-facing modules each get one `lym <module>` namespace:
   It leaves a tracked `tasks.json` alone with a warning.
   `lym ide spawn` and `lym ide seed` also seed a `// lym:begin` … `// lym:end` block in the user's `keybindings.json`.
   The block forwards the Alt keys of reed's tmux bindings through VS Code's integrated terminal.
-  It also binds `ctrl+alt+a` to run the `reed attach` task.
+  It also binds `ctrl+alt+a` to run the `reed attach` task, `alt+shift+9` to run `board open`
+  and `alt+shift+0` to run `beam start`.
   Both verbs report the outcome in their JSON result.
   A user-level binding applies in every VS Code window, so the keys reach reed in any hub.
   It writes only between its own markers,
