@@ -358,3 +358,26 @@ func (r *Repo) MergeTree(ours, theirs string) (tree string, clean bool, err erro
 		return "", false, fmt.Errorf("gitrepo: merge-tree %s %s in %s: %w", ours, theirs, r.path, err)
 	}
 }
+
+// WriteCommitTree writes a commit holding tree and returns the new commit's SHA.
+// The commit takes parents, in order, as its parents and message as its message.
+// It moves no ref and touches neither the index nor the working tree.
+// tree and every parent are validated before git runs, and an invalid one returns ErrInvalidSHA.
+func (r *Repo) WriteCommitTree(tree string, parents []string, message string) (string, error) {
+	if !validSHA(tree) {
+		return "", ErrInvalidSHA
+	}
+	args := []string{"commit-tree", tree}
+	for _, parent := range parents {
+		if !validSHA(parent) {
+			return "", ErrInvalidSHA
+		}
+		args = append(args, "-p", parent)
+	}
+
+	stdout, err := r.runChecked(append(args, "-m", message)...)
+	if err != nil {
+		return "", fmt.Errorf("gitrepo: commit-tree %s in %s: %w", tree, r.path, err)
+	}
+	return strings.TrimSpace(stdout), nil
+}

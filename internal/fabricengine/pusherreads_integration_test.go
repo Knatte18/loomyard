@@ -78,6 +78,34 @@ func TestRunCommitsAhead(t *testing.T) {
 			gitkit.CommitFile(t, p.weftPath, "local.txt", "local\n", "local")
 			return p.location
 		}, true},
+		{"PairDetachedPastOriginWithItsMarkerReadsTheBranchLevel", func(t *testing.T) *lymcwd.Location {
+			p := newPairFixture(t, "detachedlevel")
+			gitkit.Git(t, p.warpPath, "checkout", "--detach")
+			gitkit.CommitFile(t, p.warpPath, "chain.txt", "chain\n", "commit origin lacks")
+			if err := fabricengine.WriteDetachMarker(p.location, p.warpBranch); err != nil {
+				t.Fatalf("WriteDetachMarker() = %v; want nil", err)
+			}
+			return p.location
+		}, false},
+		{"PairDetachedWithItsMarkerAndNoCodeUpstreamReadsAhead", func(t *testing.T) *lymcwd.Location {
+			p := newPairFixture(t, "detachednoupstream")
+			gitkit.Git(t, p.warpPath, "checkout", "--detach")
+			unsetUpstream(t, p.warpPath, p.warpBranch)
+			if err := fabricengine.WriteDetachMarker(p.location, p.warpBranch); err != nil {
+				t.Fatalf("WriteDetachMarker() = %v; want nil", err)
+			}
+			return p.location
+		}, true},
+		{"PairDetachedWithItsMarkerAndItsTrackingRefDeletedReadsLevel", func(t *testing.T) *lymcwd.Location {
+			p := newPairFixture(t, "detachedpruned")
+			gitkit.CommitFile(t, p.warpPath, "warp.txt", "warp\n", "unpushed code")
+			gitkit.Git(t, p.warpPath, "checkout", "--detach")
+			pruneTrackingRef(t, p.warpPath, p.warpBranch)
+			if err := fabricengine.WriteDetachMarker(p.location, p.warpBranch); err != nil {
+				t.Fatalf("WriteDetachMarker() = %v; want nil", err)
+			}
+			return p.location
+		}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -94,26 +122,44 @@ func TestRunCommitsAhead(t *testing.T) {
 }
 
 // TestRefusedPushStands covers that the code branch read beside the records branch is the pair's own.
+// A detached pair's own code branch is the one its detach marker names.
 func TestRefusedPushStands(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	t.Run("NotFastForwardRecordOfThePairsCodeBranch", func(t *testing.T) {
-		t.Parallel()
-		p := newPairFixture(t, "divergedcoderead")
-		clone := cloneBareForTest(t, p.hub.CodeBare, p.warpBranch)
-		gitkit.CommitFile(t, clone, "other.txt", "other\n", "other machine")
-		gitkit.MustRun(t, clone, "git", "push")
-		gitkit.CommitFile(t, p.warpPath, "warp.txt", "warp\n", "warp change")
-		_, _ = fabricengine.PushPairAnchored(p.location, p.fake.options(func(time.Duration) {}), fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded})
-		requireOneFailedPush(t, p.hub.Location.HubPath, "code", fabriclayout.PushFailureNotFastForward)
+	tests := []struct {
+		name string
+		slug string
+		// detach detaches the pair's code worktree under its marker once the push is refused.
+		detach bool
+	}{
+		{"NotFastForwardRecordOfThePairsCodeBranch", "divergedcoderead", false},
+		{"RecordOfTheCodeBranchOfADetachedPairStands", "divergeddetached", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			p := newPairFixture(t, tt.slug)
+			clone := cloneBareForTest(t, p.hub.CodeBare, p.warpBranch)
+			gitkit.CommitFile(t, clone, "other.txt", "other\n", "other machine")
+			gitkit.MustRun(t, clone, "git", "push")
+			gitkit.CommitFile(t, p.warpPath, "warp.txt", "warp\n", "warp change")
+			_, _ = fabricengine.PushPairAnchored(p.location, p.fake.options(func(time.Duration) {}), fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded})
+			requireOneFailedPush(t, p.hub.Location.HubPath, "code", fabriclayout.PushFailureNotFastForward)
+			if tt.detach {
+				gitkit.Git(t, p.warpPath, "checkout", "--detach")
+				if err := fabricengine.WriteDetachMarker(p.location, p.warpBranch); err != nil {
+					t.Fatalf("WriteDetachMarker() = %v; want nil", err)
+				}
+			}
 
-		got, err := fabricengine.RefusedPushStands(p.location)
+			got, err := fabricengine.RefusedPushStands(p.location)
 
-		if err != nil || !got {
-			t.Errorf("RefusedPushStands() = %v, %v; want true, nil", got, err)
-		}
-	})
+			if err != nil || !got {
+				t.Errorf("RefusedPushStands() = %v, %v; want true, nil", got, err)
+			}
+		})
+	}
 }
 
 func TestTipsOnOrigin(t *testing.T) {

@@ -76,10 +76,21 @@ type Config struct {
 	// FinalizeFixReviewRounds is the fix reviews one Finalize row entry may run over an over-cap fixer change.
 	// Once they are spent, it halts for the operator.
 	FinalizeFixReviewRounds int `yaml:"finalize_fix_review_rounds"`
-	// FinalizeLostRaces is the times one Finalize call may find the parent moved since its lock-free merge and gate.
-	// Once they are spent, Finalize merges and gates under the parent lock, so a run on a busy parent is never starved.
-	// 0 merges and gates under the lock from the first pass.
-	FinalizeLostRaces int `yaml:"finalize_lost_races"`
+	// BatchMax is the most entries one landing batch on a parent takes.
+	// A value below 1 reads as 1.
+	BatchMax int `yaml:"batch_max"`
+}
+
+// BatchSize returns the most entries one landing batch takes.
+// A landing.batch_max below 1, an absent key included, returns 1.
+// It logs one Warn naming the key.
+func (c Config) BatchSize() int {
+	if c.BatchMax < 1 {
+		name := keyName(batchMaxKey)
+		logger.Warn("landingshed: "+name+" is below 1 or absent, using 1", "key", name, "value", c.BatchMax)
+		return 1
+	}
+	return c.BatchMax
 }
 
 // defaultIdleReleaseMin is the idle bound in minutes.
@@ -181,17 +192,18 @@ func ConfigSpec() configengine.Spec {
 			"finalize_fix_attempts":      configengine.CategoryCrossPair,
 			"finalize_fix_max_lines":     configengine.CategoryCrossPair,
 			"finalize_fix_review_rounds": configengine.CategoryCrossPair,
-			// The lost-race bound decides how long one pair's landing gate holds the parent lock others wait on.
-			finalizeLostRacesKey: configengine.CategoryCrossPair,
+			// The batch size bounds how long one batch's leader holds the parent lock others wait on.
+			batchMaxKey: configengine.CategoryCrossPair,
 		},
 		// The local and machine layers judge a retired key by the category it held, so both refuse every one here.
 		// publish_verify belongs to the hub's publish gate.
 		// The co-author and trailer keys are not carried into the credit keys, since their values are co-author lines.
 		RetiredKeys: map[string]configengine.Category{
-			"publish_verify":  configengine.CategoryExecutable,
-			"co_authored_by":  configengine.CategoryCrossPair,
-			"trailer_text":    configengine.CategoryCrossPair,
-			"engine_trailers": configengine.CategoryCrossPair,
+			"publish_verify":      configengine.CategoryExecutable,
+			"co_authored_by":      configengine.CategoryCrossPair,
+			"trailer_text":        configengine.CategoryCrossPair,
+			"engine_trailers":     configengine.CategoryCrossPair,
+			"finalize_lost_races": configengine.CategoryCrossPair,
 		},
 	}
 }
@@ -204,7 +216,7 @@ func ConfigSpec() configengine.Spec {
 // It validates that of `landing.describe_review` too when the key is set.
 // A typo in one of them fails at load, not when its session spawns.
 // It refuses a fixer timeout, fixer attempt cap, fixer line cap or fix review round cap below 1.
-// It refuses a describe review timeout below 1 and a lost-race bound below 0.
+// It refuses a describe review timeout below 1.
 // It also refuses a landing.credit_engines entry whose key names no engine,
 // and a landing.describe_forbidden_terms entry that does not compile as a regular expression or matches the empty string.
 func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
@@ -257,9 +269,6 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 		if positive.value < 1 {
 			return Config{}, fmt.Errorf("config key %q: %d is below 1; way forward: lym config landing --set %s=<n> from the prime", keyName(positive.key), positive.value, positive.key)
 		}
-	}
-	if cfg.FinalizeLostRaces < 0 {
-		return Config{}, fmt.Errorf("config key %q: %d is below 0; way forward: lym config landing --set %s=<n> from the prime", keyName(finalizeLostRacesKey), cfg.FinalizeLostRaces, finalizeLostRacesKey)
 	}
 	engines := modelspec.EngineNames()
 	for name := range cfg.CreditEngines {

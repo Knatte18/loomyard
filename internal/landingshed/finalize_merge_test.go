@@ -18,8 +18,9 @@ import (
 )
 
 // TestFinalize_MergeJudgement pins Finalize's merge of the parent branch into the task and the judgement of that merge.
-// Every merge runs under the parent lock and proceeds to the gate, a large merge included.
-// It also pins what the parent side is measured from, and what the merge record carries afterwards.
+// Every merge proceeds to the gate, a large merge included, and the last one runs under the parent lock.
+// It also pins what the parent side is measured from.
+// It pins what the merge record carries after the first merge, which runs with no lock.
 func TestFinalize_MergeJudgement(t *testing.T) {
 	tiergate.Require(t, 0)
 	const earlierTip, newTip, taskBase, aligned = "p1", "p2", "b0", "a1"
@@ -90,6 +91,10 @@ func TestFinalize_MergeJudgement(t *testing.T) {
 			}
 			gate := newGateFixture(t, "finalize", "go test ./...", nil)
 			merger := &recordingParentMerger{results: []mergeCallResult{{result: fabriclayout.MergeResult{Committed: true}}}}
+			// The merge under the lock rewrites the record, so the first merge's is read as the second one starts.
+			var rec MergeRecord
+			var found bool
+			merges := 0
 			resolver := &eventResolver{
 				events: new([]string),
 				result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved, AlreadyUpToDate: tt.upToDate},
@@ -98,6 +103,9 @@ func TestFinalize_MergeJudgement(t *testing.T) {
 					return found && rec.Owner.Slug == "me"
 				},
 				onResolve: func() {
+					if merges++; merges == 2 {
+						rec, found, _ = ReadMergeRecord(deps.MergeRecordPath)
+					}
 					if !tt.upToDate {
 						head = "t2"
 					}
@@ -114,7 +122,7 @@ func TestFinalize_MergeJudgement(t *testing.T) {
 				t.Fatalf("Call() = %q, %+v with %d verify call(s); want Done after one", outcome, ptr, gate.fake.verifyCalls)
 			}
 			if !resolver.heldAtMerge {
-				t.Error("the merge-in ran without the parent lock held; want it, and any conflict session it starts, under the lock")
+				t.Error("the last merge-in ran without the parent lock held; want it, and any conflict session it starts, under the lock")
 			}
 			if _, statErr := os.Stat(filepath.Join(deps.ScratchDir, "overlap-note.md")); statErr == nil {
 				t.Error("overlap-note.md exists; want none written")
@@ -123,7 +131,6 @@ func TestFinalize_MergeJudgement(t *testing.T) {
 				t.Errorf("ChangedPaths calls = %q; want %q", got, want)
 			}
 
-			rec, found, _ := ReadMergeRecord(deps.MergeRecordPath)
 			if !found || rec.MergedTip != newTip || rec.TaskBase != taskBase || rec.TaskHead != "t1" || rec.MergeCommit != tt.wantMergeCommit || rec.UpToDate != tt.upToDate {
 				t.Errorf("merge record = %+v, %v; want merged tip %s, task base %s, task head t1, merge commit %q, up to date %v", rec, found, newTip, taskBase, tt.wantMergeCommit, tt.upToDate)
 			}

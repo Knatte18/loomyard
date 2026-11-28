@@ -6,8 +6,10 @@ package fabricengine
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/fabriccore"
+	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
@@ -32,13 +34,23 @@ type localBranch struct {
 }
 
 // readLocalBranch reads the checked-out branch of the worktree at path against its tracking ref.
+// A code worktree with a detach marker is read at the marker's branch, whatever its HEAD holds.
 // It also reads the one ancestry answer question asks for.
 // ceiling is the commit askCeiling asks about, and empty for the other questions.
 // The ancestry is read only of a tracked upstream.
 func readLocalBranch(path string, question branchQuestion, ceiling string) (localBranch, error) {
 	branch := localBranch{repo: gitrepo.New(path)}
 	branch.Upstream, branch.Ceiling = fabriccore.PushUpstreamNone, ceiling
-	tip, err := branch.repo.CurrentSHA()
+	l, marked, stands, err := markedWorktree(path)
+	if err != nil {
+		return localBranch{}, err
+	}
+	var tip, upstreamTip string
+	if stands {
+		tip, err = markedBranchTip(l, marked)
+	} else {
+		tip, err = branch.repo.CurrentSHA()
+	}
 	if errors.Is(err, gitrepo.ErrNoCommits) {
 		return branch, nil
 	}
@@ -46,7 +58,20 @@ func readLocalBranch(path string, question branchQuestion, ceiling string) (loca
 		return localBranch{}, fmt.Errorf("fabricengine: read the tip of %s: %w", path, err)
 	}
 	branch.Tip = tip
-	upstreamTip, err := branch.repo.UpstreamSHA()
+	if stands {
+		// The upstream ref is named even when it is pruned, which reading the ref then tells.
+		var ref string
+		ref, err = gitexec.Run([]string{"for-each-ref", "--format=%(upstream)", "refs/heads/" + marked}, path)
+		switch ref = strings.TrimSpace(ref); {
+		case err != nil:
+		case ref == "":
+			err = gitrepo.ErrNoUpstream
+		default:
+			upstreamTip, err = branch.repo.RefSHA(ref)
+		}
+	} else {
+		upstreamTip, err = branch.repo.UpstreamSHA()
+	}
 	switch {
 	case errors.Is(err, gitrepo.ErrNoUpstream):
 		return branch, nil
@@ -147,9 +172,15 @@ func RefusedPushStands(l *lymcwd.Location) (bool, error) {
 	}
 	codeBranch := ""
 	if !prime {
-		codeBranch, err = gitrepo.New(l.WorktreePath()).CurrentBranch()
+		marked, stands, err := ReadDetachMarker(l)
 		if err != nil {
-			return false, fmt.Errorf("fabricengine: read the code branch of %s: %w", l.WorktreePath(), err)
+			return false, err
+		}
+		if codeBranch = marked; !stands {
+			codeBranch, err = gitrepo.New(l.WorktreePath()).CurrentBranch()
+			if err != nil {
+				return false, fmt.Errorf("fabricengine: read the code branch of %s: %w", l.WorktreePath(), err)
+			}
 		}
 	}
 	records, err := ListFailedPushes(l.HubPath)

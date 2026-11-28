@@ -115,7 +115,10 @@ func TestLoadConfig_TemplateDefaults(t *testing.T) {
 	if cfg.PRReviewer != "opus[high]" {
 		t.Errorf("cfg.PRReviewer = %q; want %q", cfg.PRReviewer, "opus[high]")
 	}
-	retiredKeys := []string{"publish_verify", "co_authored_by", "trailer_text", "engine_trailers"}
+	if cfg.BatchMax != 4 {
+		t.Errorf("cfg.BatchMax = %d; want 4", cfg.BatchMax)
+	}
+	retiredKeys := []string{"publish_verify", "co_authored_by", "trailer_text", "engine_trailers", "finalize_lost_races"}
 	for _, key := range retiredKeys {
 		if strings.Contains(ConfigTemplate(), key) {
 			t.Errorf("ConfigTemplate() holds %s; want the retired key gone from the template", key)
@@ -123,7 +126,7 @@ func TestLoadConfig_TemplateDefaults(t *testing.T) {
 	}
 
 	retiredDir := t.TempDir()
-	seedLandingConfig(t, retiredDir, ConfigTemplate()+"publish_verify: go test -tags tmux ./...\nco_authored_by: Someone <s@x>\ntrailer_text: Fixed\nengine_trailers:\n  claude: \"Co-Authored-By: Someone <s@x>\"\n")
+	seedLandingConfig(t, retiredDir, ConfigTemplate()+"publish_verify: go test -tags tmux ./...\nco_authored_by: Someone <s@x>\ntrailer_text: Fixed\nengine_trailers:\n  claude: \"Co-Authored-By: Someone <s@x>\"\nfinalize_lost_races: 2\n")
 	retired, err := LoadConfig(configengine.Dirs{Board: retiredDir}, "landing")
 	if err != nil {
 		t.Fatalf("LoadConfig() over a file holding the retired keys %v = _, %v; want nil error", retiredKeys, err)
@@ -133,6 +136,38 @@ func TestLoadConfig_TemplateDefaults(t *testing.T) {
 	}
 	if !maps.Equal(retired.CreditEngines, cfg.CreditEngines) {
 		t.Errorf("retired-key file cfg.CreditEngines = %v; want the template's %v", retired.CreditEngines, cfg.CreditEngines)
+	}
+	if retired.BatchMax != cfg.BatchMax {
+		t.Errorf("retired-key file cfg.BatchMax = %d; want %d", retired.BatchMax, cfg.BatchMax)
+	}
+
+	board, anchor := t.TempDir(), t.TempDir()
+	seedLandingConfig(t, board, ConfigTemplate())
+	writeLocalLandingConfig(t, anchor, "finalize_lost_races: 2\n")
+	_, err = LoadConfig(configengine.Dirs{Anchor: anchor, Board: board}, "landing")
+	if !errors.Is(err, configengine.ErrInvalid) || !strings.Contains(err.Error(), "finalize_lost_races") {
+		t.Errorf("LoadConfig() over a local finalize_lost_races error = %v; want ErrInvalid naming the key", err)
+	}
+}
+
+// TestConfig_BatchSize verifies the batch size is the configured count, and 1 for a value below 1.
+func TestConfig_BatchSize(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		batchMax int
+		want     int
+	}{
+		{4, 4},
+		{1, 1},
+		{0, 1},
+		{-3, 1},
+	}
+	for _, tt := range tests {
+		if got := (Config{BatchMax: tt.batchMax}).BatchSize(); got != tt.want {
+			t.Errorf("Config{BatchMax: %d}.BatchSize() = %d; want %d", tt.batchMax, got, tt.want)
+		}
 	}
 }
 
@@ -228,7 +263,6 @@ func TestLoadConfig_InvalidKeys(t *testing.T) {
 		{"finalize fix attempts below 1", "finalize_fix_attempts: 2", "finalize_fix_attempts: 0", "finalize_fix_attempts"},
 		{"finalize fix max lines below 1", "finalize_fix_max_lines: 40", "finalize_fix_max_lines: 0", "finalize_fix_max_lines"},
 		{"finalize fix review rounds below 1", "finalize_fix_review_rounds: 3", "finalize_fix_review_rounds: 0", "finalize_fix_review_rounds"},
-		{"finalize lost races below 0", "finalize_fix_review_rounds: 3", "finalize_fix_review_rounds: 3\nfinalize_lost_races: -1", "finalize_lost_races"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

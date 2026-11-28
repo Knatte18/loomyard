@@ -137,6 +137,11 @@
 // The envelope's `sides` lists every side in pull order with its `kind`, `worktree`, `outcome` and `detail`.
 // Any stopped side makes it an error envelope that still carries every side's entry.
 //
+// # Parent locks
+//
+// A verb that takes a parent lock first checks that branch for a standing landing-queue move mark.
+// It writes the ledger landings the mark owes before it acts.
+//
 // # Merge
 //
 // Conflicts are a result of `merge-in`, not a failure to run again differently:

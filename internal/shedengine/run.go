@@ -33,9 +33,9 @@ const ReasonBounceBudgetExhausted = "bounce budget exhausted"
 
 // ReasonPreconditionUnmet is the exact prefix of a blocked halt's reason for an unmet precondition.
 // A producer sets it when a precondition the run cannot settle on its own is unmet.
+// Shed writes it itself only for a refused Restore.
 // The reason continues with what is unmet and its way forward as a trailing clause,
 // so a reader matches it with strings.HasPrefix, never equality.
-// Shed never writes it itself.
 const ReasonPreconditionUnmet = "precondition unmet"
 
 // ReasonRerouteCapReached is the exact prefix of the reason the reroute-cap blocked halt persists.
@@ -534,6 +534,13 @@ func (s *Shed) Run(ctx context.Context) (Result, error) {
 	if err := s.refuseUnderRunLock(); err != nil {
 		return Result{}, err
 	}
+	halted, stop, err := s.restoreUnderRunLock()
+	if err != nil {
+		return Result{}, err
+	}
+	if stop {
+		return Result{Outcome: RunBlocked, HaltedProducer: halted.Next, Reason: halted.Reason, History: halted.History}, nil
+	}
 
 	for {
 		res, err := s.stepLocked(ctx)
@@ -585,8 +592,39 @@ func (s *Shed) Step(ctx context.Context) (StepResult, error) {
 	if err := s.refuseUnderRunLock(); err != nil {
 		return StepResult{}, err
 	}
+	halted, stop, err := s.restoreUnderRunLock()
+	if err != nil || stop {
+		return halted, err
+	}
 
 	return s.stepLocked(ctx)
+}
+
+// restoreUnderRunLock runs Restore, which must be called with the run lock held.
+// A done run is left as it is, and so is one with no status file, which the step that follows refuses.
+// A restore error persists a blocked halt at the current row with the history unchanged.
+// It returns that result with true, so no producer is called.
+func (s *Shed) restoreUnderRunLock() (StepResult, bool, error) {
+	if s.Restore == nil {
+		return StepResult{}, false, nil
+	}
+	st, found, err := state.ReadJSON[Status](s.StatusPath, s.StatusLockPath)
+	if err != nil {
+		return StepResult{}, false, fmt.Errorf("shedengine: read status file %q: %w", s.StatusPath, err)
+	}
+	if !found || st.State == StateDone {
+		return StepResult{}, false, nil
+	}
+	restoreErr := s.Restore()
+	if restoreErr == nil {
+		return StepResult{}, false, nil
+	}
+	row := RowAt(s.Producers, st.CurrentProducer)
+	reason := oneLine(ReasonPreconditionUnmet + ": " + restoreErr.Error())
+	if err := s.persist(row, StateBlocked, reason, st.History, false, ""); err != nil {
+		return StepResult{}, false, err
+	}
+	return StepResult{Next: row, State: StateBlocked, Reason: reason, History: st.History}, true, nil
 }
 
 // refuseUnderRunLock runs LockedCheck, which must be called with the run lock held.

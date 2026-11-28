@@ -28,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/testkit/prkit"
+	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -61,7 +62,7 @@ func (f *parentFixture) work(slug string) {
 func (f *parentFixture) finalize(slug string, squash bool) (*landingshed.Finalize, landingshed.Deps) {
 	f.t.Helper()
 	pair := f.atFinalize(slug)
-	cfg := landingshed.Config{Squash: squash, FinalizeLostRaces: 1, Conflict: "claude:test-model", ConflictTimeoutMin: 1}
+	cfg := landingshed.Config{Squash: squash, Conflict: "claude:test-model", ConflictTimeoutMin: 1}
 	statusFile, statusLock := shedrun.StatusFile(pair, shedrun.SelfRunID), shedrun.StatusLock(pair, shedrun.SelfRunID)
 	deps := landingDeps(pair, shedrun.RecipeTapestry, websterengine.Geometry{StencilsDir: f.t.TempDir()}, f.branches[slug], f.branch,
 		false, modelspec.Registry{}, &shuttleengine.Runner{}, cfg, "", nil, nil, nil, planVerifySource(pair), parentLockDeps(pair, shedrun.SelfRunID, statusFile, statusLock))
@@ -465,6 +466,117 @@ func TestLandLocally(t *testing.T) {
 	}
 }
 
+// TestLandingDeps_TaskHeadReadsTheBranchWhileDetached pins that the task head is the task branch's tip.
+// That holds whatever commit the worktree is detached at.
+func TestLandingDeps_TaskHeadReadsTheBranchWhileDetached(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	f := newParentFixture(t)
+	f.addRun("one", "", false)
+	f.work("one")
+	_, deps := f.finalize("one", true)
+	worktree := f.h.PairCodeWorktree("one")
+	tip := gitkit.RevParse(t, worktree, "HEAD")
+	gitkit.Git(t, worktree, "checkout", "-q", "--detach", tip+"^1")
+
+	if got, err := deps.TaskHead(); err != nil || got != tip {
+		t.Errorf("TaskHead() = %q, %v; want the branch tip %s", got, err, tip)
+	}
+}
+
+// TestNewShed_RestoresADetachedTaskWorktree runs the built shed's restore over a task pair left detached.
+func TestNewShed_RestoresADetachedTaskWorktree(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	// detach leaves the pair of the run one detached at its head, with its status at row, and returns the head.
+	detach := func(t *testing.T, row string, marked, dirty bool) (*parentFixture, *shedengine.Shed, string) {
+		t.Helper()
+		f := newParentFixture(t)
+		f.addRun("one", "", false)
+		f.work("one")
+		pair := f.atFinalize("one")
+		status := shedengine.Status{State: shedengine.StateRunning, CurrentProducer: row}
+		if err := state.WriteJSON(shedrun.StatusFile(pair, shedrun.SelfRunID), shedrun.StatusLock(pair, shedrun.SelfRunID), status); err != nil {
+			t.Fatalf("write the run status: %v", err)
+		}
+		head := gitkit.RevParse(t, pair.WorktreePath(), "HEAD")
+		gitkit.Git(t, pair.WorktreePath(), "checkout", "-q", "--detach")
+		if marked {
+			if err := fabricengine.WriteDetachMarker(pair, f.branches["one"]); err != nil {
+				t.Fatalf("WriteDetachMarker: %v", err)
+			}
+		}
+		if dirty {
+			if err := os.WriteFile(filepath.Join(pair.WorktreePath(), "stray.txt"), []byte("stray\n"), 0o644); err != nil {
+				t.Fatalf("write a stray file: %v", err)
+			}
+		}
+		stencilkit.SeedInto(t, fabriclayout.StencilsDir(pair.HubPath))
+		c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeTapestry}
+		if err := c.wire(pair, pair.AnchorPath()); err != nil {
+			t.Fatalf("wire() = %v; want nil", err)
+		}
+		c.location = pair
+		if err := c.wireLanding(); err != nil {
+			t.Fatalf("wireLanding() = %v; want nil", err)
+		}
+		shed, err := c.newShed()
+		if err != nil {
+			t.Fatalf("newShed() = %v; want nil", err)
+		}
+		return f, shed, head
+	}
+
+	t.Run("ACleanMarkedWorktreeIsBackOnItsBranch", func(t *testing.T) {
+		t.Parallel()
+		f, shed, head := detach(t, "Parent-Align", true, false)
+		pair := f.location("one")
+
+		if err := shed.Restore(); err != nil {
+			t.Fatalf("Restore() = %v; want nil", err)
+		}
+
+		if got := gitkit.CurrentBranch(t, pair.WorktreePath()); got != f.branches["one"] {
+			t.Errorf("branch = %q; want %q", got, f.branches["one"])
+		}
+		if got := gitkit.RevParse(t, pair.WorktreePath(), "HEAD"); got != head {
+			t.Errorf("task branch = %s; want it unchanged at %s", got, head)
+		}
+		if _, stands, err := fabricengine.ReadDetachMarker(pair); err != nil || stands {
+			t.Errorf("detach marker stands = %v, %v; want it gone", stands, err)
+		}
+	})
+
+	for _, tt := range []struct {
+		name, row     string
+		marked, dirty bool
+		wants         func(head string) []string
+	}{
+		{"ADirtyWorktreeNamesItsPaths", "Parent-Align", true, true, func(string) []string { return []string{"stray.txt", "lym loom resume"} }},
+		{"AWorktreeWithNoMarkerNamesItsCommit", "Parent-Align", false, false, func(head string) []string { return []string{head, "lym loom resume"} }},
+		{"ADirtyWorktreeAtFinalizeIsLeftToTheRow", "Finalize", true, true, func(string) []string { return nil }},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			_, shed, head := detach(t, tt.row, tt.marked, tt.dirty)
+
+			err := shed.Restore()
+
+			wants := tt.wants(head)
+			if (err == nil) != (len(wants) == 0) {
+				t.Fatalf("Restore() = %v; want an error = %v", err, len(wants) != 0)
+			}
+			for _, want := range wants {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("Restore() = %q; want it to hold %q", err, want)
+				}
+			}
+		})
+	}
+}
+
 // TestWriteLedgerLanding_AChainOfOwnTipsReadsAsOwed lands three runs on the prime as a chain of landing commits.
 // Each run's ledger landing carries its own landing commit, and a run recorded again keeps that tip.
 func TestWriteLedgerLanding_AChainOfOwnTipsReadsAsOwed(t *testing.T) {
@@ -502,6 +614,17 @@ func TestWriteLedgerLanding_AChainOfOwnTipsReadsAsOwed(t *testing.T) {
 		t.Fatalf("landLocally(one) = %v; want nil", err)
 	}
 	requireAheadByOwed("after run one is recorded again", true)
+
+	// A records commit of run two past the one its landing holds is not sent while the landing stands.
+	pairTwo := f.location("two")
+	if _, err := pairteardown.PushRun(f.h.Location, pairTwo, "two", pairteardown.RunPush{LockWait: fabriclayout.StatusPushLockWait, InsidePair: true}); err != nil {
+		t.Fatalf("PushRun(two) = %v; want nil", err)
+	}
+	gitkit.CommitFile(t, f.h.PairRecordsSibling("two"), "later.txt", "later\n", "records after the held one")
+	if ahead, err := fabricengine.RunCommitsAhead(pairTwo); err != nil || ahead {
+		t.Errorf("RunCommitsAhead(two) with its landing standing = %v, %v; want false", ahead, err)
+	}
+
 	landings := f.entry(pushledger.LandingKey).Landings
 	if len(landings) != len(slugs) {
 		t.Fatalf("landings = %+v; want one per run", landings)
@@ -510,5 +633,13 @@ func TestWriteLedgerLanding_AChainOfOwnTipsReadsAsOwed(t *testing.T) {
 		if landing.Tip != tips[landing.Run] || landing.RecordsCommit != records[landing.Run] || landing.ParentBranch != f.branch {
 			t.Errorf("landing = %+v; want run %s at its own tip %s holding %s on %s", landing, landing.Run, tips[landing.Run], records[landing.Run], f.branch)
 		}
+	}
+
+	f.pass(target)
+	if left := f.entry(pushledger.LandingKey).Landings; len(left) != 0 {
+		t.Fatalf("landings after the parent's push = %+v; want none", left)
+	}
+	if ahead, err := fabricengine.RunCommitsAhead(pairTwo); err != nil || !ahead {
+		t.Errorf("RunCommitsAhead(two) after the parent's push = %v, %v; want true", ahead, err)
 	}
 }

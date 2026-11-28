@@ -27,6 +27,11 @@ const (
 	finalizeChecksPerMergeIn
 )
 
+// finalizeLockFreeChecks counts the clean-tree checks of the merge-in with no lock.
+// They come before the first mergeAndGate pass.
+// That merge-in runs no verify, so it checks before and after itself alone.
+const finalizeLockFreeChecks = 2
+
 // scriptedResolver returns results[i] on the i-th Resolve call, clamped to the last entry.
 type scriptedResolver struct {
 	results []mergeresolve.Result
@@ -88,7 +93,7 @@ func (fx *finalizeVerifyFixture) requireNotLanded(t *testing.T) {
 }
 
 // TestFinalizeVerify_Lands pins that a passing verify, or one the verified-tree record skips, lets the landing proceed:
-// the merge runs once, the verify is asked once at site Finalize, and the three clean-tree checks are made.
+// the merge runs once, the verify is asked once at site Finalize, and each merge-in's clean-tree checks are made.
 //
 //testtiming:keep pins the verify call count, the Finalize site label and the clean-tree check count on the landing path, which its covering tests do not assert
 func TestFinalizeVerify_Lands(t *testing.T) {
@@ -112,8 +117,8 @@ func TestFinalizeVerify_Lands(t *testing.T) {
 			if fx.gate.fake.verifyCalls != 1 || fx.gate.fake.site.Label != "Finalize" {
 				t.Errorf("verify calls = %d, site = %+v; want 1 call at site Finalize", fx.gate.fake.verifyCalls, fx.gate.fake.site)
 			}
-			if fx.gate.fake.dirtyCalls != finalizeChecksPerMergeIn {
-				t.Errorf("clean-tree checks = %d; want %d", fx.gate.fake.dirtyCalls, finalizeChecksPerMergeIn)
+			if want := finalizeLockFreeChecks + finalizeChecksPerMergeIn; fx.gate.fake.dirtyCalls != want {
+				t.Errorf("clean-tree checks = %d; want %d", fx.gate.fake.dirtyCalls, want)
 			}
 		})
 	}
@@ -181,7 +186,7 @@ func TestFinalizeVerify_DirtyTreeHalts(t *testing.T) {
 	}{
 		{"before the merge-in", finalizeCleanBeforeMergeIn, "before the merge-in", 0, 0},
 		{"after the merge-in", finalizeCleanAfterMergeIn, "after the merge-in", 1, 0},
-		{"after the verify", finalizeCleanAfterVerify, "after the verify", 1, 1},
+		{"after the verify", finalizeLockFreeChecks + finalizeCleanAfterVerify, "after the verify", 2, 1},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -233,7 +238,7 @@ func TestFinalizeVerify_RetryMergeInIsBracketedAgain(t *testing.T) {
 		{
 			name: "retry's clean-tree checks run again",
 			setup: func(fx *finalizeVerifyFixture) {
-				fx.gate.fake.dirtyAt(finalizeChecksPerMergeIn+finalizeCleanAfterMergeIn, "retry-stray.txt")
+				fx.gate.fake.dirtyAt(finalizeLockFreeChecks+finalizeChecksPerMergeIn+finalizeCleanAfterMergeIn, "retry-stray.txt")
 			},
 			check: func(t *testing.T, _ *finalizeVerifyFixture, reason string) {
 				if !strings.Contains(reason, "retry-stray.txt") || !strings.Contains(reason, "after the merge-in") {
@@ -250,8 +255,8 @@ func TestFinalizeVerify_RetryMergeInIsBracketedAgain(t *testing.T) {
 
 			reason := requireFinalizeReason(t, shedfake.RequireOutcome(t, fx.fz, shedengine.Stuck))
 			tt.check(t, fx, reason)
-			if res.calls != 2 || len(fx.merger.calls) != 1 || fx.markedDone != 0 {
-				t.Errorf("resolver calls = %d, merge calls = %d, marked done = %d; want 2, 1, 0", res.calls, len(fx.merger.calls), fx.markedDone)
+			if res.calls != 3 || len(fx.merger.calls) != 1 || fx.markedDone != 0 {
+				t.Errorf("resolver calls = %d, merge calls = %d, marked done = %d; want 3, 1, 0", res.calls, len(fx.merger.calls), fx.markedDone)
 			}
 		})
 	}

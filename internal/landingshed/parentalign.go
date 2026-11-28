@@ -234,6 +234,7 @@ func (m *ParentAlign) Call(ctx context.Context) (shedengine.Outcome, shedengine.
 // Deps.ParentAheadByOwed reports that state.
 // A landing lands on top of those tips, so the local tip is the head it compares with.
 // It holds the parent lock through guard only to read the local tip, so the merge itself runs unlocked.
+// Under that lock it first finishes the records of a landing whose mover did not, when a queue is wired.
 // Under that lock it asks again about an owed-ahead parent.
 // It takes the upstream tip when a commit that is no owed landing has arrived since.
 // When front is set, the read waits for the lock at the front of the queue.
@@ -280,6 +281,12 @@ func parentMergeTip(ctx context.Context, deps Deps, guard parentGuard, producer 
 		return "", reason, err
 	}
 	defer guard.release(producer)
+	// A move whose mover did not finish its records is finished before the tip is read.
+	if deps.Queue != nil {
+		if _, err := deps.Queue.Backstop(deps.Backstop); err != nil {
+			return "", "", fmt.Errorf("landingshed: %s: finish an earlier landing's records: %w", producer, err)
+		}
+	}
 	tips, err := deps.ReadParentTips(false)
 	if err != nil {
 		return "", "", fmt.Errorf("landingshed: %s: read the tips of parent branch %q: %w", producer, branch, err)

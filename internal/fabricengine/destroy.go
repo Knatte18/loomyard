@@ -2282,6 +2282,7 @@ type dropLocalPlan struct {
 // Before each move it keeps the branch's local tip under a local `archive/<slug>/<tip>` tag.
 // Only a branch holding commits its origin tracking ref lacks is touched,
 // and a branch with no tracking ref is left alone.
+// A pair whose code worktree is detached is left whole.
 // The gate runs against every branch before any is tagged or moved:
 // a tracked change on a path the move rewrites refuses with those paths named, and nothing is tagged or moved.
 // It also refuses a records branch whose anchor marker is empty.
@@ -2310,7 +2311,8 @@ func DropLocal(rec *Mutations, l *lymcwd.Location, slug string) (res DropLocalRe
 	}
 	var plans []dropLocalPlan
 	for _, target := range targets {
-		if target.prime || target.slug != slug {
+		// A detached pair is left whole: a reset would move its detached HEAD and not the task branch.
+		if target.prime || target.slug != slug || target.detached {
 			continue
 		}
 		repo := gitrepo.New(target.worktree)

@@ -180,8 +180,8 @@ func TestPreMerge_ClearsOwnParkedMergeIn(t *testing.T) {
 		if err != nil || outcome != shedengine.Done {
 			t.Fatalf("Call() = (%q, %q, %v); want Done", outcome, ptr.Reason, err)
 		}
-		if probes != 2 {
-			t.Errorf("merge-state probes = %d; want 2 (one per merge-in pass)", probes)
+		if probes != 3 {
+			t.Errorf("merge-state probes = %d; want 3 (one per merge-in pass)", probes)
 		}
 	})
 }

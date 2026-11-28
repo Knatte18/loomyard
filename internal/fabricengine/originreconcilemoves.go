@@ -428,6 +428,10 @@ func (m *originMover) move(i int, busy string) error {
 			outcome.Anchor = anchor
 		}
 	case fabriccore.MoveFastForward:
+		// A fast-forward acts on HEAD, which a detached code worktree holds off the judged branch.
+		if target.detached {
+			return nil
+		}
 		headBefore, err := gitrepo.New(target.worktree).CurrentSHA()
 		if err != nil {
 			return err

@@ -22,6 +22,7 @@ A term settled that this list lacks is added here, in lym's repository at `inter
 - **gate**: a mechanical check a row's output passes before the run moves on. Never: review.
 - **change description**: the title and body a run lands under. Never: summary, log.
 - **landing**: the merge of a run's task branch into its parent branch, in Finalize. Never: deploy, release.
+- **landing queue**: the runs at Finalize waiting to land on one parent branch, which the parent lock's holder gates and lands together as one batch. Never: merge queue, merge train.
 - **hub**: one repository's worktrees, Bolt checkout, board and agents on a machine.
 - **orch**: the operator's delegate session, which talks with the operator, writes the board and parents runs.
 - **parent**: the session a run's agents ask and report to, the orch or a run above them.

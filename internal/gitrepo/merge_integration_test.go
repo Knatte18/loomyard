@@ -503,6 +503,52 @@ func TestMergePrimitives(t *testing.T) {
 				t.Errorf("CurrentSHA() after failed MergeFFOnly() = %q; want unchanged %q", headAfter, headBefore)
 			}
 		}},
+		{"WriteCommitTree writes a merged tree with the parents and message it is told", func(t *testing.T) {
+			toBase(t)
+			branch := newBranchName()
+			commitOnNewBranch(t, dir, branch, "feature.txt", "feature\n")
+			commitOnMain(t, dir, "main.txt", "main\n")
+			ours := requireCurrentSHA(t, repo)
+			theirs := resolveForTest(t, repo, branch)
+			tree, clean, err := repo.MergeTree(ours, theirs)
+			if err != nil || !clean {
+				t.Fatalf("MergeTree() = clean %t, %v; want a clean merge", clean, err)
+			}
+
+			// log shows format's rendering of commit, without the newline log itself ends it with.
+			show := func(t *testing.T, commit, format string) string {
+				t.Helper()
+
+				stdout, _, code, err := runGit(t, dir, "log", "-1", "--format="+format, commit)
+				if err != nil || code != 0 {
+					t.Fatalf("git log %s = (code %d, %v)", commit, code, err)
+				}
+				return strings.TrimSuffix(stdout, "\n")
+			}
+
+			for _, parents := range [][]string{{ours}, {ours, theirs}} {
+				commit, err := repo.WriteCommitTree(tree, parents, "land feature\n\nLym-Landing: feature")
+				if err != nil {
+					t.Fatalf("WriteCommitTree(%d parents) error = %v; want nil", len(parents), err)
+				}
+				if got, want := show(t, commit, "%P"), strings.Join(parents, " "); got != want {
+					t.Errorf("parents = %q; want %q", got, want)
+				}
+				if got := show(t, commit, "%T"); got != tree {
+					t.Errorf("tree = %q; want %q", got, tree)
+				}
+				if got, want := show(t, commit, "%B"), "land feature\n\nLym-Landing: feature\n"; got != want {
+					t.Errorf("message = %q; want %q", got, want)
+				}
+			}
+			if got := requireCurrentSHA(t, repo); got != ours {
+				t.Errorf("CurrentSHA() after WriteCommitTree = %q; want unchanged %q", got, ours)
+			}
+
+			if _, err := repo.WriteCommitTree("--bad", []string{ours}, "message"); !errors.Is(err, gitrepo.ErrInvalidSHA) {
+				t.Errorf("WriteCommitTree(non-SHA tree) error = %v; want errors.Is(err, ErrInvalidSHA)", err)
+			}
+		}},
 	}
 	for _, step := range steps {
 		if !t.Run(step.name, step.run) {

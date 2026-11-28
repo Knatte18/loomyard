@@ -1,6 +1,6 @@
 // export_test.go exposes test seams and helpers to this package's external tests.
 // They cover the add verb's pair-push seam, the open-PR lookup seam and the run-records paths adapter.
-// They also cover the hub pull runner and the hibernate request reader.
+// They also cover the hub pull runner, the parent lock take and the hibernate request reader.
 
 package fabriccli
 
@@ -46,6 +46,11 @@ func HibernateDaemonLiveForTest(hub string) (bool, error) {
 // HibernateEndedPhasesForTest returns a copy of the request phases the anchor verb reads as ended.
 func HibernateEndedPhasesForTest() []string {
 	return slices.Clone(hibernateEndedPhases)
+}
+
+// AcquireBranchLockForTest takes the parent lock of location's branch the way a fabric verb does.
+func AcquireBranchLockForTest(ctx context.Context, location *lymcwd.Location, boltDir, verb string) (func(), error) {
+	return acquireBranchLock(ctx, location, boltDir, verb)
 }
 
 // RunHubPullForTest runs the hub pull of the acting location l under ctx, so a test can cancel a wait on a parent lock.

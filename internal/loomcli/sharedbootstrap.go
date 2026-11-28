@@ -468,6 +468,7 @@ func statusWindowTitle(location *lymcwd.Location, recipe string) string {
 
 // wireLanding assembles Env.Landing.
 // It opens the fabric, reads the landing branches, and passes the hub's language skills on.
+// It arms a detached task worktree too, so a run's resume reaches the restore of it.
 // It then sets the fixer's seat runner to the seat engine wire built.
 func (c *loomCLI) wireLanding() error {
 	handle, err := fabricengine.Open(c.location)

@@ -327,7 +327,7 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 		tests := []struct {
 			name  string
 			gates []verifytree.Result
-			// wantMerges is how many times the parent is merged into the task: once per pass under the lock.
+			// wantMerges is how many times the parent is merged into the task: per pass, once with no lock and once under it.
 			wantMerges int
 			// wantAttempts is the gate attempts each fixer session gets.
 			wantAttempts []int
@@ -337,14 +337,14 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 			{
 				name:            "a fix that verifies green after the second merge lands",
 				gates:           []verifytree.Result{failing, passing},
-				wantMerges:      2,
+				wantMerges:      4,
 				wantAttempts:    []int{2},
 				wantLineChanges: "t2..f1",
 			},
 			{
 				name:            "a second failed verify spawns the fixer on the attempts left, measured from the merge",
 				gates:           []verifytree.Result{failing, passing, failing, passing},
-				wantMerges:      3,
+				wantMerges:      6,
 				wantAttempts:    []int{2, 1},
 				wantLineChanges: "t2..f1,f1..f2",
 			},
@@ -403,9 +403,10 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 			name string
 			// fixerHead is the task head the fixer's turn leaves.
 			fixerHead string
-			// secondMergeHead is the task head after the second merge, which is a merge commit when it brings parent commits in.
+			// secondMergeHead is the task head after the first merge following the fixer.
+			// It is a merge commit when that merge brings parent commits in.
 			secondMergeHead string
-			// secondMergeUpToDate makes the second merge find the task already holding the parent's tip.
+			// secondMergeUpToDate makes that merge find the task already holding the parent's tip.
 			secondMergeUpToDate bool
 			// headBeforeSecondMerge is a task head that appears between the two passes, as a commit made while the run queued.
 			headBeforeSecondMerge string
@@ -435,14 +436,18 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 				fx := newFinalizeGateFixture(t)
 				g, _, _ := newGuardFixture(t)
 				fx.fz.guard = g
+				// Calls 1 and 2 are the first pass; call 3 merges with no lock after the fixer, and call 4 under it.
 				fx.fz.resolver = &countingResolver{onMerge: func(call int) bool {
-					if call != 2 {
-						return false
+					switch call {
+					case 3:
+						if tt.secondMergeHead != "" {
+							fx.head = tt.secondMergeHead
+						}
+						return tt.secondMergeUpToDate
+					case 4:
+						return true
 					}
-					if tt.secondMergeHead != "" {
-						fx.head = tt.secondMergeHead
-					}
-					return tt.secondMergeUpToDate
+					return false
 				}}
 				if tt.headBeforeSecondMerge != "" {
 					fetches := 0
@@ -450,7 +455,8 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 					fx.fz.deps.ReadParentTips = func(fetch bool) (fabriclayout.ParentTips, error) {
 						if fetch {
 							fetches++
-							if fetches == 2 {
+							// The third fetch opens the pass after the fixer.
+							if fetches == 3 {
 								fx.head = tt.headBeforeSecondMerge
 							}
 						}
@@ -506,7 +512,8 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 	t.Run("an operator's acceptance is kept as the change let through, so a later merge moves the baseline past it", func(t *testing.T) {
 		fx := newFinalizeGateFixture(t)
 		fx.fz.resolver = &countingResolver{onMerge: func(call int) bool {
-			if call == 2 {
+			// Call 3 is the second Call's first merge.
+			if call == 3 {
 				fx.head = "m1"
 			}
 			return false
@@ -573,8 +580,8 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 		if len(heldDuringFix) != 1 || heldDuringFix[0] {
 			t.Errorf("lock held during each fixer session = %v; want one session with the lock freed", heldDuringFix)
 		}
-		if resolver.calls != 3 {
-			t.Errorf("merges of the parent = %d; want 3: the first pass, its retry and the pass after the fixer", resolver.calls)
+		if resolver.calls != 5 {
+			t.Errorf("merges of the parent = %d; want 5: the first pass's two and its retry, then the two of the pass after the fixer", resolver.calls)
 		}
 		if fmt.Sprint(heldAtRecordsCommit) != "[true true]" {
 			t.Errorf("lock held at each parent-records commit = %v; want it held in the first pass and again in the pass after the fixer", heldAtRecordsCommit)

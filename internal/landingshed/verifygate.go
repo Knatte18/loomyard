@@ -146,6 +146,12 @@ func newLandingGate(deps Deps) verifyGate {
 	return gate
 }
 
+// newBatchGate builds the gate of a batch's chain commit from deps.
+// It writes no failure record, so a failure of the chain is never read as the run's own.
+func newBatchGate(deps Deps) verifyGate {
+	return newVerifyGate(deps)
+}
+
 // newVerifyGate copies the gate's told values from deps and wires the real verifytree functions.
 func newVerifyGate(deps Deps) verifyGate {
 	return verifyGate{
@@ -274,18 +280,24 @@ func (g verifyGate) runMarked(ctx context.Context, producer string, site verifyt
 // A gate told onFlakyPass runs a failure once more on the same head when its report lists tier and guard runs alone.
 // It then judges the rerun's result in its place.
 func (g verifyGate) check(ctx context.Context, producer, parentBranch string) (reason string, unjudged bool, err error) {
+	reason, unjudged, _, err = g.checkResult(ctx, producer, parentBranch)
+	return reason, unjudged, err
+}
+
+// checkResult runs the gate as check does and also returns the result it judged, zero when no command ran.
+func (g verifyGate) checkResult(ctx context.Context, producer, parentBranch string) (reason string, unjudged bool, result verifytree.Result, err error) {
 	command, site, ok, err := g.gateCall(producer, "landingshed: post-merge verify skipped because no verify command is configured", "parentBranch", parentBranch)
 	if !ok {
-		return "", false, err
+		return "", false, result, err
 	}
 	g.markWait("")
-	result, err := g.runMarked(ctx, producer, site, command)
+	result, err = g.runMarked(ctx, producer, site, command)
 	if err != nil {
-		return "", false, fmt.Errorf("landingshed: %s: %w", producer, err)
+		return "", false, result, fmt.Errorf("landingshed: %s: %w", producer, err)
 	}
 	if g.onFlakyPass != nil {
 		if result, err = g.rerunTestFailure(ctx, producer, site, command, result); err != nil {
-			return "", false, fmt.Errorf("landingshed: %s: %w", producer, err)
+			return "", false, result, fmt.Errorf("landingshed: %s: %w", producer, err)
 		}
 	}
 	g.recordFailure(result)
@@ -293,7 +305,7 @@ func (g verifyGate) check(ctx context.Context, producer, parentBranch string) (r
 	if reason == "" && err == nil {
 		g.clearFailure()
 	}
-	return reason, result.Status == verifytree.StatusFailed && result.Unjudged(), err
+	return reason, result.Status == verifytree.StatusFailed && result.Unjudged(), result, err
 }
 
 // rerunTestFailure runs the failed verify first once more on the same head and returns the result the gate judges.

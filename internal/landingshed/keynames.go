@@ -21,7 +21,7 @@ const (
 	forbiddenTermsKey           = "describe_forbidden_terms"
 	describeReviewKey           = "describe_review"
 	describeReviewTimeoutMinKey = "describe_review_timeout_min"
-	finalizeLostRacesKey        = "finalize_lost_races"
+	batchMaxKey                 = "batch_max"
 )
 
 // beamPullRequestName returns the full name of the beam key that decides how a landing goes.

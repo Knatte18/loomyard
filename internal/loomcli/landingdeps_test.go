@@ -43,7 +43,9 @@ import (
 // so a field added later is caught automatically rather than silently passing.
 //
 //testtiming:keep drift guard walking every landingshed.Deps field by reflection so a field added later must be populated; the covering mark-done test populates only the fields it uses
+//lym:seam internal/landingqueue#BackstopSeams
 //lym:seam internal/landingshed#Deps
+//lym:seam internal/landingshed#DetachDeps
 //lym:seam internal/landingshed#PullRequestDeps
 func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -145,6 +147,20 @@ func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 		}
 		if field.IsZero() {
 			t.Errorf("landingDeps(...).%s is the zero value; want it populated", typ.Field(i).Name)
+		}
+	}
+
+	backstop := reflect.ValueOf(deps.Backstop)
+	for i := 0; i < backstop.NumField(); i++ {
+		if backstop.Field(i).IsZero() {
+			t.Errorf("landingDeps(...).Backstop.%s is the zero value; want it populated", backstop.Type().Field(i).Name)
+		}
+	}
+
+	detach := reflect.ValueOf(deps.Detach)
+	for i := 0; i < detach.NumField(); i++ {
+		if detach.Field(i).IsZero() {
+			t.Errorf("landingDeps(...).Detach.%s is the zero value; want it populated", detach.Type().Field(i).Name)
 		}
 	}
 

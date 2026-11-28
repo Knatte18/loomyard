@@ -88,6 +88,14 @@ const IgnoreCheckDirName = "ignore-check"
 // The record keeps when each orphan was first noticed, so a dobby restart neither resets nor skips its grace.
 const OrphanDirName = "orphan"
 
+// LandingQueueDirName is the directory under the hub's board-level `.lym` that holds the landing queue.
+// It holds one directory per parent branch, with one entry per queued run and at most one move mark.
+const LandingQueueDirName = "landing-queue"
+
+// DetachMarkerName is the file under a worktree's `.lym` that names the task branch the worktree is detached from.
+// It is a never-tracked cache, and an absent one reads as none.
+const DetachMarkerName = "detach-marker"
+
 // BeamDirName is the directory under a worktree's `.lym` that holds dobby's lock, state record and markers.
 const BeamDirName = "beam"
 

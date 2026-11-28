@@ -26,6 +26,7 @@
 // Every refusal names its way forward, as contracts/specs/refusal-spec.md defines one.
 // The told Shed.LockedCheck runs under the run lock before the status file is read;
 // a refusal wraps ErrLockedCheckRefused and leaves the status file untouched.
+// The told Shed.Restore runs next, and a refused restore is a blocked halt for an unmet precondition.
 //
 // # goto: a history-only outcome that moves a halted run
 //

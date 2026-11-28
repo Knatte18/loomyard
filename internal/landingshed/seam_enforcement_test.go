@@ -27,6 +27,7 @@ var landingshedAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/fabriclayout",
 	"github.com/Knatte18/loomyard/internal/gateslot",
 	"github.com/Knatte18/loomyard/internal/githubclient",
+	"github.com/Knatte18/loomyard/internal/landingqueue",
 	"github.com/Knatte18/loomyard/internal/mergeresolve",
 	"github.com/Knatte18/loomyard/internal/modelspec",
 	"github.com/Knatte18/loomyard/internal/parentlock",

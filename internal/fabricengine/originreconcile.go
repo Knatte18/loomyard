@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
@@ -298,10 +299,14 @@ type originTarget struct {
 	slug         string
 	prime        bool
 	tracking     string
+	// detached reports that the code worktree is detached under a detach marker, whose branch the code target names.
+	detached bool
 }
 
 // originTargets lists the branches of the scope that have an origin tracking ref.
 // A branch never pushed has no origin head to judge against.
+// A detached code worktree is listed under the branch its detach marker names.
+// One with no marker, or whose marker cannot be read, is left out with its records branch.
 // It also returns the slug of every pair the scope covers, for classifying their entries.
 // The repository directories the network calls run in are returned as well.
 // A run scope whose task worktree is not registered refuses, unless `scope.PairMayBeAbsent` is set.
@@ -352,7 +357,22 @@ func originTargets(l *lymcwd.Location, scope fabriclayout.ReconcileScope) (targe
 		if entry.Main {
 			warpDir = filepath.FromSlash(entry.Path)
 		}
-		if entry.Prunable || entry.Branch == "" || entry.Branch == detachedBranch || !wanted(entry) {
+		if entry.Prunable || entry.Branch == "" {
+			continue
+		}
+		detached := entry.Branch == detachedBranch
+		if detached {
+			// Any detached worktree of the repository lands here, so one that cannot be read fails no reconcile.
+			_, branch, marked, err := markedWorktree(filepath.FromSlash(entry.Path))
+			if err != nil {
+				logger.Warn("fabricengine: a detached worktree's marker cannot be read, so its branches are not judged", "worktree", entry.Path, "cause", err)
+			}
+			if err != nil || !marked {
+				continue
+			}
+			entry.Branch = branch
+		}
+		if !wanted(entry) {
 			continue
 		}
 		worktree := filepath.FromSlash(entry.Path)
@@ -362,11 +382,11 @@ func originTargets(l *lymcwd.Location, scope fabriclayout.ReconcileScope) (targe
 			slug = name
 			pairs = append(pairs, slug)
 		}
-		targets = append(targets, originTarget{side: fabriclayout.RepoCode, branch: entry.Branch, worktree: worktree, codeWorktree: worktree, slug: slug, prime: entry.Main})
+		targets = append(targets, originTarget{side: fabriclayout.RepoCode, branch: entry.Branch, worktree: worktree, codeWorktree: worktree, slug: slug, prime: entry.Main, detached: detached})
 
 		sibling := RecordsWorktreePath(l, name)
 		if i := slices.IndexFunc(recordsEntries, func(candidate fabriclayout.WorktreeEntry) bool { return samePath(candidate.Path, sibling) }); i >= 0 && recordsEntries[i].Branch != "" {
-			targets = append(targets, originTarget{side: fabriclayout.RepoRecords, branch: recordsEntries[i].Branch, worktree: sibling, codeWorktree: worktree, slug: slug, prime: entry.Main})
+			targets = append(targets, originTarget{side: fabriclayout.RepoRecords, branch: recordsEntries[i].Branch, worktree: sibling, codeWorktree: worktree, slug: slug, prime: entry.Main, detached: detached})
 		}
 	}
 
@@ -404,6 +424,8 @@ func samePath(porcelain, built string) bool {
 // It holds each repository's remote-refs lock from the ls-remote through the branch verdicts,
 // so no push's tracking-ref write lands between them and a push in flight is never judged a rewind.
 // It returns the verdict on each branch, and on each entry whose pair has a batten run record.
+// A pair whose code worktree is detached under a detach marker is judged by the marker's branch,
+// and no move touches its code branch.
 // It reads the ended set and tears down, through the seam, the local pair of each run origin has ended.
 // That happens before any branch moves.
 // A judge-only scope reports those teardowns and runs none.

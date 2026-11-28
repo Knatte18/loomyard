@@ -35,16 +35,29 @@
 // The task worktree must be clean before and after each merge and after the verify;
 // a dirty tree is Stuck naming the paths, so nothing uncommitted is merged over or reviewed.
 //
-// Finalize first merges the parent's tip into the task worktree and gates the merged tree with no parent lock held.
-// It then takes the parent lock through the shared guard.
+// Finalize first merges the parent's tip into the task worktree with no parent lock held and runs no gate there.
 // It runs the owner checks before that lock-free merge, and again under the lock.
-// It lands only while the parent's head is the tip that pass merged.
-// That pass merges the upstream tip, or the local tip of a parent ahead of its upstream by owed landing tips alone.
+// The lock-free merge takes the upstream tip.
+// For a parent ahead of its upstream by owed landing tips alone, it takes the local tip instead.
 // A landing known to need GitHub merges the upstream tip of an owed-ahead parent too.
-// A parent that moved frees the lock, and the merge and the gate run again with no lock held.
-// Finalize merges and gates under the lock after `landing.finalize_lost_races` lost races.
-// It does so too for a parent that already holds the task's work.
-// It holds the lock until every way out of its locked pass, and it re-reads the lock record before each landing attempt.
+// A parent that already holds the task's work gets no lock-free merge.
+// It then writes the run's entry in the parent branch's landing queue and takes the parent lock through the shared guard.
+// A landing that needs GitHub writes no entry.
+// Under the lock it first runs the backstop, which writes the ledger landings that a move still owes.
+// Such a move is one whose mover ended before it recorded them.
+// A holder whose entry has no outcome, and whose work the parent does not hold, leads a batch of the queued runs.
+// A run whose current entry holds a fixer change neither leads a batch nor lands in one.
+// An entry with no outcome gets the failed one before its run's own fixer or fix review runs,
+// so no leader takes the run meanwhile.
+// The leader builds one chain of landing commits and gates it with its task worktree detached at the chain's tip.
+// It bisects a failed gate to the run that fails it, and moves the parent over the passing runs with one fast-forward.
+// A run woken with an outcome acts on it.
+// A landed run finishes its landing without merging or gating.
+// A failed run merges, gates and lands alone under the lock, with its own fixer.
+// A run with a conflict frees the lock and merges unlocked before it lands alone.
+// A run that lands alone merges the parent again and gates the merged tree under the lock.
+// Finalize holds the lock until every way out of its locked pass.
+// It re-reads the lock record before each landing attempt.
 // A record that does not name the run, or an unreadable one, is Stuck with Halt.
 // Finalize merges the parent branch into the task worktree first and then merges the task branch into the parent pair.
 // It lands on a parent ahead of its upstream by landing tips whose push is still owed, and on no other ahead parent.

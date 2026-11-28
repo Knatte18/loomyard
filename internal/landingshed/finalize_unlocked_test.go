@@ -1,4 +1,4 @@
-// finalize_unlocked_test.go drives Finalize's lock-free merge and gate and its race with a parent that moves.
+// finalize_unlocked_test.go drives Finalize's lock-free merge and its gate under the parent lock.
 // It runs over the gate fixture and a real parentlock.Store.
 
 package landingshed
@@ -10,7 +10,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/Knatte18/loomyard/internal/beamsetting"
 	"github.com/Knatte18/loomyard/internal/fabriclayout"
@@ -18,7 +17,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
-	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
 // tipRecordingResolver records the tip of every merge of the parent and answers each as merged.
@@ -28,6 +26,8 @@ type tipRecordingResolver struct {
 	local *string
 	// merged is the parent commit the last merge brought in.
 	merged string
+	// onResolve, when set, runs at each call with its number, counted from one.
+	onResolve func(call int)
 }
 
 func (r *tipRecordingResolver) Resolve(_ context.Context, _, tip string) (mergeresolve.Result, error) {
@@ -36,45 +36,49 @@ func (r *tipRecordingResolver) Resolve(_ context.Context, _, tip string) (merger
 	if tip == "" && r.local != nil {
 		r.merged = *r.local
 	}
+	if r.onResolve != nil {
+		r.onResolve(len(r.tips))
+	}
 	return resolved(false), nil
 }
 
-// TestFinalize_GatesWithNoLockAndLocksToLand pins which merges and gates run with the parent lock held.
-// The merge and the gate run with no lock, and the locked pass lands while the parent's head is the tip they merged.
-// The locked pass then verifies nothing, since the tree it merges has passed already.
-// A parent that moved before the lock is merged and gated again with no lock until the lost-race bound is spent.
-// It is then merged and gated under the lock.
-// A bound of 0 and a parent already holding the task's work merge and gate under the lock alone.
-// A local parent behind its upstream is fast-forwarded before its head is compared with the gated tip.
-// A local parent ahead of its upstream by owed landing tips alone is gated at its local head.
-func TestFinalize_GatesWithNoLockAndLocksToLand(t *testing.T) {
+// TestFinalize_MergesWithNoLockAndGatesUnderTheLock pins which merges and gates run with the parent lock held.
+// The parent's tip is merged with no lock, and under the lock the parent is merged again and the merged tree gated.
+// A parent that moved during the lock-free merge is brought in by the merge under the lock.
+// A parent already holding the task's work is merged under the lock alone.
+// A local parent behind its upstream is fast-forwarded under the lock.
+// A local parent ahead of its upstream by owed landing tips alone is merged at its local head.
+// Parent commits the lock-free merge brings onto a fixer's let-through change are not counted as the fixer's.
+func TestFinalize_MergesWithNoLockAndGatesUnderTheLock(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
-		name      string
-		lostRaces int
-		held      bool
+		name string
+		held bool
 		// behind makes the local parent p0 sit behind its upstream u1 until the parent pair is fast-forwarded.
 		behind bool
 		// owedAhead makes the local parent p1 sit ahead of its upstream u0 by landing tips whose push is owed.
 		owedAhead bool
-		// movesAt lists the verify calls, counted from one, during which another landing moves the parent.
-		movesAt []int
-		// wantLockAtVerify is whether the run held the parent lock at each verify of a tree not verified before, in order.
-		wantLockAtVerify []bool
+		// moves makes another landing move the parent to p2 during the first merge of the parent.
+		moves bool
+		// fixed seeds a fixer's change let through at the task head, which the first merge of the parent moves on.
+		fixed bool
 		// wantTips is the tip of each merge of the parent, in order; "" merges the local parent branch.
 		wantTips []string
+		// wantLockAtMerge is whether the run held the parent lock at each merge of the parent.
+		wantLockAtMerge []bool
+		// wantMerged is the parent commit the last merge brought in.
+		wantMerged string
 		// wantParentCalls is what the parent pair was asked to do, in order.
 		wantParentCalls []string
 	}{
-		{name: "an unmoved parent lands on the tree gated with no lock", lostRaces: 2, wantLockAtVerify: []bool{false}, wantTips: []string{"p1", ""}, wantParentCalls: []string{"merge"}},
-		{name: "a parent that moved before the lock is merged and gated again with no lock", lostRaces: 2, movesAt: []int{1}, wantLockAtVerify: []bool{false, false}, wantTips: []string{"p1", "p2", ""}, wantParentCalls: []string{"merge"}},
-		{name: "a spent lost-race bound merges and gates under the lock", lostRaces: 1, movesAt: []int{1}, wantLockAtVerify: []bool{false, true}, wantTips: []string{"p1", ""}, wantParentCalls: []string{"merge"}},
-		{name: "a bound of 0 merges and gates under the lock from the start", wantLockAtVerify: []bool{true}, wantTips: []string{""}, wantParentCalls: []string{"merge"}},
-		{name: "a parent already holding the work merges and gates under the lock", lostRaces: 2, held: true, wantLockAtVerify: []bool{true}, wantTips: []string{""}, wantParentCalls: []string{"merge"}},
-		{name: "a parent behind its upstream is fast-forwarded to the gated tip", lostRaces: 2, behind: true, wantLockAtVerify: []bool{false}, wantTips: []string{"u1", ""}, wantParentCalls: []string{"fast-forward", "merge"}},
-		{name: "a parent ahead by owed landing tips lands on its local head gated with no lock", lostRaces: 2, owedAhead: true, wantLockAtVerify: []bool{false}, wantTips: []string{"p1", ""}, wantParentCalls: []string{"merge"}},
+		{name: "an unmoved parent is merged with no lock and gated under it", wantTips: []string{"p1", ""}, wantLockAtMerge: []bool{false, true}, wantMerged: "p1", wantParentCalls: []string{"merge"}},
+		{name: "a parent that moved during the lock-free merge is merged in under the lock", moves: true, wantTips: []string{"p1", ""}, wantLockAtMerge: []bool{false, true}, wantMerged: "p2", wantParentCalls: []string{"merge"}},
+		{name: "a parent already holding the work runs no lock-free merge", held: true, wantTips: []string{""}, wantLockAtMerge: []bool{true}, wantMerged: "p1", wantParentCalls: []string{"merge"}},
+		{name: "a parent behind its upstream is merged at the upstream tip and fast-forwarded", behind: true, wantTips: []string{"u1", ""}, wantLockAtMerge: []bool{false, true}, wantMerged: "u1", wantParentCalls: []string{"fast-forward", "merge"}},
+		{name: "a parent ahead by owed landing tips is merged at its local head", owedAhead: true, wantTips: []string{"p1", ""}, wantLockAtMerge: []bool{false, true}, wantMerged: "p1", wantParentCalls: []string{"merge"}},
+		{name: "parent commits of the lock-free merge are not the fixer's change", fixed: true, wantTips: []string{"p1", ""}, wantLockAtMerge: []bool{false, true}, wantMerged: "p1", wantParentCalls: []string{"merge"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -85,7 +89,6 @@ func TestFinalize_GatesWithNoLockAndLocksToLand(t *testing.T) {
 				parent = "p0"
 				fx.merger.onFastForward = func() { parent = "u1" }
 			}
-			fx.fz.deps.Config.FinalizeLostRaces = tt.lostRaces
 			fx.fz.deps.ReadParentTips = func(bool) (fabriclayout.ParentTips, error) {
 				switch {
 				case tt.behind:
@@ -100,46 +103,49 @@ func TestFinalize_GatesWithNoLockAndLocksToLand(t *testing.T) {
 			fx.merger.preMergeHeadSHA = &parent
 			var parentCalls []string
 			fx.merger.order = &parentCalls
-			res := &tipRecordingResolver{local: &parent}
-			fx.fz.resolver = res
 			fx.fz.guard = newParentGuard(fx.deps)
 			lockHeld := func() bool {
 				record, found, _ := fx.deps.Lock.Store.Read("main")
 				return found && record.Owner.Slug == "me"
 			}
-			var lockAtVerify []bool
-			// gateAskedUnderLock records a gate call with the lock held, whether it verified or skipped the tree.
-			gateAskedUnderLock := false
-			verified := map[string]bool{}
-			fx.gate.fake.onVerify = func() {
-				gateAskedUnderLock = gateAskedUnderLock || lockHeld()
-				// The verified tree is named by the parent commit merged into it, and a tree that passed is skipped.
-				if verified[res.merged] {
-					fx.gate.fake.result = verifytree.Result{Status: verifytree.StatusSkipped}
-					return
-				}
-				verified[res.merged] = true
-				fx.gate.fake.result = verifytree.Result{Status: verifytree.StatusPassed}
-				lockAtVerify = append(lockAtVerify, lockHeld())
-				if slices.Contains(tt.movesAt, fx.gate.fake.verifyCalls) {
+			if tt.fixed {
+				fx.seed(t, FixerAttempts{Entry: fx.entry, Baseline: "t0", Judged: fx.head})
+			}
+			var lockAtMerge []bool
+			res := &tipRecordingResolver{local: &parent}
+			res.onResolve = func(call int) {
+				lockAtMerge = append(lockAtMerge, lockHeld())
+				if call == 1 && tt.moves {
 					parent = "p2"
 				}
+				if call == 1 && tt.fixed {
+					fx.head = "t3"
+				}
 			}
+			fx.fz.resolver = res
+			var lockAtVerify []bool
+			fx.gate.fake.onVerify = func() { lockAtVerify = append(lockAtVerify, lockHeld()) }
 
 			outcome, ptr := fx.call(t)
 
 			fx.requireLanded(t, outcome, ptr)
-			if !gateAskedUnderLock {
-				t.Error("the locked pass never ran the gate over its merged tree")
-			}
-			if !slices.Equal(lockAtVerify, tt.wantLockAtVerify) {
-				t.Errorf("lock held at each verify = %v; want %v", lockAtVerify, tt.wantLockAtVerify)
+			if want := []bool{true}; !slices.Equal(lockAtVerify, want) {
+				t.Errorf("lock held at each verify = %v; want %v", lockAtVerify, want)
 			}
 			if !slices.Equal(res.tips, tt.wantTips) {
 				t.Errorf("merged parent tips = %q; want %q", res.tips, tt.wantTips)
 			}
+			if !slices.Equal(lockAtMerge, tt.wantLockAtMerge) {
+				t.Errorf("lock held at each merge = %v; want %v", lockAtMerge, tt.wantLockAtMerge)
+			}
+			if res.merged != tt.wantMerged {
+				t.Errorf("last merged parent commit = %q; want %q", res.merged, tt.wantMerged)
+			}
 			if !slices.Equal(parentCalls, tt.wantParentCalls) {
 				t.Errorf("parent pair calls = %q; want %q", parentCalls, tt.wantParentCalls)
+			}
+			if len(fx.lineChangeCalls) != 0 {
+				t.Errorf("fixer change reads = %q; want none", fx.lineChangeCalls)
 			}
 			if lockHeld() {
 				t.Error("the lock outlived the landed Finalize")
@@ -171,7 +177,6 @@ func TestFinalize_LockFreePassMergesTheUpstreamTipOfAnAheadParent(t *testing.T) 
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			fx := newFinalizeGateFixture(t)
-			fx.fz.deps.Config.FinalizeLostRaces = 2
 			fx.fz.deps.ReadParentTips = func(bool) (fabriclayout.ParentTips, error) {
 				return fabriclayout.ParentTips{Local: "p1", Upstream: "u0", Relation: fabriclayout.ParentAhead}, nil
 			}
@@ -199,78 +204,8 @@ func TestFinalize_LockFreePassMergesTheUpstreamTipOfAnAheadParent(t *testing.T) 
 	}
 }
 
-// TestFinalize_QueuesAtTheFrontAfterALostRace pins the queue place of every lock wait of a run that lost a race.
-// Another run holds the lock at each of the run's acquires, so each one waits with a ticket.
-func TestFinalize_QueuesAtTheFrontAfterALostRace(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	tests := []struct {
-		name        string
-		pushSkipped bool
-		// wantFronts is whether each lock wait queued at the front, in order.
-		wantFronts []bool
-	}{
-		{"the locked pass after a lost race", false, []bool{false, true}},
-		{"the local tip read and the locked pass after a lost race", true, []bool{false, false, true, true}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			fx := newFinalizeGateFixture(t)
-			parent := "p1"
-			fx.fz.deps.PushSkipped = tt.pushSkipped
-			fx.fz.deps.Config.FinalizeLostRaces = 2
-			fx.fz.deps.ReadParentTips = func(bool) (fabriclayout.ParentTips, error) {
-				return fabriclayout.ParentTips{Local: parent, Upstream: parent, Relation: fabriclayout.ParentEqual}, nil
-			}
-			fx.merger.preMergeHeadSHA = &parent
-			fx.fz.resolver = &tipRecordingResolver{}
-
-			store := fx.deps.Lock.Store
-			other := parentlock.Owner{Slug: "other", Pair: "/p/other", RunID: "r2", PID: 111, StartTime: "t1"}
-			contend := func() {
-				if _, found, _ := store.Read("main"); found {
-					return
-				}
-				if _, err := store.TryAcquire("main", other); err != nil {
-					t.Errorf("take the lock for the other run: %v", err)
-				}
-			}
-			var fronts []bool
-			fx.fz.guard = newParentGuard(fx.deps)
-			fx.fz.guard.sleep = func(context.Context, time.Duration) error {
-				entries, err := store.List()
-				if err != nil || len(entries) != 1 || len(entries[0].Waiters) != 1 {
-					t.Errorf("List() = %+v, %v; want one record with one waiter", entries, err)
-				} else {
-					fronts = append(fronts, entries[0].Waiters[0].Front)
-				}
-				_, err = store.Release("main", other)
-				return err
-			}
-			fx.fz.deps.ParentHoldsTaskWork = func() (bool, error) {
-				contend()
-				return false, nil
-			}
-			fx.gate.fake.onVerify = func() {
-				contend()
-				if fx.gate.fake.verifyCalls == 1 {
-					parent = "p2"
-				}
-			}
-
-			outcome, ptr := fx.call(t)
-
-			fx.requireLanded(t, outcome, ptr)
-			if !slices.Equal(fronts, tt.wantFronts) {
-				t.Errorf("front of each lock wait = %v; want %v", fronts, tt.wantFronts)
-			}
-		})
-	}
-}
-
-// TestFinalize_LockFreePassStops pins how a failing lock-free pass, or a failing compare after it, ends the call.
+// TestFinalize_LockFreePassStops pins how a failing lock-free merge ends the call.
+// It pins the same for a failing step before the parent-side merge.
 // A run this machine may not land halts before anything is merged into its worktree.
 func TestFinalize_LockFreePassStops(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -386,18 +321,11 @@ func TestFinalize_LockFreePassStops(t *testing.T) {
 			wantHalt: []string{LandingStopPrefix, injected.Error()},
 			wantTips: []string{"u0"},
 		},
-		{
-			name:      "a failed read of the parent's head under the lock",
-			configure: func(_ *testing.T, fx *finalizeGateFixture) { fx.merger.headErr = injected },
-			wantError: `read the head of parent branch "main"`,
-			wantTips:  []string{testParentTip},
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			fx := newFinalizeGateFixture(t)
-			fx.fz.deps.Config.FinalizeLostRaces = 2
 			res := &tipRecordingResolver{}
 			fx.fz.resolver = res
 			tt.configure(t, fx)
@@ -424,44 +352,5 @@ func TestFinalize_LockFreePassStops(t *testing.T) {
 				t.Errorf("parent-side merges = %d; want none", len(fx.merger.calls))
 			}
 		})
-	}
-}
-
-// TestFinalize_FixerInTheLockFreePass pins a gate that fails with no lock held.
-// The fixer runs with no lock and reads the merged parent tip from the merge record, and its fixed tree lands.
-func TestFinalize_FixerInTheLockFreePass(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	fx := newFinalizeGateFixture(t)
-	fx.fz.deps.Config.FinalizeLostRaces = 2
-	fx.fz.deps.ReadParentTips = func(bool) (fabriclayout.ParentTips, error) {
-		return fabriclayout.ParentTips{Local: "p1", Upstream: "p1", Relation: fabriclayout.ParentEqual}, nil
-	}
-	fx.merger.preMergeHeadSHA = stringPointer("p1")
-	fx.fz.guard = newParentGuard(fx.deps)
-	fx.lineChange = fabriclayout.LineChange{Lines: 3, Paths: []string{"a/a.go"}}
-	fx.scriptGate(verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1}, verifytree.Result{Status: verifytree.StatusPassed})
-	sessions := 0
-	fx.seats.turns = []func(){func() {
-		sessions++
-		if _, found, err := fx.deps.Lock.Store.Read("main"); found || err != nil {
-			t.Errorf("lock record at the fixer's spawn: found %v, error %v; want none", found, err)
-		}
-		record, _, err := ReadMergeRecord(fx.deps.MergeRecordPath)
-		if err != nil || record.MergedTip != "p1" {
-			t.Errorf("merge record at the fixer's spawn = %+v, %v; want merged tip p1", record, err)
-		}
-		fx.turn(t, fixedReport, "f1")()
-	}}
-
-	outcome, ptr := fx.call(t)
-
-	fx.requireLanded(t, outcome, ptr)
-	if sessions != 1 {
-		t.Errorf("fixer sessions = %d; want 1", sessions)
-	}
-	if _, found, _ := fx.deps.Lock.Store.Read("main"); found {
-		t.Error("the lock outlived the landed Finalize")
 	}
 }

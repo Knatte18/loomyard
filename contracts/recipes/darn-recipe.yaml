@@ -302,11 +302,9 @@ producers:
     engine: PRReview
     on_done: Finalize
 
-  # Finalize merges the parent into the task branch and runs the landing gate and the merge fixer with no parent lock held,
-  # then takes the lock, lands on the parent only while its head is still the tip it gated,
-  # and releases the lock on every way out.
-  # After landing.finalize_lost_races lost races, and over a parent already holding the work,
-  # it merges and gates under the lock.
+  # Finalize merges the parent into the task branch with no parent lock held, then waits in the parent lock's queue,
+  # and the lock's holder gates and lands up to landing.batch_max queued runs together.
+  # The lock is released on every way out.
   # An over-cap fixer change goes to Finalize's own fix review, whose findings the fixer fixes in place
   # until the review approves or its rounds run out and Finalize halts for the operator; Finalize never
   # reroutes, and a conflict or a large merge lands through the gate.

@@ -148,8 +148,9 @@
 // A rejected push of the prime's records reads the takeover entry of every batten run a local unpushed commit names.
 // It returns a `*TakeoversError` for the runs taken over, or an error wrapping `ErrTakeoverPassOwed` when a read failed.
 // A run this machine handed over joins the replay's `EndedSet` as `EndedHandedOver`, so its commits are set aside.
-// `RunCommitsAhead`, `RefusedPushStands` and `TipsOnOrigin` read local refs and failed-push records only.
-// They judge whether a prime or a pair still owes origin a push, with no network call.
+// `RunCommitsAhead`, `RefusedPushStands` and `TipsOnOrigin` read local state alone.
+// That state is the local refs, the failed-push records and the worktree's detach marker.
+// From it they judge whether a prime or a pair still owes origin a push, with no network call.
 //
 // **Push classification.** Every push per side goes through `pushClassified`.
 // A branch origin no longer has is not pushed, so a parked push never recreates a branch landed or deleted elsewhere.

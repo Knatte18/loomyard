@@ -54,6 +54,7 @@ var gitrepoPinnedRunBoundMethods = []string{
 	"ConflictedFiles",
 	"MergeHeadPresent",
 	"MergeTree",
+	"WriteCommitTree",
 	"MergeFFOnly",
 	"StageResolved",
 	"StageTrackedChanges",

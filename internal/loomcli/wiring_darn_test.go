@@ -50,7 +50,9 @@ const wantDarnWriteCall = "lym gate test --wait --gate darn-write --stop-on-fail
 //lym:seam internal/driftengine#Deps
 //lym:seam internal/driftengine#Paths
 //lym:seam internal/landingshed#Config
+//lym:seam internal/landingqueue#BackstopSeams
 //lym:seam internal/landingshed#Deps
+//lym:seam internal/landingshed#DetachDeps
 //lym:seam internal/landingshed#ParentLockDeps
 //lym:seam internal/landingshed#PullRequestDeps
 //lym:seam internal/loomshed#DarnDeps
@@ -544,7 +546,9 @@ func TestWire_DarnRecipe(t *testing.T) {
 //lym:seam internal/driftengine#Deps
 //lym:seam internal/driftengine#Paths
 //lym:seam internal/landingshed#Config
+//lym:seam internal/landingqueue#BackstopSeams
 //lym:seam internal/landingshed#Deps
+//lym:seam internal/landingshed#DetachDeps
 //lym:seam internal/landingshed#ParentLockDeps
 //lym:seam internal/landingshed#PullRequestDeps
 //lym:seam internal/loomshed#DarnDeps

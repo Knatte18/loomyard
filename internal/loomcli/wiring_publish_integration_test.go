@@ -13,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -31,7 +32,9 @@ import (
 // It also fills the PR-Review session's liveness and registration seams.
 // A sampler seed fills the Sampler-Session row's seams: the session, liveness, registration and record watch ones.
 // A darn seed leaves them nil.
-// The rows share one hub copy and run in order, since wire and wireLanding only read the hub.
+// Over a task worktree on a detached HEAD, with its detach marker and without, wireLanding still reads the task branch.
+// Those rows share one hub copy and run in order, since wire and wireLanding only read the hub;
+// each detached row detaches a copy of its own.
 func TestWireLanding_FillsTheLandingSeamsPerRecipe(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -84,6 +87,35 @@ func TestWireLanding_FillsTheLandingSeamsPerRecipe(t *testing.T) {
 			unset := sampler.Sessions == nil && sampler.SessionLive == nil && sampler.RegisterSession == nil && sampler.Watch == nil
 			if tt.wantSet && !set || !tt.wantSet && !unset {
 				t.Errorf("after wireLanding of a %s seed: Sessions nil = %v, SessionLive nil = %v, RegisterSession nil = %v, Watch nil = %v; want them set = %v", tt.recipe, sampler.Sessions == nil, sampler.SessionLive == nil, sampler.RegisterSession == nil, sampler.Watch == nil, tt.wantSet)
+			}
+		})
+	}
+
+	for name, marked := range map[string]bool{"a detached pair with its marker": true, "a detached pair with no marker": false} {
+		t.Run(name, func(t *testing.T) {
+			detached := hubforge.CopyHub(t, pairHubShape)
+			pair, err := lymcwd.ResolveWorktree(detached.PairCodeWorktree(hubforge.TemplatePairSlug))
+			if err != nil {
+				t.Fatalf("ResolveWorktree error = %v; want nil", err)
+			}
+			branch := gitkit.CurrentBranch(t, pair.WorktreePath())
+			gitkit.Git(t, pair.WorktreePath(), "checkout", "-q", "--detach")
+			if marked {
+				if err := fabricengine.WriteDetachMarker(pair, branch); err != nil {
+					t.Fatalf("WriteDetachMarker: %v", err)
+				}
+			}
+
+			c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeTapestry}
+			if err := c.wire(pair, pair.AnchorPath()); err != nil {
+				t.Fatalf("wire() = %v; want nil", err)
+			}
+			if err := c.wireLanding(); err != nil {
+				t.Fatalf("wireLanding() = %v; want nil", err)
+			}
+
+			if got := c.env.Landing.TaskBranch; got != branch {
+				t.Errorf("env.Landing.TaskBranch = %q; want %q", got, branch)
 			}
 		})
 	}

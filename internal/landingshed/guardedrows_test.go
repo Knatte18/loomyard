@@ -53,6 +53,8 @@ func TestGuardedRows_PausedLockWaitHalts(t *testing.T) {
 		t.Run(row.name, func(t *testing.T) {
 			deps := newTestDeps(t)
 			deps.Lock.PauseRequested = func() (bool, error) { return true, nil }
+			// With pushes off the parent tip is read under the lock, so the pause meets the row's first lock wait.
+			deps.PushSkipped = true
 			if _, err := deps.Lock.Store.TryAcquire("main", guardedOwnerOther); err != nil {
 				t.Fatal(err)
 			}

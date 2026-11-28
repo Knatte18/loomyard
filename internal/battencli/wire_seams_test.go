@@ -117,6 +117,23 @@ var intentionallyNil = map[string]string{
 	"Landing.TaskRemoteTip":               "loom-only seam, batten lands no branch",
 	"Landing.IsAncestor":                  "loom-only seam, batten lands no branch",
 	"Landing.CodeReviewOff":               "loom-only seam, batten lands no branch",
+	"Landing.Queue":                       "loom-only seam, batten lands no branch",
+	"Landing.RecordsHead":                 "loom-only seam, batten lands no branch",
+	"Landing.NewestLanding":               "loom-only seam, batten lands no branch",
+	"Landing.MergesClean":                 "loom-only seam, batten lands no branch",
+	"Landing.Backstop.ParentHolds":        "loom-only seam, batten lands no branch",
+	"Landing.Backstop.UpstreamLacks":      "loom-only seam, batten lands no branch",
+	"Landing.Backstop.WriteLanding":       "loom-only seam, batten lands no branch",
+	"Landing.DetachState":                 "loom-only seam, batten lands no branch",
+	"Landing.MemberDeps":                  "loom-only seam, batten lands no branch",
+	"Landing.WriteLedgerLanding":          "loom-only seam, batten lands no branch",
+	"Landing.RecordsToHold":               "loom-only seam, batten lands no branch",
+	"Landing.BuildChain":                  "loom-only seam, batten lands no branch",
+	"Landing.FirstParent":                 "loom-only seam, batten lands no branch",
+	"Landing.Detach.WriteMarker":          "loom-only seam, batten lands no branch",
+	"Landing.Detach.RemoveMarker":         "loom-only seam, batten lands no branch",
+	"Landing.Detach.Checkout":             "loom-only seam, batten lands no branch",
+	"Landing.Detach.Restore":              "loom-only seam, batten lands no branch",
 	"Landing.PullRequest.Mode":            "loom-only seam, batten lands no branch",
 	"Landing.PullRequest.Origin":          "loom-only seam, batten lands no branch",
 	"Landing.PullRequest.API":             "loom-only seam, batten lands no branch",
@@ -238,7 +255,9 @@ var intentionallyNil = map[string]string{
 //lym:seam internal/driftengine#Deps
 //lym:seam internal/driftengine#Paths
 //lym:seam internal/landingshed#Config
+//lym:seam internal/landingqueue#BackstopSeams
 //lym:seam internal/landingshed#Deps
+//lym:seam internal/landingshed#DetachDeps
 //lym:seam internal/landingshed#ParentLockDeps
 //lym:seam internal/landingshed#PullRequestDeps
 //lym:seam internal/loomshed#DarnDeps

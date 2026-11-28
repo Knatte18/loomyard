@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/gitkit"
@@ -210,6 +211,40 @@ func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
 		gitkit.Git(t, freshWorktree, "commit", "-m", "move the file into tools")
 		assertAnswer(t, locate(t, freshSlug), "", false)
 		assertLanding(t, landing(t, freshSlug), landingCall)
+	}) {
+		return
+	}
+
+	if !t.Run("a pair detached at a chain commit of two runs scopes to both runs' trees", func(t *testing.T) {
+		var links []fabricengine.ChainLink
+		var leader string
+		for _, member := range []struct{ slug, file string }{{"chainone", "docs/one.md"}, {"chaintwo", "tools/two.go"}} {
+			hubforge.AddPair(t, hub, member.slug)
+			dir := hub.PairCodeWorktree(member.slug)
+			if err := os.MkdirAll(filepath.Join(dir, filepath.Dir(member.file)), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			head := gitkit.CommitFile(t, dir, member.file, "package tools\n", "member work")
+			links = append(links, fabricengine.ChainLink{Slug: member.slug, TaskHead: head, Message: "land " + member.slug})
+			if leader == "" {
+				leader = member.slug
+			}
+		}
+		handle, err := fabricengine.Open(resolve(t, leader))
+		if err != nil {
+			t.Fatalf("fabricengine.Open: %v", err)
+		}
+		chain, err := handle.BuildLandingChain(gitkit.RevParse(t, prime, "HEAD"), links)
+		if err != nil || len(chain.Commits) != 2 {
+			t.Fatalf("BuildLandingChain() = %+v, %v; want two commits", chain, err)
+		}
+		if err := handle.CheckoutDetached(chain.Commits[1].Commit); err != nil {
+			t.Fatalf("CheckoutDetached: %v", err)
+		}
+
+		seed(t, `tree_scope: {"docs": "./docs/...", "tools": "./tools/..."}`)
+		assertAnswer(t, locate(t, leader), "./docs/... ./tools/...", true)
+		seed(t, trees)
 	}) {
 		return
 	}

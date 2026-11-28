@@ -101,7 +101,8 @@ func TestFinalize_PullRequest(t *testing.T) {
 		wantSquashedMerges bool
 		// wantTrueMerges asserts no parent-side merge was asked to squash.
 		wantTrueMerges bool
-		// parentOwnedElsewhere makes the owner checks find the parent owned by another machine.
+		// parentOwnedElsewhere makes the owner checks under the lock find the parent owned by another machine.
+		// The checks before the lock-free merge still find it owned here.
 		parentOwnedElsewhere bool
 		// wantRecord is the pull request record the landing must leave behind.
 		wantRecord *pullrequest.Record
@@ -585,7 +586,13 @@ func TestFinalize_PullRequest(t *testing.T) {
 				}
 			}
 			if tt.parentOwnedElsewhere {
-				deps.ParentOwner = func() (ParentOwnership, error) { return ParentOwnership{Owner: "other-machine"}, nil }
+				ownerReads := 0
+				deps.ParentOwner = func() (ParentOwnership, error) {
+					if ownerReads++; ownerReads == 1 {
+						return ParentOwnership{Here: true}, nil
+					}
+					return ParentOwnership{Owner: "other-machine"}, nil
+				}
 			}
 			if tt.verdict != "" {
 				deps.DriftVerdict = func() (string, error) { return tt.verdict, nil }

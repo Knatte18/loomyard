@@ -10,6 +10,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/landingqueue"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/parentlock"
@@ -203,6 +204,44 @@ type Deps struct {
 	// ParentWorktree is the name of the beam's parent worktree, where the land check's ways forward say a cancel runs.
 	// Told by the caller, and empty when no land blockers are wired.
 	ParentWorktree string
+
+	// Queue is the parent branch's landing queue, which the finalize step joins and acts on.
+	// With a nil Queue the run joins none and lands alone.
+	// RecordsHead, NewestLanding, MergesClean and Backstop are then not read.
+	// `internal/loomcli`'s `landingDeps` fills them all, and its drift guard keeps them filled.
+	Queue *landingqueue.Store
+	// RecordsHead returns the head of the run's records branch, which the run's queue entry holds.
+	RecordsHead func() (string, error)
+	// NewestLanding returns the newest commit that names the run on the local parent branch's first-parent history.
+	// The bool reports whether one was found.
+	NewestLanding func() (string, bool, error)
+	// MergesClean reports whether merging ref into the task branch needs no conflict session.
+	MergesClean func(ref string) (bool, error)
+	// Backstop holds the reads and the write that finish the records of a move whose mover did not.
+	Backstop landingqueue.BackstopSeams
+	// DetachState reads whether the task worktree is detached from its branch, with its marker and dirty paths.
+	//
+	// Nil reads as not detached.
+	// `internal/loomcli`'s `landingDeps` fills it, and its drift guard keeps it filled.
+	DetachState func() (fabricengine.DetachState, error)
+
+	// MemberDeps builds the seams of another queued run from the pair path its queue entry names.
+	// A nil MemberDeps takes no batch: the run lands alone.
+	// WriteLedgerLanding, RecordsToHold, BuildChain, FirstParent and Detach are then not read.
+	// `internal/loomcli`'s `landingDeps` fills them all, and its drift guard keeps them filled.
+	MemberDeps func(pairPath string) (Deps, error)
+	// WriteLedgerLanding records the landing of the run slug on the parent branch at tip.
+	// The landing holds the records commit records back from origin.
+	WriteLedgerLanding func(slug, tip, records string) error
+	// RecordsToHold returns the records commit a landing of this run must hold, given its records commit:
+	// the oldest one of its landings that origin lacks, or records.
+	RecordsToHold func(records string) (string, error)
+	// BuildChain writes one landing commit per link on base, over the task pair.
+	BuildChain func(base string, links []fabricengine.ChainLink) (fabricengine.ChainResult, error)
+	// FirstParent returns the first parent of commit, read over the task pair.
+	FirstParent func(commit string) (string, error)
+	// Detach checks commits out in the task worktree with a detached HEAD and puts it back on its branch.
+	Detach DetachDeps
 
 	// CommitParentRecords commits the parent pair's own run records.
 	// The finalize step calls it after its merge of the parent branch and before the parent-side merge.
@@ -419,6 +458,18 @@ type Deps struct {
 
 	// PullRequest is the PR-Review row's told seams.
 	PullRequest PullRequestDeps
+}
+
+// DetachDeps carries the told seams of a detached checkout of the task worktree.
+type DetachDeps struct {
+	// WriteMarker records that the worktree is detached from the task branch by the landing itself.
+	WriteMarker func() error
+	// RemoveMarker removes that record; an absent one is no error.
+	RemoveMarker func() error
+	// Checkout checks commit out with a detached HEAD.
+	Checkout func(commit string) error
+	// Restore checks the task branch out again, leaving the branch where it points.
+	Restore func() error
 }
 
 // PullRequestDeps carries the told seams the PR-Review row decides and opens the run's pull request through.

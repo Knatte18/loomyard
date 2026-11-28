@@ -20,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -179,6 +180,44 @@ func TestReconcileOrigin_Moves(t *testing.T) {
 		if !slices.Equal(fetchedByRepo[0], []string{wantRefspec(hub.primeBranch)}) || !slices.Equal(fetchedByRepo[1], wantRecords) {
 			t.Errorf("fetched refspecs = %v; want the moved heads only", fetchedByRepo)
 		}
+	})
+
+	t.Run("A pair detached under its marker is judged by the marker's branch and its code worktree is not moved", func(t *testing.T) {
+		pair := newMovesPair(t)
+		location, err := lymcwd.ResolveWorktree(pair.code)
+		if err != nil {
+			t.Fatalf("ResolveWorktree: %v", err)
+		}
+		before := gitkit.RevParse(t, pair.code, "HEAD")
+		originHead := originCommitFile(t, pair.CodeBare, pair.codeBranch, "moved.txt", "moved")
+		gitkit.Git(t, pair.code, "checkout", "-q", "--detach")
+		if err := fabricengine.WriteDetachMarker(location, pair.codeBranch); err != nil {
+			t.Fatalf("WriteDetachMarker: %v", err)
+		}
+
+		report := moveReconcile(t, pair.originHub, fabriclayout.ReconcileScope{}, fabricengine.OriginSeams{})
+
+		outcome := requireState(t, report, "code", pair.codeBranch, fabriclayout.BranchFastForward)
+		if outcome.Moved || outcome.OriginHead != originHead {
+			t.Errorf("code outcome = %+v; want it judged against %s and unmoved", outcome, originHead)
+		}
+		if head, tip := gitkit.RevParse(t, pair.code, "HEAD"), gitkit.RevParse(t, pair.code, pair.codeBranch); head != before || tip != before {
+			t.Errorf("HEAD = %s, task branch = %s; want both at %s", head, tip, before)
+		}
+	})
+
+	t.Run("A locked detached worktree whose directory is gone fails no reconcile", func(t *testing.T) {
+		hub := newOriginHub(t)
+		gone := filepath.Join(t.TempDir(), "gone")
+		gitkit.Git(t, hub.PrimeWorktree(), "worktree", "add", "-q", "--detach", gone)
+		gitkit.Git(t, hub.PrimeWorktree(), "worktree", "lock", gone)
+		if err := os.RemoveAll(gone); err != nil {
+			t.Fatalf("remove the worktree directory: %v", err)
+		}
+
+		report := moveReconcile(t, hub, fabriclayout.ReconcileScope{}, fabricengine.OriginSeams{})
+
+		requireState(t, report, "code", hub.primeBranch, fabriclayout.BranchLevel)
 	})
 
 	t.Run("A pair weft whose origin moved is fast-forwarded when clean on the touched paths and stopped as dirty otherwise", func(t *testing.T) {

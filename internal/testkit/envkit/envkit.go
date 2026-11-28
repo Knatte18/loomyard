@@ -33,6 +33,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hardenshed"
+	"github.com/Knatte18/loomyard/internal/landingqueue"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
@@ -249,6 +250,31 @@ func LandingDeps(t testing.TB, dir string) landingshed.Deps {
 		TaskRemoteTip:      func() (string, error) { return "", nil },
 		IsAncestor:         func(string, string) (bool, error) { return false, nil },
 		CodeReviewOff:      func() (bool, error) { return false, nil },
+		Queue:              &landingqueue.Store{Dir: filepath.Join(dir, "landing-queue"), Branch: "fixture-parent"},
+		RecordsHead:        func() (string, error) { return "records-head", nil },
+		NewestLanding:      func() (string, bool, error) { return "", false, nil },
+		MergesClean:        func(string) (bool, error) { return true, nil },
+		DetachState:        func() (fabricengine.DetachState, error) { return fabricengine.DetachState{}, nil },
+		MemberDeps: func(string) (landingshed.Deps, error) {
+			return landingshed.Deps{}, errors.New("envkit: the fixture's queue holds no other run")
+		},
+		WriteLedgerLanding: func(string, string, string) error { return nil },
+		RecordsToHold:      func(records string) (string, error) { return records, nil },
+		BuildChain: func(string, []fabricengine.ChainLink) (fabricengine.ChainResult, error) {
+			return fabricengine.ChainResult{}, nil
+		},
+		FirstParent: func(string) (string, error) { return "base", nil },
+		Detach: landingshed.DetachDeps{
+			WriteMarker:  func() error { return nil },
+			RemoveMarker: func() error { return nil },
+			Checkout:     func(string) error { return nil },
+			Restore:      func() error { return nil },
+		},
+		Backstop: landingqueue.BackstopSeams{
+			ParentHolds:   func(string) (bool, error) { return false, nil },
+			UpstreamLacks: func(string) (bool, error) { return false, nil },
+			WriteLanding:  func(string, string, string) error { return nil },
+		},
 		// Mode answers off and Origin is empty, so a landing through this deps takes the local path and calls no GitHub.
 		PullRequest: landingshed.PullRequestDeps{
 			RecordPath:     filepath.Join(dir, "landing-scratch", "pull-request.json"),

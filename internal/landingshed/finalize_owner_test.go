@@ -181,16 +181,21 @@ func TestFinalize_OwnerChecks(t *testing.T) {
 
 	transport := []struct {
 		name      string
-		lostRaces int
 		configure func(*Deps)
 	}{
-		{"an unreachable reconcile under the lock", 0, func(d *Deps) {
+		{"an unreachable reconcile under the lock", func(d *Deps) {
+			reads := 0
+			d.Reconcile = func() (fabriclayout.OriginReport, error) {
+				if reads++; reads == 1 {
+					return *active, nil
+				}
+				return *unreachable, nil
+			}
+		}},
+		{"an unreachable reconcile before the lock-free merge", func(d *Deps) {
 			d.Reconcile = func() (fabriclayout.OriginReport, error) { return *unreachable, nil }
 		}},
-		{"an unreachable reconcile in the lock-free pass", 2, func(d *Deps) {
-			d.Reconcile = func() (fabriclayout.OriginReport, error) { return *unreachable, nil }
-		}},
-		{"a transport failure of the fetched tips read", 0, func(d *Deps) {
+		{"a transport failure of the fetched tips read", func(d *Deps) {
 			d.ReadParentTips = func(bool) (fabriclayout.ParentTips, error) { return fabriclayout.ParentTips{}, transportPushErr() }
 		}},
 	}
@@ -198,7 +203,6 @@ func TestFinalize_OwnerChecks(t *testing.T) {
 		t.Run(tt.name+" is a transient failure that merges and halts nothing", func(t *testing.T) {
 			deps := newTestDeps(t)
 			deps.Slug = "me"
-			deps.Config.FinalizeLostRaces = tt.lostRaces
 			tt.configure(&deps)
 			merger := &recordingParentMerger{}
 			fz := &Finalize{deps: deps, resolver: &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}, parentOpener: func() (parentMerger, error) { return merger, nil }}

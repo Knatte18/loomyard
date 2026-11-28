@@ -85,6 +85,14 @@ func openFabricAtLanding(t *testing.T, path string) *fabricengine.Fabric {
 	return f
 }
 
+// readParentTipsAt returns the parent-tip read of the task pair at taskCode over the branch named `parent`.
+func readParentTipsAt(t *testing.T, taskCode string) func(bool) (fabriclayout.ParentTips, error) {
+	t.Helper()
+	return func(fetch bool) (fabriclayout.ParentTips, error) {
+		return openFabricAtLanding(t, taskCode).ReadParentTips("parent", fetch)
+	}
+}
+
 // configNoticeSeams returns the two config-notice seams for a landing test on the real pair at taskCode.
 // The first reads the loom config changes that the task branch commits against the branch named `parent`.
 // The second appends every notice to `notices`.
@@ -117,6 +125,7 @@ func newFinalizeAt(t *testing.T, taskBranch, taskCode, parentCode string, shuttl
 	deps.StencilsDir = seedConflictStencil(t)
 	deps.OpenFabric = func() (*fabricengine.Fabric, error) { return openFabricAtLanding(t, taskCode), nil }
 	deps.OpenParentFabric = func() (*fabricengine.Fabric, error) { return openFabricAtLanding(t, parentCode), nil }
+	deps.ReadParentTips = readParentTipsAt(t, taskCode)
 	deps.Shuttle = shuttle
 	deps.ConfigChanges = configChanges
 	deps.Notify = notify
@@ -172,6 +181,8 @@ func TestFinalize_OverRealHub(t *testing.T) {
 	hubforge.AddPair(t, h, "task")
 	hubforge.AddPair(t, h, "parent")
 	parentCode, parentRecords := h.PairCodeWorktree("parent"), h.PairRecordsSibling("parent")
+	// The steps commit to the parent and push nothing, so the parent branch tracks no upstream.
+	gitkit.Git(t, parentCode, "branch", "--unset-upstream")
 
 	if !t.Run("resolves a conflict and squash merges into the parent", func(t *testing.T) {
 		taskCode, taskRecords := h.PairCodeWorktree("task"), h.PairRecordsSibling("task")
@@ -364,6 +375,8 @@ func TestFinalize_RemovesIgnoredLeftoversOfADeletedDirectory(t *testing.T) {
 		hubforge.AddPair(t, h, "task")
 		hubforge.AddPair(t, h, "parent")
 		task, parent := h.PairCodeWorktree("task"), h.PairCodeWorktree("parent")
+		// The test commits to the parent and pushes nothing, so the parent branch tracks no upstream.
+		gitkit.Git(t, parent, "branch", "--unset-upstream")
 		if !fastForward {
 			gitkit.CommitFile(t, task, "task.txt", "task\n", "the work of the task")
 		}
@@ -383,6 +396,7 @@ func TestFinalize_RemovesIgnoredLeftoversOfADeletedDirectory(t *testing.T) {
 		deps.StencilsDir = seedConflictStencil(t)
 		deps.OpenFabric = func() (*fabricengine.Fabric, error) { return openFabricAtLanding(t, task), nil }
 		deps.OpenParentFabric = func() (*fabricengine.Fabric, error) { return openFabricAtLanding(t, parent), nil }
+		deps.ReadParentTips = readParentTipsAt(t, task)
 		deps.Shuttle = resolutionShuttle(task, "")
 		deps.Config = landingshed.Config{Squash: true, Conflict: "claude:test-model", ConflictTimeoutMin: 1}
 		deps.TaskHead = func() (string, error) { return openFabricAtLanding(t, task).HeadSHA() }

@@ -28,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hardenshed"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/landingqueue"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -211,12 +212,52 @@ func landingDeps(
 		RemoveLeftovers: func(base string) ([]string, error) {
 			return fabricengine.RemoveIgnoredLeftovers(l, base)
 		},
+		// TaskHead reads the task branch's tip, never HEAD, which a batch's gate leaves detached.
 		TaskHead: func() (string, error) {
-			f, err := fabricengine.Open(l)
+			return gitrepo.New(l.WorktreePath()).RefSHA("refs/heads/" + taskBranch)
+		},
+		MemberDeps: memberLandingDeps(l, cfg, registry, runner),
+		WriteLedgerLanding: func(slug, tip, records string) error {
+			parent, err := landingParentTarget(l)
+			if err != nil {
+				return err
+			}
+			return writeLedgerLanding(parent, parentBranch, slug, tip, records)
+		},
+		RecordsToHold: func(records string) (string, error) {
+			parent, err := landingParentTarget(l)
 			if err != nil {
 				return "", err
 			}
-			return f.HeadSHA()
+			return oldestHeldRecords(l, seedSlug(l.WorktreeName), parent, records)
+		},
+		BuildChain: func(base string, links []fabricengine.ChainLink) (fabricengine.ChainResult, error) {
+			f, err := fabricengine.Open(l)
+			if err != nil {
+				return fabricengine.ChainResult{}, err
+			}
+			return f.BuildLandingChain(base, links)
+		},
+		FirstParent: func(commit string) (string, error) {
+			return gitrepo.New(l.WorktreePath()).ResolveSHA(commit + "^1")
+		},
+		Detach: landingshed.DetachDeps{
+			WriteMarker:  func() error { return fabricengine.WriteDetachMarker(l, taskBranch) },
+			RemoveMarker: func() error { return fabricengine.RemoveDetachMarker(l) },
+			Checkout: func(commit string) error {
+				f, err := fabricengine.Open(l)
+				if err != nil {
+					return err
+				}
+				return f.CheckoutDetached(commit)
+			},
+			Restore: func() error {
+				f, err := fabricengine.Open(l)
+				if err != nil {
+					return err
+				}
+				return f.CheckoutBranch(taskBranch)
+			},
 		},
 		// MarkTaskDone marks this worktree's board task done once its work has landed.
 		// The landing package names no board path; this closure opens the hub's board.
@@ -337,6 +378,98 @@ func landingDeps(
 			}
 			return f.IsAncestor(sha, ref)
 		},
+		Queue: &landingqueue.Store{Dir: landingqueue.Dir(fabriclayout.BoltDir(l.HubPath)), Branch: parentBranch},
+		RecordsHead: func() (string, error) {
+			return gitrepo.New(fabricengine.RecordsWorktree(l)).CurrentSHA()
+		},
+		NewestLanding: func() (string, bool, error) {
+			return fabricengine.NewestLandingOf(l, parentBranch, seedSlug(l.WorktreeName))
+		},
+		MergesClean: func(ref string) (bool, error) {
+			f, err := fabricengine.Open(l)
+			if err != nil {
+				return false, err
+			}
+			return f.MergesClean(taskBranch, ref)
+		},
+		DetachState: func() (fabricengine.DetachState, error) {
+			return fabricengine.ReadDetachState(l)
+		},
+		Backstop: landingqueue.BackstopSeams{
+			ParentHolds: func(commit string) (bool, error) {
+				f, err := fabricengine.Open(l)
+				if err != nil {
+					return false, err
+				}
+				holds, err := f.IsAncestor(commit, "refs/heads/"+parentBranch)
+				// A mover that died before the move leaves chain commits no ref names, which git prunes.
+				if err != nil && !f.CommitExists(commit) {
+					return false, nil
+				}
+				return holds, err
+			},
+			// The parent pair has the parent branch checked out, so its upstream is the branch's.
+			// A branch with no upstream lacks every commit, and one whose tracking ref a fetch pruned lacks none.
+			UpstreamLacks: func(commit string) (bool, error) {
+				parent, err := landingParentTarget(l)
+				if err != nil {
+					return false, err
+				}
+				repo := gitrepo.New(parent.Location.WorktreePath())
+				upstream, err := repo.UpstreamSHA()
+				switch {
+				case errors.Is(err, gitrepo.ErrNoUpstream):
+					return true, nil
+				case errors.Is(err, gitrepo.ErrRefNotFound):
+					return false, nil
+				case err != nil:
+					return false, err
+				}
+				onUpstream, err := repo.IsAncestor(commit, upstream)
+				return !onUpstream, err
+			},
+			// A hub with pushes skipped records no landing.
+			WriteLanding: func(slug, tip, records string) error {
+				if pushSkipped {
+					return nil
+				}
+				parent, err := landingParentTarget(l)
+				if err != nil {
+					return err
+				}
+				return writeLedgerLanding(parent, parentBranch, slug, tip, records)
+			},
+		},
+	}
+}
+
+// memberLandingDeps returns the builder of the landing seams of another run on this hub, from its pair's path.
+// The run's branches, recipe and parent lock are read from that pair, as the run's own wiring reads them.
+// Its reconcile judges alone, so a read of the run acts on nothing.
+// cfg, registry and runner are the caller's own, since the seams are only read through.
+func memberLandingDeps(l *lymcwd.Location, cfg landingshed.Config, registry modelspec.Registry, runner *shuttleengine.Runner) func(pairPath string) (landingshed.Deps, error) {
+	return func(pairPath string) (landingshed.Deps, error) {
+		member, err := lymcwd.ResolveWorktree(pairPath)
+		if err != nil {
+			return landingshed.Deps{}, fmt.Errorf("locate the pair at %s from %s: %w", pairPath, l.WorktreeName, err)
+		}
+		handle, err := fabricengine.Open(member)
+		if err != nil {
+			return landingshed.Deps{}, err
+		}
+		taskBranch, parentBranch, err := landingBranches(handle, member)
+		if err != nil {
+			return landingshed.Deps{}, err
+		}
+		seed, found, err := shedrun.ReadSeed(member, shedrun.SelfRunID)
+		if err != nil {
+			return landingshed.Deps{}, err
+		}
+		lock := parentLockDeps(member, shedrun.SelfRunID, shedrun.StatusFile(member, shedrun.SelfRunID), shedrun.StatusLock(member, shedrun.SelfRunID))
+		deps := landingDeps(member, resolveSeedRecipe(seed, found), hubgeom.WebsterGeometry(member), taskBranch, parentBranch,
+			fabricengine.EnvSyncOptions().SkipPush, registry, runner, cfg, "", nil, nil, nil, planVerifySource(member), lock)
+		deps.Reconcile = judgeOnlyReconciler(member, seedSlug(member.WorktreeName))
+		return deps, nil
 	}
 }
 
@@ -804,6 +937,23 @@ func runReconciler(l *lymcwd.Location, slug string) func() (fabriclayout.OriginR
 			return fabriclayout.OriginReport{}, err
 		}
 		report, err := fabricengine.ReconcileOrigin(prime, fabriclayout.ReconcileScope{Run: slug}, teardown.OriginSeams(pairteardown.HubSeamOptions(prime)), fabricengine.ReconcileOptions{})
+		return reportOfRun(report, slug), err
+	}
+}
+
+// judgeOnlyReconciler returns the seam that judges the run slug against origin and acts on nothing:
+// it fetches objects into no ref, moves no branch and tears nothing down.
+func judgeOnlyReconciler(l *lymcwd.Location, slug string) func() (fabriclayout.OriginReport, error) {
+	return func() (fabriclayout.OriginReport, error) {
+		prime, err := primeOfHub(l)
+		if err != nil {
+			return fabriclayout.OriginReport{}, err
+		}
+		teardown, err := pairteardown.New(prime)
+		if err != nil {
+			return fabriclayout.OriginReport{}, err
+		}
+		report, err := fabricengine.ReconcileOrigin(prime, fabriclayout.ReconcileScope{Run: slug, JudgeOnly: true}, teardown.OriginSeams(pairteardown.HubSeamOptions(prime)), fabricengine.ReconcileOptions{})
 		return reportOfRun(report, slug), err
 	}
 }

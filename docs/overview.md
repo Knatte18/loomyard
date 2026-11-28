@@ -342,6 +342,7 @@ github.com/Knatte18/loomyard/
 ├── internal/statuscommit/        the shared per-transition status commit core (skip while mid-merge, commit hard-errors, start the worktree's pusher) that `loomcli` and `battencli` wrap
 ├── internal/statuspane/          the pane mechanics the runs overview and the gate checklist share: a redraw-in-place pane loop and a lock-free status-file reader
 ├── internal/landingshed/         landing's general ShedProducers, Parent-Align, the PR-Review row and Finalize, shared by reference across producer lists
+├── internal/landingqueue/        the landing queue of one parent branch: its entries, their outcomes and the move mark
 ├── internal/pawlengine/          the pawl recipe's own producers, Beam-Up, Beam-Await and Beam-Down, the land request Beam-Await consumes and the beam's ready record, told their geometry and seams by their caller
 ├── internal/failuretrace/        traces a failed Parent-Align or Finalize verify log to the plan cards, batch commit ranges and untraced locations the landing failure record carries
 ├── internal/darnengine/          the darn recipe's hub-wide `darn.yaml` config and the verify command every darn verify reads
@@ -1399,15 +1400,11 @@ User-facing modules each get one `lym <module>` namespace:
   `Finalize` merges the parent's tip into the task in place with no parent lock held.
   It runs its owner checks before that merge, and again under the lock.
   It resolves a conflict with the conflict session.
-  It runs the `finalize` gate key and the merge fixer in finalize mode.
-  It then takes the parent lock and lands only while the parent's head is still the tip it merged and gated.
-  A parent that moved frees the lock, and the merge and the gate run again unlocked.
-  After `landing.finalize_lost_races` lost races, and over a parent that already holds the task's work,
-  it merges and gates under the lock.
+  It then waits in the parent lock's queue, and the lock's holder gates and lands up to `landing.batch_max` queued runs together.
+  Under the lock it merges the parent again, then runs the `finalize` gate key and the merge fixer in finalize mode.
   It lands on the parent with the credit block and releases the lock on every exit.
   It frees the lock while its fixer or fix review works.
-  It then runs both passes again, the unlocked one first while lost races remain,
-  and retakes the lock at the front of the queue.
+  It then runs both passes again and retakes the lock at the front of the queue.
   It merges the parent anew and verifies under the lock before it lands; a tree already verified skips the verify.
   Finalize never reroutes.
   A fixer change over the caps goes to its fix review, which reads only the fixer's commits.

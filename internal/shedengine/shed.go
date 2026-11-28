@@ -74,6 +74,12 @@ type Shed struct {
 	// The error's own trailing "way forward:" clause stays last after the wrap.
 	// The caller supplies it; nil means no check.
 	LockedCheck func() error
+	// Restore puts the run's worktree back in a state its producers can work in.
+	// Run and Step call it once they hold the run lock and LockedCheck passed, before any producer, unless the run is done.
+	// A non-nil error halts the run blocked at its current row, for an unmet precondition, and calls no producer.
+	// The error's own trailing "way forward:" clause stays last.
+	// The caller supplies it; nil means nothing to restore.
+	Restore func() error
 	// Machine is the name of the machine driving this run, stamped on every history entry the shed appends.
 	// The caller supplies it and this package never reads it; the empty string stamps nothing.
 	Machine string

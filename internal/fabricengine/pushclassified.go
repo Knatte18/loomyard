@@ -137,8 +137,23 @@ type pushJob struct {
 // A code or records side whose origin layout cannot be read is recorded under the other class before origin is read.
 // The layout's error names the config that restores it.
 // A push that lands removes the record of its side and branch.
+//
+// The code side of a worktree whose detach marker stands is not pushed.
+// It returns a *PushFailedError of class deferred that names the marker, so the push reads as owed.
 func pushClassified(rec *Mutations, hubPath, side, path string, opts SyncOptions, retryRecords func() (deferred bool, err error)) error {
 	job := &pushJob{rec: rec, hubPath: hubPath, side: side, path: path, opts: opts, repo: gitrepo.New(path)}
+	if side == fabriclayout.RepoCode {
+		l, marked, stands, err := markedWorktree(path)
+		if err != nil {
+			return err
+		}
+		if stands {
+			job.branch = marked
+			cause := fmt.Errorf("the code branch %s is not pushed while the detach marker %s stands; to end the detach by hand, %s",
+				marked, DetachMarkerPath(l), detachWayForward(l))
+			return job.fail(fabriclayout.PushFailureDeferred, cause, nil, nil, "")
+		}
+	}
 	snapshot, err := job.run(retryRecords)
 	if err != nil {
 		var refusal *fabriccore.Refusal

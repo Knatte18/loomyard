@@ -25,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/landingqueue"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -32,8 +33,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/pushledger"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/runproc"
+	"github.com/Knatte18/loomyard/internal/runpusher"
 	"github.com/Knatte18/loomyard/internal/selfexec"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -547,6 +550,8 @@ func dobbyPassInFlight(acting *lymcwd.Location, primeName, runProcDir, owner, wo
 // It queues behind a current holder and returns the release.
 // The lock owner's run id is "fabric-" followed by verb,
 // and the wait notice on stderr names `lym fabric <verb>` and the holder.
+// Under the lock it first writes the landings a standing landing-queue move mark of the branch owes,
+// and a failure there releases the lock.
 func acquireBranchLock(ctx context.Context, location *lymcwd.Location, boltDir, verb string) (func(), error) {
 	branch, err := gitrepo.New(fabricengine.WorktreePath(location, location.WorktreeName)).CurrentBranch()
 	if err != nil {
@@ -567,9 +572,76 @@ func acquireBranchLock(ctx context.Context, location *lymcwd.Location, boltDir, 
 	if _, err := store.Acquire(ctx, branch, owner, waiter); err != nil {
 		return nil, fmt.Errorf("take the parent lock of %s: %w", branch, err)
 	}
-	return func() {
+	release := func() {
 		if _, err := store.Release(branch, owner); err != nil {
 			logger.Warn("fabriccli: a verb's parent lock is not released", "verb", verb, "branch", branch, "error", err)
 		}
-	}, nil
+	}
+	if err := queueBackstop(location, boltDir, branch); err != nil {
+		release()
+		return nil, err
+	}
+	return release, nil
+}
+
+// queueBackstop writes the push-ledger landings that a standing landing-queue move mark of branch owes.
+// It removes the mark afterwards.
+// location is the pair that has branch checked out.
+// A queue with no mark reads nothing more.
+// It takes no queue entry and prunes none.
+// A hub with pushes skipped records no landing, and the mark is removed all the same.
+// An error keeps the mark.
+func queueBackstop(location *lymcwd.Location, boltDir, branch string) error {
+	queue := &landingqueue.Store{Dir: landingqueue.Dir(boltDir), Branch: branch}
+	repo := gitrepo.New(fabricengine.WorktreePath(location, location.WorktreeName))
+	_, err := queue.Backstop(landingqueue.BackstopSeams{
+		ParentHolds: func(commit string) (bool, error) {
+			holds, err := repo.IsAncestor(commit, "refs/heads/"+branch)
+			// A mover that died before the move leaves chain commits no ref names, which git prunes.
+			if err != nil && !repo.SHAExists(commit) {
+				return false, nil
+			}
+			return holds, err
+		},
+		// A branch with no upstream lacks every commit, and one whose tracking ref a fetch pruned lacks none.
+		UpstreamLacks: func(commit string) (bool, error) {
+			upstream, err := repo.UpstreamSHA()
+			switch {
+			case errors.Is(err, gitrepo.ErrNoUpstream):
+				return true, nil
+			case errors.Is(err, gitrepo.ErrRefNotFound):
+				return false, nil
+			case err != nil:
+				return false, err
+			}
+			onUpstream, err := repo.IsAncestor(commit, upstream)
+			return !onUpstream, err
+		},
+		WriteLanding: func(slug, tip, records string) error {
+			if fabricengine.EnvSyncOptions().SkipPush {
+				return nil
+			}
+			primeName, err := fabricengine.PrimeName(location)
+			if err != nil {
+				return err
+			}
+			prime, err := lymcwd.NamedWorktree(location.HubPath, primeName)
+			if err != nil {
+				return err
+			}
+			parent, err := runpusher.ParentTarget(prime, location)
+			if err != nil {
+				return err
+			}
+			now := time.Now()
+			landing := pushledger.Landing{Run: slug, Tip: tip, RecordsCommit: records, ParentBranch: branch, At: now}
+			return runpusher.RecordLanding(parent, landing, now)
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("write the landings owed by the move mark of branch %s in the landing queue under %s: %w; "+
+			"way forward: clear the cause the error names, then run the verb again, which writes the mark's landings before it acts",
+			branch, queue.Dir, err)
+	}
+	return nil
 }

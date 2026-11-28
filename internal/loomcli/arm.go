@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/arbiterstop"
@@ -299,10 +300,15 @@ func (c *loomCLI) recipeRouting() (shedengine.Routing, error) {
 // newShed builds the shed of the run's recipe over c.env and c.shedPaths.
 // The rows loom.notify_parent_on names mail the run's parent when the run reaches them,
 // and a name that is no row of the recipe is refused.
+// Its restore puts a detached task worktree back on its branch before any row runs.
 func (c *loomCLI) newShed() (*shedengine.Shed, error) {
 	shed, err := loomrecipe.New(c.recipe, c.env, c.shedPaths)
-	if err != nil || len(c.cfg.NotifyParentOn) == 0 {
+	if err != nil {
 		return shed, err
+	}
+	shed.Restore = resumeRestore(c.location, c.runID)
+	if len(c.cfg.NotifyParentOn) == 0 {
+		return shed, nil
 	}
 	paths := rowNoticePaths{
 		status:     c.shedPaths.StatusPath,
@@ -313,6 +319,36 @@ func (c *loomCLI) newShed() (*shedengine.Shed, error) {
 		return nil, err
 	}
 	return shed, nil
+}
+
+// resumeRestore returns the restore a resume of the run runID of the worktree l makes before any row.
+// A clean detached task worktree with a detach marker is checked out on the marker's branch.
+// A dirty one, and one with no marker, is an error naming the way forward at every row but Finalize.
+// At Finalize the restore returns nil for them, and that row stops on them itself.
+func resumeRestore(l *lymcwd.Location, runID string) func() error {
+	return func() error {
+		detach, err := fabricengine.RestoreDetached(l)
+		if err != nil {
+			return err
+		}
+		if detach.Restored {
+			logger.Info("loomcli: the detached task worktree is back on its branch", "branch", detach.Branch, "from", detach.Commit)
+		}
+		if !detach.Detached || detach.Restored {
+			return nil
+		}
+		status, _, err := state.ReadJSON[shedengine.Status](shedrun.StatusFile(l, runID), shedrun.StatusLock(l, runID))
+		if err != nil {
+			return err
+		}
+		if status.CurrentProducer == loomshed.NameFinalize {
+			return nil
+		}
+		if len(detach.Dirty) > 0 {
+			return fmt.Errorf("the task worktree is detached with uncommitted paths: %s; way forward: clean them in the task worktree, then `lym loom resume`", strings.Join(detach.Dirty, ", "))
+		}
+		return fmt.Errorf("the task worktree is detached at %s with no detach marker; way forward: check the task branch out in the task worktree, then `lym loom resume`", detach.Commit)
+	}
 }
 
 // The engine names of the recipe rows loomcli's wiring keys on, and the tree-scope verify_source value.

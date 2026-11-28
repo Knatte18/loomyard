@@ -35,6 +35,23 @@ var intentionallyNil = map[string]string{
 	"Landing.TaskRemoteTip":               "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
 	"Landing.IsAncestor":                  "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
 	"Landing.CodeReviewOff":               "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
+	"Landing.Queue":                       "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
+	"Landing.RecordsHead":                 "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
+	"Landing.NewestLanding":               "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
+	"Landing.MergesClean":                 "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
+	"Landing.Backstop.ParentHolds":        "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
+	"Landing.Backstop.UpstreamLacks":      "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
+	"Landing.Backstop.WriteLanding":       "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
+	"Landing.DetachState":                 "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
+	"Landing.MemberDeps":                  "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
+	"Landing.WriteLedgerLanding":          "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
+	"Landing.RecordsToHold":               "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
+	"Landing.BuildChain":                  "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
+	"Landing.FirstParent":                 "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
+	"Landing.Detach.WriteMarker":          "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
+	"Landing.Detach.RemoveMarker":         "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
+	"Landing.Detach.Checkout":             "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
+	"Landing.Detach.Restore":              "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
 	"Landing.PullRequest.Mode":            "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
 	"Landing.PullRequest.Origin":          "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
 	"Landing.PullRequest.API":             "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
@@ -151,7 +168,9 @@ var intentionallyNil = map[string]string{
 //lym:seam internal/driftengine#Deps
 //lym:seam internal/driftengine#Paths
 //lym:seam internal/landingshed#Config
+//lym:seam internal/landingqueue#BackstopSeams
 //lym:seam internal/landingshed#Deps
+//lym:seam internal/landingshed#DetachDeps
 //lym:seam internal/landingshed#ParentLockDeps
 //lym:seam internal/landingshed#PullRequestDeps
 //lym:seam internal/loomshed#DarnDeps

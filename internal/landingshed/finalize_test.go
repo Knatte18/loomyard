@@ -112,6 +112,13 @@ func (m *recordingParentMerger) FastForwardPair(opts fabricengine.SyncOptions) (
 	return m.ffResult, m.ffErr
 }
 
+func (m *recordingParentMerger) MoveCodeTo(base, tip string) (bool, error) {
+	if m.order != nil {
+		*m.order = append(*m.order, "move")
+	}
+	return true, nil
+}
+
 // requireFinalizeReason returns the stuck reason carried on ptr, failing the test when it is empty.
 func requireFinalizeReason(t *testing.T, ptr shedengine.OutputPointer) string {
 	t.Helper()
@@ -371,7 +378,7 @@ func (r *orderedResolver) Resolve(ctx context.Context, source, tip string) (merg
 
 // TestFinalize_MergeInRequiredRetry pins that an ErrMergeInRequired merge is retried exactly once.
 // The retry carries the same composed message.
-// The parent run records are committed after each merge-in and before the parent-side merge.
+// The parent run records are committed after each merge-in under the lock and before the parent-side merge.
 // This holds on the first pass and on the retry alike.
 // The parent pair's head is recorded as the landing commit after the retry that lands, never after a failed attempt.
 func TestFinalize_MergeInRequiredRetry(t *testing.T) {
@@ -386,9 +393,9 @@ func TestFinalize_MergeInRequiredRetry(t *testing.T) {
 		// parentMoves moves the parent tip from p2 to p3 at the first parent-side merge call, as a code-side commit would.
 		parentMoves bool
 	}{
-		{"retry lands", mergeCallResult{result: fabriclayout.MergeResult{Committed: true}}, shedengine.Done, "merge-in,records,merge,merge-in,records,merge,record landed1", 2, false, false},
-		{"retry also required stays Stuck", mergeCallResult{err: &fabricengine.ErrMergeInRequired{}}, shedengine.Stuck, "merge-in,records,merge,merge-in,records,merge", 2, false, false},
-		{"a code-side parent commit between the passes lands through the retry", mergeCallResult{result: fabriclayout.MergeResult{Committed: true}}, shedengine.Done, "merge-in,records,merge,merge-in,records,merge,record landed1", 2, false, true},
+		{"retry lands", mergeCallResult{result: fabriclayout.MergeResult{Committed: true}}, shedengine.Done, "merge-in,merge-in,records,merge,merge-in,records,merge,record landed1", 2, false, false},
+		{"retry also required stays Stuck", mergeCallResult{err: &fabricengine.ErrMergeInRequired{}}, shedengine.Stuck, "merge-in,merge-in,records,merge,merge-in,records,merge", 2, false, false},
+		{"a code-side parent commit between the passes lands through the retry", mergeCallResult{result: fabriclayout.MergeResult{Committed: true}}, shedengine.Done, "merge-in,merge-in,records,merge,merge-in,records,merge,record landed1", 2, false, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1071,9 +1078,10 @@ func TestFinalize_CancellationAtEntry_SurfacesAsError(t *testing.T) {
 }
 
 // TestFinalize_LockFirstAndFastForward pins Finalize's entry.
-// The parent lock is held before the run-scope reconcile and every read of the parent,
+// The reconcile and the tips read before the lock-free merge run with no lock.
+// The parent lock is then held before the run-scope reconcile and every read of the parent,
 // and a parent behind its upstream is fast-forwarded under the lock.
-// Each refusal of the parent pair is a Stuck with its way forward before any merge.
+// Each refusal of the parent pair is a Stuck with its way forward before any merge past the lock-free one.
 func TestFinalize_LockFirstAndFastForward(t *testing.T) {
 	tiergate.Require(t, 0)
 	// lockHeld reports whether the run holds the parent lock in deps' store.
@@ -1103,7 +1111,7 @@ func TestFinalize_LockFirstAndFastForward(t *testing.T) {
 
 		shedfake.RequireOutcome(t, fz, shedengine.Done)
 
-		if got, want := strings.Join(held, ","), "reconcile:true,tips:true:true,tips:false:true"; got != want {
+		if got, want := strings.Join(held, ","), "reconcile:false,tips:true:false,reconcile:true,tips:true:true,tips:false:true"; got != want {
 			t.Errorf("lock holds at the seams = %q; want %q", got, want)
 		}
 		if got, want := strings.Join(order, ","), "fast-forward,merge"; got != want {
@@ -1140,7 +1148,7 @@ func TestFinalize_LockFirstAndFastForward(t *testing.T) {
 				deps := newTestDeps(t)
 				deps.PushSkipped = state.pushSkipped
 				deps.ReadParentTips = func(bool) (fabriclayout.ParentTips, error) { return state.tips, nil }
-				res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
+				res := &scriptedResolver{results: []mergeresolve.Result{resolved(false)}}
 				merger := &recordingParentMerger{dirtyCheckout: "/hub/parent", dirtyPaths: refusal.dirty, probeMidMerge: refusal.midMerge}
 				fz := &Finalize{deps: deps, resolver: res, guard: newParentGuard(deps), parentOpener: func() (parentMerger, error) {
 					if refusal.openerErr != nil {
@@ -1154,8 +1162,8 @@ func TestFinalize_LockFirstAndFastForward(t *testing.T) {
 				if got := requireFinalizeReason(t, ptr); got != refusal.wantReason {
 					t.Errorf("reason = %q; want %q", got, refusal.wantReason)
 				}
-				if res.called || len(merger.calls) != 0 || len(merger.ffCalls) != 0 {
-					t.Errorf("a merge or fast-forward ran after the refusal: resolver %v, merges %d, fast-forwards %d", res.called, len(merger.calls), len(merger.ffCalls))
+				if res.calls != 1 || len(merger.calls) != 0 || len(merger.ffCalls) != 0 {
+					t.Errorf("merge-ins %d, merges %d, fast-forwards %d; want the lock-free merge-in alone", res.calls, len(merger.calls), len(merger.ffCalls))
 				}
 			})
 		}
@@ -1175,7 +1183,7 @@ func TestFinalize_LockFirstAndFastForward(t *testing.T) {
 		t.Run(move.name+" is Stuck before any merge", func(t *testing.T) {
 			deps := newTestDeps(t)
 			deps.ReadParentTips = func(bool) (fabriclayout.ParentTips, error) { return move.tips, nil }
-			res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
+			res := &scriptedResolver{results: []mergeresolve.Result{resolved(false)}}
 			merger := &recordingParentMerger{ffResult: move.ff}
 			fz := &Finalize{deps: deps, resolver: res, guard: newParentGuard(deps), parentOpener: func() (parentMerger, error) { return merger, nil }}
 
@@ -1184,8 +1192,8 @@ func TestFinalize_LockFirstAndFastForward(t *testing.T) {
 			if got := requireFinalizeReason(t, ptr); got != move.wantReason {
 				t.Errorf("reason = %q; want %q", got, move.wantReason)
 			}
-			if res.called || len(merger.calls) != 0 {
-				t.Errorf("a merge ran after the refusal: resolver %v, merges %d", res.called, len(merger.calls))
+			if res.calls != 1 || len(merger.calls) != 0 {
+				t.Errorf("merge-ins %d, merges %d; want the lock-free merge-in alone", res.calls, len(merger.calls))
 			}
 			if lockHeld(deps) {
 				t.Error("the parent lock is still held after the Stuck")

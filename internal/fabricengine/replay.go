@@ -321,6 +321,7 @@ func parentHoldsTaskWork(l, pairLocation *lymcwd.Location, slug string) (bool, e
 }
 
 // parentHoldsTaskWorkAt reports whether the pair's parent branch holds the work of the pair's task branch.
+// A pair with a detach marker is judged at the marker's branch, never at its HEAD.
 // The parent branch is read under refPrefix.
 // A parent branch with no ref under originRefPrefix reads false.
 func parentHoldsTaskWorkAt(l, pairLocation *lymcwd.Location, slug, refPrefix string) (bool, error) {
@@ -335,7 +336,16 @@ func parentHoldsTaskWorkAt(l, pairLocation *lymcwd.Location, slug, refPrefix str
 	if err != nil {
 		return false, err
 	}
-	taskHead, err := pair.code.CurrentSHA()
+	marked, stands, err := ReadDetachMarker(pairLocation)
+	if err != nil {
+		return false, err
+	}
+	var taskHead string
+	if stands {
+		taskHead, err = markedBranchTip(pairLocation, marked)
+	} else {
+		taskHead, err = pair.code.CurrentSHA()
+	}
 	if err != nil {
 		return false, err
 	}

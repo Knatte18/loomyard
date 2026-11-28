@@ -121,6 +121,7 @@ the `landing` gate's at Parent-Align, Finalize, Code-Burler-Fix and Darn-Write.
   an empty one, rendered when no touched tree contributes a target, runs nothing.
   A Finalize gate failure whose report lists tier and guard runs alone reruns once on the same head before any fixer,
   and a passing rerun is recorded as flaky.
+  A batch's chain gate reruns the same way and only logs a failure the rerun did not repeat.
 - Each run that spawns its command writes its own `verify-<n>.log` in the verify directory and names it on its result,
   so no later verify overwrites an earlier run's log.
   After each such run, `Verify` keeps the newest logs up to its retention bound plus the one the failure record names,
@@ -129,6 +130,8 @@ the `landing` gate's at Parent-Align, Finalize, Code-Burler-Fix and Darn-Write.
   Parent-Align and Finalize write it when their `landing` call fails with a non-zero exit.
   It records the failing gate as kind, the failing tier, tests and run log, HEAD and the merge commit.
   A pass or a skip of the gate removes it, and the other sites neither write nor remove it.
+  A batch's chain gate writes none;
+  a leader that is its own batch's culprit writes it from the prefix gate's result.
 - Every site tells `Site.Hold`, built by `verifytree.NewPauseHold` from its wiring's pause geometry.
   Finalize's site hold reads hub entries only while its run holds the parent lock;
   Parent-Align's verify runs without the lock.
