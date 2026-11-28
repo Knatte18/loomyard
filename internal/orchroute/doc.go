@@ -1,5 +1,6 @@
 // Package orchroute resolves which orch a worktree's agents reach.
 // It provides the orch module's paths and the liveness of one worktree's orch.
+// A reading of an orch as down names its cause, and the liveness probe logs every down reading with it.
 // It also reads the strand name its orch state records and walks up a beam chain to the orch a notice goes to.
 // It sits below internal/orchcli, which delegates to it.
 // A package that orchcli imports, such as the creel CLI, resolves the same orch through it without importing orchcli.

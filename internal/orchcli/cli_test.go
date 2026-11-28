@@ -321,15 +321,23 @@ func TestStatus_Envelope(t *testing.T) {
 		{
 			name: "unknown tokens are null",
 			want: func(*orchCLI) map[string]any {
-				return map[string]any{"context_tokens": nil, "strand_live": false, "last_deferral": nil, "cycle_trigger": "", "session_id": "", "watcher_restarted": false, "strand_elsewhere": ""}
+				return map[string]any{"context_tokens": nil, "strand_live": false, "last_deferral": nil, "cycle_trigger": "", "session_id": "", "watcher_restarted": false, "strand_elsewhere": "", "strand_down": "no-strand-recorded"}
 			},
 		},
 		{
 			name:    "a pane in another session is named",
-			strands: []reedengine.StrandStatus{{GUID: "g1", Name: "orch", Live: true, Elsewhere: "other:2"}},
+			strands: []reedengine.StrandStatus{{GUID: "g1", Name: "orch", Elsewhere: "other:2", Down: reedengine.DownPaneElsewhere}},
 			state:   &orchengine.State{Strand: "g1", Phase: orchengine.PhaseIdle},
 			want: func(*orchCLI) map[string]any {
-				return map[string]any{"strand_elsewhere": "other:2"}
+				return map[string]any{"strand_elsewhere": "other:2", "strand_live": false, "strand_down": "pane-elsewhere"}
+			},
+		},
+		{
+			name:    "a strand missing from reed's state reads down with that cause",
+			strands: []reedengine.StrandStatus{{GUID: "g2", Name: "other", Live: true}},
+			state:   &orchengine.State{Strand: "g1", Phase: orchengine.PhaseIdle},
+			want: func(*orchCLI) map[string]any {
+				return map[string]any{"strand_live": false, "strand_down": "strand-not-in-reed-state"}
 			},
 		},
 		{

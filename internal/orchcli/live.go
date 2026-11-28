@@ -62,6 +62,7 @@ func HubOrchs(location *lymcwd.Location) ([]*lymcwd.Location, error) {
 // its orch state records a strand that reed tracks and reports live.
 // A worktree whose orch never started, or whose reed session is gone, is not live.
 // Nor is one whose recorded strand reed no longer tracks.
+// Every down reading is logged with its cause.
 func OrchLive(worktree *lymcwd.Location) (bool, error) {
 	return orchroute.Live(worktree)
 }

@@ -76,6 +76,46 @@ func shellBaseName(command string) string {
 	return strings.TrimPrefix(filepath.Base(fields[0]), "-")
 }
 
+// DownCause names why a strand reads not live.
+type DownCause string
+
+// The causes a strand reads not live for.
+const (
+	// DownPaneDead is a strand whose pane the session lists as dead.
+	DownPaneDead DownCause = "pane-dead"
+	// DownPaneUnlisted is a strand whose pane no listing carries, or that is bound to no pane.
+	DownPaneUnlisted DownCause = "pane-unlisted"
+	// DownPanePlacementUnread is a strand whose own-window pane is missing from the session and could not be looked up.
+	// The lookup across the reed server failed, so the pane may sit in another session or be gone.
+	DownPanePlacementUnread DownCause = "pane-placement-unread"
+	// DownPaneElsewhere is a strand whose pane sits in another session of the reed server.
+	DownPaneElsewhere DownCause = "pane-elsewhere"
+	// DownStartShell is a strand whose pane shows the shell it started with in the foreground past the launch grace.
+	DownStartShell DownCause = "start-shell"
+)
+
+// downCause returns why the strand bound to paneID reads not live, and empty for a live strand.
+// aliveIDs holds the panes whose engine runs.
+// runningIDs holds the present panes that are not dead, and presentIDs holds every present pane.
+// elsewhere is the placement of the pane in another session, empty when it sits in none.
+// placementUnread reports that the pane's placement was looked up and the lookup failed.
+func downCause(paneID string, aliveIDs, runningIDs, presentIDs map[string]bool, elsewhere string, placementUnread bool) DownCause {
+	switch {
+	case aliveIDs[paneID]:
+		return ""
+	case elsewhere != "":
+		return DownPaneElsewhere
+	case placementUnread:
+		return DownPanePlacementUnread
+	case !presentIDs[paneID]:
+		return DownPaneUnlisted
+	case !runningIDs[paneID]:
+		return DownPaneDead
+	default:
+		return DownStartShell
+	}
+}
+
 // engineAliveIDSet returns the set of pane ids whose strand's engine still runs, using this engine's pane-age probe.
 // The shell-only rule is skipped on Windows, where a PowerShell cmdlet runs inside the shell.
 func (e *Engine) engineAliveIDSet(present []LivePane) map[string]bool {

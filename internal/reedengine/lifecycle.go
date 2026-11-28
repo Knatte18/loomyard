@@ -84,6 +84,8 @@ type StrandStatus struct {
 	// Elsewhere is the session:window placement of the strand's bound pane.
 	// It is set only when that pane sits in another session of the reed server, and empty otherwise.
 	Elsewhere string
+	// Down names why the strand is not live, and is empty for a live strand.
+	Down DownCause
 	// Retiring reports that a caller asked for this strand's removal.
 	// It grants nothing by itself: a caller that finds it set only completes the request.
 	Retiring bool
@@ -1331,6 +1333,7 @@ func (e *Engine) Status() (StatusResult, error) {
 		// Present, OwnWindow and PanePID stay pane-level.
 		aliveIDs := e.engineAliveIDSet(present)
 		presentIDs := liveIDSet(present)
+		runningIDs := aliveIDSet(present)
 		alivePIDs := make(map[string]int, len(present))
 		for _, p := range present {
 			if !p.Dead {
@@ -1341,10 +1344,10 @@ func (e *Engine) Status() (StatusResult, error) {
 		// Selvage is not a strand and is never reported here (see ReedState.SelvagePaneID).
 		// Status still succeeds when st.Strands is empty but Selvage is alive, because the session is up.
 		// Appending a Selvage row here would be wrong.
-		elsewhere := e.strandsElsewhereLocked(st.Strands, windows)
+		elsewhere, unread := e.strandsElsewhereLocked(st.Strands, windows)
 		strands := make([]StrandStatus, len(st.Strands))
 		for i, s := range st.Strands {
-			strands[i] = StrandStatus{GUID: s.GUID, Name: s.Name, PaneID: s.PaneID, PanePID: alivePIDs[s.PaneID], Live: aliveIDs[s.PaneID], Present: presentIDs[s.PaneID], OwnWindow: isOwnWindow(s.Display), Elsewhere: elsewhere[s.PaneID], Retiring: s.Retiring, Held: s.Held, Color: e.withColor(s).Color, LymBin: s.LymBin, Provider: s.Provider}
+			strands[i] = StrandStatus{GUID: s.GUID, Name: s.Name, PaneID: s.PaneID, PanePID: alivePIDs[s.PaneID], Live: aliveIDs[s.PaneID], Present: presentIDs[s.PaneID], OwnWindow: isOwnWindow(s.Display), Elsewhere: elsewhere[s.PaneID], Down: downCause(s.PaneID, aliveIDs, runningIDs, presentIDs, elsewhere[s.PaneID], unread[s.PaneID]), Retiring: s.Retiring, Held: s.Held, Color: e.withColor(s).Color, LymBin: s.LymBin, Provider: s.Provider}
 		}
 
 		result = StatusResult{Session: session, Socket: e.Socket(), Strands: strands}

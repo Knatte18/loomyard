@@ -13,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/orchengine"
+	"github.com/Knatte18/loomyard/internal/orchroute"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -167,7 +168,11 @@ when this call spawned one, and watcher_live keeps what the probe found. While a
 start or stop holds the lock nothing is restarted and a hint says to rerun
 status. A dead strand gets no watcher: "lym beam start" relaunches strand and
 watcher together. strand_elsewhere names the session:window of the strand's pane
-when it sits in another session of reed's server, empty otherwise.`,
+when it sits in another session of reed's server, empty otherwise.
+strand_down names why the strand is not live, empty while it is:
+` + orchroute.DownNoStrandRecorded + `, ` + orchroute.DownStrandNotInReedState + `, ` + string(reedengine.DownPaneDead) + `,
+` + string(reedengine.DownPaneUnlisted) + `, ` + string(reedengine.DownPanePlacementUnread) + `,
+` + string(reedengine.DownPaneElsewhere) + `, or ` + string(reedengine.DownStartShell) + ` for the pane's start shell in the foreground.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
@@ -213,6 +218,7 @@ when it sits in another session of reed's server, empty otherwise.`,
 			if hint != "" {
 				fields["hint"] = hint
 			}
+			fields["strand_down"] = orchroute.ReadingOf(st, strands).Down
 			fields["cycle_request"] = cycleRequestField(req, pending, pending && c.hubPauseHolds())
 			clihelp.SetExit(cmd.Context(), output.Ok(out, fields))
 			return nil

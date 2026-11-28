@@ -84,6 +84,7 @@
 // engineAliveIDs is the one predicate.
 // Every pane on Windows reads live.
 // An engine that never takes the foreground reads dead, and a shell-only pane younger than the launch grace reads live.
+// StrandStatus.Down names which of these conditions a strand that is not live fails.
 //
 // # Revival
 //
