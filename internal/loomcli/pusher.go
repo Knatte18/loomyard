@@ -173,7 +173,9 @@ func pusherDeps(prime *lymcwd.Location, t runpusher.Target, check prePushCheck, 
 			options.OwedUnrecorded = true
 			return fabricengine.PushPrimeCodeTip(prime, tip, options)
 		}
-		deps.Parent.HandOver = func(run, owner string) error { return pairteardown.HandOverOwnedElsewhere(prime, run, owner) }
+		deps.Parent.HandOver = func(run, owner string) error {
+			return pairteardown.HandOverOwnedElsewhere(prime, run, owner, pairteardown.RunPush{})
+		}
 		return deps
 	}
 	push := pairteardown.RunPush{LockWait: fabriclayout.StatusPushLockWait, OwedUnrecorded: true, SingleAttempt: true}
@@ -190,7 +192,9 @@ func pusherDeps(prime *lymcwd.Location, t runpusher.Target, check prePushCheck, 
 			return pushRun(prime, t.Location, t.Slug, capped)
 		}
 		deps.Parent.Refresh = func() error { return pairteardown.RefreshOwners(prime, t.Slug) }
-		deps.Parent.HandOver = func(run, owner string) error { return pairteardown.HandOverOwnedElsewhere(prime, run, owner) }
+		deps.Parent.HandOver = func(run, owner string) error {
+			return pairteardown.HandOverOwnedElsewhere(prime, run, owner, pairteardown.RunPush{})
+		}
 	}
 	return deps
 }

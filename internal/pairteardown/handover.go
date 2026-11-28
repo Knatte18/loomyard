@@ -44,6 +44,8 @@ type RunPush struct {
 	CodeCeiling string
 	// BackoffSleep sleeps one delay of the push's backoff; nil sleeps for real.
 	BackoffSleep func(time.Duration)
+	// Notifier posts a failed push's notice and a hand-over's notice; nil posts through the process's installed one.
+	Notifier fabricengine.PushNotifier
 }
 
 // ThisMachine returns the names that read as this machine in the hub at hubPath.
@@ -112,6 +114,7 @@ func PushRun(prime, l *lymcwd.Location, slug string, push RunPush) (fabriclayout
 	}
 	options := fabricengine.EnvSyncOptions()
 	options.BackoffSleep = push.BackoffSleep
+	options.Notifier = push.Notifier
 	pushPair := func() (fabriclayout.PushResult, error) {
 		return fabricengine.PushPairAnchored(l, options, fabriclayout.PairPush{
 			LockWait:       push.LockWait,
@@ -136,7 +139,7 @@ func PushRun(prime, l *lymcwd.Location, slug string, push RunPush) (fabriclayout
 			break
 		}
 		for _, pending := range takeovers.Takeovers {
-			handOverErr := HandOver(prime, pending.Slug, pending.Entry, RunPush{PrimeRecords: true})
+			handOverErr := HandOver(prime, pending.Slug, pending.Entry, RunPush{PrimeRecords: true, BackoffSleep: push.BackoffSleep, Notifier: push.Notifier})
 			if !errors.Is(handOverErr, fabricengine.ErrHandedOver) {
 				return result, fmt.Errorf("%w: %w", fabricengine.ErrTakeoverPassOwed, handOverErr)
 			}
@@ -258,6 +261,7 @@ func HandOver(prime *lymcwd.Location, slug string, entry shedengine.Takeover, pu
 		Parent:         push.Parent,
 		Entry:          entry,
 		DroppedIntents: droppedIntents(local, origin),
+		Notifier:       push.Notifier,
 	}
 	if push.PrimeRecords {
 		request.PrimeRecords = prime
@@ -296,28 +300,31 @@ func HandOver(prime *lymcwd.Location, slug string, entry shedengine.Takeover, pu
 // It pushes only commits origin lacks, never force-pushes and writes no board.
 // A failed push or hand-over step returns an error naming the run and the step.
 // Nothing is archived before a failed push.
-func HandOverOwnedElsewhere(prime *lymcwd.Location, slug, owner string) error {
+// Of push it reads only BackoffSleep and Notifier, which serve every push and notice of the hand-over.
+func HandOverOwnedElsewhere(prime *lymcwd.Location, slug, owner string, push RunPush) error {
+	seams := RunPush{BackoffSleep: push.BackoffSleep, Notifier: push.Notifier}
 	origin, _, err := fabricengine.OriginBattenStatus(prime, slug)
 	if err != nil {
 		return fmt.Errorf("pairteardown: hand over the run %q to %q: read its batten record on origin: %w", slug, owner, err)
 	}
 	if origin.Takeover == nil {
-		if err := pushOwedRunCommits(prime, slug); err != nil {
+		if err := pushOwedRunCommits(prime, slug, seams); err != nil {
 			if errors.Is(err, fabricengine.ErrHandedOver) {
 				return nil
 			}
 			return fmt.Errorf("pairteardown: hand over the run %q to %q: push its owed commits: %w", slug, owner, err)
 		}
 	}
-	if err := HandOver(prime, slug, shedengine.Takeover{Machine: owner}, RunPush{}); err != nil && !errors.Is(err, fabricengine.ErrHandedOver) {
+	if err := HandOver(prime, slug, shedengine.Takeover{Machine: owner}, seams); err != nil && !errors.Is(err, fabricengine.ErrHandedOver) {
 		return err
 	}
 	return nil
 }
 
 // pushOwedRunCommits pushes the prime's records and then the pair of slug when it stands here, records side first.
-func pushOwedRunCommits(prime *lymcwd.Location, slug string) error {
-	push := RunPush{LockWait: fabriclayout.StatusPushLockWait}
+// Each push takes push with its lock wait set to the status push's.
+func pushOwedRunCommits(prime *lymcwd.Location, slug string, push RunPush) error {
+	push.LockWait = fabriclayout.StatusPushLockWait
 	if _, err := PushRun(prime, prime, slug, push); err != nil {
 		return err
 	}

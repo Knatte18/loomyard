@@ -246,7 +246,9 @@ var settleEpisodes logger.EpisodeSet
 // settleRefusedParent settles the refused parent target t of the hub of prime in this process, pushing nothing.
 func settleRefusedParent(prime *lymcwd.Location, t runpusher.Target) error {
 	deps := runpusher.NewDeps(t, fabricengine.PushTiming{})
-	deps.Parent.HandOver = func(run, owner string) error { return pairteardown.HandOverOwnedElsewhere(prime, run, owner) }
+	deps.Parent.HandOver = func(run, owner string) error {
+		return pairteardown.HandOverOwnedElsewhere(prime, run, owner, pairteardown.RunPush{})
+	}
 	if t.Pair {
 		deps.Parent.Refresh = func() error { return pairteardown.RefreshOwners(prime, t.Slug) }
 	}

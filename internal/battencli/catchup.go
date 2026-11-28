@@ -138,14 +138,16 @@ func HubCatchUp(prime *lymcwd.Location, runs func() ([]string, error)) dobbyengi
 		LockWait: fabriclayout.StatusPushLockWait,
 	}
 	return dobbyengine.CatchUpDeps{
-		Launcher:          dobbyengine.Launcher{BoardDir: fabriclayout.BoardDir(prime.HubPath), Shortname: shortname},
-		PullBolt:          func() error { return pullBoltForCatchUp(prime) },
-		Register:          func() error { return registerThisMachine(prime) },
-		Runs:              runs,
-		FetchRun:          func(slug string) error { return fetchRunForCatchUp(prime, slug) },
-		ReadRun:           func(slug string) (dobbyengine.CatchUpRun, error) { return readRunForCatchUp(prime, slug) },
-		PushOwed:          func(slug string) error { return pushOwedForCatchUp(prime, slug, pushSeams) },
-		HandOver:          func(slug, owner string) error { return pairteardown.HandOverOwnedElsewhere(prime, slug, owner) },
+		Launcher: dobbyengine.Launcher{BoardDir: fabriclayout.BoardDir(prime.HubPath), Shortname: shortname},
+		PullBolt: func() error { return pullBoltForCatchUp(prime) },
+		Register: func() error { return registerThisMachine(prime) },
+		Runs:     runs,
+		FetchRun: func(slug string) error { return fetchRunForCatchUp(prime, slug) },
+		ReadRun:  func(slug string) (dobbyengine.CatchUpRun, error) { return readRunForCatchUp(prime, slug) },
+		PushOwed: func(slug string) error { return pushOwedForCatchUp(prime, slug, pushSeams) },
+		HandOver: func(slug, owner string) error {
+			return pairteardown.HandOverOwnedElsewhere(prime, slug, owner, pairteardown.RunPush{})
+		},
 		ApplyPauseIntents: func(slugs []string) error { return tendercli.PauseIntentEntries(prime, slugs) },
 	}
 }

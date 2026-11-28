@@ -44,6 +44,8 @@ type HandOverRequest struct {
 	// PrimeRecords is the prime whose records hold the run's unpushed transitions, nil when there is none to archive.
 	// A set one has its local records tip pushed under an owner archive tag named for the run.
 	PrimeRecords *lymcwd.Location
+	// Notifier posts the hand-over notice; nil posts through the process's installed push notifier.
+	Notifier PushNotifier
 }
 
 // HandOverResult reports what a hand-over did.
@@ -64,7 +66,8 @@ type HandOverResult struct {
 // A parent branch that only the run's own merge puts ahead of its upstream is tagged the same way.
 // That branch is then reset to the upstream.
 // With req.PrimeRecords set, the prime's local records tip is archived the same way, under a tag named for the run.
-// One notice goes through the installed push notifier, and the hand-over mark is written last, after every tag landed.
+// One notice goes through req.Notifier, or the installed push notifier when it is nil.
+// The hand-over mark is written last, after every tag landed.
 // A failure at any step returns it before the mark is written, so the next rejected push hands the run over again;
 // a failed archive wraps ErrArchiveFailed.
 // It pushes no branch but the owed code tip, and no tag but the owner archive tags.
@@ -122,7 +125,11 @@ func HandOverTips(prime *lymcwd.Location, req HandOverRequest) (HandOverResult, 
 		}
 	}
 
-	if notify := installedNotifier(); notify != nil {
+	notify := req.Notifier
+	if notify == nil {
+		notify = installedNotifier()
+	}
+	if notify != nil {
 		if _, err := notify(hubPath, handOverNotice(req, result.Tags)); err != nil {
 			logger.Warn("fabricengine: the hand-over notice was not posted", "slug", req.Slug, "error", err)
 		}

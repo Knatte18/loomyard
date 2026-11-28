@@ -167,26 +167,28 @@ func (f *handOverFixture) requireMark(t *testing.T) {
 	}
 }
 
-// captureNotices installs a push notifier that records each notice line, and returns the recorded lines.
-// The notifier is process-wide, so a test calling it does not run in parallel.
-func captureNotices(t *testing.T) *[]string {
-	t.Helper()
+// recordNotices returns a push notifier that records each notice line and reports it posted, and the recorded lines.
+func recordNotices() (fabricengine.PushNotifier, *[]string) {
 	var lines []string
-	t.Cleanup(fabricengine.InstallPushNotifier(func(_ string, notice fabriclayout.PushNotice) (bool, error) {
+	notify := func(_ string, notice fabriclayout.PushNotice) (bool, error) {
 		lines = append(lines, notice.Line)
 		return true, nil
-	}))
-	return &lines
+	}
+	return notify, &lines
 }
 
+// skipBackoff is a backoff sleep that returns at once.
+func skipBackoff(time.Duration) {}
+
 // TestHandOverOwnedElsewhere drives HandOverOwnedElsewhere over a hub pair with commits origin lacks.
-// The rows install the process's push notifier, so none of them runs in parallel.
 func TestHandOverOwnedElsewhere(t *testing.T) {
 	tiergate.Require(t, 1)
+	t.Parallel()
 
 	const slug = "owned-elsewhere-run"
-	handOver := func(f *handOverFixture) error {
-		return pairteardown.HandOverOwnedElsewhere(f.h.Location, slug, f.entry.Machine)
+	handOver := func(f *handOverFixture, push pairteardown.RunPush) error {
+		push.BackoffSleep = skipBackoff
+		return pairteardown.HandOverOwnedElsewhere(f.h.Location, slug, f.entry.Machine, push)
 	}
 	archiveTagsOn := func(t *testing.T, bare string) string {
 		t.Helper()
@@ -202,6 +204,7 @@ func TestHandOverOwnedElsewhere(t *testing.T) {
 	}
 
 	t.Run("OwedCommitsAndArchiveTagsReachOriginTheProcessEndsAndThePairIsGone", func(t *testing.T) {
+		t.Parallel()
 		f := newHandOverFixtureWith(t, slug, false)
 		f.writeLocalBattenRecord(t)
 		// Only an uncommitted file leaves a tip origin lacks once the owed commits are pushed, so each side holds one to archive.
@@ -210,12 +213,12 @@ func TestHandOverOwnedElsewhere(t *testing.T) {
 				t.Fatalf("write an uncommitted file in %s: %v", dir, err)
 			}
 		}
-		lines := captureNotices(t)
+		notify, lines := recordNotices()
 		codeBranch := gitkit.CurrentBranch(t, f.h.PairCodeWorktree(slug))
 		codeHead := gitkit.RevParse(t, f.h.PairCodeWorktree(slug), "HEAD")
 		recordsHead := gitkit.RevParse(t, f.h.PairRecordsSibling(slug), "HEAD")
 
-		if err := handOver(f); err != nil {
+		if err := handOver(f, pairteardown.RunPush{Notifier: notify}); err != nil {
 			t.Fatalf("HandOverOwnedElsewhere() error = %v; want nil", err)
 		}
 
@@ -239,10 +242,11 @@ func TestHandOverOwnedElsewhere(t *testing.T) {
 	})
 
 	t.Run("ARunAtLandIsHandedOverTheSameWay", func(t *testing.T) {
+		t.Parallel()
 		f := newHandOverFixtureWith(t, slug, false)
 		writeStatus(t, f.h.Location, slug, shedengine.Status{State: shedengine.StateRunning, CurrentProducer: "Land"})
 
-		if err := handOver(f); err != nil {
+		if err := handOver(f, pairteardown.RunPush{}); err != nil {
 			t.Fatalf("HandOverOwnedElsewhere() error = %v; want nil", err)
 		}
 
@@ -252,6 +256,7 @@ func TestHandOverOwnedElsewhere(t *testing.T) {
 	})
 
 	t.Run("ATakeoverEntryOnOriginPushesNothingFirstAndAnswersNil", func(t *testing.T) {
+		t.Parallel()
 		f := newHandOverFixtureWith(t, slug, false)
 		primeBranch := gitkit.CurrentBranch(t, f.h.PrimeRecords())
 		gitkit.Git(t, f.h.PrimeRecords(), "push", "--set-upstream", "origin", primeBranch)
@@ -259,7 +264,7 @@ func TestHandOverOwnedElsewhere(t *testing.T) {
 		originRecords := "refs/heads/" + fabriclayout.RecordsBranchName(gitkit.CurrentBranch(t, f.h.PairCodeWorktree(slug)))
 		before := gitkit.RevParse(t, f.h.RecordsBare, originRecords)
 
-		if err := handOver(f); err != nil {
+		if err := handOver(f, pairteardown.RunPush{}); err != nil {
 			t.Fatalf("HandOverOwnedElsewhere() error = %v; want nil", err)
 		}
 
@@ -271,6 +276,7 @@ func TestHandOverOwnedElsewhere(t *testing.T) {
 	})
 
 	t.Run("AFailedPushReturnsItsErrorAndWritesNoArchiveTagAndNoMark", func(t *testing.T) {
+		t.Parallel()
 		f := newHandOverFixtureWith(t, slug, false)
 		hook := filepath.Join(f.h.RecordsBare, "hooks", "pre-receive")
 		if err := os.MkdirAll(filepath.Dir(hook), 0o755); err != nil {
@@ -280,7 +286,7 @@ func TestHandOverOwnedElsewhere(t *testing.T) {
 			t.Fatalf("write the pre-receive hook: %v", err)
 		}
 
-		err := handOver(f)
+		err := handOver(f, pairteardown.RunPush{})
 
 		if err == nil || !strings.Contains(err.Error(), "push its owed commits") {
 			t.Errorf("HandOverOwnedElsewhere() error = %v; want one naming the push step", err)
@@ -424,21 +430,23 @@ func TestPushRun_StopsShortOfAHeldRecordsCommit(t *testing.T) {
 }
 
 // TestPushRun_HandsOverOnATakeover drives PushRun against another machine's takeover entry.
-// The rows install the process's push notifier, so none of them runs in parallel.
 func TestPushRun_HandsOverOnATakeover(t *testing.T) {
 	tiergate.Require(t, 1)
+	t.Parallel()
 
 	const slug = "hand-over-run"
-	run := func(f *handOverFixture, insidePair bool) error {
-		_, err := pairteardown.PushRun(f.h.Location, f.pair, slug, pairteardown.RunPush{LockWait: fabriclayout.LockWaitUnbounded, InsidePair: insidePair})
+	run := func(f *handOverFixture, push pairteardown.RunPush) error {
+		push.LockWait = fabriclayout.LockWaitUnbounded
+		push.BackoffSleep = skipBackoff
+		_, err := pairteardown.PushRun(f.h.Location, f.pair, slug, push)
 		return err
 	}
-	notices := captureNotices
 
 	t.Run("OutsideThePairTheProcessEndsThePairIsGoneAndTheMarkStands", func(t *testing.T) {
+		t.Parallel()
 		f := newHandOverFixture(t, slug)
 
-		err := run(f, false)
+		err := run(f, pairteardown.RunPush{})
 
 		f.requireHandedOver(t, err)
 		f.requireProcessEnded(t)
@@ -451,11 +459,12 @@ func TestPushRun_HandsOverOnATakeover(t *testing.T) {
 	})
 
 	t.Run("WithTheLandingStandingThePairStays", func(t *testing.T) {
+		t.Parallel()
 		f := newHandOverFixture(t, slug)
 		tip := gitkit.RevParse(t, f.h.PairCodeWorktree(slug), "HEAD")
 		writeLedgerEntry(t, f.h.Path, pushledger.LandingKey, &pushledger.Entry{Landings: []pushledger.Landing{{Run: slug, Tip: tip, ParentBranch: "main", At: time.Unix(1, 0)}}})
 
-		err := run(f, false)
+		err := run(f, pairteardown.RunPush{})
 
 		f.requireHandedOver(t, err)
 		if _, statErr := os.Stat(f.h.PairCodeWorktree(slug)); statErr != nil {
@@ -465,9 +474,10 @@ func TestPushRun_HandsOverOnATakeover(t *testing.T) {
 	})
 
 	t.Run("InsideThePairItStaysAndTheErrorNamesThePairLeftForTheParent", func(t *testing.T) {
+		t.Parallel()
 		f := newHandOverFixture(t, slug)
 
-		err := run(f, true)
+		err := run(f, pairteardown.RunPush{InsidePair: true})
 
 		f.requireHandedOver(t, err)
 		if !strings.Contains(err.Error(), "left standing") {
@@ -480,7 +490,7 @@ func TestPushRun_HandsOverOnATakeover(t *testing.T) {
 		f.requireMark(t)
 
 		originRecords := gitkit.RevParse(t, f.h.RecordsBare, "refs/heads/"+fabriclayout.RecordsBranchName(gitkit.CurrentBranch(t, f.h.PairCodeWorktree(slug))))
-		err = run(f, true)
+		err = run(f, pairteardown.RunPush{InsidePair: true})
 		f.requireHandedOver(t, err)
 		if got := gitkit.RevParse(t, f.h.RecordsBare, "refs/heads/"+fabriclayout.RecordsBranchName(gitkit.CurrentBranch(t, f.h.PairCodeWorktree(slug)))); got != originRecords {
 			t.Errorf("origin records tip = %s after the second PushRun; want it unchanged at %s", got, originRecords)
@@ -488,12 +498,13 @@ func TestPushRun_HandsOverOnATakeover(t *testing.T) {
 	})
 
 	t.Run("ALocalPauseIntentOriginLacksIsNamedInTheNotice", func(t *testing.T) {
+		t.Parallel()
 		f := newHandOverFixture(t, slug)
 		gitkit.Git(t, f.h.PrimeRecords(), "push", "--set-upstream", "origin", gitkit.CurrentBranch(t, f.h.PrimeRecords()))
 		f.writeLocalBattenRecord(t)
-		lines := notices(t)
+		notify, lines := recordNotices()
 
-		f.requireHandedOver(t, run(f, true))
+		f.requireHandedOver(t, run(f, pairteardown.RunPush{InsidePair: true, Notifier: notify}))
 
 		if len(*lines) != 1 || !strings.Contains((*lines)[0], "pause intent") {
 			t.Errorf("notices = %q; want one naming the pause intent", *lines)
@@ -501,14 +512,15 @@ func TestPushRun_HandsOverOnATakeover(t *testing.T) {
 	})
 
 	t.Run("AStalePrimeTrackingRefNamesNoIntentOriginAlreadyHolds", func(t *testing.T) {
+		t.Parallel()
 		f := newHandOverFixture(t, slug)
 		primeBranch := gitkit.CurrentBranch(t, f.h.PrimeRecords())
 		gitkit.Git(t, f.h.PrimeRecords(), "push", "--set-upstream", "origin", primeBranch)
 		local := f.writeLocalBattenRecord(t)
 		f.plantRunRecord(t, primeBranch, slug, local, nil)
-		lines := notices(t)
+		notify, lines := recordNotices()
 
-		f.requireHandedOver(t, run(f, true))
+		f.requireHandedOver(t, run(f, pairteardown.RunPush{InsidePair: true, Notifier: notify}))
 
 		if len(*lines) != 1 || strings.Contains((*lines)[0], "pause intent") {
 			t.Errorf("notices = %q; want one naming no intent, since origin holds the pause intent", *lines)
@@ -539,7 +551,9 @@ func TestPushRun_HandsOverOnATakeover(t *testing.T) {
 		return f, branch, head
 	}
 	runPrime := func(f *handOverFixture, named string) error {
-		_, err := pairteardown.PushRun(f.h.Location, f.h.Location, named, pairteardown.RunPush{LockWait: fabriclayout.LockWaitUnbounded})
+		notify, _ := recordNotices()
+		push := pairteardown.RunPush{LockWait: fabriclayout.LockWaitUnbounded, BackoffSleep: skipBackoff, Notifier: notify}
+		_, err := pairteardown.PushRun(f.h.Location, f.h.Location, named, push)
 		return err
 	}
 	// originTransitions returns the subjects of the transition commits on origin's prime records branch, oldest first.
@@ -564,8 +578,8 @@ func TestPushRun_HandsOverOnATakeover(t *testing.T) {
 	}
 
 	t.Run("APrimePushHandsTheTakenOverRunOverAndLandsTheOthersCommitsInOrder", func(t *testing.T) {
+		t.Parallel()
 		f, branch, primeHead := primeAhead(t)
-		captureNotices(t)
 
 		if err := runPrime(f, ""); err != nil {
 			t.Fatalf("PushRun(prime) error = %v; want nil", err)
@@ -589,8 +603,8 @@ func TestPushRun_HandsOverOnATakeover(t *testing.T) {
 	})
 
 	t.Run("APrimePushNamingTheTakenOverRunEndsWithErrHandedOver", func(t *testing.T) {
+		t.Parallel()
 		f, branch, _ := primeAhead(t)
-		captureNotices(t)
 
 		err := runPrime(f, slug)
 
@@ -601,8 +615,8 @@ func TestPushRun_HandsOverOnATakeover(t *testing.T) {
 	})
 
 	t.Run("AFailedArchiveOwesThePassAndTheNextPushHandsTheRunOver", func(t *testing.T) {
+		t.Parallel()
 		f, branch, _ := primeAhead(t)
-		captureNotices(t)
 		hook := filepath.Join(f.h.RecordsBare, "hooks", "pre-receive")
 		if err := os.MkdirAll(filepath.Dir(hook), 0o755); err != nil {
 			t.Fatalf("create the hooks directory: %v", err)
