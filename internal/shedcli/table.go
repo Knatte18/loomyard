@@ -1,12 +1,11 @@
 // table.go declares the named-recipe arming table: the recipes map literal and its entry type.
-// Each recipe is declared once, in recipes, and reached only through the lookup and names accessors.
+// Each recipe is declared once, in recipes, and reached only through the lookup accessor.
 // There is no init() self-registration and no runtime Register function.
 
 package shedcli
 
 import (
 	"fmt"
-	"sort"
 
 	"github.com/Knatte18/loomyard/internal/battencli"
 	"github.com/Knatte18/loomyard/internal/loomcli"
@@ -104,15 +103,4 @@ func lookup(name string) (entry, error) {
 		return entry{}, fmt.Errorf("shedcli: unknown recipe %q; available recipes: %v", name, shedrun.OfferedRecipeNames())
 	}
 	return e, nil
-}
-
-// names returns every recipe name in recipes, sorted.
-// Each call returns a fresh slice, so a caller may modify it without affecting later calls or recipes.
-func names() []string {
-	result := make([]string, 0, len(recipes))
-	for name := range recipes {
-		result = append(result, name)
-	}
-	sort.Strings(result)
-	return result
 }

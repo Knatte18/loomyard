@@ -1,10 +1,11 @@
-// table_test.go covers table.go's recipes map and its two accessors. It stays in tier 0: it
-// calls lookup and names alone, neither of which resolves cwd or spawns git.
+// table_test.go covers table.go's recipes map and its lookup accessor.
+// It stays in tier 0: it reads recipes and calls lookup alone, neither of which resolves cwd or spawns git.
 
 package shedcli
 
 import (
 	"go/ast"
+	"maps"
 	"slices"
 	"sort"
 	"strings"
@@ -45,14 +46,9 @@ func TestRecipes_KeySet(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := names()
-			if len(got) != len(tt.want) {
-				t.Fatalf("names() = %v; want %v", got, tt.want)
-			}
-			for i := range tt.want {
-				if got[i] != tt.want[i] {
-					t.Errorf("names()[%d] = %q; want %q", i, got[i], tt.want[i])
-				}
+			got := slices.Sorted(maps.Keys(recipes))
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("sorted recipes keys = %v; want %v", got, tt.want)
 			}
 		})
 	}
