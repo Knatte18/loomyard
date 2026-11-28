@@ -22,4 +22,16 @@
 //
 // The package writes the board only through boardengine's exported board methods.
 // Each write expects the entry revision its request read.
+//
+// # Lifecycle
+//
+// `Run` is the one server of its state directory: it holds the directory's lock for as long as it serves.
+// A second server returns `ErrRunning` and writes nothing.
+// Once it holds the lock, the server starts its log with its pid and removes the previous server's state.
+// It then binds a loopback port and records its pid, port and token in a file readable by its user alone.
+// A reader judges liveness by the lock alone, since the state file outlives its server.
+//
+// One watch loop wakes on a file event on the board's store or on its timer, and wakes the waiting requests on a change.
+// It ends the server when the binary was replaced or no API request came within the idle bound.
+// An exiting server takes no new request, then releases its lock, then waits for the requests in flight.
 package boardserve

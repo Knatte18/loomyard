@@ -65,9 +65,11 @@ func (t BriefTask) IsDone() bool {
 	return t.Layer == doneLayer
 }
 
+// BoardStoreFile names the one store file a board directory holds, which a watcher of the board watches.
+const BoardStoreFile = "board.json"
+
 const (
-	// boardFile names the one store file a board directory holds.
-	boardFile = "board.json"
+	boardFile = BoardStoreFile
 
 	// storeVersion is the only on-disk version Load accepts.
 	storeVersion = 1
